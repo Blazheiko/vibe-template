@@ -28,7 +28,7 @@
 | Область           | Що використовується                                                           |
 | ----------------- | ----------------------------------------------------------------------------- |
 | API               | uWebSockets.js, валідація маршрутів (arktype), WebSocket                      |
-| БД                | PostgreSQL, Drizzle ORM / drizzle-kit `1.0.0-rc.4` (міграції + seed)          |
+| БД                | PostgreSQL, Drizzle ORM / drizzle-kit `1.0.0-rc.5` (міграції + seed)          |
 | Auth/безпека      | cookies, CSRF, CORS, throttling, CSP                                          |
 | Фронтенд          | Vue 3, Pinia, vue-router, vue-i18n, PWA, Vitest, Playwright                   |
 | Спостережуваність | Sentry (`@sentry/node`, `@sentry/vue`), Pino                                  |
