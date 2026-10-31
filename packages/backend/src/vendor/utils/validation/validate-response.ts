@@ -63,9 +63,10 @@ export const isUndeclaredKey = (error: Pick<Issue, 'code' | 'expected'>): boolea
 
 type IssueKind = 'mismatch' | 'undeclared'
 
-// ArkType reads a key named like an Object.prototype member (constructor, __proto__,
-// hasOwnProperty, …) through the prototype, so neither reject nor delete sees it as
-// undeclared and it reaches the client. No response schema declares such a key.
+// ArkType before 2.2.9 read a key named like an Object.prototype member (constructor,
+// __proto__, hasOwnProperty, …) through the prototype, so neither reject nor delete saw
+// it as undeclared and it reached the client. 2.2.9 reports such keys, but the walk below
+// still strips them itself rather than rely on that. No response schema declares one.
 const PROTOTYPE_KEYS: ReadonlySet<string> = new Set([
     ...Object.getOwnPropertyNames(Object.prototype),
     '__proto__',
@@ -274,7 +275,12 @@ export const createResponseCheck = (
             report(mode, 'mismatch', true, meta, unsafe, now())
             return { ok: false }
         }
-        const undeclared: Issue[] = [...(schemaErrors ?? []), ...prototypeKeys]
+        // ArkType 2.2.9+ reports some of these keys itself: one issue per path.
+        const reported = new Set(schemaErrors?.map((error) => error.propString))
+        const undeclared: Issue[] = [
+            ...(schemaErrors ?? []),
+            ...prototypeKeys.filter((issue) => !reported.has(issue.propString)),
+        ]
         if (undeclared.length === 0) return { ok: true, payload }
 
         if (strip === null) {

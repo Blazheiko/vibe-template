@@ -33,17 +33,17 @@
     "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@types/node": "^24.19.2",
-        "eslint": "^10.13.0",
+        "eslint": "^10.14.0",
         "prettier": "^3.9.10",
         "typescript": "6.0.3",
-        "typescript-eslint": "^8.71.2"
+        "typescript-eslint": "^8.72.1"
     },
     "pnpm": {
         "overrides": {
-            "@typescript-eslint/utils": "^8.71.2",
-            "@typescript-eslint/typescript-estree": "^8.71.2",
-            "@typescript-eslint/project-service": "^8.71.2",
-            "@typescript-eslint/tsconfig-utils": "^8.71.2"
+            "@typescript-eslint/utils": "^8.72.1",
+            "@typescript-eslint/typescript-estree": "^8.72.1",
+            "@typescript-eslint/project-service": "^8.72.1",
+            "@typescript-eslint/tsconfig-utils": "^8.72.1"
         },
         "patchedDependencies": {
             "uWebSockets.js@20.71.0": "patches/uWebSockets.js@20.71.0.patch"
