@@ -66,6 +66,11 @@ const { default: createContext } = await import('#vendor/utils/context/http-cont
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { createAnonSessionToken } = await import('#vendor/utils/session/token-handler.js')
 const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
+const { registerSessionTokenChecker } = await import('#vendor/utils/session/session-token-check.js')
+
+// Whether a signed-in session is revoked by a rotated users.sessionToken is covered
+// with a real database in session-revocation.pg.test.ts: here every session is current.
+registerSessionTokenChecker(() => Promise.resolve('ok'))
 
 const admin = createTestRedis(PREFIX)
 

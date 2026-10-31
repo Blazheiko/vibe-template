@@ -26,6 +26,8 @@ import {
 } from '#vendor/utils/session/redis-session-storage.js'
 import logger from '#vendor/utils/logger.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
+import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
+import { assertSessionTokenCurrent } from '#vendor/utils/session/session-token-check.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import {
     createAnonSessionToken,
@@ -153,6 +155,19 @@ const updateContextWithNewSession = (
     return newSessionInfo
 }
 
+// Memory cleanup only: the revocation itself is the rotated sessionToken, so a Redis
+// failure here is logged, not raised.
+const dropRevokedSession = async (sessionId: string, userToken: string): Promise<void> => {
+    try {
+        await destroySession(sessionId, userToken)
+    } catch (err) {
+        logger.warn(
+            { err, sessionId, userToken: maskTokenForLogs(userToken) },
+            'Could not delete a revoked session record',
+        )
+    }
+}
+
 export const sessionHandler = async (
     context: HttpContext,
     accessToken: string | undefined,
@@ -224,6 +239,21 @@ export const sessionHandler = async (
         }
     } else if (sessionId !== undefined && cookieUserToken !== undefined) {
         sessionInfo = await getSession(sessionId, cookieUserToken)
+        if (sessionInfo !== null) {
+            // ADR 0002: the Redis record only proves the session was issued. A rotated
+            // users.sessionToken revokes it, whether or not the cleanup reached Redis.
+            const status = await assertSessionTokenCurrent(sessionInfo, cookieUserToken)
+            if (status === 'unavailable') {
+                // Fail-closed: not served on the strength of the Redis record alone.
+                throw new SessionVerificationUnavailableError()
+            }
+            if (status === 'mismatch') {
+                await dropRevokedSession(sessionId, cookieUserToken)
+                sessionInfo = null
+                sessionId = undefined
+                cookieUserToken = undefined
+            }
+        }
     }
 
     if (sessionInfo === null) {
@@ -461,6 +491,16 @@ export const wsSessionHandler = async (
             logger.warn(
                 { sessionId, userToken: maskTokenForLogs(userToken) },
                 'wsSessionHandler: session has no userId — not authenticated',
+            )
+            return MISSING
+        }
+
+        const tokenStatus = await assertSessionTokenCurrent(sessionInfo, userToken)
+        if (tokenStatus === 'unavailable') return { kind: 'unavailable' }
+        if (tokenStatus === 'mismatch') {
+            logger.warn(
+                { sessionId, userToken: maskTokenForLogs(userToken) },
+                'wsSessionHandler: session revoked (sessionToken rotated)',
             )
             return MISSING
         }

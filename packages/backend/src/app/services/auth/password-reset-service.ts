@@ -630,12 +630,18 @@ export const passwordResetService = {
             return Result.err(internalMessage('Failed to update password'))
         }
 
+        // ADR 0002: the rotated sessionToken above is the revocation. This only deletes
+        // records that are already rejected, so a failure is logged and must not stop
+        // the reset (the token below would stay unused after the password changed).
         const destroySessionsResult = await tryInternal(
             () => destroyAllSessions(previousSessionToken),
             'Failed to destroy sessions',
         )
         if (Result.isError(destroySessionsResult)) {
-            return Result.err(destroySessionsResult.error)
+            logger.warn(
+                { err: destroySessionsResult.error, userId: String(user.id) },
+                'Previous sessions not deleted after a password reset',
+            )
         }
 
         const usedTokenResult = await tryInternal(
@@ -785,12 +791,16 @@ export const passwordResetService = {
             return Result.err(internalMessage('Failed to update password'))
         }
 
+        // ADR 0002: best-effort memory cleanup, see the email reset above.
         const destroySessionsResult = await tryInternal(
             () => destroyAllSessions(previousSessionToken),
             'Failed to destroy sessions',
         )
         if (Result.isError(destroySessionsResult)) {
-            return Result.err(destroySessionsResult.error)
+            logger.warn(
+                { err: destroySessionsResult.error, userId: String(updatedUser.id) },
+                'Previous sessions not deleted after a password reset',
+            )
         }
 
         userNotificationService.security(updatedUser.id, 'password_reset')

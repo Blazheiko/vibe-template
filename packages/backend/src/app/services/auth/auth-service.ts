@@ -1,5 +1,6 @@
 import { hashPassword, validatePassword } from 'metautil'
 import { Result } from 'better-result'
+import { nanoid } from 'nanoid'
 import type { Auth, Session } from '#vendor/types/types.js'
 import { smsAuthChallengeRepository, userRepository } from '#app/repositories/index.js'
 import type { UserRow } from '#app/repositories/index.js'
@@ -49,6 +50,7 @@ import type {
 } from 'shared/schemas'
 import type { Logger } from 'pino'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
 const REGISTER_PHONE_FLOW: SmsVerificationFlow = 'register_phone'
@@ -1210,9 +1212,12 @@ export const authService = {
     async renewSession(
         auth: Auth,
         session: Session,
+        // After a credential change the user has a rotated sessionToken (ADR 0002);
+        // the new session is issued under it, not under the one it replaces.
+        rotatedUserToken?: string,
     ): Promise<AppResult<{ csrfToken: string; wsUrl: string; wsToken: string }>> {
         const userId = auth.getUserId()
-        const userToken = session.sessionInfo?.data.userToken
+        const userToken = rotatedUserToken ?? session.sessionInfo?.data.userToken
         if (userId === null || typeof userToken !== 'string') {
             return Result.err(internalMessage('No signed-in session to renew'))
         }
@@ -1247,6 +1252,21 @@ export const authService = {
         session: Session,
     ): Promise<AppResult<{ status: 'success'; deletedCount: number; csrfToken: string }>> {
         const userId = auth.getUserId()
+        // ADR 0002: rotating the sessionToken is the revocation. It comes first and its
+        // failure fails the request; auth.logoutAll() below only deletes the records,
+        // and every one of them is already rejected if that step fails.
+        if (userId !== null) {
+            const rotated = await tryInternal(
+                () => userRepository.update(BigInt(userId), { sessionToken: nanoid() }),
+                'Failed to revoke sessions',
+            )
+            if (Result.isError(rotated)) {
+                return Result.err(rotated.error)
+            }
+            if (rotated.value === undefined) {
+                return Result.err(notFound('User', 'User not found'))
+            }
+        }
         const result = await tryInternal(() => auth.logoutAll(), 'Failed to log out all sessions')
         if (Result.isError(result)) {
             return Result.err(result.error)
@@ -1268,7 +1288,7 @@ export const authService = {
     async changePassword(
         userId: bigint,
         payload: ChangePasswordInput,
-    ): Promise<AppResult<{ status: 'success' }>> {
+    ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
         const throttle = await tryInternal(
             () => consumeAuthThrottle(throttlePolicies.changePasswordUser, String(userId)),
@@ -1325,10 +1345,17 @@ export const authService = {
             return Result.err(newPasswordHashResult.error)
         }
 
+        // ADR 0002: the new password and the rotated sessionToken are one conditional
+        // UPDATE. Every other session of the user stops working with it, whether or not
+        // the Redis cleanup below finishes; and of two concurrent changes made against
+        // the same current password only one finds it still in place.
+        const previousSessionToken = user.sessionToken
+        const rotatedSessionToken = nanoid()
         const updatedResult = await tryInternal(
             () =>
-                userRepository.update(userId, {
+                userRepository.changePasswordIfCurrent(userId, storedPassword, {
                     password: newPasswordHashResult.value,
+                    sessionToken: rotatedSessionToken,
                 }),
             'Failed to update password',
         )
@@ -1337,7 +1364,9 @@ export const authService = {
         }
 
         if (updatedResult.value === undefined) {
-            return Result.err(internalMessage('Failed to update password'))
+            return Result.err(
+                conflict('Password was changed by another request. Please try again.'),
+            )
         }
 
         const resetResult = await tryInternal(
@@ -1348,7 +1377,20 @@ export const authService = {
             logger.warn({ err: resetResult.error }, 'Change password throttle reset failed')
         }
 
+        // Memory cleanup, not the revocation: a failure leaves records that are already
+        // rejected, so it is logged and the password change still succeeds.
+        const cleanupResult = await tryInternal(
+            () => destroyAllSessions(previousSessionToken),
+            'Failed to delete previous sessions',
+        )
+        if (Result.isError(cleanupResult)) {
+            logger.warn(
+                { err: cleanupResult.error, userId: String(userId) },
+                'Previous sessions not deleted after a password change',
+            )
+        }
+
         userNotificationService.security(userId, 'password_changed')
-        return Result.ok({ status: 'success' })
+        return Result.ok({ status: 'success', sessionToken: rotatedSessionToken })
     },
 }

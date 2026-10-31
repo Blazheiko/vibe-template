@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { users } from '#database/schema.js'
-import { and, count, desc, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 
 export type UserRow = InferSelectModel<typeof users>
@@ -54,6 +54,18 @@ export interface IUserRepository {
     emailExistsForOtherUser(email: string, excludeId: bigint): Promise<boolean>
     phoneExistsForOtherUser(phone: string, excludeId: bigint): Promise<boolean>
     update(id: bigint, data: UserUpdate): Promise<UserRow | undefined>
+    /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
+    findSessionToken(id: bigint): Promise<string | undefined>
+    /**
+     * Sets a new password and rotates the sessionToken only if the stored password is
+     * still `currentPassword` (null/'' for an account that has none yet). Undefined
+     * when another request changed it first: two concurrent changes cannot both win.
+     */
+    changePasswordIfCurrent(
+        id: bigint,
+        currentPassword: string | null,
+        data: { password: string; sessionToken: string },
+    ): Promise<UserRow | undefined>
     delete(id: bigint): Promise<boolean>
 }
 
@@ -203,6 +215,35 @@ export const userRepository: IUserRepository = {
             .set({ ...data, updatedAt: new Date() })
             .where(eq(users.id, id))
         return userRepository.findById(id)
+    },
+
+    async findSessionToken(id) {
+        const [row] = await db
+            .select({ sessionToken: users.sessionToken })
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1)
+        return row?.sessionToken
+    },
+
+    async changePasswordIfCurrent(id, currentPassword, data) {
+        const [row] = await db
+            .update(users)
+            .set({
+                password: data.password,
+                sessionToken: data.sessionToken,
+                updatedAt: new Date(),
+            })
+            .where(
+                and(
+                    eq(users.id, id),
+                    currentPassword === null || currentPassword === ''
+                        ? or(isNull(users.password), eq(users.password, ''))
+                        : eq(users.password, currentPassword),
+                ),
+            )
+            .returning()
+        return row
     },
 
     async delete(id) {

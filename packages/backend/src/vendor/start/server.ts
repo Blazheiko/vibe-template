@@ -29,6 +29,7 @@ import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'
 import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
+import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
 import { UnsupportedMediaTypeError } from '#vendor/utils/network/errors/unsupported-media-type-error.js'
 import logger from '#vendor/utils/logger.js'
 import { isWsChannel, type WsChannel } from 'shared/guards'
@@ -411,6 +412,19 @@ export const handleError = (
         // Still error level for stdout; the Sentry transport skips this type
         // (redis-health reports one event per incident). No ioredis text in the body.
         log.error({ err: error }, 'Request failed: Redis unavailable')
+        sendErrorResponse(
+            res,
+            error.statusCode,
+            {
+                status: 'error',
+                code: error.code,
+                message: 'Service temporarily unavailable. Try again later.',
+            },
+            { 'Retry-After': '1' },
+        )
+    } else if (error instanceof SessionVerificationUnavailableError) {
+        // Fail-closed: no sessionToken answer, no access. No driver text in the body.
+        log.error({ err: error }, 'Request failed: session verification unavailable')
         sendErrorResponse(
             res,
             error.statusCode,

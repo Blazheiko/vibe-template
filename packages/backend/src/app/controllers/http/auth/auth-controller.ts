@@ -223,7 +223,11 @@ export default {
         // The password is already changed: a failed session renewal does not undo
         // that, so the answer stays a success and says the session was not renewed.
         // The previous session may be gone; the client then signs in again.
-        const renewed = await authService.renewSession(context.auth, context.session)
+        const renewed = await authService.renewSession(
+            context.auth,
+            context.session,
+            result.value.sessionToken,
+        )
         if (Result.isError(renewed)) {
             context.logger.error(
                 { err: renewed.error },

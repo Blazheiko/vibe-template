@@ -86,3 +86,55 @@ describe.each(['prod', 'local'])('handleError for RedisUnavailableError (APP_ENV
         )
     })
 })
+
+// ADR 0002: the sessionToken lookup (database) could not answer. The request is not
+// served on the strength of the Redis record alone.
+describe('handleError for SessionVerificationUnavailableError', () => {
+    it('answers 503 service_unavailable with Retry-After and no driver text', async () => {
+        vi.resetModules()
+        vi.clearAllMocks()
+        process.env['APP_ENV'] = 'prod'
+        const { handleError } = await import('#vendor/start/server.js')
+        const { SessionVerificationUnavailableError } =
+            await import('./errors/session-verification-unavailable-error.js')
+        const status: string[] = []
+        const headers = new Map<string, string>()
+        let body = ''
+        const res = {
+            cork: (cb: () => void) => {
+                cb()
+                return res
+            },
+            writeStatus: (value: string) => {
+                status.push(value)
+                return res
+            },
+            writeHeader: (name: string, value: string) => {
+                headers.set(name, value)
+                return res
+            },
+            end: (value: string) => {
+                body = value
+                return res
+            },
+        } as unknown as HttpResponse
+        const error = new SessionVerificationUnavailableError('lookup failed', {
+            cause: new Error('connection terminated unexpectedly'),
+        })
+
+        handleError(res, error)
+
+        expect(status).toEqual(['503 Service Unavailable'])
+        expect(headers.get('Retry-After')).toBe('1')
+        expect(JSON.parse(body)).toEqual({
+            status: 'error',
+            code: 'service_unavailable',
+            message: 'Service temporarily unavailable. Try again later.',
+        })
+        expect(body).not.toMatch(/connection terminated|lookup failed/)
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ err: error }),
+            'Request failed: session verification unavailable',
+        )
+    })
+})

@@ -466,6 +466,53 @@ describe('passwordResetService', () => {
         )
     })
 
+    // ADR 0002: the rotated sessionToken is the revocation, the Redis cleanup is only
+    // memory. A failed cleanup must not stop the reset: the token would stay unused
+    // after the password has already changed.
+    it('still marks the token used when the Redis cleanup fails', async () => {
+        passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 11n,
+            userId: 7n,
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            phone: null,
+            sessionToken: 'old-session-token',
+        })
+        hashPasswordMock.mockResolvedValue('hashed-password')
+        destroyAllSessionsMock.mockRejectedValue(new Error('redis down'))
+        userRepositoryMock.update.mockResolvedValue({
+            id: 7n,
+            password: 'hashed-password',
+            sessionToken: 'new-session-token',
+        })
+        passwordResetRepositoryMock.markUsed.mockResolvedValue({
+            id: 11n,
+            userId: 7n,
+            usedAt: new Date(),
+        })
+
+        const { passwordResetService } = await loadPasswordResetService()
+        const result = await passwordResetService.resetPassword(
+            'valid-token',
+            'new-password',
+            'new-password',
+            { ipAddress: '127.0.0.1' },
+        )
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
+            password: 'hashed-password',
+            sessionToken: 'new-session-token',
+        })
+        expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-session-token')
+        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+    })
+
     it('completes phone-only password reset and revokes all sessions', async () => {
         smsAuthChallengeRepositoryMock.findById.mockResolvedValue({
             id: 'reset-challenge-1',
@@ -522,6 +569,59 @@ describe('passwordResetService', () => {
             '+14155550123',
             'link_phone',
         )
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(8n, {
+            password: 'hashed-password',
+            sessionToken: 'new-session-token',
+        })
+    })
+
+    it('completes the phone reset when the Redis cleanup fails', async () => {
+        smsAuthChallengeRepositoryMock.findById.mockResolvedValue({
+            id: 'reset-challenge-1',
+            flow: 'reset_phone',
+            phone: '+14155550123',
+            codeHash: hashOtp('123456'),
+            providerRequestId: 'fake-1',
+            metadata: { userId: '8', ipAddress: '127.0.0.1', provider: 'fake' },
+            attemptCount: 0,
+            sendCount: 1,
+            resendAvailableAt: new Date('2099-05-15T10:01:00.000Z'),
+            expiresAt: new Date(Date.now() + 60_000),
+            confirmedAt: null,
+            invalidatedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+        })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 8n,
+            email: null,
+            phone: '+14155550123',
+            sessionToken: 'old-session-token',
+        })
+        hashPasswordMock.mockResolvedValue('hashed-password')
+        userRepositoryMock.update.mockResolvedValue({
+            id: 8n,
+            password: 'hashed-password',
+            sessionToken: 'new-session-token',
+        })
+        destroyAllSessionsMock.mockRejectedValue(new Error('redis down'))
+        smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
+            id: 'reset-challenge-1',
+            confirmedAt: new Date(),
+        })
+        consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+
+        const { passwordResetService } = await loadPasswordResetService()
+        const result = await passwordResetService.completePhonePasswordReset(
+            'reset-challenge-1',
+            '123456',
+            'new-password',
+            'new-password',
+            { ipAddress: '127.0.0.1' },
+        )
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-session-token')
         expect(userRepositoryMock.update).toHaveBeenCalledWith(8n, {
             password: 'hashed-password',
             sessionToken: 'new-session-token',
