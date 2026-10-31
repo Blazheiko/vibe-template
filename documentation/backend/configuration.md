@@ -130,9 +130,10 @@
 
 ## Сесія і cookies
 
-| Змінна                       | Призначення                         | Default                     | Обов'язковість (умова)                                                                                            | Читає файл                                                                                                |
-| ---------------------------- | ----------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `SESSION_COOKIE_HOST_PREFIX` | Cookie `__Host-uapi` замість `uapi` | значення `isProductionLike` | Ні; якщо увімкнено, cookie має бути `secure` (`APP_ENV` ≠ `local`), а `APP_URL` має бути `https://`, інакше throw | [session.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/session.ts) |
+| Змінна                       | Призначення                                                                                                           | Default                     | Обов'язковість (умова)                                                                                            | Читає файл                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `SESSION_COOKIE_HOST_PREFIX` | Cookie `__Host-uapi` замість `uapi`                                                                                   | значення `isProductionLike` | Ні; якщо увімкнено, cookie має бути `secure` (`APP_ENV` ≠ `local`), а `APP_URL` має бути `https://`, інакше throw | [session.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/session.ts) |
+| `SESSION_ANON_TTL`           | Строк дії анонімної сесії (cookie і запис `anon_session` у Redis), ковзний; формат `metautil` `duration`: `2h`, `30m` | `2h`                        | Ні; не додатна тривалість — throw на старті                                                                       | [session.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/session.ts) |
 
 Строк життя сесії (24 год), `httpOnly`, `sameSite: 'Lax'` і `maxAge` cookie (3600) задані в коді й через env не змінюються.
 

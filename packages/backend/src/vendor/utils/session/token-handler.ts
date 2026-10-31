@@ -94,4 +94,37 @@ const verifySignedToken = (
     }
 }
 
-export { createSignedToken, verifySignedToken }
+// Anonymous session held in the cookie itself (feat-057). The `anon-v1` prefix keeps
+// its signatures apart from session cookies (`<userToken>.<sessionId>`): neither kind
+// verifies as the other.
+const ANON_PREFIX = 'anon-v1'
+
+export interface AnonSessionClaims {
+    sessionId: string
+    csrfToken: string
+    /** Unix seconds when the cookie was issued; covered by the signature. */
+    issuedAt: number
+}
+
+const anonData = ({ sessionId, csrfToken, issuedAt }: AnonSessionClaims): string =>
+    `${ANON_PREFIX}.${sessionId}.${csrfToken}.${String(issuedAt)}`
+
+const createAnonSessionToken = (claims: AnonSessionClaims): string =>
+    createSignedToken(anonData(claims))
+
+/** Claims of a well-signed anonymous cookie, or null (any other cookie included). */
+const verifyAnonSessionToken = (token: string): AnonSessionClaims | null => {
+    const parts = Buffer.from(token, 'base64').toString('utf-8').split('.')
+    if (parts.length !== 5 || parts[0] !== ANON_PREFIX) return null
+    const [, sessionId = '', csrfToken = '', issuedAtRaw = '', signature = ''] = parts
+    if (!/^\d{1,12}$/.test(issuedAtRaw)) return null
+    const issuedAt = Number(issuedAtRaw)
+    const claims = { sessionId, csrfToken, issuedAt }
+    if (sessionId === '' || csrfToken === '' || !verifySignature(anonData(claims), signature)) {
+        logger.warn({ sessionId }, 'Invalid anonymous session signature')
+        return null
+    }
+    return claims
+}
+
+export { createSignedToken, verifySignedToken, createAnonSessionToken, verifyAnonSessionToken }

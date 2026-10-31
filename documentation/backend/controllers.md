@@ -143,15 +143,15 @@ return null
 
 ### `session: Session`
 
-Серверна сесія в Redis ([redis-session-storage.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts)). Сесія існує завжди, навіть для анонімного користувача; cookie з її id ставить middleware.
+Серверна сесія в Redis ([redis-session-storage.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts)). Сесія існує завжди, навіть для анонімного користувача; cookie з її id ставить middleware. Анонімна сесія тримається в підписаній cookie і потрапляє в Redis при першому `updateSessionData`/`changeSessionData` ([Анонімна сесія](/backend/auth#анонімна-сесія)).
 
-| Поле / метод                 | Опис                                                                                                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `sessionInfo`                | `{ id, data, createdAt, updatedAt? }` або `null`. `data: SessionData` містить `userId`, `userToken`, `wsToken`, `csrfToken` та ваші ключі. |
-| `updateSessionData(data)`    | **Зливає** `data` з поточними даними сесії (`{ ...old, ...data }`) і повертає оновлений `SessionInfo` (або `null`, якщо сесії вже немає).  |
-| `changeSessionData(data)`    | **Замінює** дані сесії повністю. Обережно: можна стерти `userId`/`csrfToken`; майже завжди потрібен `updateSessionData`.                   |
-| `destroySession()`           | Видаляє поточну сесію з Redis. Для виходу користувача використовуйте `auth.logout()` — він ще й видає нову анонімну сесію.                 |
-| `destroyAllSessions(userId)` | Видаляє всі сесії користувача. Для виходу з усіх пристроїв використовуйте `auth.logoutAll()`.                                              |
+| Поле / метод                 | Опис                                                                                                                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessionInfo`                | `{ id, data, createdAt, updatedAt? }` або `null`. `data: SessionData` містить `userId`, `userToken`, `wsToken`, `csrfToken` та ваші ключі.                                 |
+| `updateSessionData(data)`    | **Зливає** `data` з поточними даними сесії (`{ ...old, ...data }`) і повертає оновлений `SessionInfo` (або `null`, якщо сесії вже немає).                                  |
+| `changeSessionData(data)`    | **Замінює** дані сесії повністю. Обережно: можна стерти `userId`/`csrfToken`; майже завжди потрібен `updateSessionData`.                                                   |
+| `destroySession()`           | Видаляє поточну сесію з Redis (для анонімної сесії в cookie нічого не робить). Для виходу користувача використовуйте `auth.logout()` — він ще й видає нову анонімну сесію. |
+| `destroyAllSessions(userId)` | Видаляє всі сесії користувача. Для виходу з усіх пристроїв використовуйте `auth.logoutAll()`.                                                                              |
 
 ```ts
 const wsToken = context.session.sessionInfo?.data.wsToken

@@ -90,6 +90,11 @@ export const sessionExists = async (sessionId: string, userToken: string): Promi
     return (await withRedis(() => redis.exists(key))) === 1
 }
 
+// Anonymous sessions stored in Redis (they hold data, e.g. OAuth state) expire like the
+// cookie-held ones; signed-in sessions keep the full age.
+const ttlFor = (userToken: string): number =>
+    userToken === 'anon_session' ? sessionConfig.anonAge : sessionConfig.age
+
 export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     // Authenticated sessions use the user's nanoid token; anonymous sessions use shared prefix
     const userToken =
@@ -99,7 +104,7 @@ export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     const json = JSON.stringify(sessionInfo, (_, v: unknown) =>
         typeof v === 'bigint' ? v.toString() : v,
     )
-    await withRedis(() => redis.setex(redisKey, sessionConfig.age, json))
+    await withRedis(() => redis.setex(redisKey, ttlFor(userToken), json))
 }
 
 export const getSession = async (
@@ -110,7 +115,7 @@ export const getSession = async (
 
     const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
 
-    const sessionJson = await withRedis(() => redis.getex(redisKey, 'EX', sessionConfig.age))
+    const sessionJson = await withRedis(() => redis.getex(redisKey, 'EX', ttlFor(userToken)))
 
     if (sessionJson === null) return null
 

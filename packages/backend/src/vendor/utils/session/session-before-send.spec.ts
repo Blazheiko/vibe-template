@@ -109,19 +109,34 @@ describe('session beforeSend', () => {
         expect(context.session.beforeSend).toBeUndefined()
     })
 
-    it('a failed marker write does not fail the new session', async () => {
-        storage.getSession.mockResolvedValue(null)
-        storage.markCookieIssued.mockRejectedValue(new Error('Redis down'))
+    it('a request without a cookie gets a cookie-held session: nothing is stored', async () => {
         const responseData = createResponseData()
         const context = createContext(
             { method: 'get', headers: new Map(), cookies: new Map() } as never,
             responseData,
         )
 
-        await expect(sessionHandler(context, undefined, undefined)).resolves.toBeUndefined()
+        await sessionHandler(context, undefined, undefined)
+
+        expect(storage.saveSession).not.toHaveBeenCalled()
+        expect(storage.markCookieIssued).not.toHaveBeenCalled()
+        expect(context.session.sessionInfo?.data.csrfToken).toEqual(expect.any(String))
+        expect(responseData.cookies.has(sessionConfig.cookieName)).toBe(true)
+    })
+
+    it('a failed marker write does not fail the login', async () => {
+        storage.markCookieIssued.mockRejectedValue(new Error('Redis down'))
+        const responseData = createResponseData()
+        const context = createContext(
+            { method: 'post', headers: new Map(), cookies: new Map() } as never,
+            responseData,
+        )
+        await sessionHandler(context, undefined, undefined)
+
+        await expect(context.auth.login('7', 'markerUserToken001')).resolves.toBe(true)
 
         expect(storage.saveSession).toHaveBeenCalledOnce()
-        expect(context.session.sessionInfo).not.toBeNull()
+        expect(context.auth.getUserId()).toBe('7')
         expect(responseData.cookies.has(sessionConfig.cookieName)).toBe(true)
         expect(logger.warn).toHaveBeenCalledWith(
             expect.anything(),

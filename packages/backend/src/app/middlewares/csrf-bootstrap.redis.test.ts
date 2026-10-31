@@ -11,7 +11,8 @@ import {
 // GET /api/main/init (session_web → csrf_guard → auth_guard), gets 401 with a
 // session cookie and a CSRF token, and only then can POST /api/auth/login
 // (session_web → csrf_guard) get past the guard. A missing cookie does not mean a
-// missing session: session_web creates an anonymous one with its own token.
+// missing session: session_web creates an anonymous one with its own token, held
+// in a signed cookie and written to Redis only when it stores data (feat-057).
 
 const { PREFIX, ORIGIN } = vi.hoisted(() => {
     process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
@@ -63,6 +64,7 @@ const { default: executeMiddlewares } =
     await import('#vendor/utils/middlewares/core/execute-httpMiddlewares.js')
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
+const { createAnonSessionToken } = await import('#vendor/utils/session/token-handler.js')
 
 const admin = createTestRedis(PREFIX)
 
@@ -211,11 +213,9 @@ const mutate = (cookie: string | undefined, token: string) =>
     )
 
 describe.skipIf(!hasRedis)('session rotation on login', () => {
-    it('deletes the anonymous session; its cookie and token stop working', async () => {
+    it('an anonymous cookie never opens the session of the user who logged in with it', async () => {
         const bootstrap = await init()
         const anonToken = String(bootstrap.payload?.['csrfToken'])
-        const anonKey = `session:anon_session:${String(bootstrap.context.session.sessionInfo?.id)}`
-        expect(await admin.exists(anonKey)).toBe(1)
 
         const signIn = await mutate(bootstrap.cookie, anonToken)
         expect(signIn.passed).toBe(true)
@@ -223,16 +223,17 @@ describe.skipIf(!hasRedis)('session rotation on login', () => {
         const userToken = String(signIn.context.session.sessionInfo?.data.csrfToken)
         const userCookie = signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value
 
-        expect(await admin.exists(anonKey)).toBe(0)
         expect(userToken).not.toBe(anonToken)
         expect(userCookie).not.toBe(bootstrap.cookie)
 
-        // The old cookie now opens a fresh anonymous session with another token,
-        // so a mutation signed with the old token is rejected.
+        // A cookie-held anonymous session cannot be revoked: until its TTL the old pair
+        // still passes the CSRF check, but only as an anonymous session.
         const replay = await mutate(bootstrap.cookie, anonToken)
-        expect(replay.status).toBe(403)
-        expect(replay.payload).toMatchObject({ reason: 'token_mismatch' })
-        expect(replay.payload?.['csrfToken']).not.toBe(anonToken)
+        expect(replay.context.auth.getUserId()).toBeNull()
+        // The anonymous token does not sign requests of the user's session.
+        const crossed = await mutate(userCookie, anonToken)
+        expect(crossed.status).toBe(403)
+        expect(crossed.payload).toMatchObject({ reason: 'token_mismatch' })
 
         // The new cookie and token work.
         const next = await mutate(userCookie, userToken)
@@ -350,5 +351,146 @@ describe.skipIf(!hasRedis)('session cookie of a slow response', () => {
 
         expect(await admin.exists(`session:slowCookieToken0005:${s1.id}`)).toBe(0)
         expect(response.status).toBe(403) // the old token belongs to no session
+    })
+})
+
+/** Keys this test file owns in Redis (all of them carry PREFIX). */
+const ownKeys = async (): Promise<string[]> => await admin.keys('*')
+
+const anonCookie = (
+    issuedAt: number,
+    csrfToken = 'a'.repeat(43),
+    sessionId = crypto.randomUUID(),
+) => createAnonSessionToken({ sessionId, csrfToken, issuedAt })
+
+describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', () => {
+    const nowSec = (): number => Math.floor(Date.now() / 1000)
+
+    it('init without a cookie writes nothing to Redis', async () => {
+        const before = await ownKeys()
+
+        const response = await init()
+
+        expect(response.status).toBe(401)
+        expect(response.payload?.['csrfToken']).toMatch(/^[A-Za-z0-9_-]{43}$/)
+        expect(await ownKeys()).toEqual(before)
+    })
+
+    it('a mutation with the anonymous cookie and token writes nothing to Redis either', async () => {
+        const bootstrap = await init()
+        const before = await ownKeys()
+
+        const response = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
+
+        expect(response.passed).toBe(true)
+        expect(await ownKeys()).toEqual(before)
+    })
+
+    it('a tampered anonymous cookie opens a new session, its token is rejected', async () => {
+        const bootstrap = await init()
+        const token = String(bootstrap.payload?.['csrfToken'])
+        const decoded = Buffer.from(String(bootstrap.cookie), 'base64').toString('utf8')
+        const forged = Buffer.from(decoded.replace(token, 'b'.repeat(43))).toString('base64')
+
+        const response = await mutate(forged, 'b'.repeat(43))
+
+        expect(response.status).toBe(403)
+        expect(response.payload).toMatchObject({ reason: 'token_mismatch' })
+        expect(response.payload?.['csrfToken']).not.toBe('b'.repeat(43))
+    })
+
+    it('an anonymous cookie older than SESSION_ANON_TTL is not accepted', async () => {
+        const csrfToken = 'c'.repeat(43)
+        const expired = anonCookie(nowSec() - sessionConfig.anonAge - 1, csrfToken)
+
+        const response = await mutate(expired, csrfToken)
+
+        expect(response.status).toBe(403)
+        expect(response.payload?.['csrfToken']).not.toBe(csrfToken)
+    })
+
+    it('a fresh anonymous cookie is not sent again', async () => {
+        const csrfToken = 'd'.repeat(43)
+
+        const response = await mutate(anonCookie(nowSec() - 60, csrfToken), csrfToken)
+
+        expect(response.passed).toBe(true)
+        expect(response.cookie).toBeUndefined()
+    })
+
+    it('an anonymous cookie past the refresh interval is re-issued with the same token', async () => {
+        const csrfToken = 'e'.repeat(43)
+        const sessionId = crypto.randomUUID()
+
+        const response = await mutate(
+            anonCookie(nowSec() - 16 * 60, csrfToken, sessionId),
+            csrfToken,
+        )
+
+        expect(response.passed).toBe(true)
+        expect(response.cookie).toEqual(expect.any(String))
+        const next = await mutate(response.cookie, csrfToken)
+        expect(next.passed).toBe(true)
+        expect(next.context.session.sessionInfo?.id).toBe(sessionId)
+    })
+
+    it('a cookie signed for a user session is not read as an anonymous one', async () => {
+        const bootstrap = await init()
+        const signIn = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
+        await signIn.context.auth.login('47', 'formatUserToken0001')
+        const userCookie = String(
+            signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value,
+        )
+        const decoded = Buffer.from(userCookie, 'base64').toString('utf8')
+        // The user cookie's signature over `anon-v1.<id>.<token>.<time>` data does not verify.
+        const [, id, sig] = decoded.split('.')
+        const spliced = Buffer.from(
+            `anon-v1.${String(id)}.${'f'.repeat(43)}.${String(nowSec())}.${String(sig)}`,
+        ).toString('base64')
+
+        const response = await mutate(spliced, 'f'.repeat(43))
+
+        expect(response.status).toBe(403)
+        expect(response.context.auth.getUserId()).toBeNull()
+    })
+
+    it('storing data moves the anonymous session to Redis with the anonymous TTL', async () => {
+        const bootstrap = await init()
+        const token = String(bootstrap.payload?.['csrfToken'])
+        const response = await mutate(bootstrap.cookie, token)
+        const id = String(response.context.session.sessionInfo?.id)
+
+        await response.context.session.updateSessionData({ oauthState: 'state-1' })
+
+        const key = `session:anon_session:${id}`
+        const ttl = await admin.ttl(key)
+        expect(ttl).toBeGreaterThan(sessionConfig.anonAge - 10)
+        expect(ttl).toBeLessThanOrEqual(sessionConfig.anonAge)
+        const stored = response.context.responseData.cookies.get(sessionConfig.cookieName)?.value
+        expect(stored).toEqual(expect.any(String))
+
+        // The next request reads the stored data with the same CSRF token.
+        const next = await mutate(stored, token)
+        expect(next.passed).toBe(true)
+        expect(next.context.session.sessionInfo?.data['oauthState']).toBe('state-1')
+    })
+
+    it('logout hands out a cookie-held anonymous session', async () => {
+        const bootstrap = await init()
+        const signIn = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
+        await signIn.context.auth.login('48', 'logoutUserToken0001')
+        const cookie = signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value
+        const token = String(signIn.context.session.sessionInfo?.data.csrfToken)
+        const out = await mutate(cookie, token)
+        const before = await ownKeys()
+
+        await out.context.auth.logout()
+
+        expect((await ownKeys()).length).toBe(before.length - 1) // only the user session went away
+        const anonToken = String(out.context.session.sessionInfo?.data.csrfToken)
+        const anon = out.context.responseData.cookies.get(sessionConfig.cookieName)?.value
+        const next = await mutate(anon, anonToken)
+        expect(next.passed).toBe(true)
+        expect(next.context.auth.getUserId()).toBeNull()
     })
 })
