@@ -6,7 +6,7 @@
 
 | Інструмент | Версія                               | Джерело                                                                                                                                                               |
 | ---------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js    | `24.22.1` (вимога `^24.22.1`)        | [.nvmrc](https://github.com/Blazheiko/vibe-template/blob/main/.nvmrc), [package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)              |
+| Node.js    | `24.22.2` (вимога `^24.22.2`)        | [.nvmrc](https://github.com/Blazheiko/vibe-template/blob/main/.nvmrc), [package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)              |
 | pnpm       | `>=9.0.0`, зафіксовано `pnpm@9.15.0` | [package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json) (`engines`, `packageManager`)                                                       |
 | PostgreSQL | з розширенням **pgvector**           | [create-database.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db/create-database.ts) виконує `CREATE EXTENSION IF NOT EXISTS vector` |
 | Redis      | будь-яка сучасна версія              | [config/redis.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/redis.ts)                                                          |

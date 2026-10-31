@@ -1,20 +1,27 @@
+# Точная версия Node.js, как в .nvmrc: сборка падает, если установлена другая.
+ARG NODE_VERSION=24.22.2
+
 FROM ubuntu:24.04 AS builder
 WORKDIR /app
 
 # Устанавливаем Node.js 24 и необходимые инструменты
+ARG NODE_VERSION
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get install -y nodejs=${NODE_VERSION}-1nodesource1 \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && test "$(node -v)" = "v${NODE_VERSION}"
 
 # Включаем corepack для использования pnpm
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Копируем файлы для установки зависимостей
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm.patchedDependencies (patches/) применяется во время install.
+COPY patches ./patches
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/frontend/package.json ./packages/frontend/
@@ -61,13 +68,15 @@ FROM ubuntu:24.04 AS production
 WORKDIR /app
 
 # Устанавливаем Node.js 24 и необходимые инструменты
+ARG NODE_VERSION
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
+    && apt-get install -y nodejs=${NODE_VERSION}-1nodesource1 \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && test "$(node -v)" = "v${NODE_VERSION}"
 
 # Включаем corepack для использования pnpm. COREPACK_HOME вне /root, чтобы
 # пользователь app (one-shot `pnpm db:migrate`) брал уже скачанный pnpm без сети.
@@ -83,6 +92,8 @@ RUN groupadd --system app \
 
 # Копируем файлы для установки зависимостей
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# pnpm.patchedDependencies (patches/) применяется во время install.
+COPY patches ./patches
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/frontend/package.json ./packages/frontend/

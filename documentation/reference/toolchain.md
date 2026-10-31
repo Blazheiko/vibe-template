@@ -6,7 +6,7 @@
 
 | Інструмент                      | Версія                                     | Де закріплено                                                                                                                                                                                                                                                                                                                 |
 | ------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js                         | `^24.22.1` (engines), `24.22.1` (`.nvmrc`) | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) `engines.node`, [`.nvmrc`](https://github.com/Blazheiko/vibe-template/blob/main/.nvmrc)                                                                                                                                                   |
+| Node.js                         | `^24.22.2` (engines), `24.22.2` (`.nvmrc`) | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) `engines.node`, [`.nvmrc`](https://github.com/Blazheiko/vibe-template/blob/main/.nvmrc)                                                                                                                                                   |
 | pnpm                            | `>=9.0.0` (engines), `pnpm@9.15.0`         | `engines.pnpm` і `packageManager` у [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)                                                                                                                                                                                                       |
 | TypeScript                      | `6.0.3` (точно)                            | корінь, [`backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json), [`frontend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json), [`documentation`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json) та інші пакети |
 | ESLint                          | `^10.13.0`                                 | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)                                                                                                                                                                                                                                           |
@@ -19,8 +19,12 @@
 | VitePress                       | `1.6.4` (точно)                            | [`documentation/package.json`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json)                                                                                                                                                                                                               |
 
 ::: warning
-`engines.node` дозволяє будь-яку `24.x` від `24.22.1`, а `.nvmrc` вказує саме `24.22.1`: CI ставить цю версію, тож мінімальна дозволена версія і версія CI збігаються.
+`engines.node` дозволяє будь-яку `24.x` від `24.22.2`, а `.nvmrc` вказує саме `24.22.2`: CI ставить цю версію, тож мінімальна дозволена версія і версія CI збігаються. [`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) ставить ту саму версію (`ARG NODE_VERSION`) в обох етапах і падає, якщо `node -v` інша. Оновлюйте `.nvmrc`, `engines` і `NODE_VERSION` разом.
 :::
+
+## Патч uWebSockets.js
+
+`uWebSockets.js` `v20.71.0` має зламану ESM-точку входу: `ESM_wrapper.mjs` імпортує `./index.js`, якого немає в пакеті ([uNetworking/uWebSockets.js#1356](https://github.com/uNetworking/uWebSockets.js/issues/1356)). Виправлення — однорядковий патч [`patches/uWebSockets.js@20.71.0.patch`](https://github.com/Blazheiko/vibe-template/blob/main/patches/uWebSockets.js@20.71.0.patch), підключений через `pnpm.patchedDependencies` у кореневому `package.json`. З наступним релізом uWS патч і запис у `patchedDependencies` прибираються.
 
 ## `pnpm.overrides`
 

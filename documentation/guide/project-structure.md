@@ -75,6 +75,6 @@ packages:
 - **`@typescript-eslint/*`** утримуються на сумісній з TS 6 лінії через `pnpm.overrides` у кореневому `package.json`; оновлюйте їх разом із `typescript-eslint`.
 - **Без `baseUrl`** у `tsconfig` бекенду: він deprecated у TypeScript 6 і перестане працювати в TypeScript 7.
 - **`drizzle-orm` і `drizzle-kit` `1.0.0-rc.4`** — release candidate; оновлювати обидва разом до однієї точної версії. Relations — Relational Queries v2 (`defineRelations` у [relations.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/relations.ts)), міграції — у форматі «тека на міграцію» 1.0 ([migrations](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations)).
-- **Node.js `^24.22.1`**, **pnpm `>=9`** (`packageManager: pnpm@9.15.0`).
+- **Node.js `^24.22.2`**, **pnpm `>=9`** (`packageManager: pnpm@9.15.0`).
 
 Детальніше про бекенд — у розділі [Бекенд](/backend/), про команди — у [Скриптах](/reference/scripts).

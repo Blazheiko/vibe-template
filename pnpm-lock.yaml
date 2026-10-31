@@ -10,6 +10,11 @@ overrides:
   '@typescript-eslint/project-service': ^8.71.2
   '@typescript-eslint/tsconfig-utils': ^8.71.2
 
+patchedDependencies:
+  uWebSockets.js@20.71.0:
+    hash: cs3wtun2bl2pzxrc3j42sgtxbi
+    path: patches/uWebSockets.js@20.71.0.patch
+
 importers:
 
   .:
@@ -196,8 +201,8 @@ importers:
         specifier: workspace:*
         version: link:../shared
       uWebSockets.js:
-        specifier: github:uNetworking/uWebSockets.js#v20.56.0
-        version: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/d04e707a1292928d50163ff7545e45c3e84c5ec3
+        specifier: github:uNetworking/uWebSockets.js#v20.71.0
+        version: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136(patch_hash=cs3wtun2bl2pzxrc3j42sgtxbi)
       web-push:
         specifier: 3.6.7
         version: 3.6.7
@@ -1448,6 +1453,7 @@ packages:
   '@opentelemetry/sdk-trace-base@2.12.0':
     resolution: {integrity: sha512-JOERgZCxRM06FEJ5kEWxlSRChah6MmXDx3KwCruqEv/iEyLkTokCSemf2y1w8oIHtfrr8EVTpzebq/31vn2Cpg==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
@@ -4296,9 +4302,9 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
-  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/d04e707a1292928d50163ff7545e45c3e84c5ec3:
-    resolution: {tarball: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/d04e707a1292928d50163ff7545e45c3e84c5ec3}
-    version: 20.56.0
+  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136:
+    resolution: {tarball: https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136}
+    version: 20.71.0
 
   ufo@1.6.4:
     resolution: {integrity: sha512-JFNbkD1Svwe0KvGi8GOeLcP4kAWQ609twvCdcHxq1oSL8svv39ZuSvajcD8B+5D0eL4+s1Is2D/O6KN3qcTeRA==}
@@ -6110,7 +6116,7 @@ snapshots:
 
   '@types/better-sqlite3@7.6.13':
     dependencies:
-      '@types/node': 26.6.5
+      '@types/node': 24.19.2
     optional: true
 
   '@types/chai@5.2.3':
@@ -6431,7 +6437,7 @@ snapshots:
       obug: 3.0.0
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@26.6.5)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+      vitest: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.19.2)(@vitest/coverage-v8@5.0.5)(jsdom@30.1.3)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   '@vitest/eslint-plugin@1.6.27(@typescript-eslint/eslint-plugin@8.71.2(@typescript-eslint/parser@8.71.2(eslint@10.13.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.13.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.13.0(jiti@2.7.0))(typescript@6.0.3)(vitest@5.0.5)':
     dependencies:
@@ -8576,7 +8582,7 @@ snapshots:
 
   typescript@6.0.3: {}
 
-  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/d04e707a1292928d50163ff7545e45c3e84c5ec3: {}
+  uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/9ec36de7709996c58dce03d63796216c90a17136(patch_hash=cs3wtun2bl2pzxrc3j42sgtxbi): {}
 
   ufo@1.6.4: {}
 

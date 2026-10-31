@@ -12,7 +12,7 @@
 
 | Призначення           | Залежності                                                    |
 | --------------------- | ------------------------------------------------------------- |
-| HTTP/WebSocket-сервер | `uWebSockets.js` (`v20.56.0` з GitHub), `ws`                  |
+| HTTP/WebSocket-сервер | `uWebSockets.js` (`v20.71.0` з GitHub), `ws`                  |
 | БД                    | `drizzle-orm` / `drizzle-kit` `1.0.0-rc.4`, `pg` (PostgreSQL) |
 | Валідація             | `@arktype/type`                                               |
 | Redis                 | `ioredis`                                                     |

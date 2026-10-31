@@ -4,7 +4,7 @@
     "private": true,
     "type": "module",
     "engines": {
-        "node": "^24.22.1",
+        "node": "^24.22.2",
         "pnpm": ">=9.0.0"
     },
     "packageManager": "pnpm@9.15.0",
@@ -44,6 +44,9 @@
             "@typescript-eslint/typescript-estree": "^8.71.2",
             "@typescript-eslint/project-service": "^8.71.2",
             "@typescript-eslint/tsconfig-utils": "^8.71.2"
+        },
+        "patchedDependencies": {
+            "uWebSockets.js@20.71.0": "patches/uWebSockets.js@20.71.0.patch"
         }
     }
 }

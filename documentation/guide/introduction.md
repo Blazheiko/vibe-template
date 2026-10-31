@@ -36,7 +36,7 @@
 
 Джерела: [package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json), [packages/backend/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json), [packages/frontend/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json), [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json).
 
-Вимоги: Node.js `^24.22.1` і pnpm `>=9` (зафіксовано `pnpm@9.15.0` через `packageManager`), TypeScript `6.0.3`.
+Вимоги: Node.js `^24.22.2` і pnpm `>=9` (зафіксовано `pnpm@9.15.0` через `packageManager`), TypeScript `6.0.3`.
 
 ```mermaid
 flowchart LR
