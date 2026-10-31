@@ -19,7 +19,7 @@
 
 Анонімний запит, якому сесія не потрібна, не пише в Redis. Анонімна сесія, яка потрібна, живе недовго, а кількість нових анонімних сесій з одного IP обмежена.
 
-Поза scope: зміна моделі CSRF (synchronizer token у сесії лишається), сесії залогінених користувачів, налаштування самого Redis.
+Поза scope: сесії залогінених користувачів, налаштування самого Redis. CSRF лишається synchronizer token, прив'язаним до сесії; змінюється лише місце зберігання анонімної сесії (див. §5).
 
 ## 3. Варіанти
 
@@ -33,21 +33,42 @@
 
 ## 4. Рішення власника
 
-Ухвалено 2026-10-31: **A + B**, `SESSION_ANON_TTL` = **2 год**. C не робимо; повертаємось до нього, лише якщо навантажувальний тест після A + B покаже потребу.
+Ухвалено 2026-10-31: **A + B**, TTL анонімної сесії **2 год**. C не робимо.
 
-## 5. Задачі (для A + B)
+**Уточнення A після інвентаризації.** Ліниве створення в початковому вигляді не працює: фронтенд (`packages/frontend/src/utils/base-api.ts`, `refreshSession`) бере CSRF-токен анонімного відвідувача з відповіді **401 на `GET main/init`** (`attachCsrfToken` у `session-web.ts`) і підписує ним `POST /auth/login`. Сесія потрібна саме на тому запиті, який роблять і боти. Тому A реалізуємо як **підписану анонімну сесію без Redis** (рішення власника 2026-10-31).
 
-1. **Інвентаризація.** Знайти всі місця, що читають `context.session.sessionInfo`, `csrfToken`, `updateSessionData`/`changeSessionData`/`destroySession` для анонімного користувача: `csrf-guard`, CSRF-bootstrap, `auth` (login/register/OAuth), WS-токен. Записати в `progress.md`.
-2. **Тест-першим.** Нові спеки в `session-handler` / `csrf-bootstrap.redis.test.ts`:
-    - запит без cookie до маршруту з `auth_guard` → `401`, у Redis не з'явилось жодного ключа `session:*`;
-    - CSRF-bootstrap без cookie → сесія створена, cookie видано, токен валідний для наступного POST;
-    - login з анонімною сесією і без неї → стара (якщо була) знищена, нова з TTL 24 год;
-    - анонімна сесія має TTL `SESSION_ANON_TTL`, читання продовжує його; залогінена — 24 год.
-3. **Ліниве створення (A).** `sessionHandler` не викликає `createSessionInfo`, коли валідної cookie немає; `context.session` отримує `ensureSession()` (створює й видає cookie при першому виклику). Споживачі з п. 1 переходять на нього.
-4. **TTL (B).** `config/session.ts`: `anonAge` з `SESSION_ANON_TTL`; `saveSession`/`getSession` обирають TTL за `userToken` (`anon_session` → `anonAge`); `maxAge` cookie анонімної сесії — так само.
-5. **Документація.** `documentation/backend/` — сторінки про сесії/CSRF (`middlewares.md`, `request-lifecycle.md`, `guide/csrf.md`) і `.env.example` + довідник змінних: `SESSION_ANON_TTL`.
+## 5. Дизайн
 
-## 6. Перевірка
+### Анонімна сесія в cookie
+
+- Нова анонімна сесія не пишеться в Redis. Уся її суть — у підписаній cookie: `anon-v1.<sessionId>.<csrfToken>.<issuedAt>` + HMAC (той самий `APP_KEY`, окремий префікс `anon-v1` розділяє домени підпису, тож cookie залогіненої сесії не можна видати за анонімну і навпаки).
+- Валідна, поки `now − issuedAt < SESSION_ANON_TTL` (2 год). Ковзне продовження: cookie видається заново (новий `issuedAt`, ті самі `sessionId` і `csrfToken`), коли їй більше 15 хв. Лише `Set-Cookie`, без Redis.
+- CSRF-контракт не змінюється: `sessionInfo.data.csrfToken` є, `attachCsrfToken` віддає його в 401, `csrf_guard` порівнює його з заголовком.
+- Відкликати анонімну cookie до кінця TTL не можна. Прав вона не дає; її єдина роль — прив'язати CSRF-токен до браузера.
+
+### Коли анонімна сесія потрапляє в Redis (B)
+
+- Коли код записує в неї дані (`updateSessionData` / `changeSessionData`, напр. OAuth `state` і `codeVerifier`): сесія матеріалізується як `session:anon_session:<id>` з TTL `SESSION_ANON_TTL`, cookie переходить у наявний Redis-формат `anon_session.<id>`.
+- Наявні cookie `anon_session.<id>` читаються з Redis, як і раніше; TTL таких сесій тепер `SESSION_ANON_TTL`, а не 24 год.
+- Залогінені сесії не змінюються: Redis, 24 год, маркер оновлення cookie.
+
+### Що не змінюється
+
+`login` знищує попередню сесію (анонімну — для cookie-сесії це no-op) і створює Redis-сесію користувача; `logout` / `logoutAll` видають нову анонімну cookie-сесію (раніше — новий запис у Redis). WS працює лише із залогіненими сесіями.
+
+## 6. Задачі
+
+1. **Інвентаризація** (зроблено): споживачі анонімної сесії — `csrf-guard`, `session-web` (`attachCsrfToken`), `main-service` (`init`, `testSession`, `updateWsToken`), `auth-service` (login/logout/`destroySession`), `oauth-controller` (`updateSessionData` для `state`), `auth-controller` (`sessionId`).
+2. **Тест-першим** (`csrf-bootstrap.redis.test.ts` зі справжнім Redis і спеки `session-handler`):
+    - `GET main/init` без cookie → `401` з `csrfToken`, у Redis **жодного** нового ключа; з цією cookie і токеном `POST /auth/login` проходить `csrf_guard`;
+    - підроблена / прострочена / чужа (user-формат) анонімна cookie → нова анонімна сесія, старий токен не приймається;
+    - cookie старша за 15 хв → видається заново з тим самим токеном;
+    - `updateSessionData` в анонімній сесії → ключ у Redis з TTL ≈ 2 год, наступний запит читає дані;
+    - login / logout / logoutAll → як раніше (наявні спеки без зміни очікувань, крім кількості ключів у Redis).
+3. **Реалізація:** `token-handler.ts` (`createAnonToken` / `verifyAnonToken`), `session-handler.ts` (без `createSessionInfo` для анонімних, матеріалізація на запис), `redis-session-storage.ts` (TTL за `userToken`), `config/session.ts` (`anonAge` з `SESSION_ANON_TTL`, дефолт `2h`).
+4. **Документація:** сторінки про сесії/CSRF (`middlewares.md`, `request-lifecycle.md`, `guide/csrf.md`), `.env.example`, довідник змінних — `SESSION_ANON_TTL`, формат анонімної cookie.
+
+## 7. Перевірка
 
 - `pnpm typecheck`, `lint`, `format:check`, `build`, `test`; `test:redis` з `REDIS_TEST_URL` (кількість passed/skipped); e2e і `test:e2e:security` (CSRF-сценарії на справжньому сервері).
 - **Навантажувальний доказ** (той самий `bench.env`, що у feat-052): `DBSIZE` до і після `wrk -c100 -d30s` на `/api/main/init` без cookie.
@@ -57,10 +78,12 @@
     - `Redis unavailable` у лозі — 0.
 - Ручний golden path у браузері: відкрити сайт без cookie → логін → дія з CSRF → logout.
 
-## 7. Ризики
+## 8. Ризики
 
-| Ризик                                                                                   | Мітигація                                                                        |
-| --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Пропущений споживач анонімної сесії → `sessionInfo === null` там, де раніше завжди була | Інвентаризація (п. 1), тип `sessionInfo` лишається nullable; e2e і security-e2e  |
-| CSRF-токен у відкритій вкладці застаріває після `SESSION_ANON_TTL`                      | Фронтенд уже повторює bootstrap на 403 CSRF — перевірити вручну; задокументувати |
-| Регресія cookie-refresh логіки (маркер `session_cookie_refresh`)                        | Наявні спеки cookie refresh мають пройти без зміни очікувань                     |
+| Ризик                                                              | Мітигація                                                                             |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| Анонімну cookie видають за сесію користувача або навпаки           | Окремий префікс підпису `anon-v1`, окрема функція перевірки; спеки на підміну формату |
+| Підробка або продовження анонімної cookie                          | HMAC з `APP_KEY`; `issuedAt` під підписом; спеки на прострочену і змінену cookie      |
+| Пропущений споживач, що чекає Redis-запис анонімної сесії          | Інвентаризація (§6, п. 1); e2e і security-e2e; OAuth-flow вручну                      |
+| CSRF-токен у відкритій вкладці застаріває після `SESSION_ANON_TTL` | Фронтенд уже повторює bootstrap на 403 CSRF — перевірити вручну; задокументувати      |
+| Регресія cookie-refresh логіки (маркер `session_cookie_refresh`)   | Наявні спеки cookie refresh мають пройти без зміни очікувань                          |
