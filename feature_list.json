@@ -521,8 +521,8 @@
             "owner": "Blazheiko",
             "branch": "chore/deps-patch-minor",
             "dependencies": ["feat-052"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #173 (merge a99e753): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174, frontend 168, api-playground 14, shared 14, docs 26), test:redis 45, test:pg 23, e2e 12, docs build/verify; frontend bundle 876.20 -> 879.24 kB; pnpm audit 16 -> 13; ArkType 2.2.9 duplicate prototype-key issues fixed in validate-response.ts. Not tested: mail:test, real S3 bucket, AI providers (no credentials)"
         }
     ]
 }
