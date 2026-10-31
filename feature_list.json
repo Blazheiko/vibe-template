@@ -551,8 +551,8 @@
             "owner": "Blazheiko",
             "branch": "chore/mistral-v3",
             "dependencies": ["feat-053"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #181 (merge b7b0ff7): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174, AI adapters 28), real SDK 3.4.0 against a local fake SSE server (request shape, streamed text, usage mapping, abort via signal ~316 ms), pnpm audit 13 -> 12; signal moved from deprecated fetchOptions to flattened request options. Not tested: real Mistral API (no key)"
         }
     ]
 }
