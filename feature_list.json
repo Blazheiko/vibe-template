@@ -572,7 +572,7 @@
             "branch": "fix/push-subscription-idor",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #188 (merge 37cc046): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1177, frontend 168, api-playground 14, shared 14, docs 26), test:pg 30 (+7 push-subscription-ownership: 3 failed with 200-instead-of-404 before the fix), test:redis 61, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on the PR"
+            "evidence": "PR #188 (merge 37cc046): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1177, frontend 168, api-playground 14, shared 14, docs 26), test:pg 30 (+7 push-subscription-ownership: 3 failed with 200-instead-of-404 before the fix), test:redis 61, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on the PR Review follow-up (branch fix/feat-058-review-followups): the ownership test now goes over real HTTP (uWS server, real route table, body validation, auth_guard; session_web and csrf_guard replaced) \u2014 14 tests, 3 fail on the pre-fix repository with 200-instead-of-404; test:pg 37; docs contract corrected (\u2026/logs answers 200 with an empty list); dependencies of feat-070/075/076 aligned with the plan."
         },
         {
             "id": "feat-059",
@@ -690,7 +690,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md H1: enforceThrottle() replaces 32 copies of the throttle boilerplate in the three auth services",
             "owner": "Blazheiko",
             "branch": "refactor/auth-enforce-throttle",
-            "dependencies": ["feat-060", "feat-069"],
+            "dependencies": ["feat-060", "feat-069", "feat-077"],
             "status": "not-started",
             "evidence": ""
         },
@@ -740,7 +740,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md I: WS transport in shared, shared password rules, admin-view composables, Sentry sanitizer, ArkType default workaround",
             "owner": "Blazheiko",
             "branch": "refactor/frontend-shared-dedup",
-            "dependencies": ["feat-069"],
+            "dependencies": ["feat-069", "feat-078", "feat-079"],
             "status": "not-started",
             "evidence": ""
         },
@@ -750,7 +750,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md J: split AuthModals.vue, state.ts, main.ts, MenuButton.vue and the api-playground TestForm",
             "owner": "Blazheiko",
             "branch": "refactor/frontend-split-components",
-            "dependencies": ["feat-075"],
+            "dependencies": ["feat-069", "feat-075"],
             "status": "not-started",
             "evidence": ""
         },
