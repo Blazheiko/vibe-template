@@ -531,6 +531,16 @@
             "owner": "Blazheiko",
             "branch": "chore/drizzle-rc5",
             "dependencies": ["feat-053"],
+            "status": "done",
+            "evidence": "PR #176 (merge 1ca4b73): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174), test:pg 23, test:redis 45, e2e 12, db:generate no new migration after drizzle-kit up (incremental snapshots, migration.sql unchanged), fresh DB create/migrate/seed + e2e:security 7 + WS golden path, docs build/verify; rc.5 breaking changes inventoried against the code (typed db.execute; no RQBv2 queries)"
+        },
+        {
+            "id": "feat-055",
+            "name": "Mermaid 12",
+            "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 5 (D.3): mermaid 11.17.2 -> 12.x in documentation; changelog review, docs:build + docs:verify, every page with a diagram checked in the browser (rendered SVG, no syntax error, no console errors, light and dark theme) with screenshots",
+            "owner": "Blazheiko",
+            "branch": "chore/mermaid-12",
+            "dependencies": [],
             "status": "in_progress",
             "evidence": ""
         }
