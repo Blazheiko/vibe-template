@@ -513,6 +513,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #170 (merge e589fde): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1174, frontend 168, api-playground 14, shared 14, docs 26), test:redis 45, test:pg 23, e2e 12, e2e:security 7, docs build/verify, linux/amd64 image (node v24.22.2, uWS loads), slow-reader backpressure (onWritable hit, sha256 match), WS 500x20 10000/10000 delivered; uWS v20.71.0 ESM entry patched (uWS#1356). Transport benchmark on AC power, v20.56.0 vs v20.71.0: RAM static A-B-A-B median 86.1k vs 84.7k rps (-1.6%), 8 MB stream 1280 vs 1300 MB/s, WS handshake 289 vs 164 ms, broadcast 100 vs 47 ms. Caveats: 8 MB stream p99 583 vs 707 ms (+21%, both versions vary 396-817 ms between sessions, no A-B-A-B); /api/main/init row invalid (main Redis client times out under load: 'Redis unavailable')"
+        },
+        {
+            "id": "feat-053",
+            "name": "Patch/minor dependency upgrades",
+            "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 2 (stage C): 21 patch/minor upgrades from the stage C table (ai, @ai-sdk/xai, openai, @arktype/type + @ark/util, @aws-sdk/*, @sentry/*, dotenv, nodemailer, vue-i18n, eslint, typescript-eslint + all 4 pnpm.overrides, eslint-plugin-vue, @vitest/eslint-plugin, vue-tsc, npm-run-all2, autoprefixer, postcss, node-html-parser); majors stay out of scope",
+            "owner": "Blazheiko",
+            "branch": "chore/deps-patch-minor",
+            "dependencies": ["feat-052"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
