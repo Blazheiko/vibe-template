@@ -35,3 +35,10 @@
 .vp-doc h3 {
     letter-spacing: -0.02em;
 }
+
+/* Mermaid 12 sizes a label box for its own line-height; .vp-doc p (28px) made the last
+   line of a wrapped node label overflow the box and get clipped. */
+.vp-doc .mermaid foreignObject p {
+    margin: 0;
+    line-height: inherit;
+}

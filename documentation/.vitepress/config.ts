@@ -21,6 +21,9 @@ const config = withMermaid(
         cleanUrls: true,
         lastUpdated: true,
         ignoreDeadLinks: false,
+        // Mermaid 12 за замовчуванням перекладає діаграми ELK і фарбує в redux-color / neo.
+        // Тримаємо вигляд Mermaid 11; темну тему плагін і далі ставить сам.
+        mermaid: { layout: 'dagre', theme: 'default', look: 'classic' },
         head: [
             ['link', { rel: 'icon', href: '/vibe-template/logo.svg' }],
             ['meta', { name: 'author', content: `${author} <${authorEmail}>` }],
