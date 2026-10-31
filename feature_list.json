@@ -561,8 +561,8 @@
             "owner": "Blazheiko",
             "branch": "fix/anonymous-session-flood",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #184 (merge bf1bfd1): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1177), test:redis 61 (+16 feat-057: no Redis key for anonymous requests, tampered/expired/user-signed cookies, sliding re-issue, move to Redis with SESSION_ANON_TTL, logout, stale-refresh races: login, move to Redis, anonymous->Redis->login, move-vs-login; legacy cookie name), test:pg 23, e2e 12, e2e:security 7, docs build/verify; wrk 30s on main/init without a cookie: 2.0 Redis keys per request on main, 0 on the branch (19k -> 33k req/s). Three review rounds fixed"
         }
     ]
 }
