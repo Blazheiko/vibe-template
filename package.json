@@ -43,7 +43,12 @@
             "@typescript-eslint/utils": "^8.72.1",
             "@typescript-eslint/typescript-estree": "^8.72.1",
             "@typescript-eslint/project-service": "^8.72.1",
-            "@typescript-eslint/tsconfig-utils": "^8.72.1"
+            "@typescript-eslint/tsconfig-utils": "^8.72.1",
+            "vitepress>vite": "^6.4.5",
+            "@vitejs/plugin-vue@5>vite": "^6.4.5",
+            "postcss-selector-parser@<6.1.5": "^6.1.5",
+            "minimatch@<11.0.1": "^11.0.1",
+            "glob@>=9 <14.0.2": "^14.0.2"
         },
         "patchedDependencies": {
             "uWebSockets.js@20.71.0": "patches/uWebSockets.js@20.71.0.patch"
