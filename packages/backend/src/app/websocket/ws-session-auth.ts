@@ -4,6 +4,7 @@ import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import type { SessionInfo, SessionData } from '#vendor/types/types.js'
 import type { UpgradeTokenResult } from '#vendor/utils/network/ws-handlers.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
+import { checkSessionToken } from '#app/services/auth/session-token-check.js'
 
 const WS_TOKEN_TTL = 120
 
@@ -11,7 +12,9 @@ const MISSING: UpgradeTokenResult = { kind: 'missing' }
 
 /**
  * `unavailable` when Redis is down: the first failed command stops the check,
- * the session lookup is not attempted, and the upgrade is answered with 503.
+ * the session lookup is not attempted, and the upgrade is answered with 503. The same
+ * answer when the sessionToken lookup (database) fails: no access on the Redis
+ * record alone.
  */
 const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> => {
     if (token === '') return MISSING
@@ -57,6 +60,17 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
         const sessionInfo = JSON.parse(sessionData) as SessionInfo
         const data: SessionData = sessionInfo.data
         if ('userId' in data && data.userId === userId) {
+            // ADR 0002: a rotated sessionToken revokes the session even though its
+            // Redis record is still there.
+            const tokenStatus = await checkSessionToken(userId, userToken)
+            if (tokenStatus === 'unavailable') return { kind: 'unavailable' }
+            if (tokenStatus === 'mismatch') {
+                logger.warn(
+                    { sessionId, userToken: maskTokenForLogs(userToken) },
+                    'verifyUpgradeToken: session revoked (sessionToken rotated)',
+                )
+                return MISSING
+            }
             return { kind: 'ok', sessionId, userId, userToken }
         }
 

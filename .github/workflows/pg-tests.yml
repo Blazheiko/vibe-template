@@ -4,6 +4,9 @@ name: PG tests
 # (packages/backend/src/**/*.pg.test.ts). The global setup creates a throwaway
 # database and applies the migrations; without PG_TEST_URL the suites skip, so
 # this job is what actually exercises SQL against the real schema.
+# A Redis service runs beside it for the tests that need both (session revocation,
+# ADR 0002: sessions in Redis, users.sessionToken in PostgreSQL); they skip without
+# REDIS_TEST_URL, and the other suites do not use it.
 on:
   pull_request:
     paths: &pg_paths
@@ -41,8 +44,18 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
       PG_TEST_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+      REDIS_TEST_URL: redis://127.0.0.1:6379/15
     steps:
       - uses: actions/checkout@v4
 

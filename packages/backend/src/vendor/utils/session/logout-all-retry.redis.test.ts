@@ -9,8 +9,10 @@ import {
 
 // The route chain of POST /api/auth/logout-all: session_web → csrf_guard →
 // auth_guard → AuthController.logoutAll, on the production main-client contract
-// against a real Redis. A run stopped by Redis must leave the client able to
-// repeat the request: still authenticated and with a valid CSRF token.
+// against a real Redis. ADR 0002: logout-all first rotates users.sessionToken, so a
+// run stopped by Redis has already revoked every session; the 503 only reports that
+// the records could not be deleted yet (they are memory, cleaned up later).
+// The users table is a Map here; the real database is in session-revocation.pg.test.ts.
 
 const { PREFIX } = vi.hoisted(() => {
     process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
@@ -30,6 +32,24 @@ const silent = {
 }
 vi.mock('#logger', () => ({ default: silent }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
+
+// users.sessionToken by user id: what logout-all rotates and the guard compares.
+const fakeUsers = vi.hoisted(() => ({ tokens: new Map<string, string>() }))
+vi.mock('#app/repositories/index.js', async (importActual) => {
+    const actual = await importActual<Record<string, unknown>>()
+    return {
+        ...actual,
+        userRepository: {
+            findSessionToken: (id: bigint) => Promise.resolve(fakeUsers.tokens.get(String(id))),
+            update: (id: bigint, data: { sessionToken?: string }) => {
+                if (data.sessionToken !== undefined) {
+                    fakeUsers.tokens.set(String(id), data.sessionToken)
+                }
+                return Promise.resolve({ id })
+            },
+        },
+    }
+})
 vi.mock('#config/redis.js', async (importActual) => {
     const actual = await importActual<{ default: object }>()
     return { default: { ...actual.default, keyPrefix: PREFIX } }
@@ -66,6 +86,10 @@ const { default: executeMiddlewares } =
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { default: AuthController } = await import('#app/controllers/http/auth/auth-controller.js')
+const { registerSessionTokenChecker } = await import('./session-token-check.js')
+const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
+
+registerSessionTokenChecker(checkSessionToken)
 
 const admin = createTestRedis(PREFIX)
 const USER_TOKEN = 'logoutAllRetryToken01'
@@ -134,11 +158,12 @@ afterAll(async () => {
 })
 
 describe.skipIf(!hasRedis)('logoutAll repeated after a stopped run', () => {
-    it('the stopped run answers 503 and the repeat succeeds through the middleware chain', async () => {
+    it('a run stopped by Redis answers 503, but the sessions are already revoked', async () => {
+        fakeUsers.tokens.set('42', USER_TOKEN)
         for (const id of ['phone', 'tablet', 'current', 'laptop']) await save(id)
 
         // Middleware (GETEX of the session) runs before the pause; the pause then
-        // stops the first DEL of the cleanup loop.
+        // stops the first DEL of the cleanup loop, after the sessionToken rotation.
         const { context, responseData } = createRequest()
         expect(await executeMiddlewares(ROUTE_MIDDLEWARES, context)).toBe(true)
         await pause()
@@ -151,13 +176,32 @@ describe.skipIf(!hasRedis)('logoutAll repeated after a stopped run', () => {
         expect(responseData.status).toBe(503)
         expect(first).toMatchObject({ code: 'service_unavailable' })
         expect(first).not.toHaveProperty('deletedCount')
-        // The caller's session survived the stop.
+        // The records survived the stop ...
         expect(await userSessions()).toContain(`${PREFIX}session:${USER_TOKEN}:current`)
+        expect(fakeUsers.tokens.get('42')).not.toBe(USER_TOKEN)
 
+        // ... but none of them opens anything. The repeated POST is refused by csrf_guard,
+        // which sits before auth_guard: the replacement anonymous session has another
+        // CSRF token, the same answer a session deleted from Redis gets.
         const repeat = await logoutAllRequest()
+        expect(repeat.passed).toBe(false)
+        expect(repeat.status).toBe(403)
+        // Past CSRF, auth_guard refuses it: a session the stop never touched ('laptop')
+        // and the caller's own ('current') are both anonymous now.
+        for (const id of ['laptop', 'current']) {
+            const probe = createRequest()
+            probe.context.httpData.cookies.set(
+                sessionConfig.cookieName,
+                createSignedToken(`${USER_TOKEN}.${id}`),
+            )
+            expect(await executeMiddlewares(['session_web', 'auth_guard'], probe.context)).toBe(
+                false,
+            )
+            expect(probe.responseData.status).toBe(401)
+        }
 
-        expect(repeat.passed).toBe(true) // csrf_guard and auth_guard let it through
-        expect(repeat.payload).toMatchObject({ status: 'success' })
+        // What is left is memory; a later full cleanup (password reset does this) clears it.
+        await storage.destroyAllSessions(USER_TOKEN)
         expect(await userSessions()).toEqual([])
         expect(await admin.exists(`logout_all:cursor:${USER_TOKEN}`)).toBe(0)
     })

@@ -36,6 +36,11 @@ vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#logger', () => ({ default: logger }))
 
 const { sessionHandler } = await import('./session-handler.js')
+const { registerSessionTokenChecker } = await import('./session-token-check.js')
+
+// The sessionToken check has its own spec (session-revocation.spec.ts): here every
+// session is current.
+registerSessionTokenChecker(() => Promise.resolve('ok'))
 const { createSignedToken, createAnonSessionToken } = await import('./token-handler.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')

@@ -27,11 +27,16 @@ vi.mock('#vendor/utils/session/token-handler.js', () => ({
 }))
 
 const { wsSessionHandler } = await import('./session-handler.js')
+const { registerSessionTokenChecker } = await import('./session-token-check.js')
+
+const tokenChecker = vi.fn()
+registerSessionTokenChecker(tokenChecker)
 
 const USER_TOKEN = 'abcdef0123456789'
 
 beforeEach(() => {
     vi.clearAllMocks()
+    tokenChecker.mockResolvedValue('ok')
 })
 
 describe('wsSessionHandler', () => {
@@ -40,6 +45,22 @@ describe('wsSessionHandler', () => {
         const result = await wsSessionHandler('s1', USER_TOKEN)
         expect(result.kind).toBe('ok')
         expect(result.kind === 'ok' && result.session.sessionInfo?.id).toBe('s1')
+    })
+
+    // ADR 0002: the record is there, but users.sessionToken was rotated.
+    it('missing when the sessionToken was rotated, though the session record exists', async () => {
+        getSession.mockResolvedValue({ id: 's1', data: { userId: '1' }, createdAt: '' })
+        tokenChecker.mockResolvedValue('mismatch')
+        await expect(wsSessionHandler('s1', USER_TOKEN)).resolves.toEqual({ kind: 'missing' })
+        expect(tokenChecker).toHaveBeenCalledWith('1', USER_TOKEN)
+    })
+
+    it('unavailable when the sessionToken lookup fails: the message is not served', async () => {
+        getSession.mockResolvedValue({ id: 's1', data: { userId: '1' }, createdAt: '' })
+        tokenChecker.mockResolvedValue('unavailable')
+        await expect(wsSessionHandler('s1', USER_TOKEN)).resolves.toEqual({
+            kind: 'unavailable',
+        })
     })
 
     it('missing when there is no session', async () => {

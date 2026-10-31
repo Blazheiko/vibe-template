@@ -6,6 +6,7 @@ const userRepositoryMock = {
     findById: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    changePasswordIfCurrent: vi.fn(),
 }
 
 const authMock = {
@@ -45,6 +46,11 @@ vi.mock('#app/transformers/index.js', () => ({
             name: user.name ?? '',
         })),
     },
+}))
+
+// The real module loads config/session, which needs metautil's duration().
+vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
+    destroyAllSessions: vi.fn(),
 }))
 
 vi.mock('metautil', () => ({
@@ -295,9 +301,10 @@ describe('authService legacy regressions', () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 9n,
             password: null,
+            sessionToken: 'previous-session-token',
         })
         hashPasswordMock.mockResolvedValue('new-password-hash')
-        userRepositoryMock.update.mockResolvedValue({
+        userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({
             id: 9n,
             password: 'new-password-hash',
         })
@@ -308,12 +315,14 @@ describe('authService legacy regressions', () => {
         })
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password-123')
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(9n, {
+        // No password stored yet: the conditional update expects exactly that (null).
+        expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(9n, null, {
             password: 'new-password-hash',
+            sessionToken: expect.any(String),
         })
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
-            expect(result.value).toEqual({ status: 'success' })
+            expect(result.value).toEqual({ status: 'success', sessionToken: expect.any(String) })
         }
     })
 })
@@ -368,10 +377,14 @@ describe('change password throttle', () => {
     })
 
     it('resets the budget after a successful change', async () => {
-        userRepositoryMock.findById.mockResolvedValue({ id: 7n, password: 'stored-password-hash' })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            password: 'stored-password-hash',
+            sessionToken: 'previous-session-token',
+        })
         validatePasswordMock.mockResolvedValue(true)
         hashPasswordMock.mockResolvedValue('new-password-hash')
-        userRepositoryMock.update.mockResolvedValue({ id: 7n })
+        userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
         const { authService } = await loadAuthService()
         const result = await authService.changePassword(7n, {
             currentPassword: 'secret123',

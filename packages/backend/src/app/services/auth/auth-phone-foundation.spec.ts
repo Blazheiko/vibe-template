@@ -71,6 +71,11 @@ vi.mock('#app/transformers/index.js', () => ({
     },
 }))
 
+// The real module loads config/session, which needs metautil's duration().
+vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
+    destroyAllSessions: vi.fn(),
+}))
+
 vi.mock('metautil', () => ({
     hashPassword: hashPasswordMock,
     validatePassword: validatePasswordMock,

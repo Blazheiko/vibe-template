@@ -9,6 +9,7 @@ const userRepositoryMock = {
     emailExistsForOtherUser: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    changePasswordIfCurrent: vi.fn(),
 }
 
 const authMock = {
@@ -43,6 +44,7 @@ const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
 const sendVerificationEmailAfterRegistrationMock = vi.fn()
 const sendLinkVerificationEmailMock = vi.fn()
+const destroyAllSessionsMock = vi.fn()
 const ROTATED_LOGOUT_CSRF_TOKEN = 'b'.repeat(43)
 const ROTATED_LOGOUT_ALL_CSRF_TOKEN = 'c'.repeat(43)
 
@@ -57,6 +59,11 @@ vi.mock('#app/transformers/index.js', () => ({
             email: user.email,
         })),
     },
+}))
+
+// The real module loads config/session, which needs metautil's duration().
+vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
+    destroyAllSessions: destroyAllSessionsMock,
 }))
 
 vi.mock('metautil', () => ({
@@ -558,6 +565,76 @@ describe('authService', () => {
         expect(authMock.login).not.toHaveBeenCalled()
     })
 
+    // ADR 0002: a credential change rotates users.sessionToken; the renewed session is
+    // issued under the new one, not under the token it replaces.
+    it('renewSession issues the new session under a rotated user token', async () => {
+        sessionMock.sessionInfo = {
+            id: 'signed-in-session-id',
+            data: { userId: '7', userToken: 'old-user-token', csrfToken: 'x'.repeat(43) },
+        }
+        authMock.login.mockImplementation(async () => {
+            sessionMock.sessionInfo = {
+                id: 'renewed-session-id',
+                data: { csrfToken: ROTATED_LOGOUT_CSRF_TOKEN },
+            }
+            return true
+        })
+
+        const { authService } = await loadAuthService()
+        const result = await authService.renewSession(
+            authMock as any,
+            sessionMock as any,
+            'rotated-user-token',
+        )
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(authMock.login).toHaveBeenCalledWith('7', 'rotated-user-token')
+    })
+
+    describe('logoutAll rotates the sessionToken first (ADR 0002)', () => {
+        it('rotates users.sessionToken before it deletes the records', async () => {
+            const order: string[] = []
+            userRepositoryMock.update.mockImplementation(async () => {
+                order.push('rotate')
+                return { id: 7n }
+            })
+            authMock.logoutAll.mockImplementation(async () => {
+                order.push('delete records')
+                return 2
+            })
+
+            const { authService } = await loadAuthService()
+            await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(order).toEqual(['rotate', 'delete records'])
+            expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
+                sessionToken: expect.stringMatching(/^[\w-]{21}$/),
+            })
+        })
+
+        it('fails without touching Redis when the rotation fails', async () => {
+            userRepositoryMock.update.mockRejectedValue(new Error('db down'))
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            expect(authMock.logoutAll).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        })
+
+        it('reports an error when the record cleanup fails, but the rotation already happened', async () => {
+            userRepositoryMock.update.mockResolvedValue({ id: 7n })
+            authMock.logoutAll.mockRejectedValue(new Error('redis down'))
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            expect(userRepositoryMock.update).toHaveBeenCalledTimes(1)
+        })
+    })
+
     it('returns the rotated CSRF token after logout mutates the session', async () => {
         authMock.logout.mockImplementation(async () => {
             sessionMock.sessionInfo = {
@@ -580,6 +657,7 @@ describe('authService', () => {
     })
 
     it('returns the rotated CSRF token after logoutAll mutates the session', async () => {
+        userRepositoryMock.update.mockResolvedValue({ id: 7n })
         authMock.logoutAll.mockImplementation(async () => {
             sessionMock.sessionInfo = {
                 id: 'anonymous-session-id',
@@ -621,6 +699,89 @@ describe('authService', () => {
             })
         }
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    })
+
+    describe('changePassword rotates the sessionToken (ADR 0002)', () => {
+        const arrangeUser = (): void => {
+            userRepositoryMock.findById.mockResolvedValue({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            validatePasswordMock.mockResolvedValue(true)
+            hashPasswordMock.mockResolvedValue('new-hash')
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
+            destroyAllSessionsMock.mockResolvedValue(2)
+        }
+        const change = async () => {
+            const { authService } = await loadAuthService()
+            return authService.changePassword(7n, {
+                currentPassword: 'old-secret',
+                newPassword: 'new-secret',
+            })
+        }
+
+        it('writes the new hash and a rotated token in one conditional update', async () => {
+            arrangeUser()
+
+            const result = await change()
+
+            expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(
+                7n,
+                'stored-hash',
+                { password: 'new-hash', sessionToken: expect.stringMatching(/^[\w-]{21}$/) },
+            )
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(Result.isOk(result)).toBe(true)
+            if (Result.isOk(result)) {
+                const call = userRepositoryMock.changePasswordIfCurrent.mock.calls[0]
+                expect(result.value.sessionToken).toBe(call?.[2].sessionToken)
+                expect(result.value.sessionToken).not.toBe('previous-session-token')
+            }
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'password_changed')
+        })
+
+        it('deletes the records of the previous token', async () => {
+            arrangeUser()
+
+            await change()
+
+            expect(destroyAllSessionsMock).toHaveBeenCalledWith('previous-session-token')
+        })
+
+        it('still succeeds when the Redis cleanup fails: the rotation is the revocation', async () => {
+            arrangeUser()
+            destroyAllSessionsMock.mockRejectedValue(new Error('redis down'))
+
+            const result = await change()
+
+            expect(destroyAllSessionsMock).toHaveBeenCalledWith('previous-session-token')
+            expect(Result.isOk(result)).toBe(true)
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'password_changed')
+        })
+
+        it('answers a conflict when another request changed the password first', async () => {
+            arrangeUser()
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
+
+            const result = await change()
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error._tag).toBe('Conflict')
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        })
+
+        it('does not touch the password or sessions when the current password is wrong', async () => {
+            arrangeUser()
+            validatePasswordMock.mockResolvedValue(false)
+
+            const result = await change()
+
+            expect(Result.isError(result)).toBe(true)
+            expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+        })
     })
 })
 
@@ -697,7 +858,13 @@ describe('authService while Redis is unavailable', () => {
             (s) => s.login(LOGIN_INPUT, authMock as any, sessionMock as any, LOGIN_CONTEXT),
         ],
         ['logout', () => {}, (s) => s.logout(authMock as any, sessionMock as any)],
-        ['logoutAll', () => {}, (s) => s.logoutAll(authMock as any, sessionMock as any)],
+        [
+            'logoutAll',
+            () => {
+                userRepositoryMock.update.mockResolvedValue({ id: 7n })
+            },
+            (s) => s.logoutAll(authMock as any, sessionMock as any),
+        ],
     ]
 
     const failWith = (name: string, err: Error): void => {

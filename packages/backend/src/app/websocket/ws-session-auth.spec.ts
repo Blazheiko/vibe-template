@@ -19,6 +19,9 @@ const redis = vi.hoisted(() => ({
 const withRedis = vi.hoisted(() => vi.fn(async <T>(op: () => Promise<T>): Promise<T> => op()))
 vi.mock('#database/redis.js', () => ({ default: redis, withRedis }))
 
+const checkSessionToken = vi.hoisted(() => vi.fn())
+vi.mock('#app/services/auth/session-token-check.js', () => ({ checkSessionToken }))
+
 const { wsSessionAuth } = await import('./ws-session-auth.js')
 const { generateWsToken } = await import('#app/services/auth/generate-ws-token-service.js')
 
@@ -28,6 +31,7 @@ const SESSION_DATA = JSON.stringify({ id: 's1', data: { userId: '1' } })
 beforeEach(() => {
     vi.clearAllMocks()
     withRedis.mockImplementation(async (op) => op())
+    checkSessionToken.mockResolvedValue('ok')
 })
 
 describe('verifyUpgradeToken', () => {
@@ -39,6 +43,32 @@ describe('verifyUpgradeToken', () => {
             userId: '1',
             userToken: 'u1',
         })
+    })
+
+    // ADR 0002: the Redis records are intact, but users.sessionToken was rotated.
+    it('missing when the sessionToken was rotated, though the session record exists', async () => {
+        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(SESSION_DATA)
+        checkSessionToken.mockResolvedValue('mismatch')
+        await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
+            kind: 'missing',
+        })
+        expect(checkSessionToken).toHaveBeenCalledWith('1', 'u1')
+    })
+
+    it('unavailable when the sessionToken lookup fails: no access on the Redis record alone', async () => {
+        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(SESSION_DATA)
+        checkSessionToken.mockResolvedValue('unavailable')
+        await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
+            kind: 'unavailable',
+        })
+    })
+
+    it('does not look the sessionToken up when the session record is missing', async () => {
+        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(null)
+        await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
+            kind: 'missing',
+        })
+        expect(checkSessionToken).not.toHaveBeenCalled()
     })
 
     it('missing when the token is unknown', async () => {
