@@ -523,6 +523,16 @@
             "dependencies": ["feat-052"],
             "status": "done",
             "evidence": "PR #173 (merge a99e753): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174, frontend 168, api-playground 14, shared 14, docs 26), test:redis 45, test:pg 23, e2e 12, docs build/verify; frontend bundle 876.20 -> 879.24 kB; pnpm audit 16 -> 13; ArkType 2.2.9 duplicate prototype-key issues fixed in validate-response.ts. Not tested: mail:test, real S3 bucket, AI providers (no credentials)"
+        },
+        {
+            "id": "feat-054",
+            "name": "Drizzle 1.0.0-rc.5",
+            "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 4 (D.2): drizzle-orm and drizzle-kit 1.0.0-rc.4 -> 1.0.0-rc.5 together; inventory of rc.5 breaking changes against the code, typed db.execute, snapshots converted with drizzle-kit up (incremental format), test:pg, fresh DB create/migrate/seed + golden path",
+            "owner": "Blazheiko",
+            "branch": "chore/drizzle-rc5",
+            "dependencies": ["feat-053"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
