@@ -541,8 +541,8 @@
             "owner": "Blazheiko",
             "branch": "chore/mermaid-12",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #178 (merge ecbd165): progress.md Evidence of Completion — docs typecheck, docs:build + docs:verify, documentation test 26, format/lint; Playwright over all 25 pages with diagrams (30) in light and dark: 60/60 rendered, no syntax errors, no clipped labels, no console errors; 11 look kept (dagre/default/classic), label line-height fix in custom.css. Caveat: vitepress-plugin-mermaid 2.0.17 declares peer mermaid 10 || 11"
         }
     ]
 }
