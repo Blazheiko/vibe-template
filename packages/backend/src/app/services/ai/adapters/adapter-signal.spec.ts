@@ -160,9 +160,8 @@ describe('xai text adapter', () => {
 
 describe('mistral text adapter', () => {
     it('aborts a hanging provider after the timeout', async () => {
-        mistralStream.mockImplementation(
-            (_request: unknown, options: { fetchOptions: { signal: AbortSignal } }) =>
-                rejectOnAbort(options.fetchOptions.signal),
+        mistralStream.mockImplementation((_request: unknown, options: { signal: AbortSignal }) =>
+            rejectOnAbort(options.signal),
         )
         const { mistralaiTextAdapter } = await import('./mistralai-text-adapter.js')
         await expect(
@@ -171,9 +170,8 @@ describe('mistral text adapter', () => {
     })
 
     it("stops at once when the caller's signal aborts", async () => {
-        mistralStream.mockImplementation(
-            (_request: unknown, options: { fetchOptions: { signal: AbortSignal } }) =>
-                rejectOnAbort(options.fetchOptions.signal),
+        mistralStream.mockImplementation((_request: unknown, options: { signal: AbortSignal }) =>
+            rejectOnAbort(options.signal),
         )
         const { mistralaiTextAdapter } = await import('./mistralai-text-adapter.js')
         const controller = new AbortController()

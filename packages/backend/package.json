@@ -38,7 +38,7 @@
         "@arktype/type": "2.2.9",
         "@aws-sdk/client-s3": "3.1161.0",
         "@aws-sdk/s3-request-presigner": "3.1161.0",
-        "@mistralai/mistralai": "2.7.0",
+        "@mistralai/mistralai": "3.4.0",
         "@sentry/node": "11.10.0",
         "ai": "7.0.159",
         "arctic": "3.7.0",
