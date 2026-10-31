@@ -1,6 +1,6 @@
 # ADR 0002: відкликання сесій через звірку `userToken` з БД
 
-- **Статус:** чернетка (пропозиція; приймається разом із PR фази B, feat-059).
+- **Статус:** прийнято 2026-10-31; реалізація — feat-059.
 - **Дата запису:** 2026-10-31.
 - **Джерело:** [`docs/security/code-review-main-2026-10-31.md`](../security/code-review-main-2026-10-31.md), знахідка №2; план — [`docs/plan/code-review-fixes-tasks.md`](../plan/code-review-fixes-tasks.md), фаза B.
 
