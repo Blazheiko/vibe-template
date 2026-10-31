@@ -95,6 +95,12 @@ export const markAnonSessionSuperseded = async (
     await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds))
 }
 
+/** Whether a login has replaced this anonymous session (its marker is set). */
+export const anonSessionSignedIn = async (sessionId: string): Promise<boolean> => {
+    const key = sanitizeRedisKey(`session_superseded:${sessionId}`)
+    return (await withRedis(() => redis.exists(key))) === 1
+}
+
 /** Whether a cookie-held anonymous session was signed in from or moved to Redis. */
 export const anonSessionSuperseded = async (sessionId: string): Promise<boolean> => {
     const superseded = sanitizeRedisKey(`session_superseded:${sessionId}`)

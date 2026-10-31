@@ -15,6 +15,7 @@ const storage = vi.hoisted(() => ({
     sessionExists: vi.fn(),
     markAnonSessionSuperseded: vi.fn(),
     anonSessionSuperseded: vi.fn(),
+    anonSessionSignedIn: vi.fn(),
 }))
 const logger = vi.hoisted(() => {
     const value: Record<string, unknown> = {
@@ -169,6 +170,26 @@ describe('session beforeSend', () => {
         expect(logger.warn).toHaveBeenCalledWith(
             expect.anything(),
             'Anonymous cookie refresh skipped: session check failed',
+        )
+    })
+
+    it('a failed check holds back the cookie of a move to Redis', async () => {
+        storage.anonSessionSignedIn.mockRejectedValue(new RedisDown())
+        const responseData = createResponseData()
+        const context = createContext(
+            { method: 'post', headers: new Map(), cookies: new Map() } as never,
+            responseData,
+        )
+        await sessionHandler(context, undefined, undefined)
+        await context.session.updateSessionData({ oauthState: 's' })
+        expect(storage.saveSession).toHaveBeenCalledOnce()
+
+        await expect(context.session.beforeSend?.()).resolves.toBeUndefined()
+
+        expect(responseData.cookies.has(sessionConfig.cookieName)).toBe(false)
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.anything(),
+            'Stored anonymous cookie held back: session check failed',
         )
     })
 })

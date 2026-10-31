@@ -23,6 +23,8 @@
 
 - [x] Second review of PR #184 (HIGH): after anonymous cookie → move to Redis → login, the login deleted the stored record without a marker, so a slow refresh of the first request found no trace and re-issued the stale cookie. Login now marks **any** anonymous predecessor (cookie-held or stored) with `session_superseded:<id>` before deleting it. Test first: «a slow response does not overwrite a login made after a move to Redis». `register/email` deletes the anonymous session without issuing a cookie, so there is no newer cookie a late response could overwrite — left as is
 
+- [x] Third review of PR #184 (HIGH): a request that moved its session to Redis was in `swappedSession` and skipped the check, so its late response could undo a login made meanwhile with the same original cookie. The move now has its own pending check: before sending it looks only at the login marker `session_superseded:<id>` (its own record is no sign of a change), whatever the age of the original cookie; only login/logout keep their cookie unconditionally. Login also deletes an `anon_session` record a parallel request may have created. Tests first: promotion-vs-login race (Redis), failed promotion check (unit)
+
 ### Behaviour change to know
 
 A cookie-held anonymous session cannot be revoked before its TTL: after login the old anonymous cookie + token still pass the CSRF check, but only as an anonymous session; the token does not sign requests of the user's session (test «an anonymous cookie never opens the session of the user who logged in with it»). Previously login deleted the anonymous record, so the old pair got `403`.

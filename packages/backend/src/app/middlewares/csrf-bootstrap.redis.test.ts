@@ -552,6 +552,25 @@ describe.skipIf(!hasRedis)('stale anonymous cookie refresh (feat-057 review)', (
         expect(slow.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(false)
     })
 
+    it('a late response that moved the session to Redis does not undo a login made meanwhile', async () => {
+        // A fresh cookie: the race does not depend on the refresh interval.
+        const csrfToken = 'm'.repeat(43)
+        const sessionId = crypto.randomUUID()
+        const cookie = anonCookie(nowSec() - 60, csrfToken, sessionId)
+        // R2 moves the session to Redis (its response still to come) ...
+        const oauth = await mutate(cookie, csrfToken)
+        await oauth.context.session.updateSessionData({ oauthState: 'state-5' })
+        // ... R3 logs in with the same original cookie ...
+        const signIn = await mutate(cookie, csrfToken)
+        await signIn.context.auth.login('51', 'raceUserToken00003')
+        // ... and R2 answers last.
+        await oauth.context.session.beforeSend?.()
+
+        expect(oauth.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(false)
+        // The login also took the stored anonymous record with it.
+        expect(await admin.exists(`session:anon_session:${sessionId}`)).toBe(0)
+    })
+
     it('an unchallenged refresh keeps its cookie', async () => {
         const anon = aged('i'.repeat(43))
         const response = await mutate(anon.cookie, anon.csrfToken)
