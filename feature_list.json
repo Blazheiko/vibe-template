@@ -563,6 +563,266 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #184 (merge bf1bfd1): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1177), test:redis 61 (+16 feat-057: no Redis key for anonymous requests, tampered/expired/user-signed cookies, sliding re-issue, move to Redis with SESSION_ANON_TTL, logout, stale-refresh races: login, move to Redis, anonymous->Redis->login, move-vs-login; legacy cookie name), test:pg 23, e2e 12, e2e:security 7, docs build/verify; wrk 30s on main/init without a cookie: 2.0 Redis keys per request on main, 0 on the branch (19k -> 33k req/s). Three review rounds fixed"
+        },
+        {
+            "id": "feat-058",
+            "name": "Push Subscription IDOR",
+            "description": "docs/plan/code-review-fixes-tasks.md A: update()/deactivate() return findById(id) without the owner filter — PUT /push-subscriptions/:id and /:id/deactivate return another user's subscription (endpoint, push keys, IP, UA); .returning() + 404 for foreign and missing ids, HTTP+PostgreSQL tests; updateByEndpoint account-move scenario untouched",
+            "owner": "Blazheiko",
+            "branch": "fix/push-subscription-idor",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-059",
+            "name": "Session Revocation",
+            "description": "docs/plan/code-review-fixes-tasks.md B: ADR 0002 — verify session userToken against users.sessionToken in the DB on every authenticated HTTP request and WS message (no cache, 503 when the DB is unavailable); rotate sessionToken in changePassword (conditional UPDATE), password reset and logoutAll; destroyAllSessions becomes best-effort cleanup",
+            "owner": "Blazheiko",
+            "branch": "fix/session-revocation",
+            "dependencies": ["feat-058"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-060",
+            "name": "One-Time Token Race",
+            "description": "docs/plan/code-review-fixes-tasks.md B2: markUsed has no usedAt IS NULL, so two concurrent resets with one token both apply; claim-then-act in one DB transaction for password-reset, email-verification and email-link tokens, with a fault-injection test between claim and apply",
+            "owner": "Blazheiko",
+            "branch": "fix/one-time-token-race",
+            "dependencies": ["feat-059"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-061",
+            "name": "Session Token Cache",
+            "description": "docs/plan/code-review-fixes-tasks.md B3 (optional, only if the feat-059 auth_guard benchmark justifies it): cache users.sessionToken with an explicit SESSION_REVOCATION_MAX_DELAY and tests for a Redis failure during invalidation and the read/invalidate race",
+            "owner": "Blazheiko",
+            "branch": "feat/session-token-cache",
+            "dependencies": ["feat-059"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-062",
+            "name": "WS Admin Revocation",
+            "description": "docs/plan/code-review-fixes-tasks.md C: demoted admin keeps the ws admin channel (role cached at connect, subscribe once); Redis pub/sub role-change event plus a periodic recheck of active admin subscriptions with a documented maximum revocation time, tested with a dropped event",
+            "owner": "Blazheiko",
+            "branch": "fix/ws-admin-revoke",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-063",
+            "name": "Resource Limits",
+            "description": "docs/plan/code-review-fixes-tasks.md D: support-chat admission contract (admit before ok, support_chat_error code), message length cap, per-user throttle, owner-token in-flight lock, atomic Redis LLM budget reservation, history pagination; per-route multipart body limit (file limit plus overhead) and avatar rateLimit",
+            "owner": "Blazheiko",
+            "branch": "fix/resource-limits",
+            "dependencies": ["feat-058"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-064",
+            "name": "OAuth Token Storage",
+            "description": "docs/plan/code-review-fixes-tasks.md E: provider access/refresh tokens are stored in plaintext and never read — drop the columns (migration), move the Facebook token out of the query string, mask OAuth PII in logs",
+            "owner": "Blazheiko",
+            "branch": "fix/oauth-token-storage",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-065",
+            "name": "LLM Prompt Retention",
+            "description": "docs/plan/code-review-fixes-tasks.md F1: llm_text_usage.final_prompt retention policy — hash+length by default, AI_USAGE_STORE_PROMPTS opt-in, purge script, migration, documented access and retention",
+            "owner": "Blazheiko",
+            "branch": "fix/llm-prompt-retention",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-066",
+            "name": "Auth Response Contract",
+            "description": "docs/plan/code-review-fixes-tasks.md F2: unverified-account login answers the generic 401 (verification mail resent in the background); strict registration hashes the password before the email lookup",
+            "owner": "Blazheiko",
+            "branch": "fix/auth-response-contract",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-067",
+            "name": "DB SSL And Query Log",
+            "description": "docs/plan/code-review-fixes-tasks.md F3: PGSQL_SSL env and runtime-config warning; SQL query logging keyed off isProductionLike",
+            "owner": "Blazheiko",
+            "branch": "fix/db-ssl-and-query-log",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-068",
+            "name": "Frontend Hardening",
+            "description": "docs/plan/code-review-fixes-tasks.md F4: autocomplete on account password inputs, same-origin check for the push notificationclick url, redirect query guard, api-playground header storage and logging",
+            "owner": "Blazheiko",
+            "branch": "fix/frontend-hardening",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-069",
+            "name": "Auth Regression Coverage",
+            "description": "docs/plan/code-review-fixes-tasks.md G: auth service behaviour snapshots, Playwright UI-state tests on mocks and live-backend session-revocation tests, before any auth refactor",
+            "owner": "Blazheiko",
+            "branch": "test/auth-regression-coverage",
+            "dependencies": ["feat-059", "feat-060", "feat-066"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-070",
+            "name": "Auth Throttle Helper",
+            "description": "docs/plan/code-review-fixes-tasks.md H1: enforceThrottle() replaces 32 copies of the throttle boilerplate in the three auth services",
+            "owner": "Blazheiko",
+            "branch": "refactor/auth-enforce-throttle",
+            "dependencies": ["feat-060", "feat-069"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-071",
+            "name": "Auth Normalizers",
+            "description": "docs/plan/code-review-fixes-tasks.md H2: one auth-normalize module (normalizeEmail, normalizePhone, isChallengeExpired, flow constants)",
+            "owner": "Blazheiko",
+            "branch": "refactor/auth-normalize",
+            "dependencies": ["feat-070"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-072",
+            "name": "Email Templates",
+            "description": "docs/plan/code-review-fixes-tasks.md H3: shared renderBrandedEmail() for the three transactional emails, byte-identical snapshots",
+            "owner": "Blazheiko",
+            "branch": "refactor/email-templates",
+            "dependencies": ["feat-071"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-073",
+            "name": "One-Time Token Module",
+            "description": "docs/plan/code-review-fixes-tasks.md H4: createTokenRepository() and one-time-token.ts on top of the transactional consume from feat-060",
+            "owner": "Blazheiko",
+            "branch": "refactor/one-time-token-module",
+            "dependencies": ["feat-072"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-074",
+            "name": "SMS Challenge Module",
+            "description": "docs/plan/code-review-fixes-tasks.md H5: issueSmsChallenge()/verifySmsChallenge() replace the three start and three confirm copies",
+            "owner": "Blazheiko",
+            "branch": "refactor/sms-challenge",
+            "dependencies": ["feat-073"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-075",
+            "name": "Frontend And Shared Dedup",
+            "description": "docs/plan/code-review-fixes-tasks.md I: WS transport in shared, shared password rules, admin-view composables, Sentry sanitizer, ArkType default workaround",
+            "owner": "Blazheiko",
+            "branch": "refactor/frontend-shared-dedup",
+            "dependencies": ["feat-069"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-076",
+            "name": "Frontend Component Split",
+            "description": "docs/plan/code-review-fixes-tasks.md J: split AuthModals.vue, state.ts, main.ts, MenuButton.vue and the api-playground TestForm",
+            "owner": "Blazheiko",
+            "branch": "refactor/frontend-split-components",
+            "dependencies": ["feat-075"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-077",
+            "name": "Dead Code Backend",
+            "description": "docs/plan/code-review-fixes-tasks.md K1: remove unused backend helpers, test middlewares, commented-out code and speculative serializer branches",
+            "owner": "Blazheiko",
+            "branch": "chore/dead-code-backend",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-078",
+            "name": "Dead Code Shared",
+            "description": "docs/plan/code-review-fixes-tasks.md K2: remove duplicate and unused shared schemas and the hand-synced error-code arrays",
+            "owner": "Blazheiko",
+            "branch": "chore/dead-code-shared",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-079",
+            "name": "Dead Code Frontend",
+            "description": "docs/plan/code-review-fixes-tasks.md K3: remove the dead service-worker message branch, the useSentry wrapper and unused push UA parsing",
+            "owner": "Blazheiko",
+            "branch": "chore/dead-code-frontend",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-080",
+            "name": "Repo Hygiene",
+            "description": "docs/plan/code-review-fixes-tasks.md L: ignore files, progress.md off main, ESLint for JS, CI action pins, dependabot",
+            "owner": "Blazheiko",
+            "branch": "chore/repo-hygiene",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-081",
+            "name": "Schema Cleanup",
+            "description": "docs/plan/code-review-fixes-tasks.md M: llm_text_usage.user_id on-delete and the support_chat_history (user_id, created_at) index in one migration",
+            "owner": "Blazheiko",
+            "branch": "chore/schema-cleanup",
+            "dependencies": ["feat-065"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-082",
+            "name": "Env Parsing Contract",
+            "description": "docs/plan/code-review-fixes-tasks.md N: one boolean/integer env parsing contract (yes/on accepted everywhere, strict integers) with runtime-config validation",
+            "owner": "Blazheiko",
+            "branch": "chore/env-parsing-contract",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-083",
+            "name": "Locale Stubs",
+            "description": "docs/plan/code-review-fixes-tasks.md O: decide shipped locales, remove the 17 stub files, fallback to en",
+            "owner": "Blazheiko",
+            "branch": "chore/locale-stubs",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
