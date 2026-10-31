@@ -503,6 +503,16 @@
             "dependencies": ["feat-046"],
             "status": "done",
             "evidence": "PR #159 (merge cce542b): progress.md Evidence of Completion — typecheck/lint/format/test (backend 1148), e2e 12 passed, docs build/verify, backend start with RESPONSE_VALIDATION_CONTRACT=log"
+        },
+        {
+            "id": "feat-052",
+            "name": "Node 24.22.2 + uWebSockets.js v20.71.0",
+            "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 1 (stages A, B): Node 24.22.2 in .nvmrc/engines/Dockerfile (pinned NODE_VERSION + node -v assert), uWebSockets.js v20.56.0 -> v20.71.0 with transport baseline/benchmark, linux/amd64 Docker check and real-backend golden path; dependency PRs 2-5 are separate features",
+            "owner": "Blazheiko",
+            "branch": "chore/node-24.22.2-uws-20.71",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
