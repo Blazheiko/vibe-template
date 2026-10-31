@@ -324,12 +324,14 @@ export const sessionHandler = async (
             // The previous session goes away whether it was signed in or anonymous:
             // its cookie and CSRF token must not stay usable after the login.
             const oldSessionId = sessionInfo?.id
-            if (oldSessionId !== undefined && cookieHeld) {
-                // Nothing to delete: mark it, so a slower response of this anonymous
-                // session does not re-issue its cookie over the login's one.
-                await markAnonSessionSuperseded(oldSessionId, ANON_COOKIE_REFRESH_SECONDS)
-            } else if (oldSessionId !== undefined) {
-                await destroySession(oldSessionId, contextUserToken)
+            if (oldSessionId !== undefined) {
+                // Any anonymous predecessor — cookie-held or already moved to Redis — is
+                // marked before it goes away: a slower response of that session must
+                // not re-issue its anonymous cookie over the login's one.
+                if (cookieHeld || contextUserToken === ANON_TOKEN) {
+                    await markAnonSessionSuperseded(oldSessionId, ANON_COOKIE_REFRESH_SECONDS)
+                }
+                if (!cookieHeld) await destroySession(oldSessionId, contextUserToken)
             }
 
             const newSessionInfo = await createSessionInfo({

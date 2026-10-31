@@ -21,6 +21,8 @@
 
 - [x] Review of PR #184 (REQUEST CHANGES): (1) HIGH — a slow anonymous response re-issuing its aged cookie could overwrite the cookie of a login or an OAuth move to Redis made meanwhile; the re-issue now goes through `beforeSend` (`discardStaleSessionCookie`): login from a cookie-held session leaves `session_superseded:<id>` (15 min), a move to Redis leaves `session:anon_session:<id>`; either one holds the late cookie back, a request that swapped its own session keeps it, a failed check drops it. (2) MEDIUM — a fresh anonymous cookie found only under the legacy name is now re-issued under the active one (`forceCookie`). Tests first: login race, Redis-move race, unchallenged refresh, own move, legacy name (Redis); failed check (unit)
 
+- [x] Second review of PR #184 (HIGH): after anonymous cookie → move to Redis → login, the login deleted the stored record without a marker, so a slow refresh of the first request found no trace and re-issued the stale cookie. Login now marks **any** anonymous predecessor (cookie-held or stored) with `session_superseded:<id>` before deleting it. Test first: «a slow response does not overwrite a login made after a move to Redis». `register/email` deletes the anonymous session without issuing a cookie, so there is no newer cookie a late response could overwrite — left as is
+
 ### Behaviour change to know
 
 A cookie-held anonymous session cannot be revoked before its TTL: after login the old anonymous cookie + token still pass the CSRF check, but only as an anonymous session; the token does not sign requests of the user's session (test «an anonymous cookie never opens the session of the user who logged in with it»). Previously login deleted the anonymous record, so the old pair got `403`.
