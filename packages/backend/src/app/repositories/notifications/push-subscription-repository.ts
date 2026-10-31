@@ -138,14 +138,20 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
         }))
     },
 
+    // The row comes from the owner-scoped UPDATE itself: re-reading it by id alone
+    // would hand back another user's subscription when the WHERE matched nothing.
     async update(id, userId, data) {
-        await db
+        const [row] = await db
             .update(pushSubscriptions)
             .set({ ...data, updatedAt: new Date(), lastUsedAt: new Date() })
             .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, userId)))
-        return pushSubscriptionRepository.findById(id)
+            .returning()
+        return row
     },
 
+    // No owner filter on purpose: the endpoint is unique across users, and moving it to
+    // another account (same device, account switch) is allowed after the service has
+    // checked the browser's keys.
     async updateByEndpoint(endpoint, userId, data) {
         await db
             .update(pushSubscriptions)
@@ -164,11 +170,12 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
     },
 
     async deactivate(id, userId) {
-        await db
+        const [row] = await db
             .update(pushSubscriptions)
             .set({ isActive: false, updatedAt: new Date() })
             .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, userId)))
-        return pushSubscriptionRepository.findById(id)
+            .returning()
+        return row
     },
 
     async delete(id, userId) {
