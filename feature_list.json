@@ -571,8 +571,8 @@
             "owner": "Blazheiko",
             "branch": "fix/push-subscription-idor",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #188 (merge 37cc046): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1177, frontend 168, api-playground 14, shared 14, docs 26), test:pg 30 (+7 push-subscription-ownership: 3 failed with 200-instead-of-404 before the fix), test:redis 61, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on the PR"
         },
         {
             "id": "feat-059",
