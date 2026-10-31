@@ -543,6 +543,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #178 (merge ecbd165): progress.md Evidence of Completion — docs typecheck, docs:build + docs:verify, documentation test 26, format/lint; Playwright over all 25 pages with diagrams (30) in light and dark: 60/60 rendered, no syntax errors, no clipped labels, no console errors; 11 look kept (dagre/default/classic), label line-height fix in custom.css. Caveat: vitepress-plugin-mermaid 2.0.17 declares peer mermaid 10 || 11"
+        },
+        {
+            "id": "feat-056",
+            "name": "Mistral SDK 3",
+            "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 3 (D.1): @mistralai/mistralai 2.7.0 -> 3.4.0; v3 migration guide vs mistralai-text-adapter.ts (client, chat.stream, events, usage, AbortSignal), typecheck against v3 types, adapter tests unchanged; real-key check only if a key is available",
+            "owner": "Blazheiko",
+            "branch": "chore/mistral-v3",
+            "dependencies": ["feat-053"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
