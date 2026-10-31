@@ -38,7 +38,7 @@
 
 ## Відповідність фаз і `feature_list.json`
 
-Заголовки фаз нижче можуть містити старі id з літерами (`feat-059b`, `feat-063a`…) — вони замінені послідовними id у `feature_list.json`; **авторитетні id — з цієї таблиці**.
+Заголовки фаз і зведена таблиця нижче використовують ті самі `feat-NNN`, що й `feature_list.json`; літерні id (`feat-059b`, `feat-063a`…) з ранніх версій плану замінені цією таблицею.
 
 | Фаза | feat     | Фаза | feat     | Фаза | feat     |
 | ---- | -------- | ---- | -------- | ---- | -------- |
@@ -108,7 +108,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 - **Механізм:** `auth_guard` (HTTP) і `ws-session-auth` (кожне WS-повідомлення) порівнюють `session.data.userToken` з `users.sessionToken`, прочитаним **безпосередньо з БД** (`SELECT session_token FROM users WHERE id = ?`). Невідповідність → знищити сесію, 401. Використовуємо наявний `userToken`; нове поле (`sessionGeneration`) гарантій не додає — воно має ту саму проблему актуальності.
 - **Чому без кешу:** кеш з TTL суперечить критерію «після відновлення Redis одразу 401» — (а) якщо Redis недоступний під час інвалідації, після відновлення він може містити старий токен; (б) гонка: паралельне читання БД → інвалідація → запис старого значення в кеш. Звірка з БД робить security-гарантію доказовою однією точкою.
 - **Вартість:** +1 indexed primary-key read на автентифікований запит. Для шаблону прийнятно; виміряти в `progress.md` (p50/p95 на auth_guard до/після).
-- **Кешування — окремий наступний крок (feat-059c, після B):** лише з явно визначеною допустимою затримкою відкликання `SESSION_REVOCATION_MAX_DELAY` (напр. 30 s), з інвалідацією через `DEL` + захистом від гонки (версія/`SET` лише якщо значення не старіше — або read-through з коротким TTL без явної інвалідації), і з тестами **обох** сценаріїв: збій Redis під час ротації і гонка read/invalidate. Критерій B тоді змінюється на «не пізніше ніж через `SESSION_REVOCATION_MAX_DELAY`».
+- **Кешування — окремий наступний крок (feat-061, після B):** лише з явно визначеною допустимою затримкою відкликання `SESSION_REVOCATION_MAX_DELAY` (напр. 30 s), з інвалідацією через `DEL` + захистом від гонки (версія/`SET` лише якщо значення не старіше — або read-through з коротким TTL без явної інвалідації), і з тестами **обох** сценаріїв: збій Redis під час ротації і гонка read/invalidate. Критерій B тоді змінюється на «не пізніше ніж через `SESSION_REVOCATION_MAX_DELAY`».
 - `destroyAllSessions` залишається як best-effort очищення пам'яті Redis, не як гарантія безпеки.
 
 ### Зміни (явний перехід станів)
@@ -138,11 +138,11 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 - [ ] `test:redis` + `test:pg` integration: усі критерії; конкурентний сценарій через `Promise.all` двох HTTP-запитів до реального Postgres; fault-injection на Redis (паттерн у `csrf-bootstrap.redis.test.ts`).
 - [ ] Unit на guard: невідповідність `userToken` → сесія знищена, 401; **БД недоступна під час перевірки → 503, сесія не знищена і не пропущена**; анонімна сесія — без запиту до БД.
-- [ ] Бенчмарк `auth_guard` до/після (p50/p95 на локальному Postgres) у `progress.md` — вхідні дані для рішення про feat-059c (кеш).
+- [ ] Бенчмарк `auth_guard` до/після (p50/p95 на локальному Postgres) у `progress.md` — вхідні дані для рішення про feat-061 (кеш).
 
 ---
 
-## B2 · 🔴 feat-059b · Гонка одноразових токенів (reset / verification / link)
+## B2 · 🔴 feat-060 · Гонка одноразових токенів (reset / verification / link)
 
 **Гілка:** `fix/one-time-token-race` · **Залежності:** **B** (очищення сесій після commit тут best-effort і спирається на звірку `userToken` з B; без B reset-flow при збої Redis залишає старі сесії валідними — B2 не випускати окремо) · **Оцінка:** 0.5–1 д · Security-фікс, виконується **до** G і H4, не як частина тестового покриття.
 
@@ -170,7 +170,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## C · 🔴 feat-060 · Відкликання admin-доступу у WebSocket
+## C · 🔴 feat-062 · Відкликання admin-доступу у WebSocket
 
 **Гілка:** `fix/ws-admin-revoke` · **Залежності:** немає · **Оцінка:** 1 д
 
@@ -203,7 +203,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## D · 🟠 feat-061 · Resource limits: support chat + multipart
+## D · 🟠 feat-063 · Resource limits: support chat + multipart
 
 **Гілка:** `fix/resource-limits` · **Залежності:** A (конфлікти в `http-routes.ts`) · **Оцінка:** 2 д
 
@@ -267,7 +267,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## E · 🟠 feat-062 · OAuth-токени провайдерів
+## E · 🟠 feat-064 · OAuth-токени провайдерів
 
 **Гілка:** `fix/oauth-token-storage` · **Залежності:** немає · **Оцінка:** 1 д (міграція → окреме рев'ю)
 
@@ -286,7 +286,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 Кожен — окремий feature з незалежним відкатом; між собою не залежать.
 
-### F1 · feat-063a · `llm_text_usage.final_prompt` — політика збору та retention (1 д, потребує рішення продукту)
+### F1 · feat-065 · `llm_text_usage.final_prompt` — політика збору та retention (1 д, потребує рішення продукту)
 
 - Truncation **не** захищає PII. Потрібен контракт:
 - [ ] Зафіксувати в `documentation/backend/ai.md`: що збирається (повний промпт / метадані / hash+довжина), хто має доступ (`GET /admin/usage/text`), retention (напр. 30 днів), як очищаються вже записані дані.
@@ -295,20 +295,20 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 - [ ] `src/scripts/purge-llm-prompts.ts` для вже записаних промптів + retention (cron або документований ручний запуск).
 - **Критерії:** при `AI_USAGE_STORE_PROMPTS=false` у БД немає тексту промпту; purge-скрипт очищає існуючі рядки; `test:pg` з міграцією.
 
-### F2 · feat-063b · Auth-контракт: unverified login і timing реєстрації (0.5 д)
+### F2 · feat-066 · Auth-контракт: unverified login і timing реєстрації (0.5 д)
 
 - [ ] `auth-service.ts:1155-1174` — unverified + правильний пароль → `invalidCredentials()` (401); verification-лист повторно у фоні з throttle (1/5 хв на акаунт). Контракт у `documentation/backend/auth.md`; `AuthModals.vue` — замінити спеціальний UI для 400 «Email verification required» (якщо є) на generic + «перевірте пошту».
 - [ ] `auth-service.ts:337-342` — strict registration: хешувати пароль до lookup email.
 - **Критерії:** spec на 401 для unverified; обидві гілки реєстрації викликають hash (spy), timing-різниця в тесті < порогу.
 
-### F3 · feat-063c · DB config: `PGSQL_SSL` і SQL-логер (0.25 д)
+### F3 · feat-067 · DB config: `PGSQL_SSL` і SQL-логер (0.25 д)
 
 - [ ] `PGSQL_SSL` env (`false | true | require`), `config/database.ts`, `db.ts:17`; `validate-runtime-config.ts` — warning при production-like і `ssl=false`.
 - [ ] `db.ts:31` — `logger: !appConfig.isProductionLike`.
 - [ ] `.env.example`, `documentation/backend/configuration.md`.
 - **Критерії:** `test:pg` зелений з `PGSQL_SSL=false`; при `APP_IS_PRODUCTION=true` у stdout немає SQL-statement'ів (spec на logger-конфіг).
 
-### F4 · feat-063d · Frontend/SW/playground — дрібне без зміни контрактів (0.25 д)
+### F4 · feat-068 · Frontend/SW/playground — дрібне без зміни контрактів (0.25 д)
 
 - [ ] `frontend/src/views/UserAccount.vue:393, 420, 450` — `autocomplete="current-password"`; `:398, 403` — `new-password`; `name` на всіх.
 - [ ] `frontend/src/service-worker.ts:494-518` — same-origin перевірка URL; порівняння `pathname`, не `includes`.
@@ -318,7 +318,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## G · 🟡 feat-064 · Регресійне покриття перед рефакторингами
+## G · 🟡 feat-069 · Регресійне покриття перед рефакторингами
 
 **Гілка:** `test/auth-regression-coverage` · **Залежності:** B, B2, F2 (щоб фіксувати вже правильну поведінку) · **Оцінка:** 2 д
 
@@ -356,7 +356,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ## H · 🟢 Рефакторинг auth-сервісів — п'ять окремих PR
 
-**Залежності для всіх:** B2, G, K1 · Принцип: поведінка не змінюється, spec'и з G1 — без правок очікувань. Кожен H — свій feature (`feat-065…069`), щоб відкат був незалежним.
+**Залежності для всіх:** B2, G, K1 · Принцип: поведінка не змінюється, spec'и з G1 — без правок очікувань. Кожен H — свій feature (`feat-070…074`), щоб відкат був незалежним.
 
 ### H1 · `enforceThrottle()` (0.5 д)
 
@@ -400,7 +400,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## I · 🟢 feat-070 · Frontend + shared dedup
+## I · 🟢 feat-075 · Frontend + shared dedup
 
 **Гілка:** `refactor/frontend-shared-dedup` · **Залежності:** G2, G3, K2, K3 · **Оцінка:** 2 д
 
@@ -417,7 +417,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## J · 🟢 feat-071 · Frontend split big components
+## J · 🟢 feat-076 · Frontend split big components
 
 **Гілка:** `refactor/frontend-split-components` · **Залежності:** G2, G3, I · **Оцінка:** 2 д
 
@@ -435,7 +435,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 Перед кожним видаленням: `grep -rn "<name>" packages --include='*.ts' --include='*.vue' | grep -v spec` → 0 production-результатів. Критерій для всіх: `pnpm build` + typecheck + lint + test зелені; `git diff --stat` у `progress.md` як статистика.
 
-### K1 · feat-072 · Backend (0.5 д)
+### K1 · feat-077 · Backend (0.5 д)
 
 - [ ] `vendor/utils/helpers/normalize-user-id.ts`, `helpers/index.ts`; закоментована копія `redis-session-storage.ts:10-43`; `toCanonicalEntityId`, `isAuthorizedEntityRequest` в `entity-id.ts`.
 - [ ] `app/middlewares/test-middleware{,-2,-3,-4}.ts` + `kernel.ts:1-4, 20-23`.
@@ -444,7 +444,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 - [ ] Закоментований код: `index.ts:4,8-9,21-36`; `ws-context.ts:12-28,42-45`; `session-handler.ts:1-2,55-61`.
 - [ ] `serialize-routes.ts:866-951` — лише `isArkType → serializeArkSchema`; `serialize-routes.spec.ts:699-792`.
 
-### K2 · feat-073 · Shared (0.25 д)
+### K2 · feat-078 · Shared (0.25 д)
 
 - [ ] `schemas/auth/register.ts` (дублікат `register-email.ts`); `schemas/activity/` цілком; `index.ts`.
 - [ ] `schemas/query/common.ts:68-84` — прибрати з публічного експорту (або видалити зі spec).
@@ -455,7 +455,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
     (не `as const` на результаті виклику). Якщо десь потрібен літеральний tuple-тип — залишити ручний масив і `satisfies`, а sync-тест у `shared/test/contracts.test.js:16-24` тоді залишається.
 - [ ] `brands/` — залишити (використовується в I).
 
-### K3 · feat-074 · Frontend (0.25 д)
+### K3 · feat-079 · Frontend (0.25 д)
 
 - [ ] `main.ts:368` — мертва гілка `'NEW_VERSION'`.
 - [ ] `stores/state.ts:335` `getClientIP` stub; `:262-330` UA-sniffing — **тільки якщо** backend не використовує `browserName/osName/deviceType` (перевірити `push-subscription-service`, admin-view'и, транформер). Якщо використовує — це зміна контракту → окремий пункт з UA-парсингом на сервері.
@@ -463,7 +463,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## L · 🔵 feat-075 · Repo hygiene (0.5 д, паралельно)
+## L · 🔵 feat-080 · Repo hygiene (0.5 д, паралельно)
 
 - [ ] `progress.md`, `session-handoff.md` — прибрати з `main` (або «see feature branch»); перевірити `init.sh`, `AGENTS.md`.
 - [ ] `.gitignore` + `.pnpm-store/`; `.dockerignore` + `.claude/ .idea/ .omx/ .pnpm-store/ docs/ documentation/ presentation.html`.
@@ -475,7 +475,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## M · 🔵 feat-076 · Schema (окремий PR з міграцією, 0.5 д)
+## M · 🔵 feat-081 · Schema (окремий PR з міграцією, 0.5 д)
 
 - [ ] `schema.ts:305-307` `llm_text_usage.user_id` → `onDelete: 'set null'` — **рішення продукту**: чи usage-історія переживає видалення юзера (GDPR-міркування: `set null` зберігає промпт без зв'язку з юзером — узгодити з F1).
 - [ ] `schema.ts:360` `support_chat_history` → індекс `(user_id, created_at)`.
@@ -483,7 +483,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## N · 🔵 feat-077 · Env-парсери — єдиний контракт (0.5 д)
+## N · 🔵 feat-082 · Env-парсери — єдиний контракт (0.5 д)
 
 **Зміна поведінки**, тому окремо від H: `config/auth.ts:1-7` приймає `'1'|'true'`, `vendor/utils/env/parse-boolean.ts` — ще `'yes'|'on'`; `parseNumberFlag` (`auth.ts:9-16`) через `Number()` приймає `1e3`, `0x10`, від'ємні.
 
@@ -494,7 +494,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## O · 🔵 feat-078 · Locale-стаби — рішення продукту (0.25 д після рішення)
+## O · 🔵 feat-083 · Locale-стаби — рішення продукту (0.25 д після рішення)
 
 **Зміна поведінки UI**, тому окремо: 17 файлів `locales/*.ts` — `export default en`; `APP_LOCALE_CODES` рекламує 18 мов.
 
@@ -509,24 +509,24 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 | #     | Feature      | Що                                                                                                  | Пріоритет | Залежності     | Оцінка  |
 | ----- | ------------ | --------------------------------------------------------------------------------------------------- | --------- | -------------- | ------- |
 | A     | feat-058     | IDOR push-підписок                                                                                  | 🔴        | —              | 0.5 д   |
-| B     | feat-059     | Відкликання сесій: звірка `userToken` з БД (без кешу), ротація в `changePassword`/`logoutAll`/reset | 🔴        | —              | 1.5–2 д |
-| B2    | feat-059b    | Гонка одноразових токенів — транзакційний claim-then-act                                            | 🔴        | **B**          | 0.5–1 д |
-| B3    | feat-059c    | Кеш `userToken` з визначеною `SESSION_REVOCATION_MAX_DELAY` (опційно, за бенчмарком з B)            | 🟠        | B              | 1 д     |
-| C     | feat-060     | Відкликання WS admin: pub/sub + періодична перевірка підписок                                       | 🔴        | —              | 1.5 д   |
-| D     | feat-061     | Support chat: admit-контракт у WS, lock з власником, атомарний бюджет, multipart                    | 🟠        | A              | 2.5 д   |
-| E     | feat-062     | OAuth-токени (міграція)                                                                             | 🟠        | —              | 1 д     |
-| F1    | feat-063a    | Prompt retention policy (міграція, purge)                                                           | 🟠        | рішення        | 1 д     |
-| F2    | feat-063b    | Auth-контракт: unverified login, timing реєстрації                                                  | 🟠        | —              | 0.5 д   |
-| F3    | feat-063c    | `PGSQL_SSL`, SQL-логер                                                                              | 🟠        | —              | 0.25 д  |
-| F4    | feat-063d    | Frontend/SW/playground дрібне                                                                       | 🟠        | —              | 0.25 д  |
-| G     | feat-064     | Регресійне покриття: snapshot auth, e2e на mocks, e2e з реальним backend                            | 🟡        | B, B2, F2      | 2 д     |
-| H1–H5 | feat-065…069 | Auth refactor по кроку                                                                              | 🟢        | B2, G, K1      | 4 д     |
-| I     | feat-070     | FE/shared dedup                                                                                     | 🟢        | G2, G3, K2, K3 | 2 д     |
-| J     | feat-071     | FE split components                                                                                 | 🟢        | G2, G3, I      | 2 д     |
-| K1–K3 | feat-072…074 | Dead code backend / shared / frontend                                                               | 🟢        | —              | 1 д     |
-| L     | feat-075     | Repo hygiene, lint, CI pins                                                                         | 🔵        | —              | 0.5 д   |
-| M     | feat-076     | Schema (cascade, index)                                                                             | 🔵        | F1 рішення     | 0.5 д   |
-| N     | feat-077     | Env-парсери — контракт                                                                              | 🔵        | —              | 0.5 д   |
-| O     | feat-078     | Locale-стаби — рішення продукту                                                                     | 🔵        | рішення        | 0.25 д  |
+| B     | feat-059     | Відкликання сесій: звірка `userToken` з БД (без кешу), ротація в `changePassword`/`logoutAll`/reset | 🔴        | A              | 1.5–2 д |
+| B2    | feat-060     | Гонка одноразових токенів — транзакційний claim-then-act                                            | 🔴        | **B**          | 0.5–1 д |
+| B3    | feat-061     | Кеш `userToken` з визначеною `SESSION_REVOCATION_MAX_DELAY` (опційно, за бенчмарком з B)            | 🟠        | B              | 1 д     |
+| C     | feat-062     | Відкликання WS admin: pub/sub + періодична перевірка підписок                                       | 🔴        | —              | 1.5 д   |
+| D     | feat-063     | Support chat: admit-контракт у WS, lock з власником, атомарний бюджет, multipart                    | 🟠        | A              | 2.5 д   |
+| E     | feat-064     | OAuth-токени (міграція)                                                                             | 🟠        | —              | 1 д     |
+| F1    | feat-065     | Prompt retention policy (міграція, purge)                                                           | 🟠        | рішення        | 1 д     |
+| F2    | feat-066     | Auth-контракт: unverified login, timing реєстрації                                                  | 🟠        | —              | 0.5 д   |
+| F3    | feat-067     | `PGSQL_SSL`, SQL-логер                                                                              | 🟠        | —              | 0.25 д  |
+| F4    | feat-068     | Frontend/SW/playground дрібне                                                                       | 🟠        | —              | 0.25 д  |
+| G     | feat-069     | Регресійне покриття: snapshot auth, e2e на mocks, e2e з реальним backend                            | 🟡        | B, B2, F2      | 2 д     |
+| H1–H5 | feat-070…074 | Auth refactor по кроку                                                                              | 🟢        | B2, G, K1      | 4 д     |
+| I     | feat-075     | FE/shared dedup                                                                                     | 🟢        | G2, G3, K2, K3 | 2 д     |
+| J     | feat-076     | FE split components                                                                                 | 🟢        | G2, G3, I      | 2 д     |
+| K1–K3 | feat-077…079 | Dead code backend / shared / frontend                                                               | 🟢        | —              | 1 д     |
+| L     | feat-080     | Repo hygiene, lint, CI pins                                                                         | 🔵        | —              | 0.5 д   |
+| M     | feat-081     | Schema (cascade, index)                                                                             | 🔵        | F1 рішення     | 0.5 д   |
+| N     | feat-082     | Env-парсери — контракт                                                                              | 🔵        | —              | 0.5 д   |
+| O     | feat-083     | Locale-стаби — рішення продукту                                                                     | 🔵        | рішення        | 0.25 д  |
 
 Рішення, які потрібні від власника продукту до старту відповідної фази: F1 (що зберігати з промптів і скільки), D3 (пагінація історії в UI), M (usage після видалення юзера), O (список мов), K3 (чи потрібні `browserName/osName/deviceType` на сервері).
