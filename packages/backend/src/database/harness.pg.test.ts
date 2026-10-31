@@ -26,7 +26,9 @@ describe.skipIf(!hasPg)('pg test harness', async () => {
     })
 
     it('has the vector extension', async () => {
-        const result = await db.execute(sql`SELECT 1 FROM pg_extension WHERE extname = 'vector'`)
+        const result = await db.execute<{ '?column?': number }>(
+            sql`SELECT 1 FROM pg_extension WHERE extname = 'vector'`,
+        )
         expect(result.rows).toHaveLength(1)
     })
 
@@ -39,7 +41,7 @@ describe.skipIf(!hasPg)('pg test harness', async () => {
         )
         expect(Number(result.rows[0]?.count)).toBe(folders.length)
 
-        const tables = await db.execute(
+        const tables = await db.execute<{ '?column?': number }>(
             sql`SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users'`,
         )
         expect(tables.rows).toHaveLength(1)

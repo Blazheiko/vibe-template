@@ -70,7 +70,7 @@ Generated output such as `dist/`, `node_modules/`, Playwright reports, and cover
 - TypeScript is pinned to `6.0.3` at the workspace root and frontend package. Keep package-level TypeScript pins aligned unless a package has an explicit compatibility reason to diverge.
 - The workspace uses `pnpm.overrides` to keep `@typescript-eslint/*` packages on a TypeScript 6-compatible line. Update those overrides together with `typescript-eslint`.
 - Backend `tsconfig.json` path aliases use explicit relative targets such as `./src/app/*`; do not reintroduce `baseUrl`, which is deprecated in TypeScript 6 and scheduled to stop working in TypeScript 7.
-- `drizzle-orm` and `drizzle-kit` are pinned to the release candidate `1.0.0-rc.4` (no stable 1.0 yet). Upgrade both together to the same exact version, and move to `1.0.0` once it is released. Relations use Relational Queries v2 (`defineRelations` in `packages/backend/src/database/relations.ts`); migrations use the 1.0 folder-per-migration format.
+- `drizzle-orm` and `drizzle-kit` are pinned to the release candidate `1.0.0-rc.5` (no stable 1.0 yet). Upgrade both together to the same exact version, and move to `1.0.0` once it is released. Relations use Relational Queries v2 (`defineRelations` in `packages/backend/src/database/relations.ts`); migrations use the 1.0 folder-per-migration format.
 
 ## Coding Style & Naming Conventions
 

@@ -1,6 +1,6 @@
 # База даних
 
-Бекенд працює з PostgreSQL через Drizzle ORM. Пакети `drizzle-orm` і `drizzle-kit` закріплені на релізі-кандидаті `1.0.0-rc.4` у [`packages/backend/package.json`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json); оновлювати їх слід разом і на ту саму точну версію. Драйвер — `pg` (`node-postgres`). Redis використовується окремо — як сховище сесій та для тротлінгу.
+Бекенд працює з PostgreSQL через Drizzle ORM. Пакети `drizzle-orm` і `drizzle-kit` закріплені на релізі-кандидаті `1.0.0-rc.5` у [`packages/backend/package.json`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json); оновлювати їх слід разом і на ту саму точну версію. Драйвер — `pg` (`node-postgres`). Redis використовується окремо — як сховище сесій та для тротлінгу.
 
 ## Коротко на прикладі: додати колонку
 
@@ -149,7 +149,7 @@ SELECT extversion FROM pg_extension WHERE extname = 'vector';
 
 ## Міграції
 
-Міграції лежать у [`src/drizzle/migrations`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations) у форматі Drizzle 1.0 «тека на міграцію»: кожна тека `<timestamp>_<name>` містить `migration.sql` і `snapshot.json`:
+Міграції лежать у [`src/drizzle/migrations`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations) у форматі Drizzle 1.0 «тека на міграцію»: кожна тека `<timestamp>_<name>` містить `migration.sql` і `snapshot.json`. З `1.0.0-rc.5` snapshot інкрементальні (версія `9`): перша міграція зберігає повну схему (`ddl`), наступні — лише різницю (`deltas`). Snapshot старішого формату drizzle-kit не приймає і просить виконати `drizzle-kit up`; SQL міграцій ця конвертація не змінює:
 
 | Міграція                                                                                                                                                                              | Що робить                                                                                                                                                                                                                                                                                                                                |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

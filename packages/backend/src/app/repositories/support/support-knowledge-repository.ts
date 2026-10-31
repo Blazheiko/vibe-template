@@ -151,7 +151,14 @@ export const supportKnowledgeRepository = {
         maxDistance?: number,
     ): Promise<KbSearchResult[]> {
         const kb = supportKnowledgeBase
-        const result = await db.execute(
+        const result = await db.execute<{
+            id: bigint | string
+            title: string
+            content: string
+            screenshot_key: string | null
+            screenshot_mime: string | null
+            distance: number | string
+        }>(
             sql`
                 SELECT ${kb.id} AS id, ${kb.title} AS title, ${kb.content} AS content,
                        ${kb.screenshotKey} AS screenshot_key, ${kb.screenshotMime} AS screenshot_mime,
@@ -165,16 +172,7 @@ export const supportKnowledgeRepository = {
             `,
         )
 
-        return (
-            result.rows as {
-                id: bigint | string
-                title: string
-                content: string
-                screenshot_key: string | null
-                screenshot_mime: string | null
-                distance: number | string
-            }[]
-        ).map((row) => ({
+        return result.rows.map((row) => ({
             id: typeof row.id === 'string' ? BigInt(row.id) : row.id,
             title: row.title,
             content: row.content,
