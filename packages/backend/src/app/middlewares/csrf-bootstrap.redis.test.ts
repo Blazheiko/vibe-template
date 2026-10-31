@@ -65,6 +65,7 @@ const { default: executeMiddlewares } =
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { createAnonSessionToken } = await import('#vendor/utils/session/token-handler.js')
+const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
 
 const admin = createTestRedis(PREFIX)
 
@@ -492,5 +493,92 @@ describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', ()
         const next = await mutate(anon, anonToken)
         expect(next.passed).toBe(true)
         expect(next.context.auth.getUserId()).toBeNull()
+    })
+})
+
+describe.skipIf(!hasRedis)('stale anonymous cookie refresh (feat-057 review)', () => {
+    const nowSec = (): number => Math.floor(Date.now() / 1000)
+    /** An anonymous cookie past the refresh interval: every request re-issues it. */
+    const aged = (csrfToken: string, sessionId = crypto.randomUUID()) => ({
+        cookie: anonCookie(nowSec() - 16 * 60, csrfToken, sessionId),
+        csrfToken,
+        sessionId,
+    })
+
+    it('a slow response does not overwrite the cookie of a login made meanwhile', async () => {
+        const anon = aged('g'.repeat(43))
+        // R1 starts with the aged cookie: its chain prepares a re-issued anonymous cookie ...
+        const slow = await mutate(anon.cookie, anon.csrfToken)
+        expect(slow.cookie).toEqual(expect.any(String))
+        // ... R2 logs in with the same cookie ...
+        const signIn = await mutate(anon.cookie, anon.csrfToken)
+        await signIn.context.auth.login('49', 'raceUserToken00001')
+        // ... and R1 answers after it.
+        await slow.context.session.beforeSend?.()
+
+        expect(slow.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(false)
+    })
+
+    it('a slow response does not overwrite the cookie of a session moved to Redis meanwhile', async () => {
+        const anon = aged('h'.repeat(43))
+        const slow = await mutate(anon.cookie, anon.csrfToken)
+        const oauth = await mutate(anon.cookie, anon.csrfToken)
+        await oauth.context.session.updateSessionData({ oauthState: 'state-2' })
+
+        await slow.context.session.beforeSend?.()
+
+        expect(slow.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(false)
+        // The stored session and its data stay reachable with R2's cookie.
+        const stored = oauth.context.responseData.cookies.get(sessionConfig.cookieName)?.value
+        const next = await mutate(stored, anon.csrfToken)
+        expect(next.context.session.sessionInfo?.data['oauthState']).toBe('state-2')
+    })
+
+    it('an unchallenged refresh keeps its cookie', async () => {
+        const anon = aged('i'.repeat(43))
+        const response = await mutate(anon.cookie, anon.csrfToken)
+
+        await response.context.session.beforeSend?.()
+
+        expect(response.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(true)
+    })
+
+    it('a request that moved its own session to Redis keeps its cookie', async () => {
+        const anon = aged('j'.repeat(43))
+        const response = await mutate(anon.cookie, anon.csrfToken)
+        await response.context.session.updateSessionData({ oauthState: 'state-3' })
+
+        await response.context.session.beforeSend?.()
+
+        expect(response.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(true)
+    })
+
+    it('a fresh anonymous cookie under the legacy name is re-issued under the active one', async () => {
+        const csrfToken = 'k'.repeat(43)
+        const responseData = createResponseData()
+        const context = createContext(
+            {
+                method: 'get',
+                ip: '127.0.0.1',
+                params: {},
+                payload: {},
+                query: null,
+                headers: new Map(),
+                contentType: 'application/json',
+                cookies: new Map(),
+                isJson: true,
+                files: null,
+                hasFile: () => false,
+            },
+            responseData,
+        )
+
+        // What session_web does for a cookie found only under the legacy name.
+        await sessionHandler(context, anonCookie(nowSec() - 60, csrfToken), undefined, true)
+
+        expect(responseData.cookies.get(sessionConfig.cookieName)?.value).toEqual(
+            expect.any(String),
+        )
+        expect(context.session.sessionInfo?.data.csrfToken).toBe(csrfToken)
     })
 })

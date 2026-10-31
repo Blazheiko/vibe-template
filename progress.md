@@ -19,6 +19,8 @@
 - [x] `redis-session-storage.ts`: TTL by kind (`anon_session` → `anonAge`); `config/session.ts`: `anonAge` from `SESSION_ANON_TTL` (default `2h`, a non-positive duration throws at start)
 - [x] Docs: `backend/auth.md` (new «Анонімна сесія» section, TTL table, rotation, diagram), `security.md`, `controllers.md`, `configuration.md`; `.env.example`
 
+- [x] Review of PR #184 (REQUEST CHANGES): (1) HIGH — a slow anonymous response re-issuing its aged cookie could overwrite the cookie of a login or an OAuth move to Redis made meanwhile; the re-issue now goes through `beforeSend` (`discardStaleSessionCookie`): login from a cookie-held session leaves `session_superseded:<id>` (15 min), a move to Redis leaves `session:anon_session:<id>`; either one holds the late cookie back, a request that swapped its own session keeps it, a failed check drops it. (2) MEDIUM — a fresh anonymous cookie found only under the legacy name is now re-issued under the active one (`forceCookie`). Tests first: login race, Redis-move race, unchallenged refresh, own move, legacy name (Redis); failed check (unit)
+
 ### Behaviour change to know
 
 A cookie-held anonymous session cannot be revoked before its TTL: after login the old anonymous cookie + token still pass the CSRF check, but only as an anonymous session; the token does not sign requests of the user's session (test «an anonymous cookie never opens the session of the user who logged in with it»). Previously login deleted the anonymous record, so the old pair got `403`.

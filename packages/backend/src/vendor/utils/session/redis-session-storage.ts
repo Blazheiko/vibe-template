@@ -84,6 +84,24 @@ export const markCookieIssued = async (sessionId: string, ttlSeconds: number): P
     await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds))
 }
 
+// A cookie-held anonymous session has no record a late response could check, so login
+// leaves this marker for its id (feat-057): a slower response of the same anonymous
+// session must not re-issue that cookie over the login's one.
+export const markAnonSessionSuperseded = async (
+    sessionId: string,
+    ttlSeconds: number,
+): Promise<void> => {
+    const key = sanitizeRedisKey(`session_superseded:${sessionId}`)
+    await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds))
+}
+
+/** Whether a cookie-held anonymous session was signed in from or moved to Redis. */
+export const anonSessionSuperseded = async (sessionId: string): Promise<boolean> => {
+    const superseded = sanitizeRedisKey(`session_superseded:${sessionId}`)
+    const stored = sanitizeRedisKey(`session:anon_session:${sessionId}`)
+    return (await withRedis(() => redis.exists(superseded, stored))) > 0
+}
+
 /** Whether the session record still exists; unlike getSession it does not extend its TTL. */
 export const sessionExists = async (sessionId: string, userToken: string): Promise<boolean> => {
     const key = sanitizeRedisKey(`session:${userToken}:${sessionId}`)

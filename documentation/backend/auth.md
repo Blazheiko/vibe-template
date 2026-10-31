@@ -146,6 +146,8 @@ async getProfile(context: HttpContext): Promise<ProfileResponse> {
 
 - Cookie: `base64("anon-v1.<sessionId>.<csrfToken>.<issuedAt>.<signature>")`, підпис — той самий HMAC з `APP_KEY`. Префікс `anon-v1` розділяє підписи: cookie сесії користувача не перевіряється як анонімна і навпаки.
 - Дійсна, поки з `issuedAt` минуло менше `SESSION_ANON_TTL`. Коли їй більше 15 хвилин, сервер видає її знову з новим `issuedAt` і тим самим `sessionId` та токеном (ковзний строк дії, лише `Set-Cookie`).
+- Повторно видана cookie проходить ту саму перевірку перед відправкою (`beforeSend`), що й cookie сесії в Redis: якщо тим часом інший запит цієї сесії виконав вхід (лишає маркер `session_superseded:<sessionId>` на 15 хвилин) або переніс її в Redis (`session:anon_session:<sessionId>`), повільна відповідь не надсилає свою cookie і не перезаписує нову. Запит, що сам змінив сесію, свою cookie зберігає. Якщо перевірка не вдалася (Redis недоступний), cookie з відповіді прибирається.
+- Cookie, знайдена лише під застарілим ім'ям `uapi`, видається під активним ім'ям одразу, незалежно від віку.
 - CSRF працює як раніше: `sessionInfo.data.csrfToken` береться з cookie, `session_web` віддає його в 401/403, `csrf_guard` порівнює його з заголовком.
 - Відкликати таку cookie до кінця строку дії не можна. Прав вона не дає: після входу стара анонімна cookie відкриває лише анонімну сесію, а її токен не підходить до сесії користувача.
 - Щойно код записує в анонімну сесію дані (`updateSessionData` / `changeSessionData`, напр. OAuth `state`), вона переходить у Redis як `session:anon_session:<sessionId>` з TTL `SESSION_ANON_TTL`, а cookie — у формат `anon_session.<sessionId>`.
