@@ -581,7 +581,7 @@
             "owner": "Blazheiko",
             "branch": "fix/session-revocation",
             "dependencies": ["feat-058"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {

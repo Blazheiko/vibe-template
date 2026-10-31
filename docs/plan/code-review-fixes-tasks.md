@@ -52,7 +52,7 @@
 | F1   | feat-065 | H5   | feat-074 | I    | feat-075 |
 | F2   | feat-066 | J    | feat-076 |      |          |
 
-Рішення архітектури для B — [`docs/adr/0002-session-revocation-via-user-token.md`](../adr/0002-session-revocation-via-user-token.md) (чернетка).
+Рішення архітектури для B — [`docs/adr/0002-session-revocation-via-user-token.md`](../adr/0002-session-revocation-via-user-token.md) (прийнято).
 
 ## Рекомендований порядок
 
