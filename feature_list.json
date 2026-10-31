@@ -581,8 +581,8 @@
             "owner": "Blazheiko",
             "branch": "fix/session-revocation",
             "dependencies": ["feat-058"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #192 (merge 5837fdb): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1200, frontend 168, api-playground 14, shared 14, docs 26), test:pg 45 with Redis / 37 without (+8 session-revocation on real PostgreSQL and Redis: cleanup failure -> first request after recovery already 401, concurrent change-password -> one winner, database down -> 503, deleted user; 4 of 8 fail with the token check neutralised), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 45, none skipped); cost p50 0.10 -> 0.37 ms per sessionHandler on local PostgreSQL"
         },
         {
             "id": "feat-060",
