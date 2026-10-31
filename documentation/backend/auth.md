@@ -23,10 +23,12 @@
 
 ```text
 uwebsocket:session:<userId>:<sessionId>          сесія залогіненого користувача
-uwebsocket:session:anon_session:<sessionId>      гостьова сесія (до входу)
+uwebsocket:session:anon_session:<sessionId>      гостьова сесія, лише якщо вона зберігає дані (OAuth state)
 uwebsocket:auth:throttle:login_ip:127.0.0.1      лічильник спроб входу з IP
 uwebsocket:auth:ws:<token>                       одноразовий WebSocket-токен (60 с)
 ```
+
+Звичайна гостьова сесія (до входу) в Redis не пишеться: вона живе в підписаній cookie (див. [Анонімна сесія](#анонімна-сесія)).
 
 Нижче описано формат cookie, підпис, ротацію і решту механізмів.
 
@@ -119,7 +121,7 @@ async getProfile(context: HttpContext): Promise<ProfileResponse> {
 
 Сесію створює і перевіряє [`session-handler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts), а підпис робить [`token-handler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/token-handler.ts).
 
-- Значення до підпису: `<userToken>.<sessionId>`. Для анонімної сесії замість `userToken` стоїть рядок `anon_session`.
+- Значення до підпису: `<userToken>.<sessionId>`. Для анонімної сесії, збереженої в Redis, замість `userToken` стоїть рядок `anon_session`. Анонімна сесія без Redis має власний формат — див. [Анонімна сесія](#анонімна-сесія).
 - `sessionId` генерується через `crypto.randomUUID()`.
 - Підпис: HMAC-SHA256 з ключем `APP_KEY`, hex-рядок обрізаний до 32 символів. Підпис дописується через крапку, а результат кодується в base64: `base64("<userToken>.<sessionId>.<signature>")`.
 - Під час перевірки підписи порівнюються через `crypto.timingSafeEqual`. Токен має складатися рівно з 3 частин, а `userToken` має відповідати шаблону `^[a-zA-Z0-9_-]{10,}$`.
@@ -133,9 +135,24 @@ async getProfile(context: HttpContext): Promise<ProfileResponse> {
 | `path` / `httpOnly`          | `/` / `true`                                                                                                                               |
 | `secure`                     | `true` для будь-якого `APP_ENV`, крім `local`                                                                                              |
 | `sameSite`                   | `Lax`                                                                                                                                      |
-| TTL (`age`, `maxAge`, Redis) | 24 години (`duration('24h')`)                                                                                                              |
+| TTL (`age`, `maxAge`, Redis) | 24 години (`duration('24h')`) для сесії користувача                                                                                        |
+| TTL анонімної сесії          | `SESSION_ANON_TTL` (`anonAge`), за замовчуванням `2h`: і для cookie, і для анонімної сесії в Redis                                         |
 
 Поки триває перехід на нове ім'я, [`resolve-session-cookie.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/resolve-session-cookie.ts) спершу шукає активне ім'я cookie, а потім застаріле `uapi`. Якщо знайдено лише застаріле ім'я, [`delete-legacy-session-cookie.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/delete-legacy-session-cookie.ts) надсилає `Set-Cookie`, який видаляє стару cookie. Під час старту [`validate-runtime-config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/validate-runtime-config.ts) перевіряє, що при `__Host-` префіксі cookie має `Secure=true`, а `APP_URL` починається з `https://`.
+
+### Анонімна сесія
+
+Запит без cookie (або з невалідною чи простроченою) отримує анонімну сесію з CSRF-токеном — без запису в Redis (feat-057). Інакше кожен запит бота до `main/init` залишав би в Redis сесію на добу.
+
+- Cookie: `base64("anon-v1.<sessionId>.<csrfToken>.<issuedAt>.<signature>")`, підпис — той самий HMAC з `APP_KEY`. Префікс `anon-v1` розділяє підписи: cookie сесії користувача не перевіряється як анонімна і навпаки.
+- Дійсна, поки з `issuedAt` минуло менше `SESSION_ANON_TTL`. Коли їй більше 15 хвилин, сервер видає її знову з новим `issuedAt` і тим самим `sessionId` та токеном (ковзний строк дії, лише `Set-Cookie`).
+- Повторно видана анонімна cookie проходить ту саму перевірку перед відправкою (`beforeSend`), що й cookie сесії в Redis: якщо тим часом інший запит цієї сесії виконав вхід (вхід лишає маркер `session_superseded:<sessionId>` на 15 хвилин для будь-якої попередньої анонімної сесії) або переніс її в Redis (`session:anon_session:<sessionId>`), повільна відповідь свою cookie не надсилає.
+- Запит, що сам переніс сесію в Redis, перед відправкою перевіряє лише маркер входу: власний запис у Redis не заважає його cookie, а вхід, зроблений тим часом, — заважає. Вхід також видаляє запис `anon_session`, якщо паралельний запит устиг його створити.
+- Запит, що сам виконав вхід або вихід, свою cookie зберігає. Якщо перевірка не вдалася (Redis недоступний), cookie з відповіді прибирається.
+- Cookie, знайдена лише під застарілим ім'ям `uapi`, видається під активним ім'ям одразу, незалежно від віку.
+- CSRF працює як раніше: `sessionInfo.data.csrfToken` береться з cookie, `session_web` віддає його в 401/403, `csrf_guard` порівнює його з заголовком.
+- Відкликати таку cookie до кінця строку дії не можна. Прав вона не дає: після входу стара анонімна cookie відкриває лише анонімну сесію, а її токен не підходить до сесії користувача.
+- Щойно код записує в анонімну сесію дані (`updateSessionData` / `changeSessionData`, напр. OAuth `state`), вона переходить у Redis як `session:anon_session:<sessionId>` з TTL `SESSION_ANON_TTL`, а cookie — у формат `anon_session.<sessionId>`.
 
 ### Redis як джерело істини
 
@@ -154,21 +171,21 @@ async getProfile(context: HttpContext): Promise<ProfileResponse> {
 Сесії зберігає [`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts):
 
 - Ключ має вигляд `session:<userToken|anon_session>:<sessionId>`. Перед кожною операцією `sanitizeRedisKey` перевіряє його: дозволено лише `[a-zA-Z0-9:_*-]`, довжина не більше 86 символів.
-- Запис робиться через `SETEX` з TTL `age`, читання — через `GETEX ... EX age`. Тобто кожне читання продовжує життя сесії (ковзний TTL).
-- Якщо підпис валідний, але ключа в Redis немає, створюється нова анонімна сесія.
+- Запис робиться через `SETEX`, читання — через `GETEX ... EX`, з TTL `age` для сесії користувача і `anonAge` для `anon_session`. Тобто кожне читання продовжує життя сесії (ковзний TTL).
+- Якщо підпис валідний, але ключа в Redis немає, видається нова анонімна сесія (у cookie, без запису).
 - `destroyAllSessions` (виклик `logoutAll`) знаходить ключі через `SCAN MATCH session:<userToken>:*` порціями по 100, а не через `KEYS`.
 - **Межа `logoutAll`.** Увесь цикл `SCAN`/`DEL` обмежений дедлайном `REDIS_LOGOUT_ALL_DEADLINE_MS` (2000 мс), що рахується від його початку. Перед кожним `await` обчислюється залишок бюджету, і команда очікується не довше `min(залишок, REDIS_COMMAND_TIMEOUT_MS)`. Успіх (`deletedCount`) повертається **лише** якщо `SCAN` дійшов до курсора `0`, тобто всі сесії видалено. Якщо дедлайн вичерпано або команда отримала `RedisUnavailableError` — `503 service_unavailable` з `Retry-After: 1`, без `deletedCount`. Уже видалені сесії лишаються видаленими (`DEL` ідемпотентний), повторний виклик дочищає решту:
     - **поточна сесія видаляється останньою**, лише після курсора `0`, тож після `503` клієнт лишається автентифікованим і може повторити запит (з тим самим CSRF-токеном);
     - **курсор `SCAN` зберігається** в `logout_all:cursor:<userToken>:<sessionId>` (TTL 600 с) після кожної порції, і повтор `logoutAll` з тієї самої сесії продовжує з нього, а не з `0`, тому на великій базі повтори просуваються. Сесії, створені між спробами позаду збереженого курсора, продовжений обхід не бачить;
     - **повне відкликання** (скидання пароля, виклик без поточної сесії) завжди обходить базу з `0` і курсор не читає й не пише: прогрес перерваного `logoutAll`, який пропустив свою сесію, не може приховати її від відкликання.
 
-Middleware `session_web` ([`session-web.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/ws/session-web.ts)) читає cookie, а `session_api` ([`session-api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/http/session-api.ts)) бере той самий підписаний токен із заголовка `Authorization: Bearer <token>`. Cookie нової сесії видається одразу, а cookie незміненої сесії — повторно не частіше ніж раз на годину, щоб продовжити строк дії. Момент оновлення визначає окремий ключ `session_cookie_refresh:<sessionId>` (`SET NX EX 3600`): запис сесії при цьому не переписується, тож оновлення не може відновити сесію, яку інший запит щойно видалив. Нова сесія ставить цей ключ одразу; якщо запис ключа не вдається, сесія все одно створюється (помилка лише логується), і cookie просто буде оновлено раніше. Перед відправкою відповіді (`context.session.beforeSend` після хендлера) сервер перевіряє, що сесія, чию cookie повторно видає запит, ще існує: повільна відповідь не повертає браузеру cookie сесії, яку тим часом замінив інший запит (зміна пароля, logout-all). Запити, що самі змінили сесію (login, logout), свою cookie зберігають. Якщо ця перевірка не вдається (Redis недоступний), cookie з відповіді прибирається, а відповідь хендлера лишається без змін. Залишковий ризик: браузер може отримати відповіді в іншому порядку, ніж сервер їх відправив, і зберегти cookie вже видаленої сесії. Тоді наступний запит отримує нову анонімну сесію (користувач входить знову); прав видаленої сесії він не отримує.
+Middleware `session_web` ([`session-web.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/ws/session-web.ts)) читає cookie, а `session_api` ([`session-api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/http/session-api.ts)) бере той самий підписаний токен із заголовка `Authorization: Bearer <token>`. Cookie нової сесії видається одразу, а cookie незміненої сесії в Redis — повторно не частіше ніж раз на годину, щоб продовжити строк дії. Момент оновлення визначає окремий ключ `session_cookie_refresh:<sessionId>` (`SET NX EX 3600`): запис сесії при цьому не переписується, тож оновлення не може відновити сесію, яку інший запит щойно видалив. Нова сесія користувача ставить цей ключ одразу; якщо запис ключа не вдається, сесія все одно створюється (помилка лише логується), і cookie просто буде оновлено раніше. Перед відправкою відповіді (`context.session.beforeSend` після хендлера) сервер перевіряє, що сесія, чию cookie повторно видає запит, ще існує: повільна відповідь не повертає браузеру cookie сесії, яку тим часом замінив інший запит (зміна пароля, logout-all). Запити, що самі змінили сесію (login, logout), свою cookie зберігають. Якщо ця перевірка не вдається (Redis недоступний), cookie з відповіді прибирається, а відповідь хендлера лишається без змін. Залишковий ризик: браузер може отримати відповіді в іншому порядку, ніж сервер їх відправив, і зберегти cookie вже видаленої сесії. Тоді наступний запит отримує нову анонімну сесію (користувач входить знову); прав видаленої сесії він не отримує.
 
 ### Ротація
 
-- `auth.login(userId, userToken)` видаляє попередню сесію — і автентифіковану, і анонімну — і створює нову з новим `sessionId` та новим CSRF-токеном. Стара cookie після цього відкриває вже нову анонімну сесію з іншим токеном, тож мутація зі старим токеном отримує `403 token_mismatch`. Це захищає від session fixation.
-- `auth.logout()` видаляє поточну сесію і видає нову анонімну.
-- `auth.logoutAll()` видаляє всі сесії користувача і видає нову анонімну.
+- `auth.login(userId, userToken)` видаляє попередню сесію з Redis (автентифіковану або збережену анонімну) і створює нову з новим `sessionId` та новим CSRF-токеном. Стара cookie сесії з Redis після цього відкриває нову анонімну сесію з іншим токеном, тож мутація зі старим токеном отримує `403 token_mismatch`. Анонімна cookie без Redis лишається дійсною до кінця свого строку, але відкриває лише анонімну сесію; токен з неї не підходить до сесії користувача. Це захищає від session fixation.
+- `auth.logout()` видаляє поточну сесію і видає нову анонімну (у cookie).
+- `auth.logoutAll()` видаляє всі сесії користувача і видає нову анонімну (у cookie).
 - Після `login`/`logout`/`logoutAll` хелпери `context.session.*` у тому ж запиті працюють уже з новою сесією.
 - Ротація лише CSRF-токена без зміни `sessionId` не використовується: зміна автентифікації завжди означає новий `sessionId`.
 
@@ -190,15 +207,18 @@ sequenceDiagram
     participant B as Браузер
     participant S as session_web
     participant R as Redis
-    B->>S: Cookie __Host-uapi=base64(token.sid.sig)
-    S->>S: verifySignedToken (HMAC, timingSafeEqual)
-    S->>R: GETEX session:token:sid EX 86400
-    alt сесію знайдено
-        R-->>S: SessionInfo
-    else немає або підпис невалідний
-        S->>R: SETEX session:anon_session:newSid
+    B->>S: Cookie __Host-uapi=base64(...)
+    alt анонімна cookie (anon-v1), підпис і строк дійсні
+        S->>S: verifyAnonSessionToken — сесія з cookie, Redis не потрібен
+    else cookie сесії в Redis
+        S->>S: verifySignedToken (HMAC, timingSafeEqual)
+        S->>R: GETEX session:token:sid EX ttl
+        R-->>S: SessionInfo або нічого
     end
-    S-->>B: Set-Cookie з оновленим строком дії
+    opt сесії немає або підпис невалідний
+        S->>S: нова анонімна сесія (без запису в Redis)
+    end
+    S-->>B: Set-Cookie, якщо сесія нова або строк дії треба продовжити
 ```
 
 ## Способи входу

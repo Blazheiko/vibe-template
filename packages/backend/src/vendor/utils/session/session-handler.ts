@@ -20,11 +20,19 @@ import {
     claimCookieRefresh,
     markCookieIssued,
     sessionExists,
+    markAnonSessionSuperseded,
+    anonSessionSuperseded,
+    anonSessionSignedIn,
 } from '#vendor/utils/session/redis-session-storage.js'
 import logger from '#vendor/utils/logger.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
-import { createSignedToken, verifySignedToken } from '#vendor/utils/session/token-handler.js'
+import {
+    createAnonSessionToken,
+    createSignedToken,
+    verifyAnonSessionToken,
+    verifySignedToken,
+} from '#vendor/utils/session/token-handler.js'
 import type { ResponseData } from '#vendor/types/types.js'
 import { generateCsrfToken, isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
 
@@ -62,6 +70,14 @@ const COOKIE_REFRESH_SECONDS = 60 * 60
 // Requests that re-send the cookie of the session they arrived with; checked again
 // before the response goes out (discardStaleSessionCookie).
 const pendingCookieRefresh = new WeakMap<HttpContext, { sessionId: string; userToken: string }>()
+// Requests that re-issue a cookie-held anonymous session (id), checked the same way.
+const pendingAnonRefresh = new WeakMap<HttpContext, string>()
+// Requests that moved their anonymous session to Redis (id). Their own record is no
+// sign of a change, but a login made meanwhile is: its cookie must not be undone.
+const pendingAnonPromotion = new WeakMap<HttpContext, string>()
+// Requests that replaced their session themselves (login, logout): their own
+// Set-Cookie is the current one and is never held back.
+const swappedSession = new WeakSet<HttpContext>()
 
 const createSessionInfo = async (data: SessionData = {}): Promise<SessionInfo> => {
     const session: SessionInfo = {
@@ -85,6 +101,41 @@ const createSessionInfo = async (data: SessionData = {}): Promise<SessionInfo> =
 
 const ANON_TOKEN = 'anon_session'
 
+/** A cookie-held anonymous session is re-issued once it is older than this (sliding TTL). */
+const ANON_COOKIE_REFRESH_SECONDS = 15 * 60
+
+const nowSeconds = (): number => Math.floor(Date.now() / 1000)
+
+const setSessionCookie = (responseData: ResponseData, value: string, maxAge: number): void => {
+    responseData.setCookie(sessionConfig.cookieName, value, {
+        path: sessionConfig.cookie.path,
+        httpOnly: sessionConfig.cookie.httpOnly,
+        secure: sessionConfig.cookie.secure,
+        maxAge,
+        sameSite: sessionConfig.cookie.sameSite,
+        expires: new Date(Date.now() + maxAge * 1000),
+    })
+}
+
+// feat-057: an anonymous session is kept in its signed cookie, not in Redis, so a
+// request without a cookie (a bot hitting main/init) writes nothing.
+const issueAnonCookie = (responseData: ResponseData, sessionInfo: SessionInfo): void => {
+    const csrfToken = sessionInfo.data.csrfToken
+    if (!isValidCsrfToken(csrfToken)) throw new Error('Anonymous session without a CSRF token')
+    const token = createAnonSessionToken({
+        sessionId: sessionInfo.id,
+        csrfToken,
+        issuedAt: nowSeconds(),
+    })
+    setSessionCookie(responseData, token, sessionConfig.anonAge)
+}
+
+const newAnonSessionInfo = (): SessionInfo => ({
+    id: generateSessionId(),
+    data: withCsrfToken({}),
+    createdAt: new Date().toISOString(),
+})
+
 const createCookieValue = (sessionId: string, userToken: string | undefined): string =>
     userToken !== undefined ? `${userToken}.${sessionId}` : `${ANON_TOKEN}.${sessionId}`
 
@@ -95,16 +146,7 @@ const updateContextWithNewSession = (
     responseData: ResponseData,
 ): SessionInfo => {
     const cookieValue = createCookieValue(newSessionInfo.id, userToken)
-    const signedToken = createSignedToken(cookieValue)
-
-    responseData.setCookie(sessionConfig.cookieName, signedToken, {
-        path: sessionConfig.cookie.path,
-        httpOnly: sessionConfig.cookie.httpOnly,
-        secure: sessionConfig.cookie.secure,
-        maxAge: sessionConfig.age,
-        sameSite: sessionConfig.cookie.sameSite,
-        expires: new Date(Date.now() + sessionConfig.age * 1000),
-    })
+    setSessionCookie(responseData, createSignedToken(cookieValue), sessionConfig.age)
 
     context.session.sessionInfo = newSessionInfo
 
@@ -123,7 +165,17 @@ export const sessionHandler = async (
     let sessionId: string | undefined
     let cookieUserToken: string | undefined
 
-    if (accessToken !== undefined) {
+    const anonClaims = accessToken !== undefined ? verifyAnonSessionToken(accessToken) : null
+    const anonAge = anonClaims !== null ? nowSeconds() - anonClaims.issuedAt : 0
+    const cookieAnon =
+        anonClaims !== null &&
+        anonAge >= 0 &&
+        anonAge < sessionConfig.anonAge &&
+        isValidCsrfToken(anonClaims.csrfToken)
+            ? anonClaims
+            : null
+
+    if (accessToken !== undefined && anonClaims === null) {
         const verifiedData = verifySignedToken(accessToken)
 
         if (verifiedData !== null) {
@@ -152,18 +204,38 @@ export const sessionHandler = async (
     }
 
     let sessionInfo: SessionInfo | null = null
+    // The session lives only in its cookie (anonymous, nothing stored yet).
+    let cookieHeld = false
 
-    if (sessionId !== undefined && cookieUserToken !== undefined) {
+    if (cookieAnon !== null) {
+        sessionInfo = {
+            id: cookieAnon.sessionId,
+            data: { csrfToken: cookieAnon.csrfToken },
+            createdAt: new Date(cookieAnon.issuedAt * 1000).toISOString(),
+        }
+        cookieHeld = true
+        // forceCookie: the cookie came under the legacy name, which session_web deletes.
+        if (anonAge > ANON_COOKIE_REFRESH_SECONDS || forceCookie) {
+            issueAnonCookie(responseData, sessionInfo)
+            pendingAnonRefresh.set(context, sessionInfo.id)
+            context.session.beforeSend = async (): Promise<void> => {
+                await discardStaleSessionCookie(context)
+            }
+        }
+    } else if (sessionId !== undefined && cookieUserToken !== undefined) {
         sessionInfo = await getSession(sessionId, cookieUserToken)
     }
 
-    // Anonymous session — no userToken, stored with placeholder key
-    sessionInfo ??= await createSessionInfo({})
+    if (sessionInfo === null) {
+        sessionInfo = newAnonSessionInfo()
+        cookieHeld = true
+        issueAnonCookie(responseData, sessionInfo)
+    }
 
     const sessionUserToken =
         cookieUserToken ??
         (typeof sessionInfo.data.userToken === 'string' ? sessionInfo.data.userToken : undefined)
-    if (!isValidCsrfToken(sessionInfo.data.csrfToken)) {
+    if (!cookieHeld && !isValidCsrfToken(sessionInfo.data.csrfToken)) {
         const updatedSessionInfo = await updateSessionData(
             sessionInfo.id,
             {
@@ -178,10 +250,12 @@ export const sessionHandler = async (
     const presented = sessionInfo.id === sessionId
     // The refresh claims a separate marker (SET NX EX) and never rewrites the session:
     // a read-then-write here could restore a session another request just deleted.
+    // A cookie-held session was re-issued above and has no Redis record to check.
     if (
-        !presented ||
-        forceCookie ||
-        (await claimCookieRefresh(sessionInfo.id, COOKIE_REFRESH_SECONDS))
+        !cookieHeld &&
+        (!presented ||
+            forceCookie ||
+            (await claimCookieRefresh(sessionInfo.id, COOKIE_REFRESH_SECONDS)))
     ) {
         if (presented) {
             pendingCookieRefresh.set(context, {
@@ -193,25 +267,53 @@ export const sessionHandler = async (
             }
         }
         const cookieValue = createCookieValue(sessionInfo.id, sessionUserToken)
-        responseData.setCookie(sessionConfig.cookieName, createSignedToken(cookieValue), {
-            path: sessionConfig.cookie.path,
-            httpOnly: sessionConfig.cookie.httpOnly,
-            secure: sessionConfig.cookie.secure,
-            maxAge: sessionConfig.age,
-            sameSite: sessionConfig.cookie.sameSite,
-            expires: new Date(Date.now() + sessionConfig.age * 1000),
-        })
+        setSessionCookie(
+            responseData,
+            createSignedToken(cookieValue),
+            sessionUserToken === undefined ? sessionConfig.anonAge : sessionConfig.age,
+        )
     }
 
     // Storage namespace of the current session. Reassigned when login/logout swap the
     // session, so session helpers called later in the same request address the new one.
     let contextUserToken = sessionUserToken ?? ANON_TOKEN
 
+    // Storing data in a cookie-held session moves it to Redis (anonymous TTL) and
+    // switches its cookie to the stored-session form.
+    const storeAnonSession = async (data: SessionData): Promise<SessionInfo | null> => {
+        if (sessionInfo === null) return null
+        const stored: SessionInfo = { ...sessionInfo, data, updatedAt: new Date().toISOString() }
+        await saveSession(stored)
+        setSessionCookie(
+            responseData,
+            createSignedToken(createCookieValue(stored.id, undefined)),
+            sessionConfig.anonAge,
+        )
+        cookieHeld = false
+        // The move answers for its own cookie now; a pending refresh check is moot.
+        pendingAnonRefresh.delete(context)
+        pendingAnonPromotion.set(context, stored.id)
+        context.session.beforeSend = async (): Promise<void> => {
+            await discardStaleSessionCookie(context)
+        }
+        sessionInfo = stored
+        context.session.sessionInfo = stored
+        return stored
+    }
+
     context.session.sessionInfo = sessionInfo
-    context.session.updateSessionData = async (newData: SessionData): Promise<SessionInfo | null> =>
-        await updateSessionData(sessionInfo?.id, newData, contextUserToken)
-    context.session.changeSessionData = async (newData: SessionData): Promise<SessionInfo | null> =>
-        await changeSessionData(sessionInfo?.id, newData, contextUserToken)
+    context.session.updateSessionData = async (
+        newData: SessionData,
+    ): Promise<SessionInfo | null> =>
+        cookieHeld
+            ? await storeAnonSession({ ...sessionInfo?.data, ...newData })
+            : await updateSessionData(sessionInfo?.id, newData, contextUserToken)
+    context.session.changeSessionData = async (
+        newData: SessionData,
+    ): Promise<SessionInfo | null> =>
+        cookieHeld
+            ? await storeAnonSession(newData)
+            : await changeSessionData(sessionInfo?.id, newData, contextUserToken)
     context.session.destroySession = async (): Promise<void> => {
         await destroySession(sessionInfo?.id, contextUserToken)
     }
@@ -232,6 +334,14 @@ export const sessionHandler = async (
             // its cookie and CSRF token must not stay usable after the login.
             const oldSessionId = sessionInfo?.id
             if (oldSessionId !== undefined) {
+                // Any anonymous predecessor — cookie-held or already moved to Redis — is
+                // marked before it goes away: a slower response of that session must
+                // not re-issue its anonymous cookie over the login's one.
+                if (cookieHeld || contextUserToken === ANON_TOKEN) {
+                    await markAnonSessionSuperseded(oldSessionId, ANON_COOKIE_REFRESH_SECONDS)
+                }
+                // A cookie-held session may still have a record: a parallel request
+                // can have moved it to Redis.
                 await destroySession(oldSessionId, contextUserToken)
             }
 
@@ -247,6 +357,8 @@ export const sessionHandler = async (
                 responseData,
             )
             contextUserToken = userToken
+            cookieHeld = false
+            swappedSession.add(context)
 
             logger.info({ userId, sessionId: newSessionInfo.id }, `User logged in`)
 
@@ -275,15 +387,12 @@ export const sessionHandler = async (
                 )
             }
 
-            const newSessionInfo = await createSessionInfo({})
-
-            sessionInfo = updateContextWithNewSession(
-                context,
-                newSessionInfo,
-                undefined,
-                responseData,
-            )
+            sessionInfo = newAnonSessionInfo()
+            issueAnonCookie(responseData, sessionInfo)
+            context.session.sessionInfo = sessionInfo
             contextUserToken = ANON_TOKEN
+            cookieHeld = true
+            swappedSession.add(context)
 
             return true
         } catch (err) {
@@ -311,15 +420,12 @@ export const sessionHandler = async (
                 `User logged out all sessions`,
             )
 
-            const newSessionInfo = await createSessionInfo({})
-
-            sessionInfo = updateContextWithNewSession(
-                context,
-                newSessionInfo,
-                undefined,
-                responseData,
-            )
+            sessionInfo = newAnonSessionInfo()
+            issueAnonCookie(responseData, sessionInfo)
+            context.session.sessionInfo = sessionInfo
             contextUserToken = ANON_TOKEN
+            cookieHeld = true
+            swappedSession.add(context)
 
             return deletedCount
         } catch (err) {
@@ -393,6 +499,34 @@ export const wsSessionHandler = async (
  * swapped the session themselves (login, logout) keep their cookie.
  */
 export const discardStaleSessionCookie = async (context: HttpContext): Promise<void> => {
+    const promotedId = pendingAnonPromotion.get(context)
+    if (promotedId !== undefined) {
+        pendingAnonPromotion.delete(context)
+        if (swappedSession.has(context)) return
+        try {
+            if (await anonSessionSignedIn(promotedId)) {
+                context.responseData.cookies.delete(sessionConfig.cookieName)
+            }
+        } catch (err) {
+            logger.warn({ err }, 'Stored anonymous cookie held back: session check failed')
+            context.responseData.cookies.delete(sessionConfig.cookieName)
+        }
+        return
+    }
+    const anonId = pendingAnonRefresh.get(context)
+    if (anonId !== undefined) {
+        pendingAnonRefresh.delete(context)
+        if (swappedSession.has(context)) return
+        try {
+            if (await anonSessionSuperseded(anonId)) {
+                context.responseData.cookies.delete(sessionConfig.cookieName)
+            }
+        } catch (err) {
+            logger.warn({ err }, 'Anonymous cookie refresh skipped: session check failed')
+            context.responseData.cookies.delete(sessionConfig.cookieName)
+        }
+        return
+    }
     const pending = pendingCookieRefresh.get(context)
     if (pending === undefined) return
     pendingCookieRefresh.delete(context)
