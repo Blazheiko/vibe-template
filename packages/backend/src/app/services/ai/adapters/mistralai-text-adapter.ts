@@ -41,7 +41,8 @@ export const mistralaiTextAdapter: ITextAdapter = {
                 temperature: opts.temperature ?? 0.3,
                 maxTokens: opts.maxOutputTokens ?? 2000,
             },
-            { fetchOptions: { signal: aiRequestSignal(opts.signal) } },
+            // SDK 3 flattened fetchOptions into the request options.
+            { signal: aiRequestSignal(opts.signal) },
         )
 
         let fullText = ''
