@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Result } from 'better-result'
-import { badRequest } from './errors.js'
-import { toInternalError, tryDomain, tryInternal } from './result-helpers.js'
+import { toInternalError, tryInternal } from './result-helpers.js'
 
 describe('result helpers', () => {
     it('maps thrown errors to internal app errors', async () => {
@@ -16,17 +15,6 @@ describe('result helpers', () => {
                 expect(result.error.publicMessage).toBe('Hidden')
                 expect(result.error.cause).toBeInstanceOf(Error)
             }
-        }
-    })
-
-    it('passes through domain mapping', async () => {
-        const result = await tryDomain(
-            async () => 'ok',
-            () => badRequest('Bad', 'bad_input'),
-        )
-        expect(Result.isOk(result)).toBe(true)
-        if (Result.isOk(result)) {
-            expect(result.value).toBe('ok')
         }
     })
 

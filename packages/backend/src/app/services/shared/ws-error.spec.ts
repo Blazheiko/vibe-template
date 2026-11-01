@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { appErrorToWsError } from './ws-error.js'
-import { APP_ERROR_CASES } from './app-error-samples.js'
+import { badRequest, conflict, forbidden, internal, notFound, unauthorized } from './errors.js'
+
+const APP_ERROR_CASES = [
+    { error: badRequest('Bad', 'bad_input'), status: 400 },
+    { error: unauthorized(), status: 401 },
+    { error: forbidden('Denied', 'not_allowed'), status: 403 },
+    { error: notFound('User', 'Missing'), status: 404 },
+    { error: conflict('Already', 'duplicate'), status: 409 },
+    { error: internal(new Error('boom'), 'Hidden'), status: 500 },
+] as const
 
 type AppErrorCase = (typeof APP_ERROR_CASES)[number]
 

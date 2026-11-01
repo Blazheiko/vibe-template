@@ -7,7 +7,7 @@
 - **Бізнес-логіка в одному місці.** Правило «користувач може видалити лише свою push-підписку» або «після N невдалих спроб — `429`» описане один раз у сервісі й однаково працює для всіх точок входу.
 - **Незалежність від транспорту.** Сервіс не має доступу до `responseData`, cookies і сокетів. Його можна викликати з будь-якого контролера, з іншого сервісу чи з тесту без підняття сервера.
 - **Явні помилки в типах.** Замість `throw` сервіс повертає `Result.ok(value)` або `Result.err(AppError)`. TypeScript не дасть контролеру забути обробити помилку, а тег помилки (`NotFound`, `Conflict`, …) однозначно визначає HTTP-статус.
-- **Межа для винятків.** Виклики репозиторіїв і зовнішніх API обгортаються в `tryInternal` / `tryDomain`: несподіваний виняток БД перетворюється на `Internal`, а не «протікає» в контролер.
+- **Межа для винятків.** Виклики репозиторіїв і зовнішніх API обгортаються в `tryInternal`: несподіваний виняток БД перетворюється на `Internal`, а не «протікає» в контролер.
 - **Головне місце для тестів.** Оскільки вся логіка тут, а залежності — звичайні ES-імпорти, сервіс тестується з моками репозиторіїв і трансформерів, без БД.
 
 ```mermaid
@@ -26,20 +26,20 @@ flowchart LR
 
 Сервіси лежать у [`src/app/services`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services). Index-файлів у доменах немає — імпорт іде з конкретного файлу.
 
-| Домен            | Відповідальність                                                                                   |
-| ---------------- | -------------------------------------------------------------------------------------------------- |
-| `actions/`       | Лише типи `ToolDefinition` / `ToolCallHandler` для викликів інструментів                           |
-| `admin/`         | Онлайн-користувачі, історія онлайну, підписка адміна на WS-канал                                   |
-| `ai/`            | Адаптери LLM-провайдерів (OpenAI, Mistral, xAI), промпти, облік використання (`usage/`)            |
-| `auth/`          | Реєстрація/логін, OAuth, скидання пароля, верифікація email/SMS, throttle, WS-токен                |
-| `communication/` | Broadcast, присутність у WS, онлайн-статус, URL WebSocket                                          |
-| `core/`          | `mainService`: init, сесія, оновлення WS-токена                                                    |
-| `notifications/` | Email, push-підписки та відправка push                                                             |
-| `observability/` | Інтеграція із Sentry                                                                               |
-| `shared/`        | `AppError`/`AppResult`, `tryInternal`/`tryDomain`, мапінг помилок у HTTP/WS, доступ до сесії, мова |
-| `statistics/`    | Статистика push-підписок                                                                           |
-| `support/`       | Чат підтримки, база знань, ембединги, LLM, переклад запитів                                        |
-| `user/`          | Аватар                                                                                             |
+| Домен            | Відповідальність                                                                        |
+| ---------------- | --------------------------------------------------------------------------------------- |
+| `actions/`       | Лише типи `ToolDefinition` / `ToolCallHandler` для викликів інструментів                |
+| `admin/`         | Онлайн-користувачі, історія онлайну, підписка адміна на WS-канал                        |
+| `ai/`            | Адаптери LLM-провайдерів (OpenAI, Mistral, xAI), промпти, облік використання (`usage/`) |
+| `auth/`          | Реєстрація/логін, OAuth, скидання пароля, верифікація email/SMS, throttle, WS-токен     |
+| `communication/` | Broadcast, присутність у WS, онлайн-статус, URL WebSocket                               |
+| `core/`          | `mainService`: init, сесія, оновлення WS-токена                                         |
+| `notifications/` | Email, push-підписки та відправка push                                                  |
+| `observability/` | Інтеграція із Sentry                                                                    |
+| `shared/`        | `AppError`/`AppResult`, `tryInternal`, мапінг помилок у HTTP/WS, мова                   |
+| `statistics/`    | Статистика push-підписок                                                                |
+| `support/`       | Чат підтримки, база знань, ембединги, LLM, переклад запитів                             |
+| `user/`          | Аватар                                                                                  |
 
 ## Як сервіси оголошуються
 
@@ -47,9 +47,9 @@ DI-контейнера немає. Сервіс — модульний синг
 
 ## Результати та помилки
 
-Сервіси повертають `AppResult<T> = Result<T, AppError>` з `better-result` і не кидають винятків назовні. `AppError` — дискримінований union за `_tag` ([errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)); конструктори: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `rateLimited`, `internal`. Виклики репозиторіїв обгортаються в `tryInternal` / `tryDomain` з [result-helpers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/result-helpers.ts). Приклад — [Крок 6](/backend/adding-a-feature#крок-6-service).
+Сервіси повертають `AppResult<T> = Result<T, AppError>` з `better-result` і не кидають винятків назовні. `AppError` — дискримінований union за `_tag` ([errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)); конструктори: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `rateLimited`, `internal`. Виклики репозиторіїв обгортаються в `tryInternal` з [result-helpers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/result-helpers.ts). Приклад — [Крок 6](/backend/adding-a-feature#крок-6-service).
 
-Бізнес-правила (перевірка власника ресурсу, throttle, генерація токенів, повідомлення) живуть у сервісах; хелпери доступу — у [session-access.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/session-access.ts) (`resolveActorAuth`, `resolveResourceOwnership`).
+Бізнес-правила (перевірка власника ресурсу, throttle, генерація токенів, повідомлення) живуть у сервісах.
 
 ## Тести сервісів
 

@@ -1,14 +1,6 @@
-// import redis from '#database/redis.js';
-// import { DateTime } from "luxon";
 import crypto from 'node:crypto'
 
-import type {
-    HttpContext,
-    Session,
-    SessionData,
-    SessionInfo,
-    // WsContext,
-} from '#vendor/types/types.js'
+import type { HttpContext, Session, SessionData, SessionInfo } from '#vendor/types/types.js'
 import sessionConfig from '#config/session.js'
 import {
     saveSession,
@@ -49,18 +41,6 @@ const withCsrfToken = (data: SessionData): SessionData => ({
     ...data,
     csrfToken: isValidCsrfToken(data.csrfToken) ? data.csrfToken : generateCsrfToken(),
 })
-
-/**
- * Sanitizes Redis keys for protection against injections
- * Allowed characters only: letters, digits, hyphen, underscore, colon
- */
-// const sanitizeRedisKey = (key: string): string => {
-//     if (!/^[a-zA-Z0-9:_*-]+$/.test(key)) {
-//         logger.error(`Invalid Redis key format: ${key}`);
-//         throw new Error(`Invalid Redis key format`);
-//     }
-//     return key;
-// };
 
 /**
  * How often the cookie of an unchanged session is sent again to slide its expiry.
