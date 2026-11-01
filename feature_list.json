@@ -691,8 +691,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/auth-enforce-throttle",
             "dependencies": ["feat-060", "feat-069", "feat-077"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #240: enforceThrottle() in app/services/auth/enforce-throttle.ts replaces 20 copies in the three auth services (email-verification 2, password-reset 4, auth 14); 428 auth specs (G1 throttle tables included) pass without any change; helper mutations fail 45/35/22 specs. typecheck/lint/format:check/pnpm test (backend 1663)/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
         {
             "id": "feat-071",
