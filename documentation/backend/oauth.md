@@ -37,16 +37,24 @@ sequenceDiagram
 Що відбувається в callback ([`oauthService.handleCallback`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/oauth-service.ts)):
 
 1. **Перевірка `state`.** Значення з query порівнюється з тим, що збережено в сесії на кроці redirect. Розбіжність — `OAuth state mismatch`: так відсікається підроблений callback (CSRF на вході). Після callback `oauthState` і `oauthCodeVerifier` видаляються з сесії.
-2. **Обмін `code` на токени** через `arctic` і запит профілю до API провайдера.
+2. **Обмін `code` на токени** через `arctic` і запит профілю до API провайдера. Токен доступу використовується **один раз**, для цього запиту, і далі не зберігається (див. [нижче](#що-зберігається)). Facebook отримує токен у заголовку `Authorization: Bearer`, а не в query-рядку: у URL він потрапляє в логи проксі й CDN та в `Referer`.
 3. **Email обов'язковий.** Якщо провайдер не віддав email, вхід не відбувається (`Could not retrieve email from provider`). Email приводиться до нижнього регістру. Разом з email бекенд визначає, чи провайдер **підтверджує**, що адреса належить користувачу (`emailVerified`, див. [нижче](#прив-язка-за-email)).
 4. **Пошук користувача** в такому порядку:
-    - є запис у `oauth_accounts` з цим провайдером і id користувача в провайдера → це той самий користувач, оновлюються його токени;
+    - є запис у `oauth_accounts` з цим провайдером і id користувача в провайдера → це той самий користувач, він входить без жодних записів в `oauth_accounts`;
     - інакше є користувач з таким email → до нього **прив'язується** новий OAuth-акаунт, але **лише якщо email підтверджений провайдером**. Інакше вхід відхиляється з причиною `oauth_email_unverified`;
     - інакше створюється новий користувач без пароля (`password: null`) з ім'ям і аватаром із профілю. Якщо email підтверджений провайдером, у користувача одразу заповнюється `emailVerifiedAt`.
 5. **Вхід.** Викликається `auth.login(...)` — та сама функція, що й при вході за паролем (див. [Автентифікація](/backend/auth#вхід-і-вихід-у-коді)): нова сесія, нова cookie. Користувач отримує push «новий вхід».
 6. **Редирект на фронтенд**: успіх — `OAUTH_FRONTEND_SUCCESS_URL` (`/?oauth=success`), будь-яка помилка — `OAUTH_FRONTEND_ERROR_URL` (`/?error=oauth_failed`), завжди зі статусом `302`. Для відмови в прив'язці до URL додається `reason=oauth_email_unverified`, і сторінка входу показує «An account with this email already exists. Sign in with your password.». Для решти помилок — загальне повідомлення.
 
-Токени провайдера (`access_token`, `refresh_token`) зберігаються в таблиці `oauth_accounts` разом з `provider`, `provider_user_id`, email, іменем і аватаром. Пара `provider` + `provider_user_id` унікальна. Шаблон самі токени далі не використовує: вони знадобляться, якщо ви захочете ходити в API провайдера від імені користувача.
+## Що зберігається
+
+Таблиця `oauth_accounts` тримає `provider`, `provider_user_id`, `provider_email`, `provider_name`, `provider_avatar` і час створення/зміни. Пара `provider` + `provider_user_id` унікальна. **Токени провайдера (`access_token`, `refresh_token`) не зберігаються**: жоден код їх не читав, а токен у відкритому вигляді в БД — це ризик без користі (витік бекапу чи дампу віддає доступ до акаунтів у провайдерів). Колонки видалено міграцією `drop_oauth_tokens`; вони були nullable, тож відкат — `ADD COLUMN access_token text, ADD COLUMN refresh_token text` (дані, що там були, не відновлюються).
+
+Якщо вам потрібен доступ до API провайдера від імені користувача (офлайн), токени треба зберігати **зашифрованими** ключем, окремим від `APP_KEY`, і лише тоді, коли для цього є код, що їх читає.
+
+### Що потрапляє в логи
+
+Email і ім'я з профілю — персональні дані. Журнал OAuth-входу містить провайдера і **замаскований** email (`u***r@e*****e.com`, `maskEmailForLogs`), без імені, без id у провайдера і без токенів.
 
 ## Прив'язка за email
 
@@ -214,9 +222,7 @@ if (provider === 'discord') {
 ```ts
 } else if (provider === 'discord') {
     const tokens = await createDiscordClient().validateAuthorizationCode(code, null)
-    accessToken = tokens.accessToken()
-    refreshToken = tokens.hasRefreshToken() ? tokens.refreshToken() : null
-    userInfo = await fetchDiscordUserInfo(accessToken)
+    userInfo = await fetchDiscordUserInfo(tokens.accessToken())
 }
 ```
 

@@ -13,7 +13,6 @@ export interface IOAuthAccountRepository {
     ): Promise<OAuthAccountRow | undefined>
     findByUserId(userId: bigint): Promise<OAuthAccountRow[]>
     create(data: OAuthAccountInsert): Promise<OAuthAccountRow>
-    updateTokens(id: bigint, accessToken: string | null, refreshToken: string | null): Promise<void>
 }
 
 export const oauthAccountRepository: IOAuthAccountRepository = {
@@ -49,12 +48,5 @@ export const oauthAccountRepository: IOAuthAccountRepository = {
             throw new Error('Failed to create oauth account')
         }
         return created
-    },
-
-    async updateTokens(id, accessToken, refreshToken) {
-        await db
-            .update(oauthAccounts)
-            .set({ accessToken, refreshToken, updatedAt: new Date() })
-            .where(eq(oauthAccounts.id, id))
     },
 }

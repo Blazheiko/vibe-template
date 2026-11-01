@@ -6,6 +6,7 @@ import { badRequest, conflict, notFound, type AppResult } from '#app/services/sh
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 import type { Auth } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
+import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
 async function fetchJson(
@@ -110,8 +111,11 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<OAuthUserInfo> 
 }
 
 async function fetchFacebookUserInfo(accessToken: string): Promise<OAuthUserInfo> {
+    // The token goes in the header: in the query string it lands in proxy and CDN logs and
+    // in Referer headers.
     const data = await fetchJson(
-        `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`,
+        'https://graph.facebook.com/me?fields=id,name,email,picture.type(large)',
+        { Authorization: `Bearer ${accessToken}` },
     )
     const picture = data['picture'] as Record<string, unknown> | undefined
     const pictureData = picture?.['data'] as Record<string, unknown> | undefined
@@ -245,8 +249,8 @@ export const oauthService = {
             return Result.err(badRequest('OAuth state mismatch'))
         }
 
-        let accessToken: string
-        let refreshToken: string | null = null
+        // The provider's tokens are used once, to read the profile, and are not kept: nothing
+        // reads them afterwards, and a token at rest is a liability.
         let userInfo: OAuthUserInfo
 
         try {
@@ -256,33 +260,29 @@ export const oauthService = {
                     code,
                     codeVerifier ?? '',
                 )
-                accessToken = tokens.accessToken()
-                refreshToken = tokens.hasRefreshToken() ? tokens.refreshToken() : null
-                userInfo = await fetchGoogleUserInfo(accessToken)
+                userInfo = await fetchGoogleUserInfo(tokens.accessToken())
             } else if (provider === 'facebook') {
                 logger.info('provider facebook')
                 const tokens = await createFacebookClient().validateAuthorizationCode(code)
-                accessToken = tokens.accessToken()
-                userInfo = await fetchFacebookUserInfo(accessToken)
+                userInfo = await fetchFacebookUserInfo(tokens.accessToken())
             } else if (provider === 'github') {
                 logger.info('provider github')
                 const tokens = await createGitHubClient().validateAuthorizationCode(code)
-                accessToken = tokens.accessToken()
-                userInfo = await fetchGitHubUserInfo(accessToken)
+                userInfo = await fetchGitHubUserInfo(tokens.accessToken())
             } else {
                 logger.info('provider gitlab')
                 const tokens = await createGitLabClient().validateAuthorizationCode(code)
-                accessToken = tokens.accessToken()
-                refreshToken = tokens.hasRefreshToken() ? tokens.refreshToken() : null
-                userInfo = await fetchGitLabUserInfo(accessToken)
+                userInfo = await fetchGitLabUserInfo(tokens.accessToken())
             }
         } catch (err) {
             logger.warn({ err, provider }, 'OAuth code exchange failed')
             return Result.err(badRequest('Failed to exchange authorization code'))
         }
 
+        // An address and a name are personal data: the log keeps the provider and a masked
+        // address, enough to correlate a report.
         logger.info(
-            { id: userInfo.id, email: userInfo.email, name: userInfo.name },
+            { provider, email: maskEmailForLogs(userInfo.email) },
             'oauth provider user info received',
         )
 
@@ -292,8 +292,6 @@ export const oauthService = {
         }
 
         userInfo.email = userInfo.email.toLowerCase()
-
-        logger.info({ email: userInfo.email }, 'oauth email normalized')
 
         // Find existing OAuth account link
         const existingOAuthResult = await tryInternal(
@@ -318,21 +316,9 @@ export const oauthService = {
         let sessionToken: string
 
         if (existingOAuth !== undefined) {
-            // Returning user — update tokens
+            // Returning user
             userId = existingOAuth.userId
-            logger.info({ userId: String(userId) }, 'oauth returning user, updating tokens')
-            const updateTokensResult = await tryInternal(
-                () =>
-                    oauthAccountRepository.updateTokens(
-                        existingOAuth.id,
-                        accessToken,
-                        refreshToken,
-                    ),
-                'Failed to update OAuth tokens',
-            )
-            if (Result.isError(updateTokensResult)) {
-                return Result.err(updateTokensResult.error)
-            }
+            logger.info({ userId: String(userId) }, 'oauth returning user')
 
             const returningUserResult = await tryInternal(
                 () => userRepository.findById(userId),
@@ -393,8 +379,6 @@ export const oauthService = {
                             providerEmail: userInfo.email,
                             providerName: userInfo.name,
                             providerAvatar: userInfo.avatar,
-                            accessToken,
-                            refreshToken,
                         }),
                     'Failed to link OAuth account',
                 )
@@ -403,7 +387,7 @@ export const oauthService = {
                 }
             } else {
                 // Create new user (no password)
-                logger.info({ email: userInfo.email }, 'oauth creating new user')
+                logger.info({ email: maskEmailForLogs(userInfo.email) }, 'oauth creating new user')
                 const newUserResult = await tryInternal(
                     () =>
                         userRepository.create({
@@ -432,8 +416,6 @@ export const oauthService = {
                             providerEmail: userInfo.email,
                             providerName: userInfo.name,
                             providerAvatar: userInfo.avatar,
-                            accessToken,
-                            refreshToken,
                         }),
                     'Failed to create OAuth account',
                 )

@@ -1,4 +1,3 @@
 # Session Handoff
 
-feat-063 (resource limits) is complete in code: D4, D0+D1 (+ two review follow-ups), D2 (ADR 0003) are merged; D3 (chat history contract) is on `fix/chat-history-contract`.
-After D3 merges: a PR to `main` flips feat-063 to `done` (feature_list.json) with the evidence from `progress.md`. ADR 0003 is still "proposed" and waits for the owner. Next phase: E (feat-064).
+feat-064 (OAuth token storage) is implemented on `fix/oauth-token-storage`: token columns dropped (migration `drop_oauth_tokens`), Facebook token in the `Authorization` header, masked email in the OAuth log. After the PR merges, flip feat-064 to `done` on `main`. Next: phase F; F1 needs a decision from the owner.

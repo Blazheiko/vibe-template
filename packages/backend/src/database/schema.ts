@@ -265,8 +265,6 @@ export const oauthAccounts = pgTable(
         providerEmail: varchar('provider_email', { length: 255 }),
         providerName: varchar('provider_name', { length: 255 }),
         providerAvatar: varchar('provider_avatar', { length: 500 }),
-        accessToken: text('access_token'),
-        refreshToken: text('refresh_token'),
         createdAt: timestamp('created_at').notNull().defaultNow(),
         updatedAt: timestamp('updated_at')
             .notNull()
