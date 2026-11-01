@@ -87,12 +87,23 @@ vi.mock('#app/services/support/support-inflight-lock.js', () => ({
 }))
 
 // What a run needs from its admission, recording when the lock is released.
-const admissionOf = (order: string[] = []) => ({
+const admissionOf = (order: string[] = [], lostController = new AbortController()) => ({
+    lost: lostController.signal,
     release: vi.fn(() => {
         order.push('release')
         return Promise.resolve()
     }),
 })
+
+// A lease that was lost: another answer may be running now (the cause is the lease, not a
+// closed connection, so the run must say so instead of going quiet).
+const lostLease = (): AbortController => {
+    const controller = new AbortController()
+    const lost = new Error('The support lock was lost')
+    lost.name = 'SupportLockLostError'
+    controller.abort(lost)
+    return controller
+}
 
 async function loadSupportService() {
     return import('./support-service.js')
@@ -167,7 +178,11 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(admissionOf(), 7n, 'hello', 'conn-1', controller.signal)
 
-            expect(supportLlmServiceMock.chatStream.mock.calls[0]?.at(-1)).toBe(controller.signal)
+            // Not the same object any more (it is combined with the lock's), but it follows it.
+            const passed = supportLlmServiceMock.chatStream.mock.calls[0]?.at(-1) as AbortSignal
+            expect(passed.aborted).toBe(false)
+            controller.abort()
+            expect(passed.aborted).toBe(true)
             expect(loggerMock.error).not.toHaveBeenCalled()
             const events = broadcastServiceMock.broadcastMessageToUserConnection.mock.calls.map(
                 (call) => JSON.stringify(call),
@@ -187,9 +202,10 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runOpenChat(admissionOf(), 7n, 'conn-1', controller.signal)
 
-            expect(supportLlmServiceMock.openChatStream.mock.calls[0]?.at(-1)).toBe(
-                controller.signal,
-            )
+            const passed = supportLlmServiceMock.openChatStream.mock.calls[0]?.at(-1) as AbortSignal
+            expect(passed.aborted).toBe(false)
+            controller.abort()
+            expect(passed.aborted).toBe(true)
             expect(loggerMock.error).not.toHaveBeenCalled()
         })
     })
@@ -222,7 +238,10 @@ describe('supportService', () => {
         it('admits a message that is within the limit and gets the lock, with the chat policy', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             const release = vi.fn().mockResolvedValue(true)
-            acquireSupportLockMock.mockResolvedValue({ release })
+            acquireSupportLockMock.mockResolvedValue({
+                release,
+                lost: new AbortController().signal,
+            })
 
             const { supportService } = await loadSupportService()
             const result = await supportService.admitChat(7n)
@@ -232,16 +251,21 @@ describe('supportService', () => {
                 throttlePolicies.supportChatUser,
                 '7',
             )
-            // Long enough for the three provider calls of one answer.
-            expect(acquireSupportLockMock).toHaveBeenCalledWith(
-                7n,
-                aiConfig.requestTimeoutMs * 3 + 10_000,
-            )
+            // A short lease the live answer keeps renewing, and a ceiling on the whole answer
+            // (three provider calls and the database) after which the lease is abandoned.
+            expect(acquireSupportLockMock).toHaveBeenCalledWith(7n, {
+                ttlMs: 30_000,
+                renewEveryMs: 5_000,
+                maxLifetimeMs: aiConfig.requestTimeoutMs * 3 + 60_000,
+            })
         })
 
         it('uses the opening policy for the greeting', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
-            acquireSupportLockMock.mockResolvedValue({ release: vi.fn() })
+            acquireSupportLockMock.mockResolvedValue({
+                release: vi.fn(),
+                lost: new AbortController().signal,
+            })
 
             const { supportService } = await loadSupportService()
             await supportService.admitOpenChat(7n)
@@ -295,6 +319,30 @@ describe('supportService', () => {
             expect(acquireSupportLockMock).not.toHaveBeenCalled()
         })
 
+        // The throttle uses its own Redis connection and throws plain ioredis errors.
+        it.each(['Command timed out', 'Connection is closed.'])(
+            'answers 503, not 500, when the limit cannot be checked because Redis is down ("%s")',
+            async (message) => {
+                consumeAuthThrottleMock.mockRejectedValue(new Error(message))
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n)
+
+                expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
+                expect(acquireSupportLockMock).not.toHaveBeenCalled()
+            },
+        )
+
+        it('answers 503 when the lock cannot be taken because Redis is down', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            acquireSupportLockMock.mockRejectedValue(new Error('Command timed out'))
+
+            const { supportService } = await loadSupportService()
+            const result = await supportService.admitChat(7n)
+
+            expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
+        })
+
         it('refuses when the lock cannot be taken', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             acquireSupportLockMock.mockRejectedValue(new Error('redis down'))
@@ -307,7 +355,10 @@ describe('supportService', () => {
         it('release frees the lock, and a failing release is logged, not raised', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             const release = vi.fn().mockRejectedValue(new Error('redis down'))
-            acquireSupportLockMock.mockResolvedValue({ release })
+            acquireSupportLockMock.mockResolvedValue({
+                release,
+                lost: new AbortController().signal,
+            })
 
             const { supportService } = await loadSupportService()
             const result = await supportService.admitChat(7n)
@@ -410,6 +461,116 @@ describe('supportService', () => {
 
             expect(order).toEqual(['release'])
             expect(admission.release).toHaveBeenCalledTimes(1)
+        })
+
+        // The review of feat-063: the database waits of a run are not bounded by the provider
+        // timeout, so a run can resume after its lock was lost. It must not start the next
+        // paid step then, or two answers stream at once.
+        describe('a run whose lock was lost', () => {
+            it('chat: stops before any paid call, saves no answer, tells the client', async () => {
+                const order: string[] = []
+                tellOrder(order)
+                const lost = new AbortController()
+                supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+                // The lock is lost while the history is still being read.
+                supportRepositoryMock.findChatHistory.mockImplementation(() => {
+                    lost.abort(lostLease().signal.reason)
+                    return Promise.resolve([])
+                })
+                supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+                const admission = admissionOf(order, lost)
+
+                const { supportService } = await loadSupportService()
+                await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+
+                expect(supportEmbeddingServiceMock.search).not.toHaveBeenCalled()
+                expect(supportLlmServiceMock.chatStream).not.toHaveBeenCalled()
+                expect(supportRepositoryMock.addChatMessage).toHaveBeenCalledTimes(1) // the user's message only
+                expect(order).toEqual(['release', 'support_chat_error'])
+                expect(broadcastServiceMock.broadcastMessageToUserConnection).toHaveBeenCalledWith(
+                    '7',
+                    'conn-1',
+                    'support_chat_error',
+                    {
+                        message: 'The answer was interrupted. Please try again.',
+                        code: 'chat_interrupted',
+                    },
+                )
+            })
+
+            it('chat: does not even start when the lock was lost on admission', async () => {
+                const admission = admissionOf([], lostLease())
+
+                const { supportService } = await loadSupportService()
+                await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+
+                expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
+                expect(supportQueryTranslationServiceMock.translateToEnglish).not.toHaveBeenCalled()
+            })
+
+            it('chat: the lost lock reaches the provider calls as their abort signal', async () => {
+                const lost = new AbortController()
+                supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+                supportEmbeddingServiceMock.search.mockResolvedValue([])
+                let streamSignal: AbortSignal | undefined
+                supportLlmServiceMock.chatStream.mockImplementation(async function* (
+                    ...args: unknown[]
+                ) {
+                    streamSignal = args[5] as AbortSignal
+                    yield 'a'
+                    lost.abort(lostLease().signal.reason)
+                    yield 'b'
+                })
+                const admission = admissionOf([], lost)
+
+                const { supportService } = await loadSupportService()
+                await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+
+                expect(streamSignal?.aborted).toBe(true)
+                // Not saved: the answer was cut off by the lock, not completed.
+                expect(supportRepositoryMock.addChatMessage).toHaveBeenCalledTimes(1)
+            })
+
+            it('chat: a closed connection still goes quiet when the lock is fine', async () => {
+                // The existing behaviour: abort of the connection is not a failure.
+                const controller = new AbortController()
+                supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportQueryTranslationServiceMock.translateToEnglish.mockImplementation(() => {
+                    controller.abort()
+                    return Promise.reject(new DOMException('aborted', 'AbortError'))
+                })
+
+                const { supportService } = await loadSupportService()
+                await supportService.runChat(
+                    admissionOf(),
+                    7n,
+                    'hello',
+                    'conn-1',
+                    controller.signal,
+                )
+
+                expect(broadcastServiceMock.broadcastMessageToUserConnection).not.toHaveBeenCalled()
+            })
+
+            it('openChat: stops before the model call and tells the client', async () => {
+                const order: string[] = []
+                tellOrder(order)
+                const lost = new AbortController()
+                supportRepositoryMock.findChatHistory.mockImplementation(() => {
+                    lost.abort(lostLease().signal.reason)
+                    return Promise.resolve([])
+                })
+                const admission = admissionOf(order, lost)
+
+                const { supportService } = await loadSupportService()
+                await supportService.runOpenChat(admission, 7n, 'conn-1')
+
+                expect(supportLlmServiceMock.openChatStream).not.toHaveBeenCalled()
+                expect(order).toEqual(['release', 'support_chat_error'])
+            })
         })
 
         it('openChat with an existing history writes nothing and still releases', async () => {

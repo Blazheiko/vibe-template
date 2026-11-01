@@ -21,6 +21,18 @@ export interface WebsocketMessage {
     error?: WebsocketErrorPayload | null
 }
 
+/**
+ * A request that got no answer (the client timeout, or the connection dropped while it was
+ * pending). The server may well have accepted it, so the caller must not treat it as a
+ * refusal and, for a message, must check before sending it again.
+ */
+export class WsDeliveryUnknownError extends Error {
+    override readonly name = 'WsDeliveryUnknownError'
+}
+
+export const isDeliveryUnknown = (error: unknown): error is WsDeliveryUnknownError =>
+    error instanceof WsDeliveryUnknownError
+
 export interface ApiError {
     code?: ErrorCode
     transportCode?: number

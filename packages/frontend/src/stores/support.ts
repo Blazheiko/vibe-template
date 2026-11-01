@@ -14,6 +14,10 @@ export const useSupportStore = defineStore('support', () => {
     const isStreaming = ref(false)
     const historyResource = createResource(30_000)
     const error = ref<string | null>(null)
+    // Messages added here before the server has seen them get their own id: a timestamp
+    // is not one (two messages within a millisecond), and the id is what takes one back.
+    let localMessageCounter = 0
+    const nextLocalId = (): string => `local-${String(++localMessageCounter)}`
 
     function markHistoryLoaded(): void {
         historyResource.state.isLoaded = true
@@ -75,7 +79,7 @@ export const useSupportStore = defineStore('support', () => {
         isStreaming.value = false
         if (content) {
             messages.value.push({
-                id: String(Date.now()),
+                id: nextLocalId(),
                 role: 'assistant',
                 content,
                 screenshots: screenshots.length > 0 ? screenshots : null,
@@ -85,23 +89,52 @@ export const useSupportStore = defineStore('support', () => {
         streamingContent.value = ''
     }
 
-    function addUserMessage(text: string): void {
+    /** Adds the message optimistically; the returned id takes it back (`removeMessage`). */
+    function addUserMessage(text: string): string {
+        const id = nextLocalId()
         messages.value.push({
-            id: String(Date.now()),
+            id,
             role: 'user',
             content: text,
             screenshots: null,
             createdAt: new Date().toISOString(),
         })
+        return id
     }
 
     /**
      * Takes back the message added optimistically when the server refused it, so the
-     * conversation does not show a message that was never accepted.
+     * conversation does not show a message that was never accepted. By id, not by position:
+     * the greeting may have completed after it and before the refusal arrived.
      */
-    function removeLastUserMessage(): void {
-        const last = messages.value.at(-1)
-        if (last?.role === 'user') messages.value.pop()
+    function removeMessage(id: string): void {
+        const index = messages.value.findIndex((m) => m.id === id)
+        if (index !== -1) messages.value.splice(index, 1)
+    }
+
+    function countUserMessages(text: string): number {
+        return messages.value.filter((m) => m.role === 'user' && m.content === text).length
+    }
+
+    /**
+     * After a send whose outcome is unknown (timeout, dropped connection): did the server
+     * keep the message? Compares the stored history with `countBefore`, the number of such
+     * messages there were before the send. The history replaces the local list, so a
+     * message that never arrived disappears from it. `null` when it cannot be told.
+     */
+    async function confirmDelivery(text: string, countBefore: number): Promise<boolean | null> {
+        let history: SupportChatMessage[]
+        try {
+            history = await supportApi.getChatHistory()
+        } catch {
+            return null
+        }
+        // getChatHistory answers [] for a failed request as well as for a real empty history.
+        if (history.length === 0 && messages.value.length > 0) return null
+
+        messages.value = history
+        markHistoryLoaded()
+        return countUserMessages(text) > countBefore
     }
 
     function setLoading(val: boolean): void {
@@ -136,7 +169,9 @@ export const useSupportStore = defineStore('support', () => {
         appendToken,
         completeStreaming,
         addUserMessage,
-        removeLastUserMessage,
+        removeMessage,
+        countUserMessages,
+        confirmDelivery,
         setLoading,
         setError,
         reset,
