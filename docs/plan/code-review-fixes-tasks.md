@@ -387,11 +387,13 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 **Залежності для всіх:** B2, G, K1 · Принцип: поведінка не змінюється, spec'и з G1 — без правок очікувань. Кожен H — свій feature (`feat-070…074`), щоб відкат був незалежним.
 
-### H1 · `enforceThrottle()` (0.5 д)
+### H1 · ✅ `enforceThrottle()` (0.5 д)
 
-- [ ] `auth-throttle-service.ts` — `enforceThrottle(policy, key, rejectMessage): Promise<AppResult<void>>`.
-- [ ] 32 входження у трьох сервісах — по файлу на коміт.
-- [ ] Критерій: усі throttle-spec'и зелені; Redis-ключі ті самі (перевірити назви у spec).
+- [x] `auth-throttle-service.ts` — `enforceThrottle(policy, key, rejectMessage): Promise<AppResult<void>>`.
+- [x] 32 входження у трьох сервісах — по файлу на коміт.
+- [x] Критерій: усі throttle-spec'и зелені; Redis-ключі ті самі (перевірити назви у spec).
+
+> Виконано PR #240: 20 входжень (email-verification 2, password-reset 4, auth 14); сигнатура `enforceThrottle(policy, key, { unavailable, rejected })` — кроки різняться двома повідомленнями, не одним. `requestPasswordReset` і `resendVerificationAfterUnverifiedLogin` свідомо не змінено (інша поведінка).
 
 ### H2 · `auth-normalize.ts` (0.5 д)
 
