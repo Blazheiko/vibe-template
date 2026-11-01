@@ -671,8 +671,8 @@
             "owner": "Blazheiko",
             "branch": "fix/frontend-hardening",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #225 (merge b756a70): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1398, frontend 257, api-playground 29, shared 17, docs 26), docs:build + docs:verify; playground production build has no console.log strings; 4 playground store tests failed against the original store; dropping one autocomplete fails the UserAccount component test; CI quality/e2e/build green (no backend change, test-pg/test-redis not triggered)"
         },
         {
             "id": "feat-069",
