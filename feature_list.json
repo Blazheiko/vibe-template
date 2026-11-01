@@ -591,8 +591,8 @@
             "owner": "Blazheiko",
             "branch": "fix/one-time-token-race",
             "dependencies": ["feat-059"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #198 (merge fd14970): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1225, frontend 168, api-playground 14, shared 14, docs 26), test:pg 68 with Redis / 51 without (+9 one-time-token-race on real PostgreSQL: 7 failed before the fix \u2014 exactly-one-winner got two in all three flows, the password / email stayed changed after a failure; +1 HTTP-level concurrent reset-password: one 200, the loser 400 used_token), test:redis 61, docs:build + docs:verify; mutation check (markUsed without used_at IS NULL) fails the deterministic and the HTTP race tests; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 68, none skipped)"
         },
         {
             "id": "feat-061",
