@@ -3,6 +3,7 @@ import { createServer } from 'node:net'
 import { createHash } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
+import pg from 'pg'
 import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -126,6 +127,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
     const { userRepository, passwordResetRepository } = await import('#app/repositories/index.js')
     const { getSession } = await import('#vendor/utils/session/redis-session-storage.js')
     const { default: sessionConfig } = await import('#config/session.js')
+    const { default: databaseConfig } = await import('#config/database.js')
 
     // Registers the WebSocket hooks (needed by stopServer) and the sessionToken check.
     await import('#app/start/index.js')
@@ -461,20 +463,37 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             expect((await a.request('GET', '/main/init')).status).toBe(200)
         })
 
-        it('answers 503 within the deadline when the lookup never answers', async () => {
+        // A table lock makes the lookup hang the way a stuck database does; the session
+        // check pool cancels the statement at the deadline (statement_timeout).
+        it('answers 503 within the deadline when the lookup hangs, then recovers', async () => {
             const user = await insertUser('http-db-hang')
             const a = await signedIn(user.email ?? '')
-            vi.spyOn(userRepository, 'findSessionToken').mockReturnValue(
-                new Promise<string>(() => undefined),
-            )
+            const holder = new pg.Client({
+                host: databaseConfig.host,
+                port: databaseConfig.port,
+                user: databaseConfig.user,
+                password: databaseConfig.password,
+                database: databaseConfig.database,
+            })
+            await holder.connect()
+            await holder.query('begin')
+            await holder.query('lock table users in access exclusive mode')
+            try {
+                const started = Date.now()
+                const reply = await a.request('GET', '/main/init')
 
-            const started = Date.now()
-            const reply = await a.request('GET', '/main/init')
+                expect(reply.status).toBe(503)
+                expect(reply.body).toMatchObject({ code: 'service_unavailable' })
+                expect(reply.headers.get('retry-after')).toBe('1')
+                // SESSION_TOKEN_CHECK_TIMEOUT_MS is 400 in this suite.
+                expect(Date.now() - started).toBeGreaterThanOrEqual(300)
+                expect(Date.now() - started).toBeLessThan(2000)
+            } finally {
+                await holder.query('rollback')
+                await holder.end()
+            }
 
-            expect(reply.status).toBe(503)
-            expect(reply.body).toMatchObject({ code: 'service_unavailable' })
-            // SESSION_TOKEN_CHECK_TIMEOUT_MS is 400 in this suite.
-            expect(Date.now() - started).toBeLessThan(2000)
+            expect((await a.request('GET', '/main/init')).status).toBe(200)
         })
     })
 })

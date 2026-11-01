@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const findSessionToken = vi.hoisted(() => vi.fn())
 vi.mock('#app/repositories/index.js', () => ({ userRepository: { findSessionToken } }))
@@ -6,18 +6,14 @@ vi.mock('#app/repositories/index.js', () => ({ userRepository: { findSessionToke
 const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }))
 vi.mock('#logger', () => ({ default: logger }))
 
-vi.mock('#config/session.js', () => ({ default: { tokenCheckTimeoutMs: 500 } }))
-
 const { checkSessionToken } = await import('./session-token-check.js')
 
 beforeEach(() => {
-    vi.useFakeTimers()
     vi.clearAllMocks()
 })
-afterEach(() => {
-    vi.useRealTimers()
-})
 
+// The deadline is not here but in the session-check pool; it is proved against a real
+// PostgreSQL in database/session-check-pool.pg.test.ts.
 describe('checkSessionToken (ADR 0002)', () => {
     it('ok when the token is the current one', async () => {
         findSessionToken.mockResolvedValue('current-token')
@@ -43,53 +39,18 @@ describe('checkSessionToken (ADR 0002)', () => {
         },
     )
 
-    it('unavailable when the lookup fails', async () => {
-        findSessionToken.mockRejectedValue(new Error('connection terminated'))
-        await expect(checkSessionToken('7', 'token')).resolves.toBe('unavailable')
-        expect(logger.error).toHaveBeenCalledTimes(1)
-    })
-
-    // A database that accepts the query and never answers must not hold the request.
-    it('unavailable when the lookup does not answer within the deadline', async () => {
-        findSessionToken.mockReturnValue(new Promise(() => undefined))
-
-        const result = checkSessionToken('7', 'token')
-        await vi.advanceTimersByTimeAsync(499)
-        let settled = false
-        void result.then(() => {
-            settled = true
-        })
-        await vi.advanceTimersByTimeAsync(0)
-        expect(settled).toBe(false)
-
-        await vi.advanceTimersByTimeAsync(1)
-        await expect(result).resolves.toBe('unavailable')
-        expect(logger.error).toHaveBeenCalledWith(
-            expect.objectContaining({ timeoutMs: 500 }),
-            'Session token lookup timed out',
-        )
-    })
-
-    it('does not leave a timer behind after an answer', async () => {
-        findSessionToken.mockResolvedValue('token')
-        await checkSessionToken('7', 'token')
-        expect(vi.getTimerCount()).toBe(0)
-    })
-
-    it('a late rejection of the abandoned lookup is not an unhandled rejection', async () => {
-        let rejectLate: (err: Error) => void = () => undefined
-        findSessionToken.mockReturnValue(
-            new Promise((_resolve, reject) => {
-                rejectLate = reject
+    it.each([
+        ['a lookup that fails', new Error('connection terminated')],
+        [
+            'a statement cancelled by statement_timeout',
+            Object.assign(new Error('canceling statement due to statement timeout'), {
+                code: '57014',
             }),
-        )
-        const result = checkSessionToken('7', 'token')
-        await vi.advanceTimersByTimeAsync(500)
-        await expect(result).resolves.toBe('unavailable')
-
-        rejectLate(new Error('connection terminated'))
-        await vi.advanceTimersByTimeAsync(0)
-        // vitest fails the run on an unhandled rejection; reaching here is the assertion.
-        expect(logger.error).toHaveBeenCalledTimes(1)
+        ],
+        ['a driver query timeout', new Error('Query read timeout')],
+    ])('unavailable for %s', async (_name, error) => {
+        findSessionToken.mockRejectedValue(error)
+        await expect(checkSessionToken('7', 'token')).resolves.toBe('unavailable')
+        expect(logger.error).toHaveBeenCalledWith({ err: error }, 'Session token lookup failed')
     })
 })

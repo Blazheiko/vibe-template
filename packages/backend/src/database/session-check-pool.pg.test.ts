@@ -12,7 +12,6 @@ import { hasPg } from '../test-support/pg-test-db.js'
 
 vi.hoisted(() => {
     process.env['SESSION_TOKEN_CHECK_TIMEOUT_MS'] = '300'
-    process.env['SESSION_TOKEN_CHECK_POOL_MAX'] = '2'
 })
 
 const silent = vi.hoisted(() => {
@@ -33,7 +32,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')
     const { users } = await import('#database/schema.js')
     const { default: databaseConfig } = await import('#config/database.js')
-    const { sessionCheckPool, createSessionCheckPool } =
+    const { sessionCheckPool, createSessionCheckPool, SESSION_CHECK_POOL_MAX } =
         await import('#database/session-check-db.js')
     const { connectionOptions } = await import('#database/pool-options.js')
     const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
@@ -120,11 +119,14 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
         it('does not use up the pool: many stuck checks, then the pool recovers', async () => {
             const holder = await holdLock()
             try {
-                // More concurrent checks than the pool has connections (2).
+                // More concurrent checks than the pool has connections.
+                const count = SESSION_CHECK_POOL_MAX * 2
                 const results = await Promise.all(
-                    Array.from({ length: 6 }, () => checkSessionToken(String(userId), userToken)),
+                    Array.from({ length: count }, () =>
+                        checkSessionToken(String(userId), userToken),
+                    ),
                 )
-                expect(results).toEqual(Array(6).fill('unavailable'))
+                expect(results).toEqual(Array(count).fill('unavailable'))
                 expect(await untilNoBlockedLookup()).toBe(0)
             } finally {
                 await holder.query('rollback')
@@ -133,7 +135,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
 
             // The lock is gone; the pool serves again without a restart.
             await expect(checkSessionToken(String(userId), userToken)).resolves.toBe('ok')
-            expect(sessionCheckPool.totalCount).toBeLessThanOrEqual(2)
+            expect(sessionCheckPool.totalCount).toBeLessThanOrEqual(SESSION_CHECK_POOL_MAX)
         })
 
         it('does not touch the main pool: ordinary queries keep their own connections', async () => {
