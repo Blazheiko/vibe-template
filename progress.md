@@ -4,17 +4,17 @@
 
 **Last Updated:** 2026-11-01
 **Active Feature:** feat-063 - Resource Limits (in progress, delivered as several PRs)
-**Branch:** `fix/support-chat-admission` (part 2 of 4: D0 + D1)
+**Branch:** `fix/support-admission-review` (review follow-up of part 2: D0 + D1, merged in #207)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase D
 
 feat-063 is large and its parts are independent, so it is delivered as separate PRs and flipped to `done` only after the last one:
 
-| Part    | What                                                                                                                                         | Status        |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| D4      | per-route request body limit, upload routes capped, avatar rate limit                                                                        | merged (#206) |
-| D0 + D1 | support chat admission contract: `admit()` before `ok`, length cap, per-user throttle, owner-token in-flight lock, `support_chat_error` code | this PR       |
-| D2      | atomic Redis LLM budget (reserve / reconcile)                                                                                                | after D0 + D1 |
-| D3      | chat history contract: pagination for the UI, a bounded selection for the prompt                                                             | last          |
+| Part    | What                                                                                                                                         | Status                                     |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| D4      | per-route request body limit, upload routes capped, avatar rate limit                                                                        | merged (#206)                              |
+| D0 + D1 | support chat admission contract: `admit()` before `ok`, length cap, per-user throttle, owner-token in-flight lock, `support_chat_error` code | merged (#207); review follow-up in this PR |
+| D2      | atomic Redis LLM budget (reserve / reconcile)                                                                                                | after D0 + D1                              |
+| D3      | chat history contract: pagination for the UI, a bounded selection for the prompt                                                             | last                                       |
 
 ## Status
 
@@ -47,6 +47,29 @@ feat-063 is large and its parts are independent, so it is delivered as separate 
 | `docs:build && docs:verify`                | passed                                                                                                                                   |
 | Tests first                                | the admission tests failed on the old controller (always `ok`, no throttle, no lock)                                                     |
 | Fixed flake from D4                        | `upload-limits.transport.spec.ts` bound on bytes written by the client (kernel buffer dependent) loosened to well-short-of-50-MiB; 12/12 |
+
+## Review follow-up of #207 (this PR)
+
+An external review of the merged PR found four problems; each was checked against the code and all four were real.
+
+- [x] **HIGH — two answers at once after the lock expired.** The fixed TTL (`3 × AI_REQUEST_TIMEOUT_MS + 10 s`) did not bound the database waits of a run, and a run never checked that it still held the lock. Now the lock is a **lease**: 30 s TTL renewed every 5 s by the live answer (Lua `PEXPIRE` only if the token is ours); when renewals fail (Redis silent: declared lost one interval before expiry; key gone or taken over; `3 × AI_REQUEST_TIMEOUT_MS + 60 s` maximum lifetime) the holder's `lost` signal aborts the provider calls and `throwIfAborted()` runs before every paid step and before saving; the client gets `support_chat_error` with `code: 'chat_interrupted'`
+- [x] **MEDIUM — a timeout / reset treated as a refusal.** `websocketApi` rejected the same way for a refusal and for no answer; the frontend rolled the message back and restored the text, so a resend duplicated a message the server had kept. Timeout and reset are now `WsDeliveryUnknownError`; the view re-reads the history and compares the number of such messages before and after (delivered / not delivered / cannot tell)
+- [x] **MEDIUM — rollback by position.** The optimistic message is removed by its own id (`removeMessage`); local ids are a counter, not a timestamp; tested with "greeting completes, then the refusal arrives"
+- [x] **MEDIUM — Redis outage through the rate-limit client was 500.** `toInternalError` recognised only `RedisUnavailableError`; it now uses `isRedisUnavailable`, which also covers the plain ioredis errors of the second connection. This also fixes the same 500 on every auth throttle caller
+- Not changed: the admission reasons and the order throttle → lock (reviewer agreed)
+
+### Evidence of Completion (follow-up)
+
+| Check                                      | Result                                                                                                                           |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| Tests first                                | 16 backend and 10 frontend tests failed before the change (lease, outage mapping, lost-lock runs, store by id, delivery check)   |
+| Mutation: no renewal                       | 2 Redis lease tests + 3 fake-timer lease tests fail                                                                              |
+| Mutation: no `throwIfAborted`              | 4 lost-lock run tests fail                                                                                                       |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                                                                           |
+| `pnpm test`                                | backend 1311, frontend 183, api-playground 14, shared 15, docs 26; exit 0                                                        |
+| `test:pg` with Redis / without             | 89 passed / 52 passed, 37 skipped                                                                                                |
+| `test:redis`                               | 73 passed (5 new lease tests on real Redis: kept alive past TTL, taken over, key gone, maximum lifetime, release stops renewals) |
+| `docs:build && docs:verify`                | passed                                                                                                                           |
 
 ## Notes for Next Session
 

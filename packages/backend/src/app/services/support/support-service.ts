@@ -17,7 +17,10 @@ import { userNotificationService } from '#app/services/notifications/user-notifi
 import aiConfig from '#config/ai.js'
 import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
-import { acquireSupportLock } from '#app/services/support/support-inflight-lock.js'
+import {
+    acquireSupportLock,
+    type SupportLease,
+} from '#app/services/support/support-inflight-lock.js'
 
 export interface SupportChatHistoryItem {
     id: string
@@ -85,10 +88,15 @@ function formatKnowledgeContext(
         .join('\n\n')
 }
 
-// The lock outlives the longest answer: translation, embedding and the reply are three
-// provider calls, each bounded by AI_REQUEST_TIMEOUT_MS, plus a little for the database.
-// It matters only when the process dies before releasing; a normal answer releases it.
-const INFLIGHT_LOCK_TTL_MS = aiConfig.requestTimeoutMs * 3 + 10_000
+// The lock is a lease the live answer keeps renewing (see support-inflight-lock.ts), not a
+// guess of how long an answer takes: the database waits of a run have no bound of their own.
+// A dead process stops renewing and frees the user within `ttlMs`. A run that is still going
+// after `maxLifetimeMs` (three provider calls plus a minute for the database) is abandoned.
+const SUPPORT_LEASE: SupportLease = {
+    ttlMs: 30_000,
+    renewEveryMs: 5_000,
+    maxLifetimeMs: aiConfig.requestTimeoutMs * 3 + 60_000,
+}
 const BUSY_RETRY_AFTER_SECONDS = 5
 
 /**
@@ -96,6 +104,8 @@ const BUSY_RETRY_AFTER_SECONDS = 5
  * lock. Whoever has one must release it, on every path (`run*` does).
  */
 export interface SupportAdmission {
+    /** Aborts when the lock can no longer be trusted: no further paid step may start. */
+    readonly lost: AbortSignal
     release(): Promise<void>
 }
 
@@ -115,7 +125,7 @@ async function admit(userId: bigint, policy: ThrottlePolicy): Promise<AppResult<
     }
 
     const lock = await tryInternal(
-        () => acquireSupportLock(userId, INFLIGHT_LOCK_TTL_MS),
+        () => acquireSupportLock(userId, SUPPORT_LEASE),
         'Failed to reserve the support chat',
     )
     if (Result.isError(lock)) return Result.err(lock.error)
@@ -130,6 +140,7 @@ async function admit(userId: bigint, policy: ThrottlePolicy): Promise<AppResult<
 
     const held = lock.value
     return Result.ok({
+        lost: held.lost,
         release: async (): Promise<void> => {
             try {
                 await held.release()
@@ -146,6 +157,16 @@ type SupportOutcome =
     | { kind: 'none' }
     | { kind: 'complete'; content: string; screenshots: string[] }
     | { kind: 'error'; code: string; message: string }
+
+/** The run stops when the connection closes or the lock is lost, whichever comes first. */
+const runSignalOf = (admission: SupportAdmission, signal: AbortSignal | undefined): AbortSignal =>
+    signal === undefined ? admission.lost : AbortSignal.any([signal, admission.lost])
+
+const interruptedOutcome = (): SupportOutcome => ({
+    kind: 'error',
+    code: 'chat_interrupted',
+    message: 'The answer was interrupted. Please try again.',
+})
 
 function tellClient(
     userIdStr: string,
@@ -226,10 +247,15 @@ export const supportService = {
         language?: string,
     ): Promise<void> {
         const userIdStr = String(userId)
+        const runSignal = runSignalOf(admission, signal)
         let outcome: SupportOutcome = { kind: 'none' }
         try {
+            // Before every step that costs money: a run that resumes after its lock was
+            // lost must not start a second answer next to the one that took the lock over.
+            runSignal.throwIfAborted()
             const langNative = resolveSupportLanguage(language)
             const existing = await supportRepository.findChatHistory(userId, 1)
+            runSignal.throwIfAborted()
             if (existing.length === 0) {
                 const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
 
@@ -237,19 +263,23 @@ export const supportService = {
                 for await (const token of supportLlmService.openChatStream(
                     langNative,
                     llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
-                    signal,
+                    runSignal,
                 )) {
                     fullReply += token
                     broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', { token })
                 }
 
+                runSignal.throwIfAborted()
                 if (fullReply.length > 0) {
                     await supportRepository.addChatMessage(userId, 'assistant', fullReply)
                 }
                 outcome = { kind: 'complete', content: fullReply, screenshots: [] }
             }
         } catch (err) {
-            if (aiAbortKind(err) === 'aborted') {
+            if (admission.lost.aborted) {
+                logger.warn({ err, userId: userIdStr }, 'Support: openChat stopped, lock was lost')
+                outcome = interruptedOutcome()
+            } else if (aiAbortKind(err) === 'aborted') {
                 // The connection closed: nobody to answer, and not a failure.
                 logger.info({ userId: userIdStr }, 'Support: openChat cancelled, connection closed')
             } else {
@@ -276,23 +306,29 @@ export const supportService = {
         language?: string,
     ): Promise<void> {
         const userIdStr = String(userId)
+        const runSignal = runSignalOf(admission, signal)
         let outcome: SupportOutcome = { kind: 'none' }
         try {
+            // See runOpenChat: checked before every step that costs money.
+            runSignal.throwIfAborted()
             const langNative = resolveSupportLanguage(language)
             await supportRepository.addChatMessage(userId, 'user', message)
+            runSignal.throwIfAborted()
 
             const [englishQuery, chatHistory] = await Promise.all([
                 supportQueryTranslationService.translateToEnglish(message, {
                     userId,
-                    ...(signal !== undefined ? { signal } : {}),
+                    signal: runSignal,
                 }),
                 supportRepository.findChatHistory(userId, 20),
             ])
+            runSignal.throwIfAborted()
 
             const searchResults = await supportEmbeddingService.search(englishQuery, 5, {
                 userId,
-                ...(signal !== undefined ? { signal } : {}),
+                signal: runSignal,
             })
+            runSignal.throwIfAborted()
             const knowledgeContext = formatKnowledgeContext(searchResults)
             const promptId = promptService.get('SUPPORT_SYSTEM')?.id ?? null
 
@@ -303,12 +339,13 @@ export const supportService = {
                 chatHistory.filter((m) => m.role !== 'user' || m.content !== message),
                 langNative,
                 llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
-                signal,
+                runSignal,
             )) {
                 fullReply += token
                 broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', { token })
             }
 
+            runSignal.throwIfAborted()
             const screenshotIds = extractScreenshotIds(fullReply)
 
             await supportRepository.addChatMessage(userId, 'assistant', fullReply, screenshotIds)
@@ -316,7 +353,10 @@ export const supportService = {
 
             outcome = { kind: 'complete', content: fullReply, screenshots: screenshotIds }
         } catch (err) {
-            if (aiAbortKind(err) === 'aborted') {
+            if (admission.lost.aborted) {
+                logger.warn({ err, userId: userIdStr }, 'Support: chat stopped, lock was lost')
+                outcome = interruptedOutcome()
+            } else if (aiAbortKind(err) === 'aborted') {
                 logger.info({ userId: userIdStr }, 'Support: chat cancelled, connection closed')
             } else {
                 logger.error({ err, userId: userIdStr }, 'Support: chat failed')

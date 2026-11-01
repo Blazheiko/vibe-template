@@ -2,6 +2,7 @@
 import { useWebSocket } from '@vueuse/core'
 import { createHeartbeatOptions } from '@/utils/websocket-heartbeat'
 import { ref, computed } from 'vue'
+import { WsDeliveryUnknownError } from '@/utils/websocket-types'
 import type { WebsocketMessage, WebsocketPayload } from '@/utils/websocket-types'
 import {
     getResponseMessage,
@@ -355,7 +356,7 @@ const websocketApi = async (
             reject,
             timeout: window.setTimeout(() => {
                 Reflect.deleteProperty(apiResolve.value, event)
-                reject(new Error('Request timeout'))
+                reject(new WsDeliveryUnknownError('Request timeout'))
             }, TIMEOUT_API),
         }
     })
@@ -381,7 +382,7 @@ const resetApiResolve = () => {
     console.log('resetApiResolve')
     Object.values(apiResolve.value).forEach((item) => {
         window.clearTimeout(item.timeout)
-        item.reject(new Error('WebSocket connection reset'))
+        item.reject(new WsDeliveryUnknownError('WebSocket connection reset'))
     })
     apiResolve.value = {}
 }

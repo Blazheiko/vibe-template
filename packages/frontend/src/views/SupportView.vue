@@ -7,6 +7,7 @@ import { apiPath } from '@/utils/api-path'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { getResponseMessage } from '@/utils/response-normalizer'
 import { SUPPORT_MESSAGE_MAX_LENGTH } from 'shared/limits'
+import { isDeliveryUnknown } from '@/utils/websocket-types'
 
 const props = defineProps<{
     embedded?: boolean
@@ -99,7 +100,8 @@ async function sendMessage(textOverride?: string): Promise<void> {
     const ready = await ensureSessionReady()
     if (!ready) return
 
-    store.addUserMessage(text)
+    const sentBefore = store.countUserMessages(text)
+    const optimisticId = store.addUserMessage(text)
     textInput.value = ''
     isSending.value = true
     store.setError(null)
@@ -111,11 +113,27 @@ async function sendMessage(textOverride?: string): Promise<void> {
             language: locale.value,
         })
     } catch (error) {
-        // The server refused the message before accepting it (too frequent, the previous
-        // answer is still being written, too long): nothing was sent, so the text goes
-        // back into the input for another try.
         isSending.value = false
-        store.removeLastUserMessage()
+        if (isDeliveryUnknown(error)) {
+            // No answer came (timeout, dropped connection): the server may have kept the
+            // message, and sending it again would duplicate it. Ask the history.
+            const delivered = await store.confirmDelivery(text, sentBefore)
+            if (delivered === true) {
+                store.setError(null)
+            } else if (delivered === false) {
+                textInput.value = text
+                store.setError('The message was not delivered. Please send it again.')
+            } else {
+                store.setError(
+                    'Could not confirm that the message was delivered. Check the conversation before sending it again.',
+                )
+            }
+            return
+        }
+        // The server refused the message (too frequent, the previous answer is still being
+        // written, too long), or it could not be sent at all: nothing was accepted, so the
+        // text goes back into the input for another try.
+        store.removeMessage(optimisticId)
         textInput.value = text
         store.setError(getResponseMessage(error, 'Failed to send message'))
     }

@@ -243,7 +243,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 - [x] `packages/shared/src/schemas/support/support-chat.ts:4` — `message: 'string >= 1 & string <= 4000'`; `SUPPORT_MESSAGE_MAX_LENGTH` у `shared`.
 - [x] `config/throttle-policies.ts` — `supportChatUser` (напр. 20/хв), `supportOpenChatUser` (напр. 5/хв) — через існуючий атомарний `consumeAuthThrottle`.
 - [x] **Inflight-lock з власником**: `SET support:inflight:<userId> <ownerToken> NX PX <ttl>`; зняття — **умовне** (Lua: `if GET == token then DEL`), а не голий `DEL` у `finally` — інакше запит, що пережив TTL, видалить lock наступного. `ownerToken = nanoid()` на admit.
-- [x] (обрано фіксований TTL = 3 × `AI_REQUEST_TIMEOUT_MS` + 10 с, без heartbeat) TTL lock'а = сумарний timeout усього pipeline (translation + embedding + chat, з `config/ai.ts` timeouts) + запас; **або** heartbeat-продовження (`PEXPIRE` раз на N s, лише якщо `GET == token`). Обрати одне, зафіксувати.
+- [x] (спершу обрано фіксований TTL; після рев'ю #207 замінено на **lease з heartbeat**: TTL 30 с, продовження кожні 5 с, втрата lease зупиняє відповідь) TTL lock'а = сумарний timeout усього pipeline (translation + embedding + chat, з `config/ai.ts` timeouts) + запас; **або** heartbeat-продовження (`PEXPIRE` раз на N s, лише якщо `GET == token`). Обрати одне, зафіксувати.
 - [x] Усе це в `admit` (D0), до першого LLM-виклику; `openChat` greeting — під тим самим lock.
 - [x] Frontend `SupportView.vue` — `maxlength` + лічильник зі shared-константи.
 
