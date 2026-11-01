@@ -661,8 +661,8 @@
             "owner": "Blazheiko",
             "branch": "fix/db-ssl-and-query-log",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #222 (merge cb77c5e): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1398, frontend 203, api-playground 14, shared 17, docs 26), test:pg 138 with Redis / 74 without (+6 on a real PostgreSQL: SQL statements printed in development and not for APP_IS_PRODUCTION=true or APP_ENV=prod; PGSQL_SSL=true reaches the main and the session-check pool), test:redis 89, docs:build + docs:verify; drizzle-kit generate: no schema changes, PGSQL_SSL=bogus rejected; CI quality/e2e/build/test-pg/test-redis green"
         },
         {
             "id": "feat-068",
