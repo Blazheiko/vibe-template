@@ -322,8 +322,8 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ### F2 · feat-066 · Auth-контракт: unverified login і timing реєстрації (0.5 д)
 
-- [ ] `auth-service.ts:1155-1174` — unverified + правильний пароль → `invalidCredentials()` (401); verification-лист повторно у фоні з throttle (1/5 хв на акаунт). Контракт у `documentation/backend/auth.md`; `AuthModals.vue` — замінити спеціальний UI для 400 «Email verification required» (якщо є) на generic + «перевірте пошту».
-- [ ] `auth-service.ts:337-342` — strict registration: хешувати пароль до lookup email.
+- [x] `auth-service.ts:1155-1174` — unverified + правильний пароль → `invalidCredentials()` (401); verification-лист повторно у фоні з throttle (1/5 хв на акаунт). Контракт у `documentation/backend/auth.md`; `AuthModals.vue` — замінити спеціальний UI для 400 «Email verification required» (якщо є) на generic + «перевірте пошту».
+- [x] `auth-service.ts:337-342` — strict registration: хешувати пароль до lookup email.
 - **Критерії:** spec на 401 для unverified; обидві гілки реєстрації викликають hash (spy), timing-різниця в тесті < порогу.
 
 ### F3 · feat-067 · DB config: `PGSQL_SSL` і SQL-логер (0.25 д)

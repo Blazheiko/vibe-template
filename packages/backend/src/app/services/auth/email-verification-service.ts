@@ -540,7 +540,7 @@ export const emailVerificationService = {
 
     async sendVerificationEmailInBackground(
         userId: bigint,
-        reason: 'registration' | 'manual resend',
+        reason: 'registration' | 'manual resend' | 'unverified login',
     ): Promise<void> {
         try {
             const result = await this.sendVerificationEmail(userId)

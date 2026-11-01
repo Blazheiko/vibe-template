@@ -118,18 +118,19 @@
 
 Читає реєстр [throttle-policies.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts). Значення мають бути цілими ≥ 1: `0` чи невалідне значення валить старт (`Invalid throttle policy configuration`), бо захист чутливої дії вимкнути не можна. Повна таблиця політик — у розділі [Обмеження частоти запитів](/backend/security#спільні-ліміти-redis).
 
-| Змінна                                                 | Призначення                                                          | Default |
-| ------------------------------------------------------ | -------------------------------------------------------------------- | ------- |
-| `AUTH_LOGIN_MAX_ATTEMPTS_PER_IP`                       | Спроби входу з одного IP за вікно (рахується кожна спроба)           | `20`    |
-| `AUTH_LOGIN_MAX_ATTEMPTS_PER_IDENTIFIER`               | Спроби входу на один email/телефон за вікно; скидається після успіху | `40`    |
-| `AUTH_LOGIN_WINDOW_SECONDS`                            | Вікно обох login-лімітів, с                                          | `900`   |
-| `AUTH_CHANGE_PASSWORD_MAX_ATTEMPTS_PER_USER`           | Спроби зміни пароля на користувача за вікно; скидається після успіху | `10`    |
-| `AUTH_CHANGE_PASSWORD_WINDOW_SECONDS`                  | Вікно ліміту зміни пароля, с                                         | `900`   |
-| `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_IP_PER_HOUR`    | Запити листа скидання пароля з одного IP                             | `10`    |
-| `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_EMAIL_PER_HOUR` | Запити листа скидання пароля на один email                           | `3`     |
-| `AUTH_RESEND_VERIFICATION_MAX_PER_USER_PER_HOUR`       | Повторні листи підтвердження email на користувача                    | `3`     |
-| `AUTH_RESET_PASSWORD_MAX_ATTEMPTS_PER_IP_PER_HOUR`     | Спроби скидання пароля за токеном з одного IP                        | `20`    |
-| `AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR`       | Спроби підтвердження email за токеном з одного IP                    | `20`    |
+| Змінна                                                 | Призначення                                                                                                     | Default  |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- | -------- |
+| `AUTH_LOGIN_MAX_ATTEMPTS_PER_IP`                       | Спроби входу з одного IP за вікно (рахується кожна спроба)                                                      | `20`     |
+| `AUTH_LOGIN_MAX_ATTEMPTS_PER_IDENTIFIER`               | Спроби входу на один email/телефон за вікно; скидається після успіху                                            | `40`     |
+| `AUTH_LOGIN_WINDOW_SECONDS`                            | Вікно обох login-лімітів, с                                                                                     | `900`    |
+| `AUTH_CHANGE_PASSWORD_MAX_ATTEMPTS_PER_USER`           | Спроби зміни пароля на користувача за вікно; скидається після успіху                                            | `10`     |
+| `AUTH_CHANGE_PASSWORD_WINDOW_SECONDS`                  | Вікно ліміту зміни пароля, с                                                                                    | `900`    |
+| `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_IP_PER_HOUR`    | Запити листа скидання пароля з одного IP                                                                        | `10`     |
+| `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_EMAIL_PER_HOUR` | Запити листа скидання пароля на один email                                                                      | `3`      |
+| `AUTH_RESEND_VERIFICATION_MAX_PER_USER_PER_HOUR`       | Повторні листи підтвердження email на користувача                                                               | `3`      |
+| `AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS`             | Інтервал, не частіше за який лист підтвердження надсилається повторно після входу в непідтверджений акаунт (мс) | `300000` |
+| `AUTH_RESET_PASSWORD_MAX_ATTEMPTS_PER_IP_PER_HOUR`     | Спроби скидання пароля за токеном з одного IP                                                                   | `20`     |
+| `AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR`       | Спроби підтвердження email за токеном з одного IP                                                               | `20`     |
 
 Наявні `AUTH_SMS_*`, `AUTH_EMAIL_REGISTER_*` і `AUTH_EMAIL_LINK_*` (розділ «Автентифікація: email і телефон» нижче) теж потрапляють у реєстр і з тією самою валідацією.
 
