@@ -30,7 +30,7 @@ export default defineConfigWithVueTs(
 
     {
         name: 'app/files-to-ignore',
-        ignores: ['**/dist/**', '**/dist-ssr/**', '**/coverage/**'],
+        ignores: ['**/dist/**', '**/dist-e2e-mock/**', '**/dist-ssr/**', '**/coverage/**'],
     },
 
     {
