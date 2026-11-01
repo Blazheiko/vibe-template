@@ -771,8 +771,8 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-shared",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #251: removed schemas/auth/register.ts, schemas/activity/, the unused Pagination/DateRange/Cursor query schemas, CSRF_REJECT_REASONS; ErrorCodeValues derived from ErrorCode; contracts.test.js now checks ErrorCodeSchema accepts exactly the ErrorCode values. typecheck/lint/format:check/build/pnpm test/docs:build+verify clean from a clean shared dist; CI green."
         },
         {
             "id": "feat-079",
@@ -781,7 +781,7 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-frontend",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
