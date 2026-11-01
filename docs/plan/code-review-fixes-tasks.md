@@ -464,14 +464,16 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 Перед кожним видаленням: `grep -rn "<name>" packages --include='*.ts' --include='*.vue' | grep -v spec` → 0 production-результатів. Критерій для всіх: `pnpm build` + typecheck + lint + test зелені; `git diff --stat` у `progress.md` як статистика.
 
-### K1 · feat-077 · Backend (0.5 д)
+### K1 · ✅ feat-077 · Backend (0.5 д)
 
-- [ ] `vendor/utils/helpers/normalize-user-id.ts`, `helpers/index.ts`; закоментована копія `redis-session-storage.ts:10-43`; `toCanonicalEntityId`, `isAuthorizedEntityRequest` в `entity-id.ts`.
-- [ ] `app/middlewares/test-middleware{,-2,-3,-4}.ts` + `kernel.ts:1-4, 20-23`.
-- [ ] `get-typed-payload.ts:22-67` (`getTypedQuery`, `isHttpContext`, `isWsContext`); `session-access.ts`; `applyAppError`; `tryDomain`; `app-error-samples.ts` → у spec; `staticIndexHandler`; `vendor/types/types.d.ts` 5 типів.
-- [ ] `app/validate/schemas/common/pagination.ts` + spec; `arktype-inference.spec.ts`.
-- [ ] Закоментований код: `index.ts:4,8-9,21-36`; `ws-context.ts:12-28,42-45`; `session-handler.ts:1-2,55-61`.
-- [ ] `serialize-routes.ts:866-951` — лише `isArkType → serializeArkSchema`; `serialize-routes.spec.ts:699-792`.
+- [x] `vendor/utils/helpers/normalize-user-id.ts`, `helpers/index.ts`; закоментована копія `redis-session-storage.ts:10-43`; `toCanonicalEntityId`, `isAuthorizedEntityRequest` в `entity-id.ts`.
+- [x] `app/middlewares/test-middleware{,-2,-3,-4}.ts` + `kernel.ts:1-4, 20-23`.
+- [x] `get-typed-payload.ts:22-67` (`getTypedQuery`, `isHttpContext`, `isWsContext`); `session-access.ts`; `applyAppError`; `tryDomain`; `app-error-samples.ts` → у spec; `staticIndexHandler`; `vendor/types/types.d.ts` 5 типів.
+- [x] `app/validate/schemas/common/pagination.ts` + spec; `arktype-inference.spec.ts`.
+- [x] Закоментований код: `index.ts:4,8-9,21-36`; `ws-context.ts:12-28,42-45`; `session-handler.ts:1-2,55-61`.
+- [x] `serialize-routes.ts:866-951` — лише `isArkType → serializeArkSchema`; `serialize-routes.spec.ts:699-792`.
+
+> Виконано PR #236. Свідомо не чіпали гілки `serialize-routes.ts` (не-ArkType `describe()`) — це задокументований контракт feat-041, номери рядків плану застарілі; рішення за власником. Додатково видалено `parse-user-agent.ts` (став без імпортів після barrel).
 
 ### K2 · feat-078 · Shared (0.25 д)
 
