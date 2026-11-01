@@ -1,20 +1,20 @@
 import { useRouter } from 'vue-router'
 import { authApi } from '@/utils/api'
 import { useSupportStore } from '@/stores/support'
-import { useStateStore } from '@/stores/state'
+import { usePushStore } from '@/stores/push'
 import { useUserStore } from '@/stores/user'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 
 export const useSessionLifecycle = () => {
     const router = useRouter()
     const supportStore = useSupportStore()
-    const stateStore = useStateStore()
+    const pushStore = usePushStore()
     const userStore = useUserStore()
     const { websocketClose } = useWebSocketConnection()
 
     const resetSessionScopedState = () => {
         supportStore.reset()
-        stateStore.resetPushSubscriptionState()
+        pushStore.resetPushSubscriptionState()
     }
 
     const redirectToLogin = async () => {

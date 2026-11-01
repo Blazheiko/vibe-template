@@ -1,4 +1,5 @@
 import { useStateStore } from '@/stores/state'
+import { getStorageFileUrl } from '@/utils/storage-url'
 
 export function buildAvatarUrl(avatarKey: string | null | undefined): string | null {
     if (!avatarKey) {
@@ -11,5 +12,5 @@ export function buildAvatarUrl(avatarKey: string | null | undefined): string | n
         return null
     }
 
-    return stateStore.getStorageFileUrl(avatarKey)
+    return getStorageFileUrl(config, avatarKey)
 }
