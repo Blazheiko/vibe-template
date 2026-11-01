@@ -1,20 +1,9 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const getChatHistory = vi.fn()
-
 vi.mock('@/utils/api', () => ({
-    supportApi: { getChatHistory, deleteChatHistory: vi.fn() },
+    supportApi: { getChatHistory: vi.fn(), deleteChatHistory: vi.fn() },
 }))
-
-const history = (...items: ['user' | 'assistant', string][]) =>
-    items.map(([role, content], i) => ({
-        id: String(i + 1),
-        role,
-        content,
-        screenshots: null,
-        createdAt: '2026-11-01T10:00:00.000Z',
-    }))
 
 async function freshStore() {
     setActivePinia(createPinia())
@@ -74,57 +63,6 @@ describe('support store: the optimistic message', () => {
 
         store.removeMessage('nope')
 
-        expect(store.messages).toHaveLength(1)
-    })
-})
-
-describe('support store: was the message delivered?', () => {
-    it('is delivered when the history now holds one more such message', async () => {
-        const store = await freshStore()
-        store.addUserMessage('hello')
-        getChatHistory.mockResolvedValue(history(['user', 'hello']))
-
-        expect(await store.confirmDelivery('hello', 0)).toBe(true)
-        expect(store.messages.map((m) => m.content)).toEqual(['hello'])
-    })
-
-    it('is not delivered when the history has no new such message', async () => {
-        const store = await freshStore()
-        store.addUserMessage('hello')
-        getChatHistory.mockResolvedValue(history(['assistant', 'Welcome!']))
-
-        expect(await store.confirmDelivery('hello', 0)).toBe(false)
-        // The history is the truth: the message that never arrived is gone from the list.
-        expect(store.messages.map((m) => m.content)).toEqual(['Welcome!'])
-    })
-
-    it('does not mistake an earlier identical message for the new one', async () => {
-        const store = await freshStore()
-        getChatHistory.mockResolvedValue(history(['user', 'hi'], ['assistant', 'Hello!']))
-        store.messages = history(['user', 'hi'], ['assistant', 'Hello!'])
-        const before = store.messages.filter((m) => m.role === 'user' && m.content === 'hi').length
-        store.addUserMessage('hi')
-
-        expect(await store.confirmDelivery('hi', before)).toBe(false)
-    })
-
-    it('is unknown when the history cannot be read', async () => {
-        const store = await freshStore()
-        store.addUserMessage('hello')
-        getChatHistory.mockRejectedValue(new Error('offline'))
-
-        expect(await store.confirmDelivery('hello', 0)).toBeNull()
-        // Nothing is thrown away on a guess.
-        expect(store.messages.map((m) => m.content)).toEqual(['hello'])
-    })
-
-    it('is unknown when an empty history comes back for a conversation that has messages', async () => {
-        // getChatHistory answers [] for a failed request as well as for a real empty history.
-        const store = await freshStore()
-        store.addUserMessage('hello')
-        getChatHistory.mockResolvedValue([])
-
-        expect(await store.confirmDelivery('hello', 0)).toBeNull()
         expect(store.messages).toHaveLength(1)
     })
 })

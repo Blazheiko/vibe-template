@@ -94,7 +94,7 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
 describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', async () => {
     const { db, pool } = await import('#database/db.js')
     const { sessionCheckPool } = await import('#database/session-check-db.js')
-    const { users } = await import('#database/schema.js')
+    const { users, supportChatHistory } = await import('#database/schema.js')
     const { default: redisClient, redisHealth } =
         (await import('#database/redis.js')) as unknown as {
             default: Redis
@@ -147,8 +147,12 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             return WsTestClient.open((ws) => new Client(ws), PORT, token, clients)
         }
 
-        chat(message: string): Promise<Frame> {
-            return this.request('api/support/support_chat', { message, language: 'en' })
+        chat(message: string, clientMessageId?: string): Promise<Frame> {
+            return this.request('api/support/support_chat', {
+                message,
+                language: 'en',
+                ...(clientMessageId !== undefined ? { clientMessageId } : {}),
+            })
         }
 
         openChat(): Promise<Frame> {
@@ -351,6 +355,83 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             await sleep(100)
 
             expect(verdict(await other.client.chat('hello'))).toBe('ok')
+        })
+    })
+
+    // Review of #208: the answer to a request can be lost (timeout, dropped connection) after
+    // the server stored the message. The client then sends the same message with the same id;
+    // that must not store it twice.
+    describe('a resend with the same client message id', () => {
+        const userMessages = async (userId: bigint) =>
+            (
+                await db
+                    .select()
+                    .from(supportChatHistory)
+                    .where(eq(supportChatHistory.userId, userId))
+            )
+                .filter((row) => row.role === 'user')
+                .map((row) => row.content)
+
+        it('puts the id on the events of the answer', async () => {
+            const { client } = await connectedUser()
+
+            expect(verdict(await client.chat('hello', 'id-events'))).toBe('ok')
+            const done = await client.waitFor((frame) => frame.event === BROADCAST_COMPLETE)
+
+            expect(done.payload).toMatchObject({ clientMessageId: 'id-events' })
+        })
+
+        it('stores the message once, does not answer it twice, and tells the client', async () => {
+            const { user, client } = await connectedUser()
+            expect(verdict(await client.chat('hello', 'id-1'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_COMPLETE)
+            const startedBefore = llm.started
+
+            // The resend: admitted like any message, then recognised as already received.
+            expect(verdict(await client.chat('hello', 'id-1'))).toBe('ok')
+            const note = await client.waitFor((frame) => frame.event === BROADCAST_ERROR)
+
+            expect(note.payload).toMatchObject({
+                code: 'message_already_received',
+                clientMessageId: 'id-1',
+            })
+            expect(await userMessages(user.id)).toEqual(['hello'])
+            expect(llm.started).toBe(startedBefore)
+            // The lock was released: the user is not stuck.
+            expect(verdict(await client.chat('next', 'id-2'))).toBe('ok')
+        })
+
+        it('is refused as busy while the original is still being answered, and still stores it once', async () => {
+            const { user, client } = await connectedUser()
+            hold()
+            expect(verdict(await client.chat('hello', 'id-busy'))).toBe('ok')
+            await sleep(100)
+
+            expect(verdict(await client.chat('hello', 'id-busy'))).toBe('429:support_busy')
+
+            llm.release()
+            await client.waitFor((frame) => frame.event === BROADCAST_COMPLETE)
+            expect(await userMessages(user.id)).toEqual(['hello'])
+        })
+
+        it('treats a message with another id as a new message', async () => {
+            const { user, client } = await connectedUser()
+            expect(verdict(await client.chat('hello', 'id-a'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_COMPLETE)
+
+            expect(verdict(await client.chat('hello', 'id-b'))).toBe('ok')
+            await client.waitFor(
+                (frame) =>
+                    frame.event === BROADCAST_COMPLETE && client.received(BROADCAST_COMPLETE) >= 2,
+            )
+
+            expect(await userMessages(user.id)).toEqual(['hello', 'hello'])
+        })
+
+        it('refuses an id with unsafe characters as a validation error', async () => {
+            const { client } = await connectedUser()
+
+            expect(verdict(await client.chat('hello', 'has space'))).toBe('error:validation_failed')
         })
     })
 

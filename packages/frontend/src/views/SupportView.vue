@@ -7,7 +7,7 @@ import { apiPath } from '@/utils/api-path'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { getResponseMessage } from '@/utils/response-normalizer'
 import { SUPPORT_MESSAGE_MAX_LENGTH } from 'shared/limits'
-import { isDeliveryUnknown } from '@/utils/websocket-types'
+import { isEventForRequest, newClientMessageId, sendUntilAnswered } from '@/utils/support-send'
 
 const props = defineProps<{
     embedded?: boolean
@@ -23,6 +23,9 @@ const textInput = ref('')
 const isSending = ref(false)
 const isOpeningChat = ref(false)
 const sessionReady = ref(false)
+// The id of the message whose answer is awaited. The events of the answer carry it, so an
+// event of an older answer (one that ran past its lock) does not end the current one.
+const activeMessageId = ref<string | undefined>(undefined)
 
 const displayMessages = computed(() => store.messages)
 
@@ -47,22 +50,45 @@ function scrollToBottom(): void {
     })
 }
 
-function onSupportChatToken(data: { token: string }): void {
+function onSupportChatToken(data: { token: string; clientMessageId?: string }): void {
+    if (!isEventForRequest(activeMessageId.value, data.clientMessageId)) return
     store.appendToken(data.token)
     scrollToBottom()
 }
 
-function onSupportChatComplete(data: { content: string; screenshots: string[] }): void {
+function onSupportChatComplete(data: {
+    content: string
+    screenshots: string[]
+    clientMessageId?: string
+}): void {
+    if (!isEventForRequest(activeMessageId.value, data.clientMessageId)) return
+    // Only the end of the awaited answer ends the wait; the greeting has no id.
+    if (data.clientMessageId !== undefined) activeMessageId.value = undefined
     store.completeStreaming(data.content, data.screenshots)
     sessionReady.value = true
     isSending.value = false
     scrollToBottom()
 }
 
-function onSupportChatError(data: { message: string }): void {
-    store.setError(data.message)
+function onSupportChatError(data: {
+    message: string
+    code?: string
+    clientMessageId?: string
+}): void {
+    if (!isEventForRequest(activeMessageId.value, data.clientMessageId)) return
+    // Only the end of the awaited answer ends the wait; the greeting has no id.
+    if (data.clientMessageId !== undefined) activeMessageId.value = undefined
     store.completeStreaming('')
     isSending.value = false
+    if (data.code === 'message_already_received') {
+        // The server already had this message (a resend after a lost answer): not a failure.
+        // Its answer, if any, is in the history.
+        void store.loadHistory()
+        return
+    }
+    store.setError(data.message)
+    // The answer was cut off (its lock was lost): what is stored is the truth.
+    if (data.code === 'chat_interrupted') void store.loadHistory()
 }
 
 async function openChat(): Promise<boolean> {
@@ -100,43 +126,41 @@ async function sendMessage(textOverride?: string): Promise<void> {
     const ready = await ensureSessionReady()
     if (!ready) return
 
-    const sentBefore = store.countUserMessages(text)
+    const clientMessageId = newClientMessageId()
     const optimisticId = store.addUserMessage(text)
+    activeMessageId.value = clientMessageId
     textInput.value = ''
     isSending.value = true
     store.setError(null)
     scrollToBottom()
 
-    try {
-        await websocketApi('support/support_chat', {
+    // A lost answer is answered by sending the same request again: the id makes it safe.
+    const result = await sendUntilAnswered(() =>
+        websocketApi('support/support_chat', {
             message: text,
             language: locale.value,
-        })
-    } catch (error) {
-        isSending.value = false
-        if (isDeliveryUnknown(error)) {
-            // No answer came (timeout, dropped connection): the server may have kept the
-            // message, and sending it again would duplicate it. Ask the history.
-            const delivered = await store.confirmDelivery(text, sentBefore)
-            if (delivered === true) {
-                store.setError(null)
-            } else if (delivered === false) {
-                textInput.value = text
-                store.setError('The message was not delivered. Please send it again.')
-            } else {
-                store.setError(
-                    'Could not confirm that the message was delivered. Check the conversation before sending it again.',
-                )
-            }
-            return
-        }
-        // The server refused the message (too frequent, the previous answer is still being
-        // written, too long), or it could not be sent at all: nothing was accepted, so the
-        // text goes back into the input for another try.
-        store.removeMessage(optimisticId)
-        textInput.value = text
-        store.setError(getResponseMessage(error, 'Failed to send message'))
+            clientMessageId,
+        }),
+    )
+    if (result.kind === 'accepted') return
+
+    isSending.value = false
+    if (result.kind === 'unconfirmed') {
+        // The message may be stored, or still be stored a moment later: it stays in the
+        // conversation, and the text is not put back (that would invite a duplicate). The
+        // events of its answer, if it was accepted, still arrive under its id.
+        store.setError(
+            'Could not confirm that the message was delivered. Check the conversation before sending it again.',
+        )
+        return
     }
+    // The server refused the message (too frequent, the previous answer is still being
+    // written, too long), or it could not be sent at all: nothing was stored, so the text
+    // goes back into the input for another try.
+    activeMessageId.value = undefined
+    store.removeMessage(optimisticId)
+    textInput.value = text
+    store.setError(getResponseMessage(result.error, 'Failed to send message'))
 }
 
 function handleKeydown(event: KeyboardEvent): void {

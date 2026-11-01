@@ -112,31 +112,6 @@ export const useSupportStore = defineStore('support', () => {
         if (index !== -1) messages.value.splice(index, 1)
     }
 
-    function countUserMessages(text: string): number {
-        return messages.value.filter((m) => m.role === 'user' && m.content === text).length
-    }
-
-    /**
-     * After a send whose outcome is unknown (timeout, dropped connection): did the server
-     * keep the message? Compares the stored history with `countBefore`, the number of such
-     * messages there were before the send. The history replaces the local list, so a
-     * message that never arrived disappears from it. `null` when it cannot be told.
-     */
-    async function confirmDelivery(text: string, countBefore: number): Promise<boolean | null> {
-        let history: SupportChatMessage[]
-        try {
-            history = await supportApi.getChatHistory()
-        } catch {
-            return null
-        }
-        // getChatHistory answers [] for a failed request as well as for a real empty history.
-        if (history.length === 0 && messages.value.length > 0) return null
-
-        messages.value = history
-        markHistoryLoaded()
-        return countUserMessages(text) > countBefore
-    }
-
     function setLoading(val: boolean): void {
         isLoading.value = val
     }
@@ -170,8 +145,6 @@ export const useSupportStore = defineStore('support', () => {
         completeStreaming,
         addUserMessage,
         removeMessage,
-        countUserMessages,
-        confirmDelivery,
         setLoading,
         setError,
         reset,

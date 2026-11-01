@@ -19,7 +19,12 @@ export const useBroadcastHandler = () => {
                 reportValidationFailure('support_chat_token', 'payload_shape', payload)
                 return
             }
-            eventBus.emit('support_chat_token', { token: payload.token })
+            eventBus.emit('support_chat_token', {
+                token: payload.token,
+                ...(payload.clientMessageId !== undefined
+                    ? { clientMessageId: payload.clientMessageId }
+                    : {}),
+            })
         },
         support_chat_complete: (event) => {
             const payload = event.payload
@@ -30,6 +35,9 @@ export const useBroadcastHandler = () => {
             eventBus.emit('support_chat_complete', {
                 content: payload.content,
                 screenshots: payload.screenshots,
+                ...(payload.clientMessageId !== undefined
+                    ? { clientMessageId: payload.clientMessageId }
+                    : {}),
             })
         },
         support_chat_error: (event) => {
@@ -41,6 +49,9 @@ export const useBroadcastHandler = () => {
             eventBus.emit('support_chat_error', {
                 message: payload.message,
                 ...(payload.code !== undefined ? { code: payload.code } : {}),
+                ...(payload.clientMessageId !== undefined
+                    ? { clientMessageId: payload.clientMessageId }
+                    : {}),
             })
         },
         admin_user_online_upsert: (event) => {

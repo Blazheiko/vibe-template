@@ -1,0 +1,99 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "55606c4f-5ddd-405d-8008-4b69b753ebe9",
+  "prevIds": [
+    "a40ded0d-779e-4808-a6e4-6ddd7648b80b"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "support_chat_history",
+        "client_message_id"
+      ],
+      "writes": [
+        "s|col|public.support_chat_history.client_message_id",
+        "n|col|public.support_chat_history.client_message_id",
+        "e|col|public.support_chat_history.client_message_id"
+      ],
+      "reads": [
+        "n|tbl|public.support_chat_history",
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "support_chat_history",
+        "support_chat_history_client_message_uidx"
+      ],
+      "writes": [
+        "s|idx|public.support_chat_history_client_message_uidx",
+        "n|idx|public.support_chat_history_client_message_uidx",
+        "e|idx|public.support_chat_history_client_message_uidx",
+        "n|rel|public.support_chat_history_client_message_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.support_chat_history",
+        "n|sch|public",
+        "n|col|public.support_chat_history.user_id",
+        "n|col|public.support_chat_history.client_message_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "support_chat_history",
+        "name": "client_message_id",
+        "type": "varchar(64)",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "support_chat_history",
+        "name": "support_chat_history_client_message_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "client_message_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

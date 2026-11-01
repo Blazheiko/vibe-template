@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import aiConfig from '#config/ai.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
@@ -8,6 +8,7 @@ const supportRepositoryMock = {
     findChatHistory: vi.fn(),
     deleteAllChatHistory: vi.fn(),
     addChatMessage: vi.fn(),
+    addUserMessageOnce: vi.fn(),
 }
 
 const supportEmbeddingServiceMock = {
@@ -43,6 +44,10 @@ const loggerMock = {
     warn: vi.fn(),
 }
 
+const userNotificationServiceMock = {
+    supportReply: vi.fn(),
+}
+
 const consumeAuthThrottleMock = vi.fn()
 const acquireSupportLockMock = vi.fn()
 
@@ -72,6 +77,10 @@ vi.mock('#app/services/ai/usage/llm-usage-service.js', () => ({
 
 vi.mock('#app/services/ai/prompt-service.js', () => ({
     promptService: promptServiceMock,
+}))
+
+vi.mock('#app/services/notifications/user-notification-service.js', () => ({
+    userNotificationService: userNotificationServiceMock,
 }))
 
 vi.mock('#logger', () => ({
@@ -108,6 +117,10 @@ const lostLease = (): AbortController => {
 async function loadSupportService() {
     return import('./support-service.js')
 }
+
+beforeEach(() => {
+    supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: true })
+})
 
 afterEach(() => {
     vi.resetModules()
@@ -191,7 +204,8 @@ describe('supportService', () => {
             expect(events.some((event) => event.includes('support_chat_token'))).toBe(true)
             // …but the abort produced no error event.
             expect(events.some((event) => event.includes('support_chat_error'))).toBe(false)
-            expect(supportRepositoryMock.addChatMessage).toHaveBeenCalledTimes(1)
+            expect(supportRepositoryMock.addUserMessageOnce).toHaveBeenCalledTimes(1)
+            expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
         })
 
         it('openChat forwards the signal and stays quiet when aborted', async () => {
@@ -207,6 +221,125 @@ describe('supportService', () => {
             controller.abort()
             expect(passed.aborted).toBe(true)
             expect(loggerMock.error).not.toHaveBeenCalled()
+        })
+    })
+
+    // Review of #208: a resend after a lost answer must not duplicate the message, and the
+    // events of an answer say which message they belong to.
+    describe('the client message id', () => {
+        const tellOrder = () => {
+            const events: { event: string; payload: unknown }[] = []
+            broadcastServiceMock.broadcastMessageToUserConnection.mockImplementation(
+                (_user: string, _uuid: string, event: string, payload: unknown) => {
+                    events.push({ event, payload })
+                    return 1
+                },
+            )
+            return events
+        }
+
+        it('stores the message under its id and puts the id on every event of the answer', async () => {
+            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+            supportEmbeddingServiceMock.search.mockResolvedValue([])
+            supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                yield 'a'
+            })
+            supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+            const events = tellOrder()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admissionOf(),
+                7n,
+                'hello',
+                'conn-1',
+                undefined,
+                undefined,
+                'msg-1',
+            )
+
+            expect(supportRepositoryMock.addUserMessageOnce).toHaveBeenCalledWith(
+                7n,
+                'hello',
+                'msg-1',
+            )
+            expect(events.map((e) => e.event)).toEqual([
+                'support_chat_token',
+                'support_chat_complete',
+            ])
+            for (const { payload } of events) {
+                expect(payload).toMatchObject({ clientMessageId: 'msg-1' })
+            }
+        })
+
+        it('does not answer a message it already has: tells the client, runs no provider call, releases the lock', async () => {
+            supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: false })
+            const events = tellOrder()
+            const admission = admissionOf()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admission,
+                7n,
+                'hello',
+                'conn-1',
+                undefined,
+                undefined,
+                'msg-1',
+            )
+
+            expect(supportQueryTranslationServiceMock.translateToEnglish).not.toHaveBeenCalled()
+            expect(supportLlmServiceMock.chatStream).not.toHaveBeenCalled()
+            expect(admission.release).toHaveBeenCalledTimes(1)
+            expect(events).toEqual([
+                {
+                    event: 'support_chat_error',
+                    payload: {
+                        message: 'This message was already received.',
+                        code: 'message_already_received',
+                        clientMessageId: 'msg-1',
+                    },
+                },
+            ])
+        })
+
+        it('puts the id on the error event of a failed answer as well', async () => {
+            supportRepositoryMock.findChatHistory.mockRejectedValue(new Error('db down'))
+            supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('x')
+            const events = tellOrder()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admissionOf(),
+                7n,
+                'hello',
+                'conn-1',
+                undefined,
+                undefined,
+                'msg-1',
+            )
+
+            expect(events[0]?.payload).toMatchObject({
+                code: 'chat_failed',
+                clientMessageId: 'msg-1',
+            })
+        })
+
+        it('leaves the id off the events when the client sent none', async () => {
+            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+            supportEmbeddingServiceMock.search.mockResolvedValue([])
+            supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                yield 'a'
+            })
+            supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+            const events = tellOrder()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(admissionOf(), 7n, 'hello', 'conn-1')
+
+            for (const { payload } of events) expect(payload).not.toHaveProperty('clientMessageId')
         })
     })
 
@@ -485,7 +618,8 @@ describe('supportService', () => {
 
                 expect(supportEmbeddingServiceMock.search).not.toHaveBeenCalled()
                 expect(supportLlmServiceMock.chatStream).not.toHaveBeenCalled()
-                expect(supportRepositoryMock.addChatMessage).toHaveBeenCalledTimes(1) // the user's message only
+                expect(supportRepositoryMock.addUserMessageOnce).toHaveBeenCalledTimes(1)
+                expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
                 expect(order).toEqual(['release', 'support_chat_error'])
                 expect(broadcastServiceMock.broadcastMessageToUserConnection).toHaveBeenCalledWith(
                     '7',
@@ -504,7 +638,7 @@ describe('supportService', () => {
                 const { supportService } = await loadSupportService()
                 await supportService.runChat(admission, 7n, 'hello', 'conn-1')
 
-                expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
+                expect(supportRepositoryMock.addUserMessageOnce).not.toHaveBeenCalled()
                 expect(supportQueryTranslationServiceMock.translateToEnglish).not.toHaveBeenCalled()
             })
 
@@ -530,7 +664,7 @@ describe('supportService', () => {
 
                 expect(streamSignal?.aborted).toBe(true)
                 // Not saved: the answer was cut off by the lock, not completed.
-                expect(supportRepositoryMock.addChatMessage).toHaveBeenCalledTimes(1)
+                expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
             })
 
             it('chat: a closed connection still goes quiet when the lock is fine', async () => {
@@ -553,6 +687,71 @@ describe('supportService', () => {
                 )
 
                 expect(broadcastServiceMock.broadcastMessageToUserConnection).not.toHaveBeenCalled()
+            })
+
+            // Review of #208: after the lock is lost nothing of this run may reach the client or
+            // the user: a late event could end the answer of the request that took the lock over.
+            it('chat: sends no token after the lock was lost', async () => {
+                const lost = new AbortController()
+                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+                supportEmbeddingServiceMock.search.mockResolvedValue([])
+                // A provider that does not look at the signal keeps producing tokens.
+                supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                    yield 'a'
+                    lost.abort(lostLease().signal.reason)
+                    yield 'b'
+                    yield 'c'
+                })
+                const order: string[] = []
+                tellOrder(order)
+
+                const { supportService } = await loadSupportService()
+                await supportService.runChat(admissionOf(order, lost), 7n, 'hello', 'conn-1')
+
+                expect(order).toEqual(['support_chat_token', 'release', 'support_chat_error'])
+            })
+
+            it('chat: tells nobody "complete" and notifies nobody when the lock was lost while the answer was being saved', async () => {
+                const lost = new AbortController()
+                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+                supportEmbeddingServiceMock.search.mockResolvedValue([])
+                supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                    yield 'answer'
+                })
+                // The INSERT of the answer is still running when the lock is lost.
+                supportRepositoryMock.addChatMessage.mockImplementation(() => {
+                    lost.abort(lostLease().signal.reason)
+                    return Promise.resolve(undefined)
+                })
+                const order: string[] = []
+                tellOrder(order)
+
+                const { supportService } = await loadSupportService()
+                await supportService.runChat(admissionOf(order, lost), 7n, 'hello', 'conn-1')
+
+                expect(userNotificationServiceMock.supportReply).not.toHaveBeenCalled()
+                expect(order).not.toContain('support_chat_complete')
+                expect(order).toEqual(['support_chat_token', 'release', 'support_chat_error'])
+            })
+
+            it('openChat: sends no token after the lock was lost', async () => {
+                const lost = new AbortController()
+                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportLlmServiceMock.openChatStream.mockImplementation(async function* () {
+                    yield 'a'
+                    lost.abort(lostLease().signal.reason)
+                    yield 'b'
+                })
+                const order: string[] = []
+                tellOrder(order)
+
+                const { supportService } = await loadSupportService()
+                await supportService.runOpenChat(admissionOf(order, lost), 7n, 'conn-1')
+
+                expect(order).toEqual(['support_chat_token', 'release', 'support_chat_error'])
+                expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
             })
 
             it('openChat: stops before the model call and tells the client', async () => {

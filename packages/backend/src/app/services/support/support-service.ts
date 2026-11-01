@@ -158,6 +158,10 @@ type SupportOutcome =
     | { kind: 'complete'; content: string; screenshots: string[] }
     | { kind: 'error'; code: string; message: string }
 
+/** The id the client gave the message, put on every event of its answer (absent: none sent). */
+const withMessageId = (clientMessageId: string | undefined): { clientMessageId?: string } =>
+    clientMessageId === undefined ? {} : { clientMessageId }
+
 /** The run stops when the connection closes or the lock is lost, whichever comes first. */
 const runSignalOf = (admission: SupportAdmission, signal: AbortSignal | undefined): AbortSignal =>
     signal === undefined ? admission.lost : AbortSignal.any([signal, admission.lost])
@@ -172,17 +176,20 @@ function tellClient(
     userIdStr: string,
     targetUuid: string | undefined,
     outcome: SupportOutcome,
+    clientMessageId?: string,
 ): void {
     try {
         if (outcome.kind === 'complete') {
             broadcastToConnection(userIdStr, targetUuid, 'support_chat_complete', {
                 content: outcome.content,
                 screenshots: outcome.screenshots,
+                ...withMessageId(clientMessageId),
             })
         } else if (outcome.kind === 'error') {
             broadcastToConnection(userIdStr, targetUuid, 'support_chat_error', {
                 message: outcome.message,
                 code: outcome.code,
+                ...withMessageId(clientMessageId),
             })
         }
     } catch (err) {
@@ -265,6 +272,9 @@ export const supportService = {
                     llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
                     runSignal,
                 )) {
+                    // Nothing of a run reaches the client once its lock is lost: the events
+                    // would mix with the answer of the request that took the lock over.
+                    admission.lost.throwIfAborted()
                     fullReply += token
                     broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', { token })
                 }
@@ -273,6 +283,7 @@ export const supportService = {
                 if (fullReply.length > 0) {
                     await supportRepository.addChatMessage(userId, 'assistant', fullReply)
                 }
+                admission.lost.throwIfAborted()
                 outcome = { kind: 'complete', content: fullReply, screenshots: [] }
             }
         } catch (err) {
@@ -304,6 +315,7 @@ export const supportService = {
         targetUuid?: string,
         signal?: AbortSignal,
         language?: string,
+        clientMessageId?: string,
     ): Promise<void> {
         const userIdStr = String(userId)
         const runSignal = runSignalOf(admission, signal)
@@ -312,8 +324,25 @@ export const supportService = {
             // See runOpenChat: checked before every step that costs money.
             runSignal.throwIfAborted()
             const langNative = resolveSupportLanguage(language)
-            await supportRepository.addChatMessage(userId, 'user', message)
+            const { stored } = await supportRepository.addUserMessageOnce(
+                userId,
+                message,
+                clientMessageId,
+            )
             runSignal.throwIfAborted()
+            if (!stored) {
+                // A resend of a message the server already has: it was answered, is being
+                // answered, or its answer was lost. Answering it again would double the
+                // reply, so the client is told and reads the history.
+                outcome = {
+                    kind: 'error',
+                    code: 'message_already_received',
+                    message: 'This message was already received.',
+                }
+                await admission.release()
+                tellClient(userIdStr, targetUuid, outcome, clientMessageId)
+                return
+            }
 
             const [englishQuery, chatHistory] = await Promise.all([
                 supportQueryTranslationService.translateToEnglish(message, {
@@ -341,14 +370,21 @@ export const supportService = {
                 llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
                 runSignal,
             )) {
+                admission.lost.throwIfAborted()
                 fullReply += token
-                broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', { token })
+                broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', {
+                    token,
+                    ...withMessageId(clientMessageId),
+                })
             }
 
             runSignal.throwIfAborted()
             const screenshotIds = extractScreenshotIds(fullReply)
 
             await supportRepository.addChatMessage(userId, 'assistant', fullReply, screenshotIds)
+            // The save may have taken long: a run that lost its lock meanwhile tells nobody
+            // (the notification and the "complete" event belong to the current owner).
+            admission.lost.throwIfAborted()
             userNotificationService.supportReply(userId)
 
             outcome = { kind: 'complete', content: fullReply, screenshots: screenshotIds }
@@ -365,6 +401,6 @@ export const supportService = {
         }
 
         await admission.release()
-        tellClient(userIdStr, targetUuid, outcome)
+        tellClient(userIdStr, targetUuid, outcome, clientMessageId)
     },
 }

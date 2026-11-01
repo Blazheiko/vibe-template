@@ -50,6 +50,20 @@ test('input schemas reject unknown keys and keep their limits', () => {
     })
 })
 
+test('a support message may carry a client message id of safe characters', () => {
+    const id = '3f2b8c1e-9d4a-4f6b-8a1e-0c5d7e9f1a2b'
+    assert.deepEqual(SupportChatInputSchema({ message: 'hi', clientMessageId: id }), {
+        message: 'hi',
+        clientMessageId: id,
+    })
+    for (const bad of ['', 'a'.repeat(65), 'has space', 'semi;colon', 42]) {
+        assert.ok(
+            SupportChatInputSchema({ message: 'hi', clientMessageId: bad }) instanceof type.errors,
+            JSON.stringify(bad),
+        )
+    }
+})
+
 test('the package root re-exports the guards', () => {
     assert.equal(typeof root.isWsChannel, 'function')
     assert.ok(Array.isArray(root.WS_CHANNELS))
