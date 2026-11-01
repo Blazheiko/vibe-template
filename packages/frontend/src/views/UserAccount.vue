@@ -5,6 +5,7 @@ import { useUserStore } from '@/stores/user'
 import { useStateStore } from '@/stores/state'
 import { avatarApi, authApi, pushSubscriptionApi } from '@/utils/api'
 import { buildAvatarUrl } from '@/utils/avatar-url'
+import { passwordLengthProblem } from '@/utils/validate-password'
 import { getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
 import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
@@ -135,7 +136,7 @@ async function deleteAvatar(): Promise<void> {
 async function changePassword(): Promise<void> {
     passwordMessage.value = ''
 
-    if (newPassword.value.length < 8 || newPassword.value.length > 32) {
+    if (passwordLengthProblem(newPassword.value) !== null) {
         passwordMessage.value = t('account.security.errorNewPasswordLength')
         return
     }

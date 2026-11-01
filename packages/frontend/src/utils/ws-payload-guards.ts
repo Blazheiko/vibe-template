@@ -1,4 +1,5 @@
 import type { BroadcastPayload } from 'shared/schemas'
+import { ENTITY_ID_PATTERN } from 'shared/patterns'
 
 // Hand-written guards for broadcast payloads: importing the ArkType schemas at runtime
 // pulls the whole ArkType engine into the bundle (and its `new Function` JIT probe
@@ -12,11 +13,8 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const hasOnlyKeys = (value: Record<string, unknown>, keys: ReadonlySet<string>): boolean =>
     Object.keys(value).every((key) => keys.has(key))
 
-// Mirrors EntityIdSchema (packages/shared/src/brands/ids.ts).
-const ENTITY_ID = /^[1-9]\d*$/
-
 const isEntityId = (value: unknown): value is string =>
-    typeof value === 'string' && ENTITY_ID.test(value)
+    typeof value === 'string' && ENTITY_ID_PATTERN.test(value)
 
 const TOKEN_KEYS = new Set(['token', 'clientMessageId'])
 const COMPLETE_KEYS = new Set(['content', 'screenshots', 'clientMessageId'])

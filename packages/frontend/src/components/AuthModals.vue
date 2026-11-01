@@ -8,6 +8,8 @@ import SocialAuthButtons from './SocialAuthButtons.vue'
 import { useUserStore } from '@/stores/user'
 import { getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
 import { ErrorCode } from 'shared/errors'
+import { looksLikePhoneNumber } from 'shared/patterns'
+import { PASSWORD_PROBLEM_MESSAGE_KEY, passwordLengthProblem } from '@/utils/validate-password'
 
 const { t } = useI18n()
 const router = useRouter()
@@ -83,8 +85,10 @@ function isEmail(value: string): boolean {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
 }
 
-function looksLikePhoneNumber(value: string): boolean {
-    return /[+\d][\d()\-\s]{5,}/.test(value.trim())
+/** The message of a password that does not fit the limits, or '' when it does. */
+function passwordFieldError(value: string): string {
+    const problem = passwordLengthProblem(value)
+    return problem === null ? '' : t(PASSWORD_PROBLEM_MESSAGE_KEY[problem])
 }
 
 function normalizeIdentifier(value: string): string {
@@ -198,7 +202,7 @@ function validateLoginPassword(): boolean {
         return false
     }
 
-    if (loginPassword.value.length < 8) {
+    if (passwordLengthProblem(loginPassword.value) === 'tooShort') {
         loginPasswordError.value = t('auth.errorPasswordLength')
         return false
     }
@@ -394,8 +398,13 @@ function validateForgotPhoneReset(): boolean {
         valid = false
     }
 
-    if (forgotPhonePassword.value.length < 8) {
-        forgotPhonePasswordError.value = t('auth.errorPasswordLength')
+    // An empty field reads "too short" here, as it always did, not "required".
+    const forgotProblem = passwordLengthProblem(forgotPhonePassword.value)
+    if (forgotProblem !== null) {
+        forgotPhonePasswordError.value =
+            forgotProblem === 'tooLong'
+                ? t('auth.errorPasswordMaxLength')
+                : t('auth.errorPasswordLength')
         valid = false
     }
 
@@ -464,11 +473,8 @@ function validateEmailRegister(): boolean {
         ok = false
     }
 
-    if (registerPassword.value === '') {
-        registerPasswordError.value = t('auth.errorPassword')
-        ok = false
-    } else if (registerPassword.value.length < 8) {
-        registerPasswordError.value = t('auth.errorPasswordLength')
+    registerPasswordError.value = passwordFieldError(registerPassword.value)
+    if (registerPasswordError.value !== '') {
         ok = false
     }
 
@@ -629,11 +635,8 @@ function validatePhoneComplete(): boolean {
         ok = false
     }
 
-    if (registerPassword.value === '') {
-        registerPasswordError.value = t('auth.errorPassword')
-        ok = false
-    } else if (registerPassword.value.length < 8) {
-        registerPasswordError.value = t('auth.errorPasswordLength')
+    registerPasswordError.value = passwordFieldError(registerPassword.value)
+    if (registerPasswordError.value !== '') {
         ok = false
     }
 
