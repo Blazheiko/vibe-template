@@ -16,12 +16,8 @@ import { useEventBus } from '@/utils/event-bus'
 import { mainApi } from '@/utils/api'
 import { getCurrentAppType } from '@/utils/app-type'
 import { sentryService } from '@/utils/sentry-service'
-import {
-    classifyWsMessage,
-    hasPendingRequest,
-    settleApiResponse,
-    type ApiResolveItem,
-} from '@/utils/ws-api-response'
+import { classifyWsMessage } from 'shared/ws-client'
+import { hasPendingRequest, settleApiResponse, type ApiResolveItem } from '@/utils/ws-api-response'
 import { buildWsEvent } from '@/utils/ws-event'
 import { resolveWebSocketCloseAction } from '@/utils/websocket-close'
 

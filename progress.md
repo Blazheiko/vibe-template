@@ -4,23 +4,23 @@
 
 **Last Updated:** 2026-11-01
 **Active Feature:** feat-075 - Frontend And Shared Dedup (in progress, phase I)
-**Branch:** `refactor/frontend-shared-dedup-2` (part 2; part 1 is merged as #255)
+**Branch:** `refactor/frontend-shared-dedup-3` (part 3; parts 1 and 2 are merged as #255 and #256)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase I
 
 ## Status
 
-### Done in this PR (items 7 and 8 of phase I)
+### Done in this PR (items 1 and 2 of phase I, the part that is the same code)
 
-- [x] **Sentry `sanitizeTree`.** `sanitizeRequestData` and `sanitizeBreadcrumbData` were one walker written twice; they differ only in what a sensitive key becomes, so it is `sanitizeTree(value, 'drop' | 'filter')`: dropped from request data, kept as `[Filtered]` in breadcrumbs. The extra `authorization|cookie` test of the breadcrumb walker was already covered by `SENSITIVE_KEY_RE` (it matches `auth` and `cookie`). A new spec (arrays, nesting, `null`, numbers, URL-like keys, both modes) passes **on the old code and on the new**
-- [x] **The second pass at send is kept, against the plan.** The plan asks to remove the re-run of the breadcrumb filter in `beforeSend`. It is idempotent and cheap, the breadcrumbs of an event can come from paths that skipped the `beforeBreadcrumb` hook, and this is a privacy filter: defence in depth is worth a few microseconds. The new spec pins it
-- [x] **ArkType `.default()`.** The installed `@arktype/type` 2.2.9 types and runs `.default('50')` correctly (checked: `inferIn` has the key optional, `infer` has the number, `{}` parses to the defaults, `'0'` is refused). So the tuple-default casts (`[x, '=', '50'] as unknown as 'string.integer.parse'`) and the outer `as unknown as SharedQuerySchema<…>` casts are gone from `query/common.ts`, `admin.ts`, `usage.ts`, `support.ts`; `SharedQuerySchema` and the hand-written `*QueryOutput` interfaces went with them
-- [x] **What the schemas infer is still pinned**, now at compile time: `query/type-checks.ts` compares `typeof Schema.infer` with the written-out output type of each of the five schemas (`AssertEqual`/`Expect`); a deliberate mismatch was checked to stop the build. And at run time: `contracts.test.js` checks defaults, string → number/Date parsing and refusals for the four admin/usage schemas; it passes on the old implementation too, so nothing changed
-- [x] Docs: `backend/validation.md`
+- [x] **`shared/ws-client`** (new dependency-free subpath): `classifyWsMessage` / `WsMessageKind` and `normalizeApiPrefix`. Both were byte-identical copies in the app and the playground; the playground's `ws-message-kind.ts` and its spec are gone, the app's `ws-api-response.ts` no longer defines the classifier, both `api-path.ts` import the prefix function from shared. `ws-client.test.js` (4) holds the table of the prefix, the classifier's cases (under any prefix, pending or not) and that the module has no import
+- [x] **One event bus.** The playground had a hand-written copy of what `mitt` does; it now uses `mitt` (added to its dependencies, the version the app uses) with its own two events. The two apps keep separate event maps on purpose: the maps are different
+- [x] Docs: `shared/index.md`
 
-### Left for the next PRs of phase I
+### Not done, on purpose: the connection core itself
 
-- [ ] WS transport into `shared/ws-client` (the biggest)
-- [ ] `event-bus.ts` (frontend uses mitt, the playground a hand-rolled copy; the playground has no `mitt` dependency)
+The plan wants the WebSocket transport (`useWebSocketConnection.ts`, 448 lines in the app, 437 in the playground) in `shared/ws-client` with the apps as thin wrappers. I looked at the two: they are **not** copies of one thing. The app's has a heartbeat, a token refresh over HTTP, a back-off for refused upgrades (`resolveWebSocketCloseAction`), the delivery-unknown error, and Sentry reporting; the playground's reconnects after a fixed 5 s and has none of that. A shared core would have to take all of these as hooks, or the playground would silently gain the app's behaviour. That is a redesign of the app's close and reconnect handling (the part that carries session revocation and the 4001 logic), not a dedup, with no safety net as strong as the other phases have; the part that really is the same code is what moved above. This is the owner's call
+
+### Left for the next PR of phase I
+
 - [ ] Admin views: `useAdminUserDetailModal`, `AdminFilterBar.vue`, `buildAdminQuery()` + `encodeURIComponent`, shared `admin.css` (screenshots before and after)
 
 ## Evidence of Completion
@@ -29,6 +29,5 @@
 | ------------------------------------------ | ----------------------------------------------------------------- |
 | `pnpm typecheck` / `lint` / `format:check` | exit 0                                                            |
 | `pnpm build`                               | exit 0                                                            |
-| `pnpm test`                                | shared 20, frontend 262, backend 1731, api-playground 29, docs 26 |
-| New specs on the old implementation        | pass (sentry spec; query defaults)                                |
+| `pnpm test`                                | shared 24, frontend 262, backend 1731, api-playground 26, docs 26 |
 | `docs:build && docs:verify`                | passed                                                            |

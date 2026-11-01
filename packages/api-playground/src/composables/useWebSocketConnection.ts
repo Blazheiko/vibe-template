@@ -2,7 +2,7 @@
 import { useIntervalFn, useWebSocket } from '@vueuse/core'
 import { ref, computed } from 'vue'
 import { useEventBus } from '@/utils/event-bus'
-import { classifyWsMessage } from '@/utils/ws-message-kind'
+import { classifyWsMessage } from 'shared/ws-client'
 
 export type WebsocketPayload = Record<string, unknown>
 
