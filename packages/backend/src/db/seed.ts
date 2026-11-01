@@ -5,7 +5,7 @@ import { env } from 'node:process'
 import pg from 'pg'
 
 import appConfig from '../config/app.js'
-import { resolveDatabaseConfig } from '../config/database.js'
+import { resolveDatabaseConfig, toPgSsl } from '../config/database.js'
 import { reportSeedFailure } from './seed/describe-error.js'
 import { createDrizzleSeedStore } from './seed/drizzle-seed-store.js'
 import { runSeed } from './seed/run-seed.js'
@@ -40,8 +40,8 @@ async function main(): Promise<void> {
         )
     }
 
-    const { host, port, user, password, database } = resolveDatabaseConfig()
-    const pool = new pg.Pool({ host, port, user, password, database, max: 1 })
+    const { host, port, user, password, database, ssl } = resolveDatabaseConfig()
+    const pool = new pg.Pool({ host, port, user, password, database, ssl: toPgSsl(ssl), max: 1 })
     try {
         const db = drizzle({ client: pool })
         const report = await db.transaction((tx) =>

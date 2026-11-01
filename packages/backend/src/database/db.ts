@@ -4,6 +4,7 @@ import { connectionOptions } from './pool-options.js'
 import appConfig from '#config/app.js'
 import { relations } from './relations.js'
 import logger from '#logger'
+import { sqlLoggingEnabled } from './sql-logging.js'
 
 const pool = new pg.Pool({
     ...connectionOptions,
@@ -22,7 +23,7 @@ pool.on('error', (err) => {
 const db = drizzle({
     client: pool,
     relations,
-    logger: appConfig.env === 'prod' || appConfig.env === 'production' ? false : true,
+    logger: sqlLoggingEnabled(appConfig),
 })
 
 export { db, pool }

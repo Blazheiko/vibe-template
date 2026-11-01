@@ -1,10 +1,10 @@
 import 'dotenv/config'
 import pg from 'pg'
 
-import { resolveDatabaseConfig } from '../config/database.js'
+import { resolveDatabaseConfig, toPgSsl } from '../config/database.js'
 
-const { host, port, user, password, database: dbName } = resolveDatabaseConfig()
-const connectionDefaults = { host, port, user, password }
+const { host, port, user, password, database: dbName, ssl } = resolveDatabaseConfig()
+const connectionDefaults = { host, port, user, password, ssl: toPgSsl(ssl) }
 
 async function createDatabase(): Promise<void> {
     const adminClient = new pg.Client({

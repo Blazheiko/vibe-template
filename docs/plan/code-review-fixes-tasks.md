@@ -328,9 +328,9 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ### F3 · feat-067 · DB config: `PGSQL_SSL` і SQL-логер (0.25 д)
 
-- [ ] `PGSQL_SSL` env (`false | true | require`), `config/database.ts`, `db.ts:17`; `validate-runtime-config.ts` — warning при production-like і `ssl=false`.
-- [ ] `db.ts:31` — `logger: !appConfig.isProductionLike`.
-- [ ] `.env.example`, `documentation/backend/configuration.md`.
+- [x] `PGSQL_SSL` env (`false | true | require`), `config/database.ts`, `db.ts:17`; `validate-runtime-config.ts` — warning при production-like і `ssl=false`.
+- [x] `db.ts:31` — `logger: !appConfig.isProductionLike`.
+- [x] `.env.example`, `documentation/backend/configuration.md`.
 - **Критерії:** `test:pg` зелений з `PGSQL_SSL=false`; при `APP_IS_PRODUCTION=true` у stdout немає SQL-statement'ів (spec на logger-конфіг).
 
 ### F4 · feat-068 · Frontend/SW/playground — дрібне без зміни контрактів (0.25 д)

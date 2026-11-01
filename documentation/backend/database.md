@@ -40,25 +40,27 @@
 | `PGSQL_USER`     | `postgres`               |
 | `PGSQL_PASSWORD` | `postgres`               |
 | `PGSQL_DB_NAME`  | `vibe_template`          |
+| `PGSQL_SSL`      | `false`                  |
 
 Runtime-конфіг — [`src/config/database.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/database.ts); пул і клієнт Drizzle створюються в [`src/database/db.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/db.ts):
 
 ```ts
 const pool = new pg.Pool({
-    /* host, port, ... */ max: 10,
-    idleTimeoutMillis: 30000,
+    ...connectionOptions, // host, port, ..., ssl: toPgSsl(PGSQL_SSL)
+    max: 10,
     connectionTimeoutMillis: 2000,
-    ssl: false,
 })
 
 const db = drizzle({
     client: pool,
     relations,
-    logger: appConfig.env === 'prod' || appConfig.env === 'production' ? false : true,
+    logger: sqlLoggingEnabled(appConfig), // !appConfig.isProductionLike
 })
 ```
 
-SQL-логування вмикається для всіх середовищ, крім `prod`/`production`.
+**Шифрування з'єднання (`PGSQL_SSL`).** Параметри підключення спільні для головного пулу, пулу перевірки сесії, `drizzle-kit`, `db:create` і `db:seed` ([`pool-options.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/pool-options.ts)), тож значення діє скрізь одразу. `false` (за замовчуванням) — без TLS; `true` — TLS із перевіркою сертифіката сервера; `require` — TLS без перевірки сертифіката (шифрування без автентичності сервера, як `sslmode=require` у libpq). Будь-яке інше значення — помилка старту, а не мовчазний відкат на незашифроване з'єднання. У production-like середовищі з `PGSQL_SSL=false` на старті логується попередження (керована БД без TLS — ризик; для БД у довіреній приватній мережі це свідомий вибір).
+
+**SQL-логування** Drizzle друкує кожен запит разом із параметрами, тобто з email, ідентифікаторами та всім, що передано параметром. Тому воно вимкнене в production-like середовищі ([`sql-logging.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/sql-logging.ts): `APP_IS_PRODUCTION=true` або `APP_ENV=prod`/`production`) і вмикається в решті.
 
 Для `drizzle-kit` є окремий [`drizzle.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/drizzle.config.ts): він бере підключення з тієї ж `resolveDatabaseConfig()`, що й застосунок, `schema: "./src/database/schema.ts"`, `out: "./src/drizzle/migrations"`, таблиця журналу `drizzle.__drizzle_migrations`, `strict: true`.
 
