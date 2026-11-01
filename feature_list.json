@@ -631,8 +631,8 @@
             "owner": "Blazheiko",
             "branch": "fix/oauth-token-storage",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #214 (merge fc6295b): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1366, frontend 203, api-playground 14, shared 17, docs 26), test:pg 132 with Redis / 68 without (+2 on the migrated oauth_accounts table: no token columns, create/find round trip), test:redis 89, docs:build + docs:verify; drizzle-kit generate after the migration: no schema changes; 9 OAuth tests failed before the change, 4 fail with the raw email or the URL token restored; no access_token= left in packages/; CI quality/e2e/build/test-pg/test-redis green"
         },
         {
             "id": "feat-065",
