@@ -701,8 +701,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/auth-normalize",
             "dependencies": ["feat-070"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #243: auth-normalize.ts (normalizeEmail, normalizePhone, isChallengeExpired, phone flows) replaces copies in auth, password-reset, email-verification, oauth services and the seed; 469 auth+db specs pass unchanged; table compares with the old trim().toLowerCase() on 13 edge inputs; mutations fail 1/13/18 specs. typecheck/lint/format:check/pnpm test (backend 1691)/test:pg/docs:build+verify clean; CI green."
         },
         {
             "id": "feat-072",
@@ -711,7 +711,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/email-templates",
             "dependencies": ["feat-071"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {

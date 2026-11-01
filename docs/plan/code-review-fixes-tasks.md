@@ -395,11 +395,13 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #240: 20 входжень (email-verification 2, password-reset 4, auth 14); сигнатура `enforceThrottle(policy, key, { unavailable, rejected })` — кроки різняться двома повідомленнями, не одним. `requestPasswordReset` і `resendVerificationAfterUnverifiedLogin` свідомо не змінено (інша поведінка).
 
-### H2 · `auth-normalize.ts` (0.5 д)
+### H2 · ✅ `auth-normalize.ts` (0.5 д)
 
-- [ ] `normalizeEmail`, `normalizePhone`, `isChallengeExpired`, flow-константи; прибрати копії (`auth-service.ts:55,75,110,114`, `password-reset-service.ts:50,80,92`, inline `.trim().toLowerCase()` у `password-reset-service.ts:225`, `email-verification-service.ts:381,398`, `oauth-service.ts:294`, `db/seed/run-seed.ts:65`).
-- [ ] `normalizeEmail` — у `packages/shared/src/utils`, якщо frontend теж нормалізує.
-- [ ] Критерій: однакові результати на таблиці edge-кейсів (unicode, пробіли, регістр) до/після.
+- [x] `normalizeEmail`, `normalizePhone`, `isChallengeExpired`, flow-константи; прибрати копії (`auth-service.ts:55,75,110,114`, `password-reset-service.ts:50,80,92`, inline `.trim().toLowerCase()` у `password-reset-service.ts:225`, `email-verification-service.ts:381,398`, `oauth-service.ts:294`, `db/seed/run-seed.ts:65`).
+- [x] `normalizeEmail` — у `packages/shared/src/utils`, якщо frontend теж нормалізує.
+- [x] Критерій: однакові результати на таблиці edge-кейсів (unicode, пробіли, регістр) до/після.
+
+> Виконано PR #243. `normalizeEmail` лишається в backend (frontend e-mail не нормалізує). Дві копії без `trim` (ціль e-mail-link, e-mail від OAuth-провайдера) тепер теж роблять `trim`.
 
 ### H3 · Email templates (0.5 д)
 
