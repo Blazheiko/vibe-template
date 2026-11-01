@@ -621,8 +621,8 @@
             "owner": "Blazheiko",
             "branch": "fix/resource-limits",
             "dependencies": ["feat-058"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PRs #206 (D4 per-route body limit, merge ba07fff), #207 + #208 + #209 (D0+D1 support chat admission: admit before ok, lease lock, idempotent resend by clientMessageId, 503 mapping), #210 (D2 daily LLM token budget, ADR 0003), #211 (D3 history pages, merge 271af46): progress.md Evidence of Completion per part \u2014 typecheck/lint/format, test (backend 1359, frontend 203, api-playground 14, shared 17, docs 26), test:pg 130 with Redis / 66 without, test:redis 89, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on each PR. Tests proved by mutation (renewal off, lost-lock checks off, ON CONFLICT off, cut-off call free, settle off, cursor ignored). ADR 0003 still proposed, awaiting the owner"
         },
         {
             "id": "feat-064",
