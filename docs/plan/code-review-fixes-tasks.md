@@ -343,7 +343,7 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ---
 
-## G · 🟡 feat-069 · Регресійне покриття перед рефакторингами
+## G · ✅ feat-069 · Регресійне покриття перед рефакторингами
 
 **Гілка:** `test/auth-regression-coverage` · **Залежності:** B, B2, F2 (щоб фіксувати вже правильну поведінку) · **Оцінка:** 2 д
 
@@ -351,31 +351,35 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ### G1. Backend — snapshot auth-поведінки
 
-- [ ] Для кожного публічного методу `auth-service`, `password-reset-service`, `email-verification-service`: таблиця «вхід → код/повідомлення/побічні ефекти (sessions, throttle keys, emails)» як spec із fixture'ами. Мета — щоб H1–H5 не змінили жодного рядка очікувань.
-- [ ] Snapshot HTML/text трьох email-шаблонів (до H3).
-- [ ] Регресійні spec'и на транзакційний `consumeTokenAndApply` з B2 — залишаються зеленими після H4.
+- [x] Для кожного публічного методу `auth-service`, `password-reset-service`, `email-verification-service`: таблиця «вхід → код/повідомлення/побічні ефекти (sessions, throttle keys, emails)» як spec із fixture'ами. Мета — щоб H1–H5 не змінили жодного рядка очікувань.
+- [x] Snapshot HTML/text трьох email-шаблонів (до H3).
+- [x] Регресійні spec'и на транзакційний `consumeTokenAndApply` з B2 — залишаються зеленими після H4.
 
 ### G2. Frontend e2e — UI-стани на mocks (Playwright `page.route`)
 
 Швидкі, детерміновані, без backend; фіксують поведінку `AuthModals.vue` перед J.
 
-- [ ] Login email: успіх, неправильний пароль (401), throttle (429 → повідомлення + disabled), повторний submit під час loading (кнопка disabled, рівно один запит — `page.route` лічильник).
-- [ ] Login phone: start → код → confirm; неправильний код; resend cooldown (таймер).
-- [ ] Register email (strict і non-strict відповіді сервера); register phone.
-- [ ] Forgot password: submit → generic-повідомлення незалежно від відповіді.
-- [ ] Модалка: відкрити → заповнити → закрити → відкрити → стан скинутий; перемикання login ↔ register — зафіксувати поточну поведінку як є.
-- [ ] Валідація на клієнті: пароль < 8, email-формат, телефон-формат — повідомлення без запиту.
+- [x] Login email: успіх, неправильний пароль (401), throttle (429 → повідомлення + disabled), повторний submit під час loading (кнопка disabled, рівно один запит — `page.route` лічильник).
+- [x] Login phone: start → код → confirm; неправильний код; resend cooldown (таймер).
+- [x] Register email (strict і non-strict відповіді сервера); register phone.
+- [x] Forgot password: submit → generic-повідомлення незалежно від відповіді.
+- [x] Модалка: відкрити → заповнити → закрити → відкрити → стан скинутий; перемикання login ↔ register — зафіксувати поточну поведінку як є.
+- [x] Валідація на клієнті: пароль < 8, email-формат, телефон-формат — повідомлення без запиту.
 
 ### G3. Frontend e2e — реальний backend (`test-support` + Postgres + Redis у CI)
 
 Повільніші; перевіряють те, що mocks не можуть — відкликання сесій між контекстами.
 
-- [ ] Forgot password → лист (перехопити через test-mailer) → reset page → новий пароль → у **другому browser-context** стара сесія → 401 (підтверджує B через UI).
-- [ ] Account page: change password → поточний context працює далі (нова cookie), другий context → 401; WS у другому context закривається/відхиляє.
-- [ ] Login → logout all → другий context 401.
-- [ ] Один happy path register email → verify (лист) → login — наскрізна перевірка з реальним throttle.
+- [x] Forgot password → лист (перехопити через test-mailer) → reset page → новий пароль → у **другому browser-context** стара сесія → 401 (підтверджує B через UI).
+- [x] Account page: change password → поточний context працює далі (нова cookie), другий context → 401; WS у другому context закривається/відхиляє.
+- [x] Login → logout all → другий context 401.
+- [x] Один happy path register email → verify (лист) → login — наскрізна перевірка з реальним throttle.
 
 **Критерії:** усі нові тести зелені на `main` + B + B2 + F2; G2 і G3 — окремі Playwright-проєкти (`e2e/mock/*`, `e2e/live/*`); `pnpm --filter frontend test:e2e` у CI (`.github/workflows/ci.yml`) запускає обидва — підтвердити, що e2e дійсно виконуються, а не лише unit; для G3 CI піднімає Postgres + Redis (паттерн із `pg-tests.yml`/`redis-tests.yml`).
+
+---
+
+> Виконано трьома PR: #231 (G1), #232 (G2), #233 (G3). Відхилення від тексту: G3 — окремий конфіг `playwright.live.config.ts` + `e2e-live/` (потрібні свій бекенд, база і збірка), а не проєкт `e2e/live/*`; «login phone: start → код → confirm» і «resend cooldown (таймер)» у UI входу немає — телефонні кроки це реєстрація й відновлення пароля, таймера немає (показується ISO-час); зафіксовано як є.
 
 ---
 
@@ -544,7 +548,7 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 | F2    | feat-066     | Auth-контракт: unverified login, timing реєстрації                                                  | 🟠        | —              | 0.5 д   |
 | F3    | feat-067     | `PGSQL_SSL`, SQL-логер                                                                              | 🟠        | —              | 0.25 д  |
 | F4    | feat-068     | Frontend/SW/playground дрібне                                                                       | 🟠        | —              | 0.25 д  |
-| G     | feat-069     | Регресійне покриття: snapshot auth, e2e на mocks, e2e з реальним backend                            | 🟡        | B, B2, F2      | 2 д     |
+| G     | feat-069     | Регресійне покриття: snapshot auth, e2e на mocks, e2e з реальним backend                            | ✅        | B, B2, F2      | 2 д     |
 | H1–H5 | feat-070…074 | Auth refactor по кроку                                                                              | 🟢        | B2, G, K1      | 4 д     |
 | I     | feat-075     | FE/shared dedup                                                                                     | 🟢        | G2, G3, K2, K3 | 2 д     |
 | J     | feat-076     | FE split components                                                                                 | 🟢        | G2, G3, I      | 2 д     |
