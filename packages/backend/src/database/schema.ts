@@ -355,7 +355,17 @@ export const supportChatHistory = pgTable(
         role: chatRoleEnum('role').notNull(),
         content: text('content').notNull(),
         screenshots: jsonb('screenshots'),
+        // The id the client gave a user message. A resend of the same message carries the
+        // same id, so one message is stored once. Null for assistant rows and for messages
+        // from a client that sends no id (several NULLs do not collide in a unique index).
+        clientMessageId: varchar('client_message_id', { length: 64 }),
         createdAt: timestamp('created_at').notNull().defaultNow(),
     },
-    (table) => [index('support_chat_history_user_idx').on(table.userId)],
+    (table) => [
+        index('support_chat_history_user_idx').on(table.userId),
+        uniqueIndex('support_chat_history_client_message_uidx').on(
+            table.userId,
+            table.clientMessageId,
+        ),
+    ],
 )

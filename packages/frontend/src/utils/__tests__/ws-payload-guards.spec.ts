@@ -44,17 +44,25 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
 
 // Event-specific edge cases on top of the generic ones below.
 const specific: Record<BroadcastEventName, [string, unknown][]> = {
-    support_chat_token: [['empty token', { token: '' }]],
+    support_chat_token: [
+        ['empty token', { token: '' }],
+        ['with the id of its message', { token: 'x', clientMessageId: 'abc' }],
+        ['numeric message id', { token: 'x', clientMessageId: 1 }],
+    ],
     support_chat_complete: [
         ['no screenshots', { content: 'x', screenshots: [] }],
         ['missing screenshots', { content: 'x' }],
         ['numeric screenshot', { content: 'x', screenshots: [1] }],
         ['screenshots not an array', { content: 'x', screenshots: '1' }],
+        ['with the id of its message', { content: 'x', screenshots: [], clientMessageId: 'abc' }],
+        ['numeric message id', { content: 'x', screenshots: [], clientMessageId: 1 }],
     ],
     support_chat_error: [
         ['numeric message', { message: 1 }],
         ['numeric code', { message: 'failed', code: 1 }],
         ['no code is fine for the schema, so the guard must agree', { message: 'failed' }],
+        ['with the id of its message', { message: 'failed', clientMessageId: 'abc' }],
+        ['numeric message id', { message: 'failed', clientMessageId: 1 }],
     ],
     admin_user_online_upsert: [
         ['web appType', { ...upsert, appType: 'web' }],

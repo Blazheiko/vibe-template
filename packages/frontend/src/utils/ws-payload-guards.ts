@@ -18,9 +18,12 @@ const ENTITY_ID = /^[1-9]\d*$/
 const isEntityId = (value: unknown): value is string =>
     typeof value === 'string' && ENTITY_ID.test(value)
 
-const TOKEN_KEYS = new Set(['token'])
-const COMPLETE_KEYS = new Set(['content', 'screenshots'])
-const ERROR_KEYS = new Set(['message', 'code'])
+const TOKEN_KEYS = new Set(['token', 'clientMessageId'])
+const COMPLETE_KEYS = new Set(['content', 'screenshots', 'clientMessageId'])
+const ERROR_KEYS = new Set(['message', 'code', 'clientMessageId'])
+
+const isOptionalString = (value: unknown): boolean =>
+    value === undefined || typeof value === 'string'
 const REMOVE_KEYS = new Set(['id'])
 const ADMIN_USER_ONLINE_UPSERT_KEYS = new Set([
     'id',
@@ -34,7 +37,10 @@ const ADMIN_USER_ONLINE_UPSERT_KEYS = new Set([
 export const isSupportChatTokenPayload = (
     value: unknown,
 ): value is BroadcastPayload<'support_chat_token'> =>
-    isObject(value) && hasOnlyKeys(value, TOKEN_KEYS) && typeof value.token === 'string'
+    isObject(value) &&
+    hasOnlyKeys(value, TOKEN_KEYS) &&
+    typeof value.token === 'string' &&
+    isOptionalString(value.clientMessageId)
 
 export const isSupportChatCompletePayload = (
     value: unknown,
@@ -43,7 +49,8 @@ export const isSupportChatCompletePayload = (
     hasOnlyKeys(value, COMPLETE_KEYS) &&
     typeof value.content === 'string' &&
     Array.isArray(value.screenshots) &&
-    value.screenshots.every((item) => typeof item === 'string')
+    value.screenshots.every((item) => typeof item === 'string') &&
+    isOptionalString(value.clientMessageId)
 
 export const isSupportChatErrorPayload = (
     value: unknown,
@@ -51,7 +58,8 @@ export const isSupportChatErrorPayload = (
     isObject(value) &&
     hasOnlyKeys(value, ERROR_KEYS) &&
     typeof value.message === 'string' &&
-    (value.code === undefined || typeof value.code === 'string')
+    isOptionalString(value.code) &&
+    isOptionalString(value.clientMessageId)
 
 export const isWSAdminUserOnlineUpsertPayload = (
     value: unknown,

@@ -1,0 +1,2 @@
+ALTER TABLE "support_chat_history" ADD COLUMN "client_message_id" varchar(64);--> statement-breakpoint
+CREATE UNIQUE INDEX "support_chat_history_client_message_uidx" ON "support_chat_history" ("user_id","client_message_id");

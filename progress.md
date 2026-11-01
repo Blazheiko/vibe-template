@@ -71,6 +71,26 @@ An external review of the merged PR found four problems; each was checked agains
 | `test:redis`                               | 73 passed (5 new lease tests on real Redis: kept alive past TTL, taken over, key gone, maximum lifetime, release stops renewals) |
 | `docs:build && docs:verify`                | passed                                                                                                                           |
 
+## Second review follow-up (#208 → this PR)
+
+A second external review of the merged #208 found two more problems; both were real.
+
+- [x] **HIGH — a run still spoke after it lost its lease.** There was no check after the `INSERT` of the answer, so the notification and `support_chat_complete` of the old run reached the client and could end the answer of the request that took the lock over; nor before each token broadcast. Now `admission.lost.throwIfAborted()` runs before every token and after the answer is saved (before the notification and the `complete`); the events of an answer carry the `clientMessageId` of its message and the view ignores events of another answer. The connection signal is deliberately not used after the save: a closed tab must still get the push notification. A write that has started cannot be cancelled; the docs say so
+- [x] **MEDIUM — "not in the history" was read as "not delivered".** The original `INSERT` may still be waiting when the `SELECT` returns the old history; a retry then duplicates. Comparing texts cannot be made reliable, so `confirmDelivery` / `countUserMessages` are gone. The client now gives each message a `clientMessageId`; the server stores a user message once per `(user_id, client_message_id)` (migration `20261101093458_support_client_message_id`: nullable `varchar(64)` column and a unique index, `INSERT … ON CONFLICT DO NOTHING`; NULLs do not collide, so old clients still work). A lost answer is answered by sending the same request once more; a duplicate gets `support_chat_error` with `code: 'message_already_received'` and no second answer. If the resend is not accepted either, the message stays in the conversation as unconfirmed and the text is not put back
+
+### Evidence of Completion (second follow-up)
+
+| Check                                      | Result                                                                                                                                                      |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tests first                                | 9 service tests failed before the change (events after a lost lease, id on events, duplicate); the repository, shared and frontend tests were written first |
+| Mutation: no `ON CONFLICT DO NOTHING`      | 4 tests fail (3 repository, 1 end-to-end resend)                                                                                                            |
+| Mutation: no `lost` checks                 | 3 service tests fail                                                                                                                                        |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                                                                                                      |
+| `pnpm test`                                | backend 1318, frontend 194, api-playground 14, shared 16, docs 26; exit 0                                                                                   |
+| `test:pg` with Redis / without             | 99 passed / 57 passed, 42 skipped (new: 5 repository tests incl. 10 concurrent inserts, 5 end-to-end resend tests on a real WebSocket server)               |
+| `test:redis`                               | 73 passed                                                                                                                                                   |
+| `docs:build && docs:verify`                | passed                                                                                                                                                      |
+
 ## Notes for Next Session
 
 1. Merge this PR (feat-063 stays `in_progress`); then D2 (atomic Redis LLM budget, needs an ADR) on a new branch; D2 adds the budget reservation inside `admit()` and must release the lock when the budget rejects

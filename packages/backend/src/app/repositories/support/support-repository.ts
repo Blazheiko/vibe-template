@@ -28,6 +28,27 @@ export const supportRepository = {
         return created
     },
 
+    /**
+     * Stores a user message once per client message id. A resend after a lost answer carries
+     * the same id: the unique index (user, id) makes the second insert a no-op, even when it
+     * races the first (it waits for the first transaction, then conflicts). `stored: false`
+     * means the message was already there. Without an id every call stores a new row.
+     */
+    async addUserMessageOnce(
+        userId: bigint,
+        content: string,
+        clientMessageId: string | undefined,
+    ): Promise<{ stored: boolean }> {
+        const inserted = await db
+            .insert(supportChatHistory)
+            .values({ userId, role: 'user', content, clientMessageId: clientMessageId ?? null })
+            .onConflictDoNothing({
+                target: [supportChatHistory.userId, supportChatHistory.clientMessageId],
+            })
+            .returning({ id: supportChatHistory.id })
+        return { stored: inserted.length > 0 }
+    },
+
     async findChatHistory(userId: bigint, limit?: number): Promise<SupportChatRow[]> {
         const query = db
             .select()

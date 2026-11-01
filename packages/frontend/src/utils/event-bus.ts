@@ -8,14 +8,17 @@ export interface Events extends Record<EventType, unknown> {
     destroy_websocket_base: undefined
     support_chat_token: {
         token: string
+        clientMessageId?: string
     }
     support_chat_complete: {
         content: string
         screenshots: string[]
+        clientMessageId?: string
     }
     support_chat_error: {
         message: string
         code?: string
+        clientMessageId?: string
     }
     admin_user_online_upsert: {
         id: string

@@ -8,11 +8,22 @@ import { WSAdminUserOnlineUpsertPayloadSchema } from './ws-admin-user-online-ups
 // (no ArkType in the bundle) kept in sync by a parity test. Schemas describe JSON:
 // no Date, bigint or morphs, and no '+': 'reject' — the backend mode decides on keys.
 export const BroadcastEventSchemas = {
-    support_chat_token: type({ token: 'string' }),
-    support_chat_complete: type({ content: 'string', screenshots: 'string[]' }),
+    // `clientMessageId` is the id the client gave the message this answer is for (absent for
+    // the greeting): an event of an older answer must not end a newer one.
+    support_chat_token: type({ token: 'string', 'clientMessageId?': 'string' }),
+    support_chat_complete: type({
+        content: 'string',
+        screenshots: 'string[]',
+        'clientMessageId?': 'string',
+    }),
     // `code` tells a failure after the message was accepted apart from another
-    // ('chat_failed', 'open_chat_failed'); a refusal before that is the reply to the request.
-    support_chat_error: type({ message: 'string', 'code?': 'string' }),
+    // ('chat_failed', 'open_chat_failed', 'chat_interrupted', 'message_already_received'); a
+    // refusal before that is the reply to the request.
+    support_chat_error: type({
+        message: 'string',
+        'code?': 'string',
+        'clientMessageId?': 'string',
+    }),
     admin_user_online_upsert: WSAdminUserOnlineUpsertPayloadSchema,
     admin_user_online_remove: type({ id: EntityIdSchema }),
 } as const
