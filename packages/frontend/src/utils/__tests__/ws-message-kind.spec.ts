@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyWsMessage } from '@/utils/ws-api-response'
+import { classifyWsMessage } from 'shared/ws-client'
 import { buildWsEvent } from '@/utils/ws-event'
 
 describe('classifyWsMessage', () => {

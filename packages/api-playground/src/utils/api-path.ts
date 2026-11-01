@@ -1,10 +1,9 @@
 // The playground talks to a backend whose routes live under API_PATH_PREFIX.
 // VITE_API_PATH_PREFIX mirrors it (default "api"), so the route list, the health
 // check and the dev proxy no longer assume /api (code-issues item 62).
-export const normalizeApiPrefix = (raw: string | undefined): string => {
-    const trimmed = (raw ?? '').trim().replace(/^\/+|\/+$/g, '')
-    return trimmed === '' ? 'api' : trimmed
-}
+import { normalizeApiPrefix } from 'shared/ws-client'
+
+export { normalizeApiPrefix }
 
 export const API_PATH_PREFIX = normalizeApiPrefix(import.meta.env.VITE_API_PATH_PREFIX)
 

@@ -38,6 +38,10 @@
             "types": "./dist/guards/index.d.ts",
             "import": "./dist/guards/index.js"
         },
+        "./ws-client": {
+            "types": "./dist/ws-client/index.d.ts",
+            "import": "./dist/ws-client/index.js"
+        },
         "./patterns": {
             "types": "./dist/patterns/index.d.ts",
             "import": "./dist/patterns/index.js"
