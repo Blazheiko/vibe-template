@@ -9,12 +9,10 @@ import App from './App.vue'
 import router from './router'
 import { useEventBus } from '@/utils/event-bus'
 import { i18n } from '@/plugins/i18n'
-import { useSentry } from '@/composables/useSentry'
+import { sentryService as sentry } from '@/utils/sentry-service'
 import { initializePwaInstallTracking } from '@/utils/pwa-install'
 import { initLocaleStandalone } from '@/composables/useLocale'
 import { isNavigationFailure } from 'vue-router'
-
-const sentry = useSentry()
 
 initializePwaInstallTracking()
 
@@ -365,11 +363,6 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     // message: SW сообщает о новой версии после удаления старого кеша
     navigator.serviceWorker.addEventListener('message', (event: MessageEvent) => {
         console.log('[SW] Message:', event.data)
-        if (event.data === 'NEW_VERSION') {
-            void maybeShowUpdateNotification('message', navigator.serviceWorker.controller)
-            return
-        }
-
         if (isServiceWorkerErrorPayload(event.data)) {
             const swError = createServiceWorkerError(event.data.err)
             sentry.captureException(swError.error, {
