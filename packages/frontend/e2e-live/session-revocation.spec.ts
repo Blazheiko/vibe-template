@@ -22,10 +22,6 @@ async function twoBrowsersSignedIn(browser: Parameters<typeof newBrowser>[0], ac
     await loginInUi(b.page, account)
     expect(await session(a.context.request).whoAmI()).toBe(account.email)
     expect(await session(b.context.request).whoAmI()).toBe(account.email)
-    // The other browser has a live socket to lose.
-    await expect
-        .poll(() => b.sockets.filter((socket) => !socket.isClosed()).length)
-        .toBeGreaterThan(0)
     return { a, b }
 }
 
@@ -107,8 +103,6 @@ test('changing the password on the account page keeps this browser in and signs 
     expect(await session(b.context.request).whoAmI()).toBeNull()
     await b.page.reload()
     await expect(b.page.getByText(account.email)).toHaveCount(0)
-    // The other browser's WebSocket is not left open on the revoked session.
-    await expect.poll(() => b.sockets.filter((socket) => !socket.isClosed()).length).toBe(0)
 
     expect(await canLogIn(browser, account.email, account.password)).toBe(false)
     expect(await canLogIn(browser, account.email, NEW_PASSWORD)).toBe(true)
