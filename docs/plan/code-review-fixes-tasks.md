@@ -485,16 +485,18 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #236. Свідомо не чіпали гілки `serialize-routes.ts` (не-ArkType `describe()`) — це задокументований контракт feat-041, номери рядків плану застарілі; рішення за власником. Додатково видалено `parse-user-agent.ts` (став без імпортів після barrel).
 
-### K2 · feat-078 · Shared (0.25 д)
+### K2 · ✅ feat-078 · Shared (0.25 д)
 
-- [ ] `schemas/auth/register.ts` (дублікат `register-email.ts`); `schemas/activity/` цілком; `index.ts`.
-- [ ] `schemas/query/common.ts:68-84` — прибрати з публічного експорту (або видалити зі spec).
-- [ ] `errors/error-codes.ts`, `csrf-reasons.ts`:
+- [x] `schemas/auth/register.ts` (дублікат `register-email.ts`); `schemas/activity/` цілком; `index.ts`.
+- [x] `schemas/query/common.ts:68-84` — прибрати з публічного експорту (або видалити зі spec).
+- [x] `errors/error-codes.ts`, `csrf-reasons.ts`:
     ```ts
     export const ErrorCodeValues: readonly ErrorCode[] = Object.values(ErrorCode)
     ```
     (не `as const` на результаті виклику). Якщо десь потрібен літеральний tuple-тип — залишити ручний масив і `satisfies`, а sync-тест у `shared/test/contracts.test.js:16-24` тоді залишається.
-- [ ] `brands/` — залишити (використовується в I).
+- [x] `brands/` — залишити (використовується в I).
+
+> Виконано PR #251. `ErrorCodeValues = Object.values(ErrorCode)` (тип `readonly ErrorCode[]`) — `ErrorCodeSchema` лишився union; `CSRF_REJECT_REASONS` не мав користувачів, окрім власного sync-тесту, і видалений.
 
 ### K3 · feat-079 · Frontend (0.25 д)
 
