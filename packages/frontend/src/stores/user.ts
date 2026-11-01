@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import { useSentry } from '@/composables/useSentry'
+import { sentryService as sentry } from '@/utils/sentry-service'
 
 // Tracks the currently active initializeApp() cycle.
 let _resolveReady: (() => void) | null = null
@@ -29,7 +29,6 @@ export interface User {
 }
 
 export const useUserStore = defineStore('user', () => {
-    const sentry = useSentry()
     const user = ref<User | null>(null)
 
     function setUser(userData: User) {

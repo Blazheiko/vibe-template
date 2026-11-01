@@ -86,6 +86,5 @@ if (isConnected.value) {
 | ------------------------ | ----------------------------------------------- |
 | `useBroadcastHandler.ts` | разбор broadcast-событий WebSocket (см. выше)   |
 | `useLocale.ts`           | текущая локаль и переключение языка             |
-| `useSentry.ts`           | доступ к Sentry во фронтенде                    |
 | `useSessionLifecycle.ts` | реакция на окончание сессии (`redirectToLogin`) |
 | `useToast.ts`            | уведомления                                     |

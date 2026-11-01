@@ -324,23 +324,17 @@ export const useStateStore = defineStore('state', () => {
         return { name: osName, version: osVersion }
     }
 
-    // Получение IP адреса (приблизительно через внешний сервис или будет установлен на сервере)
-    // Сервер сам определяет IP из request headers
-    const getClientIP = (): Promise<string | null> => Promise.resolve(null)
-
     // Отправка подписки на сервер
     const sendSubscriptionToServer = async (subscription: PushSubscription): Promise<void> => {
         try {
             const browserInfo = getBrowserInfo()
             const osInfo = getOSInfo()
-            const clientIP = await getClientIP()
 
             const subscriptionData = {
                 endpoint: subscription.endpoint,
                 p256dhKey: arrayBufferToBase64(subscription.getKey('p256dh')),
                 authKey: arrayBufferToBase64(subscription.getKey('auth')),
                 userAgent: navigator.userAgent,
-                ipAddress: clientIP || undefined,
                 deviceType: getDeviceType(),
                 browserName: browserInfo.name,
                 browserVersion: browserInfo.version,
