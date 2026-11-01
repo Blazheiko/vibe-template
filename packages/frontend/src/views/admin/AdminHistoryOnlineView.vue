@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import AdminFilterBar from '@/components/admin/AdminFilterBar.vue'
 import AdminUserDetailModal from '@/components/admin/AdminUserDetailModal.vue'
-import { adminOnlineHistoryApi, adminOnlineUsersApi } from '@/utils/api'
-import type { AdminOnlineHistoryListItem, AdminOnlineUserDetail } from 'shared/responses'
+import { useAdminUserDetailModal } from '@/composables/useAdminUserDetailModal'
+import { adminOnlineHistoryApi } from '@/utils/api'
+import type { AdminOnlineHistoryListItem } from 'shared/responses'
 import { getResponseMessage } from '@/utils/response-normalizer'
 
 interface HistoryFilters {
@@ -27,10 +29,8 @@ const filters = ref<HistoryFilters>({
     dateTo: '',
 })
 
-const isModalOpen = ref(false)
-const selectedUser = ref<AdminOnlineUserDetail | null>(null)
-const detailLoading = ref(false)
-const detailError = ref<string | null>(null)
+const { isModalOpen, selectedUser, detailLoading, detailError, openUserModal, closeModal } =
+    useAdminUserDetailModal()
 
 function getFilterParams(cursor?: string) {
     return {
@@ -91,30 +91,6 @@ function resetFilters() {
     void loadHistory(true)
 }
 
-async function openUserModal(userId: string) {
-    isModalOpen.value = true
-    detailLoading.value = true
-    detailError.value = null
-    selectedUser.value = null
-
-    const res = await adminOnlineUsersApi.getById(userId)
-    detailLoading.value = false
-
-    if (res.data?.status === 'success') {
-        selectedUser.value = res.data.user
-        return
-    }
-
-    detailError.value = res.error?.message ?? 'Failed to load user details'
-}
-
-function closeModal() {
-    isModalOpen.value = false
-    selectedUser.value = null
-    detailLoading.value = false
-    detailError.value = null
-}
-
 function formatDate(value: string | null): string {
     if (value === null) return '—'
     return new Intl.DateTimeFormat(undefined, {
@@ -162,43 +138,15 @@ onMounted(() => {
             <div class="admin-history__meta">Loaded: {{ records.length }} / {{ total }}</div>
         </div>
 
-        <form class="filters-card" @submit.prevent="applyFilters">
-            <div class="filters-grid">
-                <div class="form-field">
-                    <label class="form-label">User ID</label>
-                    <input
-                        v-model="filters.userId"
-                        class="form-input"
-                        inputmode="numeric"
-                        placeholder="e.g. 123"
-                    />
-                </div>
-
-                <div class="form-field">
-                    <label class="form-label">Connected from</label>
-                    <input v-model="filters.dateFrom" class="form-input" type="date" />
-                </div>
-
-                <div class="form-field">
-                    <label class="form-label">Connected to</label>
-                    <input v-model="filters.dateTo" class="form-input" type="date" />
-                </div>
-            </div>
-
-            <div class="filters-actions">
-                <button class="btn btn--primary" type="submit" :disabled="loading || loadingMore">
-                    {{ loading ? 'Loading...' : 'Apply' }}
-                </button>
-                <button
-                    class="btn"
-                    type="button"
-                    :disabled="loading || loadingMore"
-                    @click="resetFilters"
-                >
-                    Reset
-                </button>
-            </div>
-        </form>
+        <AdminFilterBar
+            v-model="filters"
+            from-label="Connected from"
+            to-label="Connected to"
+            :loading="loading"
+            :busy="loadingMore"
+            @submit="applyFilters"
+            @reset="resetFilters"
+        />
 
         <div v-if="loading" class="admin-history__loading">Loading history...</div>
         <div v-else-if="error !== null && records.length === 0" class="admin-history__error">
@@ -333,50 +281,6 @@ onMounted(() => {
     font-size: 0.875rem;
 }
 
-.filters-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 18px 20px;
-    margin-bottom: 20px;
-}
-
-.filters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 14px 16px;
-}
-
-.form-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-.form-label {
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-}
-
-.form-input {
-    padding: 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    font-size: 0.875rem;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.filters-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
-    margin-top: 16px;
-}
-
 .btn {
     appearance: none;
     border: 1px solid var(--border-color);
@@ -415,10 +319,6 @@ onMounted(() => {
     border-color: color-mix(in srgb, var(--accent-color) 88%, black);
 }
 
-.table-wrap {
-    overflow-x: auto;
-}
-
 .history-table {
     width: 100%;
     border-collapse: collapse;
@@ -448,19 +348,6 @@ onMounted(() => {
     background: color-mix(in srgb, var(--accent-color) 6%, transparent);
 }
 
-.cell-id {
-    font-family: monospace;
-    color: var(--text-secondary);
-}
-
-.cell-email {
-    min-width: 220px;
-}
-
-.cell-empty {
-    color: var(--text-secondary);
-}
-
 .flag-badge {
     display: inline-flex;
     align-items: center;
@@ -479,12 +366,6 @@ onMounted(() => {
 .flag-badge--pending {
     background: color-mix(in srgb, var(--text-secondary) 15%, transparent);
     color: var(--text-secondary);
-}
-
-.empty-row {
-    text-align: center;
-    color: var(--text-secondary);
-    padding: 28px;
 }
 
 .admin-history__error--inline {

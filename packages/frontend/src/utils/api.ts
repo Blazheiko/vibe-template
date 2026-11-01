@@ -1,6 +1,7 @@
 import baseApi from './base-api'
 import type { ApiResponse } from './api-error'
 import { apiPath } from './api-path'
+import { adminQueryString } from './admin-query'
 import type {
     OAuthProvidersResponse,
     UploadAvatarResponse,
@@ -407,16 +408,16 @@ export const adminKnowledgeBaseApi = {
     getAll: async (
         params?: AdminKnowledgeBaseListQueryInput,
     ): Promise<{ items: KnowledgeBaseArticle[]; total: number }> => {
-        const query = new URLSearchParams()
-        if (params?.category) query.set('category', params.category)
-        if (params?.page !== undefined) query.set('page', String(params.page))
-        if (params?.limit !== undefined) query.set('limit', String(params.limit))
-        const qs = query.toString()
+        const qs = adminQueryString({
+            category: params?.category,
+            page: params?.page,
+            limit: params?.limit,
+        })
         const response = await baseApi.http<{
             status: string
             data?: KnowledgeBaseArticle[]
             total?: number
-        }>('GET', apiPath(`admin/knowledge-base${qs ? `?${qs}` : ''}`))
+        }>('GET', apiPath(`admin/knowledge-base${qs}`))
         if (!isSuccessfulResponse(response)) return { items: [], total: 0 }
         return { items: response.data.data ?? [], total: response.data.total ?? 0 }
     },
@@ -534,21 +535,13 @@ export const adminKnowledgeBaseApi = {
 
 export const adminUsersApi = {
     list: async (params?: AdminUserListQueryInput): Promise<ApiResponse<AdminUserListResponse>> => {
-        const query = new URLSearchParams()
-
-        if (params?.limit !== undefined) query.set('limit', String(params.limit))
-        if (params?.userId !== undefined && params.userId.trim() !== '') {
-            query.set('userId', params.userId.trim())
-        }
-        if (params?.dateFrom !== undefined && params.dateFrom !== '')
-            query.set('dateFrom', params.dateFrom)
-        if (params?.dateTo !== undefined && params.dateTo !== '') query.set('dateTo', params.dateTo)
-
-        const qs = query.toString()
-        return baseApi.http<AdminUserListResponse>(
-            'GET',
-            apiPath(`admin/users${qs ? `?${qs}` : ''}`),
-        )
+        const qs = adminQueryString({
+            limit: params?.limit,
+            userId: params?.userId?.trim(),
+            dateFrom: params?.dateFrom,
+            dateTo: params?.dateTo,
+        })
+        return baseApi.http<AdminUserListResponse>('GET', apiPath(`admin/users${qs}`))
     },
 }
 
@@ -560,7 +553,7 @@ export const adminOnlineUsersApi = {
     getById: async (id: string): Promise<ApiResponse<AdminOnlineUserDetailResponse>> => {
         return baseApi.http<AdminOnlineUserDetailResponse>(
             'GET',
-            apiPath(`admin/users-online/${id}`),
+            apiPath(`admin/users-online/${encodeURIComponent(id)}`),
         )
     },
 }
@@ -569,21 +562,16 @@ export const adminOnlineHistoryApi = {
     list: async (
         params?: AdminOnlineHistoryListQueryInput,
     ): Promise<ApiResponse<AdminOnlineHistoryListResponse>> => {
-        const query = new URLSearchParams()
-
-        if (params?.limit !== undefined) query.set('limit', String(params.limit))
-        if (params?.cursor !== undefined && params.cursor !== '') query.set('cursor', params.cursor)
-        if (params?.userId !== undefined && params.userId.trim() !== '') {
-            query.set('userId', params.userId.trim())
-        }
-        if (params?.dateFrom !== undefined && params.dateFrom !== '')
-            query.set('dateFrom', params.dateFrom)
-        if (params?.dateTo !== undefined && params.dateTo !== '') query.set('dateTo', params.dateTo)
-
-        const qs = query.toString()
+        const qs = adminQueryString({
+            limit: params?.limit,
+            cursor: params?.cursor,
+            userId: params?.userId?.trim(),
+            dateFrom: params?.dateFrom,
+            dateTo: params?.dateTo,
+        })
         return baseApi.http<AdminOnlineHistoryListResponse>(
             'GET',
-            apiPath(`admin/history-online${qs ? `?${qs}` : ''}`),
+            apiPath(`admin/history-online${qs}`),
         )
     },
 }

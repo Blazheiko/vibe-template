@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
 import AdminUserDetailModal from '@/components/admin/AdminUserDetailModal.vue'
+import { useAdminUserDetailModal } from '@/composables/useAdminUserDetailModal'
 import { adminOnlineUsersApi } from '@/utils/api'
 import { useEventBus } from '@/utils/event-bus'
-import type { AdminOnlineUserDetail, AdminOnlineUserListItem } from 'shared/responses'
+import type { AdminOnlineUserListItem } from 'shared/responses'
 
 const eventBus = useEventBus()
 
@@ -11,10 +12,8 @@ const users = ref<AdminOnlineUserListItem[]>([])
 const loading = ref(false)
 const error = ref<string | null>(null)
 
-const isModalOpen = ref(false)
-const selectedUser = ref<AdminOnlineUserDetail | null>(null)
-const detailLoading = ref(false)
-const detailError = ref<string | null>(null)
+const { isModalOpen, selectedUser, detailLoading, detailError, openUserModal, closeModal } =
+    useAdminUserDetailModal()
 
 function compareBigIntIdsDesc(a: { id: string }, b: { id: string }): number {
     const left = BigInt(a.id)
@@ -67,30 +66,6 @@ function removeUser(id: string) {
 function formatAppType(appType: 'web' | 'pwa' | null): string {
     if (appType === null) return '—'
     return appType.toUpperCase()
-}
-
-async function openUserModal(id: string) {
-    isModalOpen.value = true
-    detailLoading.value = true
-    detailError.value = null
-    selectedUser.value = null
-
-    const res = await adminOnlineUsersApi.getById(id)
-    detailLoading.value = false
-
-    if (res.data?.status === 'success') {
-        selectedUser.value = res.data.user
-        return
-    }
-
-    detailError.value = res.error?.message ?? 'Failed to load user details'
-}
-
-function closeModal() {
-    isModalOpen.value = false
-    selectedUser.value = null
-    detailError.value = null
-    detailLoading.value = false
 }
 
 const handleUpsert = (user: AdminOnlineUserListItem) => {
@@ -199,10 +174,6 @@ onUnmounted(() => {
     font-size: 0.875rem;
 }
 
-.table-wrap {
-    overflow-x: auto;
-}
-
 .online-table {
     width: 100%;
     border-collapse: collapse;
@@ -229,25 +200,6 @@ onUnmounted(() => {
 
 .online-table__row:hover {
     background: color-mix(in srgb, var(--accent-color) 6%, transparent);
-}
-
-.cell-id {
-    font-family: monospace;
-    color: var(--text-secondary);
-}
-
-.cell-email {
-    min-width: 220px;
-}
-
-.cell-empty {
-    color: var(--text-secondary);
-}
-
-.empty-row {
-    text-align: center;
-    color: var(--text-secondary);
-    padding: 28px;
 }
 
 @media (max-width: 900px) {
