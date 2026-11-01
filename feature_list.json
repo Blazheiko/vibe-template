@@ -631,7 +631,7 @@
             "owner": "Blazheiko",
             "branch": "fix/oauth-token-storage",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
