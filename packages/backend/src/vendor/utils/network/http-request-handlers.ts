@@ -25,7 +25,7 @@ export const detectBodyKind = (contentType: string): BodyKind => {
     return 'other'
 }
 
-export const resolveMaxBodySize = (kind: BodyKind): number => {
+const resolveKindLimit = (kind: BodyKind): number => {
     switch (kind) {
         case 'json':
             return config.maxJsonBodySize
@@ -38,6 +38,15 @@ export const resolveMaxBodySize = (kind: BodyKind): number => {
         case 'other':
             return config.maxBodySize
     }
+}
+
+/**
+ * The body limit of a request: the global limit of its kind, tightened by the route's
+ * own `maxBodySize` when it has one (never loosened).
+ */
+export const resolveMaxBodySize = (kind: BodyKind, routeLimit?: number): number => {
+    const kindLimit = resolveKindLimit(kind)
+    return routeLimit === undefined ? kindLimit : Math.min(kindLimit, routeLimit)
 }
 
 // ─── Headers ─────────────────────────────────────────────────────────────────

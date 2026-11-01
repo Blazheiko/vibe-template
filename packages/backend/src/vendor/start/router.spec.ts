@@ -91,4 +91,42 @@ describe('routesHandler', () => {
             expect(route?.validator).toBeDefined()
         })
     })
+    describe('maxBodySize', () => {
+        const upload = (maxBodySize: number | undefined, method: 'post' | 'get' = 'post') =>
+            ({
+                ...defineRoute({
+                    url: '/upload',
+                    method: 'post',
+                    allowedContentTypes: ['multipart'],
+                    handler: () => ({}),
+                }),
+                method,
+                ...(maxBodySize !== undefined ? { maxBodySize } : {}),
+            }) as ReturnType<typeof defineRoute>
+
+        it('is carried into the normalized route', () => {
+            const [route] = routesHandler([upload(1234)])
+            expect(route?.maxBodySize).toBe(1234)
+        })
+
+        it('is undefined for a route that does not set it', () => {
+            const [route] = routesHandler([upload(undefined)])
+            expect(route?.maxBodySize).toBeUndefined()
+        })
+
+        it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+            'throws at startup for %s',
+            (value) => {
+                expect(() => routesHandler([upload(value)])).toThrow(
+                    /maxBodySize must be a positive integer/,
+                )
+            },
+        )
+
+        it('throws at startup on a method that never reads a body', () => {
+            expect(() => routesHandler([upload(1000, 'get')])).toThrow(
+                /sets maxBodySize, but GET requests never read a body/,
+            )
+        })
+    })
 })

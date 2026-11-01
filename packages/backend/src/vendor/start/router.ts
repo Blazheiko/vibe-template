@@ -41,6 +41,7 @@ const createRoute = (
         parametersKey: parseRouteParams(normalizedUrl),
         description: route.description,
         allowedContentTypes: route.allowedContentTypes,
+        maxBodySize: route.maxBodySize,
         ...(responseSchema !== undefined ? { ResponseSchema: responseSchema } : {}),
         // Built once here; null only for a route without a ResponseSchema.
         responseCheck: createResponseCheck(responseSchema, responseValidationConfig),
@@ -56,6 +57,19 @@ const routeHandler = (route: RouteItem, groupRateLimit?: RateLimit): NormalizedR
                 `but ${route.method.toUpperCase()} requests never read a body. ` +
                 'Pass the data via :params or queryValidator, or use post/put/patch.',
         )
+    }
+    if (route.maxBodySize !== undefined) {
+        if (isNoBodyMethod(method)) {
+            throw new Error(
+                `Route ${route.method.toUpperCase()} ${route.url} sets maxBodySize, ` +
+                    `but ${route.method.toUpperCase()} requests never read a body.`,
+            )
+        }
+        if (!Number.isSafeInteger(route.maxBodySize) || route.maxBodySize <= 0) {
+            throw new Error(
+                `Route ${route.method.toUpperCase()} ${route.url}: maxBodySize must be a positive integer (bytes), got ${String(route.maxBodySize)}.`,
+            )
+        }
     }
     return createRoute(method, route, groupRateLimit)
 }

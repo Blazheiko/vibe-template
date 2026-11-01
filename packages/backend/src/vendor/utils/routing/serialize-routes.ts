@@ -158,9 +158,12 @@ export function serializeRoutes(routes: unknown[]): unknown[] {
         if (typeof obj['method'] === 'string' && isBodyMethod(obj['method'] as Method)) {
             // Same default as readAndParseBody.
             const allowed = (obj['allowedContentTypes'] as BodyKind[] | undefined) ?? ['json']
+            // The route's own maxBodySize tightens the limit of every kind it accepts.
+            const routeLimit =
+                typeof obj['maxBodySize'] === 'number' ? obj['maxBodySize'] : undefined
             result.bodyLimits = allowed.map((kind) => ({
                 kind,
-                maxBytes: resolveMaxBodySize(kind),
+                maxBytes: resolveMaxBodySize(kind, routeLimit),
             }))
         }
 

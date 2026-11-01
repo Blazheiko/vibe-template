@@ -16,8 +16,8 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
+import { AVATAR_MAX_FILE_BYTES } from '#app/services/shared/upload-limits.js'
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 const ALLOWED_TYPES: ReadonlySet<DetectedImageType> = new Set([
     'image/jpeg',
     'image/png',
@@ -62,7 +62,7 @@ export const avatarService = {
             return Result.err(badRequest('No file uploaded'))
         }
 
-        if (file.data.byteLength > MAX_FILE_SIZE) {
+        if (file.data.byteLength > AVATAR_MAX_FILE_BYTES) {
             return Result.err(badRequest('File size exceeds 10 MB limit'))
         }
 

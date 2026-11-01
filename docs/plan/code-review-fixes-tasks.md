@@ -267,11 +267,13 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 ### D4. Multipart — file-limit і body-limit окремо
 
 - Факт: файл рівно 10 MiB не поміститься в body рівно 10 MiB через boundary та заголовки.
-- [ ] Опція route `maxBodySize` у `vendor/utils/routing/*`; `http-request-handlers.ts:28-41` `resolveMaxBodySize(kind, route)` = `min(route.maxBodySize, config[kind])`.
-- [ ] Для multipart-роутів: `maxBodySize = maxFileSize + 64 KiB` (запас на boundary/headers/додаткові поля), константа `MULTIPART_OVERHEAD`.
-- [ ] `server.ts:260-270` — pre-check `Content-Length` проти route-ліміту; `http-request-handlers.ts:110-129` — обрив потоку при перевищенні **посеред** `onData`, а не після накопичення.
-- [ ] `http-routes.ts:376-398` — група `avatar`: `maxBodySize: 10 MiB + overhead`, `rateLimit: { windowMs: 60_000, maxRequests: 10 }`; KB screenshot: `5 MiB + overhead`.
-- [ ] Документація: публічна сторінка про body limits (є `docs/plan/http-body-limits-plan.md`).
+- [x] Опція route `maxBodySize` у `vendor/utils/routing/*`; `http-request-handlers.ts:28-41` `resolveMaxBodySize(kind, route)` = `min(route.maxBodySize, config[kind])`.
+- [x] Для multipart-роутів: `maxBodySize = maxFileSize + 64 KiB` (запас на boundary/headers/додаткові поля), константа `MULTIPART_OVERHEAD`.
+- [x] `server.ts:260-270` — pre-check `Content-Length` проти route-ліміту; `http-request-handlers.ts:110-129` — обрив потоку при перевищенні **посеред** `onData`, а не після накопичення.
+- [x] `http-routes.ts:376-398` — група `avatar`: `maxBodySize: 10 MiB + overhead`, `rateLimit: { windowMs: 60_000, maxRequests: 10 }`; KB screenshot: `5 MiB + overhead`.
+- [x] Документація: публічна сторінка про body limits (є `docs/plan/http-body-limits-plan.md`).
+
+_Виконано в першому PR фази D (D4). Деталі: мід-стрімове переривання і ранній `Content-Length`-відказ уже були, бракувало лише ліміту на маршрут; тепер діє `min(глобальний за типом, route.maxBodySize)`. Серед нового: `maxBodySize` на маршруті методу без тіла чи з некоректним значенням — помилка на старті; playground (`bodyLimits`) показує ефективний ліміт; ліміти завантажень і `multipartBodyLimit()` — у `app/services/shared/upload-limits.ts`._
 
 ### Критерії приймання
 
