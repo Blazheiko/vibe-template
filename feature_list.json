@@ -621,7 +621,7 @@
             "owner": "Blazheiko",
             "branch": "fix/resource-limits",
             "dependencies": ["feat-058"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
