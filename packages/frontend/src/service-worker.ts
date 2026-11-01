@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { API_PREFIX } from './utils/api-path'
+import { isSameTarget, resolveNotificationTarget } from './utils/notification-target'
 import {
     classifyRequest,
     isCacheableResponse,
@@ -491,7 +492,8 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
     console.log('[ServiceWorker] Notification clicked:', event)
     event.notification.close()
 
-    const url = event.notification.data?.url ? event.notification.data.url : '/'
+    // The address is part of the push payload: only a page of this application is opened.
+    const url = resolveNotificationTarget(event.notification.data?.url, self.location.origin)
 
     if (event.action === 'close') {
         return
@@ -506,7 +508,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
             .then((clientList) => {
                 // Проверяем, есть ли уже открытое окно приложения
                 for (const client of clientList) {
-                    if (client.url.includes(url) && 'focus' in client) {
+                    if (isSameTarget(client.url, url) && 'focus' in client) {
                         return client.focus()
                     }
                 }

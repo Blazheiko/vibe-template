@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Главный компонент приложения
 import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
+import { safeRedirectTarget } from '@/utils/safe-redirect'
 import { useI18n } from 'vue-i18n'
 import { useStateStore } from '@/stores/state'
 import { useUserStore } from '@/stores/user'
@@ -165,8 +166,9 @@ const initializeApp = async () => {
             // console.log(`Data in initialization: route - ${String(routeName)}, path - ${routePath}`)
 
             if (routePath === '/' || routePath === '/login' || routePath === '/register') {
-                const intended = route.query.redirect as string | undefined
-                if (intended !== undefined && intended !== '') {
+                // Only a path inside the application: the link that carries it is not trusted.
+                const intended = safeRedirectTarget(route.query.redirect)
+                if (intended !== null) {
                     void router.push(intended)
                 } else {
                     void router.push({ name: 'UserAccount' })

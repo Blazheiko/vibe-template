@@ -88,7 +88,7 @@ flowchart LR
 [`ApiSettingsModal.vue`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/components/api/ApiSettingsModal.vue) і `stores/api-settings.ts` керують такими налаштуваннями:
 
 - `baseUrl`, який зберігається в `localStorage`, і тимчасовий override на поточну сесію (він у `localStorage` не потрапляє);
-- глобальні заголовки з перемикачем `enableGlobalHeaders`, які додаються до кожного HTTP-запиту;
+- глобальні заголовки з перемикачем `enableGlobalHeaders`, які додаються до кожного HTTP-запиту. **Значення заголовків** (`Authorization`, `Cookie`, ключі API — це облікові дані, які розробник вводить, щоб перевірити API) зберігаються лише в `sessionStorage` (живуть одну вкладку), а не в `localStorage`, де вони пережили б вкладку і були б доступні кожному скрипту origin. Базова адреса, префікс і перемикач лишаються в `localStorage`. Значення, збережені в `localStorage` старою версією, ігноруються і стираються. У консолі журнал запиту показує `[redacted]` замість значень чутливих заголовків (`authorization`, `cookie`, `*token*`, `*api-key*`, `*secret*`); `console.log` вирізається з production-збірки, як і у фронтенді;
 - скидання до значень за замовчуванням.
 
 Окремих «середовищ» зі змінними немає. Тема (light/dark) теж зберігається в `localStorage` ([`useTheme.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/composables/useTheme.ts)).
