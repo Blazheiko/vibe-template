@@ -40,7 +40,11 @@ export default {
             userId: r.userId === null ? null : String(r.userId),
             model: r.model,
             feature: r.feature,
-            finalPrompt: r.finalPrompt,
+            // '' means the text is not kept (feat-065): answered as "no text", not as an
+            // empty prompt. The hash and the length are there for rows written since.
+            finalPrompt: r.finalPrompt === '' ? null : r.finalPrompt,
+            promptSha256: r.promptSha256,
+            promptChars: r.promptChars,
             promptTokens: r.promptTokens,
             completionTokens: r.completionTokens,
             totalTokens: r.totalTokens,

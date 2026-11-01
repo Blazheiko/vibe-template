@@ -131,3 +131,45 @@ describe('AI config: the daily token budget (feat-063, D2)', () => {
         expect(config.configError).toContain(`${name} must be a non-negative integer`)
     })
 })
+
+describe('AI config: what the usage log keeps of a prompt (feat-065)', () => {
+    it('keeps no prompt text by default, and 30 days when it is switched on', async () => {
+        delete process.env['AI_USAGE_STORE_PROMPTS']
+        delete process.env['AI_USAGE_PROMPT_RETENTION_DAYS']
+        const config = await load()
+        expect(config.usage).toEqual({ storePrompts: false, promptRetentionDays: 30 })
+        expect(config.configError).toBeNull()
+    })
+
+    it.each([
+        ['true', true],
+        ['false', false],
+        [' TRUE ', true],
+    ])('reads AI_USAGE_STORE_PROMPTS=%s', async (value, expected) => {
+        process.env['AI_USAGE_STORE_PROMPTS'] = value
+        expect((await load()).usage.storePrompts).toBe(expected)
+    })
+
+    it.each([['yes'], ['1'], ['on'], ['ture']])(
+        'rejects AI_USAGE_STORE_PROMPTS=%s instead of guessing (a typo must not start keeping prompts)',
+        async (value) => {
+            process.env['AI_USAGE_STORE_PROMPTS'] = value
+            expect((await load()).configError).toContain(
+                'AI_USAGE_STORE_PROMPTS must be true or false',
+            )
+        },
+    )
+
+    it('reads the retention', async () => {
+        process.env['AI_USAGE_PROMPT_RETENTION_DAYS'] = '7'
+        expect((await load()).usage.promptRetentionDays).toBe(7)
+    })
+
+    it.each([['0'], ['-3'], ['1.5'], ['1e2'], ['week']])(
+        'rejects AI_USAGE_PROMPT_RETENTION_DAYS=%s',
+        async (value) => {
+            process.env['AI_USAGE_PROMPT_RETENTION_DAYS'] = value
+            expect((await load()).configError).toContain('AI_USAGE_PROMPT_RETENTION_DAYS')
+        },
+    )
+})

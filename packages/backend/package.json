@@ -26,6 +26,7 @@
         "db:seed:prod": "node dist/db/seed.js",
         "mail:test": "tsx src/scripts/send-test-email.ts",
         "push:vapid": "tsx src/scripts/generate-vapid-keys.ts",
+        "llm:purge-prompts": "tsx src/scripts/purge-llm-prompts.ts",
         "bench:response": "tsx src/scripts/bench-response-check.ts",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage --coverage.reporter=text-summary --coverage.reporter=html",

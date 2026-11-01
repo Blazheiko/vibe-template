@@ -8,7 +8,11 @@ export const TextUsageRowSchema = type({
     userId: 'string | null',
     model: 'string',
     feature: "'PROMPT_TEST' | 'SUPPORT_CHAT' | 'SUPPORT_QUERY_TRANSLATION' | 'SUPPORT_EMBEDDING'",
-    finalPrompt: 'string',
+    // null when the text is not kept (AI_USAGE_STORE_PROMPTS=false, or purged): then the SHA-256
+    // and the length still identify it. Both are null for a row from before they existed.
+    finalPrompt: 'string | null',
+    promptSha256: 'string | null',
+    promptChars: 'number | null',
     promptTokens: 'number | null',
     completionTokens: 'number | null',
     totalTokens: 'number | null',

@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // feat-028 (code-issues item 53): every AI call produces a usage row; unknown
 // counts are NULL, not 0.
 
+const usageConfig = vi.hoisted(() => ({ storePrompts: true, promptRetentionDays: 30 }))
 vi.mock('#config/ai.js', () => ({
     default: {
+        usage: usageConfig,
         drivers: { text: 'openai' },
         requestTimeoutMs: 1000,
         providers: {
@@ -19,7 +21,7 @@ vi.mock('#config/ai.js', () => ({
 const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }))
 vi.mock('#logger', () => ({ default: logger }))
 
-const insertText = vi.fn(() => Promise.resolve())
+const insertText = vi.fn((_row: unknown) => Promise.resolve())
 vi.mock('#app/repositories/index.js', () => ({ llmUsageRepository: { insertText } }))
 
 const mistralStream = vi.fn()
@@ -39,6 +41,72 @@ const { llmUsageService } = await import('./llm-usage-service.js')
 
 afterEach(() => {
     vi.clearAllMocks()
+    usageConfig.storePrompts = true
+})
+
+// feat-065: the usage log is an audit of tokens and cost. A prompt holds what the user wrote
+// (and, for the support chat, their chat history), kept for ever and shown to every admin:
+// by default only a hash and a length are kept.
+describe('llmUsageService.recordText: what is kept of the prompt', () => {
+    const PROMPT = '[system]\nBe kind.\n\n[user]\nMy email is jane@example.com'
+    const usage = { promptTokens: 3, completionTokens: 4, totalTokens: 7 }
+    const record = (): void => {
+        llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n)(usage, 'gpt-test', PROMPT)
+    }
+    const sha256 = async (text: string): Promise<string> =>
+        (await import('node:crypto')).createHash('sha256').update(text, 'utf8').digest('hex')
+
+    it('keeps no text by default, only the hash and the length', async () => {
+        usageConfig.storePrompts = false
+
+        record()
+
+        const row = insertText.mock.calls[0]?.[0] as Record<string, unknown>
+        expect(row['finalPrompt']).toBe('')
+        expect(row['promptSha256']).toBe(await sha256(PROMPT))
+        expect(row['promptChars']).toBe(PROMPT.length)
+        expect(
+            JSON.stringify(row, (_key, item: unknown) =>
+                typeof item === 'bigint' ? String(item) : item,
+            ),
+        ).not.toContain('jane@example.com')
+        // The audit itself is intact.
+        expect(row).toMatchObject({ feature: 'SUPPORT_CHAT', totalTokens: 7, model: 'gpt-test' })
+    })
+
+    it('keeps the text as well, when asked to', async () => {
+        usageConfig.storePrompts = true
+
+        record()
+
+        const row = insertText.mock.calls[0]?.[0] as Record<string, unknown>
+        expect(row['finalPrompt']).toBe(PROMPT)
+        expect(row['promptSha256']).toBe(await sha256(PROMPT))
+        expect(row['promptChars']).toBe(PROMPT.length)
+    })
+
+    it('counts characters, not UTF-16 units, so it agrees with the database', () => {
+        usageConfig.storePrompts = false
+
+        llmUsageService.textUsageRecorder('PROMPT_TEST', null)(usage, 'm', 'a😀b')
+
+        expect((insertText.mock.calls[0]?.[0] as Record<string, unknown>)['promptChars']).toBe(3)
+    })
+
+    it('gives the same hash to the same prompt, and another to another', () => {
+        usageConfig.storePrompts = false
+        const recorder = llmUsageService.textUsageRecorder('PROMPT_TEST', null)
+
+        recorder(usage, 'm', 'one')
+        recorder(usage, 'm', 'one')
+        recorder(usage, 'm', 'two')
+
+        const hashes = insertText.mock.calls.map(
+            (call) => (call[0] as Record<string, unknown>)['promptSha256'],
+        )
+        expect(hashes[0]).toBe(hashes[1])
+        expect(hashes[0]).not.toBe(hashes[2])
+    })
 })
 
 describe('llmUsageService.textUsageRecorder: the budget hook (feat-063, D2)', () => {
