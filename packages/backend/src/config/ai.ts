@@ -56,12 +56,30 @@ const readPromptCacheTtlMs = (): number => {
     return value
 }
 
+// A whole number of tokens; 0 is allowed (see the callers).
+const readTokenCount = (name: string, fallback: number): number => {
+    const raw = env[name]
+    if (raw === undefined || raw.trim() === '') return fallback
+    const value = Number(raw.trim())
+    if (!/^\d+$/.test(raw.trim()) || !Number.isSafeInteger(value)) {
+        errors.push(`${name} must be a non-negative integer, got "${raw}"`)
+        return fallback
+    }
+    return value
+}
+
 const aiConfig = Object.freeze({
     drivers: {
         text: readTextDriver(),
     },
     requestTimeoutMs: readTimeoutMs(),
     promptCacheTtlMs: readPromptCacheTtlMs(),
+    // Tokens a user's support chat may spend per UTC day (ADR 0003). 0 switches the budget
+    // off, which production-like environments refuse at startup.
+    supportDailyTokenBudget: readTokenCount('AI_SUPPORT_DAILY_TOKEN_BUDGET', 200_000),
+    // What a reply may add to the message itself: system prompt, knowledge-base context and
+    // chat history, whose size is not known when the message is admitted.
+    supportPromptAllowanceTokens: readTokenCount('AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS', 8_000),
     providers: {
         openai: {
             apiKey: env['OPENAI_API_KEY'] ?? '',

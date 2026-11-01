@@ -2,6 +2,7 @@ import { openaiEmbeddingAdapter } from '#app/services/ai/adapters/openai-embeddi
 import { supportKnowledgeRepository } from '#app/repositories/index.js'
 import type { KbSearchResult } from '#app/repositories/index.js'
 import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
+import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
 
@@ -51,7 +52,12 @@ export const supportEmbeddingService = {
     async search(
         query: string,
         limit = 5,
-        options: { userId?: bigint; signal?: AbortSignal } = {},
+        options: {
+            userId?: bigint
+            signal?: AbortSignal
+            /** Receives the usage the provider reported (the daily budget settles with it). */
+            onUsage?: (usage: TokenUsage) => void
+        } = {},
     ): Promise<KbSearchResult[]> {
         if (!openaiEmbeddingAdapter.isConfigured()) {
             logger.warn('OpenAI Embedding not configured, returning empty results')
@@ -62,6 +68,8 @@ export const supportEmbeddingService = {
             onComplete: llmUsageService.textUsageRecorder(
                 'SUPPORT_EMBEDDING',
                 options.userId ?? null,
+                null,
+                options.onUsage,
             ),
         })
         return supportKnowledgeRepository.searchByEmbedding(

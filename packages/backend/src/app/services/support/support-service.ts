@@ -10,6 +10,7 @@ import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
 import { promptService } from '#app/services/ai/prompt-service.js'
 import { Result } from 'better-result'
 import type { BroadcastMessage } from 'shared/schemas'
+import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import { rateLimited, type AppResult } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
@@ -17,6 +18,15 @@ import { userNotificationService } from '#app/services/notifications/user-notifi
 import aiConfig from '#config/ai.js'
 import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
+import {
+    reserveDailyTokens,
+    type TokenReservation,
+} from '#app/services/ai/usage/llm-budget-service.js'
+import {
+    BUDGET_CALLS,
+    estimateSupportParts,
+    reportedTokens,
+} from '#app/services/support/support-budget.js'
 import {
     acquireSupportLock,
     type SupportLease,
@@ -106,10 +116,24 @@ const BUSY_RETRY_AFTER_SECONDS = 5
 export interface SupportAdmission {
     /** Aborts when the lock can no longer be trusted: no further paid step may start. */
     readonly lost: AbortSignal
+    /**
+     * The daily token budget of this answer (ADR 0003): the run marks each paid call as
+     * started right before making it and reports the usage the provider returned.
+     */
+    readonly budget: Pick<TokenReservation, 'begin' | 'record'>
+    /** Settles the budget, then frees the lock. */
     release(): Promise<void>
 }
 
-async function admit(userId: bigint, policy: ThrottlePolicy): Promise<AppResult<SupportAdmission>> {
+/**
+ * @param message the message to be answered; `null` for the greeting. Its length sizes the
+ * budget reservation.
+ */
+async function admit(
+    userId: bigint,
+    policy: ThrottlePolicy,
+    message: string | null,
+): Promise<AppResult<SupportAdmission>> {
     const throttle = await tryInternal(
         () => consumeAuthThrottle(policy, String(userId)),
         'Failed to enforce the support chat limit',
@@ -139,15 +163,51 @@ async function admit(userId: bigint, policy: ThrottlePolicy): Promise<AppResult<
     }
 
     const held = lock.value
+
+    const releaseLock = async (): Promise<void> => {
+        try {
+            await held.release()
+        } catch (err) {
+            // The lease stops being renewed and expires on its own.
+            logger.warn({ err, userId: String(userId) }, 'Support: could not release the lock')
+        }
+    }
+
+    // The daily token budget, reserved last: a refusal here must give the lock back, since
+    // this admission took it and no run will ever release it.
+    const reserved = await tryInternal(
+        () =>
+            reserveDailyTokens(userId, estimateSupportParts(message), {
+                limit: aiConfig.supportDailyTokenBudget,
+            }),
+        'Failed to enforce the support chat budget',
+    )
+    if (Result.isError(reserved)) {
+        await releaseLock()
+        return Result.err(reserved.error)
+    }
+    if (!reserved.value.allowed) {
+        await releaseLock()
+        return Result.err(
+            rateLimited('The daily AI usage limit is reached. Please try again tomorrow.', {
+                reason: 'support_budget_exceeded',
+                retryAfterSeconds: reserved.value.retryAfterSeconds,
+            }),
+        )
+    }
+
+    const reservation = reserved.value.reservation
     return Result.ok({
         lost: held.lost,
+        budget: reservation,
         release: async (): Promise<void> => {
+            // Before the lock: the next answer of this user must find the budget settled.
             try {
-                await held.release()
+                await reservation.settle()
             } catch (err) {
-                // The lock expires on its own; the answer already happened.
-                logger.warn({ err, userId: String(userId) }, 'Support: could not release the lock')
+                logger.warn({ err, userId: String(userId) }, 'Support: could not settle the budget')
             }
+            await releaseLock()
         },
     })
 }
@@ -165,6 +225,13 @@ const withMessageId = (clientMessageId: string | undefined): { clientMessageId?:
 /** The run stops when the connection closes or the lock is lost, whichever comes first. */
 const runSignalOf = (admission: SupportAdmission, signal: AbortSignal | undefined): AbortSignal =>
     signal === undefined ? admission.lost : AbortSignal.any([signal, admission.lost])
+
+/** What a call reports to the budget: the tokens the provider counted, or nothing (null). */
+const usageReporter =
+    (admission: SupportAdmission, kind: string) =>
+    (usage: TokenUsage): void => {
+        admission.budget.record(kind, reportedTokens(usage))
+    }
 
 const interruptedOutcome = (): SupportOutcome => ({
     kind: 'error',
@@ -233,12 +300,15 @@ export const supportService = {
 
     /** Admits the greeting: the per-user limit for opening the chat, then the user's lock. */
     admitOpenChat(userId: bigint): Promise<AppResult<SupportAdmission>> {
-        return admit(userId, throttlePolicies.supportOpenChatUser)
+        return admit(userId, throttlePolicies.supportOpenChatUser, null)
     },
 
-    /** Admits a message: the per-user limit, then the user's lock (one answer at a time). */
-    admitChat(userId: bigint): Promise<AppResult<SupportAdmission>> {
-        return admit(userId, throttlePolicies.supportChatUser)
+    /**
+     * Admits a message: the per-user limit, the user's lock (one answer at a time), then the
+     * daily token budget.
+     */
+    admitChat(userId: bigint, message: string): Promise<AppResult<SupportAdmission>> {
+        return admit(userId, throttlePolicies.supportChatUser, message)
     },
 
     /**
@@ -267,9 +337,15 @@ export const supportService = {
                 const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
 
                 let fullReply = ''
+                admission.budget.begin(BUDGET_CALLS.chat)
                 for await (const token of supportLlmService.openChatStream(
                     langNative,
-                    llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
+                    llmUsageService.textUsageRecorder(
+                        'SUPPORT_CHAT',
+                        userId,
+                        promptId,
+                        usageReporter(admission, BUDGET_CALLS.chat),
+                    ),
                     runSignal,
                 )) {
                     // Nothing of a run reaches the client once its lock is lost: the events
@@ -344,30 +420,40 @@ export const supportService = {
                 return
             }
 
+            admission.budget.begin(BUDGET_CALLS.translation)
             const [englishQuery, chatHistory] = await Promise.all([
                 supportQueryTranslationService.translateToEnglish(message, {
                     userId,
                     signal: runSignal,
+                    onUsage: usageReporter(admission, BUDGET_CALLS.translation),
                 }),
                 supportRepository.findChatHistory(userId, 20),
             ])
             runSignal.throwIfAborted()
 
+            admission.budget.begin(BUDGET_CALLS.embedding)
             const searchResults = await supportEmbeddingService.search(englishQuery, 5, {
                 userId,
                 signal: runSignal,
+                onUsage: usageReporter(admission, BUDGET_CALLS.embedding),
             })
             runSignal.throwIfAborted()
             const knowledgeContext = formatKnowledgeContext(searchResults)
             const promptId = promptService.get('SUPPORT_SYSTEM')?.id ?? null
 
             let fullReply = ''
+            admission.budget.begin(BUDGET_CALLS.chat)
             for await (const token of supportLlmService.chatStream(
                 message,
                 knowledgeContext,
                 chatHistory.filter((m) => m.role !== 'user' || m.content !== message),
                 langNative,
-                llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
+                llmUsageService.textUsageRecorder(
+                    'SUPPORT_CHAT',
+                    userId,
+                    promptId,
+                    usageReporter(admission, BUDGET_CALLS.chat),
+                ),
                 runSignal,
             )) {
                 admission.lost.throwIfAborted()

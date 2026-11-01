@@ -250,13 +250,13 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 ### D2. LLM-бюджет — атомарне резервування, консервативне списання
 
 - Факти: `llm-usage-service.ts:27-44` `recordText` — fire-and-forget, помилка лише логується, `totalTokens` може бути `null`. Перевірка «залишок → запуск» не атомарна: N паралельних запитів бачать той самий залишок.
-- [ ] Дизайн (ADR у `docs/adr/`):
+- [x] Дизайн (ADR 0003 у `docs/adr/0003-llm-budget-reservation.md`; замість `AI_BUDGET_RESERVE_RATIO` — `AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS`, див. ADR):
     - **Перевірка + резервування — одна атомарна операція**: Lua-скрипт `budget_reserve(key, reserve, limit)` → `if current + reserve > limit then return -1 else INCRBY and return new`. Ключ `llm:budget:<userId>:<YYYY-MM-DD>` (TTL 48h). Жодного `DECRBY` на відмові — скрипт просто не інкрементує.
     - **Розмір резерву** — консервативна оцінка всього pipeline, не `promptChars/3`: `estimateTokens(prompt)` з токенайзером провайдера, якщо доступний; інакше евристика `promptChars / 2` — **це евристика, не верхня межа** (для CJK/emoji/коду співвідношення може бути гіршим). Плюс `maxOutputTokens` для chat (це справжня межа виходу) + оцінка translation + embedding. Зафіксувати в документації: «бюджет — приблизний; резерв — оцінка, звірка з фактичним usage коригує в обидва боки; гарантія — лише на порядок величини, не точна межа».
     - **Правила повернення резерву** (ключове): **до** першого запиту до провайдера (помилка валідації, lock не взято, abort до send) → `DECRBY reserve` повністю. **Після** початку будь-якого платного виклику → **ніколи** повний повернення: якщо провайдер повернув usage — `INCRBY (actual − reserve)` (звірка вниз або вгору); якщо usage `null` (abort посеред стрімінгу, timeout, помилка провайдера без usage) — **резерв залишається списаним** як консервативний факт. Клієнт, що скасовує після старту генерації, платить резерв.
     - `context.signal` (abort) — перевіряти **до** send у кожному з трьох викликів; після send abort лише припиняє стрім, не повертає бюджет.
     - `llm_text_usage` — аудит як зараз; enforcement — тільки Redis.
-- [ ] `.env.example`, `config/ai.ts` (`AI_SUPPORT_DAILY_TOKEN_BUDGET`, `AI_BUDGET_RESERVE_RATIO`), `validate-runtime-config.ts` (бюджет > 0 у production-like), `documentation/backend/ai.md`.
+- [x] `.env.example`, `config/ai.ts` (`AI_SUPPORT_DAILY_TOKEN_BUDGET`, `AI_BUDGET_RESERVE_RATIO`), `validate-runtime-config.ts` (бюджет > 0 у production-like), `documentation/backend/ai.md`.
 - [ ] Адмін-ендпойнт для перегляду/скидання бюджету — опційно, окремим PR.
 
 ### D3. Історія чату — контракт, не тихе обрізання

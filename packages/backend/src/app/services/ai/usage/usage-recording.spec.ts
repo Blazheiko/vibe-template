@@ -41,6 +41,30 @@ afterEach(() => {
     vi.clearAllMocks()
 })
 
+describe('llmUsageService.textUsageRecorder: the budget hook (feat-063, D2)', () => {
+    it('hands the reported usage to onUsage as well as writing the row', () => {
+        const onUsage = vi.fn()
+        const record = llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n, null, onUsage)
+        const usage = { promptTokens: 3, completionTokens: 4, totalTokens: 7 }
+
+        record(usage, 'gpt-test', 'final')
+
+        expect(onUsage).toHaveBeenCalledWith(usage)
+        expect(insertText).toHaveBeenCalledTimes(1)
+    })
+
+    it('still writes the row when onUsage throws', () => {
+        const record = llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n, null, () => {
+            throw new Error('budget bookkeeping failed')
+        })
+
+        expect(() => {
+            record({ promptTokens: null, completionTokens: null, totalTokens: null }, 'm', 'p')
+        }).not.toThrow()
+        expect(insertText).toHaveBeenCalledTimes(1)
+    })
+})
+
 describe('llmUsageService.textUsageRecorder', () => {
     it('writes one row with the feature, user, prompt and the reported counts', () => {
         const record = llmUsageService.textUsageRecorder('PROMPT_TEST', 5n, 9n)

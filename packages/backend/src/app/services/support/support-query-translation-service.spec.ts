@@ -40,7 +40,12 @@ describe('supportQueryTranslationService.translateToEnglish', () => {
         })
 
         expect(result).toBe('Hello')
-        expect(textUsageRecorder).toHaveBeenCalledWith('SUPPORT_QUERY_TRANSLATION', 7n, 4n)
+        expect(textUsageRecorder).toHaveBeenCalledWith(
+            'SUPPORT_QUERY_TRANSLATION',
+            7n,
+            4n,
+            undefined,
+        )
         expect(adapter.streamText.mock.calls[0]?.[1]).toBe(recorder)
         expect(adapter.streamText.mock.calls[0]?.[0]).toMatchObject({ signal: controller.signal })
     })

@@ -1,6 +1,7 @@
 import { getTextAdapterForModel } from '#app/services/ai/ai-provider.js'
 import { promptService } from '#app/services/ai/prompt-service.js'
 import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
+import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
@@ -10,7 +11,12 @@ const { defaultTranslationPrompt, defaultGeneration } = supportConfig
 export const supportQueryTranslationService = {
     async translateToEnglish(
         text: string,
-        options: { userId?: bigint; signal?: AbortSignal } = {},
+        options: {
+            userId?: bigint
+            signal?: AbortSignal
+            /** Receives the usage the provider reported (the daily budget settles with it). */
+            onUsage?: (usage: TokenUsage) => void
+        } = {},
     ): Promise<string> {
         const model = promptService.getModel('SUPPORT_QUERY_TRANSLATION')
         const temperature =
@@ -46,6 +52,7 @@ export const supportQueryTranslationService = {
                     'SUPPORT_QUERY_TRANSLATION',
                     options.userId ?? null,
                     promptService.get('SUPPORT_QUERY_TRANSLATION')?.id ?? null,
+                    options.onUsage,
                 ),
             )) {
                 result += chunk

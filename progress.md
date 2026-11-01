@@ -4,17 +4,17 @@
 
 **Last Updated:** 2026-11-01
 **Active Feature:** feat-063 - Resource Limits (in progress, delivered as several PRs)
-**Branch:** `fix/support-admission-review` (review follow-up of part 2: D0 + D1, merged in #207)
+**Branch:** `fix/llm-budget` (part 3 of 4: D2)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase D
 
 feat-063 is large and its parts are independent, so it is delivered as separate PRs and flipped to `done` only after the last one:
 
-| Part    | What                                                                                                                                         | Status                                     |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| D4      | per-route request body limit, upload routes capped, avatar rate limit                                                                        | merged (#206)                              |
-| D0 + D1 | support chat admission contract: `admit()` before `ok`, length cap, per-user throttle, owner-token in-flight lock, `support_chat_error` code | merged (#207); review follow-up in this PR |
-| D2      | atomic Redis LLM budget (reserve / reconcile)                                                                                                | after D0 + D1                              |
-| D3      | chat history contract: pagination for the UI, a bounded selection for the prompt                                                             | last                                       |
+| Part    | What                                                                                                   | Status        |
+| ------- | ------------------------------------------------------------------------------------------------------ | ------------- |
+| D4      | per-route request body limit, upload routes capped, avatar rate limit                                  | merged (#206) |
+| D0 + D1 | support chat admission contract, lease lock, idempotent resend (#207, #208, #209)                      | merged        |
+| D2      | atomic Redis daily LLM token budget: reserve at admission, settle with the provider's usage (ADR 0003) | this PR       |
+| D3      | chat history contract: pagination for the UI, a bounded selection for the prompt                       | last          |
 
 ## Status
 
@@ -91,7 +91,40 @@ A second external review of the merged #208 found two more problems; both were r
 | `test:redis`                               | 73 passed                                                                                                                                                   |
 | `docs:build && docs:verify`                | passed                                                                                                                                                      |
 
+## Part D2 — daily LLM token budget (this PR)
+
+### Done
+
+- [x] Diagnosis: nothing bounded the **cost** of the support chat. D0/D1 limit count, length and parallelism, but 20 messages a minute of 4000 characters is unbounded spend a day; `llm_text_usage` is written after the fact, asynchronously, and may hold `NULL` tokens, so it cannot answer "may this run start?"
+- [x] [ADR 0003](docs/adr/0003-llm-budget-reservation.md) (status: proposed — awaiting the owner's explicit acceptance): Redis-only enforcement, atomic reserve, per-call settlement rules, rollback of the lock on refusal, why there is `AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS` and no `AI_BUDGET_RESERVE_RATIO`
+- [x] Tests first: `llm-budget-service.redis.test.ts` (16, real Redis: atomic reserve incl. 20 parallel, clamp, per-user/day, midnight `retryAfter`, settle rules, settle on the reserved day, never below zero, TTL kept), `llm-budget-service.spec.ts` (Redis failures), `support-budget.spec.ts` (estimate), config and startup specs, service spec (admission order, rollback of the lock, 503, settle-before-unlock, `begin` before each call, usage hooks), 4 end-to-end tests on a real WebSocket server
+- [x] `llm-budget-service.ts`: `reserveDailyTokens` (Lua check-and-add on `llm:budget:<userId>:<UTC day>`, TTL 48 h) → `TokenReservation` (`begin` / `record` / `settle`); not started → refunded, started with usage → actual, started without usage → estimate stays; settle never throws and can be retried; strict rate-limit Redis client (fail-closed)
+- [x] `support-budget.ts` (estimate: `ceil(chars/2)` per call + output limits + prompt allowance); `admit()` reserves after the throttle and the lock, a refusal gives the lock back (`429 support_budget_exceeded`, `retryAfterSeconds` to UTC midnight); `release()` settles, then unlocks; the run marks `begin` before each paid call and reports usage through a new `onUsage` hook of the usage recorder, the translation and the embedding search
+- [x] Config: `AI_SUPPORT_DAILY_TOKEN_BUDGET` (200000; `0` = off, refused at startup in production-like environments), `AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS` (8000)
+- [x] Docs: `backend/ai.md`, `backend/configuration.md`, `.env.example`
+
+### Behaviour changes to know
+
+- A user over their daily budget gets `429` with `reason: support_budget_exceeded` instead of an answer. Default 200000 tokens a day.
+- The guarantee is approximate by design (heuristic estimate, settled both ways); documented in the ADR and `ai.md`.
+- Production-like environments refuse `AI_SUPPORT_DAILY_TOKEN_BUDGET=0` at startup.
+- Not done (optional in the plan): an admin endpoint to view/reset a budget.
+
+### Evidence of Completion (part D2)
+
+| Check                                      | Result                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Tests first                                | budget module absent (suite could not load); 10 service tests, 1 hook test failed before the wiring |
+| Mutation: refusal keeps the lock           | 1 service test + 1 end-to-end test fail                                                             |
+| Mutation: `release()` does not settle      | 1 service test + 3 end-to-end tests fail                                                            |
+| Mutation: a cut-off call is free           | 3 Redis tests + 1 end-to-end test fail                                                              |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                                              |
+| `pnpm test`                                | backend 1355, frontend 194, api-playground 14, shared 16, docs 26; exit 0                           |
+| `test:pg` with Redis / without             | 104 passed / 57 passed, 47 skipped                                                                  |
+| `test:redis`                               | 89 passed                                                                                           |
+| `docs:build && docs:verify`                | passed                                                                                              |
+
 ## Notes for Next Session
 
-1. Merge this PR (feat-063 stays `in_progress`); then D2 (atomic Redis LLM budget, needs an ADR) on a new branch; D2 adds the budget reservation inside `admit()` and must release the lock when the budget rejects
+1. Merge this PR (feat-063 stays `in_progress`); then D3 (chat history contract) on a new branch; ADR 0003 needs the owner's explicit acceptance
 2. Do not flip feat-063 to `done` before D0–D3 are merged

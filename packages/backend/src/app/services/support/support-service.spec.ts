@@ -31,12 +31,15 @@ const broadcastServiceMock = {
 
 const llmUsageServiceMock = {
     recordText: vi.fn(),
-    textUsageRecorder: vi.fn(() => vi.fn()),
+    textUsageRecorder: vi.fn((..._args: unknown[]) => vi.fn()),
 }
 
 const promptServiceMock = {
     get: vi.fn(() => ({ id: 'prompt-id' })),
+    getMaxTokens: vi.fn(() => null),
 }
+
+const reserveDailyTokensMock = vi.fn()
 
 const loggerMock = {
     error: vi.fn(),
@@ -91,15 +94,42 @@ vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     consumeAuthThrottle: consumeAuthThrottleMock,
 }))
 
+vi.mock('#app/services/ai/usage/llm-budget-service.js', () => ({
+    reserveDailyTokens: reserveDailyTokensMock,
+}))
+
 vi.mock('#app/services/support/support-inflight-lock.js', () => ({
     acquireSupportLock: acquireSupportLockMock,
 }))
 
 // What a run needs from its admission, recording when the lock is released.
-const admissionOf = (order: string[] = [], lostController = new AbortController()) => ({
+const admissionOf = (
+    order: string[] = [],
+    lostController = new AbortController(),
+    { trackBegin = false } = {},
+) => ({
     lost: lostController.signal,
+    // The daily budget of the run: which calls started and what the provider reported.
+    // `trackBegin` also writes the starts into `order`, to check them against the calls.
+    budget: {
+        begin: vi.fn((kind: string) => {
+            if (trackBegin) order.push(`begin:${kind}`)
+        }),
+        record: vi.fn(),
+    },
     release: vi.fn(() => {
         order.push('release')
+        return Promise.resolve()
+    }),
+})
+
+// The reservation the budget service hands out, recording the order of its calls.
+const reservationOf = (order: string[] = []) => ({
+    reserved: 1_000,
+    begin: vi.fn(),
+    record: vi.fn(),
+    settle: vi.fn(() => {
+        order.push('settle')
         return Promise.resolve()
     }),
 })
@@ -120,6 +150,7 @@ async function loadSupportService() {
 
 beforeEach(() => {
     supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: true })
+    reserveDailyTokensMock.mockResolvedValue({ allowed: true, reservation: reservationOf() })
 })
 
 afterEach(() => {
@@ -226,6 +257,145 @@ describe('supportService', () => {
 
     // Review of #208: a resend after a lost answer must not duplicate the message, and the
     // events of an answer say which message they belong to.
+    // ADR 0003: the run tells the budget which paid calls it really started and what the
+    // provider reported; a call it never reached is refunded by the settlement.
+    describe('the run and the daily budget (feat-063, D2)', () => {
+        const happyPath = () => {
+            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+            supportEmbeddingServiceMock.search.mockResolvedValue([])
+            supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                yield 'a'
+            })
+            supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+        }
+
+        it('marks each paid call as started right before it is made, in order', async () => {
+            const order: string[] = []
+            happyPath()
+            supportQueryTranslationServiceMock.translateToEnglish.mockImplementation(() => {
+                order.push('call:translation')
+                return Promise.resolve('hello')
+            })
+            supportEmbeddingServiceMock.search.mockImplementation(() => {
+                order.push('call:embedding')
+                return Promise.resolve([])
+            })
+            supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                order.push('call:chat')
+                yield 'a'
+            })
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admissionOf(order, undefined, { trackBegin: true }),
+                7n,
+                'hello',
+                'conn-1',
+            )
+
+            expect(order.filter((e) => e.includes(':'))).toEqual([
+                'begin:translation',
+                'call:translation',
+                'begin:embedding',
+                'call:embedding',
+                'begin:chat',
+                'call:chat',
+            ])
+        })
+
+        it('hands each call a way to report its usage to the budget', async () => {
+            happyPath()
+            const admission = admissionOf()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+
+            const translation = supportQueryTranslationServiceMock.translateToEnglish.mock
+                .calls[0]?.[1] as { onUsage: (u: unknown) => void }
+            translation.onUsage({ promptTokens: 1, completionTokens: 2, totalTokens: 3 })
+            const embedding = supportEmbeddingServiceMock.search.mock.calls[0]?.[2] as {
+                onUsage: (u: unknown) => void
+            }
+            embedding.onUsage({ promptTokens: 5, completionTokens: null, totalTokens: 5 })
+            const chatOnUsage = llmUsageServiceMock.textUsageRecorder.mock.calls.find(
+                (call) => call[0] === 'SUPPORT_CHAT',
+            )?.[3] as (u: unknown) => void
+            // No total, but both parts: the sum is what was spent.
+            chatOnUsage({ promptTokens: 10, completionTokens: 20, totalTokens: null })
+            // Nothing reported (cut off): unknown, so the estimate stays charged.
+            chatOnUsage({ promptTokens: null, completionTokens: null, totalTokens: null })
+
+            expect(admission.budget.record.mock.calls).toEqual([
+                ['translation', 3],
+                ['embedding', 5],
+                ['chat', 30],
+                ['chat', null],
+            ])
+        })
+
+        it('starts no call when the run stops first, so everything is refunded', async () => {
+            const admission = admissionOf([], lostLease())
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+
+            expect(admission.budget.begin).not.toHaveBeenCalled()
+        })
+
+        it('starts no call for a message the server already had', async () => {
+            supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: false })
+            const admission = admissionOf()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admission,
+                7n,
+                'hello',
+                'conn-1',
+                undefined,
+                undefined,
+                'msg-1',
+            )
+
+            expect(admission.budget.begin).not.toHaveBeenCalled()
+        })
+
+        it('does not mark the later calls when the earlier one was the last the run reached', async () => {
+            happyPath()
+            const lost = new AbortController()
+            supportRepositoryMock.findChatHistory.mockImplementation(() => {
+                lost.abort(lostLease().signal.reason)
+                return Promise.resolve([])
+            })
+
+            const { supportService } = await loadSupportService()
+            const admission = admissionOf([], lost)
+            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+
+            // The translation was already running next to the history read; nothing after it.
+            expect(admission.budget.begin.mock.calls).toEqual([['translation']])
+        })
+
+        it('marks the greeting as one started answer', async () => {
+            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportLlmServiceMock.openChatStream.mockImplementation(async function* () {
+                yield 'hi'
+            })
+            supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+            const admission = admissionOf()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runOpenChat(admission, 7n, 'conn-1')
+
+            expect(admission.budget.begin.mock.calls).toEqual([['chat']])
+            const onUsage = llmUsageServiceMock.textUsageRecorder.mock.calls.find(
+                (call) => call[0] === 'SUPPORT_CHAT',
+            )?.[3]
+            expect(onUsage).toEqual(expect.any(Function))
+        })
+    })
+
     describe('the client message id', () => {
         const tellOrder = () => {
             const events: { event: string; payload: unknown }[] = []
@@ -377,7 +547,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n)
+            const result = await supportService.admitChat(7n, 'hello')
 
             expect(Result.isOk(result)).toBe(true)
             expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
@@ -413,7 +583,7 @@ describe('supportService', () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 21 })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n)
+            const result = await supportService.admitChat(7n, 'hello')
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) {
@@ -431,7 +601,7 @@ describe('supportService', () => {
             acquireSupportLockMock.mockResolvedValue(null)
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n)
+            const result = await supportService.admitChat(7n, 'hello')
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) {
@@ -446,7 +616,7 @@ describe('supportService', () => {
             consumeAuthThrottleMock.mockRejectedValue(new Error('redis down'))
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n)
+            const result = await supportService.admitChat(7n, 'hello')
 
             expect(Result.isError(result)).toBe(true)
             expect(acquireSupportLockMock).not.toHaveBeenCalled()
@@ -459,7 +629,7 @@ describe('supportService', () => {
                 consumeAuthThrottleMock.mockRejectedValue(new Error(message))
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n)
+                const result = await supportService.admitChat(7n, 'hello')
 
                 expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
                 expect(acquireSupportLockMock).not.toHaveBeenCalled()
@@ -471,7 +641,7 @@ describe('supportService', () => {
             acquireSupportLockMock.mockRejectedValue(new Error('Command timed out'))
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n)
+            const result = await supportService.admitChat(7n, 'hello')
 
             expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
         })
@@ -482,7 +652,158 @@ describe('supportService', () => {
 
             const { supportService } = await loadSupportService()
 
-            expect(Result.isError(await supportService.admitChat(7n))).toBe(true)
+            expect(Result.isError(await supportService.admitChat(7n, 'hello'))).toBe(true)
+        })
+
+        describe('the daily token budget (feat-063, D2)', () => {
+            const lockOk = (order: string[] = []) => {
+                const release = vi.fn(() => {
+                    order.push('unlock')
+                    return Promise.resolve(true)
+                })
+                acquireSupportLockMock.mockImplementation(() => {
+                    order.push('lock')
+                    return Promise.resolve({ release, lost: new AbortController().signal })
+                })
+                return release
+            }
+
+            it('reserves the estimate of the whole answer after the limit and the lock', async () => {
+                consumeAuthThrottleMock.mockImplementation(() => {
+                    order.push('throttle')
+                    return Promise.resolve({ allowed: true, count: 1 })
+                })
+                const order: string[] = []
+                lockOk(order)
+                reserveDailyTokensMock.mockImplementation(() => {
+                    order.push('reserve')
+                    return Promise.resolve({ allowed: true, reservation: reservationOf() })
+                })
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n, 'a'.repeat(1000))
+
+                expect(Result.isOk(result)).toBe(true)
+                expect(order).toEqual(['throttle', 'lock', 'reserve'])
+                expect(reserveDailyTokensMock).toHaveBeenCalledWith(
+                    7n,
+                    // 500 tokens of message; defaults: translation 500, answer 2048, allowance 8000
+                    { translation: 1_000, embedding: 500, chat: 10_548 },
+                    { limit: aiConfig.supportDailyTokenBudget },
+                )
+            })
+
+            it('reserves only the greeting for opening the chat', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                lockOk()
+
+                const { supportService } = await loadSupportService()
+                await supportService.admitOpenChat(7n)
+
+                expect(reserveDailyTokensMock).toHaveBeenCalledWith(
+                    7n,
+                    { chat: 8_000 + 512 },
+                    { limit: aiConfig.supportDailyTokenBudget },
+                )
+            })
+
+            // Admission rollback: the lock this very admission took must not outlive the refusal.
+            it('refuses a message over the budget with a 429 and frees the lock it took', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                const unlock = lockOk()
+                reserveDailyTokensMock.mockResolvedValue({
+                    allowed: false,
+                    retryAfterSeconds: 3_600,
+                })
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n, 'hello')
+
+                expect(Result.isError(result) && result.error).toMatchObject({
+                    _tag: 'RateLimited',
+                    reason: 'support_budget_exceeded',
+                    retryAfterSeconds: 3_600,
+                })
+                expect(unlock).toHaveBeenCalledTimes(1)
+            })
+
+            it('answers 503 when the budget cannot be checked, and frees the lock', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                const unlock = lockOk()
+                reserveDailyTokensMock.mockRejectedValue(new Error('Command timed out'))
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n, 'hello')
+
+                expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
+                expect(unlock).toHaveBeenCalledTimes(1)
+            })
+
+            it('does not touch the budget when the limit or the lock already refused', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 21 })
+                const { supportService } = await loadSupportService()
+                await supportService.admitChat(7n, 'hello')
+
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                acquireSupportLockMock.mockResolvedValue(null)
+                await supportService.admitChat(7n, 'hello')
+
+                expect(reserveDailyTokensMock).not.toHaveBeenCalled()
+            })
+
+            it('release settles the budget first and then frees the lock', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                const order: string[] = []
+                lockOk(order)
+                reserveDailyTokensMock.mockResolvedValue({
+                    allowed: true,
+                    reservation: reservationOf(order),
+                })
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n, 'hello')
+                if (!Result.isOk(result)) throw new Error('not admitted')
+                order.length = 0
+                await result.value.release()
+
+                expect(order).toEqual(['settle', 'unlock'])
+            })
+
+            it('frees the lock even when the settlement fails', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                const unlock = lockOk()
+                reserveDailyTokensMock.mockResolvedValue({
+                    allowed: true,
+                    reservation: {
+                        ...reservationOf(),
+                        settle: vi.fn().mockRejectedValue(new Error('bug')),
+                    },
+                })
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n, 'hello')
+                if (!Result.isOk(result)) throw new Error('not admitted')
+
+                await expect(result.value.release()).resolves.toBeUndefined()
+                expect(unlock).toHaveBeenCalledTimes(1)
+            })
+
+            it('hands the run the reservation to mark calls and report usage on', async () => {
+                consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+                lockOk()
+                const reservation = reservationOf()
+                reserveDailyTokensMock.mockResolvedValue({ allowed: true, reservation })
+
+                const { supportService } = await loadSupportService()
+                const result = await supportService.admitChat(7n, 'hello')
+                if (!Result.isOk(result)) throw new Error('not admitted')
+
+                result.value.budget.begin('chat')
+                result.value.budget.record('chat', 321)
+
+                expect(reservation.begin).toHaveBeenCalledWith('chat')
+                expect(reservation.record).toHaveBeenCalledWith('chat', 321)
+            })
         })
 
         it('release frees the lock, and a failing release is logged, not raised', async () => {
@@ -494,7 +815,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n)
+            const result = await supportService.admitChat(7n, 'hello')
             if (!Result.isOk(result)) throw new Error('not admitted')
 
             await expect(result.value.release()).resolves.toBeUndefined()
