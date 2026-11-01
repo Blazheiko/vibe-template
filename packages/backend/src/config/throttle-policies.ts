@@ -166,6 +166,16 @@ export const throttlePolicies = {
         readInt('AUTH_RESEND_VERIFICATION_MAX_PER_USER_PER_HOUR', 3),
         HOUR_MS,
     ),
+    /**
+     * The verification mail sent again when the owner of an unverified account signs in with
+     * the right password (the login itself answers 401). One per interval per account.
+     */
+    loginUnverifiedResend: fixedWindow(
+        'login_unverified_resend',
+        'user',
+        1,
+        readInt('AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS', 300_000),
+    ),
     /** Guessing reset tokens. */
     resetPasswordIp: fixedWindow(
         'reset_password_ip',

@@ -1,3 +1,3 @@
 # Session Handoff
 
-feat-064 (OAuth token storage) is implemented on `fix/oauth-token-storage`: token columns dropped (migration `drop_oauth_tokens`), Facebook token in the `Authorization` header, masked email in the OAuth log. After the PR merges, flip feat-064 to `done` on `main`. Next: phase F; F1 needs a decision from the owner.
+feat-066 (auth response contract) is implemented on `fix/auth-response-contract`: unverified login answers the generic 401 (verification mail resent in the background, once per 5 minutes), registration hashes the password before the email lookup. After the PR merges, flip feat-066 to `done` on `main`. Next: F3 (feat-067), F4 (feat-068), F1 (feat-065).

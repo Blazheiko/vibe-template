@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { throttlePolicies } from '#config/throttle-policies.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const ORIGINAL_ENV = { ...process.env }
@@ -44,6 +45,7 @@ const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
 const sendVerificationEmailAfterRegistrationMock = vi.fn()
 const sendLinkVerificationEmailMock = vi.fn()
+const sendVerificationEmailInBackgroundMock = vi.fn()
 const destroyAllSessionsMock = vi.fn()
 const ROTATED_LOGOUT_CSRF_TOKEN = 'b'.repeat(43)
 const ROTATED_LOGOUT_ALL_CSRF_TOKEN = 'c'.repeat(43)
@@ -83,6 +85,7 @@ vi.mock('#app/services/auth/email-verification-service.js', () => ({
     emailVerificationService: {
         sendVerificationEmailAfterRegistration: sendVerificationEmailAfterRegistrationMock,
         sendLinkVerificationEmail: sendLinkVerificationEmailMock,
+        sendVerificationEmailInBackground: sendVerificationEmailInBackgroundMock,
     },
 }))
 
@@ -209,6 +212,7 @@ describe('authService', () => {
 
     it('returns a generic success when register email already exists', async () => {
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+        hashPasswordMock.mockResolvedValue('hashed-password')
         userRepositoryMock.findByEmail.mockResolvedValue({
             id: 7n,
             email: 'user@example.com',
@@ -237,6 +241,99 @@ describe('authService', () => {
             })
         }
         expect(userRepositoryMock.create).not.toHaveBeenCalled()
+    })
+
+    // F2 (feat-066): hashing a password costs tens of milliseconds. When only a NEW address was
+    // hashed, the time of the answer told an attacker whether the address was taken.
+    describe('registration cost does not depend on whether the address is taken', () => {
+        const HASH_MS = 40
+        const register = async () => {
+            const { authService } = await loadAuthService()
+            const started = performance.now()
+            const result = await authService.registerByEmail(
+                { name: 'Jane', email: 'user@example.com', password: 'secret', token: '' },
+                authMock as any,
+                sessionMock as any,
+                loggerMock as any,
+                { ipAddress: '127.0.0.1' },
+            )
+            return { result, elapsed: performance.now() - started }
+        }
+        const slowHash = (): void => {
+            hashPasswordMock.mockImplementation(
+                () =>
+                    new Promise((resolve) =>
+                        setTimeout(() => {
+                            resolve('hashed')
+                        }, HASH_MS),
+                    ),
+            )
+        }
+
+        it('hashes the password for an address that is taken', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            hashPasswordMock.mockResolvedValue('hashed')
+            userRepositoryMock.findByEmail.mockResolvedValue({ id: 7n, email: 'user@example.com' })
+
+            await register()
+
+            expect(hashPasswordMock).toHaveBeenCalledTimes(1)
+            expect(hashPasswordMock).toHaveBeenCalledWith('secret')
+        })
+
+        it('hashes the password for a new address', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            hashPasswordMock.mockResolvedValue('hashed')
+            userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
+            sessionMock.destroySession.mockResolvedValue(undefined)
+
+            await register()
+
+            expect(hashPasswordMock).toHaveBeenCalledTimes(1)
+        })
+
+        it('hashes before it looks the address up', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            hashPasswordMock.mockResolvedValue('hashed')
+            userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
+            sessionMock.destroySession.mockResolvedValue(undefined)
+
+            await register()
+
+            expect(hashPasswordMock.mock.invocationCallOrder[0]).toBeLessThan(
+                userRepositoryMock.findByEmail.mock.invocationCallOrder[0] ?? 0,
+            )
+        })
+
+        it('takes as long for a taken address as for a new one', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            slowHash()
+            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
+            sessionMock.destroySession.mockResolvedValue(undefined)
+
+            userRepositoryMock.findByEmail.mockResolvedValue({ id: 7n, email: 'user@example.com' })
+            const taken = await register()
+            userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+            const fresh = await register()
+
+            expect(taken.elapsed).toBeGreaterThanOrEqual(HASH_MS * 0.8)
+            expect(fresh.elapsed).toBeGreaterThanOrEqual(HASH_MS * 0.8)
+            expect(Math.abs(taken.elapsed - fresh.elapsed)).toBeLessThan(HASH_MS)
+            // Same answer, too.
+            expect(Result.isOk(taken.result) && taken.result.value).toEqual(
+                Result.isOk(fresh.result) && fresh.result.value,
+            )
+        })
+
+        it('does not hash when the throttle already refused', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 99 })
+
+            await register()
+
+            expect(hashPasswordMock).not.toHaveBeenCalled()
+        })
     })
 
     it('returns internal error when login session establishment fails', async () => {
@@ -464,37 +561,128 @@ describe('authService', () => {
         expect(authMock.login).not.toHaveBeenCalled()
     })
 
-    it('blocks email password login for unverified users when strict registration is enabled', async () => {
-        consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
-        userRepositoryMock.findByEmail.mockResolvedValue({
+    // F2 (feat-066): a correct password for an unverified account used to answer 400 "Email
+    // verification required": an oracle for "this account exists AND this password is right".
+    // It answers exactly what a wrong password answers.
+    describe('login of an unverified account (strict registration)', () => {
+        const unverified = {
             id: 7n,
             email: 'user@example.com',
             emailVerifiedAt: null,
             password: 'hashed-password',
             sessionToken: 'session-token',
-        })
-        validatePasswordMock.mockResolvedValue(true)
-
-        const { authService } = await loadAuthService()
-        const result = await authService.login(
-            {
-                email: 'user@example.com',
-                password: 'secret',
-                token: '',
-            },
-            authMock as any,
-            sessionMock as any,
-            { ipAddress: '127.0.0.1' },
-        )
-
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error).toEqual({
-                _tag: 'BadRequest',
-                message: 'Email verification required',
+        }
+        const credentials = { email: 'user@example.com', password: 'secret', token: '' }
+        const login = async () => {
+            const { authService } = await loadAuthService()
+            return authService.login(credentials, authMock as any, sessionMock as any, {
+                ipAddress: '127.0.0.1',
             })
         }
-        expect(authMock.login).not.toHaveBeenCalled()
+        // Lets the mail that is sent in the background run.
+        const settle = () => new Promise<void>((resolve) => setImmediate(resolve))
+
+        it('answers the same 401 as a wrong password, so it reveals nothing', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(false)
+            const wrongPassword = await login()
+            validatePasswordMock.mockResolvedValue(true)
+
+            const unverifiedCorrect = await login()
+
+            expect(Result.isError(unverifiedCorrect) && unverifiedCorrect.error._tag).toBe(
+                'Unauthorized',
+            )
+            // The very same error value, not just the same kind.
+            expect(Result.isError(wrongPassword) && wrongPassword.error).toEqual(
+                Result.isError(unverifiedCorrect) && unverifiedCorrect.error,
+            )
+            expect(authMock.login).not.toHaveBeenCalled()
+        })
+
+        it('counts as a failed attempt: the per-account login budget is not reset', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            await login()
+
+            expect(resetAuthThrottleMock).not.toHaveBeenCalled()
+        })
+
+        it('sends the verification mail again in the background, once per interval per account', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            await login()
+            await settle()
+
+            expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
+                throttlePolicies.loginUnverifiedResend,
+                '7',
+            )
+            expect(sendVerificationEmailInBackgroundMock).toHaveBeenCalledWith(
+                7n,
+                'unverified login',
+            )
+        })
+
+        it('does not send the mail again within the interval, and still answers 401', async () => {
+            consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                Promise.resolve({
+                    allowed: policy.scope !== 'login_unverified_resend',
+                    count: 1,
+                }),
+            )
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            const result = await login()
+            await settle()
+
+            expect(Result.isError(result) && result.error._tag).toBe('Unauthorized')
+            expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
+        })
+
+        it('answers 401 even when the resend cannot be arranged (Redis down)', async () => {
+            consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                policy.scope === 'login_unverified_resend'
+                    ? Promise.reject(new Error('Command timed out'))
+                    : Promise.resolve({ allowed: true, count: 1 }),
+            )
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            const result = await login()
+            await settle()
+
+            expect(Result.isError(result) && result.error._tag).toBe('Unauthorized')
+            expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
+        })
+
+        it('does not wait for the mail: the answer does not depend on it', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+            sendVerificationEmailInBackgroundMock.mockReturnValue(new Promise(() => undefined))
+
+            const result = await login()
+
+            expect(Result.isError(result) && result.error._tag).toBe('Unauthorized')
+        })
+
+        it('sends nothing for a wrong password (the mail is for the owner, who knows it)', async () => {
+            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(false)
+
+            await login()
+            await settle()
+
+            expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
+        })
     })
 
     it('allows email password login for unverified users when strict registration is disabled', async () => {

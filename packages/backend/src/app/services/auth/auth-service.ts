@@ -296,6 +296,24 @@ async function finalizeRegistration(
     )
 }
 
+/**
+ * Sends the verification mail again, in the background and at most once per interval per
+ * account. Nothing here may change the answer of the login or delay it, and a failure (Redis
+ * down, no mail transport) is only logged.
+ */
+async function resendVerificationAfterUnverifiedLogin(userId: bigint): Promise<void> {
+    try {
+        const throttle = await consumeAuthThrottle(
+            throttlePolicies.loginUnverifiedResend,
+            String(userId),
+        )
+        if (!throttle.allowed) return
+        await emailVerificationService.sendVerificationEmailInBackground(userId, 'unverified login')
+    } catch (err) {
+        logger.warn({ err, userId: String(userId) }, 'Could not resend the verification mail')
+    }
+}
+
 async function registerEmailFlow(
     payload: RegisterEmailInput,
     auth: Auth,
@@ -328,6 +346,13 @@ async function registerEmailFlow(
         return Result.err(badRequest('Too many registration attempts. Please try again later.'))
     }
 
+    // Hashed before the address is looked up, so a taken address costs the same time as a new
+    // one: otherwise the duration of the answer says whether the address is registered.
+    const hashResult = await createPasswordHash(password)
+    if (Result.isError(hashResult)) {
+        return Result.err(hashResult.error)
+    }
+
     const existResult = await tryInternal(
         () => userRepository.findByEmail(email),
         'Failed to load user by email',
@@ -341,11 +366,6 @@ async function registerEmailFlow(
             status: 'success',
             message: GENERIC_EMAIL_REGISTRATION_MESSAGE,
         })
-    }
-
-    const hashResult = await createPasswordHash(password)
-    if (Result.isError(hashResult)) {
-        return Result.err(hashResult.error)
     }
 
     if (!authConfig.strictRegistration) {
@@ -1158,6 +1178,19 @@ export const authService = {
             return invalidCredentials()
         }
 
+        // The right password of an account that is not verified yet answers exactly what a
+        // wrong password answers: a distinct answer would tell anyone who guesses the password
+        // that the account exists and the guess is right. It counts as a failed attempt (the
+        // budget below is not reset). The owner, who knows the password, gets the mail again.
+        if (
+            loginKey.kind === 'email' &&
+            authConfig.strictRegistration &&
+            user.emailVerifiedAt === null
+        ) {
+            void resendVerificationAfterUnverifiedLogin(user.id)
+            return invalidCredentials()
+        }
+
         // The correct password resets the per-account budget; the IP budget stays.
         const resetResult = await tryInternal(
             () => resetAuthThrottle(throttlePolicies.loginIdentifier, loginKey.value),
@@ -1165,14 +1198,6 @@ export const authService = {
         )
         if (Result.isError(resetResult)) {
             logger.warn({ err: resetResult.error }, 'Login throttle reset failed')
-        }
-
-        if (
-            loginKey.kind === 'email' &&
-            authConfig.strictRegistration &&
-            user.emailVerifiedAt === null
-        ) {
-            return Result.err(badRequest('Email verification required'))
         }
 
         const success = await buildAuthSuccess(user, auth, session)
