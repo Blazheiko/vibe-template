@@ -141,7 +141,7 @@ export const RegisterEmailInputSchema = type({
 export type RegisterEmailInput = typeof RegisterEmailInputSchema.infer
 ```
 
-`'+': 'reject'` забороняє невідомі ключі. Query-схеми приходять рядками, тому використовують морфи-парсери, напр. `type('string.integer.parse').pipe(type('number > 0'))` у [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts) (там же коментар про cast-обхід для дефолтів у кортежах ArkType).
+`'+': 'reject'` забороняє невідомі ключі. Query-схеми приходять рядками, тому використовують морфи-парсери, напр. `type('string.integer.parse').pipe(type('number > 0'))` у [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); значення за замовчуванням задає `.default('50')` (раніше для цього були касти кортежів `[схема, '=', '50']`, які `@arktype/type` 2.2.9 більше не потребує), а те, що схема виводить для обробника, зафіксовано в [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) і порівнюється під час компіляції.
 
 ## Checkers: заголовки, cookies, параметри
 

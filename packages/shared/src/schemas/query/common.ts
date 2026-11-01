@@ -11,13 +11,9 @@ export const PositiveIntFromString = positiveIntFromString
 export const LimitIntFromString = limitIntFromString
 export const DateFromString = dateFromString
 
-// ArkType 2.2.0 still requires a tuple-default cast workaround here.
-// It is intentionally kept as an internal implementation detail, but it is
-// not considered solved: some parse/default query outputs still depend on
-// cast-driven compatibility types to keep emitted typings usable.
 export const PaginationFields = {
-    page: [positiveIntFromString, '=', '1'] as unknown as 'string.integer.parse',
-    limit: [limitIntFromString, '=', '50'] as unknown as 'string.integer.parse',
+    page: positiveIntFromString.default('1'),
+    limit: limitIntFromString.default('50'),
 } as const
 
 export const DateRangeFields = {
