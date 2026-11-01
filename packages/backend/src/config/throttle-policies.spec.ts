@@ -63,6 +63,8 @@ describe('throttlePolicies registry', () => {
             resend_verification_user: [3, HOUR, 'user'],
             reset_password_ip: [20, HOUR, 'ip'],
             verify_email_ip: [20, HOUR, 'ip'],
+            support_chat_user: [20, 60_000, 'user'],
+            support_open_chat_user: [5, 60_000, 'user'],
         })
     })
 

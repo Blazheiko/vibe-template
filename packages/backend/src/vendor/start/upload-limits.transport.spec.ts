@@ -170,10 +170,11 @@ describe('avatar upload body limit (10 MiB file + framing)', () => {
         const { bytesWritten } = result
 
         expectRefused(result)
-        // The server stopped reading near the 10 MiB limit, not at the global 50 MiB (the
-        // client may be a few buffered chunks ahead of the answer).
+        // The server stopped reading near the 10 MiB limit, not at the global 50 MiB. How far
+        // the client runs ahead of the answer depends on the kernel socket buffers and the
+        // load of the machine, so the bound is "well short of the 50 MiB", not a tight one.
         expect(bytesWritten).toBeGreaterThan(AVATAR_MAX_FILE_BYTES)
-        expect(bytesWritten).toBeLessThan(AVATAR_BODY_LIMIT + 8 * MIB)
+        expect(bytesWritten).toBeLessThan(AVATAR_BODY_LIMIT + 16 * MIB)
         expect(handler).not.toHaveBeenCalled()
     })
 

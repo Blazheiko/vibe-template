@@ -10,6 +10,7 @@ import {
     ErrorCodeValues,
 } from '../dist/errors/index.js'
 import { EntityIdSchema } from '../dist/brands/index.js'
+import { SUPPORT_MESSAGE_MAX_LENGTH } from '../dist/limits/index.js'
 import { PushSubscriptionTestInputSchema, SupportChatInputSchema } from '../dist/schemas/index.js'
 import * as root from '../dist/index.js'
 
@@ -35,6 +36,14 @@ test('input schemas reject unknown keys and keep their limits', () => {
     assert.ok(PushSubscriptionTestInputSchema({ title: 'x'.repeat(201) }) instanceof type.errors)
     assert.deepEqual(PushSubscriptionTestInputSchema({ title: 't' }), { title: 't' })
     assert.ok(SupportChatInputSchema({ message: '' }) instanceof type.errors)
+    assert.equal(SUPPORT_MESSAGE_MAX_LENGTH, 4000)
+    assert.deepEqual(SupportChatInputSchema({ message: 'a'.repeat(SUPPORT_MESSAGE_MAX_LENGTH) }), {
+        message: 'a'.repeat(SUPPORT_MESSAGE_MAX_LENGTH),
+    })
+    assert.ok(
+        SupportChatInputSchema({ message: 'a'.repeat(SUPPORT_MESSAGE_MAX_LENGTH + 1) }) instanceof
+            type.errors,
+    )
     assert.deepEqual(SupportChatInputSchema({ message: 'hi', language: 'uk' }), {
         message: 'hi',
         language: 'uk',
@@ -44,4 +53,12 @@ test('input schemas reject unknown keys and keep their limits', () => {
 test('the package root re-exports the guards', () => {
     assert.equal(typeof root.isWsChannel, 'function')
     assert.ok(Array.isArray(root.WS_CHANNELS))
+})
+
+test('shared/limits has no schema library behind it, so the browser can import it', async () => {
+    const source = await import('node:fs').then((fs) =>
+        fs.readFileSync(new URL('../dist/limits/index.js', import.meta.url), 'utf8'),
+    )
+    assert.doesNotMatch(source, /^import /m)
+    assert.equal(root.SUPPORT_MESSAGE_MAX_LENGTH, SUPPORT_MESSAGE_MAX_LENGTH)
 })

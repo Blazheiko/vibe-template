@@ -10,7 +10,9 @@ import { WSAdminUserOnlineUpsertPayloadSchema } from './ws-admin-user-online-ups
 export const BroadcastEventSchemas = {
     support_chat_token: type({ token: 'string' }),
     support_chat_complete: type({ content: 'string', screenshots: 'string[]' }),
-    support_chat_error: type({ message: 'string' }),
+    // `code` tells a failure after the message was accepted apart from another
+    // ('chat_failed', 'open_chat_failed'); a refusal before that is the reply to the request.
+    support_chat_error: type({ message: 'string', 'code?': 'string' }),
     admin_user_online_upsert: WSAdminUserOnlineUpsertPayloadSchema,
     admin_user_online_remove: type({ id: EntityIdSchema }),
 } as const

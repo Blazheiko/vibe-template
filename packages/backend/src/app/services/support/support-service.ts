@@ -11,9 +11,13 @@ import { promptService } from '#app/services/ai/prompt-service.js'
 import { Result } from 'better-result'
 import type { BroadcastMessage } from 'shared/schemas'
 import logger from '#logger'
-import { type AppResult } from '#app/services/shared/errors.js'
+import { rateLimited, type AppResult } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import aiConfig from '#config/ai.js'
+import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies.js'
+import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
+import { acquireSupportLock } from '#app/services/support/support-inflight-lock.js'
 
 export interface SupportChatHistoryItem {
     id: string
@@ -81,6 +85,91 @@ function formatKnowledgeContext(
         .join('\n\n')
 }
 
+// The lock outlives the longest answer: translation, embedding and the reply are three
+// provider calls, each bounded by AI_REQUEST_TIMEOUT_MS, plus a little for the database.
+// It matters only when the process dies before releasing; a normal answer releases it.
+const INFLIGHT_LOCK_TTL_MS = aiConfig.requestTimeoutMs * 3 + 10_000
+const BUSY_RETRY_AFTER_SECONDS = 5
+
+/**
+ * A message the server has accepted: it passed the per-user limit and holds the user's
+ * lock. Whoever has one must release it, on every path (`run*` does).
+ */
+export interface SupportAdmission {
+    release(): Promise<void>
+}
+
+async function admit(userId: bigint, policy: ThrottlePolicy): Promise<AppResult<SupportAdmission>> {
+    const throttle = await tryInternal(
+        () => consumeAuthThrottle(policy, String(userId)),
+        'Failed to enforce the support chat limit',
+    )
+    if (Result.isError(throttle)) return Result.err(throttle.error)
+    if (!throttle.value.allowed) {
+        return Result.err(
+            rateLimited('Too many messages. Please try again later.', {
+                reason: 'support_rate_limited',
+                retryAfterSeconds: Math.ceil(policy.windowMs / 1000),
+            }),
+        )
+    }
+
+    const lock = await tryInternal(
+        () => acquireSupportLock(userId, INFLIGHT_LOCK_TTL_MS),
+        'Failed to reserve the support chat',
+    )
+    if (Result.isError(lock)) return Result.err(lock.error)
+    if (lock.value === null) {
+        return Result.err(
+            rateLimited('The previous message is still being answered. Please wait.', {
+                reason: 'support_busy',
+                retryAfterSeconds: BUSY_RETRY_AFTER_SECONDS,
+            }),
+        )
+    }
+
+    const held = lock.value
+    return Result.ok({
+        release: async (): Promise<void> => {
+            try {
+                await held.release()
+            } catch (err) {
+                // The lock expires on its own; the answer already happened.
+                logger.warn({ err, userId: String(userId) }, 'Support: could not release the lock')
+            }
+        },
+    })
+}
+
+/** What a finished run tells the client, sent after the lock is released. */
+type SupportOutcome =
+    | { kind: 'none' }
+    | { kind: 'complete'; content: string; screenshots: string[] }
+    | { kind: 'error'; code: string; message: string }
+
+function tellClient(
+    userIdStr: string,
+    targetUuid: string | undefined,
+    outcome: SupportOutcome,
+): void {
+    try {
+        if (outcome.kind === 'complete') {
+            broadcastToConnection(userIdStr, targetUuid, 'support_chat_complete', {
+                content: outcome.content,
+                screenshots: outcome.screenshots,
+            })
+        } else if (outcome.kind === 'error') {
+            broadcastToConnection(userIdStr, targetUuid, 'support_chat_error', {
+                message: outcome.message,
+                code: outcome.code,
+            })
+        }
+    } catch (err) {
+        // Nobody is left to tell (the connection is gone); never an unhandled rejection.
+        logger.warn({ err, userId: userIdStr }, 'Support: could not tell the client the outcome')
+    }
+}
+
 export const supportService = {
     async getChatHistory(userId: bigint): Promise<AppResult<{ data: SupportChatHistoryItem[] }>> {
         const result = await tryInternal(
@@ -114,54 +203,72 @@ export const supportService = {
         return Result.ok(undefined)
     },
 
-    async openChat(
+    /** Admits the greeting: the per-user limit for opening the chat, then the user's lock. */
+    admitOpenChat(userId: bigint): Promise<AppResult<SupportAdmission>> {
+        return admit(userId, throttlePolicies.supportOpenChatUser)
+    },
+
+    /** Admits a message: the per-user limit, then the user's lock (one answer at a time). */
+    admitChat(userId: bigint): Promise<AppResult<SupportAdmission>> {
+        return admit(userId, throttlePolicies.supportChatUser)
+    },
+
+    /**
+     * Writes the greeting for an admitted request and releases the lock on every path,
+     * before the client is told the answer is complete or has failed: a client that sends
+     * its next message at once must not find the lock still held.
+     */
+    async runOpenChat(
+        admission: SupportAdmission,
         userId: bigint,
         targetUuid?: string,
         signal?: AbortSignal,
         language?: string,
     ): Promise<void> {
         const userIdStr = String(userId)
+        let outcome: SupportOutcome = { kind: 'none' }
         try {
             const langNative = resolveSupportLanguage(language)
             const existing = await supportRepository.findChatHistory(userId, 1)
-            if (existing.length > 0) {
-                return
+            if (existing.length === 0) {
+                const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
+
+                let fullReply = ''
+                for await (const token of supportLlmService.openChatStream(
+                    langNative,
+                    llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
+                    signal,
+                )) {
+                    fullReply += token
+                    broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', { token })
+                }
+
+                if (fullReply.length > 0) {
+                    await supportRepository.addChatMessage(userId, 'assistant', fullReply)
+                }
+                outcome = { kind: 'complete', content: fullReply, screenshots: [] }
             }
-
-            const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
-
-            let fullReply = ''
-            for await (const token of supportLlmService.openChatStream(
-                langNative,
-                llmUsageService.textUsageRecorder('SUPPORT_CHAT', userId, promptId),
-                signal,
-            )) {
-                fullReply += token
-                broadcastToConnection(userIdStr, targetUuid, 'support_chat_token', { token })
-            }
-
-            if (fullReply.length > 0) {
-                await supportRepository.addChatMessage(userId, 'assistant', fullReply)
-            }
-
-            broadcastToConnection(userIdStr, targetUuid, 'support_chat_complete', {
-                content: fullReply,
-                screenshots: [],
-            })
         } catch (err) {
             if (aiAbortKind(err) === 'aborted') {
                 // The connection closed: nobody to answer, and not a failure.
                 logger.info({ userId: userIdStr }, 'Support: openChat cancelled, connection closed')
-                return
+            } else {
+                logger.error({ err, userId: userIdStr }, 'Support: openChat failed')
+                outcome = {
+                    kind: 'error',
+                    code: 'open_chat_failed',
+                    message: 'Failed to open support chat',
+                }
             }
-            logger.error({ err, userId: userIdStr }, 'Support: openChat failed')
-            broadcastToConnection(userIdStr, targetUuid, 'support_chat_error', {
-                message: 'Failed to open support chat',
-            })
         }
+
+        await admission.release()
+        tellClient(userIdStr, targetUuid, outcome)
     },
 
-    async chat(
+    /** The answer to an admitted message; the lock is released as in `runOpenChat`. */
+    async runChat(
+        admission: SupportAdmission,
         userId: bigint,
         message: string,
         targetUuid?: string,
@@ -169,6 +276,7 @@ export const supportService = {
         language?: string,
     ): Promise<void> {
         const userIdStr = String(userId)
+        let outcome: SupportOutcome = { kind: 'none' }
         try {
             const langNative = resolveSupportLanguage(language)
             await supportRepository.addChatMessage(userId, 'user', message)
@@ -206,19 +314,17 @@ export const supportService = {
             await supportRepository.addChatMessage(userId, 'assistant', fullReply, screenshotIds)
             userNotificationService.supportReply(userId)
 
-            broadcastToConnection(userIdStr, targetUuid, 'support_chat_complete', {
-                content: fullReply,
-                screenshots: screenshotIds,
-            })
+            outcome = { kind: 'complete', content: fullReply, screenshots: screenshotIds }
         } catch (err) {
             if (aiAbortKind(err) === 'aborted') {
                 logger.info({ userId: userIdStr }, 'Support: chat cancelled, connection closed')
-                return
+            } else {
+                logger.error({ err, userId: userIdStr }, 'Support: chat failed')
+                outcome = { kind: 'error', code: 'chat_failed', message: 'Chat failed' }
             }
-            logger.error({ err, userId: userIdStr }, 'Support: chat failed')
-            broadcastToConnection(userIdStr, targetUuid, 'support_chat_error', {
-                message: 'Chat failed',
-            })
         }
+
+        await admission.release()
+        tellClient(userIdStr, targetUuid, outcome)
     },
 }

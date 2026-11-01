@@ -205,7 +205,7 @@ const WsMessageSchema = type({
 | `api/support/support_open_chat`      | `SupportWsController.openChat`             | відкрити чат підтримки, запустити привітання                                                                   | 60 / 60 с   |
 | `api/support/support_chat`           | `SupportWsController.chat`                 | надіслати повідомлення агенту підтримки                                                                        | 60 / 60 с   |
 
-Support-контролери ([support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts)) одразу відповідають `{ status: 'ok' }`, а саму відповідь агента запускають без `await` і доставляють push-подіями.
+Support-контролери ([support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts)) відповідають `{ status: 'ok' }` лише після **допуску** повідомлення (ліміт на користувача, замок «одна відповідь за раз»; відмова — це відповідь `status: "429"` з `reason` `support_rate_limited` або `support_busy`, див. [Допуск повідомлення](/backend/ai#допуск-повідомлення)). Саму відповідь агента вони запускають без `await` і доставляють push-подіями; збій після допуску приходить як `support_chat_error` з `code`.
 
 ## Push від сервера до клієнта
 

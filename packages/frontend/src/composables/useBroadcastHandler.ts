@@ -38,7 +38,10 @@ export const useBroadcastHandler = () => {
                 reportValidationFailure('support_chat_error', 'payload_shape', payload)
                 return
             }
-            eventBus.emit('support_chat_error', { message: payload.message })
+            eventBus.emit('support_chat_error', {
+                message: payload.message,
+                ...(payload.code !== undefined ? { code: payload.code } : {}),
+            })
         },
         admin_user_online_upsert: (event) => {
             const payload = event.payload

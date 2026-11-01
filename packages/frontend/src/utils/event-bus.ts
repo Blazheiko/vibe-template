@@ -15,6 +15,7 @@ export interface Events extends Record<EventType, unknown> {
     }
     support_chat_error: {
         message: string
+        code?: string
     }
     admin_user_online_upsert: {
         id: string

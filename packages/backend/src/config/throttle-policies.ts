@@ -180,6 +180,20 @@ export const throttlePolicies = {
         readInt('AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR', 20),
         HOUR_MS,
     ),
+    /** Support chat messages: each one costs several language-model calls (feat-063). */
+    supportChatUser: fixedWindow(
+        'support_chat_user',
+        'user',
+        readInt('SUPPORT_CHAT_USER_RATE_LIMIT_MAX', 20),
+        readInt('SUPPORT_CHAT_USER_RATE_LIMIT_WINDOW_MS', 60_000),
+    ),
+    /** Opening the support chat (the greeting is a language-model call). */
+    supportOpenChatUser: fixedWindow(
+        'support_open_chat_user',
+        'user',
+        readInt('SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_MAX', 5),
+        readInt('SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_WINDOW_MS', 60_000),
+    ),
     /** WS upgrade level 2: cluster-wide budget after the local level 1. */
     wsUpgradeShared: {
         scope: 'upgrade',

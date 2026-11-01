@@ -20,7 +20,7 @@ const isEntityId = (value: unknown): value is string =>
 
 const TOKEN_KEYS = new Set(['token'])
 const COMPLETE_KEYS = new Set(['content', 'screenshots'])
-const ERROR_KEYS = new Set(['message'])
+const ERROR_KEYS = new Set(['message', 'code'])
 const REMOVE_KEYS = new Set(['id'])
 const ADMIN_USER_ONLINE_UPSERT_KEYS = new Set([
     'id',
@@ -48,7 +48,10 @@ export const isSupportChatCompletePayload = (
 export const isSupportChatErrorPayload = (
     value: unknown,
 ): value is BroadcastPayload<'support_chat_error'> =>
-    isObject(value) && hasOnlyKeys(value, ERROR_KEYS) && typeof value.message === 'string'
+    isObject(value) &&
+    hasOnlyKeys(value, ERROR_KEYS) &&
+    typeof value.message === 'string' &&
+    (value.code === undefined || typeof value.code === 'string')
 
 export const isWSAdminUserOnlineUpsertPayload = (
     value: unknown,

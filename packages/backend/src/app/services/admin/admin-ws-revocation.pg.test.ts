@@ -12,6 +12,7 @@ import {
     hasRedis,
     sleep,
 } from '../../../test-support/redis-test-client.js'
+import { WsTestClient, type Frame } from '../../../test-support/ws-test-client.js'
 
 // feat-062 over real WebSocket connections: a real uWebSockets.js server with the real
 // route tables, real sessions in Redis and real users in PostgreSQL. The role is
@@ -153,68 +154,13 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         return token
     }
 
-    interface Frame {
-        event?: string
-        status?: string | number
-        timestamp?: number
-        data?: unknown
-    }
-
-    class Client {
-        readonly frames: Frame[] = []
-        closed = false
-        private constructor(readonly ws: WebSocket) {
-            ws.addEventListener('message', (message) => {
-                this.frames.push(JSON.parse(String(message.data)) as Frame)
-            })
-            ws.addEventListener('close', () => {
-                this.closed = true
-            })
-        }
-
-        static async connect(token: string): Promise<Client> {
-            const ws = new WebSocket(`ws://127.0.0.1:${String(PORT)}/api/websocket`, [token])
-            clients.push(ws)
-            await new Promise<void>((resolve, reject) => {
-                ws.addEventListener('open', () => {
-                    resolve()
-                })
-                ws.addEventListener('error', () => {
-                    reject(new Error('websocket failed to open'))
-                })
-            })
-            const client = new Client(ws)
-            await client.waitFor((frame) => frame.event === 'service:connection_established')
-            return client
-        }
-
-        async waitFor(predicate: (frame: Frame) => boolean, timeoutMs = 3000): Promise<Frame> {
-            const started = Date.now()
-            for (;;) {
-                const found = this.frames.find(predicate)
-                if (found !== undefined) return found
-                if (Date.now() - started > timeoutMs) {
-                    throw new Error(
-                        `no matching frame in ${String(timeoutMs)} ms: ${JSON.stringify(this.frames)}`,
-                    )
-                }
-                await sleep(20)
-            }
-        }
-
-        /** Sends a request and returns the reply that carries the same event and timestamp. */
-        async request(event: string): Promise<Frame> {
-            const timestamp = Date.now() + this.frames.length
-            this.ws.send(JSON.stringify({ event, payload: null, timestamp }))
-            return this.waitFor((frame) => frame.event === event && frame.timestamp === timestamp)
+    class Client extends WsTestClient {
+        static connect(token: string): Promise<Client> {
+            return WsTestClient.open((ws) => new Client(ws), PORT, token, clients)
         }
 
         subscribe(): Promise<Frame> {
             return this.request('api/admin/subscribe_online_users')
-        }
-
-        received(event: string): number {
-            return this.frames.filter((frame) => frame.event === event).length
         }
     }
 

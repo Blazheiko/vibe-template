@@ -114,6 +114,7 @@ export {
 export { PromptUpdateInputSchema, type PromptUpdateInput } from './main/prompt-update.js'
 export { PromptTestInputSchema, type PromptTestInput } from './main/prompt-test.js'
 
+export { SUPPORT_MESSAGE_MAX_LENGTH } from '../limits/index.js'
 export { SupportChatInputSchema, type SupportChatInput } from './support/support-chat.js'
 export {
     SupportOpenChatInputSchema,

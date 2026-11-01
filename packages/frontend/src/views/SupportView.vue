@@ -6,6 +6,7 @@ import { useEventBus } from '@/utils/event-bus'
 import { apiPath } from '@/utils/api-path'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { getResponseMessage } from '@/utils/response-normalizer'
+import { SUPPORT_MESSAGE_MAX_LENGTH } from 'shared/limits'
 
 const props = defineProps<{
     embedded?: boolean
@@ -110,7 +111,12 @@ async function sendMessage(textOverride?: string): Promise<void> {
             language: locale.value,
         })
     } catch (error) {
+        // The server refused the message before accepting it (too frequent, the previous
+        // answer is still being written, too long): nothing was sent, so the text goes
+        // back into the input for another try.
         isSending.value = false
+        store.removeLastUserMessage()
+        textInput.value = text
         store.setError(getResponseMessage(error, 'Failed to send message'))
     }
 }
@@ -270,6 +276,7 @@ onUnmounted(() => {
                             class="support-input"
                             :placeholder="t('support.inputPlaceholder')"
                             rows="1"
+                            :maxlength="SUPPORT_MESSAGE_MAX_LENGTH"
                             :disabled="isSending"
                             @keydown="handleKeydown"
                         />
@@ -282,6 +289,13 @@ onUnmounted(() => {
                                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                             </svg>
                         </button>
+                    </div>
+                    <div
+                        v-if="textInput.length >= SUPPORT_MESSAGE_MAX_LENGTH * 0.8"
+                        class="support-counter"
+                        :class="{ full: textInput.length >= SUPPORT_MESSAGE_MAX_LENGTH }"
+                    >
+                        {{ textInput.length }} / {{ SUPPORT_MESSAGE_MAX_LENGTH }}
                     </div>
                 </div>
             </section>
@@ -573,6 +587,17 @@ onUnmounted(() => {
 
 .support-input:focus {
     border-color: var(--accent-color);
+}
+
+.support-counter {
+    padding: 0 24px 10px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.support-counter.full {
+    color: var(--accent-color);
 }
 
 .support-input:disabled {

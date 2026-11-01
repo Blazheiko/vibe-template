@@ -37,7 +37,7 @@ const upsert = {
 const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     support_chat_token: { token: 'Hel' },
     support_chat_complete: { content: 'Hello', screenshots: ['1', '2'] },
-    support_chat_error: { message: 'failed' },
+    support_chat_error: { message: 'failed', code: 'chat_failed' },
     admin_user_online_upsert: upsert,
     admin_user_online_remove: { id: '42' },
 }
@@ -51,7 +51,11 @@ const specific: Record<BroadcastEventName, [string, unknown][]> = {
         ['numeric screenshot', { content: 'x', screenshots: [1] }],
         ['screenshots not an array', { content: 'x', screenshots: '1' }],
     ],
-    support_chat_error: [['numeric message', { message: 1 }]],
+    support_chat_error: [
+        ['numeric message', { message: 1 }],
+        ['numeric code', { message: 'failed', code: 1 }],
+        ['no code is fine for the schema, so the guard must agree', { message: 'failed' }],
+    ],
     admin_user_online_upsert: [
         ['web appType', { ...upsert, appType: 'web' }],
         ['unknown appType', { ...upsert, appType: 'desktop' }],
