@@ -641,7 +641,7 @@
             "owner": "Blazheiko",
             "branch": "fix/llm-prompt-retention",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
