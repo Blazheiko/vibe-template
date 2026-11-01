@@ -95,6 +95,15 @@ export const useSupportStore = defineStore('support', () => {
         })
     }
 
+    /**
+     * Takes back the message added optimistically when the server refused it, so the
+     * conversation does not show a message that was never accepted.
+     */
+    function removeLastUserMessage(): void {
+        const last = messages.value.at(-1)
+        if (last?.role === 'user') messages.value.pop()
+    }
+
     function setLoading(val: boolean): void {
         isLoading.value = val
     }
@@ -127,6 +136,7 @@ export const useSupportStore = defineStore('support', () => {
         appendToken,
         completeStreaming,
         addUserMessage,
+        removeLastUserMessage,
         setLoading,
         setError,
         reset,

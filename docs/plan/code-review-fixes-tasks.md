@@ -233,19 +233,19 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 ### D0. Як клієнт отримує відмову — спочатку контракт
 
 - Факт: `app/controllers/ws/support-controller.ts:36-44` робить `void supportService.chat(...)` і одразу повертає `{ status: 'ok' }`. Перевірка бюджету/throttle всередині сервісу **не** перетвориться на відмову клієнту — він побачить `ok` і нічого не отримає.
-- [ ] Розділити `supportService.chat` на `admit(userId, message): Promise<AppResult<Admission>>` (синхронно: валідація довжини, throttle, inflight-lock, резерв бюджету) і `run(admission, ...)` (асинхронно: LLM-pipeline). Контролер: `admit` → при помилці повертає `appErrorToWsError(tooManyRequests(...))` замість `ok`; при успіху — `void run(...)` і `{ status: 'ok' }`.
-- [ ] Для відмов, що виникають **після** admit (помилка провайдера, timeout, бюджет вичерпаний посеред pipeline) — **наявна** broadcast-подія `support_chat_error` (`support-service.ts:158,219`; схема `shared/src/schemas/ws/broadcast-events.ts:13` `{ message: 'string' }`; frontend `useBroadcastHandler.ts:35` → `eventBus`). Розширити схему полем `'code?': 'string'` (backward-compatible), щоб клієнт відрізняв 429/budget від провайдерської помилки. Нову подію **не** вводити.
-- [ ] Frontend `SupportView.vue`: обробка WS-відповіді з `status: 'error'` на `support_chat` (429 → повідомлення + disable input на `retryAfter`) і наявного `support_chat_error` з новим `code`.
-- [ ] Контракт у `documentation/backend/support.md` + WS-роут у `openapi/`.
+- [x] Розділити `supportService.chat` на `admit(userId, message): Promise<AppResult<Admission>>` (синхронно: валідація довжини, throttle, inflight-lock, резерв бюджету) і `run(admission, ...)` (асинхронно: LLM-pipeline). Контролер: `admit` → при помилці повертає `appErrorToWsError(tooManyRequests(...))` замість `ok`; при успіху — `void run(...)` і `{ status: 'ok' }`.
+- [x] Для відмов, що виникають **після** admit (помилка провайдера, timeout, бюджет вичерпаний посеред pipeline) — **наявна** broadcast-подія `support_chat_error` (`support-service.ts:158,219`; схема `shared/src/schemas/ws/broadcast-events.ts:13` `{ message: 'string' }`; frontend `useBroadcastHandler.ts:35` → `eventBus`). Розширити схему полем `'code?': 'string'` (backward-compatible), щоб клієнт відрізняв 429/budget від провайдерської помилки. Нову подію **не** вводити.
+- [x] (без disable input на `retryAfter` — відмова повертає текст у поле вводу й показує повідомлення; відкладено як необов'язкове) Frontend `SupportView.vue`: обробка WS-відповіді з `status: 'error'` на `support_chat` (429 → повідомлення + disable input на `retryAfter`) і наявного `support_chat_error` з новим `code`.
+- [x] Контракт описано в `documentation/backend/ai.md` (розділ «Допуск повідомлення») і `websocket.md`; окремих `support.md` та `openapi/` у репозиторії немає.
 
 ### D1. Support chat — розмір, частота, одночасність
 
-- [ ] `packages/shared/src/schemas/support/support-chat.ts:4` — `message: 'string >= 1 & string <= 4000'`; `SUPPORT_MESSAGE_MAX_LENGTH` у `shared`.
-- [ ] `config/throttle-policies.ts` — `supportChatUser` (напр. 20/хв), `supportOpenChatUser` (напр. 5/хв) — через існуючий атомарний `consumeAuthThrottle`.
-- [ ] **Inflight-lock з власником**: `SET support:inflight:<userId> <ownerToken> NX PX <ttl>`; зняття — **умовне** (Lua: `if GET == token then DEL`), а не голий `DEL` у `finally` — інакше запит, що пережив TTL, видалить lock наступного. `ownerToken = nanoid()` на admit.
-- [ ] TTL lock'а = сумарний timeout усього pipeline (translation + embedding + chat, з `config/ai.ts` timeouts) + запас; **або** heartbeat-продовження (`PEXPIRE` раз на N s, лише якщо `GET == token`). Обрати одне, зафіксувати.
-- [ ] Усе це в `admit` (D0), до першого LLM-виклику; `openChat` greeting — під тим самим lock.
-- [ ] Frontend `SupportView.vue` — `maxlength` + лічильник зі shared-константи.
+- [x] `packages/shared/src/schemas/support/support-chat.ts:4` — `message: 'string >= 1 & string <= 4000'`; `SUPPORT_MESSAGE_MAX_LENGTH` у `shared`.
+- [x] `config/throttle-policies.ts` — `supportChatUser` (напр. 20/хв), `supportOpenChatUser` (напр. 5/хв) — через існуючий атомарний `consumeAuthThrottle`.
+- [x] **Inflight-lock з власником**: `SET support:inflight:<userId> <ownerToken> NX PX <ttl>`; зняття — **умовне** (Lua: `if GET == token then DEL`), а не голий `DEL` у `finally` — інакше запит, що пережив TTL, видалить lock наступного. `ownerToken = nanoid()` на admit.
+- [x] (обрано фіксований TTL = 3 × `AI_REQUEST_TIMEOUT_MS` + 10 с, без heartbeat) TTL lock'а = сумарний timeout усього pipeline (translation + embedding + chat, з `config/ai.ts` timeouts) + запас; **або** heartbeat-продовження (`PEXPIRE` раз на N s, лише якщо `GET == token`). Обрати одне, зафіксувати.
+- [x] Усе це в `admit` (D0), до першого LLM-виклику; `openChat` greeting — під тим самим lock.
+- [x] Frontend `SupportView.vue` — `maxlength` + лічильник зі shared-константи.
 
 ### D2. LLM-бюджет — атомарне резервування, консервативне списання
 

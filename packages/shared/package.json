@@ -37,6 +37,10 @@
         "./guards": {
             "types": "./dist/guards/index.d.ts",
             "import": "./dist/guards/index.js"
+        },
+        "./limits": {
+            "types": "./dist/limits/index.d.ts",
+            "import": "./dist/limits/index.js"
         }
     },
     "files": [
