@@ -444,6 +444,51 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
         })
     })
 
+    // feat-060: a reset link is single-use even when two requests carry it at once.
+    describe('POST /auth/reset-password with one link twice at once', () => {
+        it('lets exactly one request win, with the loser told the link was used', async () => {
+            const user = await insertUser('http-reset-race')
+            const rawToken = `reset-${crypto.randomUUID()}`
+            await passwordResetRepository.create({
+                userId: user.id,
+                tokenHash: createHash('sha256').update(rawToken).digest('hex'),
+                expiresAt: new Date(Date.now() + 60_000),
+            })
+            const first = new Browser()
+            const second = new Browser()
+            await Promise.all([first.init(), second.init()])
+
+            const [one, two] = await Promise.all([
+                first.request('POST', '/auth/reset-password', {
+                    body: {
+                        token: rawToken,
+                        password: 'winner-one-111',
+                        passwordConfirm: 'winner-one-111',
+                    },
+                }),
+                second.request('POST', '/auth/reset-password', {
+                    body: {
+                        token: rawToken,
+                        password: 'winner-two-222',
+                        passwordConfirm: 'winner-two-222',
+                    },
+                }),
+            ])
+
+            const replies = [one, two]
+            expect(replies.filter((reply) => reply.status === 200)).toHaveLength(1)
+            const loser = replies.find((reply) => reply.status !== 200)
+            expect(loser?.status).toBe(400)
+            expect(loser?.body).toMatchObject({ status: 'error', reason: 'used_token' })
+
+            const winnerPassword = one.status === 200 ? 'winner-one-111' : 'winner-two-222'
+            const loserPassword = one.status === 200 ? 'winner-two-222' : 'winner-one-111'
+            const row = await rowOf(user.id)
+            expect(await validatePassword(winnerPassword, row?.password ?? '')).toBe(true)
+            expect(await validatePassword(loserPassword, row?.password ?? '')).toBe(false)
+        })
+    })
+
     describe('when the database cannot answer', () => {
         it('answers 503 instead of serving the Redis record, then recovers', async () => {
             const user = await insertUser('http-db-down')

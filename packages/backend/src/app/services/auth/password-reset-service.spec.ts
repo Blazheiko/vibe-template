@@ -44,10 +44,14 @@ const loggerMock = {
 
 const originalEnv = { ...process.env }
 
+// A stand-in for the transaction `withTransaction` hands to the repositories; the real
+// commit/rollback behaviour is proved against PostgreSQL (one-time-token-race.pg.test.ts).
+const TX = vi.hoisted(() => ({ transaction: true }))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     passwordResetRepository: passwordResetRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
+    withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(TX),
 }))
 
 vi.mock('#app/services/notifications/email-service.js', () => ({
@@ -337,11 +341,15 @@ describe('passwordResetService', () => {
             '+14155550123',
             'link_phone',
         )
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
-            password: 'hashed-password',
-            sessionToken: 'new-session-token',
-        })
-        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            7n,
+            {
+                password: 'hashed-password',
+                sessionToken: 'new-session-token',
+            },
+            TX,
+        )
+        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
             expect(result.value).toEqual({ status: 'success' })
@@ -469,6 +477,44 @@ describe('passwordResetService', () => {
     // ADR 0002: the rotated sessionToken is the revocation, the Redis cleanup is only
     // memory. A failed cleanup must not stop the reset: the token would stay unused
     // after the password has already changed.
+    // feat-060: a concurrent request claimed the token first (markUsed -> undefined).
+    it('does not change the password when another request already claimed the token', async () => {
+        passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 11n,
+            userId: 7n,
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            phone: null,
+            sessionToken: 'old-session-token',
+        })
+        hashPasswordMock.mockResolvedValue('hashed-password')
+        passwordResetRepositoryMock.markUsed.mockResolvedValue(undefined)
+
+        const { passwordResetService } = await loadPasswordResetService()
+        const result = await passwordResetService.resetPassword(
+            'valid-token',
+            'new-password',
+            'new-password',
+            { ipAddress: '127.0.0.1' },
+        )
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toEqual({
+                _tag: 'BadRequest',
+                reason: 'used_token',
+                message: 'Password reset link has already been used',
+            })
+        }
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+    })
+
     it('still marks the token used when the Redis cleanup fails', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
@@ -505,12 +551,16 @@ describe('passwordResetService', () => {
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
-            password: 'hashed-password',
-            sessionToken: 'new-session-token',
-        })
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            7n,
+            {
+                password: 'hashed-password',
+                sessionToken: 'new-session-token',
+            },
+            TX,
+        )
         expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-session-token')
-        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
     })
 
     it('completes phone-only password reset and revokes all sessions', async () => {

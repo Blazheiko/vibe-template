@@ -8,6 +8,7 @@ import {
     smsAuthChallengeRepository,
     passwordResetRepository,
     userRepository,
+    withTransaction,
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
@@ -613,26 +614,41 @@ export const passwordResetService = {
             }
         }
 
-        const updatedUserResult = await tryInternal(
+        // feat-060: the token is claimed and its effect applied in ONE transaction. The
+        // claim is `UPDATE ... SET used_at WHERE used_at IS NULL`, so of two concurrent
+        // requests with one link exactly one gets the row; a failure after it rolls both
+        // back, the link stays usable and the password stays as it was. The rotated
+        // sessionToken (ADR 0002) is part of the same commit.
+        const appliedResult = await tryInternal(
             () =>
-                userRepository.update(user.id, {
-                    password: newPasswordHash,
-                    sessionToken: nanoid(),
+                withTransaction(async (tx) => {
+                    const claimed = await passwordResetRepository.markUsed(
+                        resetToken.id,
+                        undefined,
+                        tx,
+                    )
+                    if (claimed === undefined) return { claimed: false as const }
+
+                    const updated = await userRepository.update(
+                        user.id,
+                        { password: newPasswordHash, sessionToken: nanoid() },
+                        tx,
+                    )
+                    if (updated === undefined) throw new Error('User disappeared during reset')
+                    return { claimed: true as const, user: updated }
                 }),
             'Failed to update password',
         )
-        if (Result.isError(updatedUserResult)) {
-            return Result.err(updatedUserResult.error)
+        if (Result.isError(appliedResult)) {
+            return Result.err(appliedResult.error)
+        }
+        if (!appliedResult.value.claimed) {
+            return Result.err(badRequest('Password reset link has already been used', 'used_token'))
         }
 
-        const updatedUser = updatedUserResult.value
-        if (updatedUser === undefined) {
-            return Result.err(internalMessage('Failed to update password'))
-        }
-
-        // ADR 0002: the rotated sessionToken above is the revocation. This only deletes
-        // records that are already rejected, so a failure is logged and must not stop
-        // the reset (the token below would stay unused after the password changed).
+        // ADR 0002: the rotated sessionToken is the revocation. This only deletes records
+        // that are already rejected, so a failure is logged and must not fail a reset that
+        // has been committed.
         const destroySessionsResult = await tryInternal(
             () => destroyAllSessions(previousSessionToken),
             'Failed to destroy sessions',
@@ -641,22 +657,6 @@ export const passwordResetService = {
             logger.warn(
                 { err: destroySessionsResult.error, userId: String(user.id) },
                 'Previous sessions not deleted after a password reset',
-            )
-        }
-
-        const usedTokenResult = await tryInternal(
-            () => passwordResetRepository.markUsed(resetToken.id),
-            'Failed to mark password reset token used',
-        )
-        if (Result.isError(usedTokenResult)) {
-            return Result.err(usedTokenResult.error)
-        }
-
-        const usedToken = usedTokenResult.value
-        if (usedToken === undefined) {
-            logger.warn(
-                { resetTokenId: String(resetToken.id), userId: String(user.id) },
-                'Password reset succeeded but reset token was not marked used',
             )
         }
 

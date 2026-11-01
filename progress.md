@@ -3,61 +3,48 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-059 - Session Revocation
-**Branch:** `fix/session-revocation`
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase B (decision: `docs/adr/0002-session-revocation-via-user-token.md`, accepted)
+**Active Feature:** feat-060 - One-Time Token Race
+**Branch:** `fix/one-time-token-race`
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase B2 (depends on feat-059, done)
 
 ## Status
 
 ### Done
 
-- [x] Diagnosis: a session in Redis was valid while its key existed. `changePassword` rotated nothing (every other session of the user stayed valid for up to 24 h); `logoutAll` and the password reset rotated or deleted, but if the SCAN/DEL did not finish (Redis unavailable, deadline) the old keys stayed valid after Redis came back. `session-handler`, `ws-session-auth` and the middlewares never compared the session's `userToken` with `users.session_token`
-- [x] ADR 0002 accepted (PR #191): compare `userToken` with `users.session_token` read from the database on every authenticated request, no cache; rotate the token first in every revoking operation; `destroyAllSessions` is best-effort memory cleanup
-- [x] Vendor layer: `session-token-check.ts` (`registerSessionTokenChecker`, `assertSessionTokenCurrent`; the check is registered by the app like the WS hooks and throws if it is not), `SessionVerificationUnavailableError` (503 `service_unavailable`, `Retry-After: 1`, no driver text; `handleError` branch)
-- [x] `sessionHandler`: a rotated token makes the request anonymous (`401` at `auth_guard`) and drops the record best-effort; an unavailable lookup throws the 503 error instead of serving the Redis record. `wsSessionHandler` and `verifyUpgradeToken`: revoked → `missing`, unavailable → `unavailable`
-- [x] App layer: `userRepository.findSessionToken` and `changePasswordIfCurrent` (one conditional `UPDATE … WHERE password = <current hash>` that also writes the rotated token), `checkSessionToken`, registration in `app/start/index.ts`
-- [x] `changePassword`: conditional update (`409` for the loser of two concurrent changes), rotated token, best-effort cleanup, returns the new token; the controller renews the session under it (`renewSession(auth, session, rotatedUserToken)`)
-- [x] `logoutAll`: rotates `users.session_token` first, fails the request if the rotation fails, then deletes the records
-- [x] Password reset (email and phone): a failed `destroyAllSessions` is logged and no longer stops the reset (it used to return before the reset token was marked used)
-- [x] Tests first where the behaviour is new: `session-revocation.spec.ts` (sessionHandler), `session-revocation.pg.test.ts` (real PostgreSQL + Redis), updated unit/Redis specs; mutation check — with the token check neutralised the four Redis-failure / database-failure / deleted-user tests fail
-- [x] CI: `pg-tests.yml` gets a Redis service and `REDIS_TEST_URL` for the tests that need both (they skip without it)
-- [x] Docs: `backend/auth.md` (new «Відкликання сесій», userToken, logoutAll, rotation table, WS authorization), `request-lifecycle.md`, `controllers.md`; ADR 0002 clarifications and the benchmark
+- [x] Diagnosis: the password-reset, email-verification and email-link tokens were read, checked (`usedAt === null`), applied, and only then marked used with `UPDATE … WHERE id = ?` (no `used_at IS NULL`). Two concurrent requests with one token both passed the check and both applied it; a failure of the last step left the effect committed and the link reusable (replay)
+- [x] Tests first (`one-time-token-race.pg.test.ts`, real PostgreSQL): both requests are held after reading until the second has read too (the race made deterministic); a write that succeeds and then fails; `markUsed` failing. 7 of 9 failed before the fix ("exactly one winner" got two in all three flows; the password / email stayed changed after a failure), 2 regression cases (already used, expired) passed
+- [x] `markUsed` of the three token repositories is now a claim: `UPDATE … SET used_at WHERE id = ? AND used_at IS NULL RETURNING *`, `undefined` when it was already used
+- [x] `withTransaction` + optional `executor` (`DbExecutor`) on `markUsed` and `userRepository.update` (`app/repositories/transaction.ts`); `userRepository.update` is a single `UPDATE … RETURNING` now instead of an update plus a separate read
+- [x] `resetPassword` (email), `verifyEmail` (confirmation and email link): claim the token and apply its effect (password + rotated `sessionToken`, `emailVerifiedAt`, new email) in ONE transaction. A lost claim answers "already used" (`used_token` for the reset); a failure after the write rolls both back and the link still works. `destroyAllSessions` runs after the commit (best-effort, ADR 0002)
+- [x] Unit specs updated for the transaction argument, plus lost-claim cases; one HTTP-level test (two concurrent `POST /auth/reset-password`, exactly one 200, the loser `400 used_token`, the stored password is the winner's), stable over repeated runs
+- [x] Docs: `backend/repositories.md` (new «Транзакції» section, rule on single-use tokens), `backend/auth.md`
 
-- [x] Review follow-ups (3 findings): (1) the token lookup had no deadline — `connectionTimeoutMillis` only bounds the wait for a pooled connection, so a database that accepted the query and never answered would hold every authenticated request; (2) the HTTP contract is proved over a real uWebSockets.js server with the real route table and the real `session_web`, `csrf_guard`, `auth_guard` against PostgreSQL and Redis (`session-revocation-http.pg.test.ts`): status codes, `Set-Cookie`, CSRF (old token → 403), the controller body, two concurrent HTTP change-password calls, the reset flow with a failing Redis cleanup, `logout-all` 503, database down 503 and a lookup that hangs on a table lock; with the token check neutralised 5 of 8 fail; (3) the plan's phase B is synced with the implemented contract (WebSocket not closed but answered with a 503 envelope; change-password answers 200 with `sessionRenewed: false` when the new session cannot be issued; `logout-all` 503 cannot be repeated with the same session)
-- [x] The deadline cancels the query (branches `fix/session-check-query-cancel`, then `chore/simplify-session-check-timeouts`): an application-level deadline (`Promise.race`) only made the client stop waiting — measured on PostgreSQL the query stayed active in `pg_stat_activity` and kept its pooled connection. The lookup runs on its own 5-connection pool (`database/session-check-db.ts`, size a constant) with `statement_timeout` = `SESSION_TOKEN_CHECK_TIMEOUT_MS` (default 2000 ms; the server cancels the statement, SQLSTATE 57014, and pg-pool drops the errored connection) and `query_timeout` = deadline + 500 ms for a server that stops answering altogether (the connection is destroyed, the slot freed). `statement_timeout` is a property of the connection, hence a separate pool; it also isolates authentication from long business queries. The race was removed afterwards: with the pool timeouts all real-PostgreSQL tests pass without it (the only change is a bound of deadline + 500 ms instead of the deadline for an unreachable server), and so is the `SESSION_TOKEN_CHECK_POOL_MAX` variable (nobody tunes it). Connection options are shared with the main pool (`database/pool-options.ts`) so the later `PGSQL_SSL` (feat-067) applies to both. Proved on a real PostgreSQL: a table lock makes the lookup hang → `unavailable` within the deadline and no waiting statement left on the server; ten concurrent stuck checks on a 5-connection pool all answer and the pool recovers; the main pool keeps answering meanwhile; a stalling proxy → the slot is freed by `query_timeout`; over HTTP the hanging lookup is a 503 within the deadline and recovers. Mutation checks: without `statement_timeout` 2 of 13 fail, without `query_timeout` 1 of 13 fails
+### Out of scope, checked
+
+The phone reset (`completePhonePasswordReset`) already claims the SMS challenge with the conditional `markConfirmed` (`confirmed_at IS NULL AND invalidated_at IS NULL AND expires_at > now`) before it changes the password, so it cannot be applied twice; a failure after the claim only burns the code. Making it transactional belongs to H5 (SMS challenge).
 
 ### Behaviour changes to know
 
-- `change-password` and `logout-all` now revoke every session of the user immediately (before: change-password revoked nothing; logout-all only deleted records).
-- `logout-all` cannot be repeated with the same session after a `503`: the session is already revoked. The caller signs in again.
-- If the database cannot answer the token lookup, authenticated requests get `503` (before: served from the Redis record alone). WS messages get the 503 envelope, WS upgrades `503`.
-- Password reset no longer fails when the Redis cleanup fails.
-
-### Cost (local PostgreSQL over loopback, 1000 requests)
-
-|                                    | p50     | p95     | p99     |
-| ---------------------------------- | ------- | ------- | ------- |
-| `sessionHandler` without the check | 0.10 ms | 0.19 ms | 0.26 ms |
-| `sessionHandler` with the check    | 0.37 ms | 0.99 ms | 3.70 ms |
-| the lookup alone (PK read)         | 0.11 ms | 0.17 ms | 0.21 ms |
-
-Input for feat-061 (optional cache): on a shared network the database round trip is added.
+- A reset or verification link used by two requests at once now succeeds once; the other gets `400` ("already been used").
+- A failure while applying a link no longer leaves half the effect committed: the link stays usable and nothing changed.
+- An expired link is still marked used outside any transaction, as before.
 
 ## Evidence of Completion
 
-| Check                                                                                                                                                                   | Result                                                                                                                                     |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Mutation check (token check neutralised)                                                                                                                                | 4 of 8 `session-revocation.pg.test.ts` tests fail: Redis cleanup failure on change-password and on logout-all, database down, deleted user |
-| `pnpm typecheck` / `lint` / `format:check`                                                                                                                              | exit 0                                                                                                                                     |
-| `pnpm test`                                                                                                                                                             | backend 1200, frontend 168, api-playground 14, shared 14, docs 26; exit 0                                                                  |
-| `test:pg` with Redis (`REDIS_TEST_URL`)                                                                                                                                 | 45 passed in 6 files (8 new in `session-revocation.pg.test.ts`)                                                                            |
-| `test:pg` with Redis unreachable (no `REDIS_TEST_URL`)                                                                                                                  | 37 passed, 8 skipped                                                                                                                       |
-| `test:redis` (`REDIS_TEST_URL=redis://127.0.0.1:6379/15`)                                                                                                               | 61 passed (stopped-logout-all test rewritten for the rotation-first model)                                                                 |
-| `docs:build && docs:verify`                                                                                                                                             | passed                                                                                                                                     |
-| `test:e2e:security` (real prod build and server on port 3200, `PORT=3200` for the build too, fixture restored, `packages/backend/public` rebuilt with the default port) | 7 passed                                                                                                                                   |
-| Frontend e2e (`test:e2e`)                                                                                                                                               | not run: no UI touched                                                                                                                     |
+| Check                                                 | Result                                                                                                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| New tests before the fix                              | 7 failed / 2 passed (`expected [ …(2) ] to have a length of 1 but got 2` in all three flows; password / email still changed after a failure) |
+| Mutation check (`markUsed` without `used_at IS NULL`) | the deterministic race test and the HTTP race test fail (2 of 18)                                                                            |
+| `pnpm typecheck` / `lint` / `format:check`            | exit 0                                                                                                                                       |
+| `pnpm test`                                           | backend 1225, frontend 168, api-playground 14, shared 14, docs 26; exit 0                                                                    |
+| `test:pg` with Redis                                  | 68 passed in 9 files (9 new in `one-time-token-race.pg.test.ts`, 1 in `session-revocation-http.pg.test.ts`)                                  |
+| `test:pg` with Redis unreachable                      | 51 passed, 17 skipped                                                                                                                        |
+| `test:redis`                                          | 61 passed                                                                                                                                    |
+| `docs:build && docs:verify`                           | passed                                                                                                                                       |
+| `test:e2e:security`                                   | not run: it covers login and CSRF, not the reset or verification links                                                                       |
+| Frontend e2e (`test:e2e`)                             | not run: no UI touched                                                                                                                       |
 
 ## Notes for Next Session
 
-1. Merge the feature PR, then a PR flipping feat-059 to `done`
-2. feat-060 (One-Time Token Race) depends on this feature and is next; feat-061 (session token cache) only if the benchmark above is judged too expensive
+1. Merge the feature PR, then a PR flipping feat-060 to `done`
+2. Next: feat-062 (WS admin revocation) or feat-063 (resource limits); feat-069 (regression coverage) depends on feat-059, feat-060 and feat-066

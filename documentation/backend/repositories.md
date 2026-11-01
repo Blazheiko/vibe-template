@@ -45,6 +45,19 @@ export type UserInsert = InferInsertModel<typeof users>
 
 Типи рядків виводяться з таблиць через `InferSelectModel` / `InferInsertModel`, а типи оновлень — через `Partial<Pick<...>>` ([user-repository.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/user/user-repository.ts)).
 
+### Транзакції
+
+Кілька записів, які мають відбутися разом або не відбутися взагалі, сервіс виконує через `withTransaction` ([transaction.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/transaction.ts)): вона відкриває транзакцію Drizzle, комітить, коли колбек повернувся, і відкочує, коли він кинув помилку. Репозиторні методи, які можуть входити в таку транзакцію, приймають останнім необовʼязковим аргументом `executor` (`DbExecutor`: `db` або `tx`); без нього працюють на `db`, як і раніше. Зараз так працюють `userRepository.update` і `markUsed` трьох репозиторіїв токенів.
+
+```ts
+const applied = await withTransaction(async (tx) => {
+    const claimed = await passwordResetRepository.markUsed(token.id, undefined, tx)
+    if (claimed === undefined) return { claimed: false }
+    const user = await userRepository.update(token.userId, { password, sessionToken }, tx)
+    return { claimed: true, user }
+})
+```
+
 ## Типові методи та повернені значення
 
 - **`create`** — `db.insert(...).values(...).returning()`; якщо рядок не повернувся, кидається `Error` (`"Failed to create user"`). Поля `createdAt`/`updatedAt` виставляє сам репозиторій.
@@ -105,6 +118,7 @@ Redis-репозиторіїв немає: у `app/repositories/` усі мод�
 ## Правила
 
 - У репозиторіях — лише доступ до даних: побудова запитів, проставлення `createdAt`/`updatedAt`. Бізнес-рішення (перевірка сесії, коди помилок) — у сервісах.
+- Одноразовий токен (скидання пароля, підтвердження пошти, привʼязка пошти) споживається атомарно: `markUsed` — це `UPDATE … SET used_at = … WHERE id = ? AND used_at IS NULL RETURNING *`, тож із двох паралельних запитів з одним токеном рядок отримує лише один (інший — `undefined`). Сервіс виконує цей claim і дію токена (зміна пароля, підтвердження, нова пошта) в одній `withTransaction`: збій після запису відкочує обидва, посилання лишається придатним, а пароль — незміненим.
 - Репозиторії не логують: `completeBySocketUuid` повертає `false`, а попередження «no record found on disconnect» пише `userOnlineService`.
 - Репозиторії викликаються лише з сервісів; контролери, middleware і WS-координатор ідуть через сервіси.
 

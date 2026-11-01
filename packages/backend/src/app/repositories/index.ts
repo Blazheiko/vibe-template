@@ -69,3 +69,5 @@ export type {
     KbSearchResult,
     KbListOptions,
 } from './support/support-knowledge-repository.js'
+export { withTransaction } from './transaction.js'
+export type { DbExecutor, DbTransaction } from './transaction.js'
