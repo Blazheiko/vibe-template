@@ -10,7 +10,6 @@ const userRepositoryMock = {
 
 const oauthAccountRepositoryMock = {
     findByProviderAndProviderId: vi.fn(),
-    updateTokens: vi.fn(),
     create: vi.fn(),
 }
 
@@ -127,6 +126,10 @@ function stubGitHubUserInfoFetch(
     })
 }
 
+// JSON with bigint ids, for searching a mock's calls for a string.
+const serialize = (value: unknown): string =>
+    JSON.stringify(value, (_key, item: unknown) => (typeof item === 'bigint' ? String(item) : item))
+
 const tokens = (accessToken: string) => ({
     accessToken: () => accessToken,
     hasRefreshToken: () => false,
@@ -199,9 +202,6 @@ describe('oauthService', () => {
             id: 21n,
             userId: 7n,
         })
-        oauthAccountRepositoryMock.updateTokens.mockResolvedValue({
-            id: 21n,
-        })
         userRepositoryMock.findById.mockResolvedValue({
             id: 7n,
             sessionToken: 'session-token',
@@ -228,11 +228,9 @@ describe('oauthService', () => {
             'github',
             'provider-user-1',
         )
-        expect(oauthAccountRepositoryMock.updateTokens).toHaveBeenCalledWith(
-            21n,
-            'github-access-token',
-            null,
-        )
+        // The provider tokens are used once, to read the profile, and are not kept.
+        expect(oauthAccountRepositoryMock).not.toHaveProperty('updateTokens')
+        expect(oauthAccountRepositoryMock.create).not.toHaveBeenCalled()
         expect(authMock.login).toHaveBeenCalledWith('7', 'session-token')
         expect(userRepositoryMock.create).not.toHaveBeenCalled()
     })
@@ -286,8 +284,6 @@ describe('oauthService', () => {
             providerEmail: 'user@example.com',
             providerName: 'Jane',
             providerAvatar: 'https://cdn.example.com/avatar.png',
-            accessToken: 'github-access-token',
-            refreshToken: null,
         })
         expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token')
     })
@@ -427,6 +423,178 @@ describe('oauthService', () => {
             })
         }
         expect(authMock.login).not.toHaveBeenCalled()
+    })
+
+    // feat-064: nothing reads a provider's access or refresh token after the profile has been
+    // fetched, so they are not stored (a plaintext token at rest is a liability, not a feature).
+    describe('provider tokens are not stored', () => {
+        const withRefresh = (accessToken: string) => ({
+            accessToken: () => accessToken,
+            hasRefreshToken: () => true,
+            refreshToken: () => 'secret-refresh-token',
+        })
+
+        it.each([
+            ['google', withRefresh('secret-access-token')],
+            ['gitlab', withRefresh('secret-access-token')],
+        ])(
+            '%s: neither token reaches the repository when a link is created',
+            async (provider, grant) => {
+                ;(provider === 'google'
+                    ? googleValidateAuthorizationCodeMock
+                    : gitlabValidateAuthorizationCodeMock
+                ).mockResolvedValue(grant)
+                stubFetch({
+                    'https://www.googleapis.com/oauth2/v2/userinfo': {
+                        id: 'p-1',
+                        email: 'user@example.com',
+                        name: 'Jane',
+                        verified_email: true,
+                    },
+                    'https://gitlab.com/oauth/userinfo': {
+                        sub: 'p-1',
+                        email: 'user@example.com',
+                        email_verified: true,
+                        name: 'Jane',
+                    },
+                    'https://gitlab.com/api/v4/user': {
+                        id: 'p-1',
+                        email: 'user@example.com',
+                        name: 'Jane',
+                    },
+                })
+                oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue(undefined)
+                userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+                userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 'tok' })
+                oauthAccountRepositoryMock.create.mockResolvedValue({ id: 22n, userId: 8n })
+                authMock.login.mockResolvedValue(true)
+
+                await callback(provider)
+
+                const stored = serialize(oauthAccountRepositoryMock.create.mock.calls)
+                expect(oauthAccountRepositoryMock.create).toHaveBeenCalledTimes(1)
+                expect(stored).not.toContain('secret-access-token')
+                expect(stored).not.toContain('secret-refresh-token')
+                expect(oauthAccountRepositoryMock.create.mock.calls[0]?.[0]).not.toHaveProperty(
+                    'accessToken',
+                )
+                expect(oauthAccountRepositoryMock.create.mock.calls[0]?.[0]).not.toHaveProperty(
+                    'refreshToken',
+                )
+            },
+        )
+
+        it('a returning user is logged in without any write to the OAuth account', async () => {
+            googleValidateAuthorizationCodeMock.mockResolvedValue(
+                withRefresh('secret-access-token'),
+            )
+            stubFetch({
+                'https://www.googleapis.com/oauth2/v2/userinfo': {
+                    id: 'g-1',
+                    email: 'user@example.com',
+                    name: 'Jane',
+                    verified_email: true,
+                },
+            })
+            oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue({
+                id: 21n,
+                userId: 7n,
+            })
+            userRepositoryMock.findById.mockResolvedValue({ id: 7n, sessionToken: 'session-token' })
+            authMock.login.mockResolvedValue(true)
+
+            const result = await callback('google')
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(oauthAccountRepositoryMock.create).not.toHaveBeenCalled()
+            expect(authMock.login).toHaveBeenCalledWith('7', 'session-token')
+        })
+    })
+
+    // The Facebook token used to travel in the query string (`?access_token=`), where it lands
+    // in proxy and CDN logs and in Referer headers; the Graph API accepts it as a Bearer header.
+    describe('the Facebook access token', () => {
+        it('goes in the Authorization header, never in the URL', async () => {
+            facebookValidateAuthorizationCodeMock.mockResolvedValue(tokens('fb-secret-token'))
+            const calls: { url: string; init: RequestInit | undefined }[] = []
+            vi.stubGlobal(
+                'fetch',
+                vi.fn((url: string, init?: RequestInit) => {
+                    calls.push({ url, init })
+                    return Promise.resolve({
+                        json: vi.fn().mockResolvedValue({
+                            id: 'fb-1',
+                            email: 'user@example.com',
+                            name: 'Jane',
+                        }),
+                    })
+                }),
+            )
+            oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue({
+                id: 21n,
+                userId: 7n,
+            })
+            userRepositoryMock.findById.mockResolvedValue({ id: 7n, sessionToken: 'session-token' })
+            authMock.login.mockResolvedValue(true)
+
+            await callback('facebook')
+
+            expect(calls).toHaveLength(1)
+            expect(calls[0]?.url).toMatch(/^https:\/\/graph\.facebook\.com\/me\?fields=/)
+            expect(calls[0]?.url).not.toContain('access_token')
+            expect(calls[0]?.url).not.toContain('fb-secret-token')
+            expect(calls[0]?.init?.headers).toEqual({ Authorization: 'Bearer fb-secret-token' })
+        })
+    })
+
+    // feat-064: an email address and a name are personal data; the log keeps the provider and
+    // a masked address, enough to correlate a report without exposing the person.
+    describe('what the log says about the person', () => {
+        const everythingLogged = (): string =>
+            serialize([...loggerMock.info.mock.calls, ...loggerMock.warn.mock.calls])
+
+        it.each([
+            ['a returning user', true],
+            ['a new user', false],
+        ])('does not log the raw email or the name of %s', async (_label, returning) => {
+            githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('gh-secret-token'))
+            stubGitHubUserInfoFetch()
+            oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue(
+                returning ? { id: 21n, userId: 7n } : undefined,
+            )
+            userRepositoryMock.findById.mockResolvedValue({ id: 7n, sessionToken: 'session-token' })
+            userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+            userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 'tok' })
+            oauthAccountRepositoryMock.create.mockResolvedValue({ id: 22n, userId: 8n })
+            authMock.login.mockResolvedValue(true)
+
+            await callback('github')
+
+            const logged = everythingLogged()
+            expect(logged).not.toContain('user@example.com')
+            expect(logged).not.toContain('Jane')
+            expect(logged).not.toContain('gh-secret-token')
+            // Still useful: the address is there, masked.
+            expect(logged).toContain('u***r@e*****e.com')
+        })
+
+        it('does not log the raw email when a link is refused', async () => {
+            googleValidateAuthorizationCodeMock.mockResolvedValue(tokens('google-token'))
+            stubFetch({
+                'https://www.googleapis.com/oauth2/v2/userinfo': {
+                    id: 'g-1',
+                    email: 'user@example.com',
+                    name: 'Jane',
+                    verified_email: false,
+                },
+            })
+            givenExistingUserByEmail()
+
+            await callback('google')
+
+            expect(everythingLogged()).not.toContain('user@example.com')
+            expect(everythingLogged()).not.toContain('Jane')
+        })
     })
 
     describe('configured providers', () => {

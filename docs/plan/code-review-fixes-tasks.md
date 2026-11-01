@@ -296,12 +296,12 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 **Гілка:** `fix/oauth-token-storage` · **Залежності:** немає · **Оцінка:** 1 д (міграція → окреме рев'ю)
 
-- [ ] Рішення: не зберігати (жоден код не читає `accessToken`/`refreshToken`). Якщо продукт планує offline-доступ до провайдера — зупинитися і натомість робити шифрування at rest ключем, окремим від `APP_KEY`.
-- [ ] `database/schema.ts:268-269` — видалити колонки; `oauth-account-repository.ts:54-57` — видалити `updateTokens`; `oauth-service.ts:324-331, 387-398, 426-437` — прибрати виклики.
-- [ ] Міграція `drizzle-kit generate` → `<ts>_drop_oauth_tokens/`; повторний `generate` → «No schema changes». Rollback-план: колонки nullable, тому down-міграція — просто `ADD COLUMN`.
-- [ ] `oauth-service.ts:113-115` — Facebook token у `Authorization: Bearer`, не в query.
-- [ ] `oauth-service.ts:284-287, 296, 406` — `maskEmailForLogs`.
-- [ ] `documentation/backend/` — oauth + database сторінки.
+- [x] Рішення: не зберігати (жоден код не читає `accessToken`/`refreshToken`). Якщо продукт планує offline-доступ до провайдера — зупинитися і натомість робити шифрування at rest ключем, окремим від `APP_KEY`.
+- [x] `database/schema.ts:268-269` — видалити колонки; `oauth-account-repository.ts:54-57` — видалити `updateTokens`; `oauth-service.ts:324-331, 387-398, 426-437` — прибрати виклики.
+- [x] Міграція `drizzle-kit generate` → `<ts>_drop_oauth_tokens/`; повторний `generate` → «No schema changes». Rollback-план: колонки nullable, тому down-міграція — просто `ADD COLUMN`.
+- [x] `oauth-service.ts:113-115` — Facebook token у `Authorization: Bearer`, не в query.
+- [x] `oauth-service.ts:284-287, 296, 406` — `maskEmailForLogs`.
+- [x] `documentation/backend/` — oauth + database сторінки.
 
 **Критерії:** усі три OAuth-flow (Google/GitHub/Facebook — або які є) проходять у spec; `test:pg` з міграцією зелений; у логах немає сирих email.
 
