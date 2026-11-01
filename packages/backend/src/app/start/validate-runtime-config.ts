@@ -4,6 +4,7 @@ import loggingConfig from '#config/logging.js'
 import responseValidationConfig from '#config/response-validation.js'
 import healthConfig from '#config/health.js'
 import appConfig from '#config/app.js'
+import databaseConfig from '#config/database.js'
 import { authConfig } from '#config/auth.js'
 import cspConfig from '#config/csp.js'
 import csrfConfig from '#config/csrf.js'
@@ -25,6 +26,12 @@ export function getProxyWarning(): string | null {
         return 'TRUST_PROXY=true but TRUSTED_PROXY_CIDRS is empty: no proxy is trusted, so behind a proxy every client shares one rate-limit budget'
     }
     return null
+}
+
+/** A production-like environment should not talk to its database in the clear. */
+export function getDatabaseSslWarning(): string | null {
+    if (!appConfig.isProductionLike || databaseConfig.ssl !== 'false') return null
+    return 'PGSQL_SSL=false: the connection to PostgreSQL is not encrypted; use PGSQL_SSL=true (verified) or require unless the database is reachable only over a trusted private network'
 }
 
 export function validateRuntimeConfig(): void {
@@ -83,6 +90,11 @@ export function validateRuntimeConfig(): void {
     const proxyWarning = getProxyWarning()
     if (proxyWarning !== null) {
         logger.warn(proxyWarning)
+    }
+
+    const databaseSslWarning = getDatabaseSslWarning()
+    if (databaseSslWarning !== null) {
+        logger.warn(databaseSslWarning)
     }
 
     if (sessionConfig.useHostPrefix) {

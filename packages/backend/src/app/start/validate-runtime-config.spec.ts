@@ -338,3 +338,40 @@ describe('the daily LLM token budget (feat-063, D2)', () => {
         }).not.toThrow()
     })
 })
+
+describe('getDatabaseSslWarning (feat-067)', () => {
+    const load = async () => (await import('./validate-runtime-config.js')).getDatabaseSslWarning()
+
+    it('warns in a production-like environment with an unencrypted connection', async () => {
+        process.env['APP_ENV'] = 'prod'
+        delete process.env['PGSQL_SSL']
+        expect(await load()).toContain('PGSQL_SSL=false')
+    })
+
+    it.each(['true', 'require'])('is silent in production with PGSQL_SSL=%s', async (mode) => {
+        process.env['APP_ENV'] = 'prod'
+        process.env['PGSQL_SSL'] = mode
+        expect(await load()).toBeNull()
+    })
+
+    it('is silent outside production, where a local database is normally unencrypted', async () => {
+        process.env['APP_ENV'] = 'local'
+        delete process.env['PGSQL_SSL']
+        expect(await load()).toBeNull()
+    })
+
+    it('is logged at startup', async () => {
+        process.env['APP_ENV'] = 'prod'
+        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'true'
+        process.env['APP_URL'] = 'https://app.example.com'
+        delete process.env['AUTH_SMS_PROVIDER']
+        delete process.env['PGSQL_SSL']
+        const { default: logger } = await import('#logger')
+        const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+
+        validateRuntimeConfig()
+
+        expect(warn.mock.calls.flat().some((m) => String(m).includes('PGSQL_SSL=false'))).toBe(true)
+    })
+})

@@ -1,6 +1,6 @@
 import { defineConfig } from 'drizzle-kit'
 
-import { resolveDatabaseConfig } from './src/config/database.ts'
+import { resolveDatabaseConfig, toPgSsl } from './src/config/database.ts'
 
 // Relative .ts import: drizzle-kit loads this file itself, without the #config alias.
 const dbConfig = resolveDatabaseConfig()
@@ -15,7 +15,7 @@ export default defineConfig({
         user: dbConfig.user,
         ...(dbConfig.password ? { password: dbConfig.password } : {}),
         database: dbConfig.database,
-        ssl: false,
+        ssl: toPgSsl(dbConfig.ssl),
     },
     migrations: {
         table: '__drizzle_migrations',

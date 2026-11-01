@@ -10,7 +10,13 @@ export interface DatabaseConfig {
     user: string
     password: string
     database: string
+    /** Encryption of the connection, see `PGSQL_SSL` and `toPgSsl`. */
+    ssl: PgSslMode
 }
+
+/** `false`: no TLS; `true`: TLS, the server certificate is verified; `require`: TLS without verification. */
+export const PGSQL_SSL_MODES = ['false', 'true', 'require'] as const
+export type PgSslMode = (typeof PGSQL_SSL_MODES)[number]
 
 export const DATABASE_DEFAULTS = Object.freeze({
     client: 'pg',
@@ -19,7 +25,8 @@ export const DATABASE_DEFAULTS = Object.freeze({
     user: 'postgres',
     password: '',
     database: 'vibe_template',
-})
+    ssl: 'false',
+} satisfies DatabaseConfig)
 
 const nonEmpty = (value: string | undefined): string | undefined =>
     value === undefined || value.trim() === '' ? undefined : value.trim()
@@ -34,6 +41,23 @@ const parsePort = (value: string | undefined): number => {
     return port
 }
 
+const parseSsl = (value: string | undefined): PgSslMode => {
+    const raw = nonEmpty(value)
+    if (raw === undefined) return DATABASE_DEFAULTS.ssl
+    const mode = raw.toLowerCase()
+    if ((PGSQL_SSL_MODES as readonly string[]).includes(mode)) return mode as PgSslMode
+    // A typo must not silently fall back to an unencrypted connection.
+    throw new Error(`PGSQL_SSL must be one of ${PGSQL_SSL_MODES.join(', ')}, got "${raw}"`)
+}
+
+/** The driver option (`pg`'s `ssl`, drizzle-kit's `ssl`) for a mode. */
+export const toPgSsl = (mode: PgSslMode): boolean | { rejectUnauthorized: boolean } => {
+    if (mode === 'false') return false
+    // `require` is libpq's sslmode=require: encrypted, but the certificate is not checked.
+    if (mode === 'require') return { rejectUnauthorized: false }
+    return true
+}
+
 export const resolveDatabaseConfig = (
     source: Record<string, string | undefined> = env,
 ): DatabaseConfig =>
@@ -44,6 +68,7 @@ export const resolveDatabaseConfig = (
         user: nonEmpty(source['PGSQL_USER']) ?? DATABASE_DEFAULTS.user,
         password: source['PGSQL_PASSWORD'] ?? DATABASE_DEFAULTS.password,
         database: nonEmpty(source['PGSQL_DB_NAME']) ?? DATABASE_DEFAULTS.database,
+        ssl: parseSsl(source['PGSQL_SSL']),
     })
 
 export default resolveDatabaseConfig()
