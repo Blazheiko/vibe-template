@@ -403,10 +403,12 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #243. `normalizeEmail` лишається в backend (frontend e-mail не нормалізує). Дві копії без `trim` (ціль e-mail-link, e-mail від OAuth-провайдера) тепер теж роблять `trim`.
 
-### H3 · Email templates (0.5 д)
+### H3 · ✅ Email templates (0.5 д)
 
-- [ ] `app/services/notifications/email-templates.ts` — `EMAIL_BRAND`, `escapeHtml`, `renderBrandedEmail(...)`.
-- [ ] Замінити три шаблони; критерій — snapshot з G1 байт-у-байт ідентичний.
+- [x] `app/services/notifications/email-templates.ts` — `EMAIL_BRAND`, `escapeHtml`, `renderBrandedEmail(...)`.
+- [x] Замінити три шаблони; критерій — snapshot з G1 байт-у-байт ідентичний.
+
+> Виконано PR #245. Єдина реальна різниця шаблонів — дія (`button` з блоком запасного посилання або одне `link`), прехедер необов'язковий.
 
 ### H4 · One-time tokens (1 д)
 
