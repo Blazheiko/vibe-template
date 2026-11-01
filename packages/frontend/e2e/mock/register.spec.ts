@@ -200,6 +200,19 @@ test.describe('register by e-mail', () => {
             expect(api.calls).toEqual([])
         })
 
+        // feat-075 (I): the form used to let a password longer than the server takes (32) go out
+        // and be refused there; it now says so before it sends anything.
+        test('a password of 33 characters is refused on the client', async ({ page, api }) => {
+            const modal = await openEmailForm(page)
+            await fillEmailForm(modal, { password: 'p'.repeat(33), confirm: 'p'.repeat(33) })
+            await submit(modal).click()
+
+            await expect(fieldError(modal, 'register-password')).toHaveText(
+                'Password must be at most 32 characters long',
+            )
+            expect(api.calls).toEqual([])
+        })
+
         test('everything right except the terms', async ({ page, api }) => {
             const modal = await openEmailForm(page)
             await fillEmailForm(modal, { terms: false })

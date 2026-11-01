@@ -38,6 +38,10 @@
             "types": "./dist/guards/index.d.ts",
             "import": "./dist/guards/index.js"
         },
+        "./patterns": {
+            "types": "./dist/patterns/index.d.ts",
+            "import": "./dist/patterns/index.js"
+        },
         "./limits": {
             "types": "./dist/limits/index.d.ts",
             "import": "./dist/limits/index.js"

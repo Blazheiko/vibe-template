@@ -10,13 +10,13 @@ packages:
 
 ## Пакети workspace
 
-| Пакет            | Шлях                      | Призначення                                                                                                                                                                                                            |
-| ---------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend`        | `packages/backend`        | HTTP/WebSocket-сервер на uWebSockets.js, Drizzle, Redis, S3, пошта, AI ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json))                                            |
-| `frontend`       | `packages/frontend`       | Vue 3 + Vite застосунок: PWA, i18n, Pinia, Vitest, Playwright e2e ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json))                                                |
-| `shared`         | `packages/shared`         | Спільні контракти: `brands`, `schemas`, `responses`, `errors`, `enums`, `utils`, `guards` — окремі subpath exports ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)) |
-| `api-playground` | `packages/api-playground` | Vue-інструмент розробника для ручного тестування HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                        |
-| `documentation`  | `documentation`           | Цей сайт документації на VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                   |
+| Пакет            | Шлях                      | Призначення                                                                                                                                                                                                                                  |
+| ---------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend`        | `packages/backend`        | HTTP/WebSocket-сервер на uWebSockets.js, Drizzle, Redis, S3, пошта, AI ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json))                                                                  |
+| `frontend`       | `packages/frontend`       | Vue 3 + Vite застосунок: PWA, i18n, Pinia, Vitest, Playwright e2e ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json))                                                                      |
+| `shared`         | `packages/shared`         | Спільні контракти: `brands`, `schemas`, `responses`, `errors`, `enums`, `utils`, `guards`, `limits`, `patterns` — окремі subpath exports ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)) |
+| `api-playground` | `packages/api-playground` | Vue-інструмент розробника для ручного тестування HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                                              |
+| `documentation`  | `documentation`           | Цей сайт документації на VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                                         |
 
 `frontend`, `backend` і `api-playground` залежать від `shared` через `workspace:*`, тому `shared` треба зібрати першим (`pnpm build:shared`).
 

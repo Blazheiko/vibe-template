@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { authApi } from '@/utils/api'
 import { getResponseMessage, hasErrorCode, hasResponseError } from '@/utils/response-normalizer'
 import { ErrorCode } from 'shared/errors'
+import { PASSWORD_PROBLEM_MESSAGE_KEY, passwordLengthProblem } from '@/utils/validate-password'
 
 defineOptions({
     name: 'ResetPasswordView',
@@ -33,25 +34,15 @@ function validateForm(): boolean {
     passwordError.value = ''
     passwordConfirmError.value = ''
 
-    if (!password.value) {
-        passwordError.value = t('auth.errorPassword')
-        isValid = false
-    } else if (password.value.length < 8) {
-        passwordError.value = t('auth.errorPasswordLength')
-        isValid = false
-    } else if (password.value.length > 32) {
-        passwordError.value = t('auth.errorPasswordMaxLength')
+    const problem = passwordLengthProblem(password.value)
+    if (problem !== null) {
+        passwordError.value = t(PASSWORD_PROBLEM_MESSAGE_KEY[problem])
         isValid = false
     }
 
-    if (!passwordConfirm.value) {
-        passwordConfirmError.value = t('auth.errorPassword')
-        isValid = false
-    } else if (passwordConfirm.value.length < 8) {
-        passwordConfirmError.value = t('auth.errorPasswordLength')
-        isValid = false
-    } else if (passwordConfirm.value.length > 32) {
-        passwordConfirmError.value = t('auth.errorPasswordMaxLength')
+    const confirmProblem = passwordLengthProblem(passwordConfirm.value)
+    if (confirmProblem !== null) {
+        passwordConfirmError.value = t(PASSWORD_PROBLEM_MESSAGE_KEY[confirmProblem])
         isValid = false
     } else if (password.value !== passwordConfirm.value) {
         passwordConfirmError.value = t('auth.errorPasswordsMismatch')

@@ -13,3 +13,7 @@ export const SUPPORT_HISTORY_DEFAULT_PAGE_SIZE = 50
 
 /** Most messages one page of the support chat history may carry. */
 export const SUPPORT_HISTORY_MAX_PAGE_SIZE = 100
+
+/** Shortest and longest password, in characters; what the auth schemas of `shared/schemas` enforce. */
+export const PASSWORD_MIN_LENGTH = 8
+export const PASSWORD_MAX_LENGTH = 32
