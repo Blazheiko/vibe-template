@@ -741,7 +741,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/frontend-shared-dedup",
             "dependencies": ["feat-069", "feat-078", "feat-079"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -781,8 +781,8 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-frontend",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #253: removed the string-form NEW_VERSION branch (main.ts), the getClientIP stub (stores/state.ts) and the useSentry wrapper; UA parsing of the push subscription kept on purpose (backend stores browserName/osName/deviceType: a contract). typecheck/lint/format:check/build/pnpm test/docs:build+verify clean; CI green."
         },
         {
             "id": "feat-080",

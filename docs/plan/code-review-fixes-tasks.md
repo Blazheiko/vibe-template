@@ -498,11 +498,13 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #251. `ErrorCodeValues = Object.values(ErrorCode)` (тип `readonly ErrorCode[]`) — `ErrorCodeSchema` лишився union; `CSRF_REJECT_REASONS` не мав користувачів, окрім власного sync-тесту, і видалений.
 
-### K3 · feat-079 · Frontend (0.25 д)
+### K3 · ✅ feat-079 · Frontend (0.25 д)
 
-- [ ] `main.ts:368` — мертва гілка `'NEW_VERSION'`.
-- [ ] `stores/state.ts:335` `getClientIP` stub; `:262-330` UA-sniffing — **тільки якщо** backend не використовує `browserName/osName/deviceType` (перевірити `push-subscription-service`, admin-view'и, транформер). Якщо використовує — це зміна контракту → окремий пункт з UA-парсингом на сервері.
-- [ ] `composables/useSentry.ts` → прямий імпорт.
+- [x] `main.ts:368` — мертва гілка `'NEW_VERSION'`.
+- [x] `stores/state.ts:335` `getClientIP` stub; `:262-330` UA-sniffing — **тільки якщо** backend не використовує `browserName/osName/deviceType` (перевірити `push-subscription-service`, admin-view'и, транформер). Якщо використовує — це зміна контракту → окремий пункт з UA-парсингом на сервері.
+- [x] `composables/useSentry.ts` → прямий імпорт.
+
+> Виконано PR #253. UA-парсинг push-підписки **залишено**: backend зберігає `browserName/osName/deviceType` (колонки `push_subscriptions`, схеми shared, відповідь) — це контракт; перенесення парсингу на сервер — рішення власника.
 
 ---
 
