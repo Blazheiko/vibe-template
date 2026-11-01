@@ -741,8 +741,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/frontend-shared-dedup",
             "dependencies": ["feat-069", "feat-078", "feat-079"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PRs #255-#258: password limits (shared/limits + validate-password), shared/patterns (phone shape, entity id), sentry sanitizeTree, ArkType .default() with compile-time output checks, shared/ws-client (classifyWsMessage, normalizeApiPrefix), playground on mitt, admin views (query builder, detail-modal composable, AdminFilterBar, admin.css; screenshots: 3 of 4 pages pixel-identical, Users filter buttons restyled). Left on purpose: WS connection core (two different implementations), second breadcrumb pass kept. typecheck/lint/format:check/build/pnpm test/Playwright mock (61)/docs:build+verify clean; CI green."
         },
         {
             "id": "feat-076",
@@ -751,7 +751,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/frontend-split-components",
             "dependencies": ["feat-069", "feat-075"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
