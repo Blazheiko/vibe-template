@@ -57,6 +57,8 @@ export interface IUserRepository {
     phoneExistsForOtherUser(phone: string, excludeId: bigint): Promise<boolean>
     /** Pass the transaction when the update belongs to one (see `withTransaction`). */
     update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
+    /** The current roles of these users by id; a user that no longer exists is absent. */
+    findRolesByIds(ids: bigint[]): Promise<Map<string, UserRow['role']>>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
     findSessionToken(id: bigint): Promise<string | undefined>
     /**
@@ -219,6 +221,15 @@ export const userRepository: IUserRepository = {
             .where(eq(users.id, id))
             .returning()
         return row
+    },
+
+    async findRolesByIds(ids) {
+        if (ids.length === 0) return new Map()
+        const rows = await db
+            .select({ id: users.id, role: users.role })
+            .from(users)
+            .where(inArray(users.id, ids))
+        return new Map(rows.map((row) => [String(row.id), row.role]))
     },
 
     // On the session-check pool, which cancels a stuck query (ADR 0002).

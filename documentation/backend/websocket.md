@@ -109,7 +109,7 @@ registerWsAppHooks({
 
 - **Транспорт** (`ws-handlers.ts`): `Set<MyWebSocket>` усіх відкритих сокетів — лише для `closeAllWs` при зупинці.
 - **Реєстр** (`ws-connection-registry.ts`): `Map<userId, { ip, userAgent, appType, connections: Map<uuid, ws> }>`. Один користувач може мати кілька з'єднань (вкладки, PWA); `appType` стає `pwa`, якщо хоча б одне з'єднання PWA. `registerConnection` повертає `true` для першого з'єднання, `unregisterConnection` — `true` для останнього. Є також `isUserOnline`, `findOnlineUsers`, `forEachConnection`, `getConnection`, `getOnlineUsers`, `getOnlineUserMeta`.
-- **Канали**: використовується pub/sub uWS (`ws.subscribe` / `server.publish`). У коді є один канал — `admin` ([admin-ws-channel-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/admin-ws-channel-service.ts)); підписатись може лише з'єднання з `role === 'admin'`, лічильник підписників зберігається в пам'яті.
+- **Канали**: використовується pub/sub uWS (`ws.subscribe` / `server.publish`). У коді є один канал — `admin` ([admin-ws-channel-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/admin-ws-channel-service.ts)); підписатись може лише з'єднання з `role === 'admin'`, лічильник підписників зберігається в пам'яті. Роль з'єднання читається з БД один раз, при відкритті, тому відкликання адмін-доступу на відкритому з'єднанні описано в [Відкликання admin-доступу](#відкликання-admin-доступу).
 - **Історія онлайну в БД**: `userOnlineService.trackConnected/trackDisconnected` викликаються з координатора без `await` (помилки лише логуються).
 
 У `handleDisconnected` з'єднання видаляється з реєстру **синхронно до будь-якого `await`**, щоб broadcast-цикли не звертались до вже закритого uWS-сокета.
@@ -268,7 +268,7 @@ Presence публікується лише якщо в каналі `admin` є �
 
 - **Розмір повідомлення**: `maxPayloadLength` 1 MB на рівні uWS; окремого налаштування для WS немає (див. [Життєвий цикл запиту](/backend/request-lifecycle)).
 - **Rate limit повідомлень**: per-route/per-group через `checkRateLimitWs`, лічильник у пам'яті процесу (з'єднання живе на одному інстансі), ключ IP + URL маршруту — за IP, а не за з'єднанням, щоб бюджет не множився новими з'єднаннями. Ліміт групи діє на кожен маршрут групи окремо, а не на всю групу разом. При збої перевірки — відмова (`allowed: false`, `retryAfter: 1`).
-- **Авторизація маршрутів**: усі WS-маршрути вимагають валідну сесію (перевірка в `onMessage`); ролі перевіряються в сервісах (наприклад, `admin` для каналу). Детальніше — [Автентифікація](/backend/auth#авторизація-websocket).
+- **Авторизація маршрутів**: усі WS-маршрути вимагають валідну сесію (перевірка в `onMessage`); роль `admin` для групи `admin/*` перевіряє `ws_admin_guard`, а для каналу — сервіс каналу, обидва за роллю з'єднання (див. [Відкликання admin-доступу](#відкликання-admin-доступу)). Детальніше — [Автентифікація](/backend/auth#авторизація-websocket).
 
 - **Rate limit upgrade, два рівні**, обидва за IP і незалежні від HTTP L1: рівень 1 у пам'яті процесу (`WS_UPGRADE_RATE_LIMIT_*`, 120/хв) відсікає флуд до будь-якого I/O; рівень 2 у Redis (`WS_UPGRADE_SHARED_RATE_LIMIT_*`, 60/хв) — спільний бюджет на всі інстанси. Обидва перевіряються до формату токена і до пошуку сесії, тож невалідні токени теж витрачають бюджет. Якщо Redis для лімітів недоступний, рівень 2 пропускається, і діє лише рівень 1. Звичайні HTTP-запити на `/<pathPrefix>/websocket` рахуються в HTTP L1. Деталі — [Обмеження частоти запитів](/backend/security#обмеження-частоти-запитів).
 - **`ping`/`pong`** (heartbeat) обробляється в `onMessage` до диспетчера і під rate limit повідомлень не потрапляє.
@@ -276,6 +276,24 @@ Presence публікується лише якщо в каналі `admin` є �
 Токени сесії в логах маскуються: `maskTokenForLogs` ([`mask-sensitive.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/mask-sensitive.ts)) лишає лише перші 4 символи (`abcd…`). Так логуються WS-токен у `verifyUpgradeToken`, `userToken` у `wsSessionHandler` і `destroyAllSessions`, `cookieUserToken` у `token-handler.ts`.
 
 Канали обмежено whitelist'ом `WS_CHANNELS` у [`shared/src/guards/ws-channels.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/guards/ws-channels.ts) (зараз лише `admin`). `broadcastToChannel` приймає тип `WsChannel`, а в runtime додатково перевіряє значення через `isWsChannel`: невідомий канал не публікується, сервер пише `warn` і повертає `false`. Новий канал додається в `WS_CHANNELS`. Guard без залежностей, тож його можна імпортувати й на фронтенді (`shared/guards`).
+
+## Відкликання admin-доступу
+
+Роль з'єднання (`userData.role`) читається з БД при відкритті, а підписка на канал `admin` робиться один раз. З'єднання може жити днями (heartbeat тримає його відкритим), тож адмін, якого понизили в БД, без перевірки отримував би адмін-broadcast, не надсилаючи жодного запиту.
+
+У застосунку **немає коду, що змінює `users.role`** (ендпоінта немає, seed не оновлює наявних користувачів): роль міняють у БД поза застосунком. Тому подій «роль змінено» немає, а доступ відкликає періодична перевірка ([`admin-ws-access-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/admin-ws-access-service.ts)):
+
+- Кожен інстанс раз на `WS_ADMIN_RECHECK_INTERVAL_MS` (за замовчуванням 30 с, див. [Конфігурацію](/backend/configuration)) бере свої з'єднання з роллю `admin` і **одним запитом** перечитує ролі їхніх користувачів.
+- Для кожного, чия роль уже не `admin` (або користувача видалено), з'єднання **відписується від каналу `admin`** і втрачає роль `admin` (`revokeAdminAccess`). Саме з'єднання не закривається. Адмін-маршрути `admin/*` на ньому віддають `403` (`ws_admin_guard` читає ту саму роль), а повторна підписка неможлива.
+- Це працює на кожному інстансі окремо, з БД, без Redis і без повідомлень між інстансами.
+
+**Гарантія:** після пониження в БД адмін-події перестають надходити, а адмін-маршрути відповідають `403`, не пізніше ніж через `WS_ADMIN_RECHECK_INTERVAL_MS` плюс тривалість одного проходу (один запит). Це не миттєво.
+
+Межі, про які варто знати:
+
+- **Підвищення не віддзеркалюється.** Роль піднімається лише при відкритті з'єднання: щоб користувач, якого зробили адміном, міг підписатись на канал, він перепідключається. Перевірка лише знімає доступ, ніколи не видає.
+- **БД недоступна.** Прохід кидає помилку (вона логується), нічого не змінюється, наступний прохід спробує знову. Поки БД не відповідає, пониження не помітити; усі WS-повідомлення тим часом відхиляє перевірка сесії ([Відкликання сесій](/backend/auth#відкликання-сесіи)), але підписка на broadcast лишається до першого успішного проходу.
+- **Фоновий таймер.** Один прохід за раз: повільна БД не накопичує проходи. Таймер не тримає процес живим і зупиняється при graceful shutdown.
 
 ## Діаграма послідовності
 

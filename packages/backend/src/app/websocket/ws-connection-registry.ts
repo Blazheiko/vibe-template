@@ -142,12 +142,24 @@ const getOnlineUserMeta = (
     }
 }
 
+/** Every open connection of this instance, with the user it belongs to. */
+const listConnections = (): { userId: string; uuid: string; ws: MyWebSocket }[] => {
+    const all: { userId: string; uuid: string; ws: MyWebSocket }[] = []
+    for (const [userId, user] of userStorage) {
+        for (const [uuid, ws] of user.connections) {
+            all.push({ userId, uuid, ws })
+        }
+    }
+    return all
+}
+
 export const wsConnectionRegistry = {
     registerConnection,
     unregisterConnection,
     isUserOnline,
     findOnlineUsers,
     forEachConnection,
+    listConnections,
     getConnection,
     getOnlineUsers,
     getOnlineUserMeta,

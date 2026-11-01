@@ -37,6 +37,17 @@ export const adminWsChannelService = {
         return { ok: true }
     },
 
+    /**
+     * The connection stays open but stops being an admin one: it leaves the admin
+     * channel and its cached role drops, so `ws_admin_guard` refuses its admin routes.
+     * Promotion is deliberately not mirrored: a role is only raised when the connection
+     * is opened.
+     */
+    revokeAdminAccess(ws: MyWebSocket): void {
+        adminWsChannelService.unsubscribeCurrentAdminConnection(ws)
+        getUserData(ws).role = 'user'
+    },
+
     handleConnectionClosed(ws: MyWebSocket): void {
         const userData = getUserData(ws)
         if (userData.isAdminChannelSubscribed === true) {
