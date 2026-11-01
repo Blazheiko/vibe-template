@@ -611,8 +611,8 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-admin-revoke",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #201 (merge a29f785): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1249, frontend 168, api-playground 14, shared 14, docs 26), test:pg 77 with Redis / 51 without (+9 admin-ws-revocation on a real uWebSockets.js server with real WebSocket clients, Redis sessions and PostgreSQL: a demoted admin stops receiving admin broadcasts and gets 403 on admin routes within the interval, another admin untouched, the connection stays open; 6 of 9 fail when the re-check never starts), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; plan deviation recorded: nothing in the application changes users.role, so the pub/sub layer has no producer and is not built \u2014 the periodic per-instance re-check from the database is the guarantee; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 77, none skipped)"
         },
         {
             "id": "feat-063",
