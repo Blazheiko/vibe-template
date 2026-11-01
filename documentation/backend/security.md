@@ -7,7 +7,7 @@
 Ліміти працюють на двох рівнях, і в них різні задачі.
 
 - **Ліміт захищає процес від частих тяжких операцій** (парсинг тіла, middleware, запити до БД, AI) → `rateLimit` на маршруті чи групі або глобальний ліміт у [`config/rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/rate-limit.ts). Лічильник у пам'яті процесу, кожен інстанс рахує окремо.
-- **Ліміт стосується чутливої дії** (вхід, реєстрація, SMS, скидання й зміна пароля) і має бути спільним для всіх інстансів → політика в [`config/throttle-policies.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts) і виклик `consumeAuthThrottle(policy, key)` у сервісі. Лічильник у Redis.
+- **Ліміт стосується чутливої дії** (вхід, реєстрація, SMS, скидання й зміна пароля) і має бути спільним для всіх інстансів → політика в [`config/throttle-policies.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts) і крок `enforceThrottle(policy, key, { unavailable, rejected })` у сервісі ([`enforce-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/enforce-throttle.ts)): він споживає одну спробу через `consumeAuthThrottle` і повертає `ok`, помилку `rejected` для вичерпаного лічильника або внутрішню помилку з повідомленням `unavailable`, коли Redis не відповів (закрито: `500`, а при недоступному Redis — `503`). Лічильник у Redis.
 
 ```
 HTTP API:  L1 (memory) → ліміт маршруту (memory) → handler → auth-політики (Redis)
@@ -123,10 +123,11 @@ exportReportUser: fixedWindow(
 ),
 
 // сервіс
-const throttle = await tryInternal(
-  () => consumeAuthThrottle(throttlePolicies.exportReportUser, String(userId)),
-  'Failed to enforce export throttle',
-)
+const throttle = await enforceThrottle(throttlePolicies.exportReportUser, String(userId), {
+  unavailable: 'Failed to enforce export throttle',
+  rejected: badRequest('Too many export requests. Please try again later.'),
+})
+if (Result.isError(throttle)) return Result.err(throttle.error)
 ```
 
 ## CSRF
