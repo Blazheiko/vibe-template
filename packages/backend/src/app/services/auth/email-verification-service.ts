@@ -20,21 +20,13 @@ import {
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
+import {
+    renderBrandedEmail,
+    type RenderedEmail,
+} from '#app/services/notifications/email-templates.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
-const EMAIL_BRAND = {
-    accent: '#A8627A',
-    accentHover: '#96516A',
-    canvas: '#FAF0F3',
-    surface: '#FFFFFF',
-    textPrimary: '#2C3440',
-    textSecondary: '#5E6977',
-    border: '#D8DDE6',
-    accentSoft: '#F6E8EE',
-    accentLine: '#E7C8D3',
-} as const
-
 function hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex')
 }
@@ -48,200 +40,41 @@ function buildVerificationUrl(token: string): string {
     return `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`
 }
 
-function buildLinkEmailContent(
-    name: string,
-    verificationUrl: string,
-): {
-    subject: string
-    text: string
-    html: string
-} {
-    const subject = 'Confirm your new email'
-    const trimmedName = name.trim()
-    const safeName = trimmedName === '' ? '' : `, ${trimmedName}`
-    const escapedGreeting = trimmedName === '' ? '' : `, ${escapeHtml(trimmedName)}`
-    const escapedVerificationUrl = escapeHtml(verificationUrl)
-
-    const text = [
-        `Hello${safeName}.`,
-        '',
-        'Please confirm this new email address for your Vibe Template account by opening this link:',
-        verificationUrl,
-        '',
-        'This link will expire in 24 hours.',
-    ].join('\n')
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-  <body style="margin:0;padding:0;background:${EMAIL_BRAND.canvas};font-family:Inter,Arial,sans-serif;color:${EMAIL_BRAND.textPrimary};">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${EMAIL_BRAND.canvas};padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;">
-            <tr>
-              <td style="padding-bottom:16px;">
-                <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:${EMAIL_BRAND.accentSoft};border:1px solid ${EMAIL_BRAND.accentLine};color:${EMAIL_BRAND.accent};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
-                  Vibe Template
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="border-radius:28px;background:${EMAIL_BRAND.surface};border:1px solid ${EMAIL_BRAND.border};box-shadow:0 18px 48px rgba(44,52,64,0.08);overflow:hidden;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                  <tr>
-                    <td style="padding:40px 40px 24px;background:linear-gradient(180deg, rgba(168,98,122,0.16) 0%, rgba(168,98,122,0.05) 100%);border-bottom:1px solid ${EMAIL_BRAND.border};">
-                      <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EMAIL_BRAND.accent};margin-bottom:14px;">
-                        Email linking
-                      </div>
-                      <h1 style="margin:0;font-size:34px;line-height:1.12;font-weight:800;color:${EMAIL_BRAND.textPrimary};">
-                        Confirm your new email address
-                      </h1>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:32px 40px 40px;">
-                      <p style="margin:0 0 18px;font-size:18px;line-height:1.65;color:${EMAIL_BRAND.textPrimary};">
-                        Hello${escapedGreeting}.
-                      </p>
-                      <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:${EMAIL_BRAND.textSecondary};">
-                        Confirm this email to finish linking it to your Vibe Template account.
-                      </p>
-                      <p style="margin:0 0 28px;font-size:15px;line-height:1.65;color:${EMAIL_BRAND.textSecondary};word-break:break-word;">
-                        <a href="${escapedVerificationUrl}" style="color:${EMAIL_BRAND.accent};text-decoration:underline;">
-                          ${escapedVerificationUrl}
-                        </a>
-                      </p>
-                      <div style="padding-top:20px;border-top:1px solid ${EMAIL_BRAND.border};font-size:14px;line-height:1.7;color:${EMAIL_BRAND.textSecondary};">
-                        This link will expire in 24 hours. If you did not request this change, you can safely ignore this email.
-                      </div>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`
-
-    return { subject, text, html }
+function buildLinkEmailContent(name: string, verificationUrl: string): RenderedEmail {
+    return renderBrandedEmail({
+        subject: 'Confirm your new email',
+        eyebrow: 'Email linking',
+        title: 'Confirm your new email address',
+        name,
+        intro: 'Confirm this email to finish linking it to your Vibe Template account.',
+        action: { kind: 'link', url: verificationUrl },
+        footer: 'This link will expire in 24 hours. If you did not request this change, you can safely ignore this email.',
+        textLines: [
+            'Please confirm this new email address for your Vibe Template account by opening this link:',
+            verificationUrl,
+            '',
+            'This link will expire in 24 hours.',
+        ],
+    })
 }
 
-function escapeHtml(value: string): string {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;')
-}
-
-function buildEmailContent(
-    name: string,
-    verificationUrl: string,
-): {
-    subject: string
-    text: string
-    html: string
-} {
-    const subject = 'Confirm your email'
-    const trimmedName = name.trim()
-    const safeName = trimmedName === '' ? '' : `, ${trimmedName}`
-    const escapedGreeting = trimmedName === '' ? '' : `, ${escapeHtml(trimmedName)}`
-    const escapedVerificationUrl = escapeHtml(verificationUrl)
-
-    const text = [
-        `Hello${safeName}.`,
-        '',
-        'Please confirm your email address by opening this link:',
-        verificationUrl,
-        '',
-        'This link will expire in 24 hours.',
-    ].join('\n')
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-  <body style="margin:0;padding:0;background:${EMAIL_BRAND.canvas};font-family:Inter,Arial,sans-serif;color:${EMAIL_BRAND.textPrimary};">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-      Confirm your Vibe Template email address.
-    </div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${EMAIL_BRAND.canvas};padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;">
-            <tr>
-              <td style="padding-bottom:16px;">
-                <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:${EMAIL_BRAND.accentSoft};border:1px solid ${EMAIL_BRAND.accentLine};color:${EMAIL_BRAND.accent};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
-                  Vibe Template
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td style="border-radius:28px;background:${EMAIL_BRAND.surface};border:1px solid ${EMAIL_BRAND.border};box-shadow:0 18px 48px rgba(44,52,64,0.08);overflow:hidden;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                  <tr>
-                    <td style="padding:40px 40px 24px;background:linear-gradient(180deg, rgba(168,98,122,0.16) 0%, rgba(168,98,122,0.05) 100%);border-bottom:1px solid ${EMAIL_BRAND.border};">
-                      <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EMAIL_BRAND.accent};margin-bottom:14px;">
-                        Email verification
-                      </div>
-                      <h1 style="margin:0;font-size:34px;line-height:1.12;font-weight:800;color:${EMAIL_BRAND.textPrimary};">
-                        Confirm your email address
-                      </h1>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:32px 40px 40px;">
-                      <p style="margin:0 0 18px;font-size:18px;line-height:1.65;color:${EMAIL_BRAND.textPrimary};">
-                        Hello${escapedGreeting}.
-                      </p>
-                      <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:${EMAIL_BRAND.textSecondary};">
-                        Finish setting up your Vibe Template account by confirming this email address. The button below will take you straight back into the app.
-                      </p>
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 28px;">
-                        <tr>
-                          <td align="center" bgcolor="${EMAIL_BRAND.accent}" style="border-radius:16px;box-shadow:0 14px 26px rgba(168,98,122,0.24);">
-                            <a
-                              href="${escapedVerificationUrl}"
-                              style="display:inline-block;padding:17px 28px;font-size:17px;font-weight:700;line-height:1;color:#ffffff;text-decoration:none;border-radius:16px;background:${EMAIL_BRAND.accent};"
-                            >
-                              Confirm email
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 24px;border-collapse:separate;">
-                        <tr>
-                          <td style="padding:18px 20px;border-radius:18px;background:${EMAIL_BRAND.accentSoft};border:1px solid ${EMAIL_BRAND.accentLine};">
-                            <div style="margin:0 0 8px;font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:${EMAIL_BRAND.accent};">
-                              Alternative link
-                            </div>
-                            <div style="font-size:15px;line-height:1.65;color:${EMAIL_BRAND.textSecondary};word-break:break-word;">
-                              If the button does not work, open this link:<br />
-                              <a href="${escapedVerificationUrl}" style="color:${EMAIL_BRAND.accent};text-decoration:underline;">
-                                ${escapedVerificationUrl}
-                              </a>
-                            </div>
-                          </td>
-                        </tr>
-                      </table>
-                      <div style="padding-top:20px;border-top:1px solid ${EMAIL_BRAND.border};font-size:14px;line-height:1.7;color:${EMAIL_BRAND.textSecondary};">
-                        This link will expire in 24 hours. If you did not create an account, you can safely ignore this email.
-                      </div>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`
-
-    return { subject, text, html }
+function buildEmailContent(name: string, verificationUrl: string): RenderedEmail {
+    return renderBrandedEmail({
+        subject: 'Confirm your email',
+        preheader: 'Confirm your Vibe Template email address.',
+        eyebrow: 'Email verification',
+        title: 'Confirm your email address',
+        name,
+        intro: 'Finish setting up your Vibe Template account by confirming this email address. The button below will take you straight back into the app.',
+        action: { kind: 'button', label: 'Confirm email', url: verificationUrl },
+        footer: 'This link will expire in 24 hours. If you did not create an account, you can safely ignore this email.',
+        textLines: [
+            'Please confirm your email address by opening this link:',
+            verificationUrl,
+            '',
+            'This link will expire in 24 hours.',
+        ],
+    })
 }
 
 export const emailVerificationService = {
