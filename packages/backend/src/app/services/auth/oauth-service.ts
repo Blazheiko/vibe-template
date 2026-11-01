@@ -6,6 +6,7 @@ import { badRequest, conflict, notFound, type AppResult } from '#app/services/sh
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 import type { Auth } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
+import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
@@ -291,7 +292,7 @@ export const oauthService = {
             return Result.err(badRequest('Could not retrieve email from provider'))
         }
 
-        userInfo.email = userInfo.email.toLowerCase()
+        userInfo.email = normalizeEmail(userInfo.email)
 
         // Find existing OAuth account link
         const existingOAuthResult = await tryInternal(
