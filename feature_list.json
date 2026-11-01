@@ -641,8 +641,8 @@
             "owner": "Blazheiko",
             "branch": "fix/llm-prompt-retention",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #228 (merge c6349ee): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1430, frontend 257, api-playground 29, shared 17, docs 26), test:pg 148 with Redis / 84 without (+10 on a real PostgreSQL: purge by age and all, hash/length backfill equal to Node's, existing hash kept, idempotent, dry run), test:redis 89, docs:build + docs:verify; drizzle-kit generate: no schema changes; the llm:purge-prompts CLI run end to end on a scratch database; 20 unit tests failed before the change; CI quality/e2e/build/test-pg/test-redis green. Rollout: existing rows keep their text until llm:purge-prompts is run once"
         },
         {
             "id": "feat-066",
