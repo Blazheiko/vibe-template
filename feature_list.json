@@ -681,8 +681,8 @@
             "owner": "Blazheiko",
             "branch": "test/auth-regression-coverage",
             "dependencies": ["feat-059", "feat-060", "feat-066"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "G1 PR #231 (backend contract tables: 24 throttle steps + 157 state\u2192answer rows + 3 mail snapshots, backend 1430\u21921685), G2 PR #232 (Playwright project mock, 60 tests on faked API), G3 PR #233 (e2e-live: real backend + PG + Redis + SMTP sink, 5 tests, CI job e2e-live). typecheck/lint/format:check/pnpm test/docs:build+verify clean; test:e2e:live passes 3 runs in a row and without packages/backend/.env."
         },
         {
             "id": "feat-070",
