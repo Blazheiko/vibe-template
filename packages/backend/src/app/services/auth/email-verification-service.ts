@@ -1,11 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto'
 import appConfig from '#config/app.js'
 import logger from '#logger'
 import {
     emailLinkVerificationRepository,
     emailVerificationRepository,
     userRepository,
-    withTransaction,
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { Result } from 'better-result'
@@ -21,20 +19,17 @@ import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import {
+    consumeTokenAndApply,
+    findUsableToken,
+    issueToken,
+} from '#app/services/auth/one-time-token.js'
+import {
     renderBrandedEmail,
     type RenderedEmail,
 } from '#app/services/notifications/email-templates.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
-function hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex')
-}
-
-function createVerificationToken(): string {
-    return randomBytes(32).toString('base64url')
-}
-
 function buildVerificationUrl(token: string): string {
     const baseUrl = appConfig.frontendUrl
     return `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`
@@ -96,28 +91,18 @@ export const emailVerificationService = {
             return Result.ok({ message: 'Email is already verified' })
         }
 
-        const invalidateResult = await tryInternal(
-            () => emailVerificationRepository.invalidatePendingByUserId(userId),
-            'Failed to invalidate email verification tokens',
-        )
-        if (Result.isError(invalidateResult)) {
-            return Result.err(invalidateResult.error)
+        const issued = await issueToken(emailVerificationRepository, {
+            userId,
+            ttlMs: EMAIL_VERIFICATION_TTL_MS,
+            failures: {
+                invalidate: 'Failed to invalidate email verification tokens',
+                create: 'Failed to create email verification token',
+            },
+        })
+        if (Result.isError(issued)) {
+            return Result.err(issued.error)
         }
-
-        const rawToken = createVerificationToken()
-        const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS)
-        const createResult = await tryInternal(
-            () =>
-                emailVerificationRepository.create({
-                    userId,
-                    tokenHash: hashToken(rawToken),
-                    expiresAt,
-                }),
-            'Failed to create email verification token',
-        )
-        if (Result.isError(createResult)) {
-            return Result.err(createResult.error)
-        }
+        const rawToken = issued.value
 
         if (user.email === null) {
             return Result.err(badRequest('Email verification requires an email address'))
@@ -160,9 +145,20 @@ export const emailVerificationService = {
             return Result.err(badRequest('Verification token is required'))
         }
 
-        const verificationResult = await tryInternal(
-            () => emailVerificationRepository.findByTokenHash(hashToken(normalizedToken)),
-            'Failed to load email verification token',
+        const usedMessage = badRequest('Verification link has already been used')
+        const expiredMessage = badRequest('Verification link has expired')
+
+        const verificationResult = await findUsableToken(
+            emailVerificationRepository,
+            normalizedToken,
+            {
+                failures: {
+                    load: 'Failed to load email verification token',
+                    markExpired: 'Failed to mark email verification token used',
+                },
+                used: usedMessage,
+                expired: expiredMessage,
+            },
         )
         if (Result.isError(verificationResult)) {
             return Result.err(verificationResult.error)
@@ -170,9 +166,17 @@ export const emailVerificationService = {
 
         const verification = verificationResult.value
         if (verification === undefined) {
-            const linkVerificationResult = await tryInternal(
-                () => emailLinkVerificationRepository.findByTokenHash(hashToken(normalizedToken)),
-                'Failed to load email link token',
+            const linkVerificationResult = await findUsableToken(
+                emailLinkVerificationRepository,
+                normalizedToken,
+                {
+                    failures: {
+                        load: 'Failed to load email link token',
+                        markExpired: 'Failed to mark email link token used',
+                    },
+                    used: usedMessage,
+                    expired: expiredMessage,
+                },
             )
             if (Result.isError(linkVerificationResult)) {
                 return Result.err(linkVerificationResult.error)
@@ -181,22 +185,6 @@ export const emailVerificationService = {
             const linkVerification = linkVerificationResult.value
             if (linkVerification === undefined) {
                 return Result.err(badRequest('Verification link is invalid'))
-            }
-
-            if (linkVerification.usedAt !== null) {
-                return Result.err(badRequest('Verification link has already been used'))
-            }
-
-            if (linkVerification.expiresAt.getTime() < Date.now()) {
-                const markExpiredResult = await tryInternal(
-                    () => emailLinkVerificationRepository.markUsed(linkVerification.id),
-                    'Failed to mark email link token used',
-                )
-                if (Result.isError(markExpiredResult)) {
-                    return Result.err(markExpiredResult.error)
-                }
-
-                return Result.err(badRequest('Verification link has expired'))
             }
 
             const userResult = await tryInternal(
@@ -227,32 +215,22 @@ export const emailVerificationService = {
                 return Result.err(conflict('Email is already linked to another account'))
             }
 
-            // feat-060: claim the token and link the email in ONE transaction. The claim is
-            // `UPDATE ... SET used_at WHERE used_at IS NULL`: of two concurrent requests with
-            // one link exactly one gets the row, and a failure rolls both back (the link
-            // stays usable).
-            const appliedResult = await tryInternal(
-                () =>
-                    withTransaction(async (tx) => {
-                        const claimed = await emailLinkVerificationRepository.markUsed(
-                            linkVerification.id,
-                            undefined,
-                            tx,
-                        )
-                        if (claimed === undefined) return { claimed: false as const }
-
-                        const updated = await userRepository.update(
-                            user.id,
-                            {
-                                email: normalizeEmail(linkVerification.targetEmail),
-                                emailVerifiedAt: new Date(),
-                            },
-                            tx,
-                        )
-                        if (updated === undefined)
-                            throw new Error('User disappeared during linking')
-                        return { claimed: true as const }
-                    }),
+            // feat-060: claim the token and link the email in ONE transaction; a failure
+            // rolls both back (the link stays usable).
+            const appliedResult = await consumeTokenAndApply(
+                emailLinkVerificationRepository,
+                linkVerification,
+                async (tx) => {
+                    const updated = await userRepository.update(
+                        user.id,
+                        {
+                            email: normalizeEmail(linkVerification.targetEmail),
+                            emailVerifiedAt: new Date(),
+                        },
+                        tx,
+                    )
+                    if (updated === undefined) throw new Error('User disappeared during linking')
+                },
                 'Failed to link email',
             )
             if (Result.isError(appliedResult)) {
@@ -268,26 +246,10 @@ export const emailVerificationService = {
                 return Result.err(appliedResult.error)
             }
             if (!appliedResult.value.claimed) {
-                return Result.err(badRequest('Verification link has already been used'))
+                return Result.err(usedMessage)
             }
 
             return Result.ok({ message: 'Email linked successfully' })
-        }
-
-        if (verification.usedAt !== null) {
-            return Result.err(badRequest('Verification link has already been used'))
-        }
-
-        if (verification.expiresAt.getTime() < Date.now()) {
-            const markExpiredResult = await tryInternal(
-                () => emailVerificationRepository.markUsed(verification.id),
-                'Failed to mark email verification token used',
-            )
-            if (Result.isError(markExpiredResult)) {
-                return Result.err(markExpiredResult.error)
-            }
-
-            return Result.err(badRequest('Verification link has expired'))
         }
 
         const userResult = await tryInternal(
@@ -305,34 +267,27 @@ export const emailVerificationService = {
 
         // feat-060: claim the token and confirm the email in ONE transaction (see the link
         // branch above).
-        const appliedResult = await tryInternal(
-            () =>
-                withTransaction(async (tx) => {
-                    const claimed = await emailVerificationRepository.markUsed(
-                        verification.id,
-                        undefined,
+        const appliedResult = await consumeTokenAndApply(
+            emailVerificationRepository,
+            verification,
+            async (tx) => {
+                if (user.emailVerifiedAt === null) {
+                    const updated = await userRepository.update(
+                        user.id,
+                        { emailVerifiedAt: new Date() },
                         tx,
                     )
-                    if (claimed === undefined) return { claimed: false as const }
-
-                    if (user.emailVerifiedAt === null) {
-                        const updated = await userRepository.update(
-                            user.id,
-                            { emailVerifiedAt: new Date() },
-                            tx,
-                        )
-                        if (updated === undefined)
-                            throw new Error('User disappeared during verification')
-                    }
-                    return { claimed: true as const }
-                }),
+                    if (updated === undefined)
+                        throw new Error('User disappeared during verification')
+                }
+            },
             'Failed to verify email',
         )
         if (Result.isError(appliedResult)) {
             return Result.err(appliedResult.error)
         }
         if (!appliedResult.value.claimed) {
-            return Result.err(badRequest('Verification link has already been used'))
+            return Result.err(usedMessage)
         }
 
         return Result.ok({ message: 'Email confirmed successfully' })
@@ -419,29 +374,19 @@ export const emailVerificationService = {
             return Result.err(notFound('User', 'User not found'))
         }
 
-        const invalidateResult = await tryInternal(
-            () => emailLinkVerificationRepository.invalidatePendingByUserId(userId),
-            'Failed to invalidate email link tokens',
-        )
-        if (Result.isError(invalidateResult)) {
-            return Result.err(invalidateResult.error)
+        const issued = await issueToken(emailLinkVerificationRepository, {
+            userId,
+            ttlMs: EMAIL_VERIFICATION_TTL_MS,
+            failures: {
+                invalidate: 'Failed to invalidate email link tokens',
+                create: 'Failed to create email link token',
+            },
+            extra: { targetEmail },
+        })
+        if (Result.isError(issued)) {
+            return Result.err(issued.error)
         }
-
-        const rawToken = createVerificationToken()
-        const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS)
-        const createResult = await tryInternal(
-            () =>
-                emailLinkVerificationRepository.create({
-                    userId,
-                    targetEmail,
-                    tokenHash: hashToken(rawToken),
-                    expiresAt,
-                }),
-            'Failed to create email link token',
-        )
-        if (Result.isError(createResult)) {
-            return Result.err(createResult.error)
-        }
+        const rawToken = issued.value
 
         const verificationUrl = buildVerificationUrl(rawToken)
         const emailContent = buildLinkEmailContent(user.name, verificationUrl)

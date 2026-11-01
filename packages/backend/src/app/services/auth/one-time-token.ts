@@ -1,8 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { Result } from 'better-result'
-import { withTransaction } from '#app/repositories/index.js'
+import { withTransaction, type ITokenRepository } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
-import type { ITokenRepository } from '#app/repositories/auth/token-repository.js'
 import type { AppError, AppResult } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 
