@@ -661,7 +661,7 @@
             "owner": "Blazheiko",
             "branch": "fix/db-ssl-and-query-log",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
