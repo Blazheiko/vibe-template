@@ -113,32 +113,37 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ### Зміни (явний перехід станів)
 
-- [ ] Звірка `userToken` з БД у `auth_guard` і `ws-session-auth`. Один helper `assertSessionTokenCurrent(sessionInfo): Promise<'ok' | 'mismatch' | 'unavailable'>` у `vendor/utils/session/`; анонімні сесії пропускаються. **Fail-closed:** `mismatch` → знищити сесію, 401; `unavailable` (помилка/timeout БД) → 503, запит **не** пропускається за самим Redis-записом. Для WS — закрити з'єднання з кодом для 503 (клієнт перепідключається), а не обробляти повідомлення.
-- [ ] `changePassword`:
+- [x] Звірка `userToken` з БД у `sessionHandler` (`session_web`, `session_api` — а отже перед `auth_guard`), `wsSessionHandler` (кожне WS-повідомлення) і `verifyUpgradeToken` (WS upgrade). Один helper `assertSessionTokenCurrent(sessionInfo, userToken): Promise<'ok' | 'mismatch' | 'unavailable'>` у `vendor/utils/session/`, перевірка реєструється застосунком (`registerSessionTokenChecker`); анонімні сесії пропускаються. **Fail-closed:** `mismatch` → запит анонімний (401 на `auth_guard`), запис видаляється best-effort; `unavailable` (помилка або **дедлайн** `SESSION_TOKEN_CHECK_TIMEOUT_MS`, за замовчуванням 2000 мс) → `503` (`SessionVerificationUnavailableError`), запит **не** пропускається за самим Redis-записом. Для WS: повідомлення не обробляється (клієнт отримує 503-конверт, з'єднання лишається — як при недоступному Redis), upgrade → `503`. _(Спершу планувалося закривати WS-з'єднання; ADR 0002 «Уточнення при реалізації» зафіксував реалізовану поведінку.)_
+- [x] `changePassword`:
     1. Перевірити поточний пароль.
     2. **Умовний** UPDATE: `UPDATE users SET password = :new, session_token = :newTok WHERE id = :id AND password = :currentHash` (hash, який щойно пройшов перевірку) `.returning()`; 0 рядків → 409 «Password was changed concurrently» (або 400). Альтернатива — `SELECT … FOR UPDATE` у транзакції, якщо порівняння по hash незручне.
     3. `destroyAllSessions(previousSessionToken, currentSessionId)` — best-effort; помилка логується, **не** змінює код відповіді, бо звірка з БД уже гарантує відкликання.
     4. Повернути `{ newSessionToken }` контролеру.
-- [ ] `auth-controller.ts:203-226` — `auth.login(userId, newSessionToken)` → нова сесія, CSRF, wsToken (параметризувати ту частину `renewSession`, що генерує CSRF/ws).
-- [ ] Відмова Redis після кроку 2: пароль не відкочується; відповідь 503 «пароль змінено, увійдіть знову»; після відновлення Redis старі сесії → 401 через звірку з БД, а не через DEL.
-- [ ] Те саме в `password-reset-service.ts:616-639` (уже ротує токен; `destroyAllSessions` стає best-effort).
-- [ ] **`logoutAll` — додати ротацію в БД.** Факт: `session-handler.ts:404-425` `context.auth.logoutAll` лише викликає `destroyAllSessions(currentUserToken, sessionInfo.id)` і видає анонімну cookie; `users.sessionToken` **не змінюється**, тож після збою очищення старі сесії залишаться валідними навіть зі звіркою. Зміна внутрішньої реалізації при збереженні зовнішнього API (`auth.logoutAll(): Promise<number>` і відповідь `auth-service.ts:1245-1267`): перед `destroyAllSessions` — `userRepository.update(userId, { sessionToken: nanoid() })`; оскільки `session-handler` — vendor-шар без доступу до репозиторіїв, інжектувати `rotateUserToken(userId): Promise<string>` через конфіг session-handler (або перенести ротацію в `authService.logoutAll` **до** виклику `auth.logoutAll()`). Задокументувати в ADR, який варіант обрано.
-- [ ] `documentation/backend/auth.md` — опис механізму відкликання, поведінки при відмові Redis, і що `destroyAllSessions` — очищення, не гарантія.
+- [x] `auth-controller.ts` — `authService.renewSession(auth, session, rotatedUserToken)` → `auth.login(userId, newSessionToken)` → нова сесія, CSRF, wsToken (параметризувати ту частину `renewSession`, що генерує CSRF/ws).
+- [x] Відмова Redis при очищенні (після кроку 2): пароль не відкочується, `change-password` лишається `200`, а очищення логується; сесії відкликає звірка з БД, а не `DEL`. Якщо падає видача нової сесії поточному клієнту (`renewSession`, Redis), відповідь — `200` з `sessionRenewed: false` (клієнт входить знову), а не `503`. _(Спершу планувалося `503`; обрано `sessionRenewed: false`, бо пароль уже змінено.)_
+- [x] Те саме в `password-reset-service.ts` (email і phone): `destroyAllSessions` best-effort, збій не зупиняє скидання і позначення токена використаним.
+- [x] **`logoutAll` — ротація в БД.** Обрано варіант «ротація в `authService.logoutAll` **до** виклику `auth.logoutAll()`» (vendor-шар не має доступу до репозиторіїв; інжекція `rotateUserToken` ускладнила б ядро заради одного виклику). Зовнішній контракт `auth.logoutAll(): Promise<number>` і відповідь не змінені. Збій ротації → помилка без звернення до Redis.
+- [x] `documentation/backend/auth.md` — опис механізму відкликання, поведінки при відмові Redis/БД, і що `destroyAllSessions` — очищення, не гарантія.
+
+### Додатково (рев'ю feat-059)
+
+- [x] Дедлайн перевірки: `SESSION_TOKEN_CHECK_TIMEOUT_MS` (за замовчуванням 2000 мс, ціле 1…60000, інакше помилка на старті); запит, що завис, дає `503`, а не очікування. Покинутий запит тримає зʼєднання пулу, доки БД не відповість, — наступні перевірки швидко дають `unavailable` через `connectionTimeoutMillis`.
+- [x] HTTP-контракт доведено на реальному сервері (`session-revocation-http.pg.test.ts`, реальні `session_web`/`csrf_guard`/`auth_guard`, PostgreSQL, Redis): статуси, `Set-Cookie`, CSRF, відповідь контролера, конкурентні запити, reset-flow з невдалим очищенням, `503` і дедлайн.
 
 ### Критерії приймання
 
-- [ ] Стара cookie сесії A → 401; сесія B → 401; нова cookie з відповіді A → 200; `csrfToken`/`wsToken` нові; старий CSRF → 403.
-- [ ] Відкритий WS-сокет сесії B відхиляє наступне повідомлення (підтвердити тестом).
-- [ ] **Redis недоступний під час `destroyAllSessions`** (fault-injection після кроку 2) → пароль змінено; після відновлення Redis сесія B → 401 **на першому ж запиті, без** повторного запуску очищення (тобто через звірку з БД, не через DEL). Той самий критерій для `logoutAll` і password-reset.
-- [ ] `logoutAll` при недоступному Redis: `users.sessionToken` ротовано, відповідь 503 або 200 з `deletedCount: 0` (зафіксувати), після відновлення — всі старі сесії 401.
-- [ ] **Конкурентність:** два одночасних `changePassword` з **однаковим правильним** старим паролем і **різними** новими → рівно один 200, другий 409/400; у БД — пароль переможця; обидві старі сесії відкликані; сесія переможця працює. Throttle не серіалізує — гарантію дає умовний UPDATE / row lock.
-- [ ] Регресія: звичайний логін/логаут/`logoutAll` без змін.
+- [x] Стара cookie сесії A → 401; сесія B → 401; нова cookie з відповіді A → 200; `csrfToken`/`wsToken` нові; старий CSRF → 403.
+- [x] WS-повідомлення і WS upgrade відкликаної сесії відхиляються (`wsSessionHandler` → `missing`, `verifyUpgradeToken` → `missing`) навіть коли запис сесії ще в Redis — `session-revocation.pg.test.ts`.
+- [x] **Redis недоступний під час `destroyAllSessions`** (fault-injection після кроку 2) → пароль змінено; після відновлення Redis сесія B → 401 **на першому ж запиті, без** повторного запуску очищення (тобто через звірку з БД, не через DEL). Той самий критерій для `logoutAll` і password-reset.
+- [x] `logoutAll` при недоступному Redis: `users.sessionToken` ротовано, відповідь **`503`** (`service_unavailable`, `Retry-After: 1`, без `deletedCount`), усі старі сесії — 401, у тому числі сесія самого викликача: **повторити запит з тією самою сесією не можна**, клієнт входить знову (наслідок «ротація першою»).
+- [x] **Конкурентність:** два одночасних `changePassword` з **однаковим правильним** старим паролем і **різними** новими → рівно один 200, другий 409/400; у БД — пароль переможця; обидві старі сесії відкликані; сесія переможця працює. Throttle не серіалізує — гарантію дає умовний UPDATE / row lock.
+- [x] Регресія: звичайний логін/логаут/`logoutAll` без змін.
 
 ### Тести
 
-- [ ] `test:redis` + `test:pg` integration: усі критерії; конкурентний сценарій через `Promise.all` двох HTTP-запитів до реального Postgres; fault-injection на Redis (паттерн у `csrf-bootstrap.redis.test.ts`).
-- [ ] Unit на guard: невідповідність `userToken` → сесія знищена, 401; **БД недоступна під час перевірки → 503, сесія не знищена і не пропущена**; анонімна сесія — без запиту до БД.
-- [ ] Бенчмарк `auth_guard` до/після (p50/p95 на локальному Postgres) у `progress.md` — вхідні дані для рішення про feat-061 (кеш).
+- [x] `test:redis` + `test:pg` integration: усі критерії; конкурентний сценарій через `Promise.all` двох HTTP-запитів до реального Postgres; fault-injection на Redis (паттерн у `csrf-bootstrap.redis.test.ts`).
+- [x] Unit на `sessionHandler`: невідповідність `userToken` → сесія знищена, 401; **БД недоступна під час перевірки → 503, сесія не знищена і не пропущена**; анонімна сесія — без запиту до БД.
+- [x] Бенчмарк `auth_guard` до/після (p50/p95 на локальному Postgres) у `progress.md` — вхідні дані для рішення про feat-061 (кеш).
 
 ---
 
