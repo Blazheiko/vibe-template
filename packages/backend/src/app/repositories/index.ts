@@ -44,6 +44,7 @@ export type {
     PushNotificationLogCounts,
 } from './notifications/push-notification-log-repository.js'
 export type { OAuthAccountRow, OAuthAccountInsert } from './auth/oauth-account-repository.js'
+export type { ITokenRepository } from './auth/token-repository.js'
 export type {
     EmailVerificationRow,
     EmailVerificationInsert,

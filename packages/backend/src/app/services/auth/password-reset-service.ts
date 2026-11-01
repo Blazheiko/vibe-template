@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { hashPassword } from 'metautil'
 import { nanoid } from 'nanoid'
 import appConfig from '#config/app.js'
@@ -8,11 +8,15 @@ import {
     smsAuthChallengeRepository,
     passwordResetRepository,
     userRepository,
-    withTransaction,
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import {
+    consumeTokenAndApply,
+    findUsableToken,
+    issueToken,
+} from '#app/services/auth/one-time-token.js'
 import {
     renderBrandedEmail,
     type RenderedEmail,
@@ -55,14 +59,6 @@ export const GENERIC_RESET_MESSAGE =
     'If an account with that email exists, a reset link will be sent shortly.'
 export const GENERIC_PHONE_RESET_MESSAGE =
     'If the phone number can be used for password reset, verification instructions will be sent shortly.'
-function hashToken(token: string): string {
-    return createHash('sha256').update(token).digest('hex')
-}
-
-function createResetToken(): string {
-    return randomBytes(32).toString('base64url')
-}
-
 function buildResetUrl(token: string): string {
     return `${appConfig.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`
 }
@@ -162,28 +158,18 @@ export const passwordResetService = {
             return Result.err(notFound('User', 'User not found'))
         }
 
-        const invalidateResult = await tryInternal(
-            () => passwordResetRepository.invalidatePendingByUserId(userId),
-            'Failed to invalidate password reset tokens',
-        )
-        if (Result.isError(invalidateResult)) {
-            return Result.err(invalidateResult.error)
+        const issued = await issueToken(passwordResetRepository, {
+            userId,
+            ttlMs: PASSWORD_RESET_TTL_MS,
+            failures: {
+                invalidate: 'Failed to invalidate password reset tokens',
+                create: 'Failed to create password reset token',
+            },
+        })
+        if (Result.isError(issued)) {
+            return Result.err(issued.error)
         }
-
-        const rawToken = createResetToken()
-        const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS)
-        const createResult = await tryInternal(
-            () =>
-                passwordResetRepository.create({
-                    userId,
-                    tokenHash: hashToken(rawToken),
-                    expiresAt,
-                }),
-            'Failed to create password reset token',
-        )
-        if (Result.isError(createResult)) {
-            return Result.err(createResult.error)
-        }
+        const rawToken = issued.value
 
         if (user.email === null) {
             return Result.ok({ message: GENERIC_RESET_MESSAGE })
@@ -433,33 +419,21 @@ export const passwordResetService = {
             return Result.err(badRequest('Passwords do not match', 'passwords_mismatch'))
         }
 
-        const resetTokenResult = await tryInternal(
-            () => passwordResetRepository.findByTokenHash(hashToken(normalizedToken)),
-            'Failed to load password reset token',
-        )
-        if (Result.isError(resetTokenResult)) {
-            return Result.err(resetTokenResult.error)
+        const found = await findUsableToken(passwordResetRepository, normalizedToken, {
+            failures: {
+                load: 'Failed to load password reset token',
+                markExpired: 'Failed to mark password reset token used',
+            },
+            used: badRequest('Password reset link has already been used', 'used_token'),
+            expired: badRequest('Password reset link has expired', 'expired_token'),
+        })
+        if (Result.isError(found)) {
+            return Result.err(found.error)
         }
 
-        const resetToken = resetTokenResult.value
+        const resetToken = found.value
         if (resetToken === undefined) {
             return Result.err(badRequest('Password reset link is invalid', 'invalid_token'))
-        }
-
-        if (resetToken.usedAt !== null) {
-            return Result.err(badRequest('Password reset link has already been used', 'used_token'))
-        }
-
-        if (resetToken.expiresAt.getTime() < Date.now()) {
-            const markExpiredResult = await tryInternal(
-                () => passwordResetRepository.markUsed(resetToken.id),
-                'Failed to mark password reset token used',
-            )
-            if (Result.isError(markExpiredResult)) {
-                return Result.err(markExpiredResult.error)
-            }
-
-            return Result.err(badRequest('Password reset link has expired', 'expired_token'))
         }
 
         const userResult = await tryInternal(
@@ -501,24 +475,18 @@ export const passwordResetService = {
         // requests with one link exactly one gets the row; a failure after it rolls both
         // back, the link stays usable and the password stays as it was. The rotated
         // sessionToken (ADR 0002) is part of the same commit.
-        const appliedResult = await tryInternal(
-            () =>
-                withTransaction(async (tx) => {
-                    const claimed = await passwordResetRepository.markUsed(
-                        resetToken.id,
-                        undefined,
-                        tx,
-                    )
-                    if (claimed === undefined) return { claimed: false as const }
-
-                    const updated = await userRepository.update(
-                        user.id,
-                        { password: newPasswordHash, sessionToken: nanoid() },
-                        tx,
-                    )
-                    if (updated === undefined) throw new Error('User disappeared during reset')
-                    return { claimed: true as const, user: updated }
-                }),
+        const appliedResult = await consumeTokenAndApply(
+            passwordResetRepository,
+            resetToken,
+            async (tx) => {
+                const updated = await userRepository.update(
+                    user.id,
+                    { password: newPasswordHash, sessionToken: nanoid() },
+                    tx,
+                )
+                if (updated === undefined) throw new Error('User disappeared during reset')
+                return updated
+            },
             'Failed to update password',
         )
         if (Result.isError(appliedResult)) {
