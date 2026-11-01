@@ -42,7 +42,7 @@ export function createTokenRepository<T extends TokenTable>(
     type Row = InferSelectModel<T>
 
     return {
-        async create(data) {
+        async create(data): Promise<Row> {
             const [created] = await db
                 .insert(t)
                 .values(data as InferInsertModel<typeof passwordResetTokens>)
@@ -54,7 +54,7 @@ export function createTokenRepository<T extends TokenTable>(
             return created as Row
         },
 
-        async findByTokenHash(tokenHash) {
+        async findByTokenHash(tokenHash): Promise<Row | undefined> {
             return await db
                 .select()
                 .from(t)
@@ -63,7 +63,7 @@ export function createTokenRepository<T extends TokenTable>(
                 .then((rows) => rows.at(0) as Row | undefined)
         },
 
-        async invalidatePendingByUserId(userId) {
+        async invalidatePendingByUserId(userId): Promise<number> {
             const result = await db
                 .update(t)
                 .set({ usedAt: new Date() })
@@ -73,7 +73,7 @@ export function createTokenRepository<T extends TokenTable>(
             return result.length
         },
 
-        async markUsed(id, usedAt = new Date(), executor = db) {
+        async markUsed(id, usedAt = new Date(), executor = db): Promise<Row | undefined> {
             return await executor
                 .update(t)
                 .set({ usedAt })
