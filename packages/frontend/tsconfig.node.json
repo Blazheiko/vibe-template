@@ -10,7 +10,9 @@
         "playwright.config.*",
         "playwright.csp.config.*",
         "playwright.security.config.*",
+        "playwright.live.config.*",
         "e2e-security/fixtures.ts",
+        "e2e-live/fixtures.ts",
         "eslint.config.*"
     ],
     "compilerOptions": {

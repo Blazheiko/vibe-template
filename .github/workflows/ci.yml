@@ -1,8 +1,8 @@
 name: CI
 
 # Definition of Done checks for every PR: format, typecheck, lint, unit tests with
-# coverage, and Playwright e2e on all projects. No paths filter, so the jobs can be
-# required checks. Redis integration tests stay in redis-tests.yml: vitest.config.ts
+# coverage, Playwright e2e on all projects, and the live e2e (the SPA against the real backend,
+# PostgreSQL and Redis). No paths filter, so the jobs can be required checks. Redis integration tests stay in redis-tests.yml: vitest.config.ts
 # excludes *.redis.test.ts from `pnpm test`.
 on:
   pull_request:
@@ -109,4 +109,81 @@ jobs:
         with:
           name: playwright-report
           path: packages/frontend/playwright-report/
+          retention-days: 14
+
+  # The SPA served by the real backend with PostgreSQL (pgvector), Redis and a mail sink:
+  # what the mocks of the `e2e` job cannot show, e.g. that a password reset in one browser signs
+  # another one out (feat-069, G3). The run uses a database and a Redis key prefix of its own.
+  e2e-live:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGSQL_HOST: 127.0.0.1
+      PGSQL_PORT: 5432
+      PGSQL_USER: postgres
+      PGSQL_PASSWORD: postgres
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      APP_KEY: ci-live-e2e-app-key-0123456789abcdef
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter frontend exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-live-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      # Chromium only: the live specs are about the session, not about the engines.
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter frontend exec playwright install --with-deps chromium
+
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter frontend exec playwright install-deps chromium
+
+      # Builds shared, the SPA (phone auth off, API at http://localhost:3100) and the backend,
+      # then Playwright starts the backend with the database made first.
+      - run: pnpm --filter frontend test:e2e:live
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-live-report
+          path: |
+            packages/frontend/playwright-report/
+            packages/frontend/test-results/live/
           retention-days: 14
