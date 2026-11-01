@@ -12,6 +12,7 @@ import {
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
+import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { authConfig } from '#config/auth.js'
 import {
@@ -347,26 +348,28 @@ export const passwordResetService = {
 
         const normalizedPhone = normalizedPhoneResult.value
 
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.resetPhoneIp, requestMeta.ipAddress),
-            'Failed to enforce phone reset IP throttle',
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.resetPhoneIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce phone reset IP throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
-        if (!ipThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
-        }
 
-        const phoneThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.smsSendPhone, normalizedPhone),
-            'Failed to enforce phone reset identifier throttle',
+        const phoneThrottle = await enforceThrottle(
+            throttlePolicies.smsSendPhone,
+            normalizedPhone,
+            {
+                unavailable: 'Failed to enforce phone reset identifier throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
-        }
-        if (!phoneThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         const userResult = await tryInternal(
@@ -529,17 +532,16 @@ export const passwordResetService = {
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
     ): Promise<AppResult<{ status: 'success' }>> {
-        const throttle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.resetPasswordIp, requestMeta.ipAddress),
-            'Failed to enforce reset password throttle',
+        const throttle = await enforceThrottle(
+            throttlePolicies.resetPasswordIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce reset password throttle',
+                rejected: badRequest('Too many password reset attempts. Please try again later.'),
+            },
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
-        }
-        if (!throttle.value.allowed) {
-            return Result.err(
-                badRequest('Too many password reset attempts. Please try again later.'),
-            )
         }
 
         const normalizedToken = token.trim()
@@ -679,15 +681,16 @@ export const passwordResetService = {
             return Result.err(badRequest('Passwords do not match', 'passwords_mismatch'))
         }
 
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.confirmResetPhoneIp, requestMeta.ipAddress),
-            'Failed to enforce phone reset confirmation IP throttle',
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.confirmResetPhoneIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce phone reset confirmation IP throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
-        }
-        if (!ipThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         // Intentional: phone reset completion is not bound to the current browser session.

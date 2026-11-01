@@ -18,7 +18,7 @@ import {
     appErrorMessage,
 } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
-import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
+import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
@@ -309,15 +309,16 @@ export const emailVerificationService = {
         token: string,
         requestMeta: { ipAddress: string },
     ): Promise<AppResult<{ message: string }>> {
-        const throttle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.verifyEmailIp, requestMeta.ipAddress),
-            'Failed to enforce email verification throttle',
+        const throttle = await enforceThrottle(
+            throttlePolicies.verifyEmailIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce email verification throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
-        }
-        if (!throttle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         const normalizedToken = token.trim()
@@ -504,17 +505,18 @@ export const emailVerificationService = {
     },
 
     async queueVerificationEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
-        const throttle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.resendVerificationUser, String(userId)),
-            'Failed to enforce verification email throttle',
+        const throttle = await enforceThrottle(
+            throttlePolicies.resendVerificationUser,
+            String(userId),
+            {
+                unavailable: 'Failed to enforce verification email throttle',
+                rejected: badRequest(
+                    'Too many verification emails requested. Please try again later.',
+                ),
+            },
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
-        }
-        if (!throttle.value.allowed) {
-            return Result.err(
-                badRequest('Too many verification emails requested. Please try again later.'),
-            )
         }
 
         const userResult = await tryInternal(
