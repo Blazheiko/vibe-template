@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import '@khmyznikov/pwa-install'
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStateStore } from '@/stores/state'
-import type { BeforeInstallPromptEvent } from '@/utils/pwa-install'
-import { promptPwaInstall, usePwaInstallState } from '@/utils/pwa-install'
+import PwaInstallButton from '@/components/PwaInstallButton.vue'
+import { usePwaInstallButton } from '@/composables/usePwaInstallButton'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
 
 const router = useRouter()
@@ -26,59 +26,10 @@ const toggleGroup = (group: 'navigation' | 'account' | 'legal') => {
 }
 
 // PWA установка
-type PwaInstallElement = HTMLElement & {
-    externalPromptEvent?: BeforeInstallPromptEvent | null
-    isInstallAvailable: boolean
-    showDialog(): void
-}
-const pwaInstall = ref<PwaInstallElement | null>(null)
-const elementInstallAvailable = ref(false)
-const {
-    isInstallAvailable: browserInstallAvailable,
-    deferredPromptEvent,
-    hasInstalledRelatedApp,
-} = usePwaInstallState()
-const supportsNativeInstallPrompt = computed(
-    () => typeof window !== 'undefined' && 'BeforeInstallPromptEvent' in window,
-)
-const isAppInstalled = computed(() => stateStore.isPWAMode || hasInstalledRelatedApp.value)
-const isInstallAvailable = computed(() => {
-    if (isAppInstalled.value) {
-        return false
-    }
-
-    if (browserInstallAvailable.value) {
-        return true
-    }
-
-    if (supportsNativeInstallPrompt.value) {
-        return false
-    }
-
-    return elementInstallAvailable.value
-})
-const shouldMountPwaInstall = computed(() => !isAppInstalled.value)
-
-function getAccentColor(): string {
-    if (typeof window === 'undefined') {
-        return '#A8627A'
-    }
-
-    return (
-        getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim() ||
-        '#A8627A'
-    )
-}
-
-const pwaStyles = ref<Record<string, string>>({})
-
-function syncPwaStyles() {
-    const accent = getAccentColor()
-    pwaStyles.value = {
-        '--tint-color': accent,
-        '--background-color-button': accent,
-    }
-}
+const { pwaInstall, shouldMountPwaInstall, isInstallAvailable, pwaStyles, installApp } =
+    usePwaInstallButton(() => {
+        closeMenu()
+    })
 
 // Управление меню
 const toggleMenu = () => {
@@ -97,67 +48,14 @@ const handleClickOutside = (event: MouseEvent) => {
     }
 }
 
-// Обработчик доступности установки PWA
-const handleInstallAvailable = () => {
-    elementInstallAvailable.value = true
-}
-
-const handleInstallSuccess = () => {
-    elementInstallAvailable.value = false
-}
-
-const syncElementInstallAvailability = () => {
-    elementInstallAvailable.value = Boolean(pwaInstall.value?.isInstallAvailable)
-}
-
-// Функция установки PWA
-const installApp = async () => {
-    closeMenu()
-
-    const nativeInstallOutcome = await promptPwaInstall()
-    if (nativeInstallOutcome !== null) {
-        elementInstallAvailable.value = false
-        return
-    }
-
-    pwaInstall.value?.showDialog()
-}
-
 // Добавляем обработчики событий
-onMounted(async () => {
+onMounted(() => {
     window.addEventListener('click', handleClickOutside)
-    syncPwaStyles()
-
-    // Ждём рендер элемента <pwa-install>, затем слушаем событие на нём
-    await nextTick()
-    if (pwaInstall.value) {
-        pwaInstall.value.externalPromptEvent = deferredPromptEvent.value
-        pwaInstall.value.addEventListener('pwa-install-available-event', handleInstallAvailable)
-        pwaInstall.value.addEventListener('pwa-install-success-event', handleInstallSuccess)
-        syncElementInstallAvailability()
-    }
 })
 
 onUnmounted(() => {
     window.removeEventListener('click', handleClickOutside)
-    pwaInstall.value?.removeEventListener('pwa-install-available-event', handleInstallAvailable)
-    pwaInstall.value?.removeEventListener('pwa-install-success-event', handleInstallSuccess)
 })
-
-watch([pwaInstall, deferredPromptEvent], () => {
-    if (pwaInstall.value) {
-        pwaInstall.value.externalPromptEvent = deferredPromptEvent.value
-        syncElementInstallAvailability()
-    }
-})
-
-watch(isAppInstalled, (isInstalled) => {
-    if (isInstalled) {
-        elementInstallAvailable.value = false
-    }
-})
-
-watch([() => stateStore.colorTheme, () => stateStore.darkMode], syncPwaStyles)
 
 // Переход в аккаунт
 const goToAccount = () => {
@@ -217,23 +115,7 @@ const logout = async () => {
 
         <div class="dropdown-menu" :class="{ show: isMenuOpen }">
             <!-- Install App — всегда вверху если доступен -->
-            <button
-                type="button"
-                v-if="isInstallAvailable"
-                class="menu-item install-app"
-                @click="installApp"
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    width="20"
-                    height="20"
-                    fill="currentColor"
-                >
-                    <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-                </svg>
-                Install App
-            </button>
+            <PwaInstallButton v-if="isInstallAvailable" @install="installApp" />
 
             <!-- Divider после Install App -->
             <div v-if="isInstallAvailable" class="menu-divider"></div>
