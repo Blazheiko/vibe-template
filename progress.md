@@ -3,21 +3,24 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 4)
-**Branch:** `refactor/frontend-split-components-4` (merged: part 1 `AuthModals.vue` #260, part 2 `stores/state.ts` #261, part 3 service worker #262)
+**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 5)
+**Branch:** `refactor/frontend-split-components-5` (merged: part 1 `AuthModals.vue` #260, part 2 `stores/state.ts` #261, part 3 service worker #262, part 4 `MenuButton.vue` #263)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase J
 
 ## Status
 
-### Done in this PR (item 4 of phase J: `MenuButton.vue`)
+### Done in this PR (item 5 of phase J: api-playground `TestForm.vue`)
 
-`MenuButton.vue` was 752 lines, 140 of them the install logic; it is now 634 and keeps only the menu:
+`TestForm.vue` was 859 lines with an `any` for its result; it is now 558 and has no `any`:
 
-- [x] **`composables/usePwaInstallButton.ts`**: the element ref, "is the install offered" (`resolveInstallAvailable`, a pure function: installed → no; browser prompt ready → yes; Chromium without a prompt yet → no, the element is not believed; no native prompt (Safari) → the element decides), the theme colours for the dialog, `installApp` (runs a `beforeInstall` callback — the menu closes — then the native prompt, else the dialog of the element) and the listeners on the element
-- [x] **`components/PwaInstallButton.vue`**: the item itself, one `<button class="menu-item install-app">` emitting `install`. It is a single root, so the menu's scoped styles still reach it (checked: the button carries the menu's `data-v-` id). The `<pwa-install>` element stays in `MenuButton.vue` on purpose: the dropdown has a `transform`, which would turn the element's `position: fixed` dialog into one placed inside the dropdown
-- [x] **A small fix on the way**: the old `onUnmounted` removed the listeners through `pwaInstall.value`, which Vue has already set to `null` by then, so it never removed anything. The composable remembers the element it listened to. Harmless in practice (the element goes with the component), now correct and tested
-- [x] Tests: `usePwaInstallButton.spec.ts` (13: the decision table, offer/stop, installed app, click order close → prompt, dialog fallback, element events, the prompt handed to the element, theme styles, listener removal) and `PwaInstallButton.spec.ts` (1)
-- [x] Docs: `frontend/index.md`
+- [x] **`composables/useLoadTest.ts`**: `useLoadTest({ requestCount, threadCount, send?, onSingleResponse? })` → `testResult`, `isLoading`, `progress`, `progressPercentage`, `run(spec)`, `clear()`. One request, many on one thread, or many on several; the bar lingers 1 s after a run. The client is injectable, so it is tested without a network
+- [x] **`utils/load-test.ts`**: the typed shape of what the response pane shows (`TestResult`, `RequestOutcome`, `LoadStatistics`, ...: one interface for the four things it can be, replacing the `any`) and the pure parts: `executeRequest`, `executeThread`, `singleResultOf`, `summaryOf`, `failedRunOf`, `wsHandoffOf`. `SendHttp` is exported from `base-api.ts`
+- [x] **`utils/test-form-helpers.ts`**: `scrollToResponse(bodyId, sectionId)` and `formatResponseBody`, now shared with `TestFormWs.vue` (two copies of the same scroll code before)
+- [x] **Checked against the old code, not only by new tests**: the old `TestForm.vue` was mounted next to the new one with the same scripted client and fake clock, over 15 scenarios (GET/POST, bad body, bad/empty/`0` headers, one, many, threads, errors, throws, `wsUrl` handoff with and without a token and on an error), comparing the result, progress while running and after the linger, the client's calls, the handoff calls, the displayed body and the errors. All 15 identical; two mutations (the failed count, the default token) turned 3 and 2 of them red. The throwaway (it needed `jsdom`) is deleted and not committed
+- [x] Tests: `load-test.spec.ts`, `useLoadTest.spec.ts`, `test-form-helpers.spec.ts` (api-playground 26 → 62)
+- [x] Docs: `playground/index.md`
+
+One behaviour differs, on purpose: `buildUrl()` (which throws when a route has no `fullUrl`) is now called before the run starts. Before, it ran after `isLoading` was set and outside the `try`, so the form stayed "loading" for ever
 
 ### Found, not changed
 
@@ -28,16 +31,16 @@ The user-agent reading records what the server stores in `browser_name` / `os_na
 
 Both are bugs in data that is stored; fixing them changes what the admin sees (K3 already left the contract with the owner). They are said here so the decision is informed
 
-### Left for the next PRs of phase J
+### Left for phase J
 
-- [ ] playground `TestForm.vue` → `useLoadTest()`, shared helpers with `TestFormWs.vue`, no `any`
+None of its items: J's criteria remain (G2/G3 e2e green unchanged, manual golden path), then the "Mark feat-076 done" PR
 
 ## Evidence of Completion
 
-| Check                                      | Result                                                                  |
-| ------------------------------------------ | ----------------------------------------------------------------------- |
-| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                  |
-| `pnpm build`                               | exit 0                                                                  |
-| `pnpm test`                                | frontend 344 (+14), backend 1731, shared 24, api-playground 26, docs 26 |
-| Playwright `mock` project                  | 61 passed                                                               |
-| `docs:build && docs:verify`                | passed                                                                  |
+| Check                                      | Result                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                            |
+| `pnpm build`                               | exit 0                                                            |
+| `pnpm test`                                | frontend 344, backend 1731, shared 24, api-playground 62, docs 26 |
+| Playwright `mock` project                  | 61 passed                                                         |
+| `docs:build && docs:verify`                | passed                                                            |

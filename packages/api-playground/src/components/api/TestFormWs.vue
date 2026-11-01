@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { toWsUrl } from '@/utils/api-path'
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import type { ApiRoute } from '@/stores/api-doc'
 import { validateJSON } from '@/utils/api-helpers'
+import { formatResponseBody, scrollToResponse } from '@/utils/test-form-helpers'
 import baseApi from '@/utils/base-api'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useApiSettingsStore } from '@/stores/api-settings'
@@ -63,37 +64,6 @@ const validateBody = () => {
     const result = validateJSON(body.value)
     bodyError.value = result.error || ''
     return result
-}
-
-const findScrollContainer = () => {
-    return (
-        document.querySelector<HTMLElement>('.test-workspace-scroll') ??
-        document.querySelector<HTMLElement>('main')
-    )
-}
-
-const scrollToResponse = async () => {
-    await nextTick()
-
-    window.setTimeout(() => {
-        const targetElement =
-            document.getElementById('ws-response-body') ??
-            document.getElementById('ws-response-section')
-        if (!targetElement) {
-            return
-        }
-
-        const scrollContainer = findScrollContainer()
-        if (scrollContainer) {
-            const rect = targetElement.getBoundingClientRect()
-            const containerRect = scrollContainer.getBoundingClientRect()
-            const scrollTop = scrollContainer.scrollTop + rect.top - containerRect.top - 96
-            scrollContainer.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' })
-            return
-        }
-
-        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
-    }, 120)
 }
 
 const connectWebSocket = () => {
@@ -170,7 +140,7 @@ const sendWebSocketMessage = async () => {
     } finally {
         isLoading.value = false
         if (testResult.value) {
-            await scrollToResponse()
+            await scrollToResponse('ws-response-body', 'ws-response-section')
         }
     }
 }
@@ -179,11 +149,7 @@ const clearResult = () => {
     testResult.value = null
 }
 
-const responseBodyDisplay = computed(() => {
-    const data = testResult.value?.data
-    if (data === undefined) return ''
-    return typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-})
+const responseBodyDisplay = computed(() => formatResponseBody(testResult.value?.data))
 </script>
 
 <template>

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { ApiRoute } from '@/stores/api-doc'
 import { extractParameters, getDefaultRequestBody, validateJSON } from '@/utils/api-helpers'
-import baseApi from '@/utils/base-api'
+import { formatResponseBody, scrollToResponse } from '@/utils/test-form-helpers'
+import { wsHandoffOf } from '@/utils/load-test'
+import { useLoadTest } from '@/composables/useLoadTest'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 
 interface Props {
@@ -31,27 +33,15 @@ const paramValues = ref<Record<string, string>>({})
 
 const headersError = ref('')
 const bodyError = ref('')
-const isLoading = ref(false)
 const copyCurlState = ref<'idle' | 'copied' | 'error'>('idle')
 
-// Holds a single response or a load-test summary with nested statistics; the template
-// reads both shapes.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const testResult = ref<any>(null)
-
-const progressState = ref({
-    totalRequests: 0,
-    completedRequests: 0,
-    currentThread: 0,
-    totalThreads: 0,
-    isVisible: false,
-})
-
-const progressPercentage = computed(() => {
-    if (progressState.value.totalRequests === 0) return 0
-    return Math.round(
-        (progressState.value.completedRequests / progressState.value.totalRequests) * 100,
-    )
+const { testResult, isLoading, progress, progressPercentage, run, clear } = useLoadTest({
+    requestCount,
+    threadCount,
+    onSingleResponse: (outcome) => {
+        const handoff = wsHandoffOf(outcome)
+        if (handoff) setPendingWs(handoff.url, handoff.token)
+    },
 })
 
 const responseBodyRaw = computed(() => {
@@ -60,11 +50,7 @@ const responseBodyRaw = computed(() => {
     return value.firstResult?.data ?? value.data
 })
 
-const responseBodyDisplay = computed(() => {
-    const data = responseBodyRaw.value
-    if (data === undefined) return ''
-    return typeof data === 'string' ? data : JSON.stringify(data, null, 2)
-})
+const responseBodyDisplay = computed(() => formatResponseBody(responseBodyRaw.value))
 
 const validateHeaders = () => {
     const result = validateJSON(headers.value)
@@ -122,315 +108,31 @@ const copyCurl = async () => {
     }
 }
 
-const executeRequest = async (
-    finalUrl: string,
-    requestHeaders: Record<string, string>,
-    requestBody: unknown,
-) => {
-    const startTime = Date.now()
-
-    try {
-        const requestPayload =
-            requestBody !== null && isBodyMethod.value
-                ? (requestBody as Record<string, unknown>)
-                : {}
-
-        const apiResponse = await baseApi.http(
-            props.route.method.toUpperCase(),
-            finalUrl,
-            requestPayload,
-            requestHeaders,
-        )
-
-        const responseTime = Date.now() - startTime
-
-        if (apiResponse.error) {
-            return {
-                success: false,
-                status: apiResponse.status || apiResponse.error.code,
-                statusText: apiResponse.statusText || apiResponse.error.message,
-                headers: apiResponse.headers ?? {},
-                // `||`: an empty or falsy body falls back to the error message.
-                // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-                data: apiResponse.data || apiResponse.error.message,
-                responseTime,
-                error: true,
-            }
-        }
-
-        return {
-            success: true,
-            status: apiResponse.status || 200,
-            statusText: apiResponse.statusText || 'OK',
-            headers: apiResponse.headers ?? {},
-            data: apiResponse.data,
-            responseTime,
-        }
-    } catch (requestError) {
-        return {
-            success: false,
-            status: 0,
-            statusText: 'Network Error',
-            headers: {},
-            data: requestError instanceof Error ? requestError.message : 'Unknown error',
-            responseTime: Date.now() - startTime,
-            error: true,
-        }
-    }
-}
-
-const executeThread = async (
-    threadId: number,
-    finalUrl: string,
-    requestHeaders: Record<string, string>,
-    requestBody: unknown,
-) => {
-    const results = []
-    const responseTimes = []
-    const threadStartTime = Date.now()
-
-    progressState.value.currentThread = threadId + 1
-
-    for (let i = 0; i < requestCount.value; i++) {
-        const result = await executeRequest(finalUrl, requestHeaders, requestBody)
-        results.push({
-            ...result,
-            requestNumber: i + 1,
-            threadId: threadId + 1,
-        })
-        responseTimes.push(result.responseTime)
-        progressState.value.completedRequests++
-    }
-
-    return {
-        threadId: threadId + 1,
-        results,
-        responseTimes,
-        threadTotalTime: Date.now() - threadStartTime,
-    }
-}
-
-const findScrollContainer = () => {
-    return (
-        document.querySelector<HTMLElement>('.test-workspace-scroll') ??
-        document.querySelector<HTMLElement>('main')
-    )
-}
-
-const scrollToResponse = async () => {
-    await nextTick()
-
-    window.setTimeout(() => {
-        const targetElement =
-            document.getElementById('response-body') ?? document.getElementById('response-section')
-
-        if (!targetElement) {
-            return
-        }
-
-        const scrollContainer = findScrollContainer()
-        if (scrollContainer) {
-            const rect = targetElement.getBoundingClientRect()
-            const containerRect = scrollContainer.getBoundingClientRect()
-            const scrollTop = scrollContainer.scrollTop + rect.top - containerRect.top - 96
-
-            scrollContainer.scrollTo({
-                top: Math.max(0, scrollTop),
-                behavior: 'smooth',
-            })
-            return
-        }
-
-        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' })
-    }, 120)
-}
-
 const sendRequest = async () => {
     const headersValidation = validateHeaders()
-    const bodyValidation = isBodyMethod.value ? validateBody() : { isValid: true }
+    const bodyValidation = isBodyMethod.value ? validateBody() : { isValid: true, data: undefined }
 
     if (!headersValidation.isValid || !bodyValidation.isValid) {
         return
     }
 
-    isLoading.value = true
-    testResult.value = null
+    await run({
+        method: props.route.method.toUpperCase(),
+        url: buildUrl(),
+        headers: (headersValidation.data || { 'Content-Type': 'application/json' }) as Record<
+            string,
+            string
+        >,
+        body: bodyValidation.data,
+        hasBody: isBodyMethod.value,
+    })
 
-    const totalRequests = threadCount.value * requestCount.value
-    progressState.value = {
-        totalRequests,
-        completedRequests: 0,
-        currentThread: 0,
-        totalThreads: threadCount.value,
-        isVisible: true,
-    }
-
-    const finalUrl = buildUrl()
-    const requestHeaders = headersValidation.data || { 'Content-Type': 'application/json' }
-    const requestBody = bodyValidation.data
-
-    try {
-        const overallStartTime = Date.now()
-
-        if (threadCount.value === 1) {
-            const results = []
-            const responseTimes = []
-
-            for (let i = 0; i < requestCount.value; i++) {
-                progressState.value.currentThread = 1
-                const result = await executeRequest(
-                    finalUrl,
-                    requestHeaders as Record<string, string>,
-                    requestBody,
-                )
-                results.push({ ...result, requestNumber: i + 1 })
-                responseTimes.push(result.responseTime)
-                progressState.value.completedRequests++
-            }
-
-            const totalTime = Date.now() - overallStartTime
-            const successfulRequests = results.filter((result) => result.success).length
-            const failedRequests = results.length - successfulRequests
-            const avgResponseTime = requestCount.value > 0 ? totalTime / requestCount.value : 0
-            const minResponseTime = Math.min(...responseTimes)
-            const maxResponseTime = Math.max(...responseTimes)
-
-            if (requestCount.value === 1) {
-                const singleResult = results[0] as (typeof results)[number] | undefined
-                if (singleResult) {
-                    testResult.value = {
-                        success: singleResult.success,
-                        status: singleResult.status,
-                        statusText: singleResult.statusText,
-                        headers: singleResult.headers,
-                        data: singleResult.data,
-                        responseTime: singleResult.responseTime,
-                        url: finalUrl,
-                        method: props.route.method.toUpperCase(),
-                        requestHeaders,
-                        requestBody,
-                    }
-
-                    const responseData = singleResult.data as Record<string, unknown> | null
-                    if (
-                        singleResult.success &&
-                        responseData &&
-                        typeof responseData.wsUrl === 'string'
-                    ) {
-                        setPendingWs(
-                            responseData.wsUrl,
-                            typeof responseData.wsToken === 'string' ? responseData.wsToken : '',
-                        )
-                    }
-                }
-            } else {
-                testResult.value = {
-                    success: successfulRequests > 0,
-                    firstResult: results[0],
-                    statistics: {
-                        totalRequests: requestCount.value,
-                        successfulRequests,
-                        failedRequests,
-                        totalTime,
-                        avgResponseTime,
-                        minResponseTime,
-                        maxResponseTime,
-                    },
-                    url: finalUrl,
-                    method: props.route.method.toUpperCase(),
-                    requestHeaders,
-                    requestBody,
-                    allResults: results,
-                }
-            }
-        } else {
-            const threadPromises = []
-            for (let i = 0; i < threadCount.value; i++) {
-                threadPromises.push(
-                    executeThread(
-                        i,
-                        finalUrl,
-                        requestHeaders as Record<string, string>,
-                        requestBody,
-                    ),
-                )
-            }
-
-            const threadResults = await Promise.all(threadPromises)
-            const totalTime = Date.now() - overallStartTime
-            const allResults: {
-                success: boolean
-                status: number
-                statusText: string
-                headers: Record<string, string>
-                data: unknown
-                responseTime: number
-                requestNumber: number
-                threadId: number
-                error?: boolean
-            }[] = []
-            const allResponseTimes: number[] = []
-
-            threadResults.forEach((thread) => {
-                allResults.push(...thread.results)
-                allResponseTimes.push(...thread.responseTimes)
-            })
-
-            const totalBatchRequests = threadCount.value * requestCount.value
-            const successfulRequests = allResults.filter((result) => result.success).length
-            const failedRequests = allResults.length - successfulRequests
-            const avgResponseTime = totalBatchRequests > 0 ? totalTime / totalBatchRequests : 0
-            const minResponseTime = allResponseTimes.length > 0 ? Math.min(...allResponseTimes) : 0
-            const maxResponseTime = allResponseTimes.length > 0 ? Math.max(...allResponseTimes) : 0
-
-            testResult.value = {
-                success: successfulRequests > 0,
-                firstResult: allResults[0],
-                statistics: {
-                    totalRequests: totalBatchRequests,
-                    successfulRequests,
-                    failedRequests,
-                    totalTime,
-                    avgResponseTime,
-                    minResponseTime,
-                    maxResponseTime,
-                    threadCount: threadCount.value,
-                    requestsPerThread: requestCount.value,
-                },
-                url: finalUrl,
-                method: props.route.method.toUpperCase(),
-                requestHeaders,
-                requestBody,
-                allResults,
-                threadResults,
-            }
-        }
-    } catch (error) {
-        console.error(error)
-        testResult.value = {
-            success: false,
-            error: true,
-            message: 'Network error or request failed',
-            details: error instanceof Error ? error.message : 'Unknown error',
-            url: finalUrl,
-            method: props.route.method.toUpperCase(),
-        }
-    } finally {
-        isLoading.value = false
-        window.setTimeout(() => {
-            progressState.value.isVisible = false
-        }, 1000)
-
-        if (testResult.value) {
-            await scrollToResponse()
-        }
+    if (testResult.value) {
+        await scrollToResponse('response-body', 'response-section')
     }
 }
 
-const clearResult = () => {
-    testResult.value = null
-    progressState.value.isVisible = false
-}
+const clearResult = clear
 </script>
 
 <template>
@@ -650,23 +352,21 @@ const clearResult = () => {
                         </p>
                     </div>
                     <div
-                        v-if="progressState.isVisible"
+                        v-if="progress.isVisible"
                         class="text-xs text-slate-600 dark:text-slate-300"
                     >
-                        {{ progressState.completedRequests }}/{{ progressState.totalRequests }}
+                        {{ progress.completedRequests }}/{{ progress.totalRequests }}
                     </div>
                 </div>
 
                 <!-- Progress bar -->
                 <div
-                    v-if="progressState.isVisible"
+                    v-if="progress.isVisible"
                     class="rounded-lg border border-emerald-400 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40"
                 >
                     <div class="mb-2 flex items-center justify-between gap-3 text-xs">
                         <span class="font-medium text-emerald-800 dark:text-emerald-200">
-                            Thread {{ progressState.currentThread }}/{{
-                                progressState.totalThreads
-                            }}
+                            Thread {{ progress.currentThread }}/{{ progress.totalThreads }}
                         </span>
                         <span class="text-emerald-700 dark:text-emerald-300"
                             >{{ progressPercentage }}%</span
@@ -684,7 +384,7 @@ const clearResult = () => {
 
                 <!-- Empty state -->
                 <div
-                    v-if="!testResult && !progressState.isVisible"
+                    v-if="!testResult && !progress.isVisible"
                     class="flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center dark:border-slate-700 dark:bg-slate-900/40"
                 >
                     <div>
