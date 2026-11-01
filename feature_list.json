@@ -731,8 +731,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/sms-challenge",
             "dependencies": ["feat-073"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #249: sms-challenge.ts (findPendingChallenge, openChallenge, deliverChallenge, issueSmsChallenge, verifySmsCode, confirmChallenge) used by the start/verify/confirm steps of phone registration, phone linking and phone password reset; 707 service specs (G1 phone rows, throttle tables, auth-phone-foundation) pass unchanged; sms-challenge.spec.ts (19) pins rollbacks and the try budget; mutations fail 4/5/7/3 specs. typecheck/lint/format:check/pnpm test (backend 1731)/test:pg/docs:build+verify clean; CI green."
         },
         {
             "id": "feat-075",
@@ -771,7 +771,7 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-shared",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {

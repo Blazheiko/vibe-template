@@ -383,7 +383,7 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ---
 
-## H · 🟢 Рефакторинг auth-сервісів — п'ять окремих PR
+## H · ✅ Рефакторинг auth-сервісів — п'ять окремих PR
 
 **Залежності для всіх:** B2, G, K1 · Принцип: поведінка не змінюється, spec'и з G1 — без правок очікувань. Кожен H — свій feature (`feat-070…074`), щоб відкат був незалежним.
 
@@ -420,11 +420,13 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #247. Три таблиці не зливали. Захист claim (`used_at IS NULL`) тримають саме PG-тести (юніт-spec'и з моками його не бачать).
 
-### H5 · SMS challenge (1–1.5 д)
+### H5 · ✅ SMS challenge (1–1.5 д)
 
-- [ ] `sms-challenge.ts` — `issueSmsChallenge(...)`, `verifySmsChallenge(...)`.
-- [ ] Замінити start (`auth-service.ts:405-562, 722-879`, `password-reset-service.ts:326-523`) і confirm (`auth-service.ts:564-640, 881-1014`, `password-reset-service.ts:661-798`).
-- [ ] Критерій: усі SMS-spec'и + G1 зелені; rollback-гілки покриті окремими spec'ами на `sms-challenge.ts`.
+- [x] `sms-challenge.ts` — `issueSmsChallenge(...)`, `verifySmsChallenge(...)`.
+- [x] Замінити start (`auth-service.ts:405-562, 722-879`, `password-reset-service.ts:326-523`) і confirm (`auth-service.ts:564-640, 881-1014`, `password-reset-service.ts:661-798`).
+- [x] Критерій: усі SMS-spec'и + G1 зелені; rollback-гілки покриті окремими spec'ами на `sms-challenge.ts`.
+
+> Виконано PR #249. Окремі `issueSmsChallenge`/`verifySmsChallenge` у плані розбито на `findPendingChallenge`/`openChallenge`/`deliverChallenge`/`issueSmsChallenge`/`verifySmsCode`/`confirmChallenge`: порядок перевірок, 404 vs 400 для невідомого челенджа та правило «та сама сесія» різняться між флоу і лишились у них.
 
 ### H6 · Дрібне (можна в будь-який H або окремо)
 
