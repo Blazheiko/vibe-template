@@ -18,6 +18,8 @@
 - [x] Only downgrades are mirrored: a role is raised when a connection is opened, never by the background timer. A promoted user reconnects
 - [x] Docs: `backend/websocket.md` («Відкликання admin-доступу» — the guarantee, the bound and its limits), `backend/configuration.md`, `backend/auth.md`, `.env.example`; plan phase C records what was built and what was not, and why
 
+- [x] Review follow-ups (2 findings): (1) `findRolesByIds` ran on the main pool, which has no `statement_timeout` / `query_timeout`; passes run one at a time (`running`), so one query that never ended stopped every later pass — reproduced against a table lock (1 pass in 1.7 s instead of ≥ 2) before the fix. The lookup now runs on the session-check pool (the server cancels the statement after `SESSION_TOKEN_CHECK_TIMEOUT_MS`, the driver frees a connection to a server that does not answer), so a hung pass ends with an error and the next one runs; the same bound keeps a stuck lookup from holding the graceful shutdown (`pool.end()` waits for checked-out connections; tested). (2) revoke errors were all treated as a closed socket and swallowed; now only `Invalid access of closed uWS.WebSocket` is skipped silently, any other failure is logged with `userId` / `socketUuid`, counted in the pass report (`failed`) and does not stop the other connections (the failed one stays an admin one, so the next pass retries); one connection whose role cannot be read no longer stops the pass either
+
 ### Behaviour changes to know
 
 - An admin demoted in the database stops receiving admin broadcasts and gets `403` on `admin/*` WebSocket routes within `WS_ADMIN_RECHECK_INTERVAL_MS` plus one pass (default ≈ 30 s) — not instantly. The connection is not closed.

@@ -5,7 +5,9 @@ import logger from '#logger'
 import { connectionOptions } from './pool-options.js'
 
 // ADR 0002: the users.session_token read made for every authenticated request has
-// its own small pool, for two reasons.
+// its own small pool, for two reasons. The periodic WS admin role re-check (feat-062)
+// uses it too: a pass runs one at a time, so a query that never ends would stop every
+// later pass; both are short primary-key reads that must be bounded.
 //
 // 1. Cancelling. A deadline in application code only stops waiting: the query keeps
 //    running on the server and keeps its pooled connection. Here the server cancels

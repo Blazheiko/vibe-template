@@ -56,6 +56,7 @@ describe('recheckAdminConnections', () => {
         await expect(adminWsAccessService.recheckAdminConnections()).resolves.toEqual({
             checked: 0,
             revoked: 0,
+            failed: 0,
         })
         expect(findRolesByIds).not.toHaveBeenCalled()
     })
@@ -78,7 +79,7 @@ describe('recheckAdminConnections', () => {
 
         expect(findRolesByIds).toHaveBeenCalledTimes(1)
         expect(findRolesByIds).toHaveBeenCalledWith([1n, 2n])
-        expect(report).toEqual({ checked: 3, revoked: 0 })
+        expect(report).toEqual({ checked: 3, revoked: 0, failed: 0 })
     })
 
     it('takes the admin channel and the role from a demoted user, on every connection', async () => {
@@ -95,7 +96,7 @@ describe('recheckAdminConnections', () => {
 
         const report = await adminWsAccessService.recheckAdminConnections()
 
-        expect(report).toEqual({ checked: 3, revoked: 2 })
+        expect(report).toEqual({ checked: 3, revoked: 2, failed: 0 })
         for (const demoted of [first, second]) {
             expect(demoted.unsubscribe).toHaveBeenCalledWith('admin')
             expect(demoted.userData.isAdminChannelSubscribed).toBe(false)
@@ -114,6 +115,7 @@ describe('recheckAdminConnections', () => {
         await expect(adminWsAccessService.recheckAdminConnections()).resolves.toEqual({
             checked: 1,
             revoked: 1,
+            failed: 0,
         })
         expect(gone.userData.role).toBe('user')
     })
@@ -146,8 +148,68 @@ describe('recheckAdminConnections', () => {
 
         const report = await adminWsAccessService.recheckAdminConnections()
 
-        expect(report).toEqual({ checked: 2, revoked: 1 })
+        expect(report).toEqual({ checked: 2, revoked: 1, failed: 0 })
         expect(open.userData.role).toBe('user')
+    })
+
+    it('does not hide a revoke failure that is not a closed socket: logs it, counts it, goes on', async () => {
+        const broken = connection('1', 'a', 'admin')
+        broken.unsubscribe.mockImplementation(() => {
+            throw new Error('something else went wrong')
+        })
+        const other = connection('2', 'b', 'admin')
+        listConnections.mockReturnValue([broken, other])
+        findRolesByIds.mockResolvedValue(
+            new Map([
+                ['1', 'user'],
+                ['2', 'user'],
+            ]),
+        )
+
+        const report = await adminWsAccessService.recheckAdminConnections()
+
+        // The other connection is still revoked; the broken one stays an admin one (so the
+        // next pass tries it again) and the failure is on record.
+        expect(report).toEqual({ checked: 2, revoked: 1, failed: 1 })
+        expect(other.userData.role).toBe('user')
+        expect(broken.userData.role).toBe('admin')
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: '1', socketUuid: 'a' }),
+            'WS admin access could not be revoked',
+        )
+    })
+
+    it('does not log a closed socket as an error', async () => {
+        const closing = connection('1', 'a', 'admin')
+        closing.unsubscribe.mockImplementation(() => {
+            throw new Error('Invalid access of closed uWS.SSLWebSocket.')
+        })
+        listConnections.mockReturnValue([closing])
+        findRolesByIds.mockResolvedValue(new Map([['1', 'user']]))
+
+        const report = await adminWsAccessService.recheckAdminConnections()
+
+        expect(report).toEqual({ checked: 1, revoked: 0, failed: 0 })
+        expect(logger.error).not.toHaveBeenCalled()
+    })
+
+    it('does not let one unreadable connection stop the pass', async () => {
+        const unreadable = connection('1', 'a', 'admin')
+        unreadable.ws.getUserData = () => {
+            throw new Error('something else went wrong')
+        }
+        const demoted = connection('2', 'b', 'admin')
+        listConnections.mockReturnValue([unreadable, demoted])
+        findRolesByIds.mockResolvedValue(new Map([['2', 'user']]))
+
+        const report = await adminWsAccessService.recheckAdminConnections()
+
+        expect(report).toEqual({ checked: 1, revoked: 1, failed: 1 })
+        expect(demoted.userData.role).toBe('user')
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: '1', socketUuid: 'a' }),
+            'WS connection role could not be read',
+        )
     })
 
     it('skips a connection that is already closed when the snapshot is taken', async () => {
@@ -160,6 +222,7 @@ describe('recheckAdminConnections', () => {
         await expect(adminWsAccessService.recheckAdminConnections()).resolves.toEqual({
             checked: 0,
             revoked: 0,
+            failed: 0,
         })
     })
 
@@ -212,7 +275,7 @@ describe('start / stop', () => {
         const spy = vi.spyOn(adminWsAccessService, 'recheckAdminConnections').mockReturnValue(
             new Promise((resolve) => {
                 finish = () => {
-                    resolve({ checked: 0, revoked: 0 })
+                    resolve({ checked: 0, revoked: 0, failed: 0 })
                 }
             }),
         )
@@ -231,7 +294,7 @@ describe('start / stop', () => {
         const spy = vi
             .spyOn(adminWsAccessService, 'recheckAdminConnections')
             .mockRejectedValueOnce(new Error('connection terminated'))
-            .mockResolvedValue({ checked: 0, revoked: 0 })
+            .mockResolvedValue({ checked: 0, revoked: 0, failed: 0 })
 
         adminWsAccessService.start(1000)
         await vi.advanceTimersByTimeAsync(2000)

@@ -138,6 +138,36 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
             expect(sessionCheckPool.totalCount).toBeLessThanOrEqual(SESSION_CHECK_POOL_MAX)
         })
 
+        // Graceful shutdown ends the pools, and pool.end() waits for every checked-out
+        // connection: a lookup that never returned would hold the shutdown with it.
+        it('does not hold the pool shutdown longer than the deadline', async () => {
+            const bounded = createSessionCheckPool({
+                connection: connectionOptions,
+                timeoutMs: 300,
+                max: 2,
+            })
+            extraPools.push(bounded)
+            const holder = await holdLock()
+            try {
+                const stuck = bounded
+                    .query('select "session_token" from "users"')
+                    .catch(() => 'cancelled')
+                await sleep(100) // the statement is running and waiting on the lock
+
+                const started = Date.now()
+                await bounded.end()
+                const elapsed = Date.now() - started
+
+                expect(await stuck).toBe('cancelled')
+                // Ended by the pool's own timeouts (300 ms from its start), not by the lock,
+                // which is released only afterwards.
+                expect(elapsed).toBeLessThan(1000)
+            } finally {
+                await holder.query('rollback')
+                await holder.end()
+            }
+        })
+
         it('does not touch the main pool: ordinary queries keep their own connections', async () => {
             const holder = await holdLock()
             try {
