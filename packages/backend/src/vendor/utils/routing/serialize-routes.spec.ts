@@ -326,6 +326,33 @@ describe('serializeRoutes bodyLimits', () => {
         ).toEqual([json, multipart])
     })
 
+    it('shows the route maxBodySize where it tightens the limit, and never above the global one', () => {
+        const tight = bodyLimitsOf(
+            defineRoute({
+                url: '/x',
+                method: 'post',
+                allowedContentTypes: ['json', 'multipart'],
+                maxBodySize: 1234,
+                handler,
+            }),
+        )
+        const loose = bodyLimitsOf(
+            defineRoute({
+                url: '/x',
+                method: 'post',
+                allowedContentTypes: ['multipart'],
+                maxBodySize: appConfig.maxMultipartBodySize * 2,
+                handler,
+            }),
+        )
+
+        expect(tight).toEqual([
+            { kind: 'json', maxBytes: 1234 },
+            { kind: 'multipart', maxBytes: 1234 },
+        ])
+        expect(loose).toEqual([multipart])
+    })
+
     it('allowedContentTypes: [] → an empty list', () => {
         expect(
             bodyLimitsOf(

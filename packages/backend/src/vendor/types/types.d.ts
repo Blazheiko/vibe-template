@@ -267,6 +267,12 @@ export interface RouteConfig<
     ResponseSchema?: BaseType | undefined
     /** Allowed request body Content-Type kinds. Defaults to ['json'] for POST/PUT routes. */
     allowedContentTypes?: BodyKind[] | undefined
+    /**
+     * Largest request body this route accepts, in bytes. The smaller of this and the
+     * global limit of the body's kind applies (APP_MAX_*_BODY_SIZE), so a route can only
+     * tighten it. For a multipart upload it is the whole body: the file plus its framing.
+     */
+    maxBodySize?: number | undefined
 }
 
 // RouteItem with handler - uses function overload pattern for type erasure

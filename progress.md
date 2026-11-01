@@ -3,45 +3,50 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-062 - WS Admin Revocation
-**Branch:** `fix/ws-admin-revoke`
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase C
+**Active Feature:** feat-063 - Resource Limits (in progress, delivered as several PRs)
+**Branch:** `fix/resource-limits-multipart` (part 1 of 4)
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase D
+
+feat-063 is large and its parts are independent, so it is delivered as separate PRs and flipped to `done` only after the last one:
+
+| Part    | What                                                                                                                                         | Status        |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| D4      | per-route request body limit, upload routes capped, avatar rate limit                                                                        | this PR       |
+| D0 + D1 | support chat admission contract: `admit()` before `ok`, length cap, per-user throttle, owner-token in-flight lock, `support_chat_error` code | next          |
+| D2      | atomic Redis LLM budget (reserve / reconcile)                                                                                                | after D0 + D1 |
+| D3      | chat history contract: pagination for the UI, a bounded selection for the prompt                                                             | last          |
 
 ## Status
 
 ### Done
 
-- [x] Diagnosis: a WebSocket connection read `userData.role` once, when it was opened, and subscribed to the `admin` channel once. Heartbeats keep a connection open for days, so an admin demoted in the database kept receiving the admin broadcasts without sending a single request, and `ws_admin_guard` (which reads the same cached role) kept letting the admin routes through
-- [x] Finding that changes the plan: **nothing in the application changes `users.role`** — no endpoint (`auth.md`: «ендпоінта немає»), `userRepository.update` does not write it, the seed never updates an existing user. A role changes only in the database, out of band. The planned pub/sub layer («role changed» event published from an admin service) has no producer, so it is not built; the periodic re-check is the whole guarantee, and the only mechanism that observes an out-of-band change
-- [x] `adminWsAccessService.recheckAdminConnections()` — every instance takes its own connections that hold the `admin` role, reads the roles of their users with ONE query (`userRepository.findRolesByIds`), and calls `adminWsChannelService.revokeAdminAccess(ws)` for those whose role is no longer `admin` (or whose user is gone): the connection leaves the `admin` channel, its cached role drops to `user`, so the admin routes answer `403` and it cannot subscribe again. The connection stays open (its other functions, e.g. the support chat, are not interrupted). A connection closed while the query ran is skipped
-- [x] Timer: `WS_ADMIN_RECHECK_INTERVAL_MS` (default 30000, integer 100…3600000, validated at start), one pass at a time, a failed pass is logged and the timer keeps going, `unref()`, stopped on graceful shutdown (`index.ts`)
-- [x] Only downgrades are mirrored: a role is raised when a connection is opened, never by the background timer. A promoted user reconnects
-- [x] Docs: `backend/websocket.md` («Відкликання admin-доступу» — the guarantee, the bound and its limits), `backend/configuration.md`, `backend/auth.md`, `.env.example`; plan phase C records what was built and what was not, and why
-
-- [x] Review follow-ups (2 findings): (1) `findRolesByIds` ran on the main pool, which has no `statement_timeout` / `query_timeout`; passes run one at a time (`running`), so one query that never ended stopped every later pass — reproduced against a table lock (1 pass in 1.7 s instead of ≥ 2) before the fix. The lookup now runs on the session-check pool (the server cancels the statement after `SESSION_TOKEN_CHECK_TIMEOUT_MS`, the driver frees a connection to a server that does not answer), so a hung pass ends with an error and the next one runs; the same bound keeps a stuck lookup from holding the graceful shutdown (`pool.end()` waits for checked-out connections; tested). (2) revoke errors were all treated as a closed socket and swallowed; now only `Invalid access of closed uWS.WebSocket` is skipped silently, any other failure is logged with `userId` / `socketUuid`, counted in the pass report (`failed`) and does not stop the other connections (the failed one stays an admin one, so the next pass retries); one connection whose role cannot be read no longer stops the pass either
+- [x] Diagnosis (D4): the body limit of a multipart route was the global `APP_MAX_MULTIPART_BODY_SIZE` (50 MiB) for every route, while the avatar file limit is 10 MiB and the knowledge-base screenshot limit 5 MiB, checked only after the whole body had been read. The early `Content-Length` refusal and the mid-stream abort already existed in `readData`; what was missing was a limit per route
+- [x] Tests first (`route-body-limit.transport.spec.ts`, real uWebSockets.js server and raw sockets): a route limit of 1000 bytes was ignored — the `Content-Length` refusal reported the global limit, a 2000-byte chunk passed, the body at the limit +1 byte was accepted
+- [x] `maxBodySize` on a route (`RouteConfig`); `resolveMaxBodySize(kind, routeLimit)` = `min(global limit of the kind, route limit)` — a route can only tighten; `routesHandler` fails at startup on `maxBodySize` for a method without a body or a non-positive-integer value; the playground `bodyLimits` shows the effective limit
+- [x] `app/services/shared/upload-limits.ts`: `AVATAR_MAX_FILE_BYTES` (10 MiB), `KB_SCREENSHOT_MAX_FILE_BYTES` (5 MiB), `MULTIPART_OVERHEAD_BYTES` (64 KiB), `multipartBodyLimit()`; the services use the same constants; avatar upload `maxBodySize` = 10 MiB + 64 KiB, KB screenshot = 5 MiB + 64 KiB; the avatar group gets a rate limit of 10 per minute per IP
+- [x] Real sizes on a real server (`upload-limits.transport.spec.ts`): a file of exactly 10 MiB passes (its framing fits), a body one byte over the limit is `413`, an 11 MiB `Content-Length` is refused from the headers, a chunked 50 MiB body is refused long before its end, 20 parallel 50 MiB uploads are all refused near the limit with bounded memory growth
+- [x] Route table spec: every multipart route has its own limit, avatar and screenshot values, avatar rate limit
+- [x] Docs: `backend/request-lifecycle.md`, `backend/storage.md`
 
 ### Behaviour changes to know
 
-- An admin demoted in the database stops receiving admin broadcasts and gets `403` on `admin/*` WebSocket routes within `WS_ADMIN_RECHECK_INTERVAL_MS` plus one pass (default ≈ 30 s) — not instantly. The connection is not closed.
-- While the database cannot answer, a demotion cannot be observed: the pass fails (logged) and changes nothing; every WebSocket message is refused meanwhile by the session check (ADR 0002), but the broadcast subscription stays until the first successful pass.
-- A promotion needs a reconnect (unchanged).
+- `POST /avatar/upload` and `POST /admin/knowledge-base/:id/screenshot` refuse a request body over 10 MiB + 64 KiB / 5 MiB + 64 KiB with `413` (before: only the file check, `400`, after up to 50 MiB had been read). A file of exactly the allowed size is still accepted.
+- The avatar routes are limited to 10 requests per minute per IP.
+- A server that refuses an oversized body while the client is still sending may close the connection; the TCP reset can reach a client before it has read the `413`.
 
-## Evidence of Completion
+## Evidence of Completion (part D4)
 
-| Check                                                                                                                                                             | Result                                                                                                                                                                |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Mutation check (the re-check never starts)                                                                                                                        | 6 of 9 `admin-ws-revocation.pg.test.ts` tests fail; the 3 that pass (baseline, reconnect, promotion) do not depend on the re-check                                    |
-| `pnpm typecheck` / `lint` / `format:check`                                                                                                                        | exit 0                                                                                                                                                                |
-| `pnpm test`                                                                                                                                                       | backend 1249, frontend 168, api-playground 14, shared 14, docs 26; exit 0                                                                                             |
-| `test:pg` with Redis                                                                                                                                              | 77 passed in 10 files (9 new in `admin-ws-revocation.pg.test.ts`: real uWebSockets.js server, real WebSocket clients, Redis sessions, PostgreSQL; stable over 3 runs) |
-| `test:pg` with Redis unreachable                                                                                                                                  | 51 passed, 26 skipped                                                                                                                                                 |
-| `test:redis`                                                                                                                                                      | 61 passed                                                                                                                                                             |
-| `docs:build && docs:verify`                                                                                                                                       | passed                                                                                                                                                                |
-| `test:e2e:security` (real prod build and server on port 3200, so `index.ts` starts and stops the timer; fixture restored, `public` rebuilt with the default port) | 7 passed                                                                                                                                                              |
-| Frontend e2e (`test:e2e`)                                                                                                                                         | not run: no UI touched                                                                                                                                                |
+| Check                                      | Result                                                                           |
+| ------------------------------------------ | -------------------------------------------------------------------------------- |
+| New transport tests before the fix         | 3 of 5 failed (the route limit was ignored)                                      |
+| Mutation check (route limit ignored again) | 8 of the 12 transport tests of this part fail, including the 20 parallel uploads |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                           |
+| `pnpm test`                                | backend 1281, frontend 168, api-playground 14, shared 14, docs 26; exit 0        |
+| `test:pg` with Redis / `test:redis`        | 79 / 61 passed (not affected)                                                    |
+| `docs:build && docs:verify`                | passed                                                                           |
+| Stability                                  | `upload-limits.transport.spec.ts` 8 runs in a row                                |
 
 ## Notes for Next Session
 
-1. Merge the feature PR, then a PR flipping feat-062 to `done`
-2. Next: feat-063 (resource limits: support chat, multipart) — depends on feat-058 (done)
-3. If a role-change feature is ever added, it should call `adminWsChannelService.revokeAdminAccess` for the user's connections on its instance for an immediate effect; the periodic re-check stays the guarantee
+1. Merge this PR (feat-063 stays `in_progress`); then D0 + D1 on a new branch
+2. Do not flip feat-063 to `done` before D0–D3 are merged

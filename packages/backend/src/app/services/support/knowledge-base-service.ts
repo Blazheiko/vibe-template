@@ -19,8 +19,8 @@ import {
     internalMessage,
 } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
+import { KB_SCREENSHOT_MAX_FILE_BYTES } from '#app/services/shared/upload-limits.js'
 
-const MAX_SCREENSHOT_SIZE = 5 * 1024 * 1024 // 5 MB
 const ALLOWED_SCREENSHOT_TYPES: ReadonlySet<DetectedImageType> = new Set([
     'image/png',
     'image/jpeg',
@@ -236,7 +236,7 @@ export const knowledgeBaseService = {
         if (file === undefined) {
             return Result.err(badRequest('No file uploaded'))
         }
-        if (file.data.byteLength > MAX_SCREENSHOT_SIZE) {
+        if (file.data.byteLength > KB_SCREENSHOT_MAX_FILE_BYTES) {
             return Result.err(badRequest('File size exceeds 5 MB limit'))
         }
         const imageType = verifiedScreenshotType(file)

@@ -46,6 +46,11 @@ import {
     SupportKnowledgeBaseCreateSchema,
     SupportKnowledgeBaseUpdateSchema,
 } from 'shared/schemas'
+import {
+    AVATAR_MAX_FILE_BYTES,
+    KB_SCREENSHOT_MAX_FILE_BYTES,
+    multipartBodyLimit,
+} from '#app/services/shared/upload-limits.js'
 
 export default [
     defineRoute({
@@ -381,6 +386,7 @@ export default [
                 handler: AvatarController.uploadAvatar.bind(AvatarController),
                 validator: EmptyFormInputSchema,
                 allowedContentTypes: ['multipart'],
+                maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
                 ResponseSchema: ResponseSchemas.UploadAvatarResponseSchema,
                 description: 'Upload user avatar',
             }),
@@ -395,6 +401,7 @@ export default [
         description: 'Avatar routes',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'avatar',
+        rateLimit: { windowMs: 60_000, maxRequests: 10 },
     },
     {
         group: [
@@ -472,6 +479,7 @@ export default [
                 ),
                 validator: EmptyFormInputSchema,
                 allowedContentTypes: ['multipart'],
+                maxBodySize: multipartBodyLimit(KB_SCREENSHOT_MAX_FILE_BYTES),
                 ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Upload screenshot for a knowledge base article',
             }),

@@ -258,7 +258,7 @@ export const readAndParseBody = async (
         throw new UnsupportedMediaTypeError(meta.contentType, allowed)
     }
 
-    const limit = resolveMaxBodySize(meta.bodyKind)
+    const limit = resolveMaxBodySize(meta.bodyKind, route.maxBodySize)
     const rawContentLength = meta.headers.get('content-length')
     const declared =
         rawContentLength !== undefined && /^\d+$/.test(rawContentLength)

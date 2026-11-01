@@ -41,3 +41,19 @@ describe('resolveMaxBodySize', () => {
         expect(resolveMaxBodySize(kind)).toBe(limit)
     })
 })
+
+describe('resolveMaxBodySize with a route limit', () => {
+    it('lets a route tighten the limit of its kind', () => {
+        expect(resolveMaxBodySize('multipart', 2)).toBe(2)
+        expect(resolveMaxBodySize('json', 1)).toBe(1)
+    })
+
+    it('never loosens it: the smaller of the two wins', () => {
+        expect(resolveMaxBodySize('multipart', 100)).toBe(3)
+        expect(resolveMaxBodySize('octet', 4)).toBe(4)
+    })
+
+    it('is the limit of the kind without a route limit', () => {
+        expect(resolveMaxBodySize('multipart', undefined)).toBe(3)
+    })
+})
