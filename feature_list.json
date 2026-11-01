@@ -761,8 +761,8 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-backend",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #236: 28 files, +27/-1121 under packages/; every item had no production reference before removal; serialize-routes.ts left on purpose (documented describe() contract of feat-041). typecheck/lint/format:check/build/pnpm test (backend 1659)/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
         {
             "id": "feat-078",
