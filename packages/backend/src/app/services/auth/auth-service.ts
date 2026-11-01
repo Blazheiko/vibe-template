@@ -20,9 +20,14 @@ import { emailVerificationService } from '#app/services/auth/email-verification-
 import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
-import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import {
+    confirmChallenge,
+    findPendingChallenge,
+    issueSmsChallenge,
+    verifySmsCode,
+} from '#app/services/auth/sms-challenge.js'
 import {
     isChallengeExpired,
     LINK_PHONE_FLOW,
@@ -32,15 +37,9 @@ import {
 } from '#app/services/auth/auth-normalize.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import {
-    hashOtpVerificationCode,
-    verifyOtpVerificationCode,
-} from '#app/services/auth/otp-verification-hash.js'
-import {
-    buildResendCooldownError,
     extractChallengeSessionId,
     extractChallengeUserId,
 } from '#app/services/auth/sms-auth-challenge-metadata.js'
-import { PENDING_SMS_CODE_HASH_PLACEHOLDER } from './sms-auth-challenge-constants.js'
 import { looksLikePhoneNumber } from 'shared/utils'
 import type {
     ChangePasswordInput,
@@ -456,90 +455,32 @@ export const authService = {
         }
         const collisionDetected = existingUserResult.value !== undefined
 
-        const pendingChallengeResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.findLatestPendingForPhoneFlow(
-                    phone,
-                    REGISTER_PHONE_FLOW,
-                ),
+        const pendingChallengeResult = await findPendingChallenge(
+            phone,
+            REGISTER_PHONE_FLOW,
             'Failed to load pending SMS auth challenge',
         )
         if (Result.isError(pendingChallengeResult)) {
             return Result.err(pendingChallengeResult.error)
         }
-        if (
-            pendingChallengeResult.value !== undefined &&
-            pendingChallengeResult.value.resendAvailableAt.getTime() > Date.now()
-        ) {
-            return Result.err(
-                buildResendCooldownError(pendingChallengeResult.value.resendAvailableAt),
-            )
-        }
 
-        await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, REGISTER_PHONE_FLOW)
-
-        const now = Date.now()
-        const expiresAt = new Date(now + authConfig.smsChallengeTtlSeconds * 1000)
-        const resendAvailableAt = new Date(now + authConfig.smsResendCooldownSeconds * 1000)
-
-        const createdResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.create({
-                    flow: REGISTER_PHONE_FLOW,
-                    phone,
-                    codeHash: PENDING_SMS_CODE_HASH_PLACEHOLDER,
-                    expiresAt,
-                    resendAvailableAt,
-                    providerRequestId: null,
-                    metadata: {
-                        ipAddress: requestMeta.ipAddress,
-                        provider: authConfig.smsProvider,
-                        ...(requestMeta.sessionId !== null
-                            ? { sessionId: requestMeta.sessionId }
-                            : {}),
-                    },
-                }),
-            'Failed to persist SMS auth challenge',
-        )
-        if (Result.isError(createdResult)) {
-            return Result.err(createdResult.error)
-        }
-
-        const issueCodeResult = await tryInternal(
-            () =>
-                smsVerificationProvider.issueVerificationCode({
-                    phone,
-                    flow: REGISTER_PHONE_FLOW,
-                }),
-            'Failed to issue SMS verification code',
-        )
-        if (Result.isError(issueCodeResult)) {
-            await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
-            return Result.err(issueCodeResult.error)
-        }
-
-        const issuedChallengeResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.markIssued(createdResult.value.id, {
-                    codeHash: hashOtpVerificationCode(issueCodeResult.value.code),
-                    providerRequestId: issueCodeResult.value.providerRequestId,
-                    metadata: {
-                        ipAddress: requestMeta.ipAddress,
-                        provider: authConfig.smsProvider,
-                        ...(requestMeta.sessionId !== null
-                            ? { sessionId: requestMeta.sessionId }
-                            : {}),
-                    },
-                }),
-            'Failed to persist issued SMS challenge',
-        )
+        const issuedChallengeResult = await issueSmsChallenge({
+            phone,
+            flow: REGISTER_PHONE_FLOW,
+            metadata: {
+                ipAddress: requestMeta.ipAddress,
+                provider: authConfig.smsProvider,
+                ...(requestMeta.sessionId !== null ? { sessionId: requestMeta.sessionId } : {}),
+            },
+            failures: {
+                create: 'Failed to persist SMS auth challenge',
+                issue: 'Failed to issue SMS verification code',
+                markIssued: 'Failed to persist issued SMS challenge',
+            },
+            noLongerValid: 'Phone registration challenge is no longer valid',
+        })
         if (Result.isError(issuedChallengeResult)) {
-            await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
             return Result.err(issuedChallengeResult.error)
-        }
-        if (issuedChallengeResult.value === undefined) {
-            await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
-            return Result.err(badRequest('Phone registration challenge is no longer valid'))
         }
 
         if (collisionDetected) {
@@ -608,29 +549,17 @@ export const authService = {
             return Result.err(badRequest('Phone registration challenge is no longer valid'))
         }
 
-        if (!verifyOtpVerificationCode(payload.code, challenge.codeHash)) {
-            const updatedChallenge = await smsAuthChallengeRepository.incrementAttemptCount(
-                challenge.id,
-            )
-            if (
-                (updatedChallenge?.attemptCount ?? challenge.attemptCount + 1) >=
-                authConfig.smsMaxInvalidAttempts
-            ) {
-                await smsAuthChallengeRepository.markInvalidated(challenge.id)
-            }
-
-            return Result.err(badRequest('Invalid verification code'))
+        const codeResult = await verifySmsCode(challenge, payload.code)
+        if (Result.isError(codeResult)) {
+            return Result.err(codeResult.error)
         }
 
-        const confirmedResult = await tryInternal(
-            () => smsAuthChallengeRepository.markConfirmed(challenge.id),
-            'Failed to confirm SMS auth challenge',
-        )
+        const confirmedResult = await confirmChallenge(challenge, {
+            failure: 'Failed to confirm SMS auth challenge',
+            noLongerValid: 'Phone registration challenge is no longer valid',
+        })
         if (Result.isError(confirmedResult)) {
             return Result.err(confirmedResult.error)
-        }
-        if (confirmedResult.value === undefined) {
-            return Result.err(badRequest('Phone registration challenge is no longer valid'))
         }
 
         return Result.ok({
@@ -789,84 +718,34 @@ export const authService = {
             return Result.err(conflict('Phone is already linked to another account'))
         }
 
-        const pendingChallengeResult = await tryInternal(
-            () => smsAuthChallengeRepository.findLatestPendingForPhoneFlow(phone, LINK_PHONE_FLOW),
+        const pendingChallengeResult = await findPendingChallenge(
+            phone,
+            LINK_PHONE_FLOW,
             'Failed to load pending phone linking challenge',
         )
         if (Result.isError(pendingChallengeResult)) {
             return Result.err(pendingChallengeResult.error)
         }
-        if (
-            pendingChallengeResult.value !== undefined &&
-            pendingChallengeResult.value.resendAvailableAt.getTime() > Date.now()
-        ) {
-            return Result.err(
-                buildResendCooldownError(pendingChallengeResult.value.resendAvailableAt),
-            )
+
+        const linkMetadata = {
+            userId: String(userId),
+            ipAddress: requestMeta.ipAddress,
+            provider: authConfig.smsProvider,
+            sessionId: requestMeta.sessionId,
         }
-
-        await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, LINK_PHONE_FLOW)
-
-        const now = Date.now()
-        const expiresAt = new Date(now + authConfig.smsChallengeTtlSeconds * 1000)
-        const resendAvailableAt = new Date(now + authConfig.smsResendCooldownSeconds * 1000)
-
-        const createdResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.create({
-                    flow: LINK_PHONE_FLOW,
-                    phone,
-                    codeHash: PENDING_SMS_CODE_HASH_PLACEHOLDER,
-                    expiresAt,
-                    resendAvailableAt,
-                    providerRequestId: null,
-                    metadata: {
-                        userId: String(userId),
-                        ipAddress: requestMeta.ipAddress,
-                        provider: authConfig.smsProvider,
-                        sessionId: requestMeta.sessionId,
-                    },
-                }),
-            'Failed to persist phone linking challenge',
-        )
-        if (Result.isError(createdResult)) {
-            return Result.err(createdResult.error)
-        }
-
-        const issueCodeResult = await tryInternal(
-            () =>
-                smsVerificationProvider.issueVerificationCode({
-                    phone,
-                    flow: LINK_PHONE_FLOW,
-                }),
-            'Failed to issue SMS verification code',
-        )
-        if (Result.isError(issueCodeResult)) {
-            await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
-            return Result.err(issueCodeResult.error)
-        }
-
-        const issuedChallengeResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.markIssued(createdResult.value.id, {
-                    codeHash: hashOtpVerificationCode(issueCodeResult.value.code),
-                    providerRequestId: issueCodeResult.value.providerRequestId,
-                    metadata: {
-                        userId: String(userId),
-                        ipAddress: requestMeta.ipAddress,
-                        provider: authConfig.smsProvider,
-                        sessionId: requestMeta.sessionId,
-                    },
-                }),
-            'Failed to persist issued phone linking challenge',
-        )
+        const issuedChallengeResult = await issueSmsChallenge({
+            phone,
+            flow: LINK_PHONE_FLOW,
+            metadata: linkMetadata,
+            failures: {
+                create: 'Failed to persist phone linking challenge',
+                issue: 'Failed to issue SMS verification code',
+                markIssued: 'Failed to persist issued phone linking challenge',
+            },
+            noLongerValid: 'Phone linking challenge is no longer valid',
+        })
         if (Result.isError(issuedChallengeResult)) {
-            await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
             return Result.err(issuedChallengeResult.error)
-        }
-        if (issuedChallengeResult.value === undefined) {
-            await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
-            return Result.err(badRequest('Phone linking challenge is no longer valid'))
         }
 
         return Result.ok({
@@ -942,18 +821,9 @@ export const authService = {
             return Result.err(badRequest('Phone linking challenge is no longer valid'))
         }
 
-        if (!verifyOtpVerificationCode(payload.code, challenge.codeHash)) {
-            const updatedChallenge = await smsAuthChallengeRepository.incrementAttemptCount(
-                challenge.id,
-            )
-            if (
-                (updatedChallenge?.attemptCount ?? challenge.attemptCount + 1) >=
-                authConfig.smsMaxInvalidAttempts
-            ) {
-                await smsAuthChallengeRepository.markInvalidated(challenge.id)
-            }
-
-            return Result.err(badRequest('Invalid verification code'))
+        const codeResult = await verifySmsCode(challenge, payload.code)
+        if (Result.isError(codeResult)) {
+            return Result.err(codeResult.error)
         }
 
         const userResult = await tryInternal(
@@ -982,15 +852,12 @@ export const authService = {
             return Result.err(conflict('Phone is already linked to another account'))
         }
 
-        const confirmedResult = await tryInternal(
-            () => smsAuthChallengeRepository.markConfirmed(challenge.id),
-            'Failed to confirm phone linking challenge',
-        )
+        const confirmedResult = await confirmChallenge(challenge, {
+            failure: 'Failed to confirm phone linking challenge',
+            noLongerValid: 'Phone linking challenge is no longer valid',
+        })
         if (Result.isError(confirmedResult)) {
             return Result.err(confirmedResult.error)
-        }
-        if (confirmedResult.value === undefined) {
-            return Result.err(badRequest('Phone linking challenge is no longer valid'))
         }
 
         const updatedUserResult = await tryInternal(

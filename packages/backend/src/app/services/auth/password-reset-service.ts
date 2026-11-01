@@ -3,7 +3,6 @@ import { hashPassword } from 'metautil'
 import { nanoid } from 'nanoid'
 import appConfig from '#config/app.js'
 import logger from '#logger'
-import { PENDING_SMS_CODE_HASH_PLACEHOLDER } from './sms-auth-challenge-constants.js'
 import {
     smsAuthChallengeRepository,
     passwordResetRepository,
@@ -12,6 +11,13 @@ import {
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import {
+    confirmChallenge,
+    findPendingChallenge,
+    issueSmsChallenge,
+    openChallenge,
+    verifySmsCode,
+} from '#app/services/auth/sms-challenge.js'
 import {
     consumeTokenAndApply,
     findUsableToken,
@@ -30,16 +36,11 @@ import {
 } from '#app/services/auth/auth-normalize.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { authConfig } from '#config/auth.js'
-import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import {
-    buildResendCooldownError,
     extractChallengeSessionId,
     extractChallengeUserId,
 } from '#app/services/auth/sms-auth-challenge-metadata.js'
-import {
-    hashOtpVerificationCode,
-    verifyOtpVerificationCode,
-} from '#app/services/auth/otp-verification-hash.js'
+import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-hash.js'
 import { Result } from 'better-result'
 import {
     badRequest,
@@ -256,24 +257,13 @@ export const passwordResetService = {
         const user = userResult.value
         const shouldSendSms = user?.email === null
 
-        const pendingChallengeResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.findLatestPendingForPhoneFlow(
-                    normalizedPhone,
-                    RESET_PHONE_FLOW,
-                ),
+        const pendingChallengeResult = await findPendingChallenge(
+            normalizedPhone,
+            RESET_PHONE_FLOW,
             'Failed to load pending phone reset challenge',
         )
         if (Result.isError(pendingChallengeResult)) {
             return Result.err(pendingChallengeResult.error)
-        }
-        if (
-            pendingChallengeResult.value !== undefined &&
-            pendingChallengeResult.value.resendAvailableAt.getTime() > Date.now()
-        ) {
-            return Result.err(
-                buildResendCooldownError(pendingChallengeResult.value.resendAvailableAt),
-            )
         }
 
         if (
@@ -302,78 +292,27 @@ export const passwordResetService = {
             })
         }
 
-        await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(
-            normalizedPhone,
-            RESET_PHONE_FLOW,
-        )
-
-        const now = Date.now()
-        const expiresAt = new Date(now + authConfig.smsChallengeTtlSeconds * 1000)
-        const resendAvailableAt = new Date(now + authConfig.smsResendCooldownSeconds * 1000)
-
-        const createdResult = await tryInternal(
-            () =>
-                smsAuthChallengeRepository.create({
-                    flow: RESET_PHONE_FLOW,
-                    phone: normalizedPhone,
-                    codeHash: shouldSendSms
-                        ? PENDING_SMS_CODE_HASH_PLACEHOLDER
-                        : createBlindVerificationCodeHash(),
-                    providerRequestId: null,
-                    expiresAt,
-                    resendAvailableAt,
-                    metadata: {
-                        ...(shouldSendSms ? { userId: String(user.id) } : { blind: true }),
-                        ipAddress: requestMeta.ipAddress,
-                        provider: authConfig.smsProvider,
-                        ...(requestMeta.sessionId !== null
-                            ? { sessionId: requestMeta.sessionId }
-                            : {}),
-                    },
-                }),
-            'Failed to persist phone reset challenge',
-        )
-        if (Result.isError(createdResult)) {
-            return Result.err(createdResult.error)
+        const metadata = {
+            ...(shouldSendSms ? { userId: String(user.id) } : { blind: true }),
+            ipAddress: requestMeta.ipAddress,
+            provider: authConfig.smsProvider,
+            ...(requestMeta.sessionId !== null ? { sessionId: requestMeta.sessionId } : {}),
         }
 
         if (shouldSendSms) {
-            const issueCodeResult = await tryInternal(
-                () =>
-                    smsVerificationProvider.issueVerificationCode({
-                        phone: normalizedPhone,
-                        flow: RESET_PHONE_FLOW,
-                    }),
-                'Failed to issue SMS verification code',
-            )
-            if (Result.isError(issueCodeResult)) {
-                await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
-                return Result.err(issueCodeResult.error)
-            }
-
-            const issuedResult = await tryInternal(
-                () =>
-                    smsAuthChallengeRepository.markIssued(createdResult.value.id, {
-                        codeHash: hashOtpVerificationCode(issueCodeResult.value.code),
-                        providerRequestId: issueCodeResult.value.providerRequestId,
-                        metadata: {
-                            userId: String(user.id),
-                            ipAddress: requestMeta.ipAddress,
-                            provider: authConfig.smsProvider,
-                            ...(requestMeta.sessionId !== null
-                                ? { sessionId: requestMeta.sessionId }
-                                : {}),
-                        },
-                    }),
-                'Failed to persist issued phone reset challenge',
-            )
+            const issuedResult = await issueSmsChallenge({
+                phone: normalizedPhone,
+                flow: RESET_PHONE_FLOW,
+                metadata,
+                failures: {
+                    create: 'Failed to persist phone reset challenge',
+                    issue: 'Failed to issue SMS verification code',
+                    markIssued: 'Failed to persist issued phone reset challenge',
+                },
+                noLongerValid: 'Phone reset challenge is no longer valid',
+            })
             if (Result.isError(issuedResult)) {
-                await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
                 return Result.err(issuedResult.error)
-            }
-            if (issuedResult.value === undefined) {
-                await smsAuthChallengeRepository.markInvalidated(createdResult.value.id)
-                return Result.err(badRequest('Phone reset challenge is no longer valid'))
             }
 
             return Result.ok({
@@ -382,6 +321,19 @@ export const passwordResetService = {
                 expiresAt: issuedResult.value.expiresAt.toISOString(),
                 resendAvailableAt: issuedResult.value.resendAvailableAt.toISOString(),
             })
+        }
+
+        // Nothing to send: the number is unknown or the account has an e-mail. The challenge is
+        // stored all the same, with a code hash nobody can match, so the answer looks the same.
+        const createdResult = await openChallenge({
+            phone: normalizedPhone,
+            flow: RESET_PHONE_FLOW,
+            codeHash: createBlindVerificationCodeHash(),
+            metadata,
+            failure: 'Failed to persist phone reset challenge',
+        })
+        if (Result.isError(createdResult)) {
+            return Result.err(createdResult.error)
         }
 
         return Result.ok({
@@ -564,18 +516,9 @@ export const passwordResetService = {
             return Result.err(badRequest('Phone reset challenge is no longer valid'))
         }
 
-        if (!verifyOtpVerificationCode(code, challenge.codeHash)) {
-            const updatedChallenge = await smsAuthChallengeRepository.incrementAttemptCount(
-                challenge.id,
-            )
-            if (
-                (updatedChallenge?.attemptCount ?? challenge.attemptCount + 1) >=
-                authConfig.smsMaxInvalidAttempts
-            ) {
-                await smsAuthChallengeRepository.markInvalidated(challenge.id)
-            }
-
-            return Result.err(badRequest('Invalid verification code'))
+        const codeResult = await verifySmsCode(challenge, code)
+        if (Result.isError(codeResult)) {
+            return Result.err(codeResult.error)
         }
 
         const challengeUserId = extractChallengeUserId(challenge.metadata)
@@ -596,15 +539,12 @@ export const passwordResetService = {
             return Result.err(badRequest('Phone reset challenge is invalid'))
         }
 
-        const confirmedResult = await tryInternal(
-            () => smsAuthChallengeRepository.markConfirmed(challenge.id),
-            'Failed to mark phone reset challenge confirmed',
-        )
+        const confirmedResult = await confirmChallenge(challenge, {
+            failure: 'Failed to mark phone reset challenge confirmed',
+            noLongerValid: 'Phone reset challenge is no longer valid',
+        })
         if (Result.isError(confirmedResult)) {
             return Result.err(confirmedResult.error)
-        }
-        if (confirmedResult.value === undefined) {
-            return Result.err(badRequest('Phone reset challenge is no longer valid'))
         }
 
         const newPasswordHashResult = await tryInternal(
