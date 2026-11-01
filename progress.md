@@ -25,12 +25,12 @@
 
 ## Evidence of Completion (G1)
 
-| Check                                       | Result                                                                    |
-| ------------------------------------------- | ------------------------------------------------------------------------- |
-| New tests                                   | +255 (backend 1430 → 1685), all green, also with `--sequence.shuffle`     |
-| Mutations                                   | key / message / error kind / branch / side effect each fail a row          |
-| `pnpm typecheck` / `lint` / `format:check`  | exit 0                                                                    |
-| `pnpm test`                                 | backend 1685, frontend 257, api-playground 29, shared 17, docs 26; exit 0 |
+| Check                                      | Result                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| New tests                                  | +255 (backend 1430 → 1685), all green, also with `--sequence.shuffle`     |
+| Mutations                                  | key / message / error kind / branch / side effect each fail a row         |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                    |
+| `pnpm test`                                | backend 1685, frontend 257, api-playground 29, shared 17, docs 26; exit 0 |
 
 ## Notes for Next Session
 
