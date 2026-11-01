@@ -121,11 +121,9 @@ flowchart LR
 
 ## Схеми
 
-| Місце                                                                                                                                              | Призначення                                                                                              |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| [packages/shared/src/schemas](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/schemas)                                    | основні схеми вводу (auth, main, support, push-subscription, query, ws…), спільні для frontend і backend |
-| [app/validate/schemas/common](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/schemas/common/pagination.ts) | лише реекспорт пагінаційних/дата-схем з `shared/schemas`                                                 |
-| [app/validate/schemas/query](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/validate/schemas/query)                 | містить лише тест виведення типів (`arktype-inference.spec.ts`)                                          |
+| Місце                                                                                                           | Призначення                                                                                              |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| [packages/shared/src/schemas](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/schemas) | основні схеми вводу (auth, main, support, push-subscription, query, ws…), спільні для frontend і backend |
 
 Приклад схеми ([shared/src/schemas/auth/register.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/register.ts)):
 

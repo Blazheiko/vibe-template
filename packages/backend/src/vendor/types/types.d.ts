@@ -71,8 +71,6 @@ export interface WsContext<TPayload = unknown> {
     signal: AbortSignal
 }
 
-export type WsMiddleware = (context: WsContext, next: () => Promise<void>) => Promise<void>
-
 export type Middleware = (context: HttpContext, next: () => Promise<void>) => Promise<void>
 
 export interface Auth {
@@ -202,14 +200,13 @@ export interface ResponseData {
 
 export type Method = 'get' | 'post' | 'del' | 'put' | 'patch' | 'ws' | 'delete' | 'options'
 export type WsRoutes = Record<string, NormalizedRouteItem>
-export type Validators = Record<string, Record<string, unknown>>
 export interface RateLimit {
     windowMs: number
     maxRequests: number
 }
 
 // Handler types for routes
-export type HandlerReturn = Promise<Payload> | Payload
+type HandlerReturn = Promise<Payload> | Payload
 type BivariantHandler<TContext> = {
     bivarianceHack(context: TContext): HandlerReturn
 }['bivarianceHack']
@@ -217,20 +214,11 @@ type BivariantHandler<TContext> = {
 export type RouteHandler<TPayload = unknown, TQuery = null> = BivariantHandler<
     HttpContext<TPayload, TQuery> | WsContext<TPayload>
 >
-export type HttpHandler<TPayload = unknown, TQuery = null> = BivariantHandler<
-    HttpContext<TPayload, TQuery>
->
-export type WsHandler<TPayload = unknown> = BivariantHandler<WsContext<TPayload>>
-
 // Same bivariance trick as BivariantHandler, with a typed result for defineRoute /
 // defineWsRoute routes that declare a ResponseSchema.
 export type TypedHandler<TContext, TOut> = {
     bivarianceHack(context: TContext): TOut | Promise<TOut>
 }['bivarianceHack']
-
-// Controller type - allows handlers that accept narrower context types
-export type HttpController = Record<string, HttpHandler>
-export type WsController = Record<string, WsHandler>
 
 // Base route configuration without handler (for defineRoute)
 export interface RouteConfig<

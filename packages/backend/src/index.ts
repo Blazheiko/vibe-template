@@ -1,12 +1,9 @@
 import 'dotenv/config'
 import './sentry-bootstrap.js'
 import process from 'node:process'
-// import vine from '@vinejs/vine';
 import logger from '#vendor/utils/logger.js'
 import { initServer, stopServer } from '#vendor/start/server.js'
 import configApp from '#config/app.js'
-// import redis from '#database/redis.js';
-// import validators from '#vendor/start/validators.js';
 import { createWsRoutesByUrl, routesHandler } from '#vendor/start/router.js'
 import httpRoutes from '#app/routes/http-routes.js'
 import wsRoutes from '#app/routes/ws-routes.js'
@@ -19,24 +16,6 @@ import { adminWsAccessService } from '#app/services/admin/admin-ws-access-servic
 import { sessionCheckPool } from '#database/session-check-db.js'
 import redis, { redisHealth } from '#database/redis.js'
 import rateLimitRedis, { connectRateLimitRedis } from '#database/redis-rate-limit.js'
-
-// logger.info(configApp);
-
-// const testRedis = async (): Promise<void> => {
-//     try {
-//         await redis.set('test', Date.now().toString());
-//     } catch (err) {
-//         logger.error({ err }, 'Redis connection failed');
-//         throw err;
-//     }
-// };
-
-// const compileValidateSchema = (): void => {
-//     const schemaKeys = Object.keys(schemas);
-//     schemaKeys.forEach((key: string) => {
-//         validators.set(key, vine.compile(schemas[key].validator));
-//     });
-// };
 
 const start = async (): Promise<void> => {
     try {

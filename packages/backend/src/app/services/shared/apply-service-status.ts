@@ -37,8 +37,3 @@ export function appErrorToHttpPayload(error: AppError): AppErrorHttpPayload {
         ...(reason !== undefined ? { reason } : {}),
     }
 }
-
-export function applyAppError(responseData: ResponseData, error: AppError): void {
-    applyAppErrorStatus(responseData, error)
-    responseData.payload = appErrorToHttpPayload(error)
-}

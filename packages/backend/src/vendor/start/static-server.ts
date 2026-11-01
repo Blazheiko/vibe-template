@@ -203,25 +203,6 @@ const getAssetCspKind = (url: string, ext: string): CspKind | null => {
     return ext === 'svg' ? 'svg' : null
 }
 
-const indexData = (): string | Buffer | undefined => {
-    const entry = cache.get('/index.html')
-    return entry?.kind === 'memory' && entry.data !== '' ? entry.data : undefined
-}
-
-const staticIndexHandler = (res: HttpResponse): void => {
-    const data = indexData()
-    const statusCode = data !== undefined ? 200 : 404
-    const mimeType = MIME_TYPES['html']
-    res.cork(() => {
-        writeHttpStatus(res, statusCode)
-        setSecurityHeaders(res, [], statusCode === 200 ? 'document' : 'strict')
-        if (mimeType !== undefined && mimeType !== '') {
-            res.writeHeader('Content-Type', mimeType)
-        }
-        res.end(data ?? '404 Not Found')
-    })
-}
-
 /**
  * The SPA shell is served as a plain cacheable static file: no session is
  * created and nothing is injected per request. The session cookie and the
@@ -468,6 +449,5 @@ export {
     cacheDirectory,
     cacheStaticSource,
     staticHandler,
-    staticIndexHandler,
     staticCacheHandler,
 }

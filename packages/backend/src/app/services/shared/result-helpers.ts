@@ -19,13 +19,3 @@ export function tryInternal<T>(fn: () => Promise<T>, publicMessage: string): Pro
         catch: (cause) => toInternalError(cause, publicMessage),
     })
 }
-
-export function tryDomain<T, E extends AppError>(
-    fn: () => Promise<T>,
-    mapError: (cause: unknown) => E,
-): Promise<Result<T, E>> {
-    return Result.tryPromise({
-        try: fn,
-        catch: mapError,
-    })
-}

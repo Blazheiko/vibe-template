@@ -1,46 +1,10 @@
 import type { SessionData, SessionInfo } from '#vendor/types/types.js'
-// import { DateTime } from 'luxon';
 import redis, { withRedis } from '#database/redis.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import logger from '#vendor/utils/logger.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import sessionConfig from '#config/session.js'
 import redisConfig from '#config/redis.js'
-
-/**
- * Normalizes userId to string format for protection against type coercion attacks
- * Duplicated here to avoid circular dependencies
- */
-// const normalizeUserId = (
-//     userId: string | bigint | number | undefined | null,
-// ): string => {
-//     if (userId === undefined || userId === null) return '0';
-
-//     if (typeof userId === 'bigint' || typeof userId === 'number') {
-//         return userId.toString();
-//     }
-
-//     if (typeof userId === 'string') {
-//         const trimmed = userId.trim();
-//         if (trimmed === '') return '0';
-
-//         if (!/^\d+$/.test(trimmed)) {
-//             logger.error(
-//                 `Invalid userId format in redis-session-storage: ${userId}`,
-//             );
-//             throw new Error(
-//                 `Invalid userId format: contains non-digit characters`,
-//             );
-//         }
-
-//         return trimmed;
-//     }
-
-//     logger.error(
-//         `Invalid userId type in redis-session-storage: ${typeof userId}`,
-//     );
-//     throw new Error(`Invalid userId type: ${typeof userId}`);
-// };
 
 /**
  * Sanitizes Redis keys for protection against injections
