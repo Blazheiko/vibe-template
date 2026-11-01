@@ -115,6 +115,7 @@ vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) =
 
 describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () => {
     const { db, pool } = await import('#database/db.js')
+    const { sessionCheckPool } = await import('#database/session-check-db.js')
     const { users, passwordResetTokens } = await import('#database/schema.js')
     const { default: redisClient, redisHealth } =
         (await import('#database/redis.js')) as unknown as {
@@ -260,6 +261,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
         redisHealth.stop()
         redisClient.disconnect(false)
         await admin.quit()
+        await sessionCheckPool.end()
         await pool.end()
     })
 
