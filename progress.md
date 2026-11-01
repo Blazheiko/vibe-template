@@ -3,48 +3,43 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-060 - One-Time Token Race
-**Branch:** `fix/one-time-token-race`
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase B2 (depends on feat-059, done)
+**Active Feature:** feat-062 - WS Admin Revocation
+**Branch:** `fix/ws-admin-revoke`
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase C
 
 ## Status
 
 ### Done
 
-- [x] Diagnosis: the password-reset, email-verification and email-link tokens were read, checked (`usedAt === null`), applied, and only then marked used with `UPDATE … WHERE id = ?` (no `used_at IS NULL`). Two concurrent requests with one token both passed the check and both applied it; a failure of the last step left the effect committed and the link reusable (replay)
-- [x] Tests first (`one-time-token-race.pg.test.ts`, real PostgreSQL): both requests are held after reading until the second has read too (the race made deterministic); a write that succeeds and then fails; `markUsed` failing. 7 of 9 failed before the fix ("exactly one winner" got two in all three flows; the password / email stayed changed after a failure), 2 regression cases (already used, expired) passed
-- [x] `markUsed` of the three token repositories is now a claim: `UPDATE … SET used_at WHERE id = ? AND used_at IS NULL RETURNING *`, `undefined` when it was already used
-- [x] `withTransaction` + optional `executor` (`DbExecutor`) on `markUsed` and `userRepository.update` (`app/repositories/transaction.ts`); `userRepository.update` is a single `UPDATE … RETURNING` now instead of an update plus a separate read
-- [x] `resetPassword` (email), `verifyEmail` (confirmation and email link): claim the token and apply its effect (password + rotated `sessionToken`, `emailVerifiedAt`, new email) in ONE transaction. A lost claim answers "already used" (`used_token` for the reset); a failure after the write rolls both back and the link still works. `destroyAllSessions` runs after the commit (best-effort, ADR 0002)
-- [x] Unit specs updated for the transaction argument, plus lost-claim cases; one HTTP-level test (two concurrent `POST /auth/reset-password`, exactly one 200, the loser `400 used_token`, the stored password is the winner's), stable over repeated runs
-- [x] Docs: `backend/repositories.md` (new «Транзакції» section, rule on single-use tokens), `backend/auth.md`
-
-### Out of scope, checked
-
-The phone reset (`completePhonePasswordReset`) already claims the SMS challenge with the conditional `markConfirmed` (`confirmed_at IS NULL AND invalidated_at IS NULL AND expires_at > now`) before it changes the password, so it cannot be applied twice; a failure after the claim only burns the code. Making it transactional belongs to H5 (SMS challenge).
+- [x] Diagnosis: a WebSocket connection read `userData.role` once, when it was opened, and subscribed to the `admin` channel once. Heartbeats keep a connection open for days, so an admin demoted in the database kept receiving the admin broadcasts without sending a single request, and `ws_admin_guard` (which reads the same cached role) kept letting the admin routes through
+- [x] Finding that changes the plan: **nothing in the application changes `users.role`** — no endpoint (`auth.md`: «ендпоінта немає»), `userRepository.update` does not write it, the seed never updates an existing user. A role changes only in the database, out of band. The planned pub/sub layer («role changed» event published from an admin service) has no producer, so it is not built; the periodic re-check is the whole guarantee, and the only mechanism that observes an out-of-band change
+- [x] `adminWsAccessService.recheckAdminConnections()` — every instance takes its own connections that hold the `admin` role, reads the roles of their users with ONE query (`userRepository.findRolesByIds`), and calls `adminWsChannelService.revokeAdminAccess(ws)` for those whose role is no longer `admin` (or whose user is gone): the connection leaves the `admin` channel, its cached role drops to `user`, so the admin routes answer `403` and it cannot subscribe again. The connection stays open (its other functions, e.g. the support chat, are not interrupted). A connection closed while the query ran is skipped
+- [x] Timer: `WS_ADMIN_RECHECK_INTERVAL_MS` (default 30000, integer 100…3600000, validated at start), one pass at a time, a failed pass is logged and the timer keeps going, `unref()`, stopped on graceful shutdown (`index.ts`)
+- [x] Only downgrades are mirrored: a role is raised when a connection is opened, never by the background timer. A promoted user reconnects
+- [x] Docs: `backend/websocket.md` («Відкликання admin-доступу» — the guarantee, the bound and its limits), `backend/configuration.md`, `backend/auth.md`, `.env.example`; plan phase C records what was built and what was not, and why
 
 ### Behaviour changes to know
 
-- A reset or verification link used by two requests at once now succeeds once; the other gets `400` ("already been used").
-- A failure while applying a link no longer leaves half the effect committed: the link stays usable and nothing changed.
-- An expired link is still marked used outside any transaction, as before.
+- An admin demoted in the database stops receiving admin broadcasts and gets `403` on `admin/*` WebSocket routes within `WS_ADMIN_RECHECK_INTERVAL_MS` plus one pass (default ≈ 30 s) — not instantly. The connection is not closed.
+- While the database cannot answer, a demotion cannot be observed: the pass fails (logged) and changes nothing; every WebSocket message is refused meanwhile by the session check (ADR 0002), but the broadcast subscription stays until the first successful pass.
+- A promotion needs a reconnect (unchanged).
 
 ## Evidence of Completion
 
-| Check                                                 | Result                                                                                                                                       |
-| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| New tests before the fix                              | 7 failed / 2 passed (`expected [ …(2) ] to have a length of 1 but got 2` in all three flows; password / email still changed after a failure) |
-| Mutation check (`markUsed` without `used_at IS NULL`) | the deterministic race test and the HTTP race test fail (2 of 18)                                                                            |
-| `pnpm typecheck` / `lint` / `format:check`            | exit 0                                                                                                                                       |
-| `pnpm test`                                           | backend 1225, frontend 168, api-playground 14, shared 14, docs 26; exit 0                                                                    |
-| `test:pg` with Redis                                  | 68 passed in 9 files (9 new in `one-time-token-race.pg.test.ts`, 1 in `session-revocation-http.pg.test.ts`)                                  |
-| `test:pg` with Redis unreachable                      | 51 passed, 17 skipped                                                                                                                        |
-| `test:redis`                                          | 61 passed                                                                                                                                    |
-| `docs:build && docs:verify`                           | passed                                                                                                                                       |
-| `test:e2e:security`                                   | not run: it covers login and CSRF, not the reset or verification links                                                                       |
-| Frontend e2e (`test:e2e`)                             | not run: no UI touched                                                                                                                       |
+| Check                                                                                                                                                             | Result                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mutation check (the re-check never starts)                                                                                                                        | 6 of 9 `admin-ws-revocation.pg.test.ts` tests fail; the 3 that pass (baseline, reconnect, promotion) do not depend on the re-check                                    |
+| `pnpm typecheck` / `lint` / `format:check`                                                                                                                        | exit 0                                                                                                                                                                |
+| `pnpm test`                                                                                                                                                       | backend 1249, frontend 168, api-playground 14, shared 14, docs 26; exit 0                                                                                             |
+| `test:pg` with Redis                                                                                                                                              | 77 passed in 10 files (9 new in `admin-ws-revocation.pg.test.ts`: real uWebSockets.js server, real WebSocket clients, Redis sessions, PostgreSQL; stable over 3 runs) |
+| `test:pg` with Redis unreachable                                                                                                                                  | 51 passed, 26 skipped                                                                                                                                                 |
+| `test:redis`                                                                                                                                                      | 61 passed                                                                                                                                                             |
+| `docs:build && docs:verify`                                                                                                                                       | passed                                                                                                                                                                |
+| `test:e2e:security` (real prod build and server on port 3200, so `index.ts` starts and stops the timer; fixture restored, `public` rebuilt with the default port) | 7 passed                                                                                                                                                              |
+| Frontend e2e (`test:e2e`)                                                                                                                                         | not run: no UI touched                                                                                                                                                |
 
 ## Notes for Next Session
 
-1. Merge the feature PR, then a PR flipping feat-060 to `done`
-2. Next: feat-062 (WS admin revocation) or feat-063 (resource limits); feat-069 (regression coverage) depends on feat-059, feat-060 and feat-066
+1. Merge the feature PR, then a PR flipping feat-062 to `done`
+2. Next: feat-063 (resource limits: support chat, multipart) — depends on feat-058 (done)
+3. If a role-change feature is ever added, it should call `adminWsChannelService.revokeAdminAccess` for the user's connections on its instance for an immediate effect; the periodic re-check stays the guarantee

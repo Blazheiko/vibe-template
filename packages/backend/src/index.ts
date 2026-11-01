@@ -15,6 +15,7 @@ import '#app/start/index.js'
 import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
+import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
 import redis, { redisHealth } from '#database/redis.js'
 import rateLimitRedis, { connectRateLimitRedis } from '#database/redis-rate-limit.js'
@@ -65,6 +66,8 @@ const start = async (): Promise<void> => {
             sourceWsRoutes: wsRoutes,
         })
 
+        adminWsAccessService.start()
+
         process.on('SIGINT', stopSIGINT)
         process.on('SIGHUP', stopSIGHUP)
         process.on('SIGTERM', stopSIGTERM)
@@ -86,6 +89,7 @@ const removeListeners = (): void => {
 }
 
 const stopHandler = async (type: string): Promise<void> => {
+    adminWsAccessService.stop()
     await stopServer(type)
 }
 

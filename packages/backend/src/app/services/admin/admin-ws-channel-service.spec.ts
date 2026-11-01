@@ -42,4 +42,38 @@ describe('adminWsChannelService', () => {
         expect(Result.isOk(result)).toBe(true)
         expect(subscribe).toHaveBeenCalledWith('admin')
     })
+    describe('revokeAdminAccess', () => {
+        // The subscriber count is module state: a fresh module for each test.
+        const freshService = async (): Promise<typeof adminWsChannelService> => {
+            vi.resetModules()
+            return (await import('./admin-ws-channel-service.js')).adminWsChannelService
+        }
+
+        it('takes the channel and the role from a subscribed admin connection', async () => {
+            const service = await freshService()
+            const { ws, unsubscribe } = createWs('admin')
+            service.subscribeCurrentAdminConnection(ws)
+            expect(service.hasSubscribers()).toBe(true)
+
+            service.revokeAdminAccess(ws)
+
+            expect(unsubscribe).toHaveBeenCalledWith('admin')
+            expect(ws.getUserData().role).toBe('user')
+            expect(ws.getUserData().isAdminChannelSubscribed).toBe(false)
+            expect(service.hasSubscribers()).toBe(false)
+            // And it cannot subscribe again on this connection.
+            expect(Result.isError(service.subscribeCurrentAdminConnection(ws))).toBe(true)
+        })
+
+        it('only drops the role of an admin connection that never subscribed', async () => {
+            const service = await freshService()
+            const { ws, unsubscribe } = createWs('admin')
+
+            service.revokeAdminAccess(ws)
+
+            expect(unsubscribe).not.toHaveBeenCalled()
+            expect(ws.getUserData().role).toBe('user')
+            expect(service.hasSubscribers()).toBe(false)
+        })
+    })
 })
