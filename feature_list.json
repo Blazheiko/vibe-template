@@ -681,7 +681,7 @@
             "owner": "Blazheiko",
             "branch": "test/auth-regression-coverage",
             "dependencies": ["feat-059", "feat-060", "feat-066"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
