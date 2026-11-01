@@ -391,16 +391,22 @@ watch(
                 <input
                     v-model="currentPassword"
                     type="password"
+                    name="current-password"
+                    autocomplete="current-password"
                     :placeholder="t('account.security.currentPassword')"
                 />
                 <input
                     v-model="newPassword"
                     type="password"
+                    name="new-password"
+                    autocomplete="new-password"
                     :placeholder="t('account.security.newPassword')"
                 />
                 <input
                     v-model="confirmPassword"
                     type="password"
+                    name="confirm-password"
+                    autocomplete="new-password"
                     :placeholder="t('account.security.confirmPassword')"
                 />
             </div>
@@ -413,16 +419,32 @@ watch(
         <section class="panel">
             <h2>{{ t('account.contactMethods.title') }}</h2>
             <div class="form-grid">
-                <input v-model="linkPhone" :placeholder="t('account.contactMethods.phone')" />
-                <input v-model="linkPhoneCountry" placeholder="US" />
+                <input
+                    v-model="linkPhone"
+                    type="tel"
+                    name="phone"
+                    autocomplete="tel"
+                    :placeholder="t('account.contactMethods.phone')"
+                />
+                <input
+                    v-model="linkPhoneCountry"
+                    name="phone-country"
+                    autocomplete="country"
+                    placeholder="US"
+                />
                 <input
                     v-model="linkPhoneCurrentPassword"
                     type="password"
+                    name="link-phone-current-password"
+                    autocomplete="current-password"
                     :placeholder="t('account.security.currentPassword')"
                 />
                 <input
                     v-if="linkPhoneStep === 'confirm'"
                     v-model="linkPhoneCode"
+                    name="phone-code"
+                    autocomplete="one-time-code"
+                    inputmode="numeric"
                     :placeholder="t('account.contactMethods.code')"
                 />
             </div>
@@ -443,11 +465,15 @@ watch(
                 <input
                     v-model="linkEmail"
                     type="email"
+                    name="email"
+                    autocomplete="email"
                     :placeholder="t('account.contactMethods.email')"
                 />
                 <input
                     v-model="linkEmailCurrentPassword"
                     type="password"
+                    name="link-email-current-password"
+                    autocomplete="current-password"
                     :placeholder="t('account.security.currentPassword')"
                 />
             </div>

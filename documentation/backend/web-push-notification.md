@@ -149,7 +149,7 @@ pnpm --filter backend push:vapid --write
 ## Фронтенд
 
 - Підписка — у [`stores/state.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/stores/state.ts): перевіряє `registration.pushManager.getSubscription()`, отримує VAPID-ключ з `/api/push-subscriptions/vapid-public-key`, викликає `pushManager.subscribe({ applicationServerKey })` і відправляє дані на `POST /api/push-subscriptions`.
-- [`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) у обробнику `push` парсить JSON, зливає `payload.notification` з дефолтами і викликає `showNotification`; `notificationclick` закриває нотифікацію і відкриває `data.url` (або `/`).
+- [`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) у обробнику `push` парсить JSON, зливає `payload.notification` з дефолтами і викликає `showNotification`; `notificationclick` закриває нотифікацію і відкриває `data.url`. Адреса приходить із payload, тому [`notification-target.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/notification-target.ts) приймає лише адресу того ж origin (інакше — `/`): чужий хост, порт чи схема, `//host`, `/\host`, `javascript:` відкидаються. Уже відкрите вікно знаходиться за збігом origin і `pathname`, а не за підрядком в URL, тож `/support/archive` не береться за `/support`.
 
 ```mermaid
 sequenceDiagram

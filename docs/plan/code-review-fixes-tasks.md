@@ -335,10 +335,10 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ### F4 · feat-068 · Frontend/SW/playground — дрібне без зміни контрактів (0.25 д)
 
-- [ ] `frontend/src/views/UserAccount.vue:393, 420, 450` — `autocomplete="current-password"`; `:398, 403` — `new-password`; `name` на всіх.
-- [ ] `frontend/src/service-worker.ts:494-518` — same-origin перевірка URL; порівняння `pathname`, не `includes`.
-- [ ] `frontend/src/App.vue:168` — `?redirect=` лише `startsWith('/') && !startsWith('//')`.
-- [ ] `api-playground/src/stores/api-settings.ts:95` — значення headers у `sessionStorage`; `utils/base-api.ts:91-96` — редакція `authorization|cookie|.*token`; `vite.config.ts` — `esbuild.pure` як у frontend.
+- [x] `frontend/src/views/UserAccount.vue:393, 420, 450` — `autocomplete="current-password"`; `:398, 403` — `new-password`; `name` на всіх.
+- [x] `frontend/src/service-worker.ts:494-518` — same-origin перевірка URL; порівняння `pathname`, не `includes`.
+- [x] `frontend/src/App.vue:168` — `?redirect=` лише `startsWith('/') && !startsWith('//')`.
+- [x] `api-playground/src/stores/api-settings.ts:95` — значення headers у `sessionStorage`; `utils/base-api.ts:91-96` — редакція `authorization|cookie|.*token`; `vite.config.ts` — `esbuild.pure` як у frontend.
 - **Критерії:** unit на SW url-перевірку і redirect-guard; playground не пише header-значення в localStorage (spec на store).
 
 ---

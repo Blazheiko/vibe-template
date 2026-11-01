@@ -2,6 +2,7 @@ import { apiUrl } from '@/utils/api-path'
 import { useEventBus } from '@/utils/event-bus'
 import { useApiSettingsStore } from '@/stores/api-settings'
 import { normalizePath } from '@/utils/api-helpers'
+import { redactHeaders } from './redact-headers'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 
 type HttpResponse = Record<string, unknown>
@@ -91,7 +92,7 @@ const api: ApiMethods = {
             console.log('Making API request:', {
                 method,
                 url,
-                headers: init.headers,
+                headers: redactHeaders(headersToAdd),
                 body: init.body,
             })
 

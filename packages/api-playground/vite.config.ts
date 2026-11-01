@@ -13,6 +13,9 @@ export default defineConfig(({ mode }) => {
         ((env.VITE_API_PATH_PREFIX as string | undefined) ?? '').trim().replace(/^\/+|\/+$/g, '') ||
         'api'
     return {
+        // Same as the frontend (see frontend/vite.console.ts): the minifier drops these calls from
+        // the production bundle; dev keeps its logs. warn and error stay.
+        esbuild: { pure: ['console.log', 'console.info', 'console.debug', 'console.trace'] },
         plugins: [vue(), vueDevTools()],
         resolve: {
             alias: {

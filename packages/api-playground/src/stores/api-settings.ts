@@ -83,26 +83,35 @@ export const useApiSettingsStore = defineStore('api-settings', () => {
         saveToLocalStorage()
     }
 
-    // Save to localStorage
+    // Where the settings live. The base URL, path prefix and the on/off switch are harmless and
+    // are remembered across tabs (localStorage). The header VALUES are credentials a developer
+    // types to try the API (Authorization, Cookie, API keys): they go to sessionStorage, which
+    // lasts one tab, and never to localStorage, where they would outlive it and be readable by
+    // every script of the origin.
+    const SETTINGS_KEY = 'api-settings'
+
     const saveToLocalStorage = () => {
         try {
-            const settingsData = {
-                baseUrl: persistedBaseUrl.value,
-                pathPrefix: pathPrefix.value,
-                globalHeaders: globalHeaders.value,
-                enableGlobalHeaders: enableGlobalHeaders.value,
-            }
-            localStorage.setItem('api-settings', JSON.stringify(settingsData))
-            console.log('API settings saved to localStorage:', settingsData)
+            localStorage.setItem(
+                SETTINGS_KEY,
+                JSON.stringify({
+                    baseUrl: persistedBaseUrl.value,
+                    pathPrefix: pathPrefix.value,
+                    enableGlobalHeaders: enableGlobalHeaders.value,
+                }),
+            )
+            sessionStorage.setItem(
+                SETTINGS_KEY,
+                JSON.stringify({ globalHeaders: globalHeaders.value }),
+            )
         } catch (error) {
-            console.error('Error saving API settings to localStorage:', error)
+            console.error('Error saving API settings:', error)
         }
     }
 
-    // Load from localStorage
     const loadFromLocalStorage = () => {
         try {
-            const saved = localStorage.getItem('api-settings')
+            const saved = localStorage.getItem(SETTINGS_KEY)
             if (saved) {
                 // localStorage may hold settings from an older version.
                 const settingsData = JSON.parse(saved) as Partial<ApiSettings>
@@ -110,14 +119,29 @@ export const useApiSettingsStore = defineStore('api-settings', () => {
                 persistedBaseUrl.value =
                     !savedBaseUrl || savedBaseUrl === LEGACY_BASE_URL ? BASE_URL : savedBaseUrl
                 pathPrefix.value = settingsData.pathPrefix || ''
-                globalHeaders.value = settingsData.globalHeaders ?? {}
                 enableGlobalHeaders.value = settingsData.enableGlobalHeaders ?? true
-                console.log('API settings loaded from localStorage:', settingsData)
-            } else {
-                console.log('No API settings found in localStorage, using defaults')
+                // An older version stored the header values here too: forget them and rewrite
+                // the entry without them.
+                if ('globalHeaders' in settingsData) {
+                    localStorage.setItem(
+                        SETTINGS_KEY,
+                        JSON.stringify({
+                            baseUrl: persistedBaseUrl.value,
+                            pathPrefix: pathPrefix.value,
+                            enableGlobalHeaders: enableGlobalHeaders.value,
+                        }),
+                    )
+                }
+            }
+            const session = sessionStorage.getItem(SETTINGS_KEY)
+            if (session) {
+                const sessionData = JSON.parse(session) as {
+                    globalHeaders?: Record<string, string>
+                }
+                globalHeaders.value = sessionData.globalHeaders ?? {}
             }
         } catch (error) {
-            console.error('Error loading API settings from localStorage:', error)
+            console.error('Error loading API settings:', error)
             resetToDefaults()
         }
     }
