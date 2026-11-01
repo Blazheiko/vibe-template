@@ -439,20 +439,22 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ---
 
-## I · 🟢 feat-075 · Frontend + shared dedup
+## I · ✅ feat-075 · Frontend + shared dedup
 
 **Гілка:** `refactor/frontend-shared-dedup` · **Залежності:** G2, G3, K2, K3 · **Оцінка:** 2 д
 
-- [ ] WS-транспорт у `packages/shared/src/ws-client/` без Vue-залежностей (core з `frontend/src/composables/useWebSocketConnection.ts`; типи з `websocket-types.ts`; `classifyWsMessage`; `normalizeApiPrefix`). Апки — тонкі обгортки. Spec на core у `shared/test`; існуючі spec'и обох апок зелені.
-- [ ] `event-bus.ts` — одна реалізація (mitt).
-- [ ] Пароль: `PASSWORD_MIN/MAX` у shared; `frontend/src/utils/validate-password.ts`; замінити `AuthModals.vue:201, 397-402, 470-475, 635-640`, `ResetPasswordView.vue:39-56`, `UserAccount.vue:138-143`. **Зміна поведінки:** реєстрація почне відхиляти > 32 символів на клієнті (сервер і так відхиляв) — зафіксувати в PR.
-- [ ] `AuthModals.vue:82-86` — `looksLikePhoneNumber` зі `shared/utils/phone`.
-- [ ] Entity id — один regex: `backend/.../entity-id.ts:1` і `frontend/.../ws-payload-guards.ts:16` через `shared/brands/ids.ts` (рішення: `brands/` залишити і використовувати).
-- [ ] Admin views: `useAdminUserDetailModal()`, `AdminFilterBar.vue`, `buildAdminQuery()` в `api.ts` (+ `encodeURIComponent` на `:546`), спільний `admin.css`.
-- [ ] `sentry-service.ts:100-175` — `sanitizeTree(value, { sensitive })`; `:241-247` — прибрати повторний прогін.
-- [ ] ArkType default: перевірити, чи поточна `@arktype/type` типізує `.default()`; якщо так — прибрати касти в `query/common.ts`, `admin.ts`, `usage.ts`, `types.ts`; якщо ні — `withDefault()` helper.
+- [x] WS-транспорт у `packages/shared/src/ws-client/` без Vue-залежностей (core з `frontend/src/composables/useWebSocketConnection.ts`; типи з `websocket-types.ts`; `classifyWsMessage`; `normalizeApiPrefix`). Апки — тонкі обгортки. Spec на core у `shared/test`; існуючі spec'и обох апок зелені.
+- [x] `event-bus.ts` — одна реалізація (mitt).
+- [x] Пароль: `PASSWORD_MIN/MAX` у shared; `frontend/src/utils/validate-password.ts`; замінити `AuthModals.vue:201, 397-402, 470-475, 635-640`, `ResetPasswordView.vue:39-56`, `UserAccount.vue:138-143`. **Зміна поведінки:** реєстрація почне відхиляти > 32 символів на клієнті (сервер і так відхиляв) — зафіксувати в PR.
+- [x] `AuthModals.vue:82-86` — `looksLikePhoneNumber` зі `shared/utils/phone`.
+- [x] Entity id — один regex: `backend/.../entity-id.ts:1` і `frontend/.../ws-payload-guards.ts:16` через `shared/brands/ids.ts` (рішення: `brands/` залишити і використовувати).
+- [x] Admin views: `useAdminUserDetailModal()`, `AdminFilterBar.vue`, `buildAdminQuery()` в `api.ts` (+ `encodeURIComponent` на `:546`), спільний `admin.css`.
+- [x] `sentry-service.ts:100-175` — `sanitizeTree(value, { sensitive })`; `:241-247` — прибрати повторний прогін.
+- [x] ArkType default: перевірити, чи поточна `@arktype/type` типізує `.default()`; якщо так — прибрати касти в `query/common.ts`, `admin.ts`, `usage.ts`, `types.ts`; якщо ні — `withDefault()` helper.
 
 **Критерії:** `pnpm test` для shared/frontend/playground + G2/G3 e2e зелені; скриншоти admin-сторінок до/після.
+
+> Виконано PR #255–#258. Відхилення: (1) WS-транспорт у shared перенесено **частково** — `classifyWsMessage` і `normalizeApiPrefix` у `shared/ws-client`; саме з'єднання (448/437 рядків) — не копії (застосунок: heartbeat, refresh токена, back-off рукостискань; playground: фіксований reconnect), тож спільне ядро означало б переробку close/reconnect-логіки — рішення власника; (2) `looksLikePhoneNumber` — у `shared/patterns`, а не `shared/utils` (той тягне `libphonenumber-js` у браузер); (3) повторний прогін breadcrumbs у `beforeSend` **збережено** (defence in depth); (4) у Users-view кнопки фільтра прийняли стиль History-view (ці два дрейфували).
 
 ---
 
