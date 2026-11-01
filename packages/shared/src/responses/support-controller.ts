@@ -23,7 +23,13 @@ export const SupportChatHistoryItemSchema = type({
 })
 
 export const SupportGetChatHistoryResponseSchema = type.or(
-    { status: "'ok'", 'message?': 'string', 'data?': SupportChatHistoryItemSchema.array() },
+    {
+        status: "'ok'",
+        'message?': 'string',
+        'data?': SupportChatHistoryItemSchema.array(),
+        // True when there are messages older than the first of `data`.
+        'hasMore?': 'boolean',
+    },
     CanonicalErrorResponseSchema,
 )
 export type SupportGetChatHistoryResponse = typeof SupportGetChatHistoryResponseSchema.infer

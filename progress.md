@@ -4,17 +4,17 @@
 
 **Last Updated:** 2026-11-01
 **Active Feature:** feat-063 - Resource Limits (in progress, delivered as several PRs)
-**Branch:** `fix/llm-budget` (part 3 of 4: D2)
+**Branch:** `fix/chat-history-contract` (part 4 of 4: D3)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase D
 
 feat-063 is large and its parts are independent, so it is delivered as separate PRs and flipped to `done` only after the last one:
 
-| Part    | What                                                                                                   | Status        |
-| ------- | ------------------------------------------------------------------------------------------------------ | ------------- |
-| D4      | per-route request body limit, upload routes capped, avatar rate limit                                  | merged (#206) |
-| D0 + D1 | support chat admission contract, lease lock, idempotent resend (#207, #208, #209)                      | merged        |
-| D2      | atomic Redis daily LLM token budget: reserve at admission, settle with the provider's usage (ADR 0003) | this PR       |
-| D3      | chat history contract: pagination for the UI, a bounded selection for the prompt                       | last          |
+| Part    | What                                                                              | Status        |
+| ------- | --------------------------------------------------------------------------------- | ------------- |
+| D4      | per-route request body limit, upload routes capped, avatar rate limit             | merged (#206) |
+| D0 + D1 | support chat admission contract, lease lock, idempotent resend (#207, #208, #209) | merged        |
+| D2      | atomic Redis daily LLM token budget (ADR 0003)                                    | merged (#210) |
+| D3      | chat history contract: a page at a time for the UI, a fixed slice for the prompt  | this PR       |
 
 ## Status
 
@@ -124,7 +124,38 @@ A second external review of the merged #208 found two more problems; both were r
 | `test:redis`                               | 89 passed                                                                                           |
 | `docs:build && docs:verify`                | passed                                                                                              |
 
+## Part D3 — chat history contract (this PR)
+
+### Done
+
+- [x] Diagnosis: `GET /support/chat/history` returned the **whole** conversation (`findChatHistory(userId)` without a limit), while the prompt took the last 20 through the same method with a limit; ordering was by `created_at`, which ties for rows inserted in one millisecond. The plan asked for no silent truncation of the UI
+- [x] Tests first: shared contract (query schema bounds, cursor), repository on PostgreSQL (pages, walk back, exact rest, other users, equal timestamps, context slice, `hasChatHistory`), the service spec, 17 HTTP tests on a real server (long conversation, walking 120 messages back in 3 pages, bounds, bad cursor, another user's cursor, 401), the store (latest page, earlier page in front, dedupe, server cursor only, one page at a time, failures keep the list)
+- [x] Repository: `findChatHistoryPage(userId, { before, limit })` (ordered by `id`, `limit + 1` to know `hasMore`), `findRecentForContext(userId, 20)`, `hasChatHistory(userId)`; the unbounded `findChatHistory` is gone
+- [x] `GET /support/chat/history?before=<id>&limit=<1..100, default 50>`: `SupportChatHistoryQuerySchema` (422 on a bad value), the response gains `hasMore`; `SUPPORT_HISTORY_DEFAULT_PAGE_SIZE` / `SUPPORT_HISTORY_MAX_PAGE_SIZE` in `shared/limits`
+- [x] Prompt: `SUPPORT_CONTEXT_MESSAGES = 20` is its own constant, not a side effect of a page size
+- [x] Frontend: `supportApi.getChatHistory` returns a page or `null` (a failed read is no longer an empty conversation that wipes the list); store `loadEarlier()` with `hasMoreHistory` / `isLoadingEarlier`; a "Show earlier messages" button in `SupportView` that keeps the scroll position
+- [x] Docs: `backend/ai.md` ("Історія чату")
+
+### Behaviour changes to know
+
+- A request without parameters no longer returns the whole history: the latest 50 messages and `hasMore`. A client that ignores `hasMore` sees only the tail of a long conversation.
+- A failed history read no longer replaces the conversation with an empty list; the error is shown and the list stays.
+- Decision taken without waiting for the owner (the plan listed it as needing one): the UI pagination is a "Show earlier messages" button, not infinite scroll.
+- Noticed, not changed (out of scope): `runChat` drops from the prompt every earlier user message whose text equals the current one (`m.content !== message`); excluding the current row by id would be exact.
+
+### Evidence of Completion (part D3)
+
+| Check                                      | Result                                                                    |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| Mutation: cursor ignored                   | 2 tests fail (repository walk, HTTP walk)                                 |
+| Mutation: cursor = first message in store  | 1 store test fails                                                        |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                    |
+| `pnpm test`                                | backend 1359, frontend 203, api-playground 14, shared 17, docs 26; exit 0 |
+| `test:pg` with Redis / without             | 130 passed / 66 passed, 64 skipped                                        |
+| `test:redis`                               | 89 passed                                                                 |
+| `docs:build && docs:verify`                | passed                                                                    |
+
 ## Notes for Next Session
 
-1. Merge this PR (feat-063 stays `in_progress`); then D3 (chat history contract) on a new branch; ADR 0003 needs the owner's explicit acceptance
-2. Do not flip feat-063 to `done` before D0–D3 are merged
+1. Merge this PR; then a PR to `main` that flips feat-063 to `done` with this evidence (feature_list.json lives only on main). ADR 0003 is still proposed
+2. After that: phase E (feat-064)

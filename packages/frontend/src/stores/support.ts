@@ -14,6 +14,9 @@ export const useSupportStore = defineStore('support', () => {
     const isStreaming = ref(false)
     const historyResource = createResource(30_000)
     const error = ref<string | null>(null)
+    // Older messages exist on the server than the ones shown ("show earlier").
+    const hasMoreHistory = ref(false)
+    const isLoadingEarlier = ref(false)
     // Messages added here before the server has seen them get their own id: a timestamp
     // is not one (two messages within a millisecond), and the id is what takes one back.
     let localMessageCounter = 0
@@ -35,7 +38,10 @@ export const useSupportStore = defineStore('support', () => {
                     if (isAborted()) {
                         throw new DOMException('The operation was aborted.', 'AbortError')
                     }
-                    messages.value = history
+                    // A failed read is not an empty conversation: keep what is shown.
+                    if (history === null) throw new Error('Failed to load history')
+                    messages.value = history.messages
+                    hasMoreHistory.value = history.hasMore
                 },
                 { force },
             )
@@ -64,9 +70,47 @@ export const useSupportStore = defineStore('support', () => {
         const ok = await supportApi.deleteChatHistory()
         if (ok) {
             messages.value = []
+            hasMoreHistory.value = false
             streamingContent.value = ''
             isStreaming.value = false
             markHistoryLoaded()
+        }
+    }
+
+    /** The id of the oldest message the server has sent (not one added here, not yet stored). */
+    function oldestServerId(): string | undefined {
+        return messages.value.find((m) => /^\d+$/.test(m.id))?.id
+    }
+
+    /**
+     * Fetches the page before the oldest message shown and puts it in front. Returns how
+     * many messages were added (0: nothing earlier, a page already loading, or a failure,
+     * which is shown as the error and leaves the conversation as it was).
+     */
+    async function loadEarlier(): Promise<number> {
+        const before = oldestServerId()
+        if (!hasMoreHistory.value || isLoadingEarlier.value || before === undefined) return 0
+
+        isLoadingEarlier.value = true
+        try {
+            const page = await supportApi.getChatHistory({ before })
+            if (page === null) {
+                error.value = 'Failed to load earlier messages'
+                return 0
+            }
+            const known = new Set(messages.value.map((m) => m.id))
+            const fresh = page.messages.filter((m) => !known.has(m.id))
+            messages.value = [...fresh, ...messages.value]
+            hasMoreHistory.value = page.hasMore
+            return fresh.length
+        } catch (caughtError) {
+            error.value =
+                caughtError instanceof Error
+                    ? caughtError.message
+                    : 'Failed to load earlier messages'
+            return 0
+        } finally {
+            isLoadingEarlier.value = false
         }
     }
 
@@ -122,6 +166,8 @@ export const useSupportStore = defineStore('support', () => {
 
     function reset(): void {
         messages.value = []
+        hasMoreHistory.value = false
+        isLoadingEarlier.value = false
         isLoading.value = false
         isLoadingHistory.value = false
         streamingContent.value = ''
@@ -134,12 +180,15 @@ export const useSupportStore = defineStore('support', () => {
         messages,
         isLoading,
         isLoadingHistory,
+        hasMoreHistory,
+        isLoadingEarlier,
         streamingContent,
         isStreaming,
         error,
         historyResource: historyResource.state,
         loadHistory,
         ensureSupportHistoryLoaded,
+        loadEarlier,
         clearHistory,
         appendToken,
         completeStreaming,

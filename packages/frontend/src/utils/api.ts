@@ -359,18 +359,35 @@ export interface KnowledgeBaseArticle {
 
 export type KnowledgeBaseInitStatus = SupportKnowledgeBaseInitJob
 
+/** One page of the support chat history, oldest-first. */
+export interface SupportHistoryPage {
+    messages: SupportChatMessage[]
+    /** True when there are messages older than the first of `messages`. */
+    hasMore: boolean
+}
+
 export const supportApi = {
+    /**
+     * The latest page of the history, or the one before `before` (the id of the oldest
+     * message already shown). `null` when it could not be read: an empty page is a real
+     * answer (an empty conversation) and must not be confused with a failure.
+     */
     getChatHistory: async (
-        options: { signal?: AbortSignal } = {},
-    ): Promise<SupportChatMessage[]> => {
-        const response = await baseApi.http<{ status: string; data?: SupportChatMessage[] }>(
+        options: { before?: string; signal?: AbortSignal } = {},
+    ): Promise<SupportHistoryPage | null> => {
+        const { before, ...requestOptions } = options
+        const response = await baseApi.http<{
+            status: string
+            data?: SupportChatMessage[]
+            hasMore?: boolean
+        }>(
             'GET',
-            apiPath('support/chat/history'),
+            apiPath(`support/chat/history${before !== undefined ? `?before=${before}` : ''}`),
             {},
-            options,
+            requestOptions,
         )
-        if (!isSuccessfulResponse(response)) return []
-        return response.data.data ?? []
+        if (!isSuccessfulResponse(response)) return null
+        return { messages: response.data.data ?? [], hasMore: response.data.hasMore === true }
     },
 
     deleteChatHistory: async (): Promise<boolean> => {

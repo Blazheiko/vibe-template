@@ -5,7 +5,9 @@ import aiConfig from '#config/ai.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 
 const supportRepositoryMock = {
-    findChatHistory: vi.fn(),
+    findChatHistoryPage: vi.fn(),
+    findRecentForContext: vi.fn(),
+    hasChatHistory: vi.fn(),
     deleteAllChatHistory: vi.fn(),
     addChatMessage: vi.fn(),
     addUserMessageOnce: vi.fn(),
@@ -159,23 +161,25 @@ afterEach(() => {
 })
 
 describe('supportService', () => {
-    it('returns mapped chat history', async () => {
-        supportRepositoryMock.findChatHistory.mockResolvedValue([
-            {
-                id: 1n,
-                role: 'assistant',
-                content: 'Hello',
-                screenshots: ['1', '2'],
-                createdAt: new Date('2026-05-08T10:00:00.000Z'),
-            },
-        ])
+    describe('the chat history page (feat-063, D3)', () => {
+        const row = (id: bigint, content: string) => ({
+            id,
+            role: 'assistant' as const,
+            content,
+            screenshots: ['1', '2'],
+            createdAt: new Date('2026-05-08T10:00:00.000Z'),
+        })
 
-        const { supportService } = await loadSupportService()
-        const result = await supportService.getChatHistory(11n)
+        it('returns a mapped page and says whether older messages exist', async () => {
+            supportRepositoryMock.findChatHistoryPage.mockResolvedValue({
+                rows: [row(1n, 'Hello')],
+                hasMore: true,
+            })
 
-        expect(Result.isOk(result)).toBe(true)
-        if (Result.isOk(result)) {
-            expect(result.value).toEqual({
+            const { supportService } = await loadSupportService()
+            const result = await supportService.getChatHistory(11n, { limit: 50 })
+
+            expect(Result.isOk(result) && result.value).toEqual({
                 data: [
                     {
                         id: '1',
@@ -185,8 +189,64 @@ describe('supportService', () => {
                         createdAt: '2026-05-08T10:00:00.000Z',
                     },
                 ],
+                hasMore: true,
             })
-        }
+        })
+
+        it('passes the cursor and the page size to the repository, the cursor as a bigint', async () => {
+            supportRepositoryMock.findChatHistoryPage.mockResolvedValue({
+                rows: [],
+                hasMore: false,
+            })
+
+            const { supportService } = await loadSupportService()
+            await supportService.getChatHistory(11n, { before: '812', limit: 20 })
+            await supportService.getChatHistory(11n, { limit: 50 })
+
+            expect(supportRepositoryMock.findChatHistoryPage.mock.calls).toEqual([
+                [11n, { before: 812n, limit: 20 }],
+                [11n, { before: undefined, limit: 50 }],
+            ])
+        })
+
+        it('never reads the whole history', async () => {
+            supportRepositoryMock.findChatHistoryPage.mockResolvedValue({
+                rows: [],
+                hasMore: false,
+            })
+
+            const { supportService } = await loadSupportService()
+            await supportService.getChatHistory(11n, { limit: 50 })
+
+            expect(supportRepositoryMock.findRecentForContext).not.toHaveBeenCalled()
+        })
+
+        it('returns an internal error when the page cannot be read', async () => {
+            supportRepositoryMock.findChatHistoryPage.mockRejectedValue(new Error('db down'))
+
+            const { supportService } = await loadSupportService()
+            const result = await supportService.getChatHistory(11n, { limit: 50 })
+
+            expect(Result.isError(result) && result.error._tag).toBe('Internal')
+        })
+    })
+
+    describe('the conversation the model is shown (feat-063, D3)', () => {
+        it('is the last 20 messages, not the whole history', async () => {
+            supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
+            supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+            supportEmbeddingServiceMock.search.mockResolvedValue([])
+            supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                yield 'a'
+            })
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(admissionOf(), 7n, 'hello', 'conn-1')
+
+            expect(supportRepositoryMock.findRecentForContext).toHaveBeenCalledWith(7n, 20)
+            expect(supportRepositoryMock.findChatHistoryPage).not.toHaveBeenCalled()
+        })
     })
 
     it('returns internal error when deleting chat history fails', async () => {
@@ -213,7 +273,7 @@ describe('supportService', () => {
 
         it('forwards the connection signal and does not report a closed connection as a failure', async () => {
             supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
             supportEmbeddingServiceMock.search.mockResolvedValue([])
             supportLlmServiceMock.chatStream.mockImplementation(abortingStream)
@@ -240,7 +300,7 @@ describe('supportService', () => {
         })
 
         it('openChat forwards the signal and stays quiet when aborted', async () => {
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.hasChatHistory.mockResolvedValue(false)
             supportLlmServiceMock.openChatStream.mockImplementation(abortingStream)
             const controller = new AbortController()
 
@@ -261,7 +321,7 @@ describe('supportService', () => {
     // provider reported; a call it never reached is refunded by the settlement.
     describe('the run and the daily budget (feat-063, D2)', () => {
         const happyPath = () => {
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
             supportEmbeddingServiceMock.search.mockResolvedValue([])
             supportLlmServiceMock.chatStream.mockImplementation(async function* () {
@@ -364,7 +424,7 @@ describe('supportService', () => {
         it('does not mark the later calls when the earlier one was the last the run reached', async () => {
             happyPath()
             const lost = new AbortController()
-            supportRepositoryMock.findChatHistory.mockImplementation(() => {
+            supportRepositoryMock.findRecentForContext.mockImplementation(() => {
                 lost.abort(lostLease().signal.reason)
                 return Promise.resolve([])
             })
@@ -378,7 +438,7 @@ describe('supportService', () => {
         })
 
         it('marks the greeting as one started answer', async () => {
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.hasChatHistory.mockResolvedValue(false)
             supportLlmServiceMock.openChatStream.mockImplementation(async function* () {
                 yield 'hi'
             })
@@ -409,7 +469,7 @@ describe('supportService', () => {
         }
 
         it('stores the message under its id and puts the id on every event of the answer', async () => {
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
             supportEmbeddingServiceMock.search.mockResolvedValue([])
             supportLlmServiceMock.chatStream.mockImplementation(async function* () {
@@ -475,7 +535,7 @@ describe('supportService', () => {
         })
 
         it('puts the id on the error event of a failed answer as well', async () => {
-            supportRepositoryMock.findChatHistory.mockRejectedValue(new Error('db down'))
+            supportRepositoryMock.findRecentForContext.mockRejectedValue(new Error('db down'))
             supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('x')
             const events = tellOrder()
 
@@ -497,7 +557,7 @@ describe('supportService', () => {
         })
 
         it('leaves the id off the events when the client sent none', async () => {
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
             supportEmbeddingServiceMock.search.mockResolvedValue([])
             supportLlmServiceMock.chatStream.mockImplementation(async function* () {
@@ -526,7 +586,7 @@ describe('supportService', () => {
         })
 
         it('passes the resolved language to the LLM instead of a hard-coded one', async () => {
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.hasChatHistory.mockResolvedValue(false)
             supportLlmServiceMock.openChatStream.mockImplementation(async function* () {
                 yield 'hi'
             })
@@ -839,7 +899,7 @@ describe('supportService', () => {
             const order: string[] = []
             tellOrder(order)
             supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
             supportEmbeddingServiceMock.search.mockResolvedValue([])
             supportLlmServiceMock.chatStream.mockImplementation(async function* () {
@@ -864,7 +924,7 @@ describe('supportService', () => {
             const order: string[] = []
             tellOrder(order)
             supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockRejectedValue(
                 new Error('provider down'),
             )
@@ -885,7 +945,7 @@ describe('supportService', () => {
         it('openChat failure: the release, then support_chat_error with its own code', async () => {
             const order: string[] = []
             tellOrder(order)
-            supportRepositoryMock.findChatHistory.mockRejectedValue(new Error('db down'))
+            supportRepositoryMock.hasChatHistory.mockRejectedValue(new Error('db down'))
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
@@ -904,7 +964,7 @@ describe('supportService', () => {
             const order: string[] = []
             tellOrder(order)
             supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
-            supportRepositoryMock.findChatHistory.mockResolvedValue([])
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
             supportQueryTranslationServiceMock.translateToEnglish.mockRejectedValue(
                 new DOMException('closed', 'AbortError'),
             )
@@ -927,7 +987,7 @@ describe('supportService', () => {
                 const lost = new AbortController()
                 supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
                 // The lock is lost while the history is still being read.
-                supportRepositoryMock.findChatHistory.mockImplementation(() => {
+                supportRepositoryMock.findRecentForContext.mockImplementation(() => {
                     lost.abort(lostLease().signal.reason)
                     return Promise.resolve([])
                 })
@@ -966,7 +1026,7 @@ describe('supportService', () => {
             it('chat: the lost lock reaches the provider calls as their abort signal', async () => {
                 const lost = new AbortController()
                 supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
-                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportRepositoryMock.findRecentForContext.mockResolvedValue([])
                 supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
                 supportEmbeddingServiceMock.search.mockResolvedValue([])
                 let streamSignal: AbortSignal | undefined
@@ -992,7 +1052,7 @@ describe('supportService', () => {
                 // The existing behaviour: abort of the connection is not a failure.
                 const controller = new AbortController()
                 supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
-                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportRepositoryMock.findRecentForContext.mockResolvedValue([])
                 supportQueryTranslationServiceMock.translateToEnglish.mockImplementation(() => {
                     controller.abort()
                     return Promise.reject(new DOMException('aborted', 'AbortError'))
@@ -1014,7 +1074,7 @@ describe('supportService', () => {
             // the user: a late event could end the answer of the request that took the lock over.
             it('chat: sends no token after the lock was lost', async () => {
                 const lost = new AbortController()
-                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportRepositoryMock.findRecentForContext.mockResolvedValue([])
                 supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
                 supportEmbeddingServiceMock.search.mockResolvedValue([])
                 // A provider that does not look at the signal keeps producing tokens.
@@ -1035,7 +1095,7 @@ describe('supportService', () => {
 
             it('chat: tells nobody "complete" and notifies nobody when the lock was lost while the answer was being saved', async () => {
                 const lost = new AbortController()
-                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportRepositoryMock.findRecentForContext.mockResolvedValue([])
                 supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
                 supportEmbeddingServiceMock.search.mockResolvedValue([])
                 supportLlmServiceMock.chatStream.mockImplementation(async function* () {
@@ -1059,7 +1119,7 @@ describe('supportService', () => {
 
             it('openChat: sends no token after the lock was lost', async () => {
                 const lost = new AbortController()
-                supportRepositoryMock.findChatHistory.mockResolvedValue([])
+                supportRepositoryMock.hasChatHistory.mockResolvedValue(false)
                 supportLlmServiceMock.openChatStream.mockImplementation(async function* () {
                     yield 'a'
                     lost.abort(lostLease().signal.reason)
@@ -1079,9 +1139,9 @@ describe('supportService', () => {
                 const order: string[] = []
                 tellOrder(order)
                 const lost = new AbortController()
-                supportRepositoryMock.findChatHistory.mockImplementation(() => {
+                supportRepositoryMock.hasChatHistory.mockImplementation(() => {
                     lost.abort(lostLease().signal.reason)
-                    return Promise.resolve([])
+                    return Promise.resolve(false)
                 })
                 const admission = admissionOf(order, lost)
 
@@ -1096,7 +1156,7 @@ describe('supportService', () => {
         it('openChat with an existing history writes nothing and still releases', async () => {
             const order: string[] = []
             tellOrder(order)
-            supportRepositoryMock.findChatHistory.mockResolvedValue([{ id: 1n }])
+            supportRepositoryMock.hasChatHistory.mockResolvedValue(true)
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
@@ -1113,7 +1173,7 @@ describe('supportService', () => {
             broadcastServiceMock.broadcastMessageToUser.mockImplementation(() => {
                 throw new Error('socket gone')
             })
-            supportRepositoryMock.findChatHistory.mockRejectedValue(new Error('db down'))
+            supportRepositoryMock.hasChatHistory.mockRejectedValue(new Error('db down'))
             const admission = admissionOf()
 
             const { supportService } = await loadSupportService()

@@ -144,6 +144,8 @@ export default {
         start: 'Start support chat',
         opening: 'Opening...',
         loadingHistory: 'Loading history...',
+        loadEarlier: 'Show earlier messages',
+        loadingEarlier: 'Loading...',
         inputPlaceholder: 'Type your message...',
     },
 

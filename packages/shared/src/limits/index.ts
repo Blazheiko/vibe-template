@@ -7,3 +7,9 @@
  * (translation, embedding, the answer, and again as history), so it is bounded.
  */
 export const SUPPORT_MESSAGE_MAX_LENGTH = 4000
+
+/** Messages in the first page of the support chat history, when the client does not ask for more. */
+export const SUPPORT_HISTORY_DEFAULT_PAGE_SIZE = 50
+
+/** Most messages one page of the support chat history may carry. */
+export const SUPPORT_HISTORY_MAX_PAGE_SIZE = 100

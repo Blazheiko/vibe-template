@@ -10,8 +10,16 @@ import {
     ErrorCodeValues,
 } from '../dist/errors/index.js'
 import { EntityIdSchema } from '../dist/brands/index.js'
-import { SUPPORT_MESSAGE_MAX_LENGTH } from '../dist/limits/index.js'
-import { PushSubscriptionTestInputSchema, SupportChatInputSchema } from '../dist/schemas/index.js'
+import {
+    SUPPORT_HISTORY_DEFAULT_PAGE_SIZE,
+    SUPPORT_HISTORY_MAX_PAGE_SIZE,
+    SUPPORT_MESSAGE_MAX_LENGTH,
+} from '../dist/limits/index.js'
+import {
+    PushSubscriptionTestInputSchema,
+    SupportChatHistoryQuerySchema,
+    SupportChatInputSchema,
+} from '../dist/schemas/index.js'
 import * as root from '../dist/index.js'
 
 test('ErrorCode and ErrorCodeValues list the same codes', () => {
@@ -75,4 +83,35 @@ test('shared/limits has no schema library behind it, so the browser can import i
     )
     assert.doesNotMatch(source, /^import /m)
     assert.equal(root.SUPPORT_MESSAGE_MAX_LENGTH, SUPPORT_MESSAGE_MAX_LENGTH)
+})
+
+// The history is read a page at a time: the UI asks for the latest page and then for the ones
+// before it (feat-063, D3). An unbounded read used to return the whole conversation.
+test('the support history query is bounded and takes a numeric cursor', () => {
+    assert.equal(SUPPORT_HISTORY_DEFAULT_PAGE_SIZE, 50)
+    assert.equal(SUPPORT_HISTORY_MAX_PAGE_SIZE, 100)
+
+    assert.deepEqual(SupportChatHistoryQuerySchema({}), { limit: 50 })
+    assert.deepEqual(SupportChatHistoryQuerySchema({ limit: '20', before: '812' }), {
+        limit: 20,
+        before: '812',
+    })
+    assert.deepEqual(SupportChatHistoryQuerySchema({ limit: '100' }), { limit: 100 })
+
+    for (const limit of ['0', '101', '-1', '1.5', 'many', '']) {
+        assert.ok(
+            SupportChatHistoryQuerySchema({ limit }) instanceof type.errors,
+            `limit ${JSON.stringify(limit)}`,
+        )
+    }
+    // A cursor is a row id: digits, no leading zero, and small enough for a bigint column.
+    for (const before of ['0', '007', '-5', 'abc', '1e3', ' 1', '', '9'.repeat(19)]) {
+        assert.ok(
+            SupportChatHistoryQuerySchema({ before }) instanceof type.errors,
+            `before ${JSON.stringify(before)}`,
+        )
+    }
+    assert.ok(
+        SupportChatHistoryQuerySchema({ before: '9'.repeat(18) }) instanceof type.errors === false,
+    )
 })
