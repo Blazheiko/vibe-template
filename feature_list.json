@@ -701,7 +701,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/auth-normalize",
             "dependencies": ["feat-070"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
