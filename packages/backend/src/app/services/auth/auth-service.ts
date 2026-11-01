@@ -20,12 +20,16 @@ import { emailVerificationService } from '#app/services/auth/email-verification-
 import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
-import {
-    smsVerificationProvider,
-    type SmsVerificationFlow,
-} from '#app/services/auth/sms-verification-provider.js'
+import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import {
+    isChallengeExpired,
+    LINK_PHONE_FLOW,
+    normalizeEmail,
+    normalizePhone,
+    REGISTER_PHONE_FLOW,
+} from '#app/services/auth/auth-normalize.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import {
     hashOtpVerificationCode,
@@ -37,7 +41,7 @@ import {
     extractChallengeUserId,
 } from '#app/services/auth/sms-auth-challenge-metadata.js'
 import { PENDING_SMS_CODE_HASH_PLACEHOLDER } from './sms-auth-challenge-constants.js'
-import { looksLikePhoneNumber, normalizePhoneNumber } from 'shared/utils'
+import { looksLikePhoneNumber } from 'shared/utils'
 import type {
     ChangePasswordInput,
     LoginInput,
@@ -53,9 +57,6 @@ import type { Logger } from 'pino'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
-
-const REGISTER_PHONE_FLOW: SmsVerificationFlow = 'register_phone'
-const LINK_PHONE_FLOW: SmsVerificationFlow = 'link_phone'
 
 interface AuthSuccessPayload {
     status: 'success'
@@ -74,10 +75,6 @@ type RegisterEmailFlowPayload = AuthSuccessPayload | GenericAcceptedPayload
 
 const GENERIC_EMAIL_REGISTRATION_MESSAGE =
     'If the email can be used for registration, continue with the verification instructions sent to your inbox.'
-
-function isChallengeExpired(expiresAt: Date): boolean {
-    return expiresAt.getTime() <= Date.now()
-}
 
 function assertPhoneAuthEnabled(): AppResult<never> | undefined {
     if (authConfig.phoneAuthEnabled) {
@@ -108,22 +105,6 @@ export function resolveLoginKey(identifier: string): LoginKey | null {
     }
     const phone = normalizePhone(trimmed)
     return Result.isError(phone) ? null : { kind: 'phone', value: phone.value }
-}
-
-function normalizeEmail(email: string): string {
-    return email.trim().toLowerCase()
-}
-
-function normalizePhone(input: string, defaultCountry?: string): AppResult<string> {
-    try {
-        return Result.ok(normalizePhoneNumber(input, defaultCountry))
-    } catch (error) {
-        if (error instanceof Error) {
-            return Result.err(badRequest(error.message))
-        }
-
-        return Result.err(badRequest('Phone number must be valid and in a supported format'))
-    }
 }
 
 async function createPasswordHash(password: string): Promise<AppResult<string>> {

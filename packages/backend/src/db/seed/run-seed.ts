@@ -1,3 +1,4 @@
+import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { SEED_PROMPTS } from './prompts.js'
 import type { PromptType, SeedPrompt } from './prompts.js'
 
@@ -60,9 +61,6 @@ const DEMO_ACCOUNTS: readonly DemoAccount[] = [
         passwordVar: 'SEED_USER_PASSWORD',
     },
 ]
-
-// Same normalization as normalizeEmail in app/services/auth/auth-service.ts.
-export const normalizeEmail = (email: string): string => email.trim().toLowerCase()
 
 const nonEmpty = (value: string | undefined): string | undefined =>
     value === undefined || value.trim() === '' ? undefined : value

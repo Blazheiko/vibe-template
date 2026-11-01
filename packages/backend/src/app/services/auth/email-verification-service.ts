@@ -19,6 +19,7 @@ import {
 } from '#app/services/shared/errors.js'
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
@@ -379,7 +380,7 @@ export const emailVerificationService = {
             }
 
             const conflictingUserResult = await tryInternal(
-                () => userRepository.findByEmail(linkVerification.targetEmail.toLowerCase()),
+                () => userRepository.findByEmail(normalizeEmail(linkVerification.targetEmail)),
                 'Failed to load user by email',
             )
             if (Result.isError(conflictingUserResult)) {
@@ -410,7 +411,7 @@ export const emailVerificationService = {
                         const updated = await userRepository.update(
                             user.id,
                             {
-                                email: linkVerification.targetEmail.toLowerCase(),
+                                email: normalizeEmail(linkVerification.targetEmail),
                                 emailVerifiedAt: new Date(),
                             },
                             tx,
