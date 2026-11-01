@@ -711,8 +711,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/email-templates",
             "dependencies": ["feat-071"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #245: renderBrandedEmail() in notifications/email-templates.ts replaces the three HTML templates (reset, verification, e-mail linking); the nine G1 file snapshots pass untouched (byte-identical, files unchanged in git); a one-digit layout mutation fails 6 of 9; email-templates.spec.ts (8). typecheck/lint/format:check/pnpm test (backend 1699)/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
         {
             "id": "feat-073",
@@ -721,7 +721,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/one-time-token-module",
             "dependencies": ["feat-072"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
