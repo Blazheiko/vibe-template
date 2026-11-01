@@ -751,8 +751,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/frontend-split-components",
             "dependencies": ["feat-069", "feat-075"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Phase J complete: AuthModals.vue (#260), stores/state.ts (#261), service worker out of main.ts (#262), MenuButton.vue (#263), api-playground TestForm.vue (#264). Each PR: typecheck/lint/format:check/test/build clean, Playwright mock 61 passed, e2e-live green in CI unchanged, docs:build+docs:verify passed; golden paths covered by the mock/e2e-live specs and per-PR old-vs-new comparisons. Evidence blocks in progress.md on refactor/frontend-split-components-{,2,3,4,5}."
         },
         {
             "id": "feat-077",
