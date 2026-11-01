@@ -114,7 +114,16 @@ export {
 export { PromptUpdateInputSchema, type PromptUpdateInput } from './main/prompt-update.js'
 export { PromptTestInputSchema, type PromptTestInput } from './main/prompt-test.js'
 
-export { SUPPORT_MESSAGE_MAX_LENGTH } from '../limits/index.js'
+export {
+    SUPPORT_HISTORY_DEFAULT_PAGE_SIZE,
+    SUPPORT_HISTORY_MAX_PAGE_SIZE,
+    SUPPORT_MESSAGE_MAX_LENGTH,
+} from '../limits/index.js'
+export {
+    SupportChatHistoryQuerySchema,
+    type SupportChatHistoryQuery,
+    type SupportChatHistoryQueryInput,
+} from './query/support.js'
 export { SupportChatInputSchema, type SupportChatInput } from './support/support-chat.js'
 export {
     SupportOpenChatInputSchema,

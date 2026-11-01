@@ -109,6 +109,10 @@ const SUPPORT_LEASE: SupportLease = {
 }
 const BUSY_RETRY_AFTER_SECONDS = 5
 
+// How much of the conversation the model is shown. The UI reads the history in pages; this
+// is a separate, fixed slice, so a long conversation does not grow the prompt (and its cost).
+const SUPPORT_CONTEXT_MESSAGES = 20
+
 /**
  * A message the server has accepted: it passed the per-user limit and holds the user's
  * lock. Whoever has one must release it, on every path (`run*` does).
@@ -266,9 +270,21 @@ function tellClient(
 }
 
 export const supportService = {
-    async getChatHistory(userId: bigint): Promise<AppResult<{ data: SupportChatHistoryItem[] }>> {
+    /**
+     * One page of the history: the `limit` messages before the cursor `before` (the id of the
+     * oldest message the client has), oldest-first, and whether older ones exist. The whole
+     * history is never read in one go.
+     */
+    async getChatHistory(
+        userId: bigint,
+        page: { before?: string | undefined; limit: number },
+    ): Promise<AppResult<{ data: SupportChatHistoryItem[]; hasMore: boolean }>> {
         const result = await tryInternal(
-            () => supportRepository.findChatHistory(userId),
+            () =>
+                supportRepository.findChatHistoryPage(userId, {
+                    before: page.before === undefined ? undefined : BigInt(page.before),
+                    limit: page.limit,
+                }),
             'Failed to load chat history',
         )
         if (Result.isError(result)) {
@@ -276,7 +292,8 @@ export const supportService = {
         }
 
         return Result.ok({
-            data: result.value.map((m) => ({
+            hasMore: result.value.hasMore,
+            data: result.value.rows.map((m) => ({
                 id: String(m.id),
                 role: m.role,
                 content: m.content,
@@ -331,9 +348,9 @@ export const supportService = {
             // lost must not start a second answer next to the one that took the lock over.
             runSignal.throwIfAborted()
             const langNative = resolveSupportLanguage(language)
-            const existing = await supportRepository.findChatHistory(userId, 1)
+            const hasHistory = await supportRepository.hasChatHistory(userId)
             runSignal.throwIfAborted()
-            if (existing.length === 0) {
+            if (!hasHistory) {
                 const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
 
                 let fullReply = ''
@@ -427,7 +444,7 @@ export const supportService = {
                     signal: runSignal,
                     onUsage: usageReporter(admission, BUDGET_CALLS.translation),
                 }),
-                supportRepository.findChatHistory(userId, 20),
+                supportRepository.findRecentForContext(userId, SUPPORT_CONTEXT_MESSAGES),
             ])
             runSignal.throwIfAborted()
 

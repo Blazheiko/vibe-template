@@ -163,6 +163,17 @@ async function sendMessage(textOverride?: string): Promise<void> {
     store.setError(getResponseMessage(result.error, 'Failed to send message'))
 }
 
+// The earlier page is put in front of what is shown; the view keeps looking at the same
+// message instead of jumping to the top of the new content.
+async function showEarlier(): Promise<void> {
+    const container = chatContainer.value
+    const heightBefore = container?.scrollHeight ?? 0
+    const added = await store.loadEarlier()
+    if (added === 0 || container === null) return
+    await nextTick()
+    container.scrollTop += container.scrollHeight - heightBefore
+}
+
 function handleKeydown(event: KeyboardEvent): void {
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
@@ -265,6 +276,20 @@ onUnmounted(() => {
                     </div>
 
                     <template v-else>
+                        <div v-if="store.hasMoreHistory" class="support-earlier">
+                            <button
+                                type="button"
+                                class="support-earlier-button"
+                                :disabled="store.isLoadingEarlier"
+                                @click="showEarlier"
+                            >
+                                {{
+                                    store.isLoadingEarlier
+                                        ? t('support.loadingEarlier')
+                                        : t('support.loadEarlier')
+                                }}
+                            </button>
+                        </div>
                         <div
                             v-for="msg in displayMessages"
                             :key="msg.id"
@@ -459,6 +484,32 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     gap: 14px;
+}
+
+.support-earlier {
+    display: flex;
+    justify-content: center;
+    padding: 4px 0 12px;
+}
+
+.support-earlier-button {
+    background: none;
+    border: 1px solid var(--border-color, rgba(128, 128, 128, 0.35));
+    border-radius: 16px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.support-earlier-button:hover:not(:disabled) {
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.support-earlier-button:disabled {
+    opacity: 0.6;
+    cursor: default;
 }
 
 .support-state {

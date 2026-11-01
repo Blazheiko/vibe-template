@@ -17,6 +17,7 @@ import {
     AdminOnlineHistoryListQuerySchema,
     AdminUserListQuerySchema,
     LlmTextUsageQuerySchema,
+    SupportChatHistoryQuerySchema,
     OAuthCallbackQuerySchema,
     OAuthRedirectQuerySchema,
     PushSubscriptionTestInputSchema,
@@ -409,8 +410,10 @@ export default [
                 url: '/chat/history',
                 method: 'get',
                 handler: SupportController.getChatHistory.bind(SupportController),
+                queryValidator: SupportChatHistoryQuerySchema,
                 ResponseSchema: ResponseSchemas.SupportGetChatHistoryResponseSchema,
-                description: 'Get support chat history',
+                description:
+                    'Get a page of the support chat history (latest first page; `before` for older)',
             }),
             defineRoute({
                 url: '/chat/history',

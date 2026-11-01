@@ -103,6 +103,15 @@ sequenceDiagram
 
 Системний промпт збирає [`support-llm-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-llm-service.ts). Він підставляє контекст замість `{context}`, а якщо плейсхолдера немає, дописує контекст у кінець і логує попередження. Окремо додається інструкція відповідати рідною мовою користувача. Невдалий переклад не зупиняє чат: сервіс повертає оригінальний запит.
 
+## Історія чату
+
+Історію читають двома різними способами, і жоден не віддає всю розмову (раніше UI отримував її всю, а промпт — молча обрізану):
+
+- **Для UI — сторінками.** `GET /support/chat/history` ([support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/support/support-controller.ts)) віддає **останню сторінку** (за замовчуванням 50 повідомлень, `limit` від 1 до 100) за зростанням, а також `hasMore: true`, якщо є старіші. Старіші: `?before=<id найстарішого повідомлення, яке в клієнта вже є>&limit=…`. Курсор — `id` рядка (цифри без ведучого нуля, ≤ 18 цифр), порядок — за `id`, а не за `created_at` (рядки, вставлені в одну мілісекунду, мають однаковий час). Некоректні `limit`/`before` — `422`. Чужі повідомлення недоступні навіть з чужим курсором. На фронтенді кнопка «Show earlier messages» підвантажує попередню сторінку й ставить її перед показаним, не стрибаючи вгору; повідомлення, додані локально й ще не збережені, курсором не стають.
+- **Для промпту — фіксований зріз.** `supportRepository.findRecentForContext(userId, 20)` ([support-repository.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/support/support-repository.ts)): останні 20 повідомлень, незалежно від довжини розмови, тож довга розмова не роздуває промпт і вартість. Це окрема константа (`SUPPORT_CONTEXT_MESSAGES`), а не побічний ефект ліміту сторінки.
+
+**Зміна поведінки.** Запит без параметрів більше не повертає всю історію: лише останні 50 повідомлень і `hasMore`. Клієнти, що не знають про `hasMore`, бачать лише хвіст розмови.
+
 ## Допуск повідомлення
 
 Кожне повідомлення чату коштує кілька платних викликів провайдера (переклад, embedding, відповідь, а потім ще раз як історія), тому його **допускають до того, як відповісти `ok`**. Допуск ([`support-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-service.ts), `admitChat` / `admitOpenChat`) перевіряє по черзі:

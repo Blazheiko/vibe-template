@@ -10,8 +10,9 @@ import type {
     SupportScreenshotResponse,
 } from 'shared/responses'
 import { Result } from 'better-result'
+import type { SupportChatHistoryQuery } from 'shared/schemas'
 
-function getUserId(context: HttpContext): bigint | null {
+function getUserId<TQuery>(context: HttpContext<unknown, TQuery>): bigint | null {
     if (!context.auth.check()) {
         applyAppErrorStatus(context.responseData, unauthorized())
         return null
@@ -25,18 +26,21 @@ function getUserId(context: HttpContext): bigint | null {
 }
 
 export default {
-    async getChatHistory(context: HttpContext): Promise<SupportGetChatHistoryResponse> {
+    async getChatHistory(
+        context: HttpContext<unknown, SupportChatHistoryQuery>,
+    ): Promise<SupportGetChatHistoryResponse> {
         const userId = getUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const result = await supportService.getChatHistory(userId)
+        const { before, limit } = context.httpData.query
+        const result = await supportService.getChatHistory(userId, { before, limit })
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
         }
 
-        return { status: 'ok', data: result.value.data }
+        return { status: 'ok', data: result.value.data, hasMore: result.value.hasMore }
     },
 
     async deleteChatHistory(context: HttpContext): Promise<SupportDeleteChatHistoryResponse> {

@@ -261,8 +261,8 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ### D3. Історія чату — контракт, не тихе обрізання
 
-- [ ] `support-repository.ts:31-41` `getChatHistory` — **не** обрізати до 20 (це змінює UI). Розділити: `getChatHistoryPage(userId, { before, limit })` для UI з пагінацією (frontend `SupportView.vue` — «показати раніше») і `getRecentForContext(userId, 20)` для промпту.
-- [ ] Зафіксувати контракт у `documentation/backend/support.md`.
+- [x] `support-repository.ts:31-41` `getChatHistory` — **не** обрізати до 20 (це змінює UI). Розділити: `getChatHistoryPage(userId, { before, limit })` для UI з пагінацією (frontend `SupportView.vue` — «показати раніше») і `getRecentForContext(userId, 20)` для промпту.
+- [x] Контракт описано в `documentation/backend/ai.md` (розділ «Історія чату»); окремого `support.md` у репозиторії немає.
 
 ### D4. Multipart — file-limit і body-limit окремо
 
