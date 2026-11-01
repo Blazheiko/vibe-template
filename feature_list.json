@@ -651,8 +651,8 @@
             "owner": "Blazheiko",
             "branch": "fix/auth-response-contract",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #218 (merge 9702ad1): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1377, frontend 203, api-playground 14, shared 17, docs 26), test:pg 132 with Redis / 68 without, test:redis 89, docs:build + docs:verify; 10 new tests failed before the change (unverified login = the same 401 error value as a wrong password, budget not reset, background resend once per interval, registration hashes before the lookup with equal duration); CI quality/e2e/build/test-pg/test-redis green"
         },
         {
             "id": "feat-067",
