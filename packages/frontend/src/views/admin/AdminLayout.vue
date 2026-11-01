@@ -263,3 +263,5 @@ onUnmounted(() => {
     padding: 24px;
 }
 </style>
+
+<style src="../../assets/admin.css"></style>

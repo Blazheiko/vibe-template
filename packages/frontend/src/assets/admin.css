@@ -1,0 +1,24 @@
+/* What the admin lists share and do not scope: the table wrapper and its cells. Under
+   `.admin-content` (the layout's main area) so nothing outside the admin panel is touched. */
+.admin-content .table-wrap {
+    overflow-x: auto;
+}
+
+.admin-content .cell-id {
+    font-family: monospace;
+    color: var(--text-secondary);
+}
+
+.admin-content .cell-email {
+    min-width: 220px;
+}
+
+.admin-content .cell-empty {
+    color: var(--text-secondary);
+}
+
+.admin-content .empty-row {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 28px;
+}
