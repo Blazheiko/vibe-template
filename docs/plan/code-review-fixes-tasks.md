@@ -410,13 +410,15 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #245. Єдина реальна різниця шаблонів — дія (`button` з блоком запасного посилання або одне `link`), прехедер необов'язковий.
 
-### H4 · One-time tokens (1 д)
+### H4 · ✅ One-time tokens (1 д)
 
-- [ ] `createTokenRepository(table)` → три репозиторії стають однорядковими.
-- [ ] `one-time-token.ts` — `hashToken`, `createToken`, `issueToken`, узагальнити транзакційний `consumeTokenAndApply` з B2 для трьох репозиторіїв.
-- [ ] Замінити issue/consume у `password-reset-service.ts:269-324, 544-580`, `email-verification-service.ts:247-306, 323-365, 432-446, 553-610`.
-- [ ] Три таблиці **не** зливати (міграція без виграшу); зафіксувати примітку.
-- [ ] Критерій: B2-тести на гонку і fault-injection зелені для всіх трьох токен-типів без змін очікувань.
+- [x] `createTokenRepository(table)` → три репозиторії стають однорядковими.
+- [x] `one-time-token.ts` — `hashToken`, `createToken`, `issueToken`, узагальнити транзакційний `consumeTokenAndApply` з B2 для трьох репозиторіїв.
+- [x] Замінити issue/consume у `password-reset-service.ts:269-324, 544-580`, `email-verification-service.ts:247-306, 323-365, 432-446, 553-610`.
+- [x] Три таблиці **не** зливати (міграція без виграшу); зафіксувати примітку.
+- [x] Критерій: B2-тести на гонку і fault-injection зелені для всіх трьох токен-типів без змін очікувань.
+
+> Виконано PR #247. Три таблиці не зливали. Захист claim (`used_at IS NULL`) тримають саме PG-тести (юніт-spec'и з моками його не бачать).
 
 ### H5 · SMS challenge (1–1.5 д)
 

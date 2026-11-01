@@ -721,8 +721,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/one-time-token-module",
             "dependencies": ["feat-072"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #247: createTokenRepository() for the three token tables and one-time-token.ts (issueToken, findUsableToken, consumeTokenAndApply) used by password-reset and email-verification services; 9 PG race/fault-injection tests and 456 auth specs pass unchanged; one-time-token.spec.ts (13); mutations caught (claim without used_at IS NULL only by the PG tests). typecheck/lint/format:check/pnpm test (backend 1712)/test:pg/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
         {
             "id": "feat-074",
@@ -731,7 +731,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/sms-challenge",
             "dependencies": ["feat-073"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
