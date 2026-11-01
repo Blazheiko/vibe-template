@@ -8,11 +8,4 @@ export const CsrfRejectReason = {
     FetchSiteInvalid: 'fetch_site_invalid',
 } as const
 
-export const CSRF_REJECT_REASONS = [
-    'origin_mismatch',
-    'token_mismatch',
-    'fetch_site_cross_site',
-    'fetch_site_invalid',
-] as const
-
 export type CsrfRejectReason = (typeof CsrfRejectReason)[keyof typeof CsrfRejectReason]
