@@ -20,3 +20,9 @@ export const PASSWORD_PROBLEM_MESSAGE_KEY = {
     tooShort: 'auth.errorPasswordLength',
     tooLong: 'auth.errorPasswordMaxLength',
 } as const satisfies Record<PasswordLengthProblem, string>
+
+/** The message of a password that does not fit the limits, or '' when it does. */
+export function passwordFieldMessage(value: string, translate: (key: string) => string): string {
+    const problem = passwordLengthProblem(value)
+    return problem === null ? '' : translate(PASSWORD_PROBLEM_MESSAGE_KEY[problem])
+}

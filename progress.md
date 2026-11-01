@@ -3,37 +3,49 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-075 - Frontend And Shared Dedup (in progress, phase I: the last part)
-**Branch:** `refactor/frontend-shared-dedup-4` (parts 1-3 are merged as #255, #256, #257)
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase I
+**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 1)
+**Branch:** `refactor/frontend-split-components`
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase J
 
 ## Status
 
-### Done in this PR (item 6 of phase I: the admin views)
+### Done in this PR (item 1 of phase J: `AuthModals.vue`)
 
-- [x] **`buildAdminQuery` → `utils/admin-query.ts`** (`adminQueryString`): the three copies of "build the query string of an admin list" (users, online history, knowledge base) are one function: undefined and empty values are left out (zero is not), keys keep their order, values are encoded. `api.ts` passes the same keys in the same order, with the user id trimmed first as before. `admin-query.spec.ts` (7) pins the URLs of the three requests; the four that describe the old behaviour **pass on the old `api.ts` too**
-- [x] **`encodeURIComponent` on the id** of `admin/users-online/<id>` (the one missing: the plan's `:546`). The only deliberate behaviour change in `api.ts`; ids are numeric, so nothing visible changes, but an id with `/` or `?` can no longer rewrite the path
-- [x] **`useAdminUserDetailModal()`** (`composables/`): the open/load/close of the user-details modal was identical in `AdminUsersView`, `AdminUserOnlineView` and `AdminHistoryOnlineView` (≈ 30 lines each); one composable, three one-line uses
-- [x] **`AdminFilterBar.vue`** (`components/admin/`): the user-id + date-range card with Apply / Reset, used by the users and the history views (`v-model`, `from-label`, `to-label`, `loading`, `busy`, `submit`, `reset`); its styles live in the component. The History view keeps its own `.btn` rules, because its "Load more" button uses them
-- [x] **`assets/admin.css`**: the table helpers three views repeated (`.table-wrap`, `.cell-id`, `.cell-email`, `.cell-empty`, `.empty-row`), scoped under `.admin-content` so nothing outside the admin panel is touched; included by `AdminLayout.vue`
-- [x] **Screenshots before and after**, pixel-compared with Playwright on the `mock` build (a throwaway spec with a fixed viewport, time zone and data, 5 pages: users, history, user online, knowledge base, and the users page with the detail modal open; not committed). History, User Online and Knowledge Base: **identical, 0 pixels**. Users: the filter buttons are now the History view's style (8 px radius, 8 px padding, 0.875 rem, hover state) instead of its own slightly smaller ones, and the table below sits about 2 px lower; 2960 pixels differ, all in the buttons and the shifted table text (the diff image was looked at). That is the one visible change; the two views had drifted apart and are now one
-- [x] Docs: `frontend/index.md`
+`AuthModals.vue` was 1709 lines (a 715-line script, 500 of template, 490 of styles). Its props, emits and DOM are unchanged (`Login.vue` mounts it as before):
 
-### Phase I as a whole
+- [x] `components/auth/AuthModalShell.vue`: the overlay, panel, title and close button, written once for both modals; its styles are the shell's own (scoped)
+- [x] `LoginForm.vue`: the sign-in step. The typed identifier and password stay with `AuthModals.vue` (`v-model`), because the forgot-password step starts from the identifier and coming back must not lose either
+- [x] `ForgotPasswordFlow.vue`: ask for the reset link, or for a phone number the SMS code and the new password. Its step (`email` / `phone` / `sent`) is a `v-model` because the modal's title follows it
+- [x] `RegisterEmailForm.vue` and `RegisterPhoneFlow.vue` (the three steps, with their own back links); the choice step stays in `AuthModals.vue`
+- [x] `composables/useAuthRequest.ts` replaces the seven `try / catch / finally` (loading on, run, "server error" and a log line when it throws, loading off) and the five copies of "an error answer → its message"; `composables/useCompleteSignIn.ts` replaces the three copies of "remember the user, announce, open the account page, re-read the session", in that order; `utils/auth-identifiers.ts`, `utils/phone-auth.ts`
+- [x] **Styles.** The forms' rules (`.form-group`, inputs, `.auth-button`, the checkbox, …) are shared by all the steps, so they moved to `assets/auth-forms.css`, unscoped but every rule under `.auth-modal`, with the specificity they had (`.dark-theme` rules included). 1709 → 203 lines in `AuthModals.vue`
+- [x] **A step now starts afresh by remounting** (`:key` bumped when a modal is opened, closed or switched), instead of a 30-line `clearLoginState` / `clearRegisterState` resetting 40 refs
 
-All eight items are done or explicitly settled: password limits, phone shape, entity id, event bus, `shared/ws-client` (what is the same code), `sanitizeTree`, ArkType `.default()`, admin views. **Not done, on purpose and said in the PRs:** the WebSocket connection core in shared (the two connections are different things), and the second pass over breadcrumbs at send (kept: defence in depth)
+### Differences from before, all small
+
+- Two registration paths used to share one set of fields (name, password, terms), so a name typed in the e-mail form showed up in the phone form's last step; each form now has its own. Nothing in the 61 mock tests or the unit specs depended on it
+- `registerChoiceError`, an error block of the choice step that nothing ever set, is gone
+
+### Evidence that nothing visible changed
+
+- **Pixel comparison, 28 states** (14 × light and dark; login, login with validation errors, login after a 401, forgot by e-mail, forgot by phone with its errors, back to sign-in, register choice, e-mail form with and without errors, phone start, confirm, complete with errors), a throwaway Playwright spec on the `mock` build with a fixed viewport, time zone and data and the mouse parked: the old component produced the same screenshots on two runs, and the split one is **identical to the pixel in all 28**
+- The 61 Playwright `mock` tests (G2) pass unchanged, and the 6 `AuthModals.spec.ts` unit tests
+- `auth-composables.spec.ts` (4) pins the two composables
+
+### Left for the next PRs of phase J
+
+- [ ] `stores/state.ts` → `stores/push.ts`, `utils/storage-url.ts`, UI prefs apart
+- [ ] `main.ts` 48–401 → `utils/sw-manager.ts` with one `shouldNotify()`
+- [ ] `MenuButton.vue` → `PwaInstallButton.vue`
+- [ ] playground `TestForm.vue` → `useLoadTest()`, shared helpers with `TestFormWs.vue`, no `any`
 
 ## Evidence of Completion
 
-| Check                                      | Result                                                                       |
-| ------------------------------------------ | ---------------------------------------------------------------------------- |
-| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                       |
-| `pnpm build`                               | exit 0                                                                       |
-| `pnpm test`                                | frontend 269, backend 1731, shared 24, api-playground 26, docs 26            |
-| Playwright `mock` project                  | 61 passed                                                                    |
-| Admin screenshots, before / after          | 3 of 4 pages identical; Users: filter buttons and the 2 px shift (see above) |
-| `docs:build && docs:verify`                | passed                                                                       |
-
-## Notes for Next Session
-
-1. Merge this PR; then a PR flipping feat-075 to `done` and starting feat-076 (phase J, split of the big components: `AuthModals.vue` first; G2's 61 mock tests are its net)
+| Check                                      | Result                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                            |
+| `pnpm build`                               | exit 0                                                            |
+| `pnpm test`                                | frontend 273, backend 1731, shared 24, api-playground 26, docs 26 |
+| Playwright `mock` project                  | 61 passed, unchanged                                              |
+| Pixel comparison of the auth modals        | 28 states identical                                               |
+| `docs:build && docs:verify`                | passed                                                            |
