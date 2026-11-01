@@ -23,6 +23,9 @@ import { connectionOptions } from './pool-options.js'
 /** The driver's client-side timeout fires after the server-side cancel has had its chance. */
 const QUERY_TIMEOUT_GRACE_MS = 500
 
+/** One PK read per authenticated request takes ~0.1 ms: a handful of connections is plenty. */
+export const SESSION_CHECK_POOL_MAX = 5
+
 export interface SessionCheckPoolOptions {
     connection: Pick<
         pg.PoolConfig,
@@ -55,7 +58,7 @@ export const createSessionCheckPool = ({
 const sessionCheckPool = createSessionCheckPool({
     connection: connectionOptions,
     timeoutMs: sessionConfig.tokenCheckTimeoutMs,
-    max: sessionConfig.tokenCheckPoolMax,
+    max: SESSION_CHECK_POOL_MAX,
 })
 
 // No query logging: this runs once per authenticated request.

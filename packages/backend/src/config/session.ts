@@ -29,44 +29,24 @@ const readAnonAge = (): number => {
 
 // ADR 0002: every authenticated request waits for one users.session_token read. A
 // database that accepts the connection but never answers must end in a 503, not in a
-// request that waits forever, and the stuck query must not keep its connection (the
-// session-check pool cancels it, see database/session-check-db.ts).
+// request that waits forever, and the stuck query must not keep its connection: the
+// session-check pool turns this value into statement_timeout (see
+// database/session-check-db.ts).
 const TOKEN_CHECK_TIMEOUT_DEFAULT_MS = 2000
 const TOKEN_CHECK_TIMEOUT_MAX_MS = 60_000
-const TOKEN_CHECK_POOL_MAX_DEFAULT = 5
-const TOKEN_CHECK_POOL_MAX_LIMIT = 50
 
-// Decimal digits only: Number() would also take "1e3" and "0x10".
-const readBoundedInteger = (
-    source: NodeJS.ProcessEnv,
-    name: string,
-    fallback: number,
-    max: number,
-): number => {
-    const raw = source[name]
-    if (raw === undefined || raw.trim() === '') return fallback
+export const readTokenCheckTimeoutMs = (source: NodeJS.ProcessEnv = env): number => {
+    const raw = source['SESSION_TOKEN_CHECK_TIMEOUT_MS']
+    if (raw === undefined || raw.trim() === '') return TOKEN_CHECK_TIMEOUT_DEFAULT_MS
+    // Decimal digits only: Number() would also take "1e3" and "0x10".
     const value = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN
-    if (!Number.isInteger(value) || value <= 0 || value > max) {
-        throw new Error(`${name} must be an integer from 1 to ${String(max)}, got "${raw}"`)
+    if (!Number.isInteger(value) || value <= 0 || value > TOKEN_CHECK_TIMEOUT_MAX_MS) {
+        throw new Error(
+            `SESSION_TOKEN_CHECK_TIMEOUT_MS must be an integer from 1 to ${String(TOKEN_CHECK_TIMEOUT_MAX_MS)}, got "${raw}"`,
+        )
     }
     return value
 }
-
-export const readTokenCheckTimeoutMs = (source: NodeJS.ProcessEnv = env): number =>
-    readBoundedInteger(
-        source,
-        'SESSION_TOKEN_CHECK_TIMEOUT_MS',
-        TOKEN_CHECK_TIMEOUT_DEFAULT_MS,
-        TOKEN_CHECK_TIMEOUT_MAX_MS,
-    )
-
-export const readTokenCheckPoolMax = (source: NodeJS.ProcessEnv = env): number =>
-    readBoundedInteger(
-        source,
-        'SESSION_TOKEN_CHECK_POOL_MAX',
-        TOKEN_CHECK_POOL_MAX_DEFAULT,
-        TOKEN_CHECK_POOL_MAX_LIMIT,
-    )
 
 export default Object.freeze({
     storage: 'redis',
@@ -78,8 +58,6 @@ export default Object.freeze({
     anonAge: readAnonAge(),
     /** Deadline of the users.session_token lookup, in ms (SESSION_TOKEN_CHECK_TIMEOUT_MS, default 2000). */
     tokenCheckTimeoutMs: readTokenCheckTimeoutMs(),
-    /** Size of the session-check pool (SESSION_TOKEN_CHECK_POOL_MAX, default 5). */
-    tokenCheckPoolMax: readTokenCheckPoolMax(),
 
     /**
      * Configuration for session cookie and the cookie store
