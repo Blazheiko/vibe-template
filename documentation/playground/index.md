@@ -78,7 +78,7 @@ flowchart LR
 - заголовки у форматі JSON (за замовчуванням `Content-Type: application/json`) з перевіркою JSON;
 - тіло у форматі JSON, яке заповнюється заготовкою з `inputSchema`. Для `GET` і `DELETE` тіло не надсилається ([`utils/base-api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/base-api.ts));
 - генерацію еквівалентної `curl`-команди;
-- повторні запуски: кількість запитів і кількість «потоків», зі статистикою часу відповіді (середній, мінімальний, максимальний) і кількістю успішних запитів;
+- повторні запуски: кількість запитів і кількість «потоків», зі статистикою часу відповіді (середній, мінімальний, максимальний) і кількістю успішних запитів. Запуск виконує composable [`useLoadTest`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/composables/useLoadTest.ts) (типи й підрахунки — у [`utils/load-test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/load-test.ts)); прокрутку до відповіді й форматування тіла `TestForm.vue` ділить із `TestFormWs.vue` через [`utils/test-form-helpers.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/test-form-helpers.ts);
 - перегляд відповіді: статус, заголовки, час, тіло.
 
 Окремого редактора query-рядка немає. `querySchema` лише відображається в картці маршруту, тому query-параметри доведеться дописати в URL вручну.

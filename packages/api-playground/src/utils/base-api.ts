@@ -25,6 +25,9 @@ interface ApiMethods {
     ws: <T = HttpResponse>(route: string, body?: Record<string, unknown>) => Promise<T | null>
 }
 
+/** The `http` call of the client, as a type, so code that takes it can be given a fake. */
+export type SendHttp = ApiMethods['http']
+
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | (string & {})
 
 interface RequestInit {
