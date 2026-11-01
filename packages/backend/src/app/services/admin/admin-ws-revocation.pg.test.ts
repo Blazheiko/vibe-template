@@ -1,6 +1,7 @@
 import { createServer } from 'node:net'
 
 import { eq } from 'drizzle-orm'
+import pg from 'pg'
 import type { Redis } from 'ioredis'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -32,6 +33,8 @@ const PORT = await getFreePort()
 
 const { PREFIX } = vi.hoisted(() => {
     process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
+    // The bounded lookups (session check, admin role re-check) give up after this long.
+    process.env['SESSION_TOKEN_CHECK_TIMEOUT_MS'] = '400'
     return { PREFIX: `test:${crypto.randomUUID()}:` }
 })
 
@@ -91,6 +94,8 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
     const { db, pool } = await import('#database/db.js')
     const { sessionCheckPool } = await import('#database/session-check-db.js')
     const { users } = await import('#database/schema.js')
+    const { default: databaseConfig } = await import('#config/database.js')
+    const { userRepository } = await import('#app/repositories/index.js')
     const { default: redisClient, redisHealth } =
         (await import('#database/redis.js')) as unknown as {
             default: Redis
@@ -381,12 +386,45 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         expect(await untilNotDelivered(client)).toBeGreaterThanOrEqual(0)
     })
 
+    // A table lock makes the role query hang the way a stuck database does. One pass that
+    // waits forever would block every later pass (a pass runs one at a time), and with it
+    // the revocation, for as long as the query hangs.
+    it('cancels a pass whose query hangs, runs the next pass, and revokes once the database answers', async () => {
+        const demoted = await insertUser('admin')
+        const client = await Client.connect(await wsTokenFor(demoted))
+        await client.subscribe()
+        await setRole(demoted.id, 'user')
+        const passes = vi.spyOn(userRepository, 'findRolesByIds')
+        const holder = new pg.Client({
+            host: databaseConfig.host,
+            port: databaseConfig.port,
+            user: databaseConfig.user,
+            password: databaseConfig.password,
+            database: databaseConfig.database,
+        })
+        await holder.connect()
+        await holder.query('begin')
+        await holder.query('lock table users in access exclusive mode')
+        try {
+            adminWsAccessService.start(200)
+            // Each hung query is cancelled after the 400 ms deadline, so passes keep coming.
+            await sleep(1700)
+            expect(passes.mock.calls.length).toBeGreaterThanOrEqual(2)
+            // Nothing could be verified meanwhile, so nothing was changed.
+            expect(await deliveredTo(client)).toBe(true)
+        } finally {
+            await holder.query('rollback')
+            await holder.end()
+        }
+
+        expect(await untilNotDelivered(client)).toBeGreaterThanOrEqual(0)
+    })
+
     it('keeps the subscriptions while the database cannot answer, and revokes once it can', async () => {
         const demoted = await insertUser('admin')
         const client = await Client.connect(await wsTokenFor(demoted))
         await client.subscribe()
         await setRole(demoted.id, 'user')
-        const { userRepository } = await import('#app/repositories/index.js')
         const failing = vi
             .spyOn(userRepository, 'findRolesByIds')
             .mockRejectedValue(new Error('connection terminated'))

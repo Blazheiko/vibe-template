@@ -57,7 +57,11 @@ export interface IUserRepository {
     phoneExistsForOtherUser(phone: string, excludeId: bigint): Promise<boolean>
     /** Pass the transaction when the update belongs to one (see `withTransaction`). */
     update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
-    /** The current roles of these users by id; a user that no longer exists is absent. */
+    /**
+     * The current roles of these users by id; a user that no longer exists is absent.
+     * Bounded like findSessionToken: it rejects once SESSION_TOKEN_CHECK_TIMEOUT_MS has
+     * passed, and the statement is cancelled on the server.
+     */
     findRolesByIds(ids: bigint[]): Promise<Map<string, UserRow['role']>>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
     findSessionToken(id: bigint): Promise<string | undefined>
@@ -223,9 +227,11 @@ export const userRepository: IUserRepository = {
         return row
     },
 
+    // On the session-check pool, which cancels a stuck query: the WS admin re-check runs
+    // one pass at a time, so a query that hangs would stop every later pass (feat-062).
     async findRolesByIds(ids) {
         if (ids.length === 0) return new Map()
-        const rows = await db
+        const rows = await sessionCheckDb
             .select({ id: users.id, role: users.role })
             .from(users)
             .where(inArray(users.id, ids))

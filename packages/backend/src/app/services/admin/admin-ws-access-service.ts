@@ -15,16 +15,24 @@ import logger from '#vendor/utils/logger.js'
 export interface AdminRecheckReport {
     checked: number
     revoked: number
+    /** Connections that should have been revoked but could not be; the next pass retries. */
+    failed: number
 }
 
-const isAdminConnection = (
-    ws: ReturnType<typeof wsConnectionRegistry.listConnections>[number]['ws'],
-): boolean => {
+// What uWebSockets.js throws on a socket that has already closed. A connection closing
+// while a pass runs is expected; anything else is not, and must not be hidden.
+const isClosedSocketError = (err: unknown): boolean =>
+    err instanceof Error && /Invalid access of closed uWS\.(SSL)?WebSocket/.test(err.message)
+
+type Connection = ReturnType<typeof wsConnectionRegistry.listConnections>[number]
+
+/** True/false for an open connection, null when it has closed (nothing to check). */
+const roleOf = (ws: Connection['ws']): 'admin' | 'other' | null => {
     try {
-        return ws.getUserData().role === 'admin'
-    } catch {
-        // Closed between the snapshot and now.
-        return false
+        return ws.getUserData().role === 'admin' ? 'admin' : 'other'
+    } catch (err) {
+        if (isClosedSocketError(err)) return null
+        throw err
     }
 }
 
@@ -39,10 +47,21 @@ export const adminWsAccessService = {
      * observed; every WebSocket message is refused meanwhile by the session check).
      */
     async recheckAdminConnections(): Promise<AdminRecheckReport> {
-        const adminConnections = wsConnectionRegistry
-            .listConnections()
-            .filter((connection) => isAdminConnection(connection.ws))
-        if (adminConnections.length === 0) return { checked: 0, revoked: 0 }
+        let failed = 0
+        const adminConnections: Connection[] = []
+        for (const connection of wsConnectionRegistry.listConnections()) {
+            try {
+                if (roleOf(connection.ws) === 'admin') adminConnections.push(connection)
+            } catch (err) {
+                // One broken connection must not stop the pass for everyone else.
+                failed += 1
+                logger.error(
+                    { err, userId: connection.userId, socketUuid: connection.uuid },
+                    'WS connection role could not be read',
+                )
+            }
+        }
+        if (adminConnections.length === 0) return { checked: 0, revoked: 0, failed }
 
         const userIds = [...new Set(adminConnections.map((connection) => connection.userId))]
         const roles = await userRepository.findRolesByIds(userIds.map((id) => BigInt(id)))
@@ -53,8 +72,16 @@ export const adminWsAccessService = {
             if (roles.get(userId) === 'admin') continue
             try {
                 adminWsChannelService.revokeAdminAccess(ws)
-            } catch {
+            } catch (err) {
                 // Closed while the query ran: nothing left to revoke.
+                if (isClosedSocketError(err)) continue
+                // Any other failure leaves the connection an admin one; say so, and let
+                // the next pass try again.
+                failed += 1
+                logger.error(
+                    { err, userId, socketUuid: uuid },
+                    'WS admin access could not be revoked',
+                )
                 continue
             }
             revoked += 1
@@ -63,7 +90,7 @@ export const adminWsAccessService = {
                 'WS admin access revoked: the role is no longer admin',
             )
         }
-        return { checked: adminConnections.length, revoked }
+        return { checked: adminConnections.length, revoked, failed }
     },
 
     start(intervalMs: number = websocketConfig.adminRecheckIntervalMs): void {
