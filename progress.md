@@ -3,21 +3,20 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 2)
-**Branch:** `refactor/frontend-split-components-2` (part 1, `AuthModals.vue`, is merged as #260)
+**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 3)
+**Branch:** `refactor/frontend-split-components-3` (part 1, `AuthModals.vue`, is merged as #260; part 2, `stores/state.ts`, as #261)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase J
 
 ## Status
 
-### Done in this PR (item 2 of phase J: `stores/state.ts`)
+### Done in this PR (item 3 of phase J: the service worker out of `main.ts`)
 
-`stores/state.ts` held three things; it was 559 lines, now 126 (theme, font, colour theme, PWA mode, window size, storage config):
+`main.ts` was 401 lines, of which about 350 were the service worker; it is now 56 (bootstrap only):
 
-- [x] **`stores/push.ts`** (`usePushStore`): the notification permission, this browser's subscription, its id on the server, subscribing, unsubscribing, loading what the server knows (with the 60 s resource), and the reset on sign-out. Consumers moved: `UserAccount.vue`, `useSessionLifecycle.ts`; `UserAccount.spec.ts` mocks the new store
-- [x] **`utils/push-device.ts`**: the user-agent reading (`getDeviceType`, `getBrowserInfo`, `getOSInfo`) and the key helpers (`urlBase64ToUint8Array`, `arrayBufferToBase64`, `isValidVapidKey`), as pure functions of a user-agent string. The code is the old code moved
-- [x] **`utils/storage-url.ts`**: `getStorageFileUrl(config, src)` and `StorageConfig`; `avatar-url.ts` calls it with the store's config. Checked against the old method before it was removed: 55 combinations of 5 configurations and 11 sources gave identical answers
-- [x] **There were no tests of any of this**, so they were written: `storage-url.spec.ts` (5), `push-device.spec.ts` (16), `push.spec.ts` (11: permission, subscribing with an existing subscription and with a server key, a missing key, unsubscribing, the reset, what the server already knows, the window of the resource)
-- [x] Docs: `frontend/index.md`, `backend/storage.md`, `backend/web-push-notification.md`
+- [x] **`utils/sw-manager.ts`**: the helpers (`parseBuildTimestamp`, `isServiceWorkerErrorPayload`, `createServiceWorkerError`, `isServiceWorkerVersionMessage`, `requestWorkerBuildTimestamp`), `createUpdateNotifier`, `ServiceWorkerManager` and `startServiceWorker({ appBuildTimestamp, reportError, announceUpdate })`. `main.ts` passes Sentry and the event bus in, so the module knows neither
+- [x] **One `shouldNotify(source)`** instead of `showUpdateNotification` + `maybeShowUpdateNotification`: "tell the user at most once, never on a first install, only when the worker is more than 10 minutes newer than the page". It is checked before and after the awaited read of the worker's build time, so two signals waiting at once still tell once
+- [x] **There were no tests of this**, so `sw-manager.spec.ts` (25) was written: the parsing and guards, the message channel (answer, wrong answer, 1 s timeout, a worker that throws), every branch of the notifier (first install, ≤ 10 min, no build time on either side, build time from the message, once however many signals, two waiting at once), and `startServiceWorker` (errors to Sentry, a newer version announced, nothing listened to outside production)
+- [x] Docs: `frontend/index.md`
 
 ### Found, not changed
 
@@ -30,7 +29,6 @@ Both are bugs in data that is stored; fixing them changes what the admin sees (K
 
 ### Left for the next PRs of phase J
 
-- [ ] `main.ts` 48–401 → `utils/sw-manager.ts` with one `shouldNotify()`
 - [ ] `MenuButton.vue` → `PwaInstallButton.vue`
 - [ ] playground `TestForm.vue` → `useLoadTest()`, shared helpers with `TestFormWs.vue`, no `any`
 
@@ -40,6 +38,6 @@ Both are bugs in data that is stored; fixing them changes what the admin sees (K
 | ------------------------------------------ | ----------------------------------------------------------------------- |
 | `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                  |
 | `pnpm build`                               | exit 0                                                                  |
-| `pnpm test`                                | frontend 305 (+32), backend 1731, shared 24, api-playground 26, docs 26 |
+| `pnpm test`                                | frontend 330 (+25), backend 1731, shared 24, api-playground 26, docs 26 |
 | Playwright `mock` project                  | 61 passed                                                               |
 | `docs:build && docs:verify`                | passed                                                                  |
