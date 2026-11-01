@@ -234,6 +234,58 @@ describe('sentry service', () => {
         })
     })
 
+    // feat-075 (I): request data and breadcrumb data share one walker; they differ only in what
+    // happens to a sensitive key (dropped from the request, kept as "[Filtered]" in a breadcrumb).
+    it('treats a sensitive key by where it is: dropped in request data, filtered in breadcrumbs', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const initOptions = sentryMocks.init.mock.calls[0]?.[0]
+        const beforeSend = initOptions.beforeSend as (
+            event: Record<string, unknown>,
+        ) => Record<string, unknown>
+        const beforeBreadcrumb = initOptions.beforeBreadcrumb as (
+            breadcrumb: Record<string, unknown> | null,
+        ) => Record<string, unknown> | null
+
+        const data = {
+            list: [{ password: 'p', ok: 1 }, 'text', null, 7],
+            nested: {
+                api_key: 'k',
+                refreshToken: 't',
+                safe: 'keep',
+                href: 'https://x.test/?code=1',
+            },
+        }
+
+        const breadcrumb = beforeBreadcrumb({ category: 'x', data })
+        expect(breadcrumb?.data).toEqual({
+            list: [{ password: '[Filtered]', ok: 1 }, 'text', null, 7],
+            nested: {
+                api_key: '[Filtered]',
+                refreshToken: '[Filtered]',
+                safe: 'keep',
+                href: expect.stringContaining('%5BFiltered%5D'),
+            },
+        })
+
+        const event = beforeSend({ request: { data } })
+        expect((event.request as Record<string, unknown>).data).toEqual({
+            list: [{ ok: 1 }, 'text', null, 7],
+            nested: { safe: 'keep', href: expect.stringContaining('%5BFiltered%5D') },
+        })
+
+        // A breadcrumb that reaches the event unfiltered is cleaned once more at send.
+        const sent = beforeSend({ breadcrumbs: [{ category: 'x', data: { token: 't', safe: 1 } }] })
+        expect((sent.breadcrumbs as { data: unknown }[])[0]?.data).toEqual({
+            token: '[Filtered]',
+            safe: 1,
+        })
+    })
+
     it('forwards only the user id when setting user context', async () => {
         vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/5')
         vi.stubEnv('VITE_SENTRY_ENABLED', 'true')

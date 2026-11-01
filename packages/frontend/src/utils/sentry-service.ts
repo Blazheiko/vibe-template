@@ -92,26 +92,28 @@ const sanitizeHeaders = (headers: unknown): unknown => {
     return result
 }
 
-const sanitizeRequestData = (value: unknown): unknown => {
-    if (value === null || value === undefined) {
-        return value
-    }
-
-    if (typeof value === 'string') {
-        return value
-    }
-
-    if (typeof value !== 'object') {
+/**
+ * Walks a value that goes to Sentry and takes out what must not leave the browser. A key that
+ * looks sensitive (password, token, cookie, authorization…) is dropped from request data
+ * (`drop`) and kept with the value `[Filtered]` in breadcrumb data (`filter`), where the
+ * breadcrumb is more useful knowing the key was there; headers and URL-like strings are
+ * masked the same way in both.
+ */
+const sanitizeTree = (value: unknown, sensitive: 'drop' | 'filter'): unknown => {
+    if (typeof value !== 'object' || value === null) {
         return value
     }
 
     if (Array.isArray(value)) {
-        return value.map((item) => sanitizeRequestData(item))
+        return value.map((item) => sanitizeTree(item, sensitive))
     }
 
     const result: Record<string, unknown> = {}
     for (const [key, child] of Object.entries(value)) {
         if (SENSITIVE_KEY_RE.test(key)) {
+            if (sensitive === 'filter') {
+                result[key] = '[Filtered]'
+            }
             continue
         }
 
@@ -125,52 +127,7 @@ const sanitizeRequestData = (value: unknown): unknown => {
             continue
         }
 
-        result[key] = sanitizeRequestData(child)
-    }
-
-    return result
-}
-
-const sanitizeBreadcrumbData = (value: unknown): unknown => {
-    if (value === null || value === undefined) {
-        return value
-    }
-
-    if (typeof value === 'string') {
-        return value
-    }
-
-    if (typeof value !== 'object') {
-        return value
-    }
-
-    if (Array.isArray(value)) {
-        return value.map((item) => sanitizeBreadcrumbData(item))
-    }
-
-    const result: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(value)) {
-        if (/^(authorization|cookie)$/i.test(key)) {
-            result[key] = '[Filtered]'
-            continue
-        }
-
-        if (SENSITIVE_KEY_RE.test(key)) {
-            result[key] = '[Filtered]'
-            continue
-        }
-
-        if (key === 'headers') {
-            result[key] = sanitizeHeaders(child)
-            continue
-        }
-
-        if (typeof child === 'string' && URL_KEY_RE.test(key)) {
-            result[key] = maskUrl(child)
-            continue
-        }
-
-        result[key] = sanitizeBreadcrumbData(child)
+        result[key] = sanitizeTree(child, sensitive)
     }
 
     return result
@@ -240,7 +197,7 @@ const beforeSend = (event: SentryEventLike) => {
         sanitizedEvent.request = {
             ...sanitizedEvent.request,
             headers: sanitizeHeaders(sanitizedEvent.request.headers),
-            data: sanitizeRequestData(sanitizedEvent.request.data),
+            data: sanitizeTree(sanitizedEvent.request.data, 'drop'),
             url:
                 typeof sanitizedEvent.request.url === 'string'
                     ? maskUrl(sanitizedEvent.request.url)
@@ -270,7 +227,7 @@ const beforeBreadcrumb = (breadcrumb: SentryBreadcrumbLike | null) => {
     }
 
     if (sanitized.data) {
-        sanitized.data = sanitizeBreadcrumbData(sanitized.data)
+        sanitized.data = sanitizeTree(sanitized.data, 'filter')
     }
 
     if (typeof sanitized.message === 'string') {
@@ -278,7 +235,7 @@ const beforeBreadcrumb = (breadcrumb: SentryBreadcrumbLike | null) => {
     }
 
     if (sanitized.category === 'navigation' && sanitized.data) {
-        sanitized.data = sanitizeBreadcrumbData(sanitized.data)
+        sanitized.data = sanitizeTree(sanitized.data, 'filter')
     }
 
     return sanitized

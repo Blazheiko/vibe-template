@@ -180,3 +180,38 @@ test('ENTITY_ID_PATTERN is what EntityIdSchema takes, and looksLikePhoneNumber w
         assert.ok(!looksLikePhoneNumber(value), value)
     }
 })
+
+// feat-075 (I): the defaults of the query schemas are set with `.default()`; what they parse, and
+// what they refuse, must stay what the old tuple-default casts gave.
+test('the query schemas default and parse their strings as before', async () => {
+    const {
+        AdminKnowledgeBaseListQuerySchema,
+        AdminOnlineHistoryListQuerySchema,
+        AdminUserListQuerySchema,
+        LlmTextUsageQuerySchema,
+    } = await import('../dist/schemas/index.js')
+
+    assert.deepEqual(AdminUserListQuerySchema({}), { limit: 50 })
+    assert.deepEqual(AdminOnlineHistoryListQuerySchema({ cursor: 'c' }), { cursor: 'c', limit: 50 })
+    assert.deepEqual(AdminKnowledgeBaseListQuerySchema({}), { page: 1, limit: 50 })
+    assert.deepEqual(LlmTextUsageQuerySchema({}), { page: 1, limit: 50 })
+
+    assert.deepEqual(
+        AdminKnowledgeBaseListQuerySchema({ page: '3', limit: '200', category: 'x' }),
+        {
+            page: 3,
+            limit: 200,
+            category: 'x',
+        },
+    )
+    const range = AdminUserListQuerySchema({ dateFrom: '2026-01-01', dateTo: '2026-02-01' })
+    assert.ok(range.dateFrom instanceof Date && range.dateTo instanceof Date)
+
+    for (const bad of [{ page: '0' }, { page: 'abc' }, { limit: '201' }, { limit: '0' }]) {
+        assert.ok(
+            AdminKnowledgeBaseListQuerySchema(bad) instanceof type.errors,
+            JSON.stringify(bad),
+        )
+    }
+    assert.ok(AdminUserListQuerySchema({ dateFrom: 'not a date' }) instanceof type.errors)
+})
