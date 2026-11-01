@@ -120,3 +120,63 @@ test('the support history query is bounded and takes a numeric cursor', () => {
         SupportChatHistoryQuerySchema({ before: '9'.repeat(18) }) instanceof type.errors === false,
     )
 })
+
+// feat-075 (I): the limits the browser shows, the patterns it recognises and the schemas the server
+// enforces come from one place. The browser cannot import the schemas (the validation engine is
+// large), so this is where the two are held together.
+test('the password limits are what every auth schema enforces', async () => {
+    const { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } = await import('../dist/limits/index.js')
+    const {
+        ChangePasswordInputSchema,
+        LoginInputSchema,
+        RegisterEmailInputSchema,
+        ResetPasswordInputSchema,
+    } = await import('../dist/schemas/index.js')
+    assert.equal(PASSWORD_MIN_LENGTH, 8)
+    assert.equal(PASSWORD_MAX_LENGTH, 32)
+
+    const ok = (length) => 'p'.repeat(length)
+    const cases = [
+        [
+            'register',
+            (password) =>
+                RegisterEmailInputSchema({
+                    name: 'J',
+                    email: 'j@example.com',
+                    password,
+                    token: '',
+                }),
+        ],
+        ['login', (password) => LoginInputSchema({ email: 'j@example.com', password, token: '' })],
+        ['change', (newPassword) => ChangePasswordInputSchema({ newPassword })],
+        [
+            'reset',
+            (password) =>
+                ResetPasswordInputSchema({ token: 't', password, passwordConfirm: password }),
+        ],
+    ]
+    for (const [name, check] of cases) {
+        assert.ok(!(check(ok(PASSWORD_MIN_LENGTH)) instanceof type.errors), `${name}: min`)
+        assert.ok(!(check(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), `${name}: max`)
+        assert.ok(check(ok(PASSWORD_MIN_LENGTH - 1)) instanceof type.errors, `${name}: min - 1`)
+        assert.ok(check(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, `${name}: max + 1`)
+    }
+})
+
+test('ENTITY_ID_PATTERN is what EntityIdSchema takes, and looksLikePhoneNumber what the phone check reads', async () => {
+    const { ENTITY_ID_PATTERN, looksLikePhoneNumber } = await import('../dist/patterns/index.js')
+    for (const value of ['1', '42', '9007199254740993', '0', '007', '-1', '1.5', '', 'abc', ' 1']) {
+        assert.equal(
+            ENTITY_ID_PATTERN.test(value),
+            !(EntityIdSchema(value) instanceof type.errors),
+            JSON.stringify(value),
+        )
+    }
+    assert.equal(root.looksLikePhoneNumber, looksLikePhoneNumber)
+    for (const value of ['+380501234567', ' 050 123 45 67 ', '(555) 123-4567']) {
+        assert.ok(looksLikePhoneNumber(value), value)
+    }
+    for (const value of ['', 'jane@example.com', '12345', 'abc', '+1']) {
+        assert.ok(!looksLikePhoneNumber(value), value)
+    }
+})

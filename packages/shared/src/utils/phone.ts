@@ -22,6 +22,6 @@ export function normalizePhoneNumber(input: string, defaultCountry?: string): st
     return parsed.number
 }
 
-export function looksLikePhoneNumber(input: string): boolean {
-    return /[+\d][\d()\-\s]{5,}/.test(input.trim())
-}
+// Kept here for the callers that already import it from `shared/utils`; the browser imports it
+// from `shared/patterns`, which does not carry the phone library.
+export { looksLikePhoneNumber } from '../patterns/index.js'

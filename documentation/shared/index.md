@@ -13,7 +13,7 @@ flowchart LR
 Дані з [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json):
 
 - `name: "shared"`, `private: true`, `type: "module"`;
-- `exports` має кореневий вхід `.` і підшляхи `./brands`, `./schemas`, `./responses`, `./errors`, `./enums`, `./utils`, `./guards`. Кожен вказує на `dist/<розділ>/index.js` і `.d.ts`;
+- `exports` має кореневий вхід `.` і підшляхи `./brands`, `./schemas`, `./responses`, `./errors`, `./enums`, `./utils`, `./guards`, `./limits`, `./patterns`. Кожен вказує на `dist/<розділ>/index.js` і `.d.ts`;
 - `build`: `tsc --build`, `dev`: `tsc --build --watch`. [tsconfig.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/tsconfig.json) збирає `src` у `dist` (`composite: true`);
 - залежності в рантаймі: `@arktype/type`, `@ark/util`, `libphonenumber-js`.
 
@@ -35,6 +35,7 @@ Backend і frontend підключають пакет як `"shared": "workspace
 
 Про правила написання схем (`'+': 'reject'`, query-морфи) див. [«Валідація»](/backend/validation). Чому DTO трансформерів не беруться з `shared/responses`, пояснено в розділі [«Трансформери»](/backend/transformers).
 
+- Два підшляхи без жодної бібліотеки, які безпечно тягнути в браузер: [`limits`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/limits/index.ts) (числові ліміти: довжина повідомлення чату, розмір сторінки історії, `PASSWORD_MIN_LENGTH`/`PASSWORD_MAX_LENGTH`) і [`patterns`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/patterns/index.ts) (`ENTITY_ID_PATTERN`, `looksLikePhoneNumber`; `shared/utils` тягне `libphonenumber-js`, тому браузер бере форму номера звідси). Схеми й клієнт мають одне джерело, а тест у `contracts.test.js` тримає їх разом.
 - [src/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/index.ts) реекспортує всі розділи, зокрема `guards`; підшляхи з `exports` (`shared/guards` тощо) працюють так само.
 - `EntityIdSchema` — справжній branded-тип: `type(/^[1-9]\d*$/).brand('EntityId')`. Рядок стає `EntityId` лише після перевірки схемою; присвоєння звичайного рядка — помилка typecheck (перевіряє [`shared-brands.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/shared-brands.spec.ts) у backend).
 
@@ -70,12 +71,12 @@ defineRoute({
 
 Що покрито:
 
-| Файл                                                                                                                 | Що перевіряє                                                                                                                   |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| [languages.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/languages.test.js)     | `resolveLanguageCode` (локаль браузера → код застосунку або `en`), `isAppLocaleCode`, назви мов для кожного `APP_LOCALE_CODES` |
-| [phone.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/phone.test.js)             | `normalizePhoneNumber` → E.164 і відмова для порожніх/невалідних, `looksLikePhoneNumber`                                       |
-| [ws-channels.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/ws-channels.test.js) | `isWsChannel`                                                                                                                  |
-| [contracts.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/contracts.test.js)     | `ErrorCode` = `ErrorCodeValues`, `EntityIdSchema`, ліміти й `'+': 'reject'` вибраних схем вводу, реекспорт guards з кореня     |
+| Файл                                                                                                                 | Що перевіряє                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [languages.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/languages.test.js)     | `resolveLanguageCode` (локаль браузера → код застосунку або `en`), `isAppLocaleCode`, назви мов для кожного `APP_LOCALE_CODES`                                                                                      |
+| [phone.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/phone.test.js)             | `normalizePhoneNumber` → E.164 і відмова для порожніх/невалідних, `looksLikePhoneNumber`                                                                                                                            |
+| [ws-channels.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/ws-channels.test.js) | `isWsChannel`                                                                                                                                                                                                       |
+| [contracts.test.js](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/test/contracts.test.js)     | `ErrorCodeSchema` приймає рівно значення `ErrorCode`, `EntityIdSchema` і `ENTITY_ID_PATTERN`, `looksLikePhoneNumber`, ліміти пароля й повідомлень та `'+': 'reject'` вибраних схем вводу, реекспорт guards з кореня |
 
 ## Як додати контракт
 
