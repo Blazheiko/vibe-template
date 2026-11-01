@@ -309,7 +309,13 @@ export const llmTextUsage = pgTable(
         ),
         model: varchar('model', { length: 100 }).notNull(),
         feature: llmTextFeatureEnum('feature').notNull(),
+        // The prompt text: empty unless AI_USAGE_STORE_PROMPTS=true (feat-065), and emptied
+        // again by `llm:purge-prompts`. The hash and the length survive either way.
         finalPrompt: text('final_prompt').notNull().default(''),
+        // SHA-256 (hex) of the prompt and its length in characters. NULL for rows written
+        // before they existed whose text has not been purged yet.
+        promptSha256: varchar('prompt_sha256', { length: 64 }),
+        promptChars: integer('prompt_chars'),
         // NULL = the provider did not report usage; 0 is a real zero.
         promptTokens: integer('prompt_tokens'),
         completionTokens: integer('completion_tokens'),

@@ -314,10 +314,10 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 ### F1 · feat-065 · `llm_text_usage.final_prompt` — політика збору та retention (1 д, потребує рішення продукту)
 
 - Truncation **не** захищає PII. Потрібен контракт:
-- [ ] Зафіксувати в `documentation/backend/ai.md`: що збирається (повний промпт / метадані / hash+довжина), хто має доступ (`GET /admin/usage/text`), retention (напр. 30 днів), як очищаються вже записані дані.
-- [ ] Рекомендований дефолт для шаблону: `promptSha256` + `promptChars` + `feature` + токени; повний текст — лише при `AI_USAGE_STORE_PROMPTS=true` (default `false`) з retention-джобом.
-- [ ] Нові поля в схемі → міграція (`drizzle-kit generate`, повторний → «No schema changes»); `llm-usage-service.ts:27-44`; `llm-usage-controller.ts:43` — не віддавати `finalPrompt`, якщо збір вимкнений.
-- [ ] `src/scripts/purge-llm-prompts.ts` для вже записаних промптів + retention (cron або документований ручний запуск).
+- [x] Зафіксувати в `documentation/backend/ai.md`: що збирається (повний промпт / метадані / hash+довжина), хто має доступ (`GET /admin/usage/text`), retention (напр. 30 днів), як очищаються вже записані дані.
+- [x] Рекомендований дефолт для шаблону: `promptSha256` + `promptChars` + `feature` + токени; повний текст — лише при `AI_USAGE_STORE_PROMPTS=true` (default `false`) з retention-джобом.
+- [x] Нові поля в схемі → міграція (`drizzle-kit generate`, повторний → «No schema changes»); `llm-usage-service.ts:27-44`; `llm-usage-controller.ts:43` — не віддавати `finalPrompt`, якщо збір вимкнений.
+- [x] `src/scripts/purge-llm-prompts.ts` для вже записаних промптів + retention (cron або документований ручний запуск).
 - **Критерії:** при `AI_USAGE_STORE_PROMPTS=false` у БД немає тексту промпту; purge-скрипт очищає існуючі рядки; `test:pg` з міграцією.
 
 ### F2 · feat-066 · Auth-контракт: unverified login і timing реєстрації (0.5 д)

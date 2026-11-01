@@ -1,0 +1,63 @@
+{
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "b7ef3dc7-b99a-4998-aed5-94b0f6989ace",
+    "prevIds": ["199980f4-0c22-494e-b0f7-a6934bbc2694"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "public", "llm_text_usage", "prompt_sha256"],
+            "writes": [
+                "s|col|public.llm_text_usage.prompt_sha256",
+                "n|col|public.llm_text_usage.prompt_sha256",
+                "e|col|public.llm_text_usage.prompt_sha256"
+            ],
+            "reads": ["n|tbl|public.llm_text_usage", "n|sch|public"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "public", "llm_text_usage", "prompt_chars"],
+            "writes": [
+                "s|col|public.llm_text_usage.prompt_chars",
+                "n|col|public.llm_text_usage.prompt_chars",
+                "e|col|public.llm_text_usage.prompt_chars"
+            ],
+            "reads": ["n|tbl|public.llm_text_usage", "n|sch|public"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "llm_text_usage",
+                "name": "prompt_sha256",
+                "type": "varchar(64)",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "llm_text_usage",
+                "name": "prompt_chars",
+                "type": "integer",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        }
+    ]
+}

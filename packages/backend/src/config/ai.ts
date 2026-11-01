@@ -68,11 +68,41 @@ const readTokenCount = (name: string, fallback: number): number => {
     return value
 }
 
+// Strict: a typo must not switch on the keeping of prompts.
+const readStrictBoolean = (name: string, fallback: boolean): boolean => {
+    const raw = env[name]
+    if (raw === undefined || raw.trim() === '') return fallback
+    const value = raw.trim().toLowerCase()
+    if (value === 'true') return true
+    if (value === 'false') return false
+    errors.push(`${name} must be true or false, got "${raw}"`)
+    return fallback
+}
+
+const readPositiveInt = (name: string, fallback: number): number => {
+    const raw = env[name]
+    if (raw === undefined || raw.trim() === '') return fallback
+    const value = Number(raw.trim())
+    if (!/^\d+$/.test(raw.trim()) || !Number.isSafeInteger(value) || value < 1) {
+        errors.push(`${name} must be an integer >= 1, got "${raw}"`)
+        return fallback
+    }
+    return value
+}
+
 const aiConfig = Object.freeze({
     drivers: {
         text: readTextDriver(),
     },
     requestTimeoutMs: readTimeoutMs(),
+    // What llm_text_usage keeps of a prompt (feat-065). The usage log is an audit of tokens
+    // and cost; a prompt holds what the user wrote (for the support chat, also their history),
+    // so by default only its SHA-256 and its length are kept. The text is opt-in, and then
+    // `llm:purge-prompts` removes what is older than the retention.
+    usage: {
+        storePrompts: readStrictBoolean('AI_USAGE_STORE_PROMPTS', false),
+        promptRetentionDays: readPositiveInt('AI_USAGE_PROMPT_RETENTION_DAYS', 30),
+    },
     promptCacheTtlMs: readPromptCacheTtlMs(),
     // Tokens a user's support chat may spend per UTC day (ADR 0003). 0 switches the budget
     // off, which production-like environments refuse at startup.

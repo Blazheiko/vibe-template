@@ -30,6 +30,10 @@ export interface ILlmUsageRepository {
     findText(opts: TextFilter & { limit: number; offset: number }): Promise<LlmTextUsageRow[]>
     countText(filter?: TextFilter): Promise<number>
     getTextStats(): Promise<TextStatRow[]>
+    purgePromptText(options: {
+        olderThan: Date | null
+        dryRun: boolean
+    }): Promise<{ matched: number }>
 }
 
 function buildTextWhere(filter: TextFilter): SQL | undefined {
@@ -58,6 +62,33 @@ export const llmUsageRepository: ILlmUsageRepository = {
         const query = db.select({ count: sql<number>`count(*)::int` }).from(llmTextUsage)
         const result = await (where !== undefined ? query.where(where) : query)
         return result[0]?.count ?? 0
+    },
+
+    async purgePromptText({ olderThan, dryRun }) {
+        const withText = and(
+            sql`${llmTextUsage.finalPrompt} <> ''`,
+            olderThan === null ? undefined : lte(llmTextUsage.createdAt, olderThan),
+        )
+        if (dryRun) {
+            const [row] = await db
+                .select({ count: sql<number>`count(*)::int` })
+                .from(llmTextUsage)
+                .where(withText)
+            return { matched: row?.count ?? 0 }
+        }
+        // The hash and the length of what is removed are filled in first when the row has none
+        // (a row written before they existed); sha256 of the UTF-8 bytes and char_length
+        // agree with what the application computes.
+        const purged = await db
+            .update(llmTextUsage)
+            .set({
+                promptSha256: sql`coalesce(${llmTextUsage.promptSha256}, encode(sha256(convert_to(${llmTextUsage.finalPrompt}, 'UTF8')), 'hex'))`,
+                promptChars: sql`coalesce(${llmTextUsage.promptChars}, char_length(${llmTextUsage.finalPrompt}))`,
+                finalPrompt: '',
+            })
+            .where(withText)
+            .returning({ id: llmTextUsage.id })
+        return { matched: purged.length }
     },
 
     async getTextStats() {

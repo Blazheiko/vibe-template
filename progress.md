@@ -3,40 +3,43 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-068 - Frontend, service worker and playground hardening (in progress)
-**Branch:** `fix/frontend-hardening`
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase F4
+**Active Feature:** feat-065 - LLM Prompt Retention (in progress)
+**Branch:** `fix/llm-prompt-retention`
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase F1 (owner's decision: the plan's recommended default)
 
 ## Status
 
 ### Done
 
-- [x] Password fields (`UserAccount.vue`): `name` and `autocomplete` on all five password inputs (`current-password` for the current password and for the two re-authentication fields, `new-password` for the new and confirm fields), and on the contact fields (`tel`, `country`, `one-time-code`, `email`). A component test mounts the real view and checks them
-- [x] Service worker (`service-worker.ts`): `notification-target.ts` — the push payload's `url` is resolved against the app origin and anything that leaves it (another host / port / scheme, `//host`, `/\host`, `javascript:`, `data:`, non-strings) falls back to `/`; an already-open window is matched by origin + `pathname`, not by `client.url.includes(url)` (which took `/support/archive`, or any address merely containing the target, for the page)
-- [x] Redirect after sign-in (`App.vue`): `safe-redirect.ts` — only `startsWith('/') && !startsWith('//')`, no backslash, no control characters, a string (an array from a repeated `?redirect=` is refused)
-- [x] Playground: header **values** (Authorization, Cookie, API keys) are kept in `sessionStorage` (one tab) and never in `localStorage`; values an older version left in `localStorage` are ignored and wiped; the settings log no longer prints them; the request log redacts credential headers (`redact-headers.ts`); `vite.config.ts` has `esbuild.pure` for `console.log/info/debug/trace` like the frontend (a production build contains no "Making API request" string)
-- [x] Tests first: store (4 of 7 failed against the original store, including a log test that was first too weak to fail), `redact-headers`, `notification-target`, `safe-redirect`, `UserAccount` component test (mutation: dropping one `autocomplete` fails it)
-- [x] Docs: `playground/index.md`, `frontend/index.md`, `backend/web-push-notification.md`
+- [x] Diagnosis: `llm_text_usage.final_prompt` stored the whole prompt of every model call — what the user wrote and, for the support chat, up to 20 messages of their history — for ever, and `GET /admin/usage/text` showed it to every admin. Truncating it would not have protected personal data (it can be anywhere in the text)
+- [x] Decision (owner): by default keep a **SHA-256 and a length**, not the text; the text only with `AI_USAGE_STORE_PROMPTS=true`, with a 30-day retention and a purge script
+- [x] Tests first (20 unit tests failed before): config (strict boolean — a typo must not start keeping prompts, retention integer ≥ 1), `recordText` (no text by default, hash + length, text with the flag, code points not UTF-16 units, same prompt → same hash), the controller (`finalPrompt: null` for a row without text, hash and length in the answer, a row from before the hash), `planPurge`, and on real PostgreSQL the purge (14 tests with the usage ones)
+- [x] Migration `20261101124616_llm_usage_prompt_hash`: `prompt_sha256 varchar(64)` and `prompt_chars integer`, both nullable (a second `drizzle-kit generate` says "No schema changes")
+- [x] `llm-usage-service.ts`: `final_prompt = ''` unless the flag is on; the hash and the length are always written
+- [x] `GET /admin/usage/text`: `finalPrompt: string | null` (null = no text kept), `promptSha256`, `promptChars` (shared schema `TextUsageRowSchema`)
+- [x] `llm:purge-prompts` (`scripts/purge-llm-prompts.ts`, `--dry-run`, `--all`, `--days=<n>`): empties `final_prompt` and first fills `prompt_sha256` / `prompt_chars` for rows that lack them, using the database's own `sha256` and `char_length` (checked equal to the application's); with the flag off it removes all text, with it on only text past the retention; idempotent; an unknown argument is an error. Run end to end on a scratch database
+- [x] Docs: `backend/ai.md` ("Що журнал зберігає від промпту", PII), `backend/configuration.md`, `.env.example`, `scripts/README.md`
 
 ### Behaviour changes to know
 
-- A notification whose `data.url` points outside the application now opens the start page instead.
-- A `?redirect=` that is not an in-app path is ignored (the user lands on `/account`).
-- The playground forgets typed header values when the tab closes (it used to keep them for ever).
+- **New rows no longer carry the prompt text.** Anyone reading `llm_text_usage.final_prompt` (or the admin API) now gets an empty value / `null` unless `AI_USAGE_STORE_PROMPTS=true`.
+- **Rows already in the table keep their text** until `llm:purge-prompts` is run once after the update (it is not run automatically, and backups keep it as long as they live). The purge is irreversible.
+- Run `llm:purge-prompts` from cron to apply the retention when the text is kept.
 
 ## Evidence of Completion
 
-| Check                                      | Result                                                                          |
-| ------------------------------------------ | ------------------------------------------------------------------------------- |
-| Tests first                                | 4 store tests failed against the original store; the pure helpers did not exist |
-| Mutation: one `autocomplete` removed       | 1 component test fails                                                          |
-| Playground production build                | no "Making API request" string left in `dist` (`esbuild.pure`)                  |
-| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                          |
-| `pnpm test`                                | backend 1398, frontend 257, api-playground 29, shared 17, docs 26; exit 0       |
-| `docs:build && docs:verify`                | passed                                                                          |
-| Backend suites                             | not affected (no backend change)                                                |
+| Check                                      | Result                                                                                         |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Tests first                                | 20 unit tests failed before the change; the purge module and the new columns did not exist     |
+| `drizzle-kit generate` after the migration | "No schema changes, nothing to migrate"                                                        |
+| CLI on a scratch database                  | dry run counts; `STORE=true` purges only the 40-day-old row; default purges all; hashes filled |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                                         |
+| `pnpm test`                                | backend 1430, frontend 257, api-playground 29, shared 17, docs 26; exit 0                      |
+| `test:pg` with Redis / without             | 148 passed / 84 passed, 64 skipped (10 new purge and column tests)                             |
+| `test:redis`                               | 89 passed (not affected)                                                                       |
+| `docs:build && docs:verify`                | passed                                                                                         |
 
 ## Notes for Next Session
 
-1. Merge this PR; then a PR flipping feat-068 to `done`
-2. Next: F1 (feat-065) with the plan's recommended default (hash + length by default, full text only with `AI_USAGE_STORE_PROMPTS=true`, retention 30 days, purge script)
+1. Merge this PR; then a PR flipping feat-065 to `done`
+2. Next: phase G (feat-069, regression coverage before refactors)
