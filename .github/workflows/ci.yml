@@ -62,7 +62,10 @@ jobs:
           retention-days: 14
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, where Playwright's WebKit build cannot start
+    # (libicudata.so.74 missing), so every WebKit and Mobile Safari test failed. Chromium and
+    # Firefox were fine. Unpin once the Playwright version in use supports the newer image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
