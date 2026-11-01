@@ -25,6 +25,7 @@ import {
     type SmsVerificationFlow,
 } from '#app/services/auth/sms-verification-provider.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
+import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import {
     hashOtpVerificationCode,
@@ -324,26 +325,24 @@ async function registerEmailFlow(
     const { name, password } = payload
     const email = normalizeEmail(payload.email)
 
-    const ipThrottle = await tryInternal(
-        () => consumeAuthThrottle(throttlePolicies.registerEmailIp, requestMeta.ipAddress),
-        'Failed to enforce email registration IP throttle',
+    const ipThrottle = await enforceThrottle(
+        throttlePolicies.registerEmailIp,
+        requestMeta.ipAddress,
+        {
+            unavailable: 'Failed to enforce email registration IP throttle',
+            rejected: badRequest('Too many registration attempts. Please try again later.'),
+        },
     )
     if (Result.isError(ipThrottle)) {
         return Result.err(ipThrottle.error)
     }
-    if (!ipThrottle.value.allowed) {
-        return Result.err(badRequest('Too many registration attempts. Please try again later.'))
-    }
 
-    const emailThrottle = await tryInternal(
-        () => consumeAuthThrottle(throttlePolicies.registerEmailIdentifier, email),
-        'Failed to enforce email registration identifier throttle',
-    )
+    const emailThrottle = await enforceThrottle(throttlePolicies.registerEmailIdentifier, email, {
+        unavailable: 'Failed to enforce email registration identifier throttle',
+        rejected: badRequest('Too many registration attempts. Please try again later.'),
+    })
     if (Result.isError(emailThrottle)) {
         return Result.err(emailThrottle.error)
-    }
-    if (!emailThrottle.value.allowed) {
-        return Result.err(badRequest('Too many registration attempts. Please try again later.'))
     }
 
     // Hashed before the address is looked up, so a taken address costs the same time as a new
@@ -447,26 +446,24 @@ export const authService = {
 
         const phone = normalizedPhoneResult.value
 
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.registerPhoneIp, requestMeta.ipAddress),
-            'Failed to enforce auth IP throttle',
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.registerPhoneIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce auth IP throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
-        if (!ipThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
-        }
 
-        const phoneThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.smsSendPhone, phone),
-            'Failed to enforce auth phone throttle',
-        )
+        const phoneThrottle = await enforceThrottle(throttlePolicies.smsSendPhone, phone, {
+            unavailable: 'Failed to enforce auth phone throttle',
+            rejected: badRequest('Too many verification attempts. Please try again later.'),
+        })
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
-        }
-        if (!phoneThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         const existingUserResult = await tryInternal(
@@ -598,15 +595,16 @@ export const authService = {
             return gateResult
         }
 
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.confirmPhoneIp, requestMeta.ipAddress),
-            'Failed to enforce phone confirmation IP throttle',
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.confirmPhoneIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce phone confirmation IP throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
-        }
-        if (!ipThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
         const challengeResult = await tryInternal(
             () => smsAuthChallengeRepository.findById(payload.challengeId),
@@ -779,26 +777,24 @@ export const authService = {
 
         const phone = normalizedPhoneResult.value
 
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.linkPhoneIp, requestMeta.ipAddress),
-            'Failed to enforce phone linking IP throttle',
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.linkPhoneIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce phone linking IP throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
-        if (!ipThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
-        }
 
-        const phoneThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.smsSendPhone, phone),
-            'Failed to enforce phone linking identifier throttle',
-        )
+        const phoneThrottle = await enforceThrottle(throttlePolicies.smsSendPhone, phone, {
+            unavailable: 'Failed to enforce phone linking identifier throttle',
+            rejected: badRequest('Too many verification attempts. Please try again later.'),
+        })
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
-        }
-        if (!phoneThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         const phoneExistsResult = await tryInternal(
@@ -916,15 +912,16 @@ export const authService = {
             return gateResult
         }
 
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.confirmLinkPhoneIp, requestMeta.ipAddress),
-            'Failed to enforce phone linking confirmation IP throttle',
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.confirmLinkPhoneIp,
+            requestMeta.ipAddress,
+            {
+                unavailable: 'Failed to enforce phone linking confirmation IP throttle',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
-        }
-        if (!ipThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         const challengeResult = await tryInternal(
@@ -1051,37 +1048,32 @@ export const authService = {
 
         const email = normalizeEmail(payload.email)
 
-        const targetThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.linkEmailTarget, email),
-            'Failed to enforce email linking target throttle',
-        )
+        const targetThrottle = await enforceThrottle(throttlePolicies.linkEmailTarget, email, {
+            unavailable: 'Failed to enforce email linking target throttle',
+            rejected: badRequest('Too many verification attempts. Please try again later.'),
+        })
         if (Result.isError(targetThrottle)) {
             return Result.err(targetThrottle.error)
         }
-        if (!targetThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
-        }
 
-        const userThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.linkEmailUser, String(userId)),
-            'Failed to enforce email linking user throttle',
-        )
+        const userThrottle = await enforceThrottle(throttlePolicies.linkEmailUser, String(userId), {
+            unavailable: 'Failed to enforce email linking user throttle',
+            rejected: badRequest('Too many verification attempts. Please try again later.'),
+        })
         if (Result.isError(userThrottle)) {
             return Result.err(userThrottle.error)
         }
-        if (!userThrottle.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
-        }
 
-        const userCooldown = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.linkEmailUserCooldown, String(userId)),
-            'Failed to enforce email linking cooldown',
+        const userCooldown = await enforceThrottle(
+            throttlePolicies.linkEmailUserCooldown,
+            String(userId),
+            {
+                unavailable: 'Failed to enforce email linking cooldown',
+                rejected: badRequest('Too many verification attempts. Please try again later.'),
+            },
         )
         if (Result.isError(userCooldown)) {
             return Result.err(userCooldown.error)
-        }
-        if (!userCooldown.value.allowed) {
-            return Result.err(badRequest('Too many verification attempts. Please try again later.'))
         }
 
         const emailExistsResult = await tryInternal(
@@ -1117,31 +1109,30 @@ export const authService = {
             Result.err(unauthorized('Invalid email or password'))
         const loginKey = resolveLoginKey(resolveLoginIdentifier(payload))
 
-        // Consume before the lookup: same cost for every outcome, no check/increment race.
-        const ipThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.loginIp, requestMeta.ipAddress),
-            'Failed to enforce login IP throttle',
-        )
+        // Consume before the lookup: same cost for every outcome, no check/increment race. A spent
+        // counter answers like a wrong password: nothing tells the two apart.
+        const ipThrottle = await enforceThrottle(throttlePolicies.loginIp, requestMeta.ipAddress, {
+            unavailable: 'Failed to enforce login IP throttle',
+            rejected: unauthorized('Invalid email or password'),
+        })
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
-        }
-        if (!ipThrottle.value.allowed) {
-            return invalidCredentials()
         }
 
         if (loginKey === null) {
             return invalidCredentials()
         }
 
-        const identifierThrottle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.loginIdentifier, loginKey.value),
-            'Failed to enforce login identifier throttle',
+        const identifierThrottle = await enforceThrottle(
+            throttlePolicies.loginIdentifier,
+            loginKey.value,
+            {
+                unavailable: 'Failed to enforce login identifier throttle',
+                rejected: unauthorized('Invalid email or password'),
+            },
         )
         if (Result.isError(identifierThrottle)) {
             return Result.err(identifierThrottle.error)
-        }
-        if (!identifierThrottle.value.allowed) {
-            return invalidCredentials()
         }
 
         const userResult = await tryInternal(
@@ -1315,17 +1306,16 @@ export const authService = {
         payload: ChangePasswordInput,
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
-        const throttle = await tryInternal(
-            () => consumeAuthThrottle(throttlePolicies.changePasswordUser, String(userId)),
-            'Failed to enforce change password throttle',
+        const throttle = await enforceThrottle(
+            throttlePolicies.changePasswordUser,
+            String(userId),
+            {
+                unavailable: 'Failed to enforce change password throttle',
+                rejected: badRequest('Too many password change attempts. Please try again later.'),
+            },
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
-        }
-        if (!throttle.value.allowed) {
-            return Result.err(
-                badRequest('Too many password change attempts. Please try again later.'),
-            )
         }
 
         const userResult = await tryInternal(
