@@ -19,22 +19,7 @@ export const ErrorCode = {
     UpstreamTimeout: 'upstream_timeout',
 } as const
 
-export const ErrorCodeValues = [
-    'bad_request',
-    'unauthorized',
-    'forbidden',
-    'not_found',
-    'conflict',
-    'validation_failed',
-    'payload_too_large',
-    'unsupported_media_type',
-    'rate_limited',
-    'csrf_invalid',
-    'internal_error',
-    'service_unavailable',
-    'upstream_error',
-    'upstream_timeout',
-] as const
+export const ErrorCodeValues: readonly ErrorCode[] = Object.values(ErrorCode)
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode]
 

@@ -3,12 +3,8 @@ import assert from 'node:assert/strict'
 
 import { type } from '@arktype/type'
 
-import {
-    CSRF_REJECT_REASONS,
-    CsrfRejectReason,
-    ErrorCode,
-    ErrorCodeValues,
-} from '../dist/errors/index.js'
+import { CsrfRejectReason, ErrorCode, ErrorCodeValues } from '../dist/errors/index.js'
+import { ErrorCodeSchema } from '../dist/responses/error-code-schema.js'
 import { EntityIdSchema } from '../dist/brands/index.js'
 import {
     SUPPORT_HISTORY_DEFAULT_PAGE_SIZE,
@@ -22,14 +18,23 @@ import {
 } from '../dist/schemas/index.js'
 import * as root from '../dist/index.js'
 
-test('ErrorCode and ErrorCodeValues list the same codes', () => {
-    assert.deepEqual([...ErrorCodeValues].sort(), Object.values(ErrorCode).sort())
+// ErrorCodeValues is derived from ErrorCode, so the two cannot drift; what is worth pinning is that
+// the response schema takes exactly these codes and nothing else.
+test('ErrorCodeSchema accepts every ErrorCode and nothing else', () => {
+    assert.deepEqual([...ErrorCodeValues], Object.values(ErrorCode))
     assert.equal(new Set(ErrorCodeValues).size, ErrorCodeValues.length)
+    for (const code of Object.values(ErrorCode)) {
+        assert.equal(ErrorCodeSchema(code), code)
+    }
+    for (const bad of ['', 'BAD_REQUEST', 'teapot', 400, null]) {
+        assert.ok(ErrorCodeSchema(bad) instanceof type.errors, JSON.stringify(bad))
+    }
 })
 
-test('CsrfRejectReason and CSRF_REJECT_REASONS list the same reasons', () => {
-    assert.deepEqual([...CSRF_REJECT_REASONS].sort(), Object.values(CsrfRejectReason).sort())
-    assert.equal(new Set(CSRF_REJECT_REASONS).size, CSRF_REJECT_REASONS.length)
+test('every CsrfRejectReason is a distinct snake_case word', () => {
+    const reasons = Object.values(CsrfRejectReason)
+    assert.equal(new Set(reasons).size, reasons.length)
+    for (const reason of reasons) assert.match(reason, /^[a-z]+(_[a-z]+)*$/)
 })
 
 test('EntityIdSchema accepts canonical positive integer ids only', () => {

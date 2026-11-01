@@ -125,12 +125,12 @@ flowchart LR
 | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | [packages/shared/src/schemas](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/schemas) | основні схеми вводу (auth, main, support, push-subscription, query, ws…), спільні для frontend і backend |
 
-Приклад схеми ([shared/src/schemas/auth/register.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/register.ts)):
+Приклад схеми ([shared/src/schemas/auth/register-email.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/register-email.ts)):
 
 ```ts
 import { type } from '@arktype/type'
 
-export const RegisterInputSchema = type({
+export const RegisterEmailInputSchema = type({
     name: 'string >= 1 & string <= 100',
     email: 'string.email & string <= 255',
     password: 'string >= 8 & string <= 32',
@@ -138,7 +138,7 @@ export const RegisterInputSchema = type({
     '+': 'reject',
 })
 
-export type RegisterInput = (typeof RegisterInputSchema)['inferIn']
+export type RegisterEmailInput = typeof RegisterEmailInputSchema.infer
 ```
 
 `'+': 'reject'` забороняє невідомі ключі. Query-схеми приходять рядками, тому використовують морфи-парсери, напр. `type('string.integer.parse').pipe(type('number > 0'))` у [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts) (там же коментар про cast-обхід для дефолтів у кортежах ArkType).
