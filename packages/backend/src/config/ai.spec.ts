@@ -97,3 +97,37 @@ describe('validateRuntimeConfig and AI config', () => {
         }).toThrow(/Invalid Support AI configuration: SUPPORT_DEFAULT_LANGUAGE/)
     })
 })
+
+describe('AI config: the daily token budget (feat-063, D2)', () => {
+    it('defaults to 200000 tokens a day and an 8000-token prompt allowance', async () => {
+        delete process.env['AI_SUPPORT_DAILY_TOKEN_BUDGET']
+        delete process.env['AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS']
+        const config = await load()
+        expect(config.supportDailyTokenBudget).toBe(200_000)
+        expect(config.supportPromptAllowanceTokens).toBe(8_000)
+        expect(config.configError).toBeNull()
+    })
+
+    it('reads both values, and 0 switches the budget off', async () => {
+        process.env['AI_SUPPORT_DAILY_TOKEN_BUDGET'] = '0'
+        process.env['AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS'] = '12000'
+        const config = await load()
+        expect(config.supportDailyTokenBudget).toBe(0)
+        expect(config.supportPromptAllowanceTokens).toBe(12_000)
+        expect(config.configError).toBeNull()
+    })
+
+    it.each([
+        ['AI_SUPPORT_DAILY_TOKEN_BUDGET', '-1'],
+        ['AI_SUPPORT_DAILY_TOKEN_BUDGET', '1e5'],
+        ['AI_SUPPORT_DAILY_TOKEN_BUDGET', '0x10'],
+        ['AI_SUPPORT_DAILY_TOKEN_BUDGET', '1.5'],
+        ['AI_SUPPORT_DAILY_TOKEN_BUDGET', 'lots'],
+        ['AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS', '-5'],
+        ['AI_SUPPORT_PROMPT_ALLOWANCE_TOKENS', '8k'],
+    ])('reports %s=%s', async (name, value) => {
+        process.env[name] = value
+        const config = await load()
+        expect(config.configError).toContain(`${name} must be a non-negative integer`)
+    })
+})

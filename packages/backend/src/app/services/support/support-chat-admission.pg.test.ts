@@ -73,6 +73,16 @@ vi.mock('#database/redis.js', async () => {
     })
     return { default: client, redisHealth, withRedis: createWithRedis(client, redisHealth) }
 })
+// The daily budget talks to the strict rate-limit client; here it is a plain client on the
+// test prefix, so the keys can be read and set from the test.
+vi.mock('#database/redis-rate-limit.js', async () => {
+    const { Redis: Client } = await import('ioredis')
+    const client = new Client(process.env['REDIS_TEST_URL'] ?? 'redis://127.0.0.1:6379', {
+        keyPrefix: PREFIX,
+        lazyConnect: true,
+    })
+    return { default: client }
+})
 // Per-user counters in memory with the policy's own limit: the plumbing from the policy to
 // the 429 is what is under test here (the Redis counter has its own tests).
 vi.mock('#app/services/auth/auth-throttle-service.js', () => {
@@ -100,6 +110,10 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             default: Redis
             redisHealth: { stop(): void }
         }
+    const { default: budgetRedis } = (await import('#database/redis-rate-limit.js')) as unknown as {
+        default: Redis
+    }
+    const { default: aiConfig } = await import('#config/ai.js')
     const { supportLlmService } = await import('#app/services/support/support-llm-service.js')
     const { supportEmbeddingService } =
         await import('#app/services/support/support-embedding-service.js')
@@ -123,6 +137,8 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
 
     // What the replaced LLM calls do: finish at once, wait for the test, or fail.
     const llm = {
+        // Tokens the stubbed calls report to the budget (null: they report nothing).
+        usage: null as { translation: number; embedding: number; chat: number } | null,
         mode: 'finish' as 'finish' | 'hold' | 'fail',
         release: (): void => undefined,
         gate: Promise.resolve(),
@@ -134,13 +150,26 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             llm.release = resolve
         })
     }
-    const stream = async function* (): AsyncGenerator<string> {
+    const reported = (tokens: number) => ({
+        promptTokens: tokens,
+        completionTokens: 0,
+        totalTokens: tokens,
+    })
+    const stream = async function* (...args: unknown[]): AsyncGenerator<string> {
         llm.started += 1
         if (llm.mode === 'fail') throw new Error('provider down')
         if (llm.mode === 'hold') await llm.gate
         yield 'Hello'
         yield ' there'
+        // The provider's usage arrives with the end of the stream.
+        const onComplete = args.find((arg) => typeof arg === 'function') as
+            | ((usage: ReturnType<typeof reported>, model: string, prompt: string) => void)
+            | undefined
+        if (llm.usage !== null) onComplete?.(reported(llm.usage.chat), 'model', 'prompt')
     }
+    const today = (): string => new Date().toISOString().slice(0, 10)
+    const spentBy = async (userId: bigint): Promise<number> =>
+        Number((await admin.get(`llm:budget:${String(userId)}:${today()}`)) ?? 0)
 
     class Client extends WsTestClient {
         static connect(token: string): Promise<Client> {
@@ -205,6 +234,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
     beforeAll(async () => {
         await admin.connect()
         await redisClient.connect()
+        await budgetRedis.connect()
 
         const { routesHandler, createWsRoutesByUrl } = await import('#vendor/start/router.js')
         const { default: httpRoutes } = await import('#app/routes/http-routes.js')
@@ -219,9 +249,17 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
         })
 
         vi.spyOn(supportQueryTranslationService, 'translateToEnglish').mockImplementation(
-            (message: string) => Promise.resolve(message),
+            (message: string, options) => {
+                if (llm.usage !== null) options?.onUsage?.(reported(llm.usage.translation))
+                return Promise.resolve(message)
+            },
         )
-        vi.spyOn(supportEmbeddingService, 'search').mockResolvedValue([])
+        vi.spyOn(supportEmbeddingService, 'search').mockImplementation(
+            (_query: string, _limit, options) => {
+                if (llm.usage !== null) options?.onUsage?.(reported(llm.usage.embedding))
+                return Promise.resolve([])
+            },
+        )
         vi.spyOn(supportLlmService, 'chatStream').mockImplementation(stream)
         vi.spyOn(supportLlmService, 'openChatStream').mockImplementation(stream)
     })
@@ -230,6 +268,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
         llm.mode = 'finish'
         llm.release()
         llm.started = 0
+        llm.usage = null
     })
 
     afterAll(async () => {
@@ -239,6 +278,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
         await stopServer?.('test')
         for (const id of createdUserIds) await db.delete(users).where(eq(users.id, id))
         await cleanupTestRedis(admin)
+        await budgetRedis.quit()
         redisHealth.stop()
         redisClient.disconnect(false)
         await admin.quit()
@@ -432,6 +472,75 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             const { client } = await connectedUser()
 
             expect(verdict(await client.chat('hello', 'has space'))).toBe('error:validation_failed')
+        })
+    })
+
+    // feat-063, D2 (ADR 0003) end to end: the reservation is made at admission, a refusal
+    // gives the lock back, and the settlement leaves what was really spent.
+    describe('the daily token budget', () => {
+        it('refuses a message once the day is spent, calls nothing, and keeps the user unlocked', async () => {
+            const { user, client } = await connectedUser()
+            await admin.set(
+                `llm:budget:${String(user.id)}:${today()}`,
+                String(aiConfig.supportDailyTokenBudget),
+            )
+
+            const refused = await client.chat('hello')
+
+            expect(verdict(refused)).toBe('429:support_budget_exceeded')
+            expect(llm.started).toBe(0)
+            // Not locked out by the refusal: with budget back, the next message goes through.
+            await admin.del(`llm:budget:${String(user.id)}:${today()}`)
+            expect(verdict(await client.chat('hello again'))).toBe('ok')
+        })
+
+        it('leaves what the provider reported once the answer is complete', async () => {
+            const { user, client } = await connectedUser()
+            llm.usage = { translation: 10, embedding: 5, chat: 321 }
+
+            expect(verdict(await client.chat('hello'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_COMPLETE)
+
+            // The settlement ran before the "complete" event: the reserve (thousands of
+            // tokens) is replaced by the 336 that were spent.
+            expect(await spentBy(user.id)).toBe(336)
+        })
+
+        it('keeps the reserve of a call that was cut off without a report', async () => {
+            const { user, client } = await connectedUser()
+            llm.usage = { translation: 10, embedding: 5, chat: 0 }
+            llm.mode = 'fail'
+
+            expect(verdict(await client.chat('hello'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_ERROR)
+
+            // translation 10 + embedding 5 + the estimate of the answer that failed
+            // (allowance 8000 + 3 tokens of the message + 2048 of output).
+            expect(await spentBy(user.id)).toBe(10 + 5 + 8_000 + 3 + 2_048)
+        })
+
+        it('gives the reserve back for a message it did not answer (a resend)', async () => {
+            const { user, client } = await connectedUser()
+            llm.usage = { translation: 10, embedding: 5, chat: 321 }
+            expect(verdict(await client.chat('hello', 'budget-dup'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_COMPLETE)
+            const afterAnswer = await spentBy(user.id)
+
+            expect(verdict(await client.chat('hello', 'budget-dup'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_ERROR)
+
+            expect(await spentBy(user.id)).toBe(afterAnswer)
+        })
+
+        it('does not let two parallel users share a budget', async () => {
+            const [a, b] = [await connectedUser(), await connectedUser()]
+            await admin.set(
+                `llm:budget:${String(a.user.id)}:${today()}`,
+                String(aiConfig.supportDailyTokenBudget),
+            )
+
+            expect(verdict(await a.client.chat('hello'))).toBe('429:support_budget_exceeded')
+            expect(verdict(await b.client.chat('hello'))).toBe('ok')
         })
     })
 

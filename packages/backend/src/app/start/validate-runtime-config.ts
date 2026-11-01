@@ -44,6 +44,12 @@ export function validateRuntimeConfig(): void {
         throw new Error(`Invalid AI configuration: ${aiConfig.configError}`)
     }
 
+    if (appConfig.isProductionLike && aiConfig.supportDailyTokenBudget === 0) {
+        throw new Error(
+            'AI_SUPPORT_DAILY_TOKEN_BUDGET=0 switches the LLM budget off, which is forbidden in production-like environments',
+        )
+    }
+
     if (healthConfig.configError !== null) {
         throw new Error(`Invalid readiness configuration: ${healthConfig.configError}`)
     }

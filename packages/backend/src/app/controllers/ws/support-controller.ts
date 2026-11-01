@@ -49,7 +49,7 @@ export default {
         const payload = getTypedPayload(context)
         const userId = BigInt(userData.userId)
 
-        const admission = await supportService.admitChat(userId)
+        const admission = await supportService.admitChat(userId, payload.message)
         if (Result.isError(admission)) return refuse(context, admission.error)
 
         void supportService.runChat(

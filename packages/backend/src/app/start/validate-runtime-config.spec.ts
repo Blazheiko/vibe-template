@@ -306,3 +306,35 @@ describe('CSRF startup checks', () => {
         expect((await run()).filter((message) => message.includes('CSRF'))).toEqual([])
     })
 })
+
+describe('the daily LLM token budget (feat-063, D2)', () => {
+    it('refuses to start in a production-like environment with the budget switched off', async () => {
+        process.env['APP_ENV'] = 'prod'
+        process.env['AI_SUPPORT_DAILY_TOKEN_BUDGET'] = '0'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow('AI_SUPPORT_DAILY_TOKEN_BUDGET=0 switches the LLM budget off')
+    })
+
+    it('allows the budget to be off outside production', async () => {
+        process.env['APP_ENV'] = 'local'
+        process.env['AI_SUPPORT_DAILY_TOKEN_BUDGET'] = '0'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).not.toThrow()
+    })
+
+    it('starts in production with the default budget', async () => {
+        process.env['APP_ENV'] = 'prod'
+        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'true'
+        process.env['APP_URL'] = 'https://app.example.com'
+        delete process.env['AUTH_SMS_PROVIDER']
+        delete process.env['AI_SUPPORT_DAILY_TOKEN_BUDGET']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).not.toThrow()
+    })
+})

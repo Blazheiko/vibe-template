@@ -6,7 +6,7 @@ import type {
     TextFilter,
 } from '#app/repositories/index.js'
 import logger from '#logger'
-import type { TextUsageCompleteHandler } from '#app/services/ai/types.js'
+import type { TextUsageCompleteHandler, TokenUsage } from '#app/services/ai/types.js'
 
 export type { TextFilter }
 
@@ -42,11 +42,16 @@ export const llmUsageService = {
             })
     },
 
-    /** `onComplete` handler for a text adapter call that records one usage row. */
+    /**
+     * `onComplete` handler for a text adapter call that records one usage row.
+     * `onUsage` sees the same reported usage (the daily budget settles with it); its failure
+     * never affects the row or the call.
+     */
     textUsageRecorder(
         feature: TextFeature,
         userId: bigint | null,
         llmSystemPromptId: bigint | null = null,
+        onUsage?: (usage: TokenUsage) => void,
     ): TextUsageCompleteHandler {
         return (usage, model, finalPrompt) => {
             llmUsageService.recordText({
@@ -57,6 +62,11 @@ export const llmUsageService = {
                 finalPrompt,
                 ...usage,
             })
+            try {
+                onUsage?.(usage)
+            } catch (err) {
+                logger.warn({ err }, 'llmUsageService: onUsage failed')
+            }
         }
     },
 
