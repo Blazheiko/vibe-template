@@ -13,12 +13,16 @@ import {
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import {
+    isChallengeExpired,
+    LINK_PHONE_FLOW,
+    normalizeEmail,
+    normalizePhone,
+    RESET_PHONE_FLOW,
+} from '#app/services/auth/auth-normalize.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { authConfig } from '#config/auth.js'
-import {
-    smsVerificationProvider,
-    type SmsVerificationFlow,
-} from '#app/services/auth/sms-verification-provider.js'
+import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import {
     buildResendCooldownError,
     extractChallengeSessionId,
@@ -40,7 +44,6 @@ import {
 import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
-import { normalizePhoneNumber } from 'shared/utils'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
@@ -48,8 +51,6 @@ export const GENERIC_RESET_MESSAGE =
     'If an account with that email exists, a reset link will be sent shortly.'
 export const GENERIC_PHONE_RESET_MESSAGE =
     'If the phone number can be used for password reset, verification instructions will be sent shortly.'
-const RESET_PHONE_FLOW: SmsVerificationFlow = 'reset_phone'
-const LINK_PHONE_FLOW: SmsVerificationFlow = 'link_phone'
 // Email clients do not support app CSS variables reliably, so this palette stays inline on purpose.
 const EMAIL_BRAND = {
     accent: '#A8627A',
@@ -77,22 +78,6 @@ function buildResetUrl(token: string): string {
 
 function createBlindVerificationCodeHash(): string {
     return hashOtpVerificationCode(randomBytes(32).toString('hex'))
-}
-
-function normalizePhone(input: string, defaultCountry?: string): AppResult<string> {
-    try {
-        return Result.ok(normalizePhoneNumber(input, defaultCountry))
-    } catch (error) {
-        if (error instanceof Error) {
-            return Result.err(badRequest(error.message))
-        }
-
-        return Result.err(badRequest('Phone number must be valid and in a supported format'))
-    }
-}
-
-function isChallengeExpired(expiresAt: Date): boolean {
-    return expiresAt.getTime() <= Date.now()
 }
 
 async function invalidatePendingPhoneChallenges(phone: string): Promise<void> {
@@ -224,7 +209,7 @@ export const passwordResetService = {
         email: string,
         requestMeta: { ipAddress: string },
     ): Promise<AppResult<{ message: string }>> {
-        const normalizedEmail = email.trim().toLowerCase()
+        const normalizedEmail = normalizeEmail(email)
 
         // Before the lookup, and the same generic answer either way: the response
         // never tells whether the address exists or whether the budget is spent.
