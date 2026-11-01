@@ -3,19 +3,20 @@
 ## Current State
 
 **Last Updated:** 2026-11-01
-**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 3)
-**Branch:** `refactor/frontend-split-components-3` (part 1, `AuthModals.vue`, is merged as #260; part 2, `stores/state.ts`, as #261)
+**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 4)
+**Branch:** `refactor/frontend-split-components-4` (merged: part 1 `AuthModals.vue` #260, part 2 `stores/state.ts` #261, part 3 service worker #262)
 **Plan:** `docs/plan/code-review-fixes-tasks.md`, phase J
 
 ## Status
 
-### Done in this PR (item 3 of phase J: the service worker out of `main.ts`)
+### Done in this PR (item 4 of phase J: `MenuButton.vue`)
 
-`main.ts` was 401 lines, of which about 350 were the service worker; it is now 56 (bootstrap only):
+`MenuButton.vue` was 752 lines, 140 of them the install logic; it is now 634 and keeps only the menu:
 
-- [x] **`utils/sw-manager.ts`**: the helpers (`parseBuildTimestamp`, `isServiceWorkerErrorPayload`, `createServiceWorkerError`, `isServiceWorkerVersionMessage`, `requestWorkerBuildTimestamp`), `createUpdateNotifier`, `ServiceWorkerManager` and `startServiceWorker({ appBuildTimestamp, reportError, announceUpdate })`. `main.ts` passes Sentry and the event bus in, so the module knows neither
-- [x] **One `shouldNotify(source)`** instead of `showUpdateNotification` + `maybeShowUpdateNotification`: "tell the user at most once, never on a first install, only when the worker is more than 10 minutes newer than the page". It is checked before and after the awaited read of the worker's build time, so two signals waiting at once still tell once
-- [x] **There were no tests of this**, so `sw-manager.spec.ts` (25) was written: the parsing and guards, the message channel (answer, wrong answer, 1 s timeout, a worker that throws), every branch of the notifier (first install, ≤ 10 min, no build time on either side, build time from the message, once however many signals, two waiting at once), and `startServiceWorker` (errors to Sentry, a newer version announced, nothing listened to outside production)
+- [x] **`composables/usePwaInstallButton.ts`**: the element ref, "is the install offered" (`resolveInstallAvailable`, a pure function: installed → no; browser prompt ready → yes; Chromium without a prompt yet → no, the element is not believed; no native prompt (Safari) → the element decides), the theme colours for the dialog, `installApp` (runs a `beforeInstall` callback — the menu closes — then the native prompt, else the dialog of the element) and the listeners on the element
+- [x] **`components/PwaInstallButton.vue`**: the item itself, one `<button class="menu-item install-app">` emitting `install`. It is a single root, so the menu's scoped styles still reach it (checked: the button carries the menu's `data-v-` id). The `<pwa-install>` element stays in `MenuButton.vue` on purpose: the dropdown has a `transform`, which would turn the element's `position: fixed` dialog into one placed inside the dropdown
+- [x] **A small fix on the way**: the old `onUnmounted` removed the listeners through `pwaInstall.value`, which Vue has already set to `null` by then, so it never removed anything. The composable remembers the element it listened to. Harmless in practice (the element goes with the component), now correct and tested
+- [x] Tests: `usePwaInstallButton.spec.ts` (13: the decision table, offer/stop, installed app, click order close → prompt, dialog fallback, element events, the prompt handed to the element, theme styles, listener removal) and `PwaInstallButton.spec.ts` (1)
 - [x] Docs: `frontend/index.md`
 
 ### Found, not changed
@@ -29,7 +30,6 @@ Both are bugs in data that is stored; fixing them changes what the admin sees (K
 
 ### Left for the next PRs of phase J
 
-- [ ] `MenuButton.vue` → `PwaInstallButton.vue`
 - [ ] playground `TestForm.vue` → `useLoadTest()`, shared helpers with `TestFormWs.vue`, no `any`
 
 ## Evidence of Completion
@@ -38,6 +38,6 @@ Both are bugs in data that is stored; fixing them changes what the admin sees (K
 | ------------------------------------------ | ----------------------------------------------------------------------- |
 | `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                  |
 | `pnpm build`                               | exit 0                                                                  |
-| `pnpm test`                                | frontend 330 (+25), backend 1731, shared 24, api-playground 26, docs 26 |
+| `pnpm test`                                | frontend 344 (+14), backend 1731, shared 24, api-playground 26, docs 26 |
 | Playwright `mock` project                  | 61 passed                                                               |
 | `docs:build && docs:verify`                | passed                                                                  |
