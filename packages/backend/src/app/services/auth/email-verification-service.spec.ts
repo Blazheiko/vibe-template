@@ -36,10 +36,14 @@ vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     consumeAuthThrottle: consumeAuthThrottleMock,
 }))
 
+// A stand-in for the transaction `withTransaction` hands to the repositories; the real
+// commit/rollback behaviour is proved against PostgreSQL (one-time-token-race.pg.test.ts).
+const TX = vi.hoisted(() => ({ transaction: true }))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     emailVerificationRepository: emailVerificationRepositoryMock,
     emailLinkVerificationRepository: emailLinkVerificationRepositoryMock,
+    withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(TX),
 }))
 
 vi.mock('#app/services/notifications/email-service.js', () => ({
@@ -190,10 +194,14 @@ describe('emailVerificationService', () => {
                 message: 'Email confirmed successfully',
             })
         }
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
-            emailVerifiedAt: expect.any(Date),
-        })
-        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            7n,
+            {
+                emailVerifiedAt: expect.any(Date),
+            },
+            TX,
+        )
+        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
     })
 
     it('keeps background logging on service failure', async () => {
@@ -250,6 +258,64 @@ describe('emailVerificationService', () => {
         )
     })
 
+    // feat-060: a concurrent request claimed the token first (markUsed -> undefined).
+    it('does not confirm the email when another request already claimed the token', async () => {
+        emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 11n,
+            userId: 7n,
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.findById.mockResolvedValue({ id: 7n, emailVerifiedAt: null })
+        emailVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
+
+        const { emailVerificationService } = await loadEmailVerificationService()
+        const result = await emailVerificationService.verifyEmail('raced-token', {
+            ipAddress: '127.0.0.1',
+        })
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toEqual({
+                _tag: 'BadRequest',
+                message: 'Verification link has already been used',
+            })
+        }
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    })
+
+    it('does not link the email when another request already claimed the token', async () => {
+        emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
+        emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 15n,
+            userId: 8n,
+            targetEmail: 'new@example.com',
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.findById.mockResolvedValue({ id: 8n, email: null })
+        userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+        emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
+
+        const { emailVerificationService } = await loadEmailVerificationService()
+        const result = await emailVerificationService.verifyEmail('raced-link', {
+            ipAddress: '127.0.0.1',
+        })
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toEqual({
+                _tag: 'BadRequest',
+                message: 'Verification link has already been used',
+            })
+        }
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    })
+
     it('verifies a pending email-link token and links the new email', async () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
@@ -288,6 +354,7 @@ describe('emailVerificationService', () => {
                 email: 'new@example.com',
                 emailVerifiedAt: expect.any(Date),
             }),
+            TX,
         )
     })
 })
@@ -322,7 +389,13 @@ it('maps a unique email race during link verification to a conflict', async () =
             message: 'Email is already linked to another account',
         })
     }
-    expect(emailLinkVerificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+    // The claim ran in the same transaction as the failed update, so it is rolled back
+    // with it (proved against PostgreSQL); here it is only handed that transaction.
+    expect(emailLinkVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(
+        expect.anything(),
+        undefined,
+        TX,
+    )
 })
 
 describe('verification throttles', () => {

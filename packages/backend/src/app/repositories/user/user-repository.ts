@@ -1,5 +1,6 @@
 import { db } from '#database/db.js'
 import { sessionCheckDb } from '#database/session-check-db.js'
+import type { DbExecutor } from '../transaction.js'
 import { users } from '#database/schema.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
@@ -54,7 +55,8 @@ export interface IUserRepository {
     findAdminUserDetailById(id: bigint): Promise<AdminUserDetailRow | undefined>
     emailExistsForOtherUser(email: string, excludeId: bigint): Promise<boolean>
     phoneExistsForOtherUser(phone: string, excludeId: bigint): Promise<boolean>
-    update(id: bigint, data: UserUpdate): Promise<UserRow | undefined>
+    /** Pass the transaction when the update belongs to one (see `withTransaction`). */
+    update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
     findSessionToken(id: bigint): Promise<string | undefined>
     /**
@@ -210,12 +212,13 @@ export const userRepository: IUserRepository = {
         return result.length > 0
     },
 
-    async update(id, data) {
-        await db
+    async update(id, data, executor = db) {
+        const [row] = await executor
             .update(users)
             .set({ ...data, updatedAt: new Date() })
             .where(eq(users.id, id))
-        return userRepository.findById(id)
+            .returning()
+        return row
     },
 
     // On the session-check pool, which cancels a stuck query (ADR 0002).

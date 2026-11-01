@@ -5,6 +5,7 @@ import {
     emailLinkVerificationRepository,
     emailVerificationRepository,
     userRepository,
+    withTransaction,
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { Result } from 'better-result'
@@ -12,7 +13,6 @@ import {
     badRequest,
     conflict,
     internal,
-    internalMessage,
     notFound,
     type AppResult,
     appErrorMessage,
@@ -392,38 +392,48 @@ export const emailVerificationService = {
                 return Result.err(conflict('Email is already linked to another account'))
             }
 
-            const updatedUserResult = await tryInternal(
+            // feat-060: claim the token and link the email in ONE transaction. The claim is
+            // `UPDATE ... SET used_at WHERE used_at IS NULL`: of two concurrent requests with
+            // one link exactly one gets the row, and a failure rolls both back (the link
+            // stays usable).
+            const appliedResult = await tryInternal(
                 () =>
-                    userRepository.update(user.id, {
-                        email: linkVerification.targetEmail.toLowerCase(),
-                        emailVerifiedAt: new Date(),
+                    withTransaction(async (tx) => {
+                        const claimed = await emailLinkVerificationRepository.markUsed(
+                            linkVerification.id,
+                            undefined,
+                            tx,
+                        )
+                        if (claimed === undefined) return { claimed: false as const }
+
+                        const updated = await userRepository.update(
+                            user.id,
+                            {
+                                email: linkVerification.targetEmail.toLowerCase(),
+                                emailVerifiedAt: new Date(),
+                            },
+                            tx,
+                        )
+                        if (updated === undefined)
+                            throw new Error('User disappeared during linking')
+                        return { claimed: true as const }
                     }),
                 'Failed to link email',
             )
-            if (Result.isError(updatedUserResult)) {
+            if (Result.isError(appliedResult)) {
                 if (
-                    updatedUserResult.error._tag === 'Internal' &&
-                    updatedUserResult.error.cause !== null &&
-                    typeof updatedUserResult.error.cause === 'object' &&
-                    'code' in updatedUserResult.error.cause &&
-                    updatedUserResult.error.cause.code === '23505'
+                    appliedResult.error._tag === 'Internal' &&
+                    appliedResult.error.cause !== null &&
+                    typeof appliedResult.error.cause === 'object' &&
+                    'code' in appliedResult.error.cause &&
+                    appliedResult.error.cause.code === '23505'
                 ) {
                     return Result.err(conflict('Email is already linked to another account'))
                 }
-                return Result.err(updatedUserResult.error)
+                return Result.err(appliedResult.error)
             }
-
-            const updatedUser = updatedUserResult.value
-            if (updatedUser === undefined) {
-                return Result.err(internalMessage('Failed to link email'))
-            }
-
-            const usedResult = await tryInternal(
-                () => emailLinkVerificationRepository.markUsed(linkVerification.id),
-                'Failed to mark email link token used',
-            )
-            if (Result.isError(usedResult)) {
-                return Result.err(usedResult.error)
+            if (!appliedResult.value.claimed) {
+                return Result.err(badRequest('Verification link has already been used'))
             }
 
             return Result.ok({ message: 'Email linked successfully' })
@@ -458,30 +468,36 @@ export const emailVerificationService = {
             return Result.err(notFound('User', 'User not found'))
         }
 
-        if (user.emailVerifiedAt === null) {
-            const updatedUserResult = await tryInternal(
-                () =>
-                    userRepository.update(user.id, {
-                        emailVerifiedAt: new Date(),
-                    }),
-                'Failed to verify email',
-            )
-            if (Result.isError(updatedUserResult)) {
-                return Result.err(updatedUserResult.error)
-            }
+        // feat-060: claim the token and confirm the email in ONE transaction (see the link
+        // branch above).
+        const appliedResult = await tryInternal(
+            () =>
+                withTransaction(async (tx) => {
+                    const claimed = await emailVerificationRepository.markUsed(
+                        verification.id,
+                        undefined,
+                        tx,
+                    )
+                    if (claimed === undefined) return { claimed: false as const }
 
-            const updatedUser = updatedUserResult.value
-            if (updatedUser === undefined) {
-                return Result.err(internalMessage('Failed to verify email'))
-            }
-        }
-
-        const usedResult = await tryInternal(
-            () => emailVerificationRepository.markUsed(verification.id),
-            'Failed to mark email verification token used',
+                    if (user.emailVerifiedAt === null) {
+                        const updated = await userRepository.update(
+                            user.id,
+                            { emailVerifiedAt: new Date() },
+                            tx,
+                        )
+                        if (updated === undefined)
+                            throw new Error('User disappeared during verification')
+                    }
+                    return { claimed: true as const }
+                }),
+            'Failed to verify email',
         )
-        if (Result.isError(usedResult)) {
-            return Result.err(usedResult.error)
+        if (Result.isError(appliedResult)) {
+            return Result.err(appliedResult.error)
+        }
+        if (!appliedResult.value.claimed) {
+            return Result.err(badRequest('Verification link has already been used'))
         }
 
         return Result.ok({ message: 'Email confirmed successfully' })

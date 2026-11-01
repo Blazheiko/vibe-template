@@ -1,4 +1,5 @@
 import { db } from '#database/db.js'
+import type { DbExecutor } from '../transaction.js'
 import { emailLinkVerifications } from '#database/schema.js'
 import { and, eq, isNull, type InferInsertModel, type InferSelectModel } from 'drizzle-orm'
 
@@ -9,7 +10,16 @@ export interface IEmailLinkVerificationRepository {
     create(data: EmailLinkVerificationInsert): Promise<EmailLinkVerificationRow>
     findByTokenHash(tokenHash: string): Promise<EmailLinkVerificationRow | undefined>
     invalidatePendingByUserId(userId: bigint): Promise<number>
-    markUsed(id: bigint, usedAt?: Date): Promise<EmailLinkVerificationRow | undefined>
+    /**
+     * Claims the token: `used_at` is set only if it is still NULL, so of two concurrent
+     * requests with one token exactly one gets the row back. Undefined: already used.
+     * Pass the transaction in which the token's effect is applied.
+     */
+    markUsed(
+        id: bigint,
+        usedAt?: Date,
+        executor?: DbExecutor,
+    ): Promise<EmailLinkVerificationRow | undefined>
 }
 
 export const emailLinkVerificationRepository: IEmailLinkVerificationRepository = {
@@ -46,11 +56,11 @@ export const emailLinkVerificationRepository: IEmailLinkVerificationRepository =
         return result.length
     },
 
-    async markUsed(id, usedAt = new Date()) {
-        return await db
+    async markUsed(id, usedAt = new Date(), executor = db) {
+        return await executor
             .update(emailLinkVerifications)
             .set({ usedAt })
-            .where(eq(emailLinkVerifications.id, id))
+            .where(and(eq(emailLinkVerifications.id, id), isNull(emailLinkVerifications.usedAt)))
             .returning()
             .then((rows) => rows.at(0))
     },

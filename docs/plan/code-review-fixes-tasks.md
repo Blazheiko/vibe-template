@@ -157,21 +157,25 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ### Зміни
 
-- [ ] У трьох репозиторіях: `markUsed(id)` → `UPDATE … SET used_at = now() WHERE id = ? AND used_at IS NULL RETURNING *`; 0 рядків → `undefined`.
-- [ ] Claim-then-act **у одній транзакції** (`db.transaction`): споживання токена (умовний UPDATE) → зміна пароля / верифікація email / лінк → commit. Помилка на будь-якому кроці → rollback → токен **не** втрачений, користувач може повторити.
-- [ ] Додати в репозиторії транзакційні варіанти методів (приймають `tx`), або винести у `one-time-token.ts` функцію `consumeTokenAndApply(repo, raw, apply: (tx, row) => Promise<void>)` — це стане основою для H4.
-- [ ] `destroyAllSessions` після commit — поза транзакцією (best-effort, див. B).
+- [x] У трьох репозиторіях: `markUsed(id)` → `UPDATE … SET used_at = now() WHERE id = ? AND used_at IS NULL RETURNING *`; 0 рядків → `undefined`.
+- [x] Claim-then-act **у одній транзакції** (`db.transaction`): споживання токена (умовний UPDATE) → зміна пароля / верифікація email / лінк → commit. Помилка на будь-якому кроці → rollback → токен **не** втрачений, користувач може повторити.
+- [x] Транзакція — `withTransaction` + необовʼязковий `executor` у `markUsed` та `userRepository.update` (`app/repositories/transaction.ts`). Окремої `consumeTokenAndApply` не вводив: у трьох місцях це 6–10 рядків, спільна функція зʼявиться в H4, коли буде видно, що справді спільне.
+- [x] `destroyAllSessions` після commit — поза транзакцією (best-effort, див. B).
 
 ### Критерії приймання
 
-- [ ] Два одночасні `resetPassword` з одним токеном → рівно одне 200, друге — «invalid or used»; у БД пароль із запиту-переможця.
-- [ ] **Fault-injection** між споживанням токена і зміною пароля (помилка БД / кинутий exception в `apply`) → транзакція відкочена, токен досі `used_at IS NULL`, повторний запит із тим самим токеном → 200.
-- [ ] Те саме для email-verification і email-link.
-- [ ] Expired-токен → помилка, не споживається (або споживається — зафіксувати поточну поведінку і не змінювати).
+- [x] Два одночасні `resetPassword` з одним токеном → рівно одне 200, друге — «invalid or used»; у БД пароль із запиту-переможця.
+- [x] **Fault-injection** між споживанням токена і зміною пароля (помилка БД / кинутий exception в `apply`) → транзакція відкочена, токен досі `used_at IS NULL`, повторний запит із тим самим токеном → 200.
+- [x] Те саме для email-verification і email-link.
+- [x] Expired-токен → помилка, не споживається (або споживається — зафіксувати поточну поведінку і не змінювати).
 
 ### Тести
 
-- [ ] `test:pg`: `Promise.all` двох запитів; fault-injection через мок `userRepository.update`, що кидає всередині транзакції.
+- [x] `test:pg`: `Promise.all` двох запитів; fault-injection через мок `userRepository.update`, що кидає всередині транзакції.
+
+---
+
+**Поза обсягом (перевірено):** phone-reset (`completePhonePasswordReset`) уже робить claim умовним `markConfirmed` (`confirmed_at IS NULL AND invalidated_at IS NULL AND expires_at > now`) **до** зміни пароля, тож подвійного застосування немає; збій після claim лише «спалює» SMS-код (безпечна сторона). Транзакційність цього флоу — частина H5 (SMS challenge).
 
 ---
 
