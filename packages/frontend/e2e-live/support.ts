@@ -1,5 +1,5 @@
 import { expect, test as base } from '@playwright/test'
-import type { APIRequestContext, Browser, BrowserContext, Page, WebSocket } from '@playwright/test'
+import type { APIRequestContext, Browser, BrowserContext, Page } from '@playwright/test'
 
 import { randomUUID } from 'node:crypto'
 
@@ -35,7 +35,7 @@ let devices = 0
  */
 export async function newBrowser(
     browser: Browser,
-): Promise<{ context: BrowserContext; page: Page; sockets: WebSocket[] }> {
+): Promise<{ context: BrowserContext; page: Page }> {
     devices += 1
     const address = `10.77.${String(Math.floor(devices / 250))}.${String((devices % 250) + 1)}`
     const context = await browser.newContext({
@@ -43,12 +43,7 @@ export async function newBrowser(
         extraHTTPHeaders: { 'x-forwarded-for': address },
     })
     const page = await context.newPage()
-    // Every WebSocket the page opens, to see which ones the server ends.
-    const sockets: WebSocket[] = []
-    page.on('websocket', (socket) => {
-        sockets.push(socket)
-    })
-    return { context, page, sockets }
+    return { context, page }
 }
 
 /** The text of the first link in a mail whose path is `path`, as the user would click it. */
