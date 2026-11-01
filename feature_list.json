@@ -691,7 +691,7 @@
             "owner": "Blazheiko",
             "branch": "refactor/auth-enforce-throttle",
             "dependencies": ["feat-060", "feat-069", "feat-077"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
