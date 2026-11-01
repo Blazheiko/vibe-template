@@ -15,6 +15,7 @@ import '#app/start/index.js'
 import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
+import { sessionCheckPool } from '#database/session-check-db.js'
 import redis, { redisHealth } from '#database/redis.js'
 import rateLimitRedis, { connectRateLimitRedis } from '#database/redis-rate-limit.js'
 
@@ -100,7 +101,12 @@ const stopGracefully = async (type: string): Promise<void> => {
         await sentryService.flush(2000)
         // Before quit: the closing connection is not an incident.
         redisHealth.stop()
-        await Promise.allSettled([pool.end(), redis.quit(), rateLimitRedis.quit()])
+        await Promise.allSettled([
+            pool.end(),
+            sessionCheckPool.end(),
+            redis.quit(),
+            rateLimitRedis.quit(),
+        ])
     } catch (error: unknown) {
         console.error(error)
     } finally {

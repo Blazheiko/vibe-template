@@ -78,6 +78,7 @@ vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) =
 
 describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis', async () => {
     const { db, pool } = await import('#database/db.js')
+    const { sessionCheckPool } = await import('#database/session-check-db.js')
     const { users } = await import('#database/schema.js')
     const { default: client, redisHealth } = (await import('#database/redis.js')) as unknown as {
         default: Redis
@@ -171,6 +172,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
         redisHealth.stop()
         client.disconnect(false)
         await admin.quit()
+        await sessionCheckPool.end()
         await pool.end()
     })
 

@@ -1,4 +1,5 @@
 import { db } from '#database/db.js'
+import { sessionCheckDb } from '#database/session-check-db.js'
 import { users } from '#database/schema.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
@@ -217,8 +218,9 @@ export const userRepository: IUserRepository = {
         return userRepository.findById(id)
     },
 
+    // On the session-check pool, which cancels a stuck query (ADR 0002).
     async findSessionToken(id) {
-        const [row] = await db
+        const [row] = await sessionCheckDb
             .select({ sessionToken: users.sessionToken })
             .from(users)
             .where(eq(users.id, id))
