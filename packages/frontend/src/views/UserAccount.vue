@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useStateStore } from '@/stores/state'
+import { usePushStore } from '@/stores/push'
 import { avatarApi, authApi, pushSubscriptionApi } from '@/utils/api'
 import { buildAvatarUrl } from '@/utils/avatar-url'
 import { passwordLengthProblem } from '@/utils/validate-password'
@@ -18,6 +19,7 @@ defineOptions({
 const { t } = useI18n()
 const userStore = useUserStore()
 const stateStore = useStateStore()
+const pushStore = usePushStore()
 const { websocketOpen } = useWebSocketConnection()
 const eventBus = useEventBus()
 const user = computed(() => userStore.user)
@@ -63,7 +65,7 @@ const colorThemes = [
     { value: 'monochrome', label: 'Mono', accent: '#5E6B78' },
 ]
 
-const pushNotificationsEnabled = ref(stateStore.isSubscribedToPush)
+const pushNotificationsEnabled = ref(pushStore.isSubscribedToPush)
 const isPushToggling = ref(false)
 const pushStatusMessage = ref('')
 const isTestingPush = ref(false)
@@ -305,14 +307,14 @@ async function togglePushNotifications(): Promise<void> {
     pushStatusMessage.value = ''
     try {
         if (wantEnabled) {
-            const hasPermission = await stateStore.ensureNotificationPermission()
+            const hasPermission = await pushStore.ensureNotificationPermission()
             if (!hasPermission) {
                 pushNotificationsEnabled.value = false
                 showPushStatus(t('account.settings.errorPermissionDenied'))
                 return
             }
 
-            const subscription = await stateStore.subscribeToPush()
+            const subscription = await pushStore.subscribeToPush()
             pushNotificationsEnabled.value = subscription !== null
             showPushStatus(
                 subscription !== null
@@ -320,7 +322,7 @@ async function togglePushNotifications(): Promise<void> {
                     : t('account.settings.errorSubscribeFailed'),
             )
         } else {
-            const result = await stateStore.unsubscribeFromPush()
+            const result = await pushStore.unsubscribeFromPush()
             pushNotificationsEnabled.value = !result
             showPushStatus(
                 result
@@ -347,10 +349,10 @@ async function sendTestPush(): Promise<void> {
     }
 }
 
-void stateStore.ensurePushSubscriptionsLoaded()
+void pushStore.ensurePushSubscriptionsLoaded()
 
 watch(
-    () => stateStore.isSubscribedToPush,
+    () => pushStore.isSubscribedToPush,
     (newValue) => {
         pushNotificationsEnabled.value = newValue
     },

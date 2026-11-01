@@ -26,10 +26,14 @@ vi.mock('@/stores/state', () => ({
     useStateStore: () => ({
         darkMode: false,
         fontSize: 16,
-        isSubscribedToPush: false,
         setFontSize: vi.fn(),
         setColorTheme: vi.fn(),
         setDarkMode: vi.fn(),
+    }),
+}))
+vi.mock('@/stores/push', () => ({
+    usePushStore: () => ({
+        isSubscribedToPush: false,
         ensurePushSubscriptionsLoaded: vi.fn().mockResolvedValue(undefined),
         ensureNotificationPermission: vi.fn(),
         subscribeToPush: vi.fn(),
