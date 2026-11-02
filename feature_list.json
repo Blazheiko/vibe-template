@@ -801,7 +801,7 @@
             "owner": "Blazheiko",
             "branch": "chore/schema-cleanup",
             "dependencies": ["feat-065"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
