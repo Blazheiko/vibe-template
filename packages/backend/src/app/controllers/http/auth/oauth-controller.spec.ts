@@ -103,6 +103,23 @@ describe('OAuthController.callback', () => {
         )
     })
 
+    // feat-090 (ADR 0004): the service now throws on an infrastructure failure; the
+    // callback must still redirect, never answer a raw 500 JSON page.
+    it('redirects to the error URL when the service throws, and logs the cause', async () => {
+        const cause = new Error('database down')
+        handleCallback.mockRejectedValue(cause)
+        const context = createContext({ code: 'c', state: 'state-1' })
+
+        await OAuthController.callback(context)
+
+        expect(context.responseData.status).toBe(302)
+        expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
+        expect(context.logger.error).toHaveBeenCalledWith(
+            { err: cause, appError: 'Internal' },
+            'OAuth sign-in failed',
+        )
+    })
+
     it('does not log a 4xx failure as error', async () => {
         handleCallback.mockResolvedValue(
             Result.err({ _tag: 'BadRequest', message: 'OAuth state mismatch' }),

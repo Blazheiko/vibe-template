@@ -5,7 +5,12 @@ import {
 } from '#app/controllers/shared/controller-error.js'
 import { Result } from 'better-result'
 import { OAUTH_EMAIL_UNVERIFIED, oauthService } from '#app/services/auth/oauth-service.js'
-import { appErrorMessage, badRequest, type AppError } from '#app/services/shared/errors.js'
+import {
+    appErrorMessage,
+    badRequest,
+    internal,
+    type AppError,
+} from '#app/services/shared/errors.js'
 import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 import type { OAuthCallbackQuery, OAuthRedirectQuery } from 'shared/schemas'
 import oauthConfig from '#config/oauth.js'
@@ -95,14 +100,21 @@ export default {
             return redirectToError(context, badRequest('Missing OAuth parameters'))
         }
 
-        const result = await oauthService.handleCallback(
-            provider,
-            code,
-            storedState,
-            receivedState,
-            codeVerifier,
-            auth,
-        )
+        let result: Awaited<ReturnType<typeof oauthService.handleCallback>>
+        try {
+            result = await oauthService.handleCallback(
+                provider,
+                code,
+                storedState,
+                receivedState,
+                codeVerifier,
+                auth,
+            )
+        } catch (err: unknown) {
+            // ADR 0004: an infrastructure failure throws, but this is a browser navigation:
+            // it still ends in the error redirect (redirectToError logs it with the cause).
+            result = Result.err(internal(err, 'OAuth sign-in failed'))
+        }
 
         // Clean up OAuth session data
         await session.updateSessionData({

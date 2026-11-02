@@ -2,12 +2,7 @@ import { Result } from 'better-result'
 import nodemailer, { type SendMailOptions, type Transporter } from 'nodemailer'
 import logger from '#logger'
 import mailConfig from '#config/mail.js'
-import {
-    badRequest,
-    internal,
-    internalMessage,
-    type AppResult,
-} from '#app/services/shared/errors.js'
+import { badRequest, internalMessage, type AppResult } from '#app/services/shared/errors.js'
 
 export interface EmailAddress {
     email: string
@@ -194,46 +189,43 @@ export const emailService = {
             return Result.err(badRequest('Sender email is required'))
         }
 
-        try {
-            const mailOptions: SendMailOptions = {
-                from,
-                to,
-                subject: input.subject.trim(),
-                ...(isBlank(input.text) ? {} : { text: input.text }),
-                ...(isBlank(input.html) ? {} : { html: input.html }),
-                ...(cc.length === 0 ? {} : { cc }),
-                ...(bcc.length === 0 ? {} : { bcc }),
-                ...(replyTo.length === 0
-                    ? isBlank(mailConfig.replyTo)
-                        ? {}
-                        : { replyTo: mailConfig.replyTo.trim() }
-                    : { replyTo }),
-                ...(input.attachments === undefined || input.attachments.length === 0
+        // A transport failure (SMTP down, rejected login) throws (ADR 0004): the HTTP
+        // caller answers 500, a background sender catches and logs it once.
+        const mailOptions: SendMailOptions = {
+            from,
+            to,
+            subject: input.subject.trim(),
+            ...(isBlank(input.text) ? {} : { text: input.text }),
+            ...(isBlank(input.html) ? {} : { html: input.html }),
+            ...(cc.length === 0 ? {} : { cc }),
+            ...(bcc.length === 0 ? {} : { bcc }),
+            ...(replyTo.length === 0
+                ? isBlank(mailConfig.replyTo)
                     ? {}
-                    : { attachments: [...input.attachments] }),
-            }
+                    : { replyTo: mailConfig.replyTo.trim() }
+                : { replyTo }),
+            ...(input.attachments === undefined || input.attachments.length === 0
+                ? {}
+                : { attachments: [...input.attachments] }),
+        }
 
-            const info = await sendMail(getTransporter(), mailOptions)
+        const info = await sendMail(getTransporter(), mailOptions)
 
-            logger.info(
-                {
-                    messageId: info.messageId,
-                    accepted: normalizeResultAddresses(info.accepted),
-                    rejected: normalizeResultAddresses(info.rejected),
-                    subject: input.subject.trim(),
-                },
-                'Email sent',
-            )
-
-            return Result.ok({
+        logger.info(
+            {
                 messageId: info.messageId,
                 accepted: normalizeResultAddresses(info.accepted),
                 rejected: normalizeResultAddresses(info.rejected),
-                response: info.response,
-            })
-        } catch (error: unknown) {
-            logger.error({ err: error, subject: input.subject.trim(), to }, 'Failed to send email')
-            return Result.err(internal(error, 'Failed to send email'))
-        }
+                subject: input.subject.trim(),
+            },
+            'Email sent',
+        )
+
+        return Result.ok({
+            messageId: info.messageId,
+            accepted: normalizeResultAddresses(info.accepted),
+            rejected: normalizeResultAddresses(info.rejected),
+            response: info.response,
+        })
     },
 }

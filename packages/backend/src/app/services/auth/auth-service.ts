@@ -455,11 +455,7 @@ export const authService = {
         }
         const collisionDetected = existingUserResult.value !== undefined
 
-        const pendingChallengeResult = await findPendingChallenge(
-            phone,
-            REGISTER_PHONE_FLOW,
-            'Failed to load pending SMS auth challenge',
-        )
+        const pendingChallengeResult = await findPendingChallenge(phone, REGISTER_PHONE_FLOW)
         if (Result.isError(pendingChallengeResult)) {
             return Result.err(pendingChallengeResult.error)
         }
@@ -471,11 +467,6 @@ export const authService = {
                 ipAddress: requestMeta.ipAddress,
                 provider: authConfig.smsProvider,
                 ...(requestMeta.sessionId !== null ? { sessionId: requestMeta.sessionId } : {}),
-            },
-            failures: {
-                create: 'Failed to persist SMS auth challenge',
-                issue: 'Failed to issue SMS verification code',
-                markIssued: 'Failed to persist issued SMS challenge',
             },
             noLongerValid: 'Phone registration challenge is no longer valid',
         })
@@ -555,7 +546,6 @@ export const authService = {
         }
 
         const confirmedResult = await confirmChallenge(challenge, {
-            failure: 'Failed to confirm SMS auth challenge',
             noLongerValid: 'Phone registration challenge is no longer valid',
         })
         if (Result.isError(confirmedResult)) {
@@ -718,11 +708,7 @@ export const authService = {
             return Result.err(conflict('Phone is already linked to another account'))
         }
 
-        const pendingChallengeResult = await findPendingChallenge(
-            phone,
-            LINK_PHONE_FLOW,
-            'Failed to load pending phone linking challenge',
-        )
+        const pendingChallengeResult = await findPendingChallenge(phone, LINK_PHONE_FLOW)
         if (Result.isError(pendingChallengeResult)) {
             return Result.err(pendingChallengeResult.error)
         }
@@ -737,11 +723,6 @@ export const authService = {
             phone,
             flow: LINK_PHONE_FLOW,
             metadata: linkMetadata,
-            failures: {
-                create: 'Failed to persist phone linking challenge',
-                issue: 'Failed to issue SMS verification code',
-                markIssued: 'Failed to persist issued phone linking challenge',
-            },
             noLongerValid: 'Phone linking challenge is no longer valid',
         })
         if (Result.isError(issuedChallengeResult)) {
@@ -853,7 +834,6 @@ export const authService = {
         }
 
         const confirmedResult = await confirmChallenge(challenge, {
-            failure: 'Failed to confirm phone linking challenge',
             noLongerValid: 'Phone linking challenge is no longer valid',
         })
         if (Result.isError(confirmedResult)) {

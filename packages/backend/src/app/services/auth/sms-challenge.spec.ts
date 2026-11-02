@@ -59,11 +59,11 @@ describe('findPendingChallenge', () => {
     it('returns the waiting challenge, or undefined when there is none', async () => {
         const { findPendingChallenge } = await load()
         repo.findLatestPendingForPhoneFlow.mockResolvedValue(undefined)
-        const none = await findPendingChallenge(PHONE, 'link_phone', 'cannot load')
+        const none = await findPendingChallenge(PHONE, 'link_phone')
         expect(Result.isOk(none) && none.value).toBeUndefined()
 
         repo.findLatestPendingForPhoneFlow.mockResolvedValue(row())
-        const found = await findPendingChallenge(PHONE, 'link_phone', 'cannot load')
+        const found = await findPendingChallenge(PHONE, 'link_phone')
         expect(Result.isOk(found) && found.value).toMatchObject({ id: 'ch-1' })
         expect(repo.findLatestPendingForPhoneFlow).toHaveBeenCalledWith(PHONE, 'link_phone')
     })
@@ -73,7 +73,7 @@ describe('findPendingChallenge', () => {
             row({ resendAvailableAt: new Date(Date.now() + 30_000) }),
         )
         const { findPendingChallenge } = await load()
-        const result = await findPendingChallenge(PHONE, 'link_phone', 'cannot load')
+        const result = await findPendingChallenge(PHONE, 'link_phone')
         expect(Result.isError(result) && result.error).toMatchObject({
             _tag: 'RateLimited',
             reason: 'resend_cooldown_active',
@@ -81,14 +81,12 @@ describe('findPendingChallenge', () => {
         })
     })
 
-    it('fails with its own message when the lookup fails', async () => {
-        repo.findLatestPendingForPhoneFlow.mockRejectedValue(new Error('db'))
+    // ADR 0004: a storage failure propagates to the transport.
+    it('rejects when the lookup fails', async () => {
+        const dbError = new Error('db')
+        repo.findLatestPendingForPhoneFlow.mockRejectedValue(dbError)
         const { findPendingChallenge } = await load()
-        const result = await findPendingChallenge(PHONE, 'link_phone', 'cannot load')
-        expect(Result.isError(result) && result.error).toMatchObject({
-            _tag: 'Internal',
-            publicMessage: 'cannot load',
-        })
+        await expect(findPendingChallenge(PHONE, 'link_phone')).rejects.toBe(dbError)
     })
 })
 
@@ -97,7 +95,7 @@ describe('openChallenge', () => {
         repo.invalidatePendingForPhoneFlow.mockResolvedValue(1)
         repo.create.mockResolvedValue(row())
         const { openChallenge } = await load()
-        await openChallenge({ phone: PHONE, flow: 'link_phone', metadata: { a: 1 }, failure: 'x' })
+        await openChallenge({ phone: PHONE, flow: 'link_phone', metadata: { a: 1 } })
         expect(repo.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(PHONE, 'link_phone')
         expect(repo.invalidatePendingForPhoneFlow.mock.invocationCallOrder[0]).toBeLessThan(
             repo.create.mock.invocationCallOrder[0]!,
@@ -110,7 +108,7 @@ describe('openChallenge', () => {
         const { PENDING_SMS_CODE_HASH_PLACEHOLDER } =
             await import('./sms-auth-challenge-constants.js')
         const before = Date.now()
-        await openChallenge({ phone: PHONE, flow: 'link_phone', metadata: { a: 1 }, failure: 'x' })
+        await openChallenge({ phone: PHONE, flow: 'link_phone', metadata: { a: 1 } })
 
         const stored = repo.create.mock.calls[0]![0] as {
             expiresAt: Date
@@ -136,23 +134,17 @@ describe('openChallenge', () => {
             flow: 'reset_phone',
             codeHash: 'blind',
             metadata: {},
-            failure: 'x',
         })
         expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ codeHash: 'blind' }))
     })
 
-    it('fails with its own message when the row cannot be stored', async () => {
-        repo.create.mockRejectedValue(new Error('db'))
+    it('rejects when the row cannot be stored', async () => {
+        const dbError = new Error('db')
+        repo.create.mockRejectedValue(dbError)
         const { openChallenge } = await load()
-        const result = await openChallenge({
-            phone: PHONE,
-            flow: 'link_phone',
-            metadata: {},
-            failure: 'cannot store',
-        })
-        expect(Result.isError(result) && result.error).toMatchObject({
-            publicMessage: 'cannot store',
-        })
+        await expect(
+            openChallenge({ phone: PHONE, flow: 'link_phone', metadata: {} }),
+        ).rejects.toBe(dbError)
     })
 })
 
@@ -161,7 +153,6 @@ describe('deliverChallenge and issueSmsChallenge: a start that fails half way le
         phone: PHONE,
         flow: 'link_phone' as const,
         metadata: { userId: '7' },
-        failures: { issue: 'cannot send', markIssued: 'cannot record' },
         noLongerValid: 'no longer valid',
     }
 
@@ -181,25 +172,21 @@ describe('deliverChallenge and issueSmsChallenge: a start that fails half way le
         expect(repo.markInvalidated).not.toHaveBeenCalled()
     })
 
-    it('a provider failure invalidates the challenge and answers with its own message', async () => {
-        issueMock.mockRejectedValue(new Error('sms down'))
+    it('a provider failure invalidates the challenge, then propagates', async () => {
+        const smsError = new Error('sms down')
+        issueMock.mockRejectedValue(smsError)
         const { deliverChallenge } = await load()
-        const result = await deliverChallenge(row() as never, options)
-        expect(Result.isError(result) && result.error).toMatchObject({
-            publicMessage: 'cannot send',
-        })
+        await expect(deliverChallenge(row() as never, options)).rejects.toBe(smsError)
         expect(repo.markInvalidated).toHaveBeenCalledWith('ch-1')
         expect(repo.markIssued).not.toHaveBeenCalled()
     })
 
     it('a failure to record the code invalidates the challenge', async () => {
         issueMock.mockResolvedValue({ code: '123456', providerRequestId: 'p-1' })
-        repo.markIssued.mockRejectedValue(new Error('db'))
+        const dbError = new Error('db')
+        repo.markIssued.mockRejectedValue(dbError)
         const { deliverChallenge } = await load()
-        const result = await deliverChallenge(row() as never, options)
-        expect(Result.isError(result) && result.error).toMatchObject({
-            publicMessage: 'cannot record',
-        })
+        await expect(deliverChallenge(row() as never, options)).rejects.toBe(dbError)
         expect(repo.markInvalidated).toHaveBeenCalledWith('ch-1')
     })
 
@@ -216,18 +203,17 @@ describe('deliverChallenge and issueSmsChallenge: a start that fails half way le
     })
 
     it('issueSmsChallenge sends nothing when the row cannot be stored', async () => {
-        repo.create.mockRejectedValue(new Error('db'))
+        const dbError = new Error('db')
+        repo.create.mockRejectedValue(dbError)
         const { issueSmsChallenge } = await load()
-        const result = await issueSmsChallenge({
-            phone: PHONE,
-            flow: 'link_phone',
-            metadata: {},
-            failures: { create: 'cannot store', issue: 'cannot send', markIssued: 'cannot record' },
-            noLongerValid: 'no longer valid',
-        })
-        expect(Result.isError(result) && result.error).toMatchObject({
-            publicMessage: 'cannot store',
-        })
+        await expect(
+            issueSmsChallenge({
+                phone: PHONE,
+                flow: 'link_phone',
+                metadata: {},
+                noLongerValid: 'no longer valid',
+            }),
+        ).rejects.toBe(dbError)
         expect(issueMock).not.toHaveBeenCalled()
     })
 })
@@ -272,7 +258,7 @@ describe('verifySmsCode', () => {
 })
 
 describe('confirmChallenge', () => {
-    const answers = { failure: 'cannot confirm', noLongerValid: 'no longer valid' }
+    const answers = { noLongerValid: 'no longer valid' }
 
     it('is ok when the challenge is marked confirmed', async () => {
         repo.markConfirmed.mockResolvedValue(row())
@@ -292,12 +278,10 @@ describe('confirmChallenge', () => {
         })
     })
 
-    it('fails with its own message when the update fails', async () => {
-        repo.markConfirmed.mockRejectedValue(new Error('db'))
+    it('rejects when the update fails', async () => {
+        const dbError = new Error('db')
+        repo.markConfirmed.mockRejectedValue(dbError)
         const { confirmChallenge } = await load()
-        const result = await confirmChallenge(row() as never, answers)
-        expect(Result.isError(result) && result.error).toMatchObject({
-            publicMessage: 'cannot confirm',
-        })
+        await expect(confirmChallenge(row() as never, answers)).rejects.toBe(dbError)
     })
 })

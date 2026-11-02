@@ -206,36 +206,21 @@ describe('emailService', () => {
         })
     })
 
-    it('returns internal failure when provider send rejects', async () => {
+    // ADR 0004: a transport failure throws; the HTTP caller answers 500, a background
+    // sender catches and logs it once. No own error log here (that was a second record).
+    it('rejects with the transport error when provider send rejects', async () => {
         configureSmtpEnv()
 
-        sendMailMock.mockRejectedValue(new Error('SMTP failure'))
+        const smtpError = new Error('SMTP failure')
+        sendMailMock.mockRejectedValue(smtpError)
         createTransportMock.mockReturnValue({
             sendMail: sendMailMock,
         })
 
         const { emailService } = await loadEmailService()
-        const result = await emailService.send({
-            to: 'user@example.com',
-            subject: 'Welcome',
-            text: 'Hello',
-        })
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error).toEqual(
-                expect.objectContaining({
-                    _tag: 'Internal',
-                    publicMessage: 'Failed to send email',
-                }),
-            )
-            if (result.error._tag !== 'Internal') {
-                throw new Error('Expected internal error')
-            }
-            expect(result.error.cause).toBeInstanceOf(Error)
-            expect((result.error.cause as Error).message).toBe('SMTP failure')
-        } else {
-            throw new Error('Expected failure')
-        }
+        await expect(
+            emailService.send({ to: 'user@example.com', subject: 'Welcome', text: 'Hello' }),
+        ).rejects.toBe(smtpError)
     })
 })

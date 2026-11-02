@@ -3,7 +3,6 @@ import { authConfig } from '#config/auth.js'
 import { smsAuthChallengeRepository, type SmsAuthChallengeRow } from '#app/repositories/index.js'
 import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import { badRequest, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { hashOtpVerificationCode, verifyOtpVerificationCode } from './otp-verification-hash.js'
 import { PENDING_SMS_CODE_HASH_PLACEHOLDER } from './sms-auth-challenge-constants.js'
 import { buildResendCooldownError } from './sms-auth-challenge-metadata.js'
@@ -22,21 +21,14 @@ type Metadata = Record<string, unknown>
 export async function findPendingChallenge(
     phone: string,
     flow: SmsVerificationFlow,
-    failure: string,
 ): Promise<AppResult<SmsAuthChallengeRow | undefined>> {
-    const pending = await tryInternal(
-        () => smsAuthChallengeRepository.findLatestPendingForPhoneFlow(phone, flow),
-        failure,
-    )
-    if (Result.isError(pending)) {
-        return Result.err(pending.error)
+    const pending = await smsAuthChallengeRepository.findLatestPendingForPhoneFlow(phone, flow)
+
+    if (pending !== undefined && pending.resendAvailableAt.getTime() > Date.now()) {
+        return Result.err(buildResendCooldownError(pending.resendAvailableAt))
     }
 
-    if (pending.value !== undefined && pending.value.resendAvailableAt.getTime() > Date.now()) {
-        return Result.err(buildResendCooldownError(pending.value.resendAvailableAt))
-    }
-
-    return Result.ok(pending.value)
+    return Result.ok(pending)
 }
 
 /**
@@ -50,25 +42,19 @@ export async function openChallenge(options: {
     flow: SmsVerificationFlow
     codeHash?: string
     metadata: Metadata
-    /** Public message of the 500 when the row cannot be stored. */
-    failure: string
-}): Promise<AppResult<SmsAuthChallengeRow>> {
+}): Promise<SmsAuthChallengeRow> {
     await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(options.phone, options.flow)
 
     const now = Date.now()
-    return await tryInternal(
-        () =>
-            smsAuthChallengeRepository.create({
-                flow: options.flow,
-                phone: options.phone,
-                codeHash: options.codeHash ?? PENDING_SMS_CODE_HASH_PLACEHOLDER,
-                expiresAt: new Date(now + authConfig.smsChallengeTtlSeconds * 1000),
-                resendAvailableAt: new Date(now + authConfig.smsResendCooldownSeconds * 1000),
-                providerRequestId: null,
-                metadata: options.metadata,
-            }),
-        options.failure,
-    )
+    return await smsAuthChallengeRepository.create({
+        flow: options.flow,
+        phone: options.phone,
+        codeHash: options.codeHash ?? PENDING_SMS_CODE_HASH_PLACEHOLDER,
+        expiresAt: new Date(now + authConfig.smsChallengeTtlSeconds * 1000),
+        resendAvailableAt: new Date(now + authConfig.smsResendCooldownSeconds * 1000),
+        providerRequestId: null,
+        metadata: options.metadata,
+    })
 }
 
 /**
@@ -82,48 +68,31 @@ export async function deliverChallenge(
         phone: string
         flow: SmsVerificationFlow
         metadata: Metadata
-        failures: {
-            /** Public message of the 500 when the provider fails. */
-            issue: string
-            /** Public message of the 500 when the issued code cannot be recorded. */
-            markIssued: string
-        }
         /** The 400 when the challenge was invalidated before the code could be recorded. */
         noLongerValid: string
     },
 ): Promise<AppResult<SmsAuthChallengeRow>> {
-    const issued = await tryInternal(
-        () =>
-            smsVerificationProvider.issueVerificationCode({
-                phone: options.phone,
-                flow: options.flow,
-            }),
-        options.failures.issue,
-    )
-    if (Result.isError(issued)) {
+    let recorded: SmsAuthChallengeRow | undefined
+    try {
+        const issued = await smsVerificationProvider.issueVerificationCode({
+            phone: options.phone,
+            flow: options.flow,
+        })
+        recorded = await smsAuthChallengeRepository.markIssued(challenge.id, {
+            codeHash: hashOtpVerificationCode(issued.code),
+            providerRequestId: issued.providerRequestId,
+            metadata: options.metadata,
+        })
+    } catch (err: unknown) {
         await smsAuthChallengeRepository.markInvalidated(challenge.id)
-        return Result.err(issued.error)
+        throw err
     }
-
-    const recorded = await tryInternal(
-        () =>
-            smsAuthChallengeRepository.markIssued(challenge.id, {
-                codeHash: hashOtpVerificationCode(issued.value.code),
-                providerRequestId: issued.value.providerRequestId,
-                metadata: options.metadata,
-            }),
-        options.failures.markIssued,
-    )
-    if (Result.isError(recorded)) {
-        await smsAuthChallengeRepository.markInvalidated(challenge.id)
-        return Result.err(recorded.error)
-    }
-    if (recorded.value === undefined) {
+    if (recorded === undefined) {
         await smsAuthChallengeRepository.markInvalidated(challenge.id)
         return Result.err(badRequest(options.noLongerValid))
     }
 
-    return Result.ok(recorded.value)
+    return Result.ok(recorded)
 }
 
 /** `openChallenge` and `deliverChallenge` in one: the usual start of an SMS flow. */
@@ -131,24 +100,18 @@ export async function issueSmsChallenge(options: {
     phone: string
     flow: SmsVerificationFlow
     metadata: Metadata
-    failures: { create: string; issue: string; markIssued: string }
     noLongerValid: string
 }): Promise<AppResult<SmsAuthChallengeRow>> {
     const opened = await openChallenge({
         phone: options.phone,
         flow: options.flow,
         metadata: options.metadata,
-        failure: options.failures.create,
     })
-    if (Result.isError(opened)) {
-        return Result.err(opened.error)
-    }
 
-    return await deliverChallenge(opened.value, {
+    return await deliverChallenge(opened, {
         phone: options.phone,
         flow: options.flow,
         metadata: options.metadata,
-        failures: { issue: options.failures.issue, markIssued: options.failures.markIssued },
         noLongerValid: options.noLongerValid,
     })
 }
@@ -176,16 +139,10 @@ export async function verifySmsCode(
 /** Marks the challenge confirmed; a challenge that stopped being valid meanwhile answers 400. */
 export async function confirmChallenge(
     challenge: SmsAuthChallengeRow,
-    answers: { failure: string; noLongerValid: string },
+    answers: { noLongerValid: string },
 ): Promise<AppResult<void>> {
-    const confirmed = await tryInternal(
-        () => smsAuthChallengeRepository.markConfirmed(challenge.id),
-        answers.failure,
-    )
-    if (Result.isError(confirmed)) {
-        return Result.err(confirmed.error)
-    }
-    if (confirmed.value === undefined) {
+    const confirmed = await smsAuthChallengeRepository.markConfirmed(challenge.id)
+    if (confirmed === undefined) {
         return Result.err(badRequest(answers.noLongerValid))
     }
 

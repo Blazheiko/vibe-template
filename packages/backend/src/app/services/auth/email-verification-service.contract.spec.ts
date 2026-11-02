@@ -78,6 +78,8 @@ interface Row {
     arrange?: () => void
     call: (service: Service) => Promise<unknown>
     error?: Expected
+    /** The call rejects: an infrastructure failure propagates (ADR 0004). */
+    throws?: true
     ok?: unknown
     after?: () => void
 }
@@ -88,7 +90,6 @@ const err = (status: number, code: string, message: string): Expected => ({
     message,
 })
 const badRequest = (message: string): Expected => err(400, 'bad_request', message)
-const internalError = (message: string): Expected => err(500, 'internal_error', message)
 
 const user = (over: Record<string, unknown> = {}) => ({
     id: 7n,
@@ -155,7 +156,7 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendVerificationEmail(7n),
-        error: internalError('Failed to invalidate email verification tokens'),
+        throws: true,
         after: () => {
             expect(verificationRepositoryMock.create).not.toHaveBeenCalled()
         },
@@ -167,7 +168,7 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendVerificationEmail(7n),
-        error: internalError('Failed to create email verification token'),
+        throws: true,
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
         },
@@ -189,10 +190,10 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(user())
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
-            emailServiceMock.send.mockResolvedValue(Result.err(new Error('smtp')))
+            emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
         call: (s) => s.sendVerificationEmail(7n),
-        error: internalError('Failed to send verification email'),
+        throws: true,
     },
     {
         name: 'sendVerificationEmail · sent: only the hash of the token is stored, for 24 hours',
@@ -234,7 +235,7 @@ const ROWS: readonly Row[] = [
             linkRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
-        error: internalError('Failed to invalidate email link tokens'),
+        throws: true,
         after: () => {
             expect(linkRepositoryMock.create).not.toHaveBeenCalled()
         },
@@ -246,17 +247,17 @@ const ROWS: readonly Row[] = [
             linkRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
-        error: internalError('Failed to create email link token'),
+        throws: true,
     },
     {
         name: 'sendLinkVerificationEmail · the transport fails',
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(user())
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
-            emailServiceMock.send.mockResolvedValue(Result.err(new Error('smtp')))
+            emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
         call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
-        error: internalError('Failed to send email link verification'),
+        throws: true,
     },
     {
         name: 'sendLinkVerificationEmail · the mail goes to the NEW address, the token remembers it',
@@ -344,7 +345,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.update.mockResolvedValue(undefined)
         },
         call: verify(),
-        error: internalError('Failed to verify email'),
+        throws: true,
     },
     {
         name: 'verifyEmail · ok claims the token and confirms the address in one transaction',
@@ -436,7 +437,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.update.mockRejectedValue(new Error('db'))
         },
         call: verify(),
-        error: internalError('Failed to link email'),
+        throws: true,
     },
     {
         name: 'verifyEmail · the claim of a link token is lost to a concurrent request',
@@ -514,17 +515,23 @@ async function load(): Promise<Service> {
 describe.each(ROWS)('emailVerificationService · $name', (row) => {
     it('answers as the table says and leaves the stated side effects', async () => {
         row.arrange?.()
-        const result = (await row.call(await load())) as Result<unknown, AppError>
-
-        if (row.error === undefined) {
-            expect(
-                Result.isOk(result),
-                JSON.stringify(Result.isError(result) && result.error),
-            ).toBe(true)
-            if (Result.isOk(result) && row.ok !== undefined) expect(result.value).toEqual(row.ok)
+        // ADR 0004: an infrastructure failure is not an AppError; it propagates to the transport.
+        if (row.throws === true) {
+            await expect(row.call(await load())).rejects.toBeInstanceOf(Error)
         } else {
-            expect(Result.isError(result)).toBe(true)
-            if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.error)
+            const result = (await row.call(await load())) as Result<unknown, AppError>
+
+            if (row.error === undefined) {
+                expect(
+                    Result.isOk(result),
+                    JSON.stringify(Result.isError(result) && result.error),
+                ).toBe(true)
+                if (Result.isOk(result) && row.ok !== undefined)
+                    expect(result.value).toEqual(row.ok)
+            } else {
+                expect(Result.isError(result)).toBe(true)
+                if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.error)
+            }
         }
         // queueVerificationEmail sends from a detached promise: let it settle.
         await new Promise((resolve) => setImmediate(resolve))

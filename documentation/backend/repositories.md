@@ -51,13 +51,11 @@ export type UserInsert = InferInsertModel<typeof users>
 
 ```ts
 // claim + дія в одній транзакції (one-time-token.ts)
-const applied = await consumeTokenAndApply(
-    passwordResetRepository,
-    token,
-    (tx) => userRepository.update(token.userId, { password, sessionToken }, tx),
-    'Failed to update password',
+const applied = await consumeTokenAndApply(passwordResetRepository, token, (tx) =>
+    userRepository.update(token.userId, { password, sessionToken }, tx),
 )
 // applied: { claimed: false } або { claimed: true, value: <оновлений користувач> }
+// збій транзакції кидається; унікальний індекс читає isUniqueViolation (repositories/db-errors.ts)
 ```
 
 ## Типові методи та повернені значення
@@ -65,7 +63,7 @@ const applied = await consumeTokenAndApply(
 - **`create`** — `db.insert(...).values(...).returning()`; якщо рядок не повернувся, кидається `Error` (`"Failed to create user"`). Поля `createdAt`/`updatedAt` виставляє сам репозиторій.
 - **`findBy*`** — `select().from().where().limit(1).then((rows) => rows.at(0))`; відсутність запису — це `undefined`, а не `null` і не виняток.
 - **`update` / `delete`** — повертають оновлений рядок (`UserRow | undefined`) або `boolean`.
-- Репозиторії повертають **сирі рядки Drizzle** (`bigint` id, `Date`) або вузькі проєкції (`AdminUserListRow` з `select({ id, name, ... })`). Вони не повертають `Result`, а збій БД кидають. Сервіс викликає їх без обгортки ([ADR 0004](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0004-result-for-expected-outcomes.md)), наприклад `await userRepository.findById(...)` у [main-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/core/main-service.ts).
+- Репозиторії повертають **сирі рядки Drizzle** (`bigint` id, `Date`) або вузькі проєкції (`AdminUserListRow` з `select({ id, name, ... })`). Вони не повертають `Result`, а збій БД кидають. Порушення унікального індексу, яке означає бізнес-результат, сервіс розпізнає через [`isUniqueViolation`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/db-errors.ts): Drizzle загортає помилку pg у `DrizzleQueryError`, і код `23505` лежить у `cause`. Сервіс викликає репозиторії без обгортки ([ADR 0004](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0004-result-for-expected-outcomes.md)), наприклад `await userRepository.findById(...)` у [main-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/core/main-service.ts).
 
 ## Патерни запитів
 

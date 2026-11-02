@@ -205,9 +205,8 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             const token = await newResetToken(user.id)
             failAfterWrite(userRepository, 'update')
 
-            const failed = await reset(token.raw, 'new-secret-456')
-
-            expect(Result.isError(failed)).toBe(true)
+            // ADR 0004: the failure propagates (the transport answers 500).
+            await expect(reset(token.raw, 'new-secret-456')).rejects.toThrow()
             const row = await userRow(user.id)
             expect(await validatePassword(OLD_PASSWORD, row?.password ?? '')).toBe(true)
             expect(row?.sessionToken).toBe(user.sessionToken)
@@ -226,10 +225,9 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             const token = await newResetToken(user.id)
             failAfterWrite(passwordResetRepository, 'markUsed')
 
-            const failed = await reset(token.raw, 'new-secret-456')
-
             // Before: the password was already changed and the link stayed usable (replay).
-            expect(Result.isError(failed)).toBe(true)
+            // ADR 0004: the failure propagates (the transport answers 500).
+            await expect(reset(token.raw, 'new-secret-456')).rejects.toThrow()
             const row = await userRow(user.id)
             expect(await validatePassword(OLD_PASSWORD, row?.password ?? '')).toBe(true)
             expect(await usedAt(passwordResetTokens, token.id)).toBeNull()
@@ -287,9 +285,8 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             const token = await newVerificationToken(user.id)
             failAfterWrite(userRepository, 'update')
 
-            const failed = await verify(token.raw)
-
-            expect(Result.isError(failed)).toBe(true)
+            // ADR 0004: the failure propagates (the transport answers 500).
+            await expect(verify(token.raw)).rejects.toThrow()
             expect((await userRow(user.id))?.emailVerifiedAt).toBeNull()
             expect(await usedAt(emailVerifications, token.id)).toBeNull()
 
@@ -316,15 +313,33 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             expect(await usedAt(emailLinkVerifications, token.id)).not.toBeNull()
         })
 
+        // feat-090: the race the conflict check above cannot see. Another account holds the
+        // address by the time of the update; the real unique index answers, wrapped by
+        // Drizzle, and isUniqueViolation must still read it as a 409, not a 500.
+        it('answers 409 when the unique index rejects the address, and keeps the link', async () => {
+            const user = await insertUser(true)
+            const other = await insertUser(true)
+            const token = await newLinkToken(user.id, other.email ?? '')
+            vi.spyOn(userRepository, 'findByEmail').mockResolvedValueOnce(undefined)
+
+            const result = await link(token.raw)
+
+            expect(Result.isError(result) && result.error).toMatchObject({
+                _tag: 'Conflict',
+                message: 'Email is already linked to another account',
+            })
+            expect((await userRow(user.id))?.email).toBe(user.email)
+            expect(await usedAt(emailLinkVerifications, token.id)).toBeNull()
+        })
+
         it('rolls the new email and the token back when the request fails after the write', async () => {
             const user = await insertUser(true)
             const target = `linked-rollback-${String(now)}@example.test`
             const token = await newLinkToken(user.id, target)
             failAfterWrite(userRepository, 'update')
 
-            const failed = await link(token.raw)
-
-            expect(Result.isError(failed)).toBe(true)
+            // ADR 0004: the failure propagates (the transport answers 500).
+            await expect(link(token.raw)).rejects.toThrow()
             expect((await userRow(user.id))?.email).toBe(user.email)
             expect(await usedAt(emailLinkVerifications, token.id)).toBeNull()
 

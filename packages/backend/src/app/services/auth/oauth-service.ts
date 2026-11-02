@@ -3,7 +3,6 @@ import oauthConfig from '#config/oauth.js'
 import { userRepository, oauthAccountRepository } from '#app/repositories/index.js'
 import { Result } from 'better-result'
 import { badRequest, conflict, notFound, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import type { Auth } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
@@ -286,15 +285,10 @@ export const oauthService = {
         userInfo.email = normalizeEmail(userInfo.email)
 
         // Find existing OAuth account link
-        const existingOAuthResult = await tryInternal(
-            () => oauthAccountRepository.findByProviderAndProviderId(provider, userInfo.id),
-            'Failed to load OAuth account',
+        const existingOAuth = await oauthAccountRepository.findByProviderAndProviderId(
+            provider,
+            userInfo.id,
         )
-        if (Result.isError(existingOAuthResult)) {
-            return Result.err(existingOAuthResult.error)
-        }
-
-        const existingOAuth = existingOAuthResult.value
 
         logger.info(
             {
@@ -312,30 +306,14 @@ export const oauthService = {
             userId = existingOAuth.userId
             logger.info({ userId: String(userId) }, 'oauth returning user')
 
-            const returningUserResult = await tryInternal(
-                () => userRepository.findById(userId),
-                'Failed to load user',
-            )
-            if (Result.isError(returningUserResult)) {
-                return Result.err(returningUserResult.error)
-            }
-
-            const returningUser = returningUserResult.value
+            const returningUser = await userRepository.findById(userId)
             if (returningUser === undefined) {
                 return Result.err(notFound('User', 'User not found'))
             }
             sessionToken = returningUser.sessionToken
         } else {
             // Check if user with this email already exists
-            const existingUserResult = await tryInternal(
-                () => userRepository.findByEmail(userInfo.email),
-                'Failed to load user by email',
-            )
-            if (Result.isError(existingUserResult)) {
-                return Result.err(existingUserResult.error)
-            }
-
-            const existingUser = existingUserResult.value
+            const existingUser = await userRepository.findByEmail(userInfo.email)
 
             logger.info(
                 {
@@ -362,68 +340,39 @@ export const oauthService = {
                 userId = existingUser.id
                 sessionToken = existingUser.sessionToken
                 logger.info({ userId: String(userId) }, 'oauth linking to existing user')
-                const createOAuthLinkResult = await tryInternal(
-                    () =>
-                        oauthAccountRepository.create({
-                            userId,
-                            provider,
-                            providerUserId: userInfo.id,
-                            providerEmail: userInfo.email,
-                            providerName: userInfo.name,
-                            providerAvatar: userInfo.avatar,
-                        }),
-                    'Failed to link OAuth account',
-                )
-                if (Result.isError(createOAuthLinkResult)) {
-                    return Result.err(createOAuthLinkResult.error)
-                }
+                await oauthAccountRepository.create({
+                    userId,
+                    provider,
+                    providerUserId: userInfo.id,
+                    providerEmail: userInfo.email,
+                    providerName: userInfo.name,
+                    providerAvatar: userInfo.avatar,
+                })
             } else {
                 // Create new user (no password)
                 logger.info({ email: maskEmailForLogs(userInfo.email) }, 'oauth creating new user')
-                const newUserResult = await tryInternal(
-                    () =>
-                        userRepository.create({
-                            name: userInfo.name,
-                            email: userInfo.email,
-                            password: null,
-                            avatar: userInfo.avatar,
-                            ...(userInfo.emailVerified ? { emailVerifiedAt: new Date() } : {}),
-                        }),
-                    'Failed to create user',
-                )
-                if (Result.isError(newUserResult)) {
-                    return Result.err(newUserResult.error)
-                }
-
-                const newUser = newUserResult.value
+                const newUser = await userRepository.create({
+                    name: userInfo.name,
+                    email: userInfo.email,
+                    password: null,
+                    avatar: userInfo.avatar,
+                    ...(userInfo.emailVerified ? { emailVerifiedAt: new Date() } : {}),
+                })
                 userId = newUser.id
                 sessionToken = newUser.sessionToken
                 logger.info({ userId: String(userId) }, 'oauth new user created')
-                const createOAuthAccountResult = await tryInternal(
-                    () =>
-                        oauthAccountRepository.create({
-                            userId: newUser.id,
-                            provider,
-                            providerUserId: userInfo.id,
-                            providerEmail: userInfo.email,
-                            providerName: userInfo.name,
-                            providerAvatar: userInfo.avatar,
-                        }),
-                    'Failed to create OAuth account',
-                )
-                if (Result.isError(createOAuthAccountResult)) {
-                    return Result.err(createOAuthAccountResult.error)
-                }
+                await oauthAccountRepository.create({
+                    userId: newUser.id,
+                    provider,
+                    providerUserId: userInfo.id,
+                    providerEmail: userInfo.email,
+                    providerName: userInfo.name,
+                    providerAvatar: userInfo.avatar,
+                })
             }
         }
 
-        const loginResult = await tryInternal(
-            () => auth.login(String(userId), sessionToken),
-            'Failed to log in user',
-        )
-        if (Result.isError(loginResult)) {
-            return Result.err(loginResult.error)
-        }
+        await auth.login(String(userId), sessionToken)
 
         userNotificationService.security(userId, 'new_sign_in')
         return Result.ok({ redirectUrl: oauthConfig.frontendSuccessUrl })
