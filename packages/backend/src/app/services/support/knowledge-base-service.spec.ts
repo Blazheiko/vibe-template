@@ -106,20 +106,14 @@ describe('knowledgeBaseService', () => {
         }
     })
 
-    it('returns internal error when getAll repository fails', async () => {
-        supportKnowledgeRepositoryMock.findAll.mockRejectedValue(new Error('db down'))
+    // ADR 0004: a repository failure is not an AppError; it reaches the transport (500).
+    it('lets a getAll repository failure propagate', async () => {
+        const dbError = new Error('db down')
+        supportKnowledgeRepositoryMock.findAll.mockRejectedValue(dbError)
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.getAll({})
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error).toEqual({
-                _tag: 'Internal',
-                publicMessage: 'Failed to load knowledge base articles',
-                cause: expect.any(Error),
-            })
-        }
+        await expect(knowledgeBaseService.getAll({})).rejects.toBe(dbError)
     })
 
     it('returns not found for missing article', async () => {

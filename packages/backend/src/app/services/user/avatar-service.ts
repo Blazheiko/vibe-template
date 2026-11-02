@@ -15,7 +15,6 @@ import {
     notFound,
     type AppResult,
 } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { AVATAR_MAX_FILE_BYTES } from '#app/services/shared/upload-limits.js'
 
 const ALLOWED_TYPES: ReadonlySet<DetectedImageType> = new Set([
@@ -53,6 +52,15 @@ function serializeUser(user: {
     }
 }
 
+// Best-effort cleanup: a leftover S3 object must not fail the request, but is logged.
+async function deleteAvatarObject(key: string): Promise<void> {
+    try {
+        await deleteFromS3(key)
+    } catch (err: unknown) {
+        logger.warn({ err, key }, 'Failed to delete avatar S3 object')
+    }
+}
+
 export const avatarService = {
     async uploadAvatar(
         userId: bigint,
@@ -71,14 +79,7 @@ export const avatarService = {
             return Result.err(badRequest('Invalid file type. Allowed: jpeg, png, webp'))
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findById(userId),
-            'Failed to load user',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-        const user = userResult.value
+        const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
@@ -86,39 +87,12 @@ export const avatarService = {
         // Extension from the verified type; the client's file name is not used.
         const s3Key = `avatars/${String(userId)}/${randomUUID()}.${IMAGE_EXTENSIONS[imageType]}`
 
-        const uploadResult = await tryInternal(
-            // Public like KB screenshots: the frontend loads avatars from CDN_URL (decision R1).
-            () => uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true }),
-            'Failed to upload avatar',
-        )
-        if (Result.isError(uploadResult)) {
-            return Result.err(uploadResult.error)
-        }
+        // Public like KB screenshots: the frontend loads avatars from CDN_URL (decision R1).
+        await uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true })
 
-        const oldAvatarKey = user.avatar
-        if (oldAvatarKey !== null) {
-            const deleteOldAvatarResult = await tryInternal(
-                () => deleteFromS3(oldAvatarKey),
-                'Failed to delete old avatar',
-            )
-            if (Result.isError(deleteOldAvatarResult)) {
-                // Best-effort cleanup: keep the upload flow alive, but do not swallow the cause.
-                logger.warn(
-                    { err: deleteOldAvatarResult.error, oldAvatarKey },
-                    'Failed to delete old avatar S3 object',
-                )
-            }
-        }
+        if (user.avatar !== null) await deleteAvatarObject(user.avatar)
 
-        const updatedResult = await tryInternal(
-            () => userRepository.update(userId, { avatar: s3Key }),
-            'Failed to update user',
-        )
-        if (Result.isError(updatedResult)) {
-            return Result.err(updatedResult.error)
-        }
-
-        const updated = updatedResult.value
+        const updated = await userRepository.update(userId, { avatar: s3Key })
         if (updated === undefined) {
             return Result.err(internalMessage('Failed to update user'))
         }
@@ -127,43 +101,14 @@ export const avatarService = {
     },
 
     async deleteAvatar(userId: bigint): Promise<AppResult<{ user: AvatarUserPayload }>> {
-        const userResult = await tryInternal(
-            () => userRepository.findById(userId),
-            'Failed to load user',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
 
-        const avatarKey = user.avatar
-        if (avatarKey !== null) {
-            const deleteAvatarResult = await tryInternal(
-                () => deleteFromS3(avatarKey),
-                'Failed to delete avatar',
-            )
-            if (Result.isError(deleteAvatarResult)) {
-                // Best-effort cleanup: preserve the main delete flow, but log the failure.
-                logger.warn(
-                    { err: deleteAvatarResult.error, avatarKey },
-                    'Failed to delete avatar S3 object',
-                )
-            }
-        }
+        if (user.avatar !== null) await deleteAvatarObject(user.avatar)
 
-        const updatedResult = await tryInternal(
-            () => userRepository.update(userId, { avatar: null }),
-            'Failed to update user',
-        )
-        if (Result.isError(updatedResult)) {
-            return Result.err(updatedResult.error)
-        }
-
-        const updated = updatedResult.value
+        const updated = await userRepository.update(userId, { avatar: null })
         if (updated === undefined) {
             return Result.err(internalMessage('Failed to update user'))
         }

@@ -32,27 +32,18 @@ afterEach(() => {
     vi.clearAllMocks()
 })
 
-// Before feat-086 a failed upload answered 500 and left nothing in the log or Sentry:
-// tryInternal kept the exception in AppError.cause and mapControllerError only built the body.
+// Before feat-086 a failed upload answered 500 and left nothing in the log or Sentry.
+// Since feat-089 (ADR 0004) the storage error is not wrapped at all: it propagates to
+// handleError, which answers 500 and logs it once with the request context
+// (handle-error-logging.spec.ts, classify-error.spec.ts).
 describe('AvatarController.uploadAvatar when storage fails', () => {
-    it('answers 500 and logs the storage error once', async () => {
+    it('lets the storage error reach the transport instead of hiding it in a Result', async () => {
         userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Alice', avatar: null })
         const s3Error = new Error('S3 is down')
         uploadToS3Mock.mockRejectedValue(s3Error)
         const context = createContext()
 
-        const response = await AvatarController.uploadAvatar(context)
-
-        expect(context.responseData.status).toBe(500)
-        expect(response).toEqual({
-            status: 'error',
-            code: 'internal_error',
-            message: 'Failed to upload avatar',
-        })
-        expect(context.logger.error).toHaveBeenCalledTimes(1)
-        expect(context.logger.error).toHaveBeenCalledWith(
-            { err: s3Error, appError: 'Internal' },
-            'Failed to upload avatar',
-        )
+        await expect(AvatarController.uploadAvatar(context)).rejects.toBe(s3Error)
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 })

@@ -1,44 +1,40 @@
-# feat-088 — Backend Error Path Cleanup
+# feat-089 — Result For Expected Outcomes (1/3)
 
-Plan: `docs/plan/error-handling-fix-plan.md`, stage 3 (3a + 3b).
+Plan: `docs/plan/error-handling-fix-plan.md`, stage 4, PR 1 of 3. ADR: `docs/adr/0004-result-for-expected-outcomes.md`.
 
 ## Current state
 
-Implemented, awaiting review. Start PR #296 merged (feat-088 → `in_progress` on `main`).
+Implemented, awaiting review. Start PR #298 merged (feat-088 → done, feat-089 → `in_progress`).
 
-## 3a — no behaviour change
+## Changes
 
-- `server.ts`: one `#config/app.js` import (`appConfig`) instead of `appConfig` + `configApp`; `getResponseData` alias removed; commented-out code removed; the Russian comment on the synchronous rate-limit step translated; `docRoutesHandler` is synchronous (no `new Promise`).
-- Typed middlewares instead of `context as unknown as HttpContext`: `Middleware<TContext>`; `kernel.ts` has `httpMiddlewares` and `wsMiddlewares`; `execute-httpMiddlewares.ts` exports `executeMiddlewares` (HTTP, default) and `executeWsMiddlewares`; `ws-admin-guard` takes a `WsContext` and answers through `mapWsControllerError` (same 403 body). A route naming a middleware of the other transport now fails as `No middleware <name>` instead of running with the wrong context.
+1. **ADR 0004**: `Result` only for outcomes the client must tell apart; infrastructure failures throw; the exception path answers like a returned error; best-effort steps and background tasks catch locally.
+2. **Prerequisite found while implementing**: a thrown error went to `handleError` → `sendErrorResponse`, which wrote no cookies, skipped `session.beforeSend` and sent no CORS headers. A `Result` error answered through `sendResponse` with them. Moving to exceptions would have left a client with a deleted session's cookie after a failure following `auth.login`. `server.ts` now runs `beforeSend` on the error path and passes the request's cookies and Origin to `sendErrorResponse` (CORS headers on error answers were missing before, for every thrown error).
+3. **Services without `tryInternal`** (37 calls removed, 71 left in auth services for PR 2/3): `avatar-service`, `push-subscription-service`, `knowledge-base-service`, `support-service`, `main-service`. Best-effort S3 deletes catch locally (`warn`). The support admission frees its lock when the budget reservation throws, then rethrows.
 
-## 3b — log stream change (listed for review)
+## Behaviour changes (intended, no compatibility needed)
 
-| Removed record                                                                                                                      | Who logs the same event now                                                                                                 |
-| ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `session-handler` `Login error:` / `Logout error` / `LogoutAll error` (error, then rethrow)                                         | the service turns the throw into an `AppError` (`tryInternal`); the controller logs it once via `reportAppError` (feat-086) |
-| `logger.info('<method> handler')` and similar name-only lines in `main`, `auth`, `avatar`, `oauth`, `push-subscription` controllers | nothing needed: route and `requestId` are in the request logger context                                                     |
-
-Kept: `oauth generated URL` and the detailed OAuth callback log (they carry data).
-
-Found while doing it: the OAuth callback answers errors with a redirect (`redirectToError`), not `mapControllerError`, so after feat-086 a 5xx there still had no record with its cause; only the log-and-rethrow in `auth.login` covered part of it. Added `reportControllerError` (controller-error.ts) and `redirectToError` calls it.
-
-## Files modified
-
-- `packages/backend/src/vendor/start/server.ts`, `src/vendor/utils/routing/ws-api-dispatcher.ts`, `src/vendor/utils/middlewares/core/execute-httpMiddlewares.ts`, `src/vendor/types/types.d.ts`, `src/app/middlewares/{kernel,ws-admin-guard}.ts`
-- `packages/backend/src/vendor/utils/session/session-handler.ts`
-- `packages/backend/src/app/controllers/shared/controller-error.ts`, `src/app/controllers/http/{core/main,auth/auth,auth/oauth,user/avatar,notifications/push-subscription}-controller.ts`
-- Tests: `session-before-send.spec.ts` (auth methods reject without a log record), `oauth-controller.spec.ts` (5xx logged with cause, 4xx not), `ws-admin-guard.spec.ts`, dispatcher mocks in `ws-validation.spec.ts` / `ws-error-envelope.spec.ts`
-- Docs: `documentation/backend/{middlewares,observability,controllers}.md`; plan stage 3 notes
+- Infrastructure 500 text is `Internal server error` instead of `Failed to upload avatar` etc. No client matches those texts (only a `console.error` label in `UserAccount.vue`).
+- WS support admission during a Redis outage: `service_unavailable` now comes as a transport error (`error` envelope) instead of a business error in `data`; the frontend rejects both the same way (`hasResponseError`) and shows the same text.
+- The 500 log record now carries `route` and `method` (handleError context) in addition to `requestId`/`userId`.
 
 ## Evidence of Completion
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check` clean.
-- `pnpm test`: backend 1915, frontend 373, api-playground 62, shared 25, documentation 26 passed.
-- `test:redis` 89, `test:pg` 152 (local; they run the middleware executor).
+- `pnpm test`: backend 1916, frontend 373, api-playground 62, shared 25, documentation 26 passed.
+- `test:redis` 89, `test:pg` 152 (local; include support history/admission and push ownership over HTTP).
 - `pnpm docs:build && pnpm docs:verify` passed.
-- Mutation: with the old `session-handler.ts` (log-and-rethrow) the 3 new session tests fail.
-- Manual on a fresh `dist` build (:3099): `GET /api/doc/routes` → 200 with 12 HTTP / 2 WS routes; a non-admin WS `api/admin/subscribe_online_users` → `status "403"`, `data: { code: 'forbidden', message: 'Access denied' }` (unchanged); no `... handler` info lines in the log. Test user deleted afterwards.
+- New tests: a thrown error keeps the cookies set before it (`http-cache-control.spec.ts`, fails if the cookies are not passed) and writes CORS headers; repository failures propagate (`rejects`) in avatar, KB, support specs; the support lock is freed when the budget check throws (fails without the `releaseLock` in the catch).
+- Manual on a fresh `dist` build (S3 on a closed port): avatar upload → 500 `{ code: 'internal_error', message: 'Internal server error' }`, one `error` record with `requestId`, `userId`, `route: api/avatar/upload`. Test user deleted afterwards.
+- Not run: a manual Redis outage for the support admission (covered by unit tests + `classifyError`).
+
+## Files modified
+
+- `docs/adr/0004-result-for-expected-outcomes.md` (new), plan stage 4 note
+- `packages/backend/src/vendor/start/server.ts`, `src/vendor/utils/network/http-response-handlers.ts` (`setCookies` takes a `ReadonlyMap`)
+- `packages/backend/src/app/services/{user/avatar,notifications/push-subscription,support/knowledge-base,support/support,core/main}-service.ts` + specs; `avatar-controller.spec.ts`; `http-cache-control.spec.ts`
+- Docs: `documentation/backend/{services,adding-a-feature,repositories,ai,observability,request-lifecycle}.md`
 
 ## Next step
 
-Review + merge, then "Mark feat-088 done". Next: stage 7 (compat code) or stage 4 (`Result` only for expected outcomes, needs ADR 0004).
+Review + merge, then "Mark feat-089 done" and PR 2/3: `oauth-service`, `email-verification-service`, `password-reset-service`, `sms-challenge`, `one-time-token` (37 calls).

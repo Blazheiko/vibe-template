@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 
 import aiConfig from '#config/ai.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
@@ -221,13 +222,14 @@ describe('supportService', () => {
             expect(supportRepositoryMock.findRecentForContext).not.toHaveBeenCalled()
         })
 
-        it('returns an internal error when the page cannot be read', async () => {
-            supportRepositoryMock.findChatHistoryPage.mockRejectedValue(new Error('db down'))
+        // ADR 0004: a repository failure propagates; the transport answers 500.
+        it('lets a failure to read the page propagate', async () => {
+            const dbError = new Error('db down')
+            supportRepositoryMock.findChatHistoryPage.mockRejectedValue(dbError)
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.getChatHistory(11n, { limit: 50 })
 
-            expect(Result.isError(result) && result.error._tag).toBe('Internal')
+            await expect(supportService.getChatHistory(11n, { limit: 50 })).rejects.toBe(dbError)
         })
     })
 
@@ -249,20 +251,13 @@ describe('supportService', () => {
         })
     })
 
-    it('returns internal error when deleting chat history fails', async () => {
-        supportRepositoryMock.deleteAllChatHistory.mockRejectedValue(new Error('db down'))
+    it('lets a failure to delete chat history propagate', async () => {
+        const dbError = new Error('db down')
+        supportRepositoryMock.deleteAllChatHistory.mockRejectedValue(dbError)
 
         const { supportService } = await loadSupportService()
-        const result = await supportService.deleteChatHistory(11n)
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error).toEqual({
-                _tag: 'Internal',
-                publicMessage: 'Failed to delete chat history',
-                cause: expect.any(Error),
-            })
-        }
+        await expect(supportService.deleteChatHistory(11n)).rejects.toBe(dbError)
     })
 
     describe('cancellation when the WS connection closes (code-issues item 51)', () => {
@@ -672,47 +667,41 @@ describe('supportService', () => {
             }
         })
 
-        it('refuses when the limit cannot be checked, without taking the lock', async () => {
-            consumeAuthThrottleMock.mockRejectedValue(new Error('redis down'))
+        // ADR 0004: a failure to check the limit propagates without taking the lock.
+        it('lets a failure to check the limit propagate, without taking the lock', async () => {
+            const redisError = new Error('redis down')
+            consumeAuthThrottleMock.mockRejectedValue(redisError)
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n, 'hello')
 
-            expect(Result.isError(result)).toBe(true)
+            await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
             expect(acquireSupportLockMock).not.toHaveBeenCalled()
         })
 
-        // The throttle uses its own Redis connection and throws plain ioredis errors.
+        // The throttle uses its own Redis connection and throws plain ioredis errors; the
+        // transport still answers 503, not 500 (classifyError recognises them).
         it.each(['Command timed out', 'Connection is closed.'])(
-            'answers 503, not 500, when the limit cannot be checked because Redis is down ("%s")',
+            'a Redis outage while checking the limit ("%s") becomes a 503 at the transport',
             async (message) => {
-                consumeAuthThrottleMock.mockRejectedValue(new Error(message))
+                const redisError = new Error(message)
+                consumeAuthThrottleMock.mockRejectedValue(redisError)
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'hello')
 
-                expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
+                await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
+                expect(classifyError(redisError).code).toBe('service_unavailable')
                 expect(acquireSupportLockMock).not.toHaveBeenCalled()
             },
         )
 
-        it('answers 503 when the lock cannot be taken because Redis is down', async () => {
+        it('lets a failure to take the lock propagate', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
-            acquireSupportLockMock.mockRejectedValue(new Error('Command timed out'))
-
-            const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n, 'hello')
-
-            expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
-        })
-
-        it('refuses when the lock cannot be taken', async () => {
-            consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
-            acquireSupportLockMock.mockRejectedValue(new Error('redis down'))
+            const redisError = new Error('Command timed out')
+            acquireSupportLockMock.mockRejectedValue(redisError)
 
             const { supportService } = await loadSupportService()
 
-            expect(Result.isError(await supportService.admitChat(7n, 'hello'))).toBe(true)
+            await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
         })
 
         describe('the daily token budget (feat-063, D2)', () => {
@@ -787,15 +776,15 @@ describe('supportService', () => {
                 expect(unlock).toHaveBeenCalledTimes(1)
             })
 
-            it('answers 503 when the budget cannot be checked, and frees the lock', async () => {
+            it('frees the lock when the budget cannot be checked, then propagates', async () => {
                 consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
                 const unlock = lockOk()
-                reserveDailyTokensMock.mockRejectedValue(new Error('Command timed out'))
+                const redisError = new Error('Command timed out')
+                reserveDailyTokensMock.mockRejectedValue(redisError)
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'hello')
 
-                expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
+                await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
                 expect(unlock).toHaveBeenCalledTimes(1)
             })
 

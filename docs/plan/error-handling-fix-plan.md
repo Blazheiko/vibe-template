@@ -170,6 +170,8 @@
 - Місця, де `Internal` свідомо перехоплюється (наприклад, `email-verification-service.ts:238` — код `23505` унікального індексу), перевести на явний `try/catch` і бізнес-`conflict`.
 - Best-effort кроки (`resetAuthThrottle` у login, видалення старого аватара) лишити з локальним `catch` + `warn`.
 
+**Передумова, знайдена під час реалізації (feat-089).** Помилка через `Result` відповідає звичайним шляхом (`sendResponse`) і несе cookies, які запит виставив; кинутий виняток ішов у `handleError` → `sendErrorResponse`, який cookies не писав, не викликав `session.beforeSend` і не ставив CORS. Після переходу на винятки збій після `auth.login` лишив би клієнта з cookie вже видаленої сесії. Тому перший PR спершу навчив шлях винятку робити те саме, що й звичайна відповідь: cookies після `beforeSend` і CORS-заголовки.
+
 **Порядок.** Перехідний період не потрібен, тому три PR, згруповані за розміром:
 
 1. `avatar-service` (пілот, на ньому перевірити підхід), `push-subscription-service`, `knowledge-base-service`, `support-service`, `main-service` — 37 викликів.

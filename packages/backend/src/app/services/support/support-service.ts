@@ -13,7 +13,6 @@ import type { BroadcastMessage } from 'shared/schemas'
 import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import { rateLimited, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import aiConfig from '#config/ai.js'
 import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies.js'
@@ -138,12 +137,9 @@ async function admit(
     policy: ThrottlePolicy,
     message: string | null,
 ): Promise<AppResult<SupportAdmission>> {
-    const throttle = await tryInternal(
-        () => consumeAuthThrottle(policy, String(userId)),
-        'Failed to enforce the support chat limit',
-    )
-    if (Result.isError(throttle)) return Result.err(throttle.error)
-    if (!throttle.value.allowed) {
+    // A Redis outage throws: the transport answers service_unavailable (ADR 0004).
+    const throttle = await consumeAuthThrottle(policy, String(userId))
+    if (!throttle.allowed) {
         return Result.err(
             rateLimited('Too many messages. Please try again later.', {
                 reason: 'support_rate_limited',
@@ -152,12 +148,8 @@ async function admit(
         )
     }
 
-    const lock = await tryInternal(
-        () => acquireSupportLock(userId, SUPPORT_LEASE),
-        'Failed to reserve the support chat',
-    )
-    if (Result.isError(lock)) return Result.err(lock.error)
-    if (lock.value === null) {
+    const held = await acquireSupportLock(userId, SUPPORT_LEASE)
+    if (held === null) {
         return Result.err(
             rateLimited('The previous message is still being answered. Please wait.', {
                 reason: 'support_busy',
@@ -165,8 +157,6 @@ async function admit(
             }),
         )
     }
-
-    const held = lock.value
 
     const releaseLock = async (): Promise<void> => {
         try {
@@ -177,30 +167,28 @@ async function admit(
         }
     }
 
-    // The daily token budget, reserved last: a refusal here must give the lock back, since
-    // this admission took it and no run will ever release it.
-    const reserved = await tryInternal(
-        () =>
-            reserveDailyTokens(userId, estimateSupportParts(message), {
-                limit: aiConfig.supportDailyTokenBudget,
-            }),
-        'Failed to enforce the support chat budget',
-    )
-    if (Result.isError(reserved)) {
+    // The daily token budget, reserved last: a refusal or a failure here must give the lock
+    // back, since this admission took it and no run will ever release it.
+    let reserved: Awaited<ReturnType<typeof reserveDailyTokens>>
+    try {
+        reserved = await reserveDailyTokens(userId, estimateSupportParts(message), {
+            limit: aiConfig.supportDailyTokenBudget,
+        })
+    } catch (err: unknown) {
         await releaseLock()
-        return Result.err(reserved.error)
+        throw err
     }
-    if (!reserved.value.allowed) {
+    if (!reserved.allowed) {
         await releaseLock()
         return Result.err(
             rateLimited('The daily AI usage limit is reached. Please try again tomorrow.', {
                 reason: 'support_budget_exceeded',
-                retryAfterSeconds: reserved.value.retryAfterSeconds,
+                retryAfterSeconds: reserved.retryAfterSeconds,
             }),
         )
     }
 
-    const reservation = reserved.value.reservation
+    const reservation = reserved.reservation
     return Result.ok({
         lost: held.lost,
         budget: reservation,
@@ -279,21 +267,14 @@ export const supportService = {
         userId: bigint,
         page: { before?: string | undefined; limit: number },
     ): Promise<AppResult<{ data: SupportChatHistoryItem[]; hasMore: boolean }>> {
-        const result = await tryInternal(
-            () =>
-                supportRepository.findChatHistoryPage(userId, {
-                    before: page.before === undefined ? undefined : BigInt(page.before),
-                    limit: page.limit,
-                }),
-            'Failed to load chat history',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
+        const { rows, hasMore } = await supportRepository.findChatHistoryPage(userId, {
+            before: page.before === undefined ? undefined : BigInt(page.before),
+            limit: page.limit,
+        })
 
         return Result.ok({
-            hasMore: result.value.hasMore,
-            data: result.value.rows.map((m) => ({
+            hasMore,
+            data: rows.map((m) => ({
                 id: String(m.id),
                 role: m.role,
                 content: m.content,
@@ -304,14 +285,7 @@ export const supportService = {
     },
 
     async deleteChatHistory(userId: bigint): Promise<AppResult<void>> {
-        const result = await tryInternal(
-            () => supportRepository.deleteAllChatHistory(userId),
-            'Failed to delete chat history',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
-
+        await supportRepository.deleteAllChatHistory(userId)
         return Result.ok(undefined)
     },
 

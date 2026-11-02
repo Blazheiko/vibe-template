@@ -223,7 +223,7 @@ export { noteTransformer } from './note-transformer.js'
 
 ## Крок 6. Service
 
-Сервіс містить бізнес-логіку й не кидає винятків назовні. Він повертає `AppResult<T>` (`Result` з `better-result`, див. [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)). Виклики repository обгортаються в `tryInternal` з [result-helpers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/result-helpers.ts): він перетворює виняток на помилку `Internal` з публічним повідомленням.
+Сервіс містить бізнес-логіку. Очікувані результати (не знайдено, конфлікт, ліміт) він повертає як `AppResult<T>` (`Result` з `better-result`, див. [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)). Виклики repository не обгортаються: збій БД кидається, і транспорт відповідає 500 з логом і подією в Sentry ([ADR 0004](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0004-result-for-expected-outcomes.md)).
 
 ```ts
 // packages/backend/src/app/services/note/note-service.ts
@@ -233,38 +233,20 @@ import { Result } from 'better-result'
 import { noteRepository } from '#app/repositories/index.js'
 import { noteTransformer } from '#app/transformers/index.js'
 import type { AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 
 export const noteService = {
     async getNotes(userId: bigint): Promise<AppResult<{ notes: Note[] }>> {
-        const rowsResult = await tryInternal(
-            () => noteRepository.findByUserId(userId),
-            'Failed to load notes',
-        )
-        if (Result.isError(rowsResult)) {
-            return Result.err(rowsResult.error)
-        }
-
-        return Result.ok({
-            notes: noteTransformer.serializeArray(rowsResult.value),
-        })
+        const rows = await noteRepository.findByUserId(userId)
+        return Result.ok({ notes: noteTransformer.serializeArray(rows) })
     },
 
     async createNote(userId: bigint, payload: CreateNoteInput): Promise<AppResult<{ note: Note }>> {
-        const createdResult = await tryInternal(
-            () =>
-                noteRepository.create({
-                    userId,
-                    title: payload.title,
-                    body: payload.body ?? null,
-                }),
-            'Failed to create note',
-        )
-        if (Result.isError(createdResult)) {
-            return Result.err(createdResult.error)
-        }
-
-        return Result.ok({ note: noteTransformer.serialize(createdResult.value) })
+        const created = await noteRepository.create({
+            userId,
+            title: payload.title,
+            body: payload.body ?? null,
+        })
+        return Result.ok({ note: noteTransformer.serialize(created) })
     },
 }
 ```

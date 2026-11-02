@@ -45,6 +45,18 @@ vi.mock('#vendor/start/static-server.js', () => ({
     staticHandler: vi.fn(),
     staticCacheHandler: vi.fn(),
 }))
+// CORS on, so the error path can be checked for the headers a browser needs.
+vi.mock('#config/cors.js', () => ({
+    default: {
+        enabled: true,
+        allowedOrigins: ['https://app.test'],
+        methods: 'GET,POST',
+        maxAge: 600,
+        exposeHeaders: '',
+        allowHeaders: 'content-type',
+        credentials: true,
+    },
+}))
 vi.mock('#vendor/utils/middlewares/core/execute-httpMiddlewares.js', () => ({
     default: vi.fn().mockResolvedValue(true),
 }))
@@ -88,7 +100,7 @@ interface Sent {
     withoutBody: boolean
 }
 
-const call = async (name: string): Promise<Sent> => {
+const call = async (name: string, origin?: string): Promise<Sent> => {
     let status = ''
     let body: string | undefined
     let withoutBody = false
@@ -132,7 +144,9 @@ const call = async (name: string): Promise<Sent> => {
         getQuery: () => '',
         getParameter: () => '',
         getHeader: () => '',
-        forEach: () => {},
+        forEach: (cb: (key: string, value: string) => void) => {
+            if (origin !== undefined) cb('origin', origin)
+        },
     }
     const handler = handlers.get(`get /api/${name}`)
     if (handler === undefined) throw new Error(`no handler for ${name}`)
@@ -155,6 +169,7 @@ describe('Cache-Control on API responses', () => {
                 route('forbidden', { status: 403, payload: { status: 'forbidden' } }),
                 route('thrown', { payload: null, throws: true }),
                 route('cookie', { payload: { a: 1 }, cookie: true }),
+                route('cookie-thrown', { payload: null, cookie: true, throws: true }),
                 route('own', {
                     payload: { a: 1 },
                     headers: { 'Cache-Control': 'public, max-age=60' },
@@ -186,6 +201,27 @@ describe('Cache-Control on API responses', () => {
         const sent = await call('thrown')
         expect(sent.status).toBe('500 Internal Server Error')
         expect(cacheControl(sent)).toEqual(['no-store'])
+    })
+
+    // feat-089: a thrown error answers like a returned one. A cookie set before the throw
+    // (a login that swapped the session) reaches the client; before, handleError
+    // dropped it and left the client with the deleted session's cookie.
+    it('keeps the cookies set before a thrown error', async () => {
+        const sent = await call('cookie-thrown')
+        expect(sent.status).toBe('500 Internal Server Error')
+        const setCookie = sent.headers.filter(([n]) => n.toLowerCase() === 'set-cookie')
+        expect(setCookie).toHaveLength(1)
+        expect(setCookie[0]?.[1]).toMatch(/^sid=x/)
+        expect(JSON.parse(sent.body ?? '')).toMatchObject({ code: 'internal_error' })
+    })
+
+    // feat-089: before, sendErrorResponse wrote no CORS headers, so a cross-origin
+    // browser client could not read the body of any error thrown by a handler.
+    it('writes the CORS headers on a thrown error', async () => {
+        const sent = await call('thrown', 'https://app.test')
+        expect(sent.status).toBe('500 Internal Server Error')
+        expect(sent.headers).toContainEqual(['Access-Control-Allow-Origin', 'https://app.test'])
+        expect(sent.headers).toContainEqual(['Access-Control-Allow-Credentials', 'true'])
     })
 
     it.each([
