@@ -216,14 +216,13 @@ await context.auth.login(result.value.userId, result.value.userToken)
 | `data`               | Сюди диспетчер кладе значення, яке повернув метод.                                                                              |
 | `error`              | Заповнює диспетчер для системних помилок (`not_found`, `validation_failed`, `internal_error`, rate limit) зі `status: 'error'`. |
 
-Помилку сервісу повертайте як дані через `appErrorToPayload`:
+Помилку сервісу повертайте як дані через `mapWsControllerError`: вона виставляє `status` за `_tag` помилки (`'403'` для `Forbidden`), логує 5xx і повертає канонічне тіло:
 
 ```ts
 subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
     const result = adminWsChannelService.subscribeCurrentAdminConnection(context.ws)
     if (Result.isError(result)) {
-        context.responseData.status = '403'
-        return appErrorToPayload(result.error)
+        return mapWsControllerError(context, result.error)
     }
     return { status: 'success' }
 }
@@ -268,15 +267,18 @@ void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid
 
 ```ts
 export function mapControllerError(
-    context: Pick<HttpContext<unknown, unknown>, 'responseData'>,
+    context: Pick<HttpContext<unknown, unknown>, 'responseData' | 'logger' | 'signal'>,
     error: AppError,
 ): ReturnType<typeof appErrorToPayload> {
     applyAppErrorStatus(context.responseData, error)
+    report(context, error)
     return appErrorToPayload(error)
 }
 ```
 
-[`applyAppErrorStatus`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/apply-service-status.ts) виставляє HTTP-статус за `_tag` (`BadRequest`→400, `Unauthorized`→401, `Forbidden`→403, `NotFound`→404, `Conflict`→409, `RateLimited`→429 + `Retry-After`, `Internal`→500 — таблиця в [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)), а тіло має форму `{ status: 'error', message, code, reason? }`. Те саме тіло будує [`appErrorToPayload`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/app-error-payload.ts) і для WS: окремої функції для WebSocket немає.
+[`applyAppErrorStatus`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/apply-service-status.ts) виставляє HTTP-статус за `_tag` (`BadRequest`→400, `Unauthorized`→401, `Forbidden`→403, `NotFound`→404, `Conflict`→409, `RateLimited`→429 + `Retry-After`, `Internal`→500 — таблиця в [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)), а тіло має форму `{ status: 'error', message, code, reason? }`. Те саме тіло будує [`appErrorToPayload`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/app-error-payload.ts) і для WS. WS-варіант `mapWsControllerError` з того ж [controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts) пише статус рядком у відповідь (`'500'`), бо HTTP-статусу в WS немає.
+
+**Логування 5xx.** Обидві функції викликають [`reportAppError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/report-app-error.ts) через `context.logger`, тож запис має `requestId` і `userId`. Помилка зі статусом 500 і вище (`Internal`, `ServiceUnavailable`, `UpstreamError`, `UpstreamTimeout`) пишеться один раз як `error` з першопричиною (`cause`, тобто виняток, який перехопив `tryInternal`) і потрапляє в Sentry. 4xx не логуються: це очікувані відповіді. Якщо клієнт уже відключився (`context.signal.aborted`), запис не пишеться, бо відповідь ніхто не читає. Сервісу не треба логувати помилку, яку він повертає контролеру: інакше в Sentry буде дві події.
 
 Типовий метод контролера наведено в [Кроці 7](/backend/adding-a-feature#крок-7-controller).
 

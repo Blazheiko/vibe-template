@@ -39,6 +39,16 @@ describe('result helpers', () => {
         },
     )
 
+    // S3, PostgreSQL and SMTP raise the same socket codes: a down S3 is a 500, not a
+    // "try again" 503 blamed on Redis.
+    it('keeps a bare socket error from an unknown source internal', () => {
+        const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9'), {
+            code: 'ECONNREFUSED',
+        })
+
+        expect(toInternalError(cause, 'Hidden')._tag).toBe('Internal')
+    })
+
     it('keeps a Redis reply error (a bug) internal', () => {
         const replyError = Object.assign(new Error('WRONGTYPE'), { name: 'ReplyError' })
 

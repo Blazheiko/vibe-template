@@ -35,6 +35,17 @@
 
 Для маршрутів API контекст містить `requestId`, `userId`, `route.url`, `route.method`; для службового обробника документації маршрутів — лише `route` і `method`. `userId` береться в момент помилки: для 413/415/422 його немає, бо тіло читається й валідується до middleware сесії. Коди відповідей — у [Життєвому циклі запиту](/backend/request-lifecycle).
 
+### Помилки сервісів (`AppError`)
+
+Сервіси повертають помилки як `Result` і не кидають їх, тож `handleError` їх не бачить. Їх логує контролерний шар: `mapControllerError` і `mapWsControllerError` викликають [`reportAppError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/report-app-error.ts) через логер запиту. Деталі — у [Контролерах](/backend/controllers#мапінг-помилок).
+
+| `AppError`                                          | Рівень      | Поля                                      | Sentry                              |
+| --------------------------------------------------- | ----------- | ----------------------------------------- | ----------------------------------- |
+| 4xx (`BadRequest`, `NotFound`, `Conflict` тощо)     | не пишеться | —                                         | ні                                  |
+| `Internal`, `UpstreamError`, `UpstreamTimeout`      | `error`     | `err` (першопричина), `appError` (`_tag`) | так                                 |
+| `ServiceUnavailable`, причина — недоступність Redis | `error`     | `err`, `appError`, `sentrySkip: true`     | ні, подію дає модуль здоров'я Redis |
+| `ServiceUnavailable`, інша причина                  | `error`     | `err`, `appError`                         | так                                 |
+
 Також у [index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/index.ts): `uncaughtException` логується як `error` з `sentrySkip: true` і окремо відправляється через `sentryService.captureException`; при graceful shutdown викликається `sentryService.flush(2000)`.
 
 ## Sentry (бекенд)
@@ -109,7 +120,7 @@ flowchart TD
 - **Поки інцидент триває**, модуль пише `warn` `"Redis still unavailable"` не частіше разу на хвилину і раз на 2 с шле фоновий `PING`.
 - **Відновлення** — за першим із сигналів: успішна команда через `withRedis`, успішний фоновий `PING` або подія `ready` після reconnect. Тоді пишеться `info` `"Redis recovered"` з `downMs`, стан стає `healthy`, і наступний збій знову дасть одну подію.
 - **На процес, а не на кластер.** Кожен процес має власний стан, тож N інстансів дадуть N подій; групує їх сам Sentry.
-- **Інші записи не дублюють подію.** `sentryStream` пропускає записи, де `err.type === "RedisUnavailableError"` (поле, яке пише серіалізатор pino), — одне правило в транспорті замість правок у кожному місці.
+- **Інші записи не дублюють подію.** `sentryStream` пропускає записи, де `err.type === "RedisUnavailableError"` (поле, яке пише серіалізатор pino). Цю обгортку кидає лише основний клієнт. Rate-limit клієнт кидає сирі помилки ioredis (`err.type === "Error"`), тому `reportAppError` сама позначає такі записи `sentrySkip: true`, коли `isRedisUnavailable(cause)`. `isRedisUnavailable` дивиться лише на ознаки, які дає тільки ioredis (`MaxRetriesPerRequestError`, `Command timed out`, `Connection is closed`, `Stream isn't writeable`). Голий код сокета (`ECONNREFUSED` тощо) не рахується: його так само дають S3, PostgreSQL чи SMTP, і такий збій має бути 500 з подією в Sentry. Коди сокета враховує лише `withRedis` основного клієнта (`isRedisCommandUnavailable`), де джерело відоме. Окремого модуля здоров'я в rate-limit клієнта немає: його збій видно лише в stdout (`warn` `"Rate-limit Redis connection error"`).
 - **Свідоме рішення щодо stdout.** `logger.error` із `handleError` і з login/logout/`logoutAll` під час збою лишаються в stdout на кожен запит: це діагностика конкретних запитів, і їхній обсяг обмежений самими запитами. Обмеження «раз на хвилину» діє лише для модуля здоров'я. Якщо обсяг логів стане проблемою, наступний крок — понизити ці записи до `warn`, а не прибирати.
 
 ### Сервіси observability

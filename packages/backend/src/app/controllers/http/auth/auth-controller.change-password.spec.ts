@@ -31,6 +31,7 @@ const createContext = () => {
         responseData: { status: 200 },
         auth: { check: () => true, getUserId: () => '7' },
         session: { sessionInfo: { id: 's1', data: { userId: '7' } } },
+        signal: new AbortController().signal,
     } as never as Parameters<typeof AuthController.changePassword>[0] & {
         logger: typeof logger
     }

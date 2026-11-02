@@ -6,7 +6,8 @@ import { isRedisUnavailable } from '#vendor/utils/network/errors/redis-unavailab
 /**
  * Redis being down is not a server bug: 503 + Retry-After instead of 500. The main client
  * wraps an outage in RedisUnavailableError; the rate-limit client (a second connection)
- * throws plain ioredis errors, which `isRedisUnavailable` recognises as well.
+ * throws plain ioredis errors, which `isRedisUnavailable` recognises as well. A bare socket
+ * error (ECONNREFUSED from S3 or the database) stays a 500: the cause can come from anywhere.
  */
 export function toInternalError(cause: unknown, publicMessage = 'Internal error'): AppError {
     if (isRedisUnavailable(cause)) return serviceUnavailable(cause)

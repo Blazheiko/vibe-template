@@ -17,18 +17,33 @@ export class RedisUnavailableError extends Error {
 // command: commandTimeout, a dropped connection, a command while not ready with
 // the offline queue disabled.
 const UNAVAILABLE_MESSAGES = ['Command timed out', 'Connection is closed', "Stream isn't writeable"]
-const UNAVAILABLE_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE'])
+// Socket errors say "this connection failed", not which service it led to: S3,
+// PostgreSQL and SMTP raise the same codes. They mean Redis only for an error that
+// is known to come from a Redis command.
+const SOCKET_ERROR_CODES = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE'])
 
 /**
- * True for errors that mean Redis is unreachable. Reply errors (WRONGTYPE, Lua
- * script errors) and programming errors are bugs and stay false.
+ * True for errors that mean Redis is unreachable, whatever code path they came
+ * from: the RedisUnavailableError wrapper of the main client and the signs only
+ * ioredis produces (the rate-limit client throws them unwrapped). A bare socket
+ * error code is not enough: an unreachable S3 or database would pass as Redis.
+ * Reply errors (WRONGTYPE, Lua script errors) and programming errors stay false.
  */
 export const isRedisUnavailable = (err: unknown): boolean => {
     if (err instanceof RedisUnavailableError) return true
     if (!(err instanceof Error)) return false
     if (err.name === 'MaxRetriesPerRequestError') return true
     if (err.name === 'ReplyError') return false
-    const code = (err as { code?: unknown }).code
-    if (typeof code === 'string' && UNAVAILABLE_CODES.has(code)) return true
     return UNAVAILABLE_MESSAGES.some((text) => err.message.startsWith(text))
+}
+
+/**
+ * For an error thrown by a Redis command (withRedis): a socket error code also
+ * means Redis is unreachable, because the source is known.
+ */
+export const isRedisCommandUnavailable = (err: unknown): boolean => {
+    if (isRedisUnavailable(err)) return true
+    if (!(err instanceof Error) || err.name === 'ReplyError') return false
+    const code = (err as { code?: unknown }).code
+    return typeof code === 'string' && SOCKET_ERROR_CODES.has(code)
 }

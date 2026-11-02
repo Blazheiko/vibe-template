@@ -1059,7 +1059,14 @@ describe('authService while Redis is unavailable', () => {
                 headers.set(name, value)
             },
         }
-        const payload = mapControllerError({ responseData } as never, error as never)
+        const payload = mapControllerError(
+            {
+                responseData,
+                logger: { error: vi.fn() },
+                signal: new AbortController().signal,
+            } as never,
+            error as never,
+        )
         return { status: responseData.status, headers, payload }
     }
 
