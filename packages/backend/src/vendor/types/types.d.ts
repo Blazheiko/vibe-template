@@ -71,7 +71,10 @@ export interface WsContext<TPayload = unknown> {
     signal: AbortSignal
 }
 
-export type Middleware = (context: HttpContext, next: () => Promise<void>) => Promise<void>
+export type Middleware<TContext = HttpContext> = (
+    context: TContext,
+    next: () => Promise<void>,
+) => Promise<void>
 
 export interface Auth {
     getUserId: () => string | null

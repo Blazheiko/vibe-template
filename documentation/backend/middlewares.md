@@ -31,7 +31,7 @@ Middleware задаються списком назв на групі маршр
 
 ## Kernel middleware
 
-Усі middleware реєструються за іменем у [`src/app/middlewares/kernel.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/middlewares/kernel.ts):
+Усі middleware реєструються за іменем у [`src/app/middlewares/kernel.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/middlewares/kernel.ts). Там дві мапи, по одній на транспорт: `httpMiddlewares` (тип `Middleware`, контекст `HttpContext`) і `wsMiddlewares` (`Middleware<WsContext>`). Так кожен middleware отримує той контекст, для якого написаний. Якщо WS-маршрут назве HTTP-middleware або навпаки, це помилка `No middleware <name>`, як і для невідомого імені.
 
 | Ім'я             | Файл                                                                                                                                                                     | Що робить                                                                                                                                                                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -46,7 +46,7 @@ Middleware задаються списком назв на групі маршр
 
 ## Як виконується ланцюжок
 
-[`execute-httpMiddlewares.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/core/execute-httpMiddlewares.ts) реалізує класичний `next()`-ланцюжок: бере middleware з kernel за іменем (невідоме ім'я — помилка `No middleware <name>`) і повертає `true`, лише якщо **кожен** middleware викликав `next()`. Handler запускається тоді, коли ланцюжок пройдено і `responseData.status` лишився у діапазоні 2xx.
+[`execute-httpMiddlewares.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/core/execute-httpMiddlewares.ts) реалізує класичний `next()`-ланцюжок: `executeMiddlewares` для HTTP і `executeWsMiddlewares` для WS-диспетчера беруть middleware з мапи свого транспорту за іменем (невідоме ім'я — помилка `No middleware <name>`) і повертає `true`, лише якщо **кожен** middleware викликав `next()`. Handler запускається тоді, коли ланцюжок пройдено і `responseData.status` лишився у діапазоні 2xx.
 
 ```mermaid
 flowchart LR
@@ -86,4 +86,4 @@ const myGuard: Middleware = async (
 export default myGuard
 ```
 
-Далі: імпортуйте його в `kernel.ts`, додайте ключ (наприклад `my_guard: myGuard`) і вкажіть ім'я в `middlewares` маршруту чи групи. Порядок має значення: `auth_guard`/`admin_guard` повинні стояти після `session_web`. Повний приклад фічі — у [Додаванні фічі](/backend/adding-a-feature).
+Далі: імпортуйте його в `kernel.ts`, додайте ключ у `httpMiddlewares` (наприклад `my_guard: myGuard`; WS-middleware — у `wsMiddlewares`, з типом `Middleware<WsContext>`, як `ws-admin-guard.ts`) і вкажіть ім'я в `middlewares` маршруту чи групи. Порядок має значення: `auth_guard`/`admin_guard` повинні стояти після `session_web`. Повний приклад фічі — у [Додаванні фічі](/backend/adding-a-feature).

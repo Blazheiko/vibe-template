@@ -198,3 +198,44 @@ describe('session beforeSend', () => {
         )
     })
 })
+
+// feat-088: a storage failure in auth.login / logout / logoutAll propagates without a
+// log record here; the service turns it into an AppError and the controller logs it
+// once (reportAppError), so one failure is one error record, not two.
+describe('session auth methods on a storage failure', () => {
+    const loggerError = (logger as unknown as { error: ReturnType<typeof vi.fn> }).error
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        storage.getSession.mockResolvedValue({
+            id: 's1',
+            data: { userId: '7', userToken: USER_TOKEN, csrfToken: 'c'.repeat(43) },
+            createdAt: new Date().toISOString(),
+        })
+        storage.claimCookieRefresh.mockResolvedValue(false)
+    })
+
+    it('auth.login rejects and leaves the logging to the caller', async () => {
+        const context = await run()
+        storage.saveSession.mockRejectedValue(new RedisDown('save failed'))
+
+        await expect(context.auth.login('7', USER_TOKEN)).rejects.toThrow('save failed')
+        expect(loggerError).not.toHaveBeenCalled()
+    })
+
+    it('auth.logout rejects and leaves the logging to the caller', async () => {
+        const context = await run()
+        storage.destroySession.mockRejectedValue(new RedisDown('destroy failed'))
+
+        await expect(context.auth.logout()).rejects.toThrow('destroy failed')
+        expect(loggerError).not.toHaveBeenCalled()
+    })
+
+    it('auth.logoutAll rejects and leaves the logging to the caller', async () => {
+        const context = await run()
+        storage.destroyAllSessions.mockRejectedValue(new RedisDown('destroy all failed'))
+
+        await expect(context.auth.logoutAll()).rejects.toThrow('destroy all failed')
+        expect(loggerError).not.toHaveBeenCalled()
+    })
+})

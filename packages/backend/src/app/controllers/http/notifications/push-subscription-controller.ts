@@ -41,8 +41,6 @@ const subscriptionNotFound = (): AppError => notFound('Subscription', 'Subscript
 
 export default {
     async getVapidPublicKey(context: HttpContext): Promise<GetVapidPublicKeyResponse> {
-        context.logger.info('getVapidPublicKey handler')
-
         const vapidPublicKey = pushNotificationSenderService.getVapidPublicKey()
         if (vapidPublicKey === '') {
             return mapControllerError(context, internalMessage('VAPID keys not configured'))
@@ -52,8 +50,6 @@ export default {
     },
 
     async getSubscriptions(context: HttpContext): Promise<GetSubscriptionsResponse> {
-        context.logger.info('getSubscriptions handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -73,8 +69,6 @@ export default {
     async createSubscription(
         context: HttpContext<CreateSubscriptionInput>,
     ): Promise<CreateSubscriptionResponse> {
-        context.logger.info('createSubscription handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -94,8 +88,6 @@ export default {
     },
 
     async getSubscription(context: HttpContext): Promise<GetSubscriptionResponse> {
-        context.logger.info('getSubscription handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -120,8 +112,6 @@ export default {
     async updateSubscription(
         context: HttpContext<UpdateSubscriptionInput>,
     ): Promise<UpdateSubscriptionResponse> {
-        context.logger.info('updateSubscription handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -150,8 +140,6 @@ export default {
     },
 
     async deleteSubscription(context: HttpContext): Promise<DeleteSubscriptionResponse> {
-        context.logger.info('deleteSubscription handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -171,8 +159,6 @@ export default {
     },
 
     async getSubscriptionLogs(context: HttpContext): Promise<GetSubscriptionLogsResponse> {
-        context.logger.info('getSubscriptionLogs handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -194,8 +180,6 @@ export default {
     async getSubscriptionStatistics(
         context: HttpContext,
     ): Promise<GetSubscriptionStatisticsResponse> {
-        context.logger.info('getSubscriptionStatistics handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -223,8 +207,6 @@ export default {
     async deactivateSubscription(
         context: HttpContext<EmptyFormInput>,
     ): Promise<DeactivateSubscriptionResponse> {
-        context.logger.info('deactivateSubscription handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -247,8 +229,6 @@ export default {
     },
 
     async testPush(context: HttpContext<PushSubscriptionTestInput>): Promise<TestPushResponse> {
-        context.logger.info('testPush handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())

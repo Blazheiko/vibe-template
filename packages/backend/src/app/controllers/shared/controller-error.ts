@@ -4,8 +4,13 @@ import { applyAppErrorStatus } from '#app/services/shared/apply-service-status.j
 import { appErrorStatus, type AppError } from '#app/services/shared/errors.js'
 import { reportAppError } from '#app/services/shared/report-app-error.js'
 
-// A client that went away reads no answer: its cancelled work is not a server failure.
-const report = (
+/**
+ * Logs a 5xx AppError through the request logger (see reportAppError). For a
+ * controller that answers an error without mapControllerError, such as the OAuth
+ * callback redirect. A client that went away reads no answer: its cancelled work
+ * is not a server failure.
+ */
+export const reportControllerError = (
     context: { logger: HttpContext['logger']; signal: AbortSignal },
     error: AppError,
 ): void => {
@@ -17,7 +22,7 @@ export function mapControllerError(
     error: AppError,
 ): ReturnType<typeof appErrorToPayload> {
     applyAppErrorStatus(context.responseData, error)
-    report(context, error)
+    reportControllerError(context, error)
     return appErrorToPayload(error)
 }
 
@@ -27,6 +32,6 @@ export function mapWsControllerError(
     error: AppError,
 ): ReturnType<typeof appErrorToPayload> {
     context.responseData.status = String(appErrorStatus(error))
-    report(context, error)
+    reportControllerError(context, error)
     return appErrorToPayload(error)
 }

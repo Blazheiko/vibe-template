@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import type { HttpContext } from '#vendor/types/types.js'
+import type { WsContext } from '#vendor/types/types.js'
 import wsAdminGuard from './ws-admin-guard.js'
 
 const wsContext = (role: string | undefined) => ({
     userData: role === undefined ? null : { role },
     responseData: { status: '200', data: null, error: null, event: 'admin/x', timestamp: 0 },
+    logger: { error: vi.fn() },
+    signal: new AbortController().signal,
 })
 
 describe('ws_admin_guard', () => {
@@ -15,7 +17,7 @@ describe('ws_admin_guard', () => {
             const context = wsContext(role)
             const next = vi.fn()
 
-            await wsAdminGuard(context as unknown as HttpContext, next)
+            await wsAdminGuard(context as unknown as WsContext, next)
 
             expect(next).not.toHaveBeenCalled()
             expect(context.responseData.status).toBe('403')
@@ -31,7 +33,7 @@ describe('ws_admin_guard', () => {
         const context = wsContext('admin')
         const next = vi.fn(async () => {})
 
-        await wsAdminGuard(context as unknown as HttpContext, next)
+        await wsAdminGuard(context as unknown as WsContext, next)
 
         expect(next).toHaveBeenCalledOnce()
         expect(context.responseData.status).toBe('200')

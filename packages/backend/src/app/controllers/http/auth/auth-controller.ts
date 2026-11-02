@@ -94,7 +94,6 @@ export default {
     async registerByEmail(
         context: HttpContext<RegisterEmailInput>,
     ): Promise<RegisterEmailResponse> {
-        context.logger.info('registerByEmail handler')
         const payload = getTypedPayload(context)
         const result = await authService.registerByEmail(
             payload,
@@ -114,7 +113,6 @@ export default {
     async startPhoneRegistration(
         context: HttpContext<RegisterPhoneStartInput>,
     ): Promise<RegisterPhoneStartResponse> {
-        context.logger.info('startPhoneRegistration handler')
         const payload = getTypedPayload(context)
         const result = await authService.startPhoneRegistration(payload, {
             ipAddress: context.httpData.ip ?? '',
@@ -131,7 +129,6 @@ export default {
     async confirmPhoneRegistration(
         context: HttpContext<RegisterPhoneConfirmInput>,
     ): Promise<RegisterPhoneConfirmResponse> {
-        context.logger.info('confirmPhoneRegistration handler')
         const payload = getTypedPayload(context)
         const result = await authService.confirmPhoneRegistration(payload, {
             ipAddress: context.httpData.ip ?? '',
@@ -147,7 +144,6 @@ export default {
     async completePhoneRegistration(
         context: HttpContext<RegisterPhoneCompleteInput>,
     ): Promise<RegisterPhoneCompleteResponse> {
-        context.logger.info('completePhoneRegistration handler')
         const payload = getTypedPayload(context)
         const result = await authService.completePhoneRegistration(
             payload,
@@ -167,8 +163,6 @@ export default {
     },
 
     async login(context: HttpContext<LoginInput>): Promise<LoginResponse> {
-        context.logger.info('login handler')
-
         const payload = getTypedPayload(context)
         const result = await authService.login(payload, context.auth, context.session, {
             ipAddress: context.httpData.ip ?? '',
@@ -182,7 +176,6 @@ export default {
     },
 
     async logout(context: HttpContext<EmptyFormInput>): Promise<LogoutResponse> {
-        context.logger.info('logout handler')
         const result = await authService.logout(context.auth, context.session)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -192,7 +185,6 @@ export default {
     },
 
     async logoutAll(context: HttpContext<EmptyFormInput>): Promise<LogoutAllResponse> {
-        context.logger.info('logoutAll handler')
         const result = await authService.logoutAll(context.auth, context.session)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -204,8 +196,6 @@ export default {
     async changePassword(
         context: HttpContext<ChangePasswordInput>,
     ): Promise<ChangePasswordResponse> {
-        context.logger.info('changePassword handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
