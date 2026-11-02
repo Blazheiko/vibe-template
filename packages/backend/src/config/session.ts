@@ -5,13 +5,14 @@ import appConfig from '#config/app.js'
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 import { parseInteger } from '#vendor/utils/env/read-int.js'
 
-const LEGACY_COOKIE_NAME = 'uapi'
+// Without the __Host- prefix: a local HTTP setup, where the prefix (Secure only) is not usable.
+const PLAIN_COOKIE_NAME = 'uapi'
 const HOST_PREFIXED_COOKIE_NAME = '__Host-uapi'
 
 const reader = createEnvReader()
 const useHostPrefix = reader.bool('SESSION_COOKIE_HOST_PREFIX', appConfig.isProductionLike)
 
-const cookieName = useHostPrefix ? HOST_PREFIXED_COOKIE_NAME : LEGACY_COOKIE_NAME
+const cookieName = useHostPrefix ? HOST_PREFIXED_COOKIE_NAME : PLAIN_COOKIE_NAME
 
 // Anonymous sessions (feat-057) live in a signed cookie and reach Redis only when they
 // store data; either way they expire after this, sliding with use.
@@ -51,7 +52,6 @@ export const readTokenCheckTimeoutMs = (source: NodeJS.ProcessEnv = env): number
 export default Object.freeze({
     storage: 'redis',
     cookieName,
-    legacyCookieName: LEGACY_COOKIE_NAME,
     useHostPrefix,
     age: Math.floor(duration('24h') / 1000), // d - days, h - hours, m - minutes, s - seconds
     /** Lifetime of an anonymous session, in seconds (SESSION_ANON_TTL, default 2h). */

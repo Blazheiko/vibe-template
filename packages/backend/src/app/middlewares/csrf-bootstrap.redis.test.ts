@@ -65,7 +65,6 @@ const { default: executeMiddlewares } =
 const { default: createContext } = await import('#vendor/utils/context/http-context.js')
 const { createResponseData } = await import('#vendor/utils/network/response-data.js')
 const { createAnonSessionToken } = await import('#vendor/utils/session/token-handler.js')
-const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
 const { registerSessionTokenChecker } = await import('#vendor/utils/session/session-token-check.js')
 
 // Whether a signed-in session is revoked by a rotated users.sessionToken is covered
@@ -593,34 +592,5 @@ describe.skipIf(!hasRedis)('stale anonymous cookie refresh (feat-057 review)', (
         await response.context.session.beforeSend?.()
 
         expect(response.context.responseData.cookies.has(sessionConfig.cookieName)).toBe(true)
-    })
-
-    it('a fresh anonymous cookie under the legacy name is re-issued under the active one', async () => {
-        const csrfToken = 'k'.repeat(43)
-        const responseData = createResponseData()
-        const context = createContext(
-            {
-                method: 'get',
-                ip: '127.0.0.1',
-                params: {},
-                payload: {},
-                query: null,
-                headers: new Map(),
-                contentType: 'application/json',
-                cookies: new Map(),
-                isJson: true,
-                files: null,
-                hasFile: () => false,
-            },
-            responseData,
-        )
-
-        // What session_web does for a cookie found only under the legacy name.
-        await sessionHandler(context, anonCookie(nowSec() - 60, csrfToken), undefined, true)
-
-        expect(responseData.cookies.get(sessionConfig.cookieName)?.value).toEqual(
-            expect.any(String),
-        )
-        expect(context.session.sessionInfo?.data.csrfToken).toBe(csrfToken)
     })
 })

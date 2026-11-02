@@ -1,8 +1,6 @@
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
-// import logger from '../../logger.js';
 import { sessionHandler } from '#vendor/utils/session/session-handler.js'
-import { resolveSessionCookie } from '#vendor/utils/session/resolve-session-cookie.js'
-import { deleteLegacySessionCookie } from '#vendor/utils/session/delete-legacy-session-cookie.js'
+import sessionConfig from '#config/session.js'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 
 /**
@@ -38,12 +36,7 @@ const sessionWeb: Middleware = async (
     context: HttpContext,
     next: () => Promise<void>,
 ): Promise<void> => {
-    const { httpData, responseData } = context
-    const { token, source } = resolveSessionCookie(httpData.cookies)
-    if (source === 'legacy') {
-        deleteLegacySessionCookie(responseData)
-    }
-    await sessionHandler(context, token, undefined, source === 'legacy')
+    await sessionHandler(context, context.httpData.cookies.get(sessionConfig.cookieName), undefined)
     // From here on the request's log records name the user (code-issues item 33).
     const userId = context.auth.getUserId()
     if (userId !== null) {
