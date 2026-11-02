@@ -75,7 +75,7 @@ export interface WsContext<TPayload = unknown> {
 
 ## HttpContext докладно
 
-Контекст створюється для кожного запиту в [http-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/http-context.ts). Спочатку `session` і `auth` — заглушки (`getUserId()` → `null`, `login()` → `false`); реальні реалізації підставляє session-middleware з [session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts). Тому на маршруті без session-middleware `auth.getUserId()` завжди повертає `null`.
+Контекст створюється для кожного запиту в [http-context.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/context/http-context.ts). Спочатку `session` і `auth` — заглушки (`getUserId()` → `null`, `login()` → `false`); реальні реалізації підставляє session-middleware: [session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts) відновлює сесію запиту (`RequestSession`, [request-session.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/request-session.ts)) і прив'язує її методи до контексту. Тому на маршруті без session-middleware `auth.getUserId()` завжди повертає `null`.
 
 Крім полів нижче, є `requestId` (UUID запиту) і `signal` — `AbortSignal`, який спрацьовує, коли клієнт розірвав з'єднання до відповіді. Його варто передавати в довгі операції (`fetch`, LLM-виклики).
 

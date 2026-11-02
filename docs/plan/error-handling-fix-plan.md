@@ -214,6 +214,8 @@
 
 **Обережно.** Код чутливий до race conditions (ADR 0002, `anonymous-session-flood-plan.md`). Страховка — наявні тести: `session-revocation*.pg.test.ts`, `csrf-bootstrap.redis.test.ts`, `redis-session-storage.spec.ts`. Публічний API `context.session` / `context.auth` можна змінювати, якщо це спрощує код. Але гарантії проти race conditions мають лишитися, і кожну зміну поведінки покриває тест.
 
+**Реалізовано (feat-094).** Повний клас, як просив власник продукту. `request-session.ts`: клас `RequestSession` зі станом у полях (`info`, `cookieHeld`, `storageToken`, `swapped`, `preSendCheck`) і переходами-методами (`restore`, `attach`, `login`, `logout`, `logoutAll`, перенесення анонімної сесії в Redis). Чотири глобальні `WeakMap`/`WeakSet`, прив'язані до `context`, стали одним полем `preSendCheck` з трьома варіантами, а три перезаписи `beforeSend` — одним `schedule()`. Дубль `sessionInfo` (локальна змінна плюс `context.session.sessionInfo`) синхронізує один `setInfo()`. `session-handler.ts` (534 → 130 рядків) лише читає cookie й викликає `RequestSession.restore(...).attach()`. Поведінка не змінилась: усі наявні тести сесій пройшли без правок. Мутаційна перевірка знайшла дві гілки без тестів (захист `swapped` після перенесення анонімної сесії, порівняння id після власного `logout`), тож додано два тести.
+
 ## Етап 7 — прибрати код сумісності (🟡)
 
 Перехідні механізми, які мали сенс лише для вже розгорнутих клієнтів:

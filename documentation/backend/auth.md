@@ -119,7 +119,14 @@ async getProfile(context: HttpContext): Promise<ProfileResponse> {
 
 ### Формат cookie
 
-Сесію створює і перевіряє [`session-handler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts), а підпис робить [`token-handler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/token-handler.ts).
+Cookie сесії читає [`session-handler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts), а сесію запиту веде клас `RequestSession` ([`request-session.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/request-session.ts)). Його стан — поточна `SessionInfo`, прапорець «сесія лише в cookie» (анонімна, ще без запису в Redis), простір імен у Redis і одна відкладена перевірка перед відправкою відповіді. Переходи між станами — методи класу:
+
+- `restore` відновлює сесію з cookie або починає нову анонімну;
+- перший запис даних в анонімну сесію переносить її в Redis;
+- `login` замінює будь-яку сесію новою сесією користувача;
+- `logout` і `logoutAll` замінюють сесію новою анонімною.
+
+Метод `attach` віддає їх обробникам як `context.session` і `context.auth`. Підпис робить [`token-handler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/token-handler.ts).
 
 - Значення до підпису: `<userToken>.<sessionId>`. Для анонімної сесії, збереженої в Redis, замість `userToken` стоїть рядок `anon_session`. Анонімна сесія без Redis має власний формат — див. [Анонімна сесія](#анонімна-сесія).
 - `sessionId` генерується через `crypto.randomUUID()`.
