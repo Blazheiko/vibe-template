@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { defineRoute } from '#app/routing/define-route.js'
 import type { HttpContext, Payload } from '#vendor/types/types.js'
+import sessionConfig from '#config/session.js'
 
 // API responses default to Cache-Control: no-store (code-issues item 42). Goes
 // through the handler registered with uWS and the real sendResponse /
@@ -82,7 +83,10 @@ const route = (name: string, setup: Setup) => {
                 for (const [headerName, value] of Object.entries(setup.headers ?? {})) {
                     context.responseData.headers.push({ name: headerName, value })
                 }
-                if (setup.cookie === true) context.responseData.setCookie('sid', 'x')
+                if (setup.cookie === true) {
+                    context.responseData.setCookie(sessionConfig.cookieName, 'session-value')
+                    context.responseData.setCookie('sid', 'x')
+                }
                 if (setup.throws === true) throw new Error('boom')
                 return setup.payload as Payload
             },
@@ -100,7 +104,7 @@ interface Sent {
     withoutBody: boolean
 }
 
-const call = async (name: string, origin?: string): Promise<Sent> => {
+const call = async (name: string, origin?: string, param = ''): Promise<Sent> => {
     let status = ''
     let body: string | undefined
     let withoutBody = false
@@ -142,8 +146,9 @@ const call = async (name: string, origin?: string): Promise<Sent> => {
         getUrl: () => `/api/${name}`,
         getMethod: () => 'get',
         getQuery: () => '',
-        getParameter: () => '',
-        getHeader: () => '',
+        getParameter: () => param,
+        getHeader: (headerName: string) =>
+            headerName === 'origin' && origin !== undefined ? origin : '',
         forEach: (cb: (key: string, value: string) => void) => {
             if (origin !== undefined) cb('origin', origin)
         },
@@ -170,6 +175,8 @@ describe('Cache-Control on API responses', () => {
                 route('thrown', { payload: null, throws: true }),
                 route('cookie', { payload: { a: 1 }, cookie: true }),
                 route('cookie-thrown', { payload: null, cookie: true, throws: true }),
+                // The router fills parametersKey from the URL; this harness skips the router.
+                { ...route('item/:id', { payload: { a: 1 } }), parametersKey: ['id'] },
                 route('own', {
                     payload: { a: 1 },
                     headers: { 'Cache-Control': 'public, max-age=60' },
@@ -203,16 +210,25 @@ describe('Cache-Control on API responses', () => {
         expect(cacheControl(sent)).toEqual(['no-store'])
     })
 
-    // feat-089: a thrown error answers like a returned one. A cookie set before the throw
-    // (a login that swapped the session) reaches the client; before, handleError
-    // dropped it and left the client with the deleted session's cookie.
-    it('keeps the cookies set before a thrown error', async () => {
+    // feat-089: a thrown error answers like a returned one for the session: a session cookie
+    // set before the throw (a login that swapped the session) reaches the client.
+    // feat-095 (code review): only that one; another cookie of the failed handler is dropped.
+    it('keeps the session cookie set before a thrown error, and only that one', async () => {
         const sent = await call('cookie-thrown')
         expect(sent.status).toBe('500 Internal Server Error')
         const setCookie = sent.headers.filter(([n]) => n.toLowerCase() === 'set-cookie')
         expect(setCookie).toHaveLength(1)
-        expect(setCookie[0]?.[1]).toMatch(/^sid=x/)
+        expect(setCookie[0]?.[1]).toMatch(new RegExp(`^${sessionConfig.cookieName}=session-value`))
         expect(JSON.parse(sent.body ?? '')).toMatchObject({ code: 'internal_error' })
+    })
+
+    // feat-095 (code review): the Origin was read after the metadata, whose path-parameter
+    // check can throw first; that 400 went out without CORS headers.
+    it('writes the CORS headers on a 400 for an invalid path parameter', async () => {
+        const sent = await call('item/:id', 'https://app.test', 'bad value!')
+        expect(sent.status).toBe('400 Bad Request')
+        expect(JSON.parse(sent.body ?? '')).toMatchObject({ code: 'bad_request' })
+        expect(sent.headers).toContainEqual(['Access-Control-Allow-Origin', 'https://app.test'])
     })
 
     // feat-089: before, sendErrorResponse wrote no CORS headers, so a cross-origin

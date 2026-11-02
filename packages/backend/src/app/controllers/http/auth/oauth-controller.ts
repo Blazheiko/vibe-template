@@ -116,11 +116,18 @@ export default {
             result = Result.err(internal(err, 'OAuth sign-in failed'))
         }
 
-        // Clean up OAuth session data
-        await session.updateSessionData({
-            oauthState: undefined,
-            oauthCodeVerifier: undefined,
-        })
+        // The state and verifier are single-use. A failed cleanup must not turn the callback
+        // into a JSON 5xx page: it is logged and the outcome above still redirects. A left
+        // state is harmless: a successful login replaced the session, and the provider's
+        // code cannot be used twice.
+        try {
+            await session.updateSessionData({
+                oauthState: undefined,
+                oauthCodeVerifier: undefined,
+            })
+        } catch (err: unknown) {
+            logger.warn({ err }, 'OAuth state cleanup failed')
+        }
 
         if (Result.isError(result)) {
             return redirectToError(context, result.error)

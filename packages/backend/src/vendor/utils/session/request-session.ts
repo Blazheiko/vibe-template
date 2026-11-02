@@ -158,7 +158,12 @@ export class RequestSession {
             presentedId = incoming.sessionId
             presentedUserToken = incoming.userToken
             info = await getSession(incoming.sessionId, incoming.userToken)
-            if (info !== null) {
+            if (info === null) {
+                // The record expired or was deleted: the cookie names nothing. The new
+                // anonymous session must not inherit its user token as storage namespace.
+                presentedId = undefined
+                presentedUserToken = undefined
+            } else {
                 // ADR 0002: the Redis record only proves the session was issued. A rotated
                 // users.sessionToken revokes it, whether or not the cleanup reached Redis.
                 const status = await assertSessionTokenCurrent(info, incoming.userToken)
@@ -282,6 +287,9 @@ export class RequestSession {
         await saveSession(stored)
         this.issueStoredCookie(stored.id, undefined, sessionConfig.anonAge)
         this.cookieHeld = false
+        // saveSession stores a session without a user under the anonymous namespace; later
+        // changes in this request must address the same record.
+        this.storageToken = ANON_TOKEN
         // The move answers for its own cookie now; a pending refresh check is moot.
         this.schedule({ kind: 'anonymous-promotion', sessionId: stored.id })
         this.setInfo(stored)

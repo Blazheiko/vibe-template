@@ -248,6 +248,32 @@ describe('session beforeSend after the request replaced its own session', () => 
     })
 })
 
+// feat-095 (code review): a cookie naming a session that is no longer in Redis starts a
+// new anonymous session; it must live in the anonymous namespace from the first write on.
+describe('a cookie of a missing session', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        storage.getSession.mockResolvedValue(null)
+        storage.updateSessionData.mockResolvedValue(null)
+    })
+
+    it('starts an anonymous session whose later changes address the anonymous namespace', async () => {
+        const context = await run()
+        expect(context.auth.check()).toBe(false)
+
+        await context.session.updateSessionData({ oauthState: 'first' })
+        expect(storage.saveSession).toHaveBeenCalledOnce()
+
+        await context.session.updateSessionData({ oauthState: 'second' })
+
+        expect(storage.updateSessionData).toHaveBeenCalledWith(
+            context.session.sessionInfo?.id,
+            { oauthState: 'second' },
+            'anon_session',
+        )
+    })
+})
+
 describe('session auth methods on a storage failure', () => {
     const loggerError = (logger as unknown as { error: ReturnType<typeof vi.fn> }).error
 
