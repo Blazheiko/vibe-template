@@ -66,33 +66,33 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## A · 🔴 feat-058 · IDOR у push-підписках
+## A · ✅ feat-058 · IDOR у push-підписках
 
 **Гілка:** `fix/push-subscription-idor` · **Залежності:** немає · **Оцінка:** 0.5 д
 
 ### Зміни
 
-- [ ] `app/repositories/notifications/push-subscription-repository.ts:141-147` `update()` — `.returning()`, повертати `rows.at(0)`; прибрати `findById(id)`.
-- [ ] `:166-172` `deactivate()` — те саме.
-- [ ] `updateByEndpoint` (`:149-155`) — **не чіпати** `WHERE`: перенесення підписки між акаунтами після перевірки `p256dh`/`auth` ключів — навмисне (`push-subscription-service.ts:53-62`). Додати коментар у репозиторії, чому там немає `userId`.
-- [ ] `app/services/notifications/push-subscription-service.ts:190-197, 271-286` — без змін логіки (`undefined → notFound`), перевірити, що немає інших місць, де результат `update`/`deactivate` вважається «свій».
+- [x] `app/repositories/notifications/push-subscription-repository.ts:141-147` `update()` — `.returning()`, повертати `rows.at(0)`; прибрати `findById(id)`. _Виконано #188: рядок береться з самого `UPDATE … WHERE id AND user_id … RETURNING`, окремого `findById` немає._
+- [x] `:166-172` `deactivate()` — те саме. _#188._
+- [x] `updateByEndpoint` (`:149-155`) — **не чіпати** `WHERE`: перенесення підписки між акаунтами після перевірки `p256dh`/`auth` ключів — навмисне (`push-subscription-service.ts:53-62`). Додати коментар у репозиторії, чому там немає `userId`. _#188: `WHERE` не чіпали, коментар у репозиторії є._
+- [x] `app/services/notifications/push-subscription-service.ts:190-197, 271-286` — без змін логіки (`undefined → notFound`), перевірити, що немає інших місць, де результат `update`/`deactivate` вважається «свій». _Перевірено в #188/#190: `undefined → notFound`, інших місць, де результат вважається «своїм», немає._
 
 ### Критерії приймання
 
-- [ ] Чужий id і неіснуючий id → однаковий 404 з однаковим тілом (без різниці у timing-чутливому тексті).
-- [ ] Відповідь на чужий id не містить жодних полів чужого запису.
-- [ ] Чужий запис після запиту незмінний (`updatedAt`, `lastUsedAt`, `isActive` — як були).
-- [ ] Свій id → 200, оновлені поля.
-- [ ] Перенесення підписки по `endpoint` з тими самими ключами на інший акаунт — працює як раніше (регресія на `updateByEndpoint`).
+- [x] Чужий id і неіснуючий id → однаковий 404 з однаковим тілом (без різниці у timing-чутливому тексті). _`push-subscription-ownership.pg.test.ts`: «answers a foreign id like a missing one and leaks nothing» (`foreign.body` дорівнює `missing.body`)._
+- [x] Відповідь на чужий id не містить жодних полів чужого запису. _Той самий тест (`expectNoLeak`), а також для порожнього тіла, `GET /:id`, `/statistics`, `DELETE /:id`._
+- [x] Чужий запис після запиту незмінний (`updatedAt`, `lastUsedAt`, `isActive` — як були). _Той самий тест порівнює рядок до і після (`rowOf`)._
+- [x] Свій id → 200, оновлені поля. _«updates the caller own subscription», «deactivates the caller own subscription»._
+- [x] Перенесення підписки по `endpoint` з тими самими ключами на інший акаунт — працює як раніше (регресія на `updateByEndpoint`). _«moves the subscription to the caller when the browser keys match»; з іншими ключами — 409 і власник лишається (`answers 409 and keeps the owner when the keys differ`)._
 
 ### Тести
 
-- [ ] Integration (`test:pg`, реальний PostgreSQL, через HTTP-роут із `auth_guard`, два юзери): всі критерії вище. Не лише мок репозиторію.
-- [ ] Unit у `push-subscription-repository.spec.ts`: `update` на 0 рядків → `undefined`.
+- [x] Integration (`test:pg`, реальний PostgreSQL, через HTTP-роут із `auth_guard`, два юзери): всі критерії вище. Не лише мок репозиторію. _#188, переписано на справжній HTTP (uWS, реальна таблиця маршрутів, валідація тіла, `auth_guard`; `session_web` і `csrf_guard` замінені) у #190: 14 тестів, 3 з них падали на старому репозиторії з 200 замість 404._
+- [x] Unit у `push-subscription-repository.spec.ts`: `update` на 0 рядків → `undefined`. _Додано в PR «Відмітити виконане в плані»: 5 тестів на мокнутому `db` (0 рядків → `undefined`, `db` не має `select`, тож перечитування за `id` кидає); на старому коді 3 з 5 падають._
 
 ---
 
-## B · 🔴 feat-059 · Відкликання сесій при зміні пароля
+## B · ✅ feat-059 · Відкликання сесій при зміні пароля
 
 **Гілка:** `fix/change-password-revoke-sessions` · **Залежності:** немає · **Оцінка:** 1 д
 
@@ -147,7 +147,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## B2 · 🔴 feat-060 · Гонка одноразових токенів (reset / verification / link)
+## B2 · ✅ feat-060 · Гонка одноразових токенів (reset / verification / link)
 
 **Гілка:** `fix/one-time-token-race` · **Залежності:** **B** (очищення сесій після commit тут best-effort і спирається на звірку `userToken` з B; без B reset-flow при збої Redis залишає старі сесії валідними — B2 не випускати окремо) · **Оцінка:** 0.5–1 д · Security-фікс, виконується **до** G і H4, не як частина тестового покриття.
 
@@ -179,7 +179,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## C · 🔴 feat-062 · Відкликання admin-доступу у WebSocket
+## C · ✅ feat-062 · Відкликання admin-доступу у WebSocket
 
 **Гілка:** `fix/ws-admin-revoke` · **Залежності:** немає · **Оцінка:** 1 д
 
@@ -226,7 +226,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
 
 ---
 
-## D · 🟠 feat-063 · Resource limits: support chat + multipart
+## D · ✅ feat-063 · Resource limits: support chat + multipart
 
 **Гілка:** `fix/resource-limits` · **Залежності:** A (конфлікти в `http-routes.ts`) · **Оцінка:** 2 д
 
@@ -257,7 +257,7 @@ A (IDOR) → B (sessions, звірка з БД) → B2 (one-time token race, з�
     - `context.signal` (abort) — перевіряти **до** send у кожному з трьох викликів; після send abort лише припиняє стрім, не повертає бюджет.
     - `llm_text_usage` — аудит як зараз; enforcement — тільки Redis.
 - [x] `.env.example`, `config/ai.ts` (`AI_SUPPORT_DAILY_TOKEN_BUDGET`, `AI_BUDGET_RESERVE_RATIO`), `validate-runtime-config.ts` (бюджет > 0 у production-like), `documentation/backend/ai.md`.
-- [ ] Адмін-ендпойнт для перегляду/скидання бюджету — опційно, окремим PR.
+- [ ] Адмін-ендпойнт для перегляду/скидання бюджету — опційно, окремим PR. **Не зроблено** (опційно за планом, окремим PR).
 
 ### D3. Історія чату — контракт, не тихе обрізання
 
@@ -277,22 +277,22 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ### Критерії приймання
 
-- [ ] 4001 символів → WS-відповідь `status: 'error'` 422 (не `ok`); 21-е повідомлення за хвилину → 429 у відповіді; друге повідомлення під час генерації → 429.
-- [ ] Lock: запит А пережив TTL, запит B взяв lock, А завершився → lock B **не** видалений (умовний DEL).
-- [ ] **Admission rollback:** lock отримано → резерв бюджету відхилено (Lua повернув −1) → lock **звільнено** в тому ж `admit`, клієнт отримав 429. Наступний запит цього юзера **одразу отримує lock** (не чекає TTL), але бюджет знову відхиляє admission → 429 з тим самим кодом; після відновлення квоти (у тесті — скидання ключа `llm:budget:*`) повторний запит проходить повністю.
-- [ ] 10 паралельних запитів при залишку бюджету на 1 → рівно один проходить (Lua-атомарність).
-- [ ] Abort **до** send → резерв повернуто повністю. Abort **після** старту генерації, провайдер без usage → резерв списано. Провайдер повернув usage → списано факт (звірка).
-- [ ] Помилка провайдера після send без usage → резерв списано (консервативно); клієнт отримав `support_chat_error` з `code`.
-- [ ] UI показує всю історію (пагінацією), промпт отримує 20 останніх.
-- [ ] Файл рівно 10 MiB на `/avatar/upload` → 200; 10 MiB + 1 байт → 413; body без `Content-Length` (chunked) 11 MiB → 413 до завершення читання (перевірити пам'ять/кількість прочитаних байтів); 20 паралельних 50 MB → жоден не буферизується повністю.
+- [x] 4001 символів → WS-відповідь `status: 'error'` 422 (не `ok`); 21-е повідомлення за хвилину → 429 у відповіді; друге повідомлення під час генерації → 429. _`support-chat-admission.pg.test.ts`: «refuses a longer one with a validation error, never ok» (`error:validation_failed`; LLM не викликається), «refuses the message over the per-user limit with 429» (`support_rate_limited`), «refuses a second message while the first is being answered» (`429:support_busy`)._
+- [x] Lock: запит А пережив TTL, запит B взяв lock, А завершився → lock B **не** видалений (умовний DEL). _`support-inflight-lock.redis.test.ts`: «does not remove the lock of a newer request when an expired one is released»._
+- [x] **Admission rollback:** lock отримано → резерв бюджету відхилено (Lua повернув −1) → lock **звільнено** в тому ж `admit`, клієнт отримав 429. Наступний запит цього юзера **одразу отримує lock** (не чекає TTL), але бюджет знову відхиляє admission → 429 з тим самим кодом; після відновлення квоти (у тесті — скидання ключа `llm:budget:*`) повторний запит проходить повністю. _`support-service.spec.ts`: «refuses a message over the budget with a 429 and frees the lock it took»; `support-chat-admission.pg.test.ts`: «refuses a message once the day is spent, calls nothing, and keeps the user unlocked» (після скидання ключа наступне повідомлення проходить). Окремо не перевіряється лише друга відмова підряд з тим самим кодом._
+- [x] 10 паралельних запитів при залишку бюджету на 1 → рівно один проходить (Lua-атомарність). _`llm-budget-service.redis.test.ts`: «lets exactly as many of 20 parallel reservations through as fit» (20, а не 10; та сама атомарність Lua)._
+- [x] Abort **до** send → резерв повернуто повністю. Abort **після** старту генерації, провайдер без usage → резерв списано. Провайдер повернув usage → списано факт (звірка). _До send: `support-service.spec.ts` «starts no call when the run stops first, so everything is refunded», `llm-budget-service.redis.test.ts` «gives everything back when no call was started». Після старту без usage: «keeps the estimate of a started call that never reported at all» і `support-chat-admission.pg.test.ts` «keeps the reserve of a call that was cut off without a report». З usage: «charges what a started call really used, below or above the estimate» і «leaves what the provider reported once the answer is complete»._
+- [x] Помилка провайдера після send без usage → резерв списано (консервативно); клієнт отримав `support_chat_error` з `code`. _`support-chat-admission.pg.test.ts`: «reaches the client as support_chat_error with a code and frees the user»; `llm-budget-service.redis.test.ts`: «keeps the estimate of a started call whose usage is unknown»._
+- [x] UI показує всю історію (пагінацією), промпт отримує 20 останніх. _Бекенд: `support-history-http.pg.test.ts` (останні 50, далі за курсором), `support-service.spec.ts` «is the last 20 messages, not the whole history». Фронтенд: `stores/__tests__/support.spec.ts` («shows earlier messages…»). E2E-тесту на кнопку «Показати раніше» немає._
+- [x] Файл рівно 10 MiB на `/avatar/upload` → 200; 10 MiB + 1 байт → 413; body без `Content-Length` (chunked) 11 MiB → 413 до завершення читання (перевірити пам'ять/кількість прочитаних байтів); 20 паралельних 50 MB → жоден не буферизується повністю. _`vendor/start/upload-limits.transport.spec.ts` (реальний uWS): «accepts a file of exactly 10 MiB», «answers 413 when the whole body is one byte over the limit», «answers 413 to a chunked 50 MiB body long before it ends, having read about the limit», «does not buffer 20 parallel 50 MiB uploads»._
 
 ### Тести
 
-- [ ] `test:redis` для throttle/budget (включно з паралельними); unit + integration для multipart (`http-request-handlers.spec.ts` + реальний HTTP-запит через uWS у `test-support`).
+- [x] `test:redis` для throttle/budget (включно з паралельними); unit + integration для multipart (`http-request-handlers.spec.ts` + реальний HTTP-запит через uWS у `test-support`). _`auth-throttle-service.redis.test.ts`, `llm-budget-service.redis.test.ts`, `support-inflight-lock.redis.test.ts`; multipart: `http-request-handlers.spec.ts`, `app/routes/upload-limits.spec.ts` і транспортний `upload-limits.transport.spec.ts`. PR: #206 (multipart), #207–#209 (admission і lease), #210 (бюджет), #211 (історія), #212 (done)._
 
 ---
 
-## E · 🟠 feat-064 · OAuth-токени провайдерів
+## E · ✅ feat-064 · OAuth-токени провайдерів
 
 **Гілка:** `fix/oauth-token-storage` · **Залежності:** немає · **Оцінка:** 1 д (міграція → окреме рев'ю)
 
@@ -307,11 +307,11 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ---
 
-## F · 🟠 Приватність і конфіг — чотири незалежні PR
+## F · ✅ Приватність і конфіг — чотири незалежні PR
 
 Кожен — окремий feature з незалежним відкатом; між собою не залежать.
 
-### F1 · feat-065 · `llm_text_usage.final_prompt` — політика збору та retention (1 д, потребує рішення продукту)
+### F1 · ✅ feat-065 · `llm_text_usage.final_prompt` — політика збору та retention (1 д, потребує рішення продукту)
 
 - Truncation **не** захищає PII. Потрібен контракт:
 - [x] Зафіксувати в `documentation/backend/ai.md`: що збирається (повний промпт / метадані / hash+довжина), хто має доступ (`GET /admin/usage/text`), retention (напр. 30 днів), як очищаються вже записані дані.
@@ -320,20 +320,20 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 - [x] `src/scripts/purge-llm-prompts.ts` для вже записаних промптів + retention (cron або документований ручний запуск).
 - **Критерії:** при `AI_USAGE_STORE_PROMPTS=false` у БД немає тексту промпту; purge-скрипт очищає існуючі рядки; `test:pg` з міграцією.
 
-### F2 · feat-066 · Auth-контракт: unverified login і timing реєстрації (0.5 д)
+### F2 · ✅ feat-066 · Auth-контракт: unverified login і timing реєстрації (0.5 д)
 
 - [x] `auth-service.ts:1155-1174` — unverified + правильний пароль → `invalidCredentials()` (401); verification-лист повторно у фоні з throttle (1/5 хв на акаунт). Контракт у `documentation/backend/auth.md`; `AuthModals.vue` — замінити спеціальний UI для 400 «Email verification required» (якщо є) на generic + «перевірте пошту».
 - [x] `auth-service.ts:337-342` — strict registration: хешувати пароль до lookup email.
 - **Критерії:** spec на 401 для unverified; обидві гілки реєстрації викликають hash (spy), timing-різниця в тесті < порогу.
 
-### F3 · feat-067 · DB config: `PGSQL_SSL` і SQL-логер (0.25 д)
+### F3 · ✅ feat-067 · DB config: `PGSQL_SSL` і SQL-логер (0.25 д)
 
 - [x] `PGSQL_SSL` env (`false | true | require`), `config/database.ts`, `db.ts:17`; `validate-runtime-config.ts` — warning при production-like і `ssl=false`.
 - [x] `db.ts:31` — `logger: !appConfig.isProductionLike`.
 - [x] `.env.example`, `documentation/backend/configuration.md`.
 - **Критерії:** `test:pg` зелений з `PGSQL_SSL=false`; при `APP_IS_PRODUCTION=true` у stdout немає SQL-statement'ів (spec на logger-конфіг).
 
-### F4 · feat-068 · Frontend/SW/playground — дрібне без зміни контрактів (0.25 д)
+### F4 · ✅ feat-068 · Frontend/SW/playground — дрібне без зміни контрактів (0.25 д)
 
 - [x] `frontend/src/views/UserAccount.vue:393, 420, 450` — `autocomplete="current-password"`; `:398, 403` — `new-password`; `name` на всіх.
 - [x] `frontend/src/service-worker.ts:494-518` — same-origin перевірка URL; порівняння `pathname`, не `includes`.
@@ -428,14 +428,14 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 > Виконано PR #249. Окремі `issueSmsChallenge`/`verifySmsChallenge` у плані розбито на `findPendingChallenge`/`openChallenge`/`deliverChallenge`/`issueSmsChallenge`/`verifySmsCode`/`confirmChallenge`: порядок перевірок, 404 vs 400 для невідомого челенджа та правило «та сама сесія» різняться між флоу і лишились у них.
 
-### H6 · Дрібне (можна в будь-який H або окремо)
+### H6 · ✅ Дрібне (можна в будь-який H або окремо)
 
-- [ ] `knowledge-base-service.ts` — `requireArticle(id)` ×7, `deleteScreenshotQuietly(key)` ×3.
-- [ ] `appErrorToHttpPayload` + `appErrorToWsError` → один.
-- [ ] `normalizePath`, `ab2str` — по одному helper'у.
-- [ ] `oauth-service.ts:11-29` — один generic `fetchJson<T>`.
-- [ ] `controllers/shared/require-user-id.ts` — замінити подвійні auth-перевірки (28 місць).
-- [ ] Опційно, стиль: repository-інтерфейси → inference; `HttpError` базовий клас у `server.ts:390-483`. Лише за згодою команди.
+- [x] `knowledge-base-service.ts` — `requireArticle(id)` ×7, `deleteScreenshotQuietly(key)` ×3. _#283: `requireArticle` замінив 5 блоків (план казав 7; шостий, `getScreenshotKey`, свідомо повертає `null` для відсутньої статті), `deleteScreenshotQuietly` — 3 видалення._
+- [x] `appErrorToHttpPayload` + `appErrorToWsError` → один. _#283: `appErrorToPayload` у `services/shared/app-error-payload.ts`; `ws-error.ts` видалено._
+- [x] `normalizePath`, `ab2str` — по одному helper'у. _#283: `vendor/utils/helpers/normalize-path.ts` і `ab2str.ts` (з тестами). Копія `normalizePath` в api-playground лишилась: пакет не залежить від backend._
+- [x] `oauth-service.ts:11-29` — один generic `fetchJson<T>`. _#283._
+- [x] `controllers/shared/require-user-id.ts` — замінити подвійні auth-перевірки (28 місць). _#283: `requireUserId` замінив 3 локальні копії і 5 inline-перевірок у `auth-controller.ts` (план казав 28 місць). Різниця: 4 handler'и, що питали лише `getUserId()`, тепер ще й `auth.check()`; відрізняється тільки для порожнього рядка як id (401 замість користувача 0)._
+- [ ] Опційно, стиль: repository-інтерфейси → inference; `HttpError` базовий клас у `server.ts:390-483`. Лише за згодою команди. **Не зроблено** (за планом — лише за згодою команди).
 
 ---
 
@@ -458,15 +458,15 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ---
 
-## J · 🟢 feat-076 · Frontend split big components
+## J · ✅ feat-076 · Frontend split big components
 
 **Гілка:** `refactor/frontend-split-components` · **Залежності:** G2, G3, I · **Оцінка:** 2 д
 
-- [ ] `AuthModals.vue` → `AuthModalShell.vue` + `LoginModal.vue` + `ForgotPasswordFlow.vue` + `RegisterEmailForm.vue` + `RegisterPhoneFlow.vue`; `useAuthRequest()` (замість 7 `try/catch/finally`), `useCompleteSignIn()` (замість 3 копій); per-flow `reactive()`; props/emits `AuthModals.vue` незмінні (`Login.vue:235`).
-- [ ] `stores/state.ts` → `stores/push.ts` (або `usePushSubscriptions`), `utils/storage-url.ts`, UI-prefs окремо.
-- [ ] `main.ts:48-401` → `utils/sw-manager.ts` з одним `shouldNotify()`.
-- [ ] `MenuButton.vue:28-170` → `PwaInstallButton.vue`.
-- [ ] `api-playground/TestForm.vue` → `useLoadTest()` з типізованим результатом; спільні helper'и з `TestFormWs.vue` у `utils/test-form-helpers.ts`; прибрати `any`.
+- [x] `AuthModals.vue` → `AuthModalShell.vue` + `LoginModal.vue` + `ForgotPasswordFlow.vue` + `RegisterEmailForm.vue` + `RegisterPhoneFlow.vue`; `useAuthRequest()` (замість 7 `try/catch/finally`), `useCompleteSignIn()` (замість 3 копій); per-flow `reactive()`; props/emits `AuthModals.vue` незмінні (`Login.vue:235`). _#260 (`AuthModals.vue` лишився оболонкою на 203 рядки; кроки в `components/auth/`)._
+- [x] `stores/state.ts` → `stores/push.ts` (або `usePushSubscriptions`), `utils/storage-url.ts`, UI-prefs окремо. _#261 (`state.ts` 559 → 126 рядків; `utils/push-device.ts` і `utils/storage-url.ts` з тестами)._
+- [x] `main.ts:48-401` → `utils/sw-manager.ts` з одним `shouldNotify()`. _#262 (`main.ts` 401 → 56 рядків, 25 тестів)._
+- [x] `MenuButton.vue:28-170` → `PwaInstallButton.vue`. _#263: логіка в `composables/usePwaInstallButton.ts`, пункт у `PwaInstallButton.vue`; `<pwa-install>` лишився в меню, бо `transform` dropdown зламав би його fixed-діалог. Принагідно виправлено `onUnmounted`, що не знімав слухачів._
+- [x] `api-playground/TestForm.vue` → `useLoadTest()` з типізованим результатом; спільні helper'и з `TestFormWs.vue` у `utils/test-form-helpers.ts`; прибрати `any`. _#264 (859 → 558 рядків, без `any`; старий і новий компонент дали ідентичні результати на 15 сценаріях)._
 
 **Критерії:** G2 (mocks) і G3 (live) e2e зелені без змін; ручний golden path у `progress.md`.
 
@@ -510,44 +510,44 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 ---
 
-## L · 🔵 feat-080 · Repo hygiene (0.5 д, паралельно)
+## L · ✅ feat-080 · Repo hygiene (0.5 д, паралельно)
 
-- [ ] `progress.md`, `session-handoff.md` — прибрати з `main` (або «see feature branch»); перевірити `init.sh`, `AGENTS.md`.
-- [ ] `.gitignore` + `.pnpm-store/`; `.dockerignore` + `.claude/ .idea/ .omx/ .pnpm-store/ docs/ documentation/ presentation.html`.
-- [ ] `presentation.html` → `docs/presentations/`; `docs/screenshots/README.md:1`.
-- [ ] `AGENTS.md` — `docs/` внутрішнє, `documentation/` публічне.
-- [ ] `eslint.config.ts:11-12` — не ігнорувати `*.js`/`*.mjs` поза `dist`; блок `eslint.configs.recommended` для JS; полагодити знайдене.
-- [ ] CI: `uses:` на commit SHA + коментар версії; `.github/dependabot.yml` для `github-actions`.
-- [ ] Критерій: `docker build` локально; `pnpm docs:build && pnpm docs:verify`.
-
----
-
-## M · 🔵 feat-081 · Schema (окремий PR з міграцією, 0.5 д)
-
-- [ ] `schema.ts:305-307` `llm_text_usage.user_id` → `onDelete: 'set null'` — **рішення продукту**: чи usage-історія переживає видалення юзера (GDPR-міркування: `set null` зберігає промпт без зв'язку з юзером — узгодити з F1).
-- [ ] `schema.ts:360` `support_chat_history` → індекс `(user_id, created_at)`.
-- [ ] Одна міграція; `drizzle-kit generate` повторно → «No schema changes»; `test:pg`; `documentation/backend/database.md`.
+- [x] `progress.md`, `session-handoff.md` — прибрати з `main` (або «see feature branch»); перевірити `init.sh`, `AGENTS.md`. _#267, #268: «Mark done» PR видаляє їх з `main`; правило в `AGENTS.md`._
+- [x] `.gitignore` + `.pnpm-store/`; `.dockerignore` + `.claude/ .idea/ .omx/ .pnpm-store/ docs/ documentation/ presentation.html`. _#267. Відхилення: `documentation/` і `docs/support-knowledge-base` **не** додано в `.dockerignore` (перше — член pnpm-workspace, потрібний `--frozen-lockfile`; друге копіює `Dockerfile`); замість цілого `docs/` перелічено внутрішні підтеки._
+- [x] `presentation.html` → `docs/presentations/`; `docs/screenshots/README.md:1`. _#267: перейменовано в `overview.html` (`presentation.html` збігається з `PRESENTATION.html` за регістром на macOS)._
+- [x] `AGENTS.md` — `docs/` внутрішнє, `documentation/` публічне. _#267._
+- [x] `eslint.config.ts:11-12` — не ігнорувати `*.js`/`*.mjs` поза `dist`; блок `eslint.configs.recommended` для JS; полагодити знайдене. _#267: JS лінтиться (recommended, без type info, `globals.node`); знайдено невидимі символи в регулярці `documentation/scripts/verify/lib.mjs`._
+- [x] CI: `uses:` на commit SHA + коментар версії; `.github/dependabot.yml` для `github-actions`. _#267: усі `uses:` закріплено на SHA з версією в коментарі, `.github/dependabot.yml` щотижня._
+- [x] Критерій: `docker build` локально; `pnpm docs:build && pnpm docs:verify`. _`docker build .` проходить, `docs:build` і `docs:verify` зелені._
 
 ---
 
-## N · 🔵 feat-082 · Env-парсери — єдиний контракт (0.5 д)
+## M · ✅ feat-081 · Schema (окремий PR з міграцією, 0.5 д)
+
+- [x] `schema.ts:305-307` `llm_text_usage.user_id` → `onDelete: 'set null'` — **рішення продукту**: чи usage-історія переживає видалення юзера (GDPR-міркування: `set null` зберігає промпт без зв'язку з юзером — узгодити з F1). _Рішення власника: `set null`. #278; текст промпту прибирає `llm:purge-prompts` за віком, чий би рядок не був; історія чату, навпаки, видаляється разом з користувачем._
+- [x] `schema.ts:360` `support_chat_history` → індекс `(user_id, created_at)`. _#278: індекс `(user_id, created_at)` замінив `(user_id)` (старий був його префіксом)._
+- [x] Одна міграція; `drizzle-kit generate` повторно → «No schema changes»; `test:pg`; `documentation/backend/database.md`. _#278: `20261102053350_llm_usage_set_null_support_history_index`; повторний `generate` — «No schema changes»; `schema-feat-081.pg.test.ts` (3 тести, 2 падають без міграції); `database.md` оновлено._
+
+---
+
+## N · ✅ feat-082 · Env-парсери — єдиний контракт (0.5 д)
 
 **Зміна поведінки**, тому окремо від H: `config/auth.ts:1-7` приймає `'1'|'true'`, `vendor/utils/env/parse-boolean.ts` — ще `'yes'|'on'`; `parseNumberFlag` (`auth.ts:9-16`) через `Number()` приймає `1e3`, `0x10`, від'ємні.
 
-- [ ] Контракт у `documentation/backend/configuration.md`: boolean = `true|1|yes|on` / `false|0|no|off` (case-insensitive), інше — config error; integer = десяткове, в межах `{min,max}`, інше — config error.
-- [ ] `vendor/utils/env/read-int.ts`; усі boolean через `parse-boolean.ts`; `config/auth.ts` підключити до `validate-runtime-config.ts`.
-- [ ] Замінити `readInt/readInteger/readTimeoutMs/readPromptCacheTtlMs/parsePort/parseNumberFlag`.
-- [ ] Критерій: таблиця значень × змінних у spec; `AUTH_PHONE_ENABLED=yes` тепер `true`; `AUTH_*=1e3` → startup error з назвою змінної.
+- [x] Контракт у `documentation/backend/configuration.md`: boolean = `true|1|yes|on` / `false|0|no|off` (case-insensitive), інше — config error; integer = десяткове, в межах `{min,max}`, інше — config error. _#275, розділ «Булеві та цілі значення»._
+- [x] `vendor/utils/env/read-int.ts`; усі boolean через `parse-boolean.ts`; `config/auth.ts` підключити до `validate-runtime-config.ts`. _#275: `parse-boolean.ts`, `read-int.ts`, `env-reader.ts`; `app`, `auth`, `mail`, `cors`, `network`, `sentry`, `session` тепер мають `configError`, який перевіряє `validateRuntimeConfig`._
+- [x] Замінити `readInt/readInteger/readTimeoutMs/readPromptCacheTtlMs/parsePort/parseNumberFlag`. _#275. `database.ts` лишив власний `parsePort` з тим самим правилом «лише десяткові цифри», бо його завантажує drizzle-kit без path-аліасів._
+- [x] Критерій: таблиця значень × змінних у spec; `AUTH_PHONE_ENABLED=yes` тепер `true`; `AUTH_*=1e3` → startup error з назвою змінної. _`vendor/utils/env/env-contract.spec.ts` (значення × парсер) і «env parsing contract» у `validate-runtime-config.spec.ts` (20 булевих і 18 цілих змінних кожна зупиняє старт з власним іменем; `AUTH_PHONE_ENABLED=yes` → `true`; `AUTH_*=1e3` → помилка з назвою)._
 
 ---
 
-## O · 🔵 feat-083 · Locale-стаби — рішення продукту (0.25 д після рішення)
+## O · ✅ feat-083 · Locale-стаби — рішення продукту (0.25 д після рішення)
 
 **Зміна поведінки UI**, тому окремо: 17 файлів `locales/*.ts` — `export default en`; `APP_LOCALE_CODES` рекламує 18 мов.
 
-- [ ] Рішення: (a) показувати лише `en` до появи перекладів, або (b) залишити 18 у списку як «заплановані» з fallback на `en`. Узгодити з власником продукту.
-- [ ] Реалізація: видалити стаби; `plugins/i18n.ts:46-54` `loadLocale` з fallback на `en` при невдалому `import()`; при (a) — `SHIPPED_LOCALES` у shared і фільтр у перемикачі.
-- [ ] Критерій: вибір будь-якої локалі не ламає UI; e2e на перемикання.
+- [x] Рішення: (a) показувати лише `en` до появи перекладів, або (b) залишити 18 у списку як «заплановані» з fallback на `en`. Узгодити з власником продукту. _Рішення власника: `en`, `uk`, `pl` (варіант (a) з `SHIPPED_LOCALE_CODES`)._
+- [x] Реалізація: видалити стаби; `plugins/i18n.ts:46-54` `loadLocale` з fallback на `en` при невдалому `import()`; при (a) — `SHIPPED_LOCALES` у shared і фільтр у перемикачі. _#280: 15 стабів видалено, `uk.ts` і `pl.ts` — справжні переклади (**чернетка без носія мови**), `loadLocale` повертає `en` при невдалому `import()`. Принагідно: `SupportView` тепер шле Support AI мову браузера (`supportLanguage()`), а не мову інтерфейсу._
+- [x] Критерій: вибір будь-якої локалі не ламає UI; e2e на перемикання. _`e2e/mock/locale.spec.ts` (uk, pl, en, ru, de, ja, невідома мова), `plugins/__tests__/locales.spec.ts`. Перемикача мови в UI немає: мова береться з браузера._
 
 ---
 
@@ -555,25 +555,37 @@ _Виконано в першому PR фази D (D4). Деталі: мід-с�
 
 | #     | Feature      | Що                                                                                                  | Пріоритет | Залежності     | Оцінка  |
 | ----- | ------------ | --------------------------------------------------------------------------------------------------- | --------- | -------------- | ------- |
-| A     | feat-058     | IDOR push-підписок                                                                                  | 🔴        | —              | 0.5 д   |
-| B     | feat-059     | Відкликання сесій: звірка `userToken` з БД (без кешу), ротація в `changePassword`/`logoutAll`/reset | 🔴        | A              | 1.5–2 д |
-| B2    | feat-060     | Гонка одноразових токенів — транзакційний claim-then-act                                            | 🔴        | **B**          | 0.5–1 д |
-| B3    | feat-061     | Кеш `userToken` з визначеною `SESSION_REVOCATION_MAX_DELAY` (опційно, за бенчмарком з B)            | 🟠        | B              | 1 д     |
-| C     | feat-062     | Відкликання WS admin: pub/sub + періодична перевірка підписок                                       | 🔴        | —              | 1.5 д   |
-| D     | feat-063     | Support chat: admit-контракт у WS, lock з власником, атомарний бюджет, multipart                    | 🟠        | A              | 2.5 д   |
-| E     | feat-064     | OAuth-токени (міграція)                                                                             | 🟠        | —              | 1 д     |
-| F1    | feat-065     | Prompt retention policy (міграція, purge)                                                           | 🟠        | рішення        | 1 д     |
-| F2    | feat-066     | Auth-контракт: unverified login, timing реєстрації                                                  | 🟠        | —              | 0.5 д   |
-| F3    | feat-067     | `PGSQL_SSL`, SQL-логер                                                                              | 🟠        | —              | 0.25 д  |
-| F4    | feat-068     | Frontend/SW/playground дрібне                                                                       | 🟠        | —              | 0.25 д  |
+| A     | feat-058     | IDOR push-підписок                                                                                  | ✅        | —              | 0.5 д   |
+| B     | feat-059     | Відкликання сесій: звірка `userToken` з БД (без кешу), ротація в `changePassword`/`logoutAll`/reset | ✅        | A              | 1.5–2 д |
+| B2    | feat-060     | Гонка одноразових токенів — транзакційний claim-then-act                                            | ✅        | **B**          | 0.5–1 д |
+| B3    | feat-061     | Кеш `userToken` з визначеною `SESSION_REVOCATION_MAX_DELAY` (опційно, за бенчмарком з B)            | ⏸         | B              | 1 д     |
+| C     | feat-062     | Відкликання WS admin: pub/sub + періодична перевірка підписок                                       | ✅        | —              | 1.5 д   |
+| D     | feat-063     | Support chat: admit-контракт у WS, lock з власником, атомарний бюджет, multipart                    | ✅        | A              | 2.5 д   |
+| E     | feat-064     | OAuth-токени (міграція)                                                                             | ✅        | —              | 1 д     |
+| F1    | feat-065     | Prompt retention policy (міграція, purge)                                                           | ✅        | рішення        | 1 д     |
+| F2    | feat-066     | Auth-контракт: unverified login, timing реєстрації                                                  | ✅        | —              | 0.5 д   |
+| F3    | feat-067     | `PGSQL_SSL`, SQL-логер                                                                              | ✅        | —              | 0.25 д  |
+| F4    | feat-068     | Frontend/SW/playground дрібне                                                                       | ✅        | —              | 0.25 д  |
 | G     | feat-069     | Регресійне покриття: snapshot auth, e2e на mocks, e2e з реальним backend                            | ✅        | B, B2, F2      | 2 д     |
-| H1–H5 | feat-070…074 | Auth refactor по кроку                                                                              | 🟢        | B2, G, K1      | 4 д     |
-| I     | feat-075     | FE/shared dedup                                                                                     | 🟢        | G2, G3, K2, K3 | 2 д     |
-| J     | feat-076     | FE split components                                                                                 | 🟢        | G2, G3, I      | 2 д     |
-| K1–K3 | feat-077…079 | Dead code backend / shared / frontend                                                               | 🟢        | —              | 1 д     |
-| L     | feat-080     | Repo hygiene, lint, CI pins                                                                         | 🔵        | —              | 0.5 д   |
-| M     | feat-081     | Schema (cascade, index)                                                                             | 🔵        | F1 рішення     | 0.5 д   |
-| N     | feat-082     | Env-парсери — контракт                                                                              | 🔵        | —              | 0.5 д   |
-| O     | feat-083     | Locale-стаби — рішення продукту                                                                     | 🔵        | рішення        | 0.25 д  |
+| H1–H5 | feat-070…074 | Auth refactor по кроку                                                                              | ✅        | B2, G, K1      | 4 д     |
+| I     | feat-075     | FE/shared dedup                                                                                     | ✅        | G2, G3, K2, K3 | 2 д     |
+| J     | feat-076     | FE split components                                                                                 | ✅        | G2, G3, I      | 2 д     |
+| K1–K3 | feat-077…079 | Dead code backend / shared / frontend                                                               | ✅        | —              | 1 д     |
+| L     | feat-080     | Repo hygiene, lint, CI pins                                                                         | ✅        | —              | 0.5 д   |
+| M     | feat-081     | Schema (cascade, index)                                                                             | ✅        | F1 рішення     | 0.5 д   |
+| N     | feat-082     | Env-парсери — контракт                                                                              | ✅        | —              | 0.5 д   |
+| O     | feat-083     | Locale-стаби — рішення продукту                                                                     | ✅        | рішення        | 0.25 д  |
+
+✅ — виконано; ⏸ — свідомо не робимо (feat-061: бенчмарк feat-059 і ADR 0002 не виправдовують кеш, причина в полі `evidence`).
 
 Рішення, які потрібні від власника продукту до старту відповідної фази: F1 (що зберігати з промптів і скільки), D3 (пагінація історії в UI), M (usage після видалення юзера), O (список мов), K3 (чи потрібні `browserName/osName/deviceType` на сервері).
+
+Рішено: M — `set null`, usage переживає видалення користувача; O — інтерфейс постачається мовами `en`, `uk`, `pl`.
+
+## Що лишилося відкритим
+
+- feat-061 (кеш `userToken`) — не плануємо, див. вище.
+- D2: адмін-ендпойнт для перегляду/скидання бюджету — опційно, не зроблено.
+- H6: стильові пункти (repository-інтерфейси → inference, базовий `HttpError`) — лише за згодою команди.
+- C: три викреслені пункти (`~~…~~`) не потрібні, причини наведено в розділі.
+- Питання до власника, що виникли під час роботи: дії при відкликанні сесії для вже відкритих WebSocket; помилки в записаних даних push (Android → `Linux`, iPhone → `macOS`) і чи переносити розбір user-agent на сервер; спільне ядро WS-з'єднання в `shared`; подвійний префікс у `getStorageFileUrl`; гілки `serialize-routes` без ArkType.
