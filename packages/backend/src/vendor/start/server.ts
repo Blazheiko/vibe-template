@@ -3,6 +3,7 @@ import * as uWS from 'uWebSockets.js'
 import type { HttpRequest, HttpResponse, WebSocket, TemplatedApp } from 'uWebSockets.js'
 import appConfig from '#config/app.js'
 import corsConfig from '#config/cors.js'
+import sessionConfig from '#config/session.js'
 import state from '#app/state/state.js'
 import { createResponseData } from '#vendor/utils/network/response-data.js'
 import { hasResponseBody, isEmptyPayload } from '#vendor/utils/network/response-body.js'
@@ -472,16 +473,19 @@ const setHttpHandler = async (
         requestAbort.abort()
     })
     const responseData = createResponseData()
-    let origin: string | undefined
     // From the first step, so errors before the handler (413/415/422) are traceable.
     const requestId = randomUUID()
     // Read when the error happens: the session middleware sets the user later.
     let context: HttpContext | undefined
 
+    // Before the metadata: collecting it validates the path parameters and can throw, and
+    // that 400 still needs the CORS headers for a cross-origin client to read it.
+    // An empty value (no header) is the same as no origin for the CORS check.
+    const origin = req.getHeader('origin')
+
     try {
         // Step 1: snapshot req synchronously — it is only valid until the first await.
         const meta = collectRequestMetadata(req, res, route)
-        origin = meta.headers.get('origin')
 
         // Step 2: rate-limit BEFORE reading body. Otherwise an attacker can make
         // the server buffer and parse up to maxOctetStreamBodySize even on blocked
@@ -565,10 +569,21 @@ const setHttpHandler = async (
                     route: route.url,
                     method: route.method,
                 },
-                { cookies: responseData.cookies, origin },
+                { cookies: sessionCookieOnly(responseData.cookies), origin },
             )
         })
     }
+}
+
+/**
+ * The cookies a thrown error still sends: the session cookie only. The session may already
+ * have changed in this request (a login, a logout), and the client must get its current
+ * cookie. Any other cookie a handler set before the throw belongs to a result that did not
+ * happen and is dropped, like the handler's headers.
+ */
+const sessionCookieOnly = (cookies: ReadonlyMap<string, Cookie>): ReadonlyMap<string, Cookie> => {
+    const session = cookies.get(sessionConfig.cookieName)
+    return session === undefined ? new Map() : new Map([[sessionConfig.cookieName, session]])
 }
 
 // beforeSend may itself fail (Redis down); the error answer must still go out, so its

@@ -120,6 +120,28 @@ describe('OAuthController.callback', () => {
         )
     })
 
+    // feat-095 (code review): the cleanup ran outside the catch; a failed update turned the
+    // browser navigation into a JSON 5xx page.
+    it.each([
+        ['success', Result.ok({ redirectUrl: '/?oauth=success' }), '/?oauth=success'],
+        ['failure', Result.err({ _tag: 'BadRequest', message: 'x' }), '/?error=oauth_failed'],
+    ])('still redirects after a %s when the state cleanup fails', async (_, outcome, location) => {
+        handleCallback.mockResolvedValue(outcome)
+        const context = createContext({ code: 'c', state: 'state-1' })
+        ;(
+            context.session as unknown as { updateSessionData: ReturnType<typeof vi.fn> }
+        ).updateSessionData.mockRejectedValue(new Error('Command timed out'))
+
+        await OAuthController.callback(context)
+
+        expect(context.responseData.status).toBe(302)
+        expect(context.headers.get('Location')).toBe(location)
+        expect(context.logger.warn).toHaveBeenCalledWith(
+            expect.objectContaining({ err: expect.any(Error) }),
+            'OAuth state cleanup failed',
+        )
+    })
+
     it('does not log a 4xx failure as error', async () => {
         handleCallback.mockResolvedValue(
             Result.err({ _tag: 'BadRequest', message: 'OAuth state mismatch' }),
