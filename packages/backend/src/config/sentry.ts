@@ -1,7 +1,9 @@
 import { env } from 'node:process'
 
 import appConfig from '#config/app.js'
-import { parseBoolean } from '#vendor/utils/env/parse-boolean.js'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
+
+const reader = createEnvReader()
 
 function parseTraceSampleRate(value: string | undefined): number {
     if (value === undefined || value === '') {
@@ -22,10 +24,11 @@ const hasDsn = typeof dsn === 'string' && dsn.trim() !== ''
 
 const config = Object.freeze({
     dsn: hasDsn ? dsn : undefined,
-    enabled: hasDsn && parseBoolean(env['SENTRY_ENABLED'], true),
+    enabled: reader.bool('SENTRY_ENABLED', true) && hasDsn,
     environment: env['SENTRY_ENVIRONMENT'] ?? appConfig.env,
     release: env['SENTRY_RELEASE'],
     tracesSampleRate: parseTraceSampleRate(env['SENTRY_TRACES_SAMPLE_RATE']),
+    configError: reader.error,
 })
 
 export default config

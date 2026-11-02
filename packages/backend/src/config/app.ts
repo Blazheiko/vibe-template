@@ -1,6 +1,8 @@
 import { env } from 'node:process'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
-import { parseBoolean } from '#vendor/utils/env/parse-boolean.js'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
+
+const reader = createEnvReader()
 
 function stripTrailingSlash(value: string): string {
     return value.endsWith('/') ? value.slice(0, -1) : value
@@ -33,16 +35,6 @@ function parseSize(value: string | undefined, defaultValue: number): number {
     return size
 }
 
-// Parse port with validation and default value
-function parsePort(value: string | undefined, defaultValue = 3000): number {
-    if (value === undefined) return defaultValue
-    const port = Number(value)
-    if (isNaN(port) || port < 1 || port > 65535) {
-        return defaultValue
-    }
-    return port
-}
-
 const normalizedRuntimeEnv = normalizeEnvName(env['APP_ENV'] ?? env['NODE_ENV'])
 
 const config = Object.freeze({
@@ -50,8 +42,8 @@ const config = Object.freeze({
     key: env['APP_KEY'],
     env: env['APP_ENV'],
     runtimeEnvName: normalizedRuntimeEnv,
-    isProductionLike: parseBoolean(
-        env['APP_IS_PRODUCTION'],
+    isProductionLike: reader.bool(
+        'APP_IS_PRODUCTION',
         normalizedRuntimeEnv === 'production' || normalizedRuntimeEnv === 'prod',
     ),
     url: normalizeUrl(env['APP_URL']),
@@ -60,15 +52,15 @@ const config = Object.freeze({
     cdnUrl: env['CDN_URL'] ?? '',
     domain: env['DOMAIN'] ?? '127.0.0.1',
     host: env['HOST'] ?? '0.0.0.0',
-    port: parsePort(env['PORT'], 3000),
+    port: reader.int('PORT', 3000, { min: 1, max: 65535 }),
     pathPrefix: normalizePath(env['API_PATH_PREFIX'] ?? 'api'),
     // `APP_UNIX_PATH=` from .env.example must mean "listen on HOST:PORT", not listen_unix('')
     unixPath: nonEmpty(env['APP_UNIX_PATH']),
     // Примеры использования логических значений:
     // SERVE_STATIC=true, SERVE_STATIC=1, SERVE_STATIC=yes, SERVE_STATIC=on
-    serveStatic: parseBoolean(env['SERVE_STATIC'], false),
+    serveStatic: reader.bool('SERVE_STATIC', false),
     // DOC_PAGE=false, DOC_PAGE=0, DOC_PAGE=no, DOC_PAGE=off или не указано
-    docPage: parseBoolean(env['DOC_PAGE'], false),
+    docPage: reader.bool('DOC_PAGE', false),
     characters: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
     reasonableCookieLimit: 10000, // Reasonable limit for cookie value
     reasonableCookieKeyLimit: 255, // Reasonable limit for cookie key length
@@ -82,5 +74,7 @@ const config = Object.freeze({
     maxJsonBodySize: parseSize(env['APP_MAX_JSON_BODY_SIZE'], 2_097_152),
     maxMultipartBodySize: parseSize(env['APP_MAX_MULTIPART_BODY_SIZE'], 52_428_800),
     maxOctetStreamBodySize: parseSize(env['APP_MAX_OCTET_BODY_SIZE'], 52_428_800),
+    /** Every unreadable flag or number among the variables above, or `null`. */
+    configError: reader.error,
 })
 export default config

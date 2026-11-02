@@ -162,7 +162,6 @@ describe('rate limit configuration', () => {
         ['HTTP_GLOBAL_RATE_LIMIT_MAX', '1.5'],
         ['HTTP_GLOBAL_RATE_LIMIT_MAX', 'Infinity'],
         ['HTTP_GLOBAL_RATE_LIMIT_MAX', 'abc'],
-        ['HTTP_GLOBAL_RATE_LIMIT_MAX', ''],
         ['HTTP_GLOBAL_RATE_LIMIT_WINDOW_MS', '0'],
         ['WS_UPGRADE_RATE_LIMIT_WINDOW_MS', '1e3'],
         ['WS_UPGRADE_RATE_LIMIT_MAX', 'NaN'],
@@ -373,5 +372,121 @@ describe('getDatabaseSslWarning (feat-067)', () => {
         validateRuntimeConfig()
 
         expect(warn.mock.calls.flat().some((m) => String(m).includes('PGSQL_SSL=false'))).toBe(true)
+    })
+})
+
+// feat-082 (N): booleans and integers of the .env are read by one contract
+// (documentation/backend/configuration.md): true|1|yes|on / false|0|no|off, any case; decimal
+// integers in range; blank is the default; anything else stops the start and names the variable.
+describe('env parsing contract', () => {
+    const booleans = [
+        'APP_IS_PRODUCTION',
+        'SERVE_STATIC',
+        'DOC_PAGE',
+        'AUTH_STRICT_REGISTRATION',
+        'AUTH_PHONE_ENABLED',
+        'AUTH_SMS_PROVIDER_ALLOW_FAKE',
+        'SMTP_ENABLED',
+        'SMTP_SECURE',
+        'SMTP_REQUIRE_TLS',
+        'SMTP_IGNORE_TLS',
+        'ENABLED_CORS',
+        'CREDENTIONALS_CORS',
+        'TRUST_PROXY',
+        'SENTRY_ENABLED',
+        'SESSION_COOKIE_HOST_PREFIX',
+        'CSP_ENABLED',
+        'CSP_REPORT_ONLY',
+        'CSRF_ENFORCE',
+        'CSRF_STRICT_ORIGIN',
+        'AI_USAGE_STORE_PROMPTS',
+    ]
+    const integers = [
+        'PORT',
+        'SMTP_PORT',
+        'REDIS_PORT',
+        'REDIS_COMMAND_TIMEOUT_MS',
+        'AUTH_SMS_CHALLENGE_TTL_SECONDS',
+        'AUTH_SMS_RESEND_COOLDOWN_SECONDS',
+        'AUTH_SMS_MAX_INVALID_ATTEMPTS',
+        'AUTH_SMS_MAX_SENDS_PER_IP_PER_HOUR',
+        'AUTH_EMAIL_LINK_COOLDOWN_SECONDS',
+        'AUTH_LOGIN_MAX_ATTEMPTS_PER_IP',
+        'AI_REQUEST_TIMEOUT_MS',
+        'PROMPT_CACHE_TTL_MS',
+        'AI_SUPPORT_DAILY_TOKEN_BUDGET',
+        'SUPPORT_EMBEDDING_BATCH_SIZE',
+        'READINESS_CHECK_TIMEOUT_MS',
+        'HTTP_GLOBAL_RATE_LIMIT_MAX',
+        'WS_ADMIN_RECHECK_INTERVAL_MS',
+        'SESSION_TOKEN_CHECK_TIMEOUT_MS',
+    ]
+
+    it.each(booleans)('%s=maybe stops the start and names the variable', async (name) => {
+        process.env[name] = 'maybe'
+        // an unknown flag is seen when the module is read, or by the validator
+        const run = async (): Promise<void> => {
+            const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+            validateRuntimeConfig()
+        }
+        await expect(run()).rejects.toThrow(new RegExp(`${name} must be one of true, 1, yes, on`))
+    })
+
+    it.each(integers)('%s=1e3 stops the start and names the variable', async (name) => {
+        process.env[name] = '1e3'
+        const run = async (): Promise<void> => {
+            // websocket.ts throws when it is read, not through the validator
+            await import('#config/websocket.js')
+            const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+            validateRuntimeConfig()
+        }
+        await expect(run()).rejects.toThrow(new RegExp(`${name} must be an integer`))
+    })
+
+    it.each(['yes', 'YES', 'on', '1', 'True'])('AUTH_PHONE_ENABLED=%s is true', async (value) => {
+        process.env['AUTH_PHONE_ENABLED'] = value
+        const { authConfig } = await import('#config/auth.js')
+        expect(authConfig.phoneAuthEnabled).toBe(true)
+        expect(authConfig.configError).toBeNull()
+    })
+
+    it.each(['no', 'NO', 'off', '0', 'False'])('AUTH_PHONE_ENABLED=%s is false', async (value) => {
+        process.env['AUTH_PHONE_ENABLED'] = value
+        const { authConfig } = await import('#config/auth.js')
+        expect(authConfig.phoneAuthEnabled).toBe(false)
+    })
+
+    it.each([['AUTH_STRICT_REGISTRATION'], ['AUTH_PHONE_ENABLED']])(
+        'a blank %s is the default, not an error',
+        async (name) => {
+            process.env[name] = '  '
+            const { authConfig } = await import('#config/auth.js')
+            expect(authConfig.configError).toBeNull()
+        },
+    )
+
+    it('a blank number is the default, and numbers are read as decimal', async () => {
+        process.env['AUTH_SMS_RESEND_COOLDOWN_SECONDS'] = ''
+        process.env['AUTH_SMS_MAX_INVALID_ATTEMPTS'] = ' 7 '
+        const { authConfig } = await import('#config/auth.js')
+        expect(authConfig.smsResendCooldownSeconds).toBe(60)
+        expect(authConfig.smsMaxInvalidAttempts).toBe(7)
+    })
+
+    it.each(['-1', '0x10', '1.5', '+3', 'ten'])(
+        'PORT=%s is refused instead of falling back to 3000 silently',
+        async (value) => {
+            process.env['PORT'] = value
+            const { default: appConfig } = await import('#config/app.js')
+            expect(appConfig.configError).toContain('PORT must be an integer from 1 to 65535')
+        },
+    )
+
+    it('reports every unreadable variable of a module at once', async () => {
+        process.env['AUTH_PHONE_ENABLED'] = 'maybe'
+        process.env['AUTH_SMS_MAX_INVALID_ATTEMPTS'] = '1e3'
+        const { authConfig } = await import('#config/auth.js')
+        expect(authConfig.configError).toContain('AUTH_PHONE_ENABLED must be one of')
+        expect(authConfig.configError).toContain('AUTH_SMS_MAX_INVALID_ATTEMPTS must be an integer')
     })
 })
