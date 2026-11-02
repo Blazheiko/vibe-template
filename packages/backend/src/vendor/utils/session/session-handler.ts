@@ -339,109 +339,85 @@ export const sessionHandler = async (
         userToken: string | undefined,
     ): Promise<boolean> => {
         if (userId === undefined || userToken === undefined) return false
-        try {
-            // The previous session goes away whether it was signed in or anonymous:
-            // its cookie and CSRF token must not stay usable after the login.
-            const oldSessionId = sessionInfo?.id
-            if (oldSessionId !== undefined) {
-                // Any anonymous predecessor — cookie-held or already moved to Redis — is
-                // marked before it goes away: a slower response of that session must
-                // not re-issue its anonymous cookie over the login's one.
-                if (cookieHeld || contextUserToken === ANON_TOKEN) {
-                    await markAnonSessionSuperseded(oldSessionId, ANON_COOKIE_REFRESH_SECONDS)
-                }
-                // A cookie-held session may still have a record: a parallel request
-                // can have moved it to Redis.
-                await destroySession(oldSessionId, contextUserToken)
+        // The previous session goes away whether it was signed in or anonymous:
+        // its cookie and CSRF token must not stay usable after the login.
+        const oldSessionId = sessionInfo?.id
+        if (oldSessionId !== undefined) {
+            // Any anonymous predecessor — cookie-held or already moved to Redis — is
+            // marked before it goes away: a slower response of that session must
+            // not re-issue its anonymous cookie over the login's one.
+            if (cookieHeld || contextUserToken === ANON_TOKEN) {
+                await markAnonSessionSuperseded(oldSessionId, ANON_COOKIE_REFRESH_SECONDS)
             }
-
-            const newSessionInfo = await createSessionInfo({
-                userId,
-                userToken,
-            })
-
-            sessionInfo = updateContextWithNewSession(
-                context,
-                newSessionInfo,
-                userToken,
-                responseData,
-            )
-            contextUserToken = userToken
-            cookieHeld = false
-            swappedSession.add(context)
-
-            logger.info({ userId, sessionId: newSessionInfo.id }, `User logged in`)
-
-            return true
-        } catch (err) {
-            logger.error({ err }, 'Login error:')
-            throw err
+            // A cookie-held session may still have a record: a parallel request
+            // can have moved it to Redis.
+            await destroySession(oldSessionId, contextUserToken)
         }
+
+        const newSessionInfo = await createSessionInfo({
+            userId,
+            userToken,
+        })
+
+        sessionInfo = updateContextWithNewSession(context, newSessionInfo, userToken, responseData)
+        contextUserToken = userToken
+        cookieHeld = false
+        swappedSession.add(context)
+
+        logger.info({ userId, sessionId: newSessionInfo.id }, `User logged in`)
+
+        return true
     }
 
     context.auth.logout = async (): Promise<boolean> => {
-        try {
-            const currentUserToken =
-                typeof sessionInfo?.data.userToken === 'string'
-                    ? sessionInfo.data.userToken
-                    : undefined
-            const currentSessionId = sessionInfo?.id
-            if (currentUserToken !== undefined && currentSessionId !== undefined) {
-                await destroySession(currentSessionId, currentUserToken)
-                logger.info(
-                    {
-                        userId: sessionInfo?.data.userId,
-                        sessionId: currentSessionId,
-                    },
-                    `User logged out`,
-                )
-            }
-
-            sessionInfo = newAnonSessionInfo()
-            issueAnonCookie(responseData, sessionInfo)
-            context.session.sessionInfo = sessionInfo
-            contextUserToken = ANON_TOKEN
-            cookieHeld = true
-            swappedSession.add(context)
-
-            return true
-        } catch (err) {
-            logger.error({ err }, 'Logout error')
-            throw err
-        }
-    }
-
-    context.auth.logoutAll = async (): Promise<number> => {
-        try {
-            const currentUserToken =
-                typeof sessionInfo?.data.userToken === 'string'
-                    ? sessionInfo.data.userToken
-                    : undefined
-            if (currentUserToken === undefined) return 0
-
-            // The current session survives a stopped run, so the client can repeat
-            // logoutAll while still authenticated; it is deleted last.
-            const deletedCount = await destroyAllSessions(currentUserToken, sessionInfo?.id)
+        const currentUserToken =
+            typeof sessionInfo?.data.userToken === 'string' ? sessionInfo.data.userToken : undefined
+        const currentSessionId = sessionInfo?.id
+        if (currentUserToken !== undefined && currentSessionId !== undefined) {
+            await destroySession(currentSessionId, currentUserToken)
             logger.info(
                 {
                     userId: sessionInfo?.data.userId,
-                    deletedCount,
+                    sessionId: currentSessionId,
                 },
-                `User logged out all sessions`,
+                `User logged out`,
             )
-
-            sessionInfo = newAnonSessionInfo()
-            issueAnonCookie(responseData, sessionInfo)
-            context.session.sessionInfo = sessionInfo
-            contextUserToken = ANON_TOKEN
-            cookieHeld = true
-            swappedSession.add(context)
-
-            return deletedCount
-        } catch (err) {
-            logger.error({ err }, 'LogoutAll error')
-            throw err
         }
+
+        sessionInfo = newAnonSessionInfo()
+        issueAnonCookie(responseData, sessionInfo)
+        context.session.sessionInfo = sessionInfo
+        contextUserToken = ANON_TOKEN
+        cookieHeld = true
+        swappedSession.add(context)
+
+        return true
+    }
+
+    context.auth.logoutAll = async (): Promise<number> => {
+        const currentUserToken =
+            typeof sessionInfo?.data.userToken === 'string' ? sessionInfo.data.userToken : undefined
+        if (currentUserToken === undefined) return 0
+
+        // The current session survives a stopped run, so the client can repeat
+        // logoutAll while still authenticated; it is deleted last.
+        const deletedCount = await destroyAllSessions(currentUserToken, sessionInfo?.id)
+        logger.info(
+            {
+                userId: sessionInfo?.data.userId,
+                deletedCount,
+            },
+            `User logged out all sessions`,
+        )
+
+        sessionInfo = newAnonSessionInfo()
+        issueAnonCookie(responseData, sessionInfo)
+        context.session.sessionInfo = sessionInfo
+        contextUserToken = ANON_TOKEN
+        cookieHeld = true
+        swappedSession.add(context)
+
+        return deletedCount
     }
 }
 

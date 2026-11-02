@@ -1,4 +1,4 @@
-import executeMiddlewares from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
+import { executeWsMiddlewares } from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
 // import validators from '#vendor/start/validators.js';
 import type {
     Session,
@@ -8,7 +8,6 @@ import type {
     MyWebSocket,
     UserConnection,
     // ValidatorFunction,
-    HttpContext,
     Payload,
     WsRoutes,
 } from '#vendor/types/types.js'
@@ -86,7 +85,7 @@ export default async (
                 route.middlewares === undefined ||
                 !Array.isArray(route.middlewares) ||
                 route.middlewares.length === 0 ||
-                (await executeMiddlewares(route.middlewares, context as unknown as HttpContext))
+                (await executeWsMiddlewares(route.middlewares, context))
             ) {
                 const handler = route.handler
                 responseData.data = await handler(context)

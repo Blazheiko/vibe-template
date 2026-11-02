@@ -25,7 +25,8 @@ const { default: OAuthController, withReason } = await import('./oauth-controlle
 const createContext = (query: { code?: string; state?: string }, storedState = 'state-1') => {
     const headers = new Map<string, string>()
     return {
-        logger: { info: vi.fn(), warn: vi.fn() },
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        signal: new AbortController().signal,
         httpData: { params: { provider: 'google' }, query },
         responseData: {
             status: 200,
@@ -84,6 +85,35 @@ describe('OAuthController.callback', () => {
         expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
     })
 
+    // feat-088: before, a 5xx in the callback only left a warn without the cause.
+    it('logs a 5xx failure with its cause and still redirects', async () => {
+        const cause = new Error('session store down')
+        handleCallback.mockResolvedValue(
+            Result.err({ _tag: 'Internal', publicMessage: 'Failed to log in user', cause }),
+        )
+        const context = createContext({ code: 'c', state: 'state-1' })
+
+        await OAuthController.callback(context)
+
+        expect(context.responseData.status).toBe(302)
+        expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
+        expect(context.logger.error).toHaveBeenCalledWith(
+            { err: cause, appError: 'Internal' },
+            'Failed to log in user',
+        )
+    })
+
+    it('does not log a 4xx failure as error', async () => {
+        handleCallback.mockResolvedValue(
+            Result.err({ _tag: 'BadRequest', message: 'OAuth state mismatch' }),
+        )
+        const context = createContext({ code: 'c', state: 'other' })
+
+        await OAuthController.callback(context)
+
+        expect(context.logger.error).not.toHaveBeenCalled()
+    })
+
     it('adds the reason when an existing account needs a verified email', async () => {
         handleCallback.mockResolvedValue(
             Result.err({
@@ -107,7 +137,7 @@ describe('OAuthController.providers', () => {
     it('returns the configured providers', () => {
         getConfiguredProviders.mockReturnValue(['google', 'github'])
 
-        const response = OAuthController.providers(createContext({}) as never)
+        const response = OAuthController.providers()
 
         expect(response).toEqual({ status: 'ok', providers: ['google', 'github'] })
     })

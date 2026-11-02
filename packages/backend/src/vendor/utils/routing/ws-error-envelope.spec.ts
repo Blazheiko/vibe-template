@@ -11,7 +11,7 @@ const executeMiddlewaresMock = vi.fn()
 const checkRateLimitWsMock = vi.fn()
 
 vi.mock('#vendor/utils/middlewares/core/execute-httpMiddlewares.js', () => ({
-    default: executeMiddlewaresMock,
+    executeWsMiddlewares: executeMiddlewaresMock,
 }))
 
 const { logger } = vi.hoisted(() => {

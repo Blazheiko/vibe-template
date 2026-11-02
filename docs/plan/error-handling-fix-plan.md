@@ -132,7 +132,7 @@
     - видалити закоментований код (рядки ~126-130, 373-375, 783);
     - перекласти англійською коментар на рядках 584-586;
     - зробити `docRoutesHandler` синхронним, без `new Promise`.
-- `ws-api-dispatcher.ts:83`: прибрати `context as unknown as HttpContext`. Для цього визначити спільний тип контексту middleware (`MiddlewareContext`), який задовольняють обидва транспорти. Якщо це тягне велику зміну типів, лише записати як відкритий пункт.
+- `ws-api-dispatcher.ts:83`: прибрати `context as unknown as HttpContext`. Для цього визначити спільний тип контексту middleware (`MiddlewareContext`), який задовольняють обидва транспорти. Якщо це тягне велику зміну типів, лише записати як відкритий пункт. **Реалізовано інакше (feat-088):** не спільний тип, а `Middleware<TContext>` і дві мапи в `kernel.ts` (`httpMiddlewares`, `wsMiddlewares`); WS-диспетчер викликає `executeWsMiddlewares`, і `ws-admin-guard` отримує `WsContext` без приведення.
 
 ### 3b — зміна лог-потоку (🟡, після етапу 1)
 
@@ -140,6 +140,7 @@
 
 - `session-handler.ts:376,408,441`: прибрати log-and-rethrow в `auth.login`, `auth.logout`, `auth.logoutAll`. Подію логує один раз рівень вище: `reportAppError` (етап 1), а після етапу 4 — `handleError`. Тест: збій `createSessionInfo` під час login дає рівно один запис `error`.
 - Контролери: прибрати `context.logger.info('xxx handler')`. Маршрут і `requestId` уже є в контексті логера. Якщо потрібен access log, це окремий запис у `server.ts`, а не рядок у кожному методі.
+- **Знайдено під час реалізації (feat-088):** OAuth callback відповідає на помилку редиректом через `redirectToError`, без `mapControllerError`, тож 5xx там після етапу 1 лишався без запису з причиною (його рятував лише log-and-rethrow у `auth.login`). Додано `reportControllerError`, і `redirectToError` її викликає.
 
 ## Етап 4 — `Result` лише для очікуваних результатів (🟡)
 

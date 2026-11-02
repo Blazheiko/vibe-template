@@ -61,7 +61,6 @@ import {
     staticHandler,
     staticCacheHandler,
 } from '#vendor/start/static-server.js'
-import configApp from '#config/app.js'
 import getIP from '#vendor/utils/network/get-ip.js'
 import { serializeRoutes } from '#vendor/utils/routing/serialize-routes.js'
 import { isBodyMethod } from '#vendor/utils/routing/body-methods.js'
@@ -123,11 +122,7 @@ const configureWebsockets = (
             message: ArrayBuffer,
             isBinary: boolean,
         ) => onMessage(ws as MyWebSocket, message, isBinary, wsRoutesByUrl),
-        // upgrade: async (res: HttpResponse, req: HttpRequest, context: us_socket_context_t) => {
-        //    await handleUpgrade(res, req, context);
-        // },
         upgrade: handleUpgrade,
-        // drain: (ws) => handleDrain(ws),
         close: (
             ws: WebSocket<Record<string, unknown>>,
             code: number,
@@ -139,9 +134,6 @@ const configureWebsockets = (
         },
     })
 }
-
-// getResponseData is now a thin wrapper around the shared response-data builder.
-const getResponseData = createResponseData
 
 interface RequestMetadata {
     ip: string
@@ -370,10 +362,6 @@ const sendErrorResponse = (
     })
 }
 
-// interface State {
-//   listenSocket: us_listen_socket | null;
-// }
-
 interface HttpSentryContext {
     requestId?: string | undefined
     userId?: string | undefined
@@ -395,7 +383,7 @@ export const handleError = (
 ): void => {
     // The request's own logger: every record carries requestId (and userId when
     // known), including 413/415/422 thrown before the handler context exists.
-    const classified = classifyError(error, { exposeInternalMessage: configApp.env === 'local' })
+    const classified = classifyError(error, { exposeInternalMessage: appConfig.env === 'local' })
     logClassifiedError(logger.child(definedFields(sentryContext ?? {})), classified)
     sendErrorResponse(
         res,
@@ -405,51 +393,44 @@ export const handleError = (
     )
 }
 
-const docRoutesHandler = async (
-    res: HttpResponse,
-    req: HttpRequest,
-    routes: ServerRoutes,
-): Promise<void> => {
-    return new Promise((resolve: () => void) => {
-        if (
-            state['listenSocket'] !== undefined &&
-            configApp.env === 'manual-test' &&
-            configApp.docPage &&
-            configApp.serveStatic
-        ) {
-            try {
-                const serializedHttpRoutes = serializeRoutes(routes.sourceHttpRoutes)
-                const serializedWsRoutes = serializeRoutes(routes.sourceWsRoutes)
+const docRoutesHandler = (res: HttpResponse, req: HttpRequest, routes: ServerRoutes): void => {
+    if (
+        state['listenSocket'] !== undefined &&
+        appConfig.env === 'manual-test' &&
+        appConfig.docPage &&
+        appConfig.serveStatic
+    ) {
+        try {
+            const serializedHttpRoutes = serializeRoutes(routes.sourceHttpRoutes)
+            const serializedWsRoutes = serializeRoutes(routes.sourceWsRoutes)
 
-                res.cork(() => {
-                    writeHttpStatus(res, 200)
-                    setSecurityHeaders(res)
-                    res.writeHeader('content-type', 'application/json')
-                    res.end(
-                        makeJson({
-                            httpRoutes: serializedHttpRoutes,
-                            wsRoutes: serializedWsRoutes,
-                            pathPrefix: appConfig.pathPrefix,
-                        }),
-                    )
+            res.cork(() => {
+                writeHttpStatus(res, 200)
+                setSecurityHeaders(res)
+                res.writeHeader('content-type', 'application/json')
+                res.end(
+                    makeJson({
+                        httpRoutes: serializedHttpRoutes,
+                        wsRoutes: serializedWsRoutes,
+                        pathPrefix: appConfig.pathPrefix,
+                    }),
+                )
+            })
+        } catch (err: unknown) {
+            res.cork(() => {
+                handleError(res, err, {
+                    route: req.getUrl(),
+                    method: req.getMethod(),
                 })
-            } catch (err: unknown) {
-                res.cork(() => {
-                    handleError(res, err, {
-                        route: req.getUrl(),
-                        method: req.getMethod(),
-                    })
-                })
-            }
-        } else {
-            sendErrorResponse(res, 404, {
-                status: 'error',
-                code: 'not_found',
-                message: 'Not found',
             })
         }
-        resolve()
-    })
+    } else {
+        sendErrorResponse(res, 404, {
+            status: 'error',
+            code: 'not_found',
+            message: 'Not found',
+        })
+    }
 }
 
 const setHttpHandler = async (
@@ -474,7 +455,7 @@ const setHttpHandler = async (
         abortSignal.onAbort?.()
         requestAbort.abort()
     })
-    const responseData = getResponseData()
+    const responseData = createResponseData()
     let origin: string | undefined
     // From the first step, so errors before the handler (413/415/422) are traceable.
     const requestId = randomUUID()
@@ -490,9 +471,9 @@ const setHttpHandler = async (
         // the server buffer and parse up to maxOctetStreamBodySize even on blocked
         // routes, which is a DoS vector.
         //
-        // Sync by design: если здесь будет `await`, uWS может доставить тело
-        // маленьких POST-запросов до того, как readData зарегистрирует
-        // res.onData(), и хендлер навсегда зависнет в pending.
+        // Sync by design: with an `await` here, uWS can deliver the body of a small
+        // POST before readData registers res.onData(), and the handler would hang
+        // pending forever.
         // L1 (per IP, all API requests) first, then the stricter per-route limit.
         const rateLimitPassed =
             checkGlobalRateLimit(meta.ip, responseData) &&
@@ -580,8 +561,8 @@ const configureHttp = async (server: TemplatedApp, routes: ServerRoutes): Promis
     routes.httpRoutes.forEach((route: NormalizedRouteItem) => {
         registerHttpRoute(server, route)
     })
-    if (configApp.env === 'manual-test' && configApp.docPage && configApp.serveStatic) {
-        server.get(`/${appConfig.pathPrefix}/doc/routes`, async (res, req) => {
+    if (appConfig.env === 'manual-test' && appConfig.docPage && appConfig.serveStatic) {
+        server.get(`/${appConfig.pathPrefix}/doc/routes`, (res, req) => {
             // An API path like any other: it spends the same L1 budget.
             const responseData = createResponseData()
             if (!checkGlobalRateLimit(getIP(req, res), responseData)) {
@@ -591,7 +572,7 @@ const configureHttp = async (server: TemplatedApp, routes: ServerRoutes): Promis
                 })
                 return
             }
-            await docRoutesHandler(res, req, routes)
+            docRoutesHandler(res, req, routes)
         })
     }
 
@@ -612,7 +593,6 @@ const configureHttp = async (server: TemplatedApp, routes: ServerRoutes): Promis
             }
         }
         if (corsConfig.enabled && method === 'options') {
-            //'OPTIONS' method === 'OPTIONS'
             res.cork(() => {
                 writeHttpStatus(res, 200)
                 setSecurityHeaders(res)
@@ -689,7 +669,6 @@ const setCorsHeader = (res: HttpResponse, requestOrigin: string | undefined): vo
         res.writeHeader('Access-Control-Allow-Credentials', 'true')
     }
 }
-// let server = null;
 const initServer = async (routes: ServerRoutes): Promise<void> => {
     configureWebsockets(server, routes.wsRoutesByUrl)
     await configureHttp(server, routes)

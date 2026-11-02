@@ -29,24 +29,19 @@ export default {
         return { status: 'ok' }
     },
 
-    testHeaders({ httpData, logger }: HttpContext): TestHeadersResponse {
-        logger.info('testHeaders')
+    testHeaders({ httpData }: HttpContext): TestHeadersResponse {
         return mainService.testHeaders(httpData)
     },
 
-    getSetCookies({ httpData, logger }: HttpContext): GetSetCookiesResponse {
-        logger.info('testCookies')
+    getSetCookies({ httpData }: HttpContext): GetSetCookiesResponse {
         return mainService.getSetCookies(httpData)
     },
 
-    testSession({ session, httpData, logger }: HttpContext): TestSessionResponse {
-        logger.info('testSession')
+    testSession({ session, httpData }: HttpContext): TestSessionResponse {
         return mainService.testSession(httpData, session.sessionInfo ?? null)
     },
 
     async updateWsToken(context: HttpContext): Promise<UpdateWsTokenResponse> {
-        context.logger.info('updateWsToken')
-
         const result = await mainService.updateWsToken(context.session.sessionInfo ?? null)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -56,8 +51,6 @@ export default {
     },
 
     async init(context: HttpContext): Promise<InitResponse> {
-        context.logger.info('init')
-
         const result = await mainService.init(context.session.sessionInfo ?? null)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -66,23 +59,19 @@ export default {
         return { status: 'ok', ...result.value }
     },
 
-    setHeaderAndCookie({ responseData, logger }: HttpContext): SetHeaderAndCookieResponse {
-        logger.info('set-header-and-cookie')
+    setHeaderAndCookie({ responseData }: HttpContext): SetHeaderAndCookieResponse {
         return mainService.setHeaderAndCookie(responseData)
     },
 
-    testMiddleware({ responseData, logger }: HttpContext): TestMiddlewareResponse {
-        logger.info('testMiddleware controller')
+    testMiddleware({ responseData }: HttpContext): TestMiddlewareResponse {
         return mainService.testMiddleware(responseData)
     },
 
-    testMiddleware2({ responseData, logger }: HttpContext): TestMiddlewareResponse {
-        logger.info('testMiddleware2 controller')
+    testMiddleware2({ responseData }: HttpContext): TestMiddlewareResponse {
         return mainService.testMiddleware(responseData)
     },
 
-    testMiddleware3({ responseData, logger }: HttpContext): TestMiddlewareResponse {
-        logger.info('testMiddleware3 controller')
+    testMiddleware3({ responseData }: HttpContext): TestMiddlewareResponse {
         return mainService.testMiddleware(responseData)
     },
 }

@@ -9,8 +9,6 @@ import type { UploadAvatarResponse, DeleteAvatarResponse } from 'shared/response
 
 export default {
     async uploadAvatar(context: HttpContext<EmptyFormInput>): Promise<UploadAvatarResponse> {
-        context.logger.info('uploadAvatar handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
@@ -27,8 +25,6 @@ export default {
     },
 
     async deleteAvatar(context: HttpContext): Promise<DeleteAvatarResponse> {
-        context.logger.info('deleteAvatar handler')
-
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())

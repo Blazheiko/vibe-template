@@ -1,5 +1,8 @@
 import type { HttpContext } from '#vendor/types/types.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import {
+    mapControllerError,
+    reportControllerError,
+} from '#app/controllers/shared/controller-error.js'
 import { Result } from 'better-result'
 import { OAUTH_EMAIL_UNVERIFIED, oauthService } from '#app/services/auth/oauth-service.js'
 import { appErrorMessage, badRequest, type AppError } from '#app/services/shared/errors.js'
@@ -15,6 +18,8 @@ const redirectToError = (
     error: AppError,
 ): OAuthCallbackResponse => {
     context.logger.warn({ error: appErrorMessage(error) }, 'oauth callback failed')
+    // A 5xx (database, session store) also goes to the log with its cause and to Sentry.
+    reportControllerError(context, error)
     const reason =
         'reason' in error && error.reason === OAUTH_EMAIL_UNVERIFIED ? OAUTH_EMAIL_UNVERIFIED : null
     context.responseData.status = 302
@@ -35,8 +40,7 @@ export const withReason = (url: string, reason: string | null): string => {
 }
 
 export default {
-    providers(context: HttpContext): OAuthProvidersResponse {
-        context.logger.info('oauth providers handler')
+    providers(): OAuthProvidersResponse {
         return { status: 'ok', providers: oauthService.getConfiguredProviders() }
     },
 
@@ -44,7 +48,6 @@ export default {
         context: HttpContext<unknown, OAuthRedirectQuery>,
     ): Promise<OAuthRedirectResponse> {
         const provider = context.httpData.params['provider'] ?? ''
-        context.logger.info({ provider }, 'oauth redirect handler')
 
         const result = oauthService.getAuthorizationUrl(provider)
 
