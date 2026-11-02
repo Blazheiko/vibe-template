@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { RedisUnavailableError, isRedisUnavailable } from './redis-unavailable-error.js'
+import {
+    RedisUnavailableError,
+    isRedisCommandUnavailable,
+    isRedisUnavailable,
+} from './redis-unavailable-error.js'
 
 const withCode = (code: string): Error =>
     Object.assign(new Error(`connect ${code} 127.0.0.1:6379`), { code })
@@ -21,12 +25,21 @@ describe('isRedisUnavailable', () => {
                 'Reached the max retries per request limit (which is 20).',
             ),
         ],
-        ['ECONNREFUSED', withCode('ECONNREFUSED')],
-        ['ECONNRESET', withCode('ECONNRESET')],
         ['already wrapped', new RedisUnavailableError()],
     ])('%s → true', (_, err) => {
         expect(isRedisUnavailable(err)).toBe(true)
+        expect(isRedisCommandUnavailable(err)).toBe(true)
     })
+
+    // The same codes come from S3, PostgreSQL or SMTP: from an unknown source they are
+    // not a Redis outage (a down S3 must stay a 500 that reaches Sentry).
+    it.each([['ECONNREFUSED'], ['ECONNRESET'], ['ETIMEDOUT'], ['EPIPE']])(
+        'a bare %s → false from an unknown source, true from a Redis command',
+        (code) => {
+            expect(isRedisUnavailable(withCode(code))).toBe(false)
+            expect(isRedisCommandUnavailable(withCode(code))).toBe(true)
+        },
+    )
 
     it.each([
         [
@@ -42,6 +55,12 @@ describe('isRedisUnavailable', () => {
         ['not an Error', 'Command timed out'],
     ])('%s → false', (_, err) => {
         expect(isRedisUnavailable(err)).toBe(false)
+        expect(isRedisCommandUnavailable(err)).toBe(false)
+    })
+
+    it('a reply error with a socket code → false even from a Redis command', () => {
+        const err = Object.assign(named('ReplyError', 'ERR x'), { code: 'ECONNRESET' })
+        expect(isRedisCommandUnavailable(err)).toBe(false)
     })
 })
 

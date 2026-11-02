@@ -52,14 +52,10 @@ export const promptTestService = {
             if (abortKind === 'aborted') {
                 // The client went away: nothing failed upstream and nobody reads the answer.
                 logger.info({ model: textAdapter.model }, 'Prompt test cancelled by the client')
-            } else {
-                logger.error(
-                    { err: error, model: textAdapter.model },
-                    'Prompt test LLM call failed',
-                )
             }
+            // A provider failure is logged once, with its cause, by mapControllerError.
             return Result.err(
-                aiAbortKind(error) === 'timeout' ? upstreamTimeout(error) : upstreamError(error),
+                abortKind === 'timeout' ? upstreamTimeout(error) : upstreamError(error),
             )
         }
     },

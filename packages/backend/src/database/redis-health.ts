@@ -1,6 +1,6 @@
 import {
     RedisUnavailableError,
-    isRedisUnavailable,
+    isRedisCommandUnavailable,
 } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 
 export type RedisHealthState = 'healthy' | 'unavailable'
@@ -142,7 +142,7 @@ export const createWithRedis =
             health.markHealthy()
             return result
         } catch (err: unknown) {
-            if (!isRedisUnavailable(err)) throw err
+            if (!isRedisCommandUnavailable(err)) throw err
             health.markUnavailable(err)
             throw err instanceof RedisUnavailableError
                 ? err

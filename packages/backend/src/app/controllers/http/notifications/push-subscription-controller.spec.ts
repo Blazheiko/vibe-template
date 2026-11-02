@@ -26,6 +26,7 @@ const contextWithParam = (subscriptionId: string): HttpContext =>
         httpData: { params: { subscriptionId }, payload: {} },
         responseData: { status: 200, payload: null, headers: [], cookies: [] },
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        signal: new AbortController().signal,
     }) as unknown as HttpContext
 
 afterEach(() => {

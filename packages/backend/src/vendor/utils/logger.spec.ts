@@ -136,6 +136,18 @@ describe('logger sentry forwarding', () => {
             expect(captureMessageMock).not.toHaveBeenCalled()
         })
 
+        // A raw ioredis error from the rate-limit client has type 'Error', so the type
+        // filter misses it; reportAppError marks it with sentrySkip instead.
+        it('skips a raw ioredis error marked with sentrySkip', async () => {
+            await write({
+                msg: 'Service temporarily unavailable. Try again later.',
+                sentrySkip: true,
+                err: { type: 'Error', message: 'connect ECONNREFUSED', code: 'ECONNREFUSED' },
+            })
+            expect(captureExceptionMock).not.toHaveBeenCalled()
+            expect(captureMessageMock).not.toHaveBeenCalled()
+        })
+
         it('still captures other errors', async () => {
             await write({ msg: 'Handle Error', err: { type: 'Error', message: 'x' } })
             expect(captureExceptionMock).toHaveBeenCalledTimes(1)

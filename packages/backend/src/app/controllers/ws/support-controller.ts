@@ -3,7 +3,8 @@ import type { WsContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { supportService } from '#app/services/support/support-service.js'
 import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
-import { appErrorStatus, unauthorized, type AppError } from '#app/services/shared/errors.js'
+import { unauthorized } from '#app/services/shared/errors.js'
+import { mapWsControllerError } from '#app/controllers/shared/controller-error.js'
 import type { SupportChatInput, SupportOpenChatInput } from 'shared/schemas'
 import type { SupportChatResponse, SupportOpenChatResponse } from 'shared/responses'
 
@@ -11,10 +12,6 @@ import type { SupportChatResponse, SupportOpenChatResponse } from 'shared/respon
 // been accepted (it passed the per-user limit and holds the user's lock). A refusal is the
 // reply itself (429), not an `ok` followed by silence. What goes wrong after `ok` reaches
 // the client as the `support_chat_error` event.
-const refuse = (context: WsContext, error: AppError): ReturnType<typeof appErrorToPayload> => {
-    context.responseData.status = String(appErrorStatus(error))
-    return appErrorToPayload(error)
-}
 
 export default {
     async openChat(context: WsContext<SupportOpenChatInput>): Promise<SupportOpenChatResponse> {
@@ -27,7 +24,7 @@ export default {
         const userId = BigInt(userData.userId)
 
         const admission = await supportService.admitOpenChat(userId)
-        if (Result.isError(admission)) return refuse(context, admission.error)
+        if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
 
         void supportService.runOpenChat(
             admission.value,
@@ -50,7 +47,7 @@ export default {
         const userId = BigInt(userData.userId)
 
         const admission = await supportService.admitChat(userId, payload.message)
-        if (Result.isError(admission)) return refuse(context, admission.error)
+        if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
 
         void supportService.runChat(
             admission.value,

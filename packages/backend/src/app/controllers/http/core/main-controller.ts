@@ -44,27 +44,23 @@ export default {
         return mainService.testSession(httpData, session.sessionInfo ?? null)
     },
 
-    async updateWsToken({
-        responseData,
-        session,
-        logger,
-    }: HttpContext): Promise<UpdateWsTokenResponse> {
-        logger.info('updateWsToken')
+    async updateWsToken(context: HttpContext): Promise<UpdateWsTokenResponse> {
+        context.logger.info('updateWsToken')
 
-        const result = await mainService.updateWsToken(session.sessionInfo ?? null)
+        const result = await mainService.updateWsToken(context.session.sessionInfo ?? null)
         if (Result.isError(result)) {
-            return mapControllerError({ responseData }, result.error)
+            return mapControllerError(context, result.error)
         }
 
         return { status: 'ok', ...result.value }
     },
 
-    async init({ responseData, session, logger }: HttpContext): Promise<InitResponse> {
-        logger.info('init')
+    async init(context: HttpContext): Promise<InitResponse> {
+        context.logger.info('init')
 
-        const result = await mainService.init(session.sessionInfo ?? null)
+        const result = await mainService.init(context.session.sessionInfo ?? null)
         if (Result.isError(result)) {
-            return mapControllerError({ responseData }, result.error)
+            return mapControllerError(context, result.error)
         }
 
         return { status: 'ok', ...result.value }
