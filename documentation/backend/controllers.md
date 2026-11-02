@@ -9,7 +9,7 @@
 - **Передбачуваний формат відповіді.** Контролер збирає відповідь `{ status: 'success', ... }` за типом із `shared/responses`, а помилки сервісу перетворює на канонічне тіло й правильний статус однією функцією `mapControllerError`. Клієнт завжди бачить однакову форму помилок.
 - **Тонкість як правило.** Контролер не містить бізнес-правил, не звертається до БД і зовнішніх API. Завдяки цьому його майже не треба тестувати окремо, а вся логіка, що варта тестів, зосереджена в сервісах. Межу перевіряє [`layering.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/layering.spec.ts).
 
-Типова робота методу контролера — п'ять кроків: дістати `userId` і payload з контексту → викликати один метод сервісу → на помилці повернути `mapControllerError` → на успіху зібрати відповідь → за потреби виставити статус, cookie чи заголовок.
+Типова робота методу контролера: дістати `userId` і payload з контексту → викликати один метод сервісу → повернути `respond(context, result, toBody)`, який на помилці дає канонічне тіло й статус (`mapControllerError`), а на успіху — тіло з `toBody` → за потреби виставити статус, cookie чи заголовок. Явний `Result.isError` лишається там, де після помилки чи успіху є ще логіка (статус `201`, редирект, друга дія).
 
 ```mermaid
 flowchart LR
@@ -29,7 +29,7 @@ flowchart LR
 
 - `http/` — обробники HTTP-маршрутів, згруповані за доменом;
 - `ws/` — обробники WebSocket-подій ([admin-ws-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/admin-ws-controller.ts), [support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts));
-- `shared/` — `mapControllerError` ([controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts)) і `requireUserId` ([require-user-id.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/require-user-id.ts)): id користувача сесії як `bigint` або `null`, і тоді контролер відповідає `mapControllerError(context, unauthorized())`.
+- `shared/` — `respond` / `respondWs` і `mapControllerError` / `mapWsControllerError` ([controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts)) і `requireUserId` ([require-user-id.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/require-user-id.ts)): id користувача сесії як `bigint` або `null`, і тоді контролер відповідає `mapControllerError(context, unauthorized())`.
 
 Окремої теки `static/` у контролерах немає: роздача статики живе у vendor-шарі.
 
@@ -177,6 +177,7 @@ const userId = context.auth.getUserId()
 if (userId === null) return mapControllerError(context, unauthorized())
 
 const result = await authService.login(payload)
+// A second action follows the success, so the check stays explicit (no respond()).
 if (Result.isError(result)) return mapControllerError(context, result.error)
 await context.auth.login(result.value.userId, result.value.userToken)
 ```
@@ -216,15 +217,12 @@ await context.auth.login(result.value.userId, result.value.userToken)
 | `data`               | Сюди диспетчер кладе значення, яке повернув метод.                                                                              |
 | `error`              | Заповнює диспетчер для системних помилок (`not_found`, `validation_failed`, `internal_error`, rate limit) зі `status: 'error'`. |
 
-Помилку сервісу повертайте як дані через `mapWsControllerError`: вона виставляє `status` за `_tag` помилки (`'403'` для `Forbidden`), логує 5xx і повертає канонічне тіло:
+Помилку сервісу повертайте як дані через `respondWs` (або `mapWsControllerError`, коли після помилки є ще логіка): він виставляє `status` за `_tag` помилки (`'403'` для `Forbidden`), логує 5xx і повертає канонічне тіло:
 
 ```ts
 subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
     const result = adminWsChannelService.subscribeCurrentAdminConnection(context.ws)
-    if (Result.isError(result)) {
-        return mapWsControllerError(context, result.error)
-    }
-    return { status: 'success' }
+    return respondWs(context, result, () => ({ status: 'success' }))
 }
 ```
 
@@ -276,6 +274,8 @@ export function mapControllerError(
 }
 ```
 
+`respond(context, result, toBody?)` — звичайний кінець методу поверх `mapControllerError`: помилка стає канонічним тілом, значення — тілом відповіді як є або через `toBody`. `respondWs` робить те саме для WS.
+
 [`applyAppErrorStatus`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/apply-service-status.ts) виставляє HTTP-статус за `_tag` (`BadRequest`→400, `Unauthorized`→401, `Forbidden`→403, `NotFound`→404, `Conflict`→409, `RateLimited`→429 + `Retry-After`, `Internal`→500 — таблиця в [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)), а тіло має форму `{ status: 'error', message, code, reason? }`. Те саме тіло будує [`appErrorToPayload`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/app-error-payload.ts) і для WS. WS-варіант `mapWsControllerError` з того ж [controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts) пише статус рядком у відповідь (`'500'`), бо HTTP-статусу в WS немає.
 
 **Логування 5xx.** Обидві функції викликають [`reportAppError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/report-app-error.ts) через `context.logger`, тож запис має `requestId` і `userId`. Помилка зі статусом 500 і вище (`Internal`, `ServiceUnavailable`, `UpstreamError`, `UpstreamTimeout`) пишеться один раз як `error` з першопричиною (`cause`, якщо помилку створено з винятком) і потрапляє в Sentry. 4xx не логуються: це очікувані відповіді. Якщо клієнт уже відключився (`context.signal.aborted`), запис не пишеться, бо відповідь ніхто не читає. Сервісу не треба логувати помилку, яку він повертає контролеру: інакше в Sentry буде дві події. Контролер, який відповідає на помилку без `mapControllerError` (редирект OAuth callback), викликає `reportControllerError` з того ж модуля. Окремий `logger.info('<method> handler')` на початку методу не потрібен: маршрут і `requestId` уже є в контексті логера.
@@ -304,8 +304,7 @@ export function mapControllerError(
 
 - [ ] дістати `userId` (`context.auth` / `context.userData`), payload (`getTypedPayload`), `params`, `query`;
 - [ ] викликати один метод сервісу;
-- [ ] на `Result.isError` — `mapControllerError` (HTTP) або `appErrorToPayload` (WS);
-- [ ] зібрати відповідь `{ status: 'success', ... }` за типом із `shared`;
+- [ ] повернути `respond(context, result, toBody)` (HTTP) або `respondWs` (WS); `toBody` збирає відповідь `{ status: 'success', ... }` за типом із `shared`;
 - [ ] за потреби — статус (`201`, `302`), cookies, заголовки, сесія.
 
 **Ніколи в контролері:** прямі імпорти репозиторіїв, `fetch` до зовнішніх API, `throw` для очікуваних помилок.

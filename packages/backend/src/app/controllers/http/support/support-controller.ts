@@ -1,5 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { knowledgeBaseService } from '#app/services/support/knowledge-base-service.js'
 import { supportService } from '#app/services/support/support-service.js'
@@ -23,11 +23,11 @@ export default {
 
         const { before, limit } = context.httpData.query
         const result = await supportService.getChatHistory(userId, { before, limit })
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'ok', data: result.value.data, hasMore: result.value.hasMore }
+        return respond(context, result, (value) => ({
+            status: 'ok',
+            data: value.data,
+            hasMore: value.hasMore,
+        }))
     },
 
     async deleteChatHistory(context: HttpContext): Promise<SupportDeleteChatHistoryResponse> {
@@ -37,10 +37,7 @@ export default {
         }
 
         const result = await supportService.deleteChatHistory(userId)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok' }
+        return respond(context, result, () => ({ status: 'ok' }))
     },
 
     async getScreenshot(context: HttpContext): Promise<SupportScreenshotResponse> {

@@ -1,6 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { authService } from '#app/services/auth/auth-service.js'
 import { Result } from 'better-result'
@@ -45,26 +45,7 @@ import {
     GENERIC_RESET_MESSAGE,
     passwordResetService,
 } from '#app/services/auth/password-reset-service.js'
-import { appErrorReason, unauthorized } from '#app/services/shared/errors.js'
-
-const RESET_PASSWORD_REASONS = new Set([
-    'invalid_token',
-    'expired_token',
-    'used_token',
-    'token_required',
-    'passwords_mismatch',
-] as const)
-
-type ResetPasswordReason =
-    'invalid_token' | 'expired_token' | 'used_token' | 'token_required' | 'passwords_mismatch'
-
-function getResetPasswordReason(reason: string | undefined): ResetPasswordReason | undefined {
-    if (reason === undefined || !RESET_PASSWORD_REASONS.has(reason as ResetPasswordReason)) {
-        return undefined
-    }
-
-    return reason as ResetPasswordReason
-}
+import { unauthorized } from '#app/services/shared/errors.js'
 
 function getSessionIdForPhoneBoundFlow(
     context: Pick<HttpContext, 'logger' | 'session' | 'httpData'>,
@@ -102,12 +83,7 @@ export default {
             context.logger,
             { ipAddress: context.httpData.ip ?? '' },
         )
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async startPhoneRegistration(
@@ -118,12 +94,7 @@ export default {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneRegistration'),
         })
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async confirmPhoneRegistration(
@@ -133,12 +104,7 @@ export default {
         const result = await authService.confirmPhoneRegistration(payload, {
             ipAddress: context.httpData.ip ?? '',
         })
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async completePhoneRegistration(
@@ -154,12 +120,7 @@ export default {
                 sessionId: getSessionIdForPhoneBoundFlow(context, 'completePhoneRegistration'),
             },
         )
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async login(context: HttpContext<LoginInput>): Promise<LoginResponse> {
@@ -167,30 +128,17 @@ export default {
         const result = await authService.login(payload, context.auth, context.session, {
             ipAddress: context.httpData.ip ?? '',
         })
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async logout(context: HttpContext<EmptyFormInput>): Promise<LogoutResponse> {
         const result = await authService.logout(context.auth, context.session)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async logoutAll(context: HttpContext<EmptyFormInput>): Promise<LogoutAllResponse> {
         const result = await authService.logoutAll(context.auth, context.session)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async changePassword(
@@ -251,24 +199,7 @@ export default {
                 sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhonePasswordReset'),
             },
         )
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        const response: ResetPhoneStartResponse = {
-            status: 'success',
-            message: result.value.message,
-        }
-        if (result.value.challengeId !== undefined) {
-            response.challengeId = result.value.challengeId
-        }
-        if (result.value.expiresAt !== undefined) {
-            response.expiresAt = result.value.expiresAt
-        }
-        if (result.value.resendAvailableAt !== undefined) {
-            response.resendAvailableAt = result.value.resendAvailableAt
-        }
-        return response
+        return respond(context, result, (value) => ({ status: 'success', ...value }))
     },
 
     async resetPassword(context: HttpContext<ResetPasswordInput>): Promise<ResetPasswordResponse> {
@@ -279,14 +210,9 @@ export default {
             payload.passwordConfirm,
             { ipAddress: context.httpData.ip ?? '' },
         )
-        if (Result.isError(result)) {
-            const error = mapControllerError(context, result.error)
-            const reason = getResetPasswordReason(appErrorReason(result.error))
-            const { reason: _rawReason, ...baseError } = error
-            return reason !== undefined ? { ...baseError, reason } : baseError
-        }
-
-        return { status: 'success' }
+        // The service's reasons (invalid_token, expired_token, used_token, token_required,
+        // passwords_mismatch) pass through the canonical error body as they are.
+        return respond(context, result, () => ({ status: 'success' }))
     },
 
     async completePhonePasswordReset(
@@ -300,11 +226,10 @@ export default {
             payload.passwordConfirm,
             { ipAddress: context.httpData.ip ?? '' },
         )
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', message: 'Password reset successfully' }
+        return respond(context, result, () => ({
+            status: 'success',
+            message: 'Password reset successfully',
+        }))
     },
 
     async verifyEmail(context: HttpContext<VerifyEmailInput>): Promise<VerifyEmailResponse> {
@@ -312,11 +237,7 @@ export default {
         const result = await emailVerificationService.verifyEmail(payload.token, {
             ipAddress: context.httpData.ip ?? '',
         })
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', message: result.value.message }
+        return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 
     async resendVerificationEmail(
@@ -328,11 +249,7 @@ export default {
         }
 
         const result = await emailVerificationService.queueVerificationEmail(userId)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', message: result.value.message }
+        return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 
     async startPhoneLink(
@@ -348,11 +265,7 @@ export default {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneLink'),
         })
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async confirmPhoneLink(
@@ -368,11 +281,7 @@ export default {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
         })
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 
     async startEmailLink(
@@ -385,10 +294,6 @@ export default {
 
         const payload = getTypedPayload(context)
         const result = await authService.startEmailLink(userId, payload)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return result.value
+        return respond(context, result)
     },
 }

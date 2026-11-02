@@ -48,7 +48,7 @@ flowchart LR
 
 - **Route** — об'єкт `defineRoute({ url, method, handler, validator, ResponseSchema, middlewares, rateLimit })` ([define-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts)). Групи задають `prefix`, спільні `middlewares` і `rateLimit`; `routesHandler` у [router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts) розгортає їх у плоский список і додає `appConfig.pathPrefix` (за замовчуванням `api`, змінна `API_PATH_PREFIX`).
 - **Middleware** — функція `(context, next)`; якщо вона не викликала `next()`, обробник не запускається (див. [Middleware](/backend/middlewares)).
-- **Controller** — отримує `HttpContext`, викликає сервіс, мапить помилку `Result` у HTTP-відповідь через `mapControllerError`.
+- **Controller** — отримує `HttpContext`, викликає сервіс, повертає `respond(context, result, toBody)`, який мапить помилку `Result` у HTTP-відповідь через `mapControllerError`.
 - **Service** — бізнес-логіка, повертає `Result.ok(...)` / `Result.err(...)`.
 - **Repository** — запити Drizzle (див. [/backend/database](/backend/database)).
 - **Transformer** — прибирає чутливі поля (`password`, `sessionToken`) і нормалізує дати.

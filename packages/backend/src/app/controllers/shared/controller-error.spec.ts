@@ -1,3 +1,4 @@
+import { Result } from 'better-result'
 import { describe, expect, it, vi } from 'vitest'
 import { badRequest, forbidden, internal } from '#app/services/shared/errors.js'
 import { mapControllerError, mapWsControllerError } from './controller-error.js'
@@ -92,5 +93,61 @@ describe('mapWsControllerError', () => {
         mapWsControllerError(context, internal(new Error('closed'), 'Support: failed'))
 
         expect(context.logger.error).not.toHaveBeenCalled()
+    })
+})
+
+describe('respond', () => {
+    it('returns the value as is', async () => {
+        const { respond } = await import('./controller-error.js')
+        const context = httpContext()
+
+        expect(respond(context, Result.ok({ a: 1 }))).toEqual({ a: 1 })
+        expect(context.responseData.status).toBe(200)
+    })
+
+    it('maps the value through toBody', async () => {
+        const { respond } = await import('./controller-error.js')
+        const context = httpContext()
+
+        const body = respond(context, Result.ok({ item: 'x' }), (value) => ({
+            status: 'ok' as const,
+            data: value.item,
+        }))
+
+        expect(body).toEqual({ status: 'ok', data: 'x' })
+    })
+
+    it('answers an error like mapControllerError and never calls toBody', async () => {
+        const { respond } = await import('./controller-error.js')
+        const context = httpContext()
+        const toBody = vi.fn()
+
+        const body = respond(context, Result.err(badRequest('bad', 'why')), toBody)
+
+        expect(context.responseData.status).toBe(400)
+        expect(body).toEqual({
+            status: 'error',
+            code: 'bad_request',
+            message: 'bad',
+            reason: 'why',
+        })
+        expect(toBody).not.toHaveBeenCalled()
+    })
+})
+
+describe('respondWs', () => {
+    it('writes the WS status for an error and returns the value otherwise', async () => {
+        const { respondWs } = await import('./controller-error.js')
+        const failed = wsContext()
+        const ok = wsContext()
+
+        expect(respondWs(failed, Result.err(forbidden('Access denied')))).toEqual({
+            status: 'error',
+            code: 'forbidden',
+            message: 'Access denied',
+        })
+        expect(failed.responseData.status).toBe('403')
+        expect(respondWs(ok, Result.ok({ status: 'success' }))).toEqual({ status: 'success' })
+        expect(ok.responseData.status).toBe('200')
     })
 })
