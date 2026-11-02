@@ -26,20 +26,20 @@ flowchart LR
 
 Сервіси лежать у [`src/app/services`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services). Index-файлів у доменах немає — імпорт іде з конкретного файлу.
 
-| Домен            | Відповідальність                                                                        |
-| ---------------- | --------------------------------------------------------------------------------------- |
-| `actions/`       | Лише типи `ToolDefinition` / `ToolCallHandler` для викликів інструментів                |
-| `admin/`         | Онлайн-користувачі, історія онлайну, підписка адміна на WS-канал                        |
-| `ai/`            | Адаптери LLM-провайдерів (OpenAI, Mistral, xAI), промпти, облік використання (`usage/`) |
-| `auth/`          | Реєстрація/логін, OAuth, скидання пароля, верифікація email/SMS, throttle, WS-токен     |
-| `communication/` | Broadcast, присутність у WS, онлайн-статус, URL WebSocket                               |
-| `core/`          | `mainService`: init, сесія, оновлення WS-токена                                         |
-| `notifications/` | Email, push-підписки та відправка push                                                  |
-| `observability/` | Інтеграція із Sentry                                                                    |
-| `shared/`        | `AppError`/`AppResult`, `tryInternal`, мапінг помилок у HTTP/WS, мова                   |
-| `statistics/`    | Статистика push-підписок                                                                |
-| `support/`       | Чат підтримки, база знань, ембединги, LLM, переклад запитів                             |
-| `user/`          | Аватар                                                                                  |
+| Домен            | Відповідальність                                                                         |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `actions/`       | Лише типи `ToolDefinition` / `ToolCallHandler` для викликів інструментів                 |
+| `admin/`         | Онлайн-користувачі, історія онлайну, підписка адміна на WS-канал                         |
+| `ai/`            | Адаптери LLM-провайдерів (OpenAI, Mistral, xAI), промпти, облік використання (`usage/`)  |
+| `auth/`          | Реєстрація/логін, OAuth, скидання пароля, верифікація email/SMS, throttle, WS-токен      |
+| `communication/` | Broadcast, присутність у WS, онлайн-статус, URL WebSocket                                |
+| `core/`          | `mainService`: init, сесія, оновлення WS-токена                                          |
+| `notifications/` | Email, push-підписки та відправка push                                                   |
+| `observability/` | Інтеграція із Sentry                                                                     |
+| `shared/`        | `AppError`/`AppResult`, логування 5xx (`reportAppError`), мапінг помилок у HTTP/WS, мова |
+| `statistics/`    | Статистика push-підписок                                                                 |
+| `support/`       | Чат підтримки, база знань, ембединги, LLM, переклад запитів                              |
+| `user/`          | Аватар                                                                                   |
 
 ## Як сервіси оголошуються
 
@@ -47,7 +47,7 @@ DI-контейнера немає. Сервіс — модульний синг
 
 ## Результати та помилки
 
-Сервіси повертають `AppResult<T> = Result<T, AppError>` з `better-result` для очікуваних результатів, а збої інфраструктури кидають. `AppError` — дискримінований union за `_tag` ([errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)); конструктори: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `rateLimited`, `internal`. Виклики репозиторіїв не обгортаються ([ADR 0004](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0004-result-for-expected-outcomes.md)); best-effort крок (видалити старий файл з S3) ловить виняток локально і пише `warn`. Приклад — [Крок 6](/backend/adding-a-feature#крок-6-service). `tryInternal` у [result-helpers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/result-helpers.ts) лишився лише в сервісах авторизації, які ще не переведені (етап 4 плану обробки помилок).
+Сервіси повертають `AppResult<T> = Result<T, AppError>` з `better-result` для очікуваних результатів, а збої інфраструктури кидають. `AppError` — дискримінований union за `_tag` ([errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)); конструктори: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `rateLimited`, `internal`. Виклики репозиторіїв не обгортаються ([ADR 0004](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0004-result-for-expected-outcomes.md)); best-effort крок (видалити старий файл з S3) ловить виняток локально і пише `warn`. Приклад — [Крок 6](/backend/adding-a-feature#крок-6-service).
 
 Бізнес-правила (перевірка власника ресурсу, throttle, генерація токенів, повідомлення) живуть у сервісах.
 

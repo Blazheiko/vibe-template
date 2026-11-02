@@ -13,7 +13,6 @@ import {
     unauthorized,
     type AppResult,
 } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { emailVerificationService } from '#app/services/auth/email-verification-service.js'
@@ -35,7 +34,7 @@ import {
     normalizePhone,
     REGISTER_PHONE_FLOW,
 } from '#app/services/auth/auth-normalize.js'
-import { throttlePolicies } from '#config/throttle-policies.js'
+import { throttlePolicies, type ThrottlePolicy } from '#config/throttle-policies.js'
 import {
     extractChallengeSessionId,
     extractChallengeUserId,
@@ -106,23 +105,25 @@ export function resolveLoginKey(identifier: string): LoginKey | null {
     return Result.isError(phone) ? null : { kind: 'phone', value: phone.value }
 }
 
-async function createPasswordHash(password: string): Promise<AppResult<string>> {
-    return await tryInternal(() => hashPassword(password), 'Failed to hash password')
+// A correct password resets the per-account budget. Best effort: a failure here must not
+// fail the sign-in or the password change that already succeeded.
+async function resetThrottleQuietly(
+    policy: ThrottlePolicy,
+    key: string,
+    step: 'Login' | 'Change password',
+): Promise<void> {
+    try {
+        await resetAuthThrottle(policy, key)
+    } catch (err: unknown) {
+        logger.warn({ err }, `${step} throttle reset failed`)
+    }
 }
 
 async function requireCurrentPasswordReauth(
     userId: bigint,
     currentPassword: string,
 ): Promise<AppResult<UserRow>> {
-    const userResult = await tryInternal(
-        () => userRepository.findById(userId),
-        'Failed to load user',
-    )
-    if (Result.isError(userResult)) {
-        return Result.err(userResult.error)
-    }
-
-    const user = userResult.value
+    const user = await userRepository.findById(userId)
     if (user === undefined) {
         return Result.err(notFound('User', 'User not found'))
     }
@@ -132,15 +133,9 @@ async function requireCurrentPasswordReauth(
         return Result.err(badRequest('Set a password before managing recovery methods'))
     }
 
-    const validResult = await tryInternal(
-        () => validatePassword(currentPassword, passwordHash),
-        'Failed to validate current password',
-    )
-    if (Result.isError(validResult)) {
-        return Result.err(validResult.error)
-    }
+    const validResult = await validatePassword(currentPassword, passwordHash)
 
-    if (!validResult.value) {
+    if (!validResult) {
         return Result.err(badRequest('Current password is incorrect'))
     }
 
@@ -153,30 +148,18 @@ async function buildAuthSuccess(
     session: Session,
     loginFailureMessage = 'Failed to log in user',
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const loggedInResult = await tryInternal(
-        () => auth.login(String(user.id), user.sessionToken),
-        'Failed to log in user',
-    )
-    if (Result.isError(loggedInResult)) {
-        return Result.err(loggedInResult.error)
-    }
+    const loggedInResult = await auth.login(String(user.id), user.sessionToken)
 
-    if (!loggedInResult.value) {
+    if (!loggedInResult) {
         return Result.err(internalMessage(loginFailureMessage))
     }
 
     const sessionInfo = session.sessionInfo
     let wsToken = ''
     if (sessionInfo !== null) {
-        const wsTokenResult = await tryInternal(
-            () => generateWsToken(sessionInfo, String(user.id)),
-            'Failed to generate WebSocket token',
-        )
-        if (Result.isError(wsTokenResult)) {
-            return Result.err(wsTokenResult.error)
-        }
+        const wsTokenResult = await generateWsToken(sessionInfo, String(user.id))
 
-        wsToken = wsTokenResult.value
+        wsToken = wsTokenResult
     }
 
     const csrfToken = getSessionCsrfToken(sessionInfo)
@@ -204,21 +187,12 @@ async function persistRegisteredUser(
         challengeIdToInvalidate?: string
     },
 ): Promise<AppResult<Awaited<ReturnType<typeof userRepository.create>>>> {
-    const userCreatedResult = await tryInternal(
-        () =>
-            userRepository.create({
-                name: createUserInput.name,
-                email: createUserInput.email,
-                phone: createUserInput.phone,
-                password: createUserInput.passwordHash,
-            }),
-        'Failed to create user',
-    )
-    if (Result.isError(userCreatedResult)) {
-        return Result.err(userCreatedResult.error)
-    }
-
-    const userCreated = userCreatedResult.value
+    const userCreated = await userRepository.create({
+        name: createUserInput.name,
+        email: createUserInput.email,
+        phone: createUserInput.phone,
+        password: createUserInput.passwordHash,
+    })
 
     if (options.sendEmailVerification) {
         void emailVerificationService.sendVerificationEmailAfterRegistration(userCreated.id)
@@ -261,13 +235,7 @@ async function finalizeRegistration(
         return Result.err(userCreatedResult.error)
     }
 
-    const destroySessionResult = await tryInternal(
-        () => session.destroySession(session.sessionInfo?.id),
-        'Failed to destroy session',
-    )
-    if (Result.isError(destroySessionResult)) {
-        return Result.err(destroySessionResult.error)
-    }
+    await session.destroySession(session.sessionInfo?.id)
 
     return await buildAuthSuccess(
         userCreatedResult.value,
@@ -308,39 +276,28 @@ async function registerEmailFlow(
     const ipThrottle = await enforceThrottle(
         throttlePolicies.registerEmailIp,
         requestMeta.ipAddress,
-        {
-            unavailable: 'Failed to enforce email registration IP throttle',
-            rejected: badRequest('Too many registration attempts. Please try again later.'),
-        },
+        badRequest('Too many registration attempts. Please try again later.'),
     )
     if (Result.isError(ipThrottle)) {
         return Result.err(ipThrottle.error)
     }
 
-    const emailThrottle = await enforceThrottle(throttlePolicies.registerEmailIdentifier, email, {
-        unavailable: 'Failed to enforce email registration identifier throttle',
-        rejected: badRequest('Too many registration attempts. Please try again later.'),
-    })
+    const emailThrottle = await enforceThrottle(
+        throttlePolicies.registerEmailIdentifier,
+        email,
+        badRequest('Too many registration attempts. Please try again later.'),
+    )
     if (Result.isError(emailThrottle)) {
         return Result.err(emailThrottle.error)
     }
 
     // Hashed before the address is looked up, so a taken address costs the same time as a new
     // one: otherwise the duration of the answer says whether the address is registered.
-    const hashResult = await createPasswordHash(password)
-    if (Result.isError(hashResult)) {
-        return Result.err(hashResult.error)
-    }
+    const passwordHash = await hashPassword(password)
 
-    const existResult = await tryInternal(
-        () => userRepository.findByEmail(email),
-        'Failed to load user by email',
-    )
-    if (Result.isError(existResult)) {
-        return Result.err(existResult.error)
-    }
+    const existResult = await userRepository.findByEmail(email)
 
-    if (existResult.value !== undefined) {
+    if (existResult !== undefined) {
         return Result.ok({
             status: 'success',
             message: GENERIC_EMAIL_REGISTRATION_MESSAGE,
@@ -353,7 +310,7 @@ async function registerEmailFlow(
                 name,
                 email,
                 phone: null,
-                passwordHash: hashResult.value,
+                passwordHash,
             },
             auth,
             session,
@@ -368,7 +325,7 @@ async function registerEmailFlow(
             name,
             email,
             phone: null,
-            passwordHash: hashResult.value,
+            passwordHash,
         },
         {
             sendEmailVerification: true,
@@ -378,13 +335,7 @@ async function registerEmailFlow(
         return Result.err(registeredUserResult.error)
     }
 
-    const destroySessionResult = await tryInternal(
-        () => session.destroySession(session.sessionInfo?.id),
-        'Failed to destroy session',
-    )
-    if (Result.isError(destroySessionResult)) {
-        return Result.err(destroySessionResult.error)
-    }
+    await session.destroySession(session.sessionInfo?.id)
 
     return Result.ok({
         status: 'success',
@@ -429,31 +380,23 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.registerPhoneIp,
             requestMeta.ipAddress,
-            {
-                unavailable: 'Failed to enforce auth IP throttle',
-                rejected: badRequest('Too many verification attempts. Please try again later.'),
-            },
+            badRequest('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
 
-        const phoneThrottle = await enforceThrottle(throttlePolicies.smsSendPhone, phone, {
-            unavailable: 'Failed to enforce auth phone throttle',
-            rejected: badRequest('Too many verification attempts. Please try again later.'),
-        })
+        const phoneThrottle = await enforceThrottle(
+            throttlePolicies.smsSendPhone,
+            phone,
+            badRequest('Too many verification attempts. Please try again later.'),
+        )
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
         }
 
-        const existingUserResult = await tryInternal(
-            () => userRepository.findByPhone(phone),
-            'Failed to load user by phone',
-        )
-        if (Result.isError(existingUserResult)) {
-            return Result.err(existingUserResult.error)
-        }
-        const collisionDetected = existingUserResult.value !== undefined
+        const existingUser = await userRepository.findByPhone(phone)
+        const collisionDetected = existingUser !== undefined
 
         const pendingChallengeResult = await findPendingChallenge(phone, REGISTER_PHONE_FLOW)
         if (Result.isError(pendingChallengeResult)) {
@@ -511,23 +454,12 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.confirmPhoneIp,
             requestMeta.ipAddress,
-            {
-                unavailable: 'Failed to enforce phone confirmation IP throttle',
-                rejected: badRequest('Too many verification attempts. Please try again later.'),
-            },
+            badRequest('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
-        const challengeResult = await tryInternal(
-            () => smsAuthChallengeRepository.findById(payload.challengeId),
-            'Failed to load SMS auth challenge',
-        )
-        if (Result.isError(challengeResult)) {
-            return Result.err(challengeResult.error)
-        }
-
-        const challenge = challengeResult.value
+        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
         if (challenge?.flow !== REGISTER_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone registration challenge not found'))
         }
@@ -571,15 +503,7 @@ export const authService = {
             return gateResult
         }
 
-        const challengeResult = await tryInternal(
-            () => smsAuthChallengeRepository.findById(payload.challengeId),
-            'Failed to load SMS auth challenge',
-        )
-        if (Result.isError(challengeResult)) {
-            return Result.err(challengeResult.error)
-        }
-
-        const challenge = challengeResult.value
+        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
         if (challenge?.flow !== REGISTER_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone registration challenge not found'))
         }
@@ -607,28 +531,19 @@ export const authService = {
             )
         }
 
-        const existingUserResult = await tryInternal(
-            () => userRepository.findByPhone(challenge.phone),
-            'Failed to load user by phone',
-        )
-        if (Result.isError(existingUserResult)) {
-            return Result.err(existingUserResult.error)
-        }
-        if (existingUserResult.value !== undefined) {
+        const existingUser = await userRepository.findByPhone(challenge.phone)
+        if (existingUser !== undefined) {
             return Result.err(conflict('Phone already exist'))
         }
 
-        const hashResult = await createPasswordHash(payload.password)
-        if (Result.isError(hashResult)) {
-            return Result.err(hashResult.error)
-        }
+        const passwordHash = await hashPassword(payload.password)
 
         return await finalizeRegistration(
             {
                 name: payload.name,
                 email: null,
                 phone: challenge.phone,
-                passwordHash: hashResult.value,
+                passwordHash,
             },
             auth,
             session,
@@ -680,31 +595,23 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.linkPhoneIp,
             requestMeta.ipAddress,
-            {
-                unavailable: 'Failed to enforce phone linking IP throttle',
-                rejected: badRequest('Too many verification attempts. Please try again later.'),
-            },
+            badRequest('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
 
-        const phoneThrottle = await enforceThrottle(throttlePolicies.smsSendPhone, phone, {
-            unavailable: 'Failed to enforce phone linking identifier throttle',
-            rejected: badRequest('Too many verification attempts. Please try again later.'),
-        })
+        const phoneThrottle = await enforceThrottle(
+            throttlePolicies.smsSendPhone,
+            phone,
+            badRequest('Too many verification attempts. Please try again later.'),
+        )
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
         }
 
-        const phoneExistsResult = await tryInternal(
-            () => userRepository.phoneExistsForOtherUser(phone, userId),
-            'Failed to validate phone ownership',
-        )
-        if (Result.isError(phoneExistsResult)) {
-            return Result.err(phoneExistsResult.error)
-        }
-        if (phoneExistsResult.value) {
+        const phoneExists = await userRepository.phoneExistsForOtherUser(phone, userId)
+        if (phoneExists) {
             return Result.err(conflict('Phone is already linked to another account'))
         }
 
@@ -756,24 +663,13 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.confirmLinkPhoneIp,
             requestMeta.ipAddress,
-            {
-                unavailable: 'Failed to enforce phone linking confirmation IP throttle',
-                rejected: badRequest('Too many verification attempts. Please try again later.'),
-            },
+            badRequest('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
 
-        const challengeResult = await tryInternal(
-            () => smsAuthChallengeRepository.findById(payload.challengeId),
-            'Failed to load SMS auth challenge',
-        )
-        if (Result.isError(challengeResult)) {
-            return Result.err(challengeResult.error)
-        }
-
-        const challenge = challengeResult.value
+        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
         if (challenge?.flow !== LINK_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone linking challenge not found'))
         }
@@ -807,14 +703,7 @@ export const authService = {
             return Result.err(codeResult.error)
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findById(userId),
-            'Failed to load user',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-        const user = userResult.value
+        const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
@@ -822,14 +711,8 @@ export const authService = {
             return Result.err(badRequest('Phone is already linked to this account'))
         }
 
-        const phoneExistsResult = await tryInternal(
-            () => userRepository.phoneExistsForOtherUser(challenge.phone, userId),
-            'Failed to validate phone ownership',
-        )
-        if (Result.isError(phoneExistsResult)) {
-            return Result.err(phoneExistsResult.error)
-        }
-        if (phoneExistsResult.value) {
+        const phoneExists = await userRepository.phoneExistsForOtherUser(challenge.phone, userId)
+        if (phoneExists) {
             return Result.err(conflict('Phone is already linked to another account'))
         }
 
@@ -840,15 +723,7 @@ export const authService = {
             return Result.err(confirmedResult.error)
         }
 
-        const updatedUserResult = await tryInternal(
-            () => userRepository.update(userId, { phone: challenge.phone }),
-            'Failed to link phone to user account',
-        )
-        if (Result.isError(updatedUserResult)) {
-            return Result.err(updatedUserResult.error)
-        }
-
-        const updatedUser = updatedUserResult.value
+        const updatedUser = await userRepository.update(userId, { phone: challenge.phone })
         if (updatedUser === undefined) {
             return Result.err(internalMessage('Failed to link phone to user account'))
         }
@@ -876,18 +751,20 @@ export const authService = {
 
         const email = normalizeEmail(payload.email)
 
-        const targetThrottle = await enforceThrottle(throttlePolicies.linkEmailTarget, email, {
-            unavailable: 'Failed to enforce email linking target throttle',
-            rejected: badRequest('Too many verification attempts. Please try again later.'),
-        })
+        const targetThrottle = await enforceThrottle(
+            throttlePolicies.linkEmailTarget,
+            email,
+            badRequest('Too many verification attempts. Please try again later.'),
+        )
         if (Result.isError(targetThrottle)) {
             return Result.err(targetThrottle.error)
         }
 
-        const userThrottle = await enforceThrottle(throttlePolicies.linkEmailUser, String(userId), {
-            unavailable: 'Failed to enforce email linking user throttle',
-            rejected: badRequest('Too many verification attempts. Please try again later.'),
-        })
+        const userThrottle = await enforceThrottle(
+            throttlePolicies.linkEmailUser,
+            String(userId),
+            badRequest('Too many verification attempts. Please try again later.'),
+        )
         if (Result.isError(userThrottle)) {
             return Result.err(userThrottle.error)
         }
@@ -895,23 +772,14 @@ export const authService = {
         const userCooldown = await enforceThrottle(
             throttlePolicies.linkEmailUserCooldown,
             String(userId),
-            {
-                unavailable: 'Failed to enforce email linking cooldown',
-                rejected: badRequest('Too many verification attempts. Please try again later.'),
-            },
+            badRequest('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(userCooldown)) {
             return Result.err(userCooldown.error)
         }
 
-        const emailExistsResult = await tryInternal(
-            () => userRepository.emailExistsForOtherUser(email, userId),
-            'Failed to validate email ownership',
-        )
-        if (Result.isError(emailExistsResult)) {
-            return Result.err(emailExistsResult.error)
-        }
-        if (emailExistsResult.value) {
+        const emailExists = await userRepository.emailExistsForOtherUser(email, userId)
+        if (emailExists) {
             return Result.err(conflict('Email is already linked to another account'))
         }
 
@@ -939,10 +807,11 @@ export const authService = {
 
         // Consume before the lookup: same cost for every outcome, no check/increment race. A spent
         // counter answers like a wrong password: nothing tells the two apart.
-        const ipThrottle = await enforceThrottle(throttlePolicies.loginIp, requestMeta.ipAddress, {
-            unavailable: 'Failed to enforce login IP throttle',
-            rejected: unauthorized('Invalid email or password'),
-        })
+        const ipThrottle = await enforceThrottle(
+            throttlePolicies.loginIp,
+            requestMeta.ipAddress,
+            unauthorized('Invalid email or password'),
+        )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
@@ -954,27 +823,15 @@ export const authService = {
         const identifierThrottle = await enforceThrottle(
             throttlePolicies.loginIdentifier,
             loginKey.value,
-            {
-                unavailable: 'Failed to enforce login identifier throttle',
-                rejected: unauthorized('Invalid email or password'),
-            },
+            unauthorized('Invalid email or password'),
         )
         if (Result.isError(identifierThrottle)) {
             return Result.err(identifierThrottle.error)
         }
 
-        const userResult = await tryInternal(
-            () =>
-                loginKey.kind === 'email'
-                    ? userRepository.findByEmail(loginKey.value)
-                    : userRepository.findByPhone(loginKey.value),
-            `Failed to load user by ${loginKey.kind}`,
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await (loginKey.kind === 'email'
+            ? userRepository.findByEmail(loginKey.value)
+            : userRepository.findByPhone(loginKey.value))
         if (user === undefined) {
             return invalidCredentials()
         }
@@ -985,15 +842,9 @@ export const authService = {
             return invalidCredentials()
         }
 
-        const validResult = await tryInternal(
-            () => validatePassword(password, passwordHash),
-            'Failed to validate password',
-        )
-        if (Result.isError(validResult)) {
-            return Result.err(validResult.error)
-        }
+        const valid = await validatePassword(password, passwordHash)
 
-        if (!validResult.value) {
+        if (!valid) {
             return invalidCredentials()
         }
 
@@ -1011,13 +862,7 @@ export const authService = {
         }
 
         // The correct password resets the per-account budget; the IP budget stays.
-        const resetResult = await tryInternal(
-            () => resetAuthThrottle(throttlePolicies.loginIdentifier, loginKey.value),
-            'Failed to reset login identifier throttle',
-        )
-        if (Result.isError(resetResult)) {
-            logger.warn({ err: resetResult.error }, 'Login throttle reset failed')
-        }
+        await resetThrottleQuietly(throttlePolicies.loginIdentifier, loginKey.value, 'Login')
 
         const success = await buildAuthSuccess(user, auth, session)
         if (Result.isOk(success)) userNotificationService.security(user.id, 'new_sign_in')
@@ -1028,12 +873,9 @@ export const authService = {
         auth: Auth,
         session: Session,
     ): Promise<AppResult<{ status: 'success'; csrfToken: string }>> {
-        const result = await tryInternal(() => auth.logout(), 'Failed to log out user')
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
+        const result = await auth.logout()
 
-        if (!result.value) {
+        if (!result) {
             return Result.err(internalMessage('Failed to log out user'))
         }
 
@@ -1066,13 +908,7 @@ export const authService = {
             return Result.err(internalMessage('No signed-in session to renew'))
         }
 
-        const result = await tryInternal(
-            () => auth.login(userId, userToken),
-            'Failed to renew session',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
+        await auth.login(userId, userToken)
 
         const sessionInfo = session.sessionInfo
         const csrfToken = getSessionCsrfToken(sessionInfo)
@@ -1081,14 +917,8 @@ export const authService = {
         }
         // The open WebSocket is bound to the deleted session: the client reconnects
         // with this token.
-        const wsTokenResult = await tryInternal(
-            () => generateWsToken(sessionInfo, userId),
-            'Failed to generate WebSocket token',
-        )
-        if (Result.isError(wsTokenResult)) {
-            return Result.err(wsTokenResult.error)
-        }
-        return Result.ok({ csrfToken, wsUrl: getWsUrl(), wsToken: wsTokenResult.value })
+        const wsTokenResult = await generateWsToken(sessionInfo, userId)
+        return Result.ok({ csrfToken, wsUrl: getWsUrl(), wsToken: wsTokenResult })
     },
 
     async logoutAll(
@@ -1100,21 +930,12 @@ export const authService = {
         // failure fails the request; auth.logoutAll() below only deletes the records,
         // and every one of them is already rejected if that step fails.
         if (userId !== null) {
-            const rotated = await tryInternal(
-                () => userRepository.update(BigInt(userId), { sessionToken: nanoid() }),
-                'Failed to revoke sessions',
-            )
-            if (Result.isError(rotated)) {
-                return Result.err(rotated.error)
-            }
-            if (rotated.value === undefined) {
+            const rotated = await userRepository.update(BigInt(userId), { sessionToken: nanoid() })
+            if (rotated === undefined) {
                 return Result.err(notFound('User', 'User not found'))
             }
         }
-        const result = await tryInternal(() => auth.logoutAll(), 'Failed to log out all sessions')
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
+        const result = await auth.logoutAll()
         if (userId !== null) userNotificationService.security(BigInt(userId), 'logout_all')
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
@@ -1124,7 +945,7 @@ export const authService = {
 
         return Result.ok({
             status: 'success',
-            deletedCount: result.value,
+            deletedCount: result,
             csrfToken,
         })
     },
@@ -1137,24 +958,13 @@ export const authService = {
         const throttle = await enforceThrottle(
             throttlePolicies.changePasswordUser,
             String(userId),
-            {
-                unavailable: 'Failed to enforce change password throttle',
-                rejected: badRequest('Too many password change attempts. Please try again later.'),
-            },
+            badRequest('Too many password change attempts. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findById(userId),
-            'Failed to load user',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
@@ -1167,26 +977,14 @@ export const authService = {
             }
 
             const currentPassword = payload.currentPassword
-            const validResult = await tryInternal(
-                () => validatePassword(currentPassword, storedPassword),
-                'Failed to validate current password',
-            )
-            if (Result.isError(validResult)) {
-                return Result.err(validResult.error)
-            }
+            const valid = await validatePassword(currentPassword, storedPassword)
 
-            if (!validResult.value) {
+            if (!valid) {
                 return Result.err(badRequest('Current password is incorrect'))
             }
         }
 
-        const newPasswordHashResult = await tryInternal(
-            () => hashPassword(payload.newPassword),
-            'Failed to hash password',
-        )
-        if (Result.isError(newPasswordHashResult)) {
-            return Result.err(newPasswordHashResult.error)
-        }
+        const newPasswordHash = await hashPassword(payload.newPassword)
 
         // ADR 0002: the new password and the rotated sessionToken are one conditional
         // UPDATE. Every other session of the user stops working with it, whether or not
@@ -1194,41 +992,30 @@ export const authService = {
         // the same current password only one finds it still in place.
         const previousSessionToken = user.sessionToken
         const rotatedSessionToken = nanoid()
-        const updatedResult = await tryInternal(
-            () =>
-                userRepository.changePasswordIfCurrent(userId, storedPassword, {
-                    password: newPasswordHashResult.value,
-                    sessionToken: rotatedSessionToken,
-                }),
-            'Failed to update password',
-        )
-        if (Result.isError(updatedResult)) {
-            return Result.err(updatedResult.error)
-        }
+        const updated = await userRepository.changePasswordIfCurrent(userId, storedPassword, {
+            password: newPasswordHash,
+            sessionToken: rotatedSessionToken,
+        })
 
-        if (updatedResult.value === undefined) {
+        if (updated === undefined) {
             return Result.err(
                 conflict('Password was changed by another request. Please try again.'),
             )
         }
 
-        const resetResult = await tryInternal(
-            () => resetAuthThrottle(throttlePolicies.changePasswordUser, String(userId)),
-            'Failed to reset change password throttle',
+        await resetThrottleQuietly(
+            throttlePolicies.changePasswordUser,
+            String(userId),
+            'Change password',
         )
-        if (Result.isError(resetResult)) {
-            logger.warn({ err: resetResult.error }, 'Change password throttle reset failed')
-        }
 
         // Memory cleanup, not the revocation: a failure leaves records that are already
         // rejected, so it is logged and the password change still succeeds.
-        const cleanupResult = await tryInternal(
-            () => destroyAllSessions(previousSessionToken),
-            'Failed to delete previous sessions',
-        )
-        if (Result.isError(cleanupResult)) {
+        try {
+            await destroyAllSessions(previousSessionToken)
+        } catch (err: unknown) {
             logger.warn(
-                { err: cleanupResult.error, userId: String(userId) },
+                { err, userId: String(userId) },
                 'Previous sessions not deleted after a password change',
             )
         }

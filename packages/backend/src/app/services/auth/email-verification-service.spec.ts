@@ -408,10 +408,16 @@ describe('verification throttles', () => {
     ])('verify email: rejected without checking the token when %s', async (_n, arrange) => {
         arrange()
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('some-token', {
-            ipAddress: '10.0.0.5',
-        })
-        expect(Result.isError(result)).toBe(true)
+        // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
+        const refused = await emailVerificationService
+            .verifyEmail('some-token', {
+                ipAddress: '10.0.0.5',
+            })
+            .then(
+                (result) => Result.isError(result),
+                () => true,
+            )
+        expect(refused).toBe(true)
         expect(emailVerificationRepositoryMock.findByTokenHash).not.toHaveBeenCalled()
         expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'verify_email_ip' }),
@@ -428,8 +434,12 @@ describe('verification throttles', () => {
     ])('resend verification: no email queued when %s', async (_n, arrange) => {
         arrange()
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.queueVerificationEmail(7n)
-        expect(Result.isError(result)).toBe(true)
+        // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
+        const refused = await emailVerificationService.queueVerificationEmail(7n).then(
+            (result) => Result.isError(result),
+            () => true,
+        )
+        expect(refused).toBe(true)
         expect(userRepositoryMock.findById).not.toHaveBeenCalled()
         expect(emailVerificationRepositoryMock.create).not.toHaveBeenCalled()
         expect(emailServiceMock.send).not.toHaveBeenCalled()

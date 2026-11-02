@@ -114,10 +114,7 @@ export const emailVerificationService = {
         const throttle = await enforceThrottle(
             throttlePolicies.verifyEmailIp,
             requestMeta.ipAddress,
-            {
-                unavailable: 'Failed to enforce email verification throttle',
-                rejected: badRequest('Too many verification attempts. Please try again later.'),
-            },
+            badRequest('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
@@ -243,12 +240,7 @@ export const emailVerificationService = {
         const throttle = await enforceThrottle(
             throttlePolicies.resendVerificationUser,
             String(userId),
-            {
-                unavailable: 'Failed to enforce verification email throttle',
-                rejected: badRequest(
-                    'Too many verification emails requested. Please try again later.',
-                ),
-            },
+            badRequest('Too many verification emails requested. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)

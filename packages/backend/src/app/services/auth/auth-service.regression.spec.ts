@@ -333,15 +333,16 @@ describe('auth throttle fail-closed (email registration)', () => {
         consumeAuthThrottleMock.mockRejectedValue(new Error('redis down'))
 
         const { authService } = await loadAuthService()
-        const result = await authService.registerByEmail(
-            { name: 'Jane', email: 'user@example.com', password: 'secret123', token: '' },
-            authMock as any,
-            sessionMock as any,
-            loggerMock as any,
-            { ipAddress: '127.0.0.1' },
-        )
-
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            authService.registerByEmail(
+                { name: 'Jane', email: 'user@example.com', password: 'secret123', token: '' },
+                authMock as any,
+                sessionMock as any,
+                loggerMock as any,
+                { ipAddress: '127.0.0.1' },
+            ),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
         expect(userRepositoryMock.create).not.toHaveBeenCalled()
@@ -359,11 +360,17 @@ describe('change password throttle', () => {
         arrange()
         userRepositoryMock.findById.mockResolvedValue({ id: 7n, password: 'stored-password-hash' })
         const { authService } = await loadAuthService()
-        const result = await authService.changePassword(7n, {
-            currentPassword: 'guess',
-            newPassword: 'new-password-123',
-        })
-        expect(Result.isError(result)).toBe(true)
+        // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
+        const refused = await authService
+            .changePassword(7n, {
+                currentPassword: 'guess',
+                newPassword: 'new-password-123',
+            })
+            .then(
+                (result) => Result.isError(result),
+                () => true,
+            )
+        expect(refused).toBe(true)
         expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
             expect.objectContaining({
                 scope: 'change_password_user',

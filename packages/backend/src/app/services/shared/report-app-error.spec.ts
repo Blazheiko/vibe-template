@@ -13,7 +13,6 @@ import {
     upstreamTimeout,
     type AppError,
 } from './errors.js'
-import { toInternalError } from './result-helpers.js'
 import { reportAppError } from './report-app-error.js'
 
 const report = (error: AppError) => {
@@ -83,10 +82,7 @@ describe('reportAppError', () => {
             }),
         ],
     ])('logs a Redis outage (%s) with sentrySkip', (_label, cause) => {
-        const error = toInternalError(cause)
-        expect(error._tag).toBe('ServiceUnavailable')
-
-        const logError = report(error)
+        const logError = report(serviceUnavailable(cause))
 
         expect(logError).toHaveBeenCalledTimes(1)
         expect(logError.mock.calls[0]?.[0]).toEqual({
@@ -96,18 +92,16 @@ describe('reportAppError', () => {
         })
     })
 
-    // Found in manual verification: an unreachable S3 (connect ECONNREFUSED) passed as a
-    // Redis outage, answered 503 and would have been hidden from Sentry.
-    it('treats a bare socket error from another service as Internal, visible to Sentry', () => {
+    // Found in manual verification (feat-086): an unreachable S3 (connect ECONNREFUSED)
+    // passed as a Redis outage and would have been hidden from Sentry.
+    it('keeps a bare socket error from another service visible to Sentry', () => {
         const cause = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:9'), {
             code: 'ECONNREFUSED',
         })
-        const error = toInternalError(cause, 'Failed to upload avatar')
-        expect(error._tag).toBe('Internal')
 
-        const logError = report(error)
+        const logError = report(serviceUnavailable(cause))
 
-        expect(logError.mock.calls[0]?.[0]).toEqual({ err: cause, appError: 'Internal' })
+        expect(logError.mock.calls[0]?.[0]).toEqual({ err: cause, appError: 'ServiceUnavailable' })
     })
 
     it('keeps a non-Redis ServiceUnavailable cause visible to Sentry', () => {

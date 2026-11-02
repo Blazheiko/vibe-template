@@ -167,15 +167,20 @@ describe.skipIf(!hasRedis)('logoutAll repeated after a stopped run', () => {
         const { context, responseData } = createRequest()
         expect(await executeMiddlewares(ROUTE_MIDDLEWARES, context)).toBe(true)
         await pause()
-        let first: unknown
+        // ADR 0004: the stopped cleanup throws; the transport answers it (classifyError).
+        let thrown: unknown
         try {
-            first = await AuthController.logoutAll(context as never)
+            thrown = await AuthController.logoutAll(context as never).then(
+                () => undefined,
+                (err: unknown) => err,
+            )
         } finally {
             await unpause()
         }
-        expect(responseData.status).toBe(503)
-        expect(first).toMatchObject({ code: 'service_unavailable' })
-        expect(first).not.toHaveProperty('deletedCount')
+        const { classifyError } = await import('#vendor/utils/network/errors/classify-error.js')
+        expect(classifyError(thrown)).toMatchObject({ status: 503, code: 'service_unavailable' })
+        // No success body with a deletedCount was produced.
+        expect(responseData.payload).not.toHaveProperty('deletedCount')
         // The records survived the stop ...
         expect(await userSessions()).toContain(`${PREFIX}session:${USER_TOKEN}:current`)
         expect(fakeUsers.tokens.get('42')).not.toBe(USER_TOKEN)

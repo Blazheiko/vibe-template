@@ -923,11 +923,13 @@ describe('auth throttle fail-closed (phone flows)', () => {
     it('rejects phone registration start without issuing a code', async () => {
         redisDown()
         const { authService } = await loadAuthService()
-        const result = await authService.startPhoneRegistration(
-            { phone: '+1 415 555 0123' },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id' },
-        )
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            authService.startPhoneRegistration(
+                { phone: '+1 415 555 0123' },
+                { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+            ),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
         expect(issueVerificationCodeMock).not.toHaveBeenCalled()
@@ -936,11 +938,13 @@ describe('auth throttle fail-closed (phone flows)', () => {
     it('rejects phone registration confirmation without loading the challenge', async () => {
         redisDown()
         const { authService } = await loadAuthService()
-        const result = await authService.confirmPhoneRegistration(
-            { challengeId: 'challenge-1', code: '000000' },
-            { ipAddress: '127.0.0.1' },
-        )
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            authService.confirmPhoneRegistration(
+                { challengeId: 'challenge-1', code: '000000' },
+                { ipAddress: '127.0.0.1' },
+            ),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(smsAuthChallengeRepositoryMock.findById).not.toHaveBeenCalled()
     })
@@ -956,12 +960,14 @@ describe('auth throttle fail-closed (phone flows)', () => {
         })
         validatePasswordMock.mockResolvedValue(true)
         const { authService } = await loadAuthService()
-        const result = await authService.startPhoneLink(
-            7n,
-            { phone: '+1 415 555 0123', currentPassword: 'secret123' },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id' },
-        )
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            authService.startPhoneLink(
+                7n,
+                { phone: '+1 415 555 0123', currentPassword: 'secret123' },
+                { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+            ),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
         expect(issueVerificationCodeMock).not.toHaveBeenCalled()
@@ -970,12 +976,14 @@ describe('auth throttle fail-closed (phone flows)', () => {
     it('rejects phone link confirmation without loading the challenge', async () => {
         redisDown()
         const { authService } = await loadAuthService()
-        const result = await authService.confirmPhoneLink(
-            7n,
-            { challengeId: 'link-challenge-1', code: '123456' },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id' },
-        )
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            authService.confirmPhoneLink(
+                7n,
+                { challengeId: 'link-challenge-1', code: '123456' },
+                { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+            ),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(smsAuthChallengeRepositoryMock.findById).not.toHaveBeenCalled()
     })
@@ -1083,8 +1091,8 @@ describe('login throttle', () => {
     it('fails closed on a Redis error without looking up the user', async () => {
         consumeAuthThrottleMock.mockReset()
         consumeAuthThrottleMock.mockRejectedValue(new Error('redis down'))
-        const result = await login('user@example.com')
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(login('user@example.com')).rejects.toThrow()
         expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
         expect(validatePasswordMock).not.toHaveBeenCalled()
     })
