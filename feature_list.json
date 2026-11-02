@@ -933,6 +933,16 @@
             "dependencies": ["feat-093"],
             "status": "done",
             "evidence": "Merged #315 (merge 4bb34e8; start #314): RequestSession (request-session.ts) keeps the per-request session state in fields (info, cookieHeld, storageToken, swapped, preSendCheck) and changes it only through methods (restore, attach, login, logout, logoutAll, the move of an anonymous session to Redis); four module-level WeakMaps/WeakSet became one preSendCheck field, three beforeSend overwrites one schedule(); session-handler.ts 534 -> 130 lines. Behaviour unchanged: every existing session test passed without edits. Mutation checks: four guards each fail a test; two had no test before (swapped guard after an anonymous move, id check after the request's own logout) and got one. typecheck/lint/format:check clean, test backend 1924 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:redis 88, test:pg 153, frontend e2e 81, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist: full auth flow, no error records. Details were in progress.md on refactor/request-session (removed from main by this PR)."
+        },
+        {
+            "id": "feat-095",
+            "name": "Error Path Review Fixes",
+            "description": "Code review of the error-handling plan (REQUEST CHANGES): a missing Redis record leaves the new anonymous session in the old storage namespace and storeAnonymous does not switch it; the OAuth callback's state cleanup can bypass the error redirect; a path-parameter 400 loses the CORS Origin; the exception path sends every accumulated cookie (make it the session cookie only)",
+            "owner": "Blazheiko",
+            "branch": "fix/error-path-review",
+            "dependencies": ["feat-094"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
