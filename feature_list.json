@@ -931,8 +931,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/request-session",
             "dependencies": ["feat-093"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #315 (merge 4bb34e8; start #314): RequestSession (request-session.ts) keeps the per-request session state in fields (info, cookieHeld, storageToken, swapped, preSendCheck) and changes it only through methods (restore, attach, login, logout, logoutAll, the move of an anonymous session to Redis); four module-level WeakMaps/WeakSet became one preSendCheck field, three beforeSend overwrites one schedule(); session-handler.ts 534 -> 130 lines. Behaviour unchanged: every existing session test passed without edits. Mutation checks: four guards each fail a test; two had no test before (swapped guard after an anonymous move, id check after the request's own logout) and got one. typecheck/lint/format:check clean, test backend 1924 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:redis 88, test:pg 153, frontend e2e 81, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist: full auth flow, no error records. Details were in progress.md on refactor/request-session (removed from main by this PR)."
         }
     ]
 }
