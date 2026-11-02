@@ -6,6 +6,9 @@ import healthConfig from '#config/health.js'
 import appConfig from '#config/app.js'
 import databaseConfig from '#config/database.js'
 import { authConfig } from '#config/auth.js'
+import mailConfig from '#config/mail.js'
+import corsConfig from '#config/cors.js'
+import sentryConfig from '#config/sentry.js'
 import cspConfig from '#config/csp.js'
 import csrfConfig from '#config/csrf.js'
 import { networkConfig } from '#config/network.js'
@@ -35,6 +38,20 @@ export function getDatabaseSslWarning(): string | null {
 }
 
 export function validateRuntimeConfig(): void {
+    // Booleans and integers of the .env, read by one contract (feat-082)
+    const unreadable: [string, string | null][] = [
+        ['app', appConfig.configError],
+        ['auth', authConfig.configError],
+        ['mail', mailConfig.configError],
+        ['CORS', corsConfig.configError],
+        ['network', networkConfig.configError],
+        ['Sentry', sentryConfig.configError],
+        ['session', sessionConfig.configError],
+    ]
+    for (const [area, problem] of unreadable) {
+        if (problem !== null) throw new Error(`Invalid ${area} configuration: ${problem}`)
+    }
+
     if (cspConfig.configError !== null) {
         throw new Error(`Invalid CSP configuration: ${cspConfig.configError}`)
     }

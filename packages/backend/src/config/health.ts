@@ -1,18 +1,16 @@
 import { env } from 'node:process'
 
+import { parseInteger } from '#vendor/utils/env/read-int.js'
+
 // Per-dependency timeout of GET /ready (code-issues item 35).
 const readTimeout = (): { readinessTimeoutMs: number; configError: string | null } => {
-    const raw = env['READINESS_CHECK_TIMEOUT_MS']
-    if (raw === undefined || raw.trim() === '')
-        return { readinessTimeoutMs: 1000, configError: null }
-    const value = Number(raw.trim())
-    if (!/^\d+$/.test(raw.trim()) || value < 50 || value > 30_000) {
-        return {
-            readinessTimeoutMs: 1000,
-            configError: `READINESS_CHECK_TIMEOUT_MS must be an integer from 50 to 30000, got "${raw}"`,
-        }
-    }
-    return { readinessTimeoutMs: value, configError: null }
+    const { value, error } = parseInteger(
+        'READINESS_CHECK_TIMEOUT_MS',
+        env['READINESS_CHECK_TIMEOUT_MS'],
+        1000,
+        { min: 50, max: 30_000 },
+    )
+    return { readinessTimeoutMs: value, configError: error }
 }
 
 export default Object.freeze(readTimeout())

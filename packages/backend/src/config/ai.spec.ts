@@ -128,7 +128,7 @@ describe('AI config: the daily token budget (feat-063, D2)', () => {
     ])('reports %s=%s', async (name, value) => {
         process.env[name] = value
         const config = await load()
-        expect(config.configError).toContain(`${name} must be a non-negative integer`)
+        expect(config.configError).toContain(`${name} must be an integer >= 0`)
     })
 })
 
@@ -145,17 +145,26 @@ describe('AI config: what the usage log keeps of a prompt (feat-065)', () => {
         ['true', true],
         ['false', false],
         [' TRUE ', true],
-    ])('reads AI_USAGE_STORE_PROMPTS=%s', async (value, expected) => {
-        process.env['AI_USAGE_STORE_PROMPTS'] = value
-        expect((await load()).usage.storePrompts).toBe(expected)
-    })
+        ['yes', true],
+        ['1', true],
+        ['on', true],
+        ['no', false],
+        ['0', false],
+        ['off', false],
+    ])(
+        'reads AI_USAGE_STORE_PROMPTS=%s (the one boolean contract, feat-082)',
+        async (value, expected) => {
+            process.env['AI_USAGE_STORE_PROMPTS'] = value
+            expect((await load()).usage.storePrompts).toBe(expected)
+        },
+    )
 
-    it.each([['yes'], ['1'], ['on'], ['ture']])(
+    it.each([['ture'], ['enabled'], ['2'], ['y']])(
         'rejects AI_USAGE_STORE_PROMPTS=%s instead of guessing (a typo must not start keeping prompts)',
         async (value) => {
             process.env['AI_USAGE_STORE_PROMPTS'] = value
             expect((await load()).configError).toContain(
-                'AI_USAGE_STORE_PROMPTS must be true or false',
+                'AI_USAGE_STORE_PROMPTS must be one of true, 1, yes, on, false, 0, no, off',
             )
         },
     )

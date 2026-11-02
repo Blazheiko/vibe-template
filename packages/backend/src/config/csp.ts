@@ -1,7 +1,7 @@
 import { env } from 'node:process'
 import appConfig from '#config/app.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
-import { parseBoolean } from '#vendor/utils/env/parse-boolean.js'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 import {
     buildCspValue,
     buildDocumentDirectives,
@@ -65,9 +65,14 @@ try {
     configError = err instanceof Error ? err.message : String(err)
 }
 
+const reader = createEnvReader()
+const enabled = reader.bool('CSP_ENABLED', true)
+const reportOnly = reader.bool('CSP_REPORT_ONLY', false)
+const problems = [configError, reader.error].filter((error) => error !== null)
+
 export default Object.freeze({
-    enabled: parseBoolean(env['CSP_ENABLED'], true) && configError === null,
-    reportOnly: parseBoolean(env['CSP_REPORT_ONLY'], false),
+    enabled: enabled && problems.length === 0,
+    reportOnly,
     documentPolicy,
-    configError,
+    configError: problems.length > 0 ? problems.join('; ') : null,
 })

@@ -1,7 +1,9 @@
 import { env } from 'node:process'
 import { isAppLocaleCode } from 'shared/enums'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 
 const errors: string[] = []
+const reader = createEnvReader()
 
 // Language of the Support AI answers when the client does not send one
 // (code-issues item 52).
@@ -11,17 +13,6 @@ const readDefaultLanguage = (): string => {
     if (isAppLocaleCode(raw)) return raw
     errors.push(`SUPPORT_DEFAULT_LANGUAGE must be one of the app locale codes, got "${raw}"`)
     return 'en'
-}
-
-const readBatchSize = (): number => {
-    const raw = env['SUPPORT_EMBEDDING_BATCH_SIZE']
-    if (raw === undefined || raw.trim() === '') return 50
-    const value = Number(raw.trim())
-    if (!/^\d+$/.test(raw.trim()) || value < 1 || value > 2048) {
-        errors.push(`SUPPORT_EMBEDDING_BATCH_SIZE must be an integer from 1 to 2048, got "${raw}"`)
-        return 50
-    }
-    return value
 }
 
 // Cosine distance (pgvector <=>, 0..2): articles farther than this are not used
@@ -37,9 +28,15 @@ const readMaxDistance = (): number => {
     return value
 }
 
+// Read last: the properties above are what fill `errors` and the reader.
+const collectErrors = (): string | null => {
+    const all = reader.error === null ? errors : [...errors, reader.error]
+    return all.length > 0 ? all.join('; ') : null
+}
+
 const supportConfig = Object.freeze({
     defaultLanguage: readDefaultLanguage(),
-    embeddingBatchSize: readBatchSize(),
+    embeddingBatchSize: reader.int('SUPPORT_EMBEDDING_BATCH_SIZE', 50, { min: 1, max: 2048 }),
     searchMaxDistance: readMaxDistance(),
     defaultSystemPrompt: `You are a technical support agent for the Vibe Template application.
 Your task is to help users understand the application's features.
@@ -76,7 +73,7 @@ Keep it short - 2-3 sentences max.`,
             maxTokens: 500,
         }),
     }),
-    configError: errors.length > 0 ? errors.join('; ') : null,
+    configError: collectErrors(),
 })
 
 export default supportConfig

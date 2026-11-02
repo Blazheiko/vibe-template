@@ -1,17 +1,8 @@
 import { env } from 'node:process'
 
-function parseBooleanFlag(value: string | undefined, defaultValue: boolean): boolean {
-    if (value === undefined) {
-        return defaultValue
-    }
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 
-    return (
-        value === '1' ||
-        value.toLowerCase() === 'true' ||
-        value.toLowerCase() === 'yes' ||
-        value.toLowerCase() === 'on'
-    )
-}
+const reader = createEnvReader()
 
 function parseList(value: string | undefined): readonly string[] {
     if (value === undefined || value.trim() === '') {
@@ -25,6 +16,7 @@ function parseList(value: string | undefined): readonly string[] {
 }
 
 export const networkConfig = Object.freeze({
-    trustProxy: parseBooleanFlag(env['TRUST_PROXY'], false),
+    trustProxy: reader.bool('TRUST_PROXY', false),
     trustedProxyCidrs: parseList(env['TRUSTED_PROXY_CIDRS']),
+    configError: reader.error,
 })

@@ -791,8 +791,8 @@
             "owner": "Blazheiko",
             "branch": "chore/repo-hygiene",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Phase L merged (#267): docker build ok; pnpm typecheck/lint/format:check/test/build clean; docs:build+docs:verify passed; CI green incl. e2e, e2e-live, test-pg, test-redis. Details were in progress.md on chore/repo-hygiene (removed from main by this PR, per the new AGENTS.md rule)."
         },
         {
             "id": "feat-081",
@@ -811,8 +811,8 @@
             "owner": "Blazheiko",
             "branch": "chore/env-parsing-contract",
             "dependencies": [],
-            "status": "not-started",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Phase N merged (#275): one boolean/integer env contract (parseBoolean/parseInteger/createEnvReader); backend 1844 tests (+113), typecheck/lint/format:check/build clean, docs:build+docs:verify passed; CI green incl. test-pg, test-redis, e2e, e2e-live. Details were in progress.md on chore/env-parsing-contract (removed from main by this PR)."
         },
         {
             "id": "feat-083",

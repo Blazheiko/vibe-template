@@ -1,9 +1,8 @@
 import { env } from 'node:process'
 
-function parseBoolean(value: string | undefined, defaultValue = false): boolean {
-    if (value === undefined) return defaultValue
-    return value === 'true' || value === '1' || value === 'yes' || value === 'on'
-}
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
+
+const reader = createEnvReader()
 
 function parseOriginsList(value: string | undefined): readonly string[] {
     if (value === undefined || value.trim() === '') return []
@@ -23,7 +22,7 @@ export default Object.freeze({
    | preflight requests fall through to the default handler.
    |
    */
-    enabled: parseBoolean(env['ENABLED_CORS'], false),
+    enabled: reader.bool('ENABLED_CORS', false),
 
     /*
   |--------------------------------------------------------------------------
@@ -83,7 +82,7 @@ export default Object.freeze({
   | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Credentials
   |
   */
-    credentials: parseBoolean(env['CREDENTIONALS_CORS'], false),
+    credentials: reader.bool('CREDENTIONALS_CORS', false),
 
     /*
   |--------------------------------------------------------------------------
@@ -95,4 +94,7 @@ export default Object.freeze({
   |
   */
     maxAge: 90,
+
+    /** An unreadable ENABLED_CORS / CREDENTIONALS_CORS flag, or `null`. */
+    configError: reader.error,
 })

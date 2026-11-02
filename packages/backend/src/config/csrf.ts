@@ -1,7 +1,7 @@
 import { env } from 'node:process'
 
 import appConfig from '#config/app.js'
-import { parseBoolean } from '#vendor/utils/env/parse-boolean.js'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 
 export interface CsrfConfig {
     enforce: boolean
@@ -58,8 +58,9 @@ export function buildCsrfConfig(
     source: Record<string, string | undefined>,
     context: CsrfConfigContext,
 ): CsrfConfig {
-    const enforce = parseBoolean(source['CSRF_ENFORCE'], true)
-    const strictOrigin = parseBoolean(source['CSRF_STRICT_ORIGIN'], true)
+    const reader = createEnvReader(source)
+    const enforce = reader.bool('CSRF_ENFORCE', true)
+    const strictOrigin = reader.bool('CSRF_STRICT_ORIGIN', true)
     const allowedOrigins = parseOriginsList(source['CSRF_ALLOWED_ORIGINS'])
     const warnings: string[] = []
     let configError: string | null = null
@@ -69,6 +70,10 @@ export function buildCsrfConfig(
         configError = `CSRF_ALLOWED_ORIGINS must list exact http(s) origins without a path or trailing slash, got ${invalid.map((origin) => `"${origin}"`).join(', ')}`
     } else if (context.isProductionLike && allowedOrigins.length === 0) {
         configError = 'CSRF_ALLOWED_ORIGINS must be set in production-like environments'
+    }
+
+    if (reader.error !== null) {
+        configError = configError === null ? reader.error : `${configError}; ${reader.error}`
     }
 
     let effectiveAllowedOrigins = allowedOrigins
