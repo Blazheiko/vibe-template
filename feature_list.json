@@ -891,6 +891,16 @@
             "owner": "Blazheiko",
             "branch": "refactor/result-expected-outcomes-2",
             "dependencies": ["feat-089"],
+            "status": "done",
+            "evidence": "Merged #301 (merge 1cf297a; start #300): oauth, email-verification, password-reset, sms-challenge and one-time-token drop tryInternal (37 calls); helper APIs lose their public-500-text params (issueToken/openChallenge return values, consumeTokenAndApply throws on a failed transaction, Result kept for business answers); emailService.send throws on a transport failure (one log record, no recipient address); the OAuth callback still redirects on a thrown failure; deliberate catches in the reset flows are explicit try/catch. Bug fixed: the email-link race decided by the unique index answered 500 instead of 409 because Drizzle wraps the pg error (code on cause); isUniqueViolation + PG test with a real unique index. typecheck/lint/format:check clean, test backend 1922 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist with SMTP down: forgot-password answers the generic 200 for known and unknown addresses, one error record per background send. Details were in progress.md on refactor/result-expected-outcomes-2 (removed from main by this PR)."
+        },
+        {
+            "id": "feat-091",
+            "name": "Result For Expected Outcomes (3/3)",
+            "description": "docs/plan/error-handling-fix-plan.md stage 4, PR 3 of 3 (ADR 0004): auth-service and enforce-throttle drop tryInternal; tryInternal and toInternalError are removed",
+            "owner": "Blazheiko",
+            "branch": "refactor/result-expected-outcomes-3",
+            "dependencies": ["feat-090"],
             "status": "in_progress",
             "evidence": ""
         }
