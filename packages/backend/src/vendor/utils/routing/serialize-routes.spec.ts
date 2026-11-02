@@ -2,7 +2,6 @@ import { type } from '@arktype/type'
 import { describe, expect, it } from 'vitest'
 
 import { defineRoute } from '#app/routing/define-route.js'
-import { LoginInputSchema } from 'shared/schemas'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 import { defineWsRoute } from '#app/routing/define-ws-route.js'
 import appConfig from '#config/app.js'
@@ -62,9 +61,13 @@ describe('serializeRoutes', () => {
     it('serializes union request schemas through JSON Schema anyOf', () => {
         const routes = [
             defineRoute({
-                url: '/login',
+                url: '/sign-in',
                 method: 'post',
-                validator: LoginInputSchema,
+                // A union request schema: either an email or a phone sign-in.
+                validator: type.or(
+                    { email: 'string.email', password: 'string' },
+                    { phone: 'string', password: 'string' },
+                ),
                 handler: () => ({ ok: true }),
             }),
         ]
@@ -82,7 +85,7 @@ describe('serializeRoutes', () => {
             []
 
         expect(branchProperties.some((keys) => keys.includes('email'))).toBe(true)
-        expect(branchProperties.some((keys) => keys.includes('identifier'))).toBe(true)
+        expect(branchProperties.some((keys) => keys.includes('phone'))).toBe(true)
     })
 
     it('serializes union response schemas through JSON Schema anyOf', () => {

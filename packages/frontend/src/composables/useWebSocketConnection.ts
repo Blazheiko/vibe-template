@@ -320,7 +320,7 @@ const sendMessage = (data: SendPayload) => {
     }
 }
 
-// API method for compatibility with existing code
+// Sends a request over the socket and resolves with the reply of the same event.
 const websocketApi = async (
     route: string,
     payload: Record<string, unknown> = {},
@@ -437,8 +437,5 @@ export const useWebSocketConnection = () => {
         websocketApi,
         websocketClose,
         websocketOpen,
-
-        // Raw WebSocket for compatibility
-        ws,
     }
 }

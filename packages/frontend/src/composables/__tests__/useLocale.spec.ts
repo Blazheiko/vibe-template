@@ -35,13 +35,6 @@ describe('initLocaleStandalone', () => {
     ])('a browser in %j gets %j', async (language, expected) => {
         expect(await startIn(language)).toBe(expected)
     })
-
-    it('forgets the old uiLang override', async () => {
-        localStorage.setItem('uiLang', 'pl')
-        await startIn('en-US')
-        expect(localStorage.getItem('uiLang')).toBeNull()
-        expect(i18n.global.locale.value).toBe('en')
-    })
 })
 
 describe('supportLanguage', () => {

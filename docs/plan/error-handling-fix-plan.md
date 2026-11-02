@@ -225,6 +225,8 @@
 - **Аліас `routeItem`** у [`types.d.ts:335`](../../packages/backend/src/vendor/types/types.d.ts). У коді його використовує лише `routeList`, тож скрізь писати `RouteItem`.
 - Перед PR ще раз пошукати `legacy`, `backward`, `deprecated` у `packages/*/src` і для кожного знайденого вирішити, прибрати його чи лишити (наприклад, `serialize-ark-schema.ts:36`).
 
+**Реалізовано (feat-093).** Прибрано фолбек на старий cookie (`resolve-session-cookie.ts`, `delete-legacy-session-cookie.ts`, `forceCookie`, `legacyCookieName`; константа тепер `PLAIN_COOKIE_NAME`), `LegacyLoginInputSchema` (вхід лише з `identifier`), аліас `routeItem`, одноразову міграцію `uiLang` у `useLocale`, невикористаний експорт сирого `ws` з `useWebSocketConnection` (frontend і api-playground) і дубль `LEGACY_BASE_URL` в api-playground. Лишено свідомо: `fields` у `serialize-ark-schema.ts` (поточний формат api-playground, а не сумісність зі старими клієнтами), `legacy: false` у vue-i18n (опція бібліотеки), поле `code` у `WebsocketMessage` (спільне з нормалізатором HTTP-помилок).
+
 **Документація.** [`auth.md`](../../documentation/backend/auth.md) / [`security.md`](../../documentation/backend/security.md): прибрати опис міграції cookie; [`configuration.md`](../../documentation/backend/configuration.md), якщо там згадано legacy-ім'я.
 
 ## Перевірка завершення (для кожного етапу)

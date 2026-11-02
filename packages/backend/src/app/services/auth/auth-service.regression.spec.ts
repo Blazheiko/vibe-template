@@ -216,7 +216,7 @@ describe('authService legacy regressions', () => {
         const { authService } = await loadAuthService()
         const result = await authService.login(
             {
-                email: 'User@Example.com',
+                identifier: 'User@Example.com',
                 password: 'secret123',
                 token: '',
             },
@@ -256,7 +256,7 @@ describe('authService legacy regressions', () => {
         const { authService } = await loadAuthService()
         const result = await authService.login(
             {
-                email: 'user@example.com',
+                identifier: 'user@example.com',
                 password: 'secret123',
                 token: '',
             },

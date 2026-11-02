@@ -430,8 +430,5 @@ export const useWebSocketConnection = () => {
         websocketClose,
         websocketOpen,
         setPendingWs,
-
-        // Raw WebSocket for compatibility
-        ws,
     }
 }

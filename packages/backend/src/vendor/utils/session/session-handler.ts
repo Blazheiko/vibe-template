@@ -152,8 +152,6 @@ export const sessionHandler = async (
     context: HttpContext,
     accessToken: string | undefined,
     _userId: string | undefined,
-    // The cookie arrived under the legacy name: re-issue it under the current one.
-    forceCookie = false,
 ): Promise<void> => {
     const { responseData } = context
 
@@ -209,8 +207,7 @@ export const sessionHandler = async (
             createdAt: new Date(cookieAnon.issuedAt * 1000).toISOString(),
         }
         cookieHeld = true
-        // forceCookie: the cookie came under the legacy name, which session_web deletes.
-        if (anonAge > ANON_COOKIE_REFRESH_SECONDS || forceCookie) {
+        if (anonAge > ANON_COOKIE_REFRESH_SECONDS) {
             issueAnonCookie(responseData, sessionInfo)
             pendingAnonRefresh.set(context, sessionInfo.id)
             context.session.beforeSend = async (): Promise<void> => {
@@ -263,9 +260,7 @@ export const sessionHandler = async (
     // A cookie-held session was re-issued above and has no Redis record to check.
     if (
         !cookieHeld &&
-        (!presented ||
-            forceCookie ||
-            (await claimCookieRefresh(sessionInfo.id, COOKIE_REFRESH_SECONDS)))
+        (!presented || (await claimCookieRefresh(sessionInfo.id, COOKIE_REFRESH_SECONDS)))
     ) {
         if (presented) {
             pendingCookieRefresh.set(context, {

@@ -50,9 +50,6 @@ export function supportLanguage(): string {
 
 // Standalone initializer for use outside of components (e.g. before app mount)
 export async function initLocaleStandalone(): Promise<void> {
-    // One-time migration cleanup: legacy uiLang override no longer participates
-    // in locale selection because the interface language now follows langNative.
-    localStorage.removeItem('uiLang')
     const browserLang = resolveLanguageCode(navigator.language)
     const lang = isSupportedLocale(browserLang) ? browserLang : 'en'
     i18n.global.locale.value = await loadLocale(lang)

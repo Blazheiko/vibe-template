@@ -10,14 +10,9 @@ const sessionHandlerMock = vi.hoisted(() => vi.fn())
 vi.mock('#vendor/utils/session/session-handler.js', () => ({
     sessionHandler: sessionHandlerMock,
 }))
-vi.mock('#vendor/utils/session/resolve-session-cookie.js', () => ({
-    resolveSessionCookie: () => ({ token: undefined, source: 'current' }),
-}))
-vi.mock('#vendor/utils/session/delete-legacy-session-cookie.js', () => ({
-    deleteLegacySessionCookie: vi.fn(),
-}))
 
 const { default: sessionWeb } = await import('./session-web.js')
+const { default: sessionConfig } = await import('#config/session.js')
 
 const childLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 const loggerChild = vi.fn(() => childLogger)
@@ -118,5 +113,35 @@ describe('sessionWeb request logger (code-issues item 33)', () => {
 
         expect(loggerChild).not.toHaveBeenCalled()
         expect(context.logger).toBe(original)
+    })
+})
+
+// feat-093: no legacy-name fallback; only the active cookie name is read.
+describe('sessionWeb cookie', () => {
+    beforeEach(() => {
+        sessionHandlerMock.mockReset()
+    })
+
+    it('hands the session handler the value of the active cookie name only', async () => {
+        const context = createContext(null)
+        ;(context.httpData as { cookies: Map<string, string> }).cookies = new Map([
+            [sessionConfig.cookieName, 'active-token'],
+            ['__Host-other', 'ignored'],
+        ])
+
+        await sessionWeb(context, async () => {})
+
+        expect(sessionHandlerMock).toHaveBeenCalledWith(context, 'active-token', undefined)
+    })
+
+    it('treats a request without the active cookie as having no session cookie', async () => {
+        const context = createContext(null)
+        ;(context.httpData as { cookies: Map<string, string> }).cookies = new Map([
+            ['some-old-name', 'old-token'],
+        ])
+
+        await sessionWeb(context, async () => {})
+
+        expect(sessionHandlerMock).toHaveBeenCalledWith(context, undefined, undefined)
     })
 })

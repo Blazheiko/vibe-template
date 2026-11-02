@@ -335,7 +335,4 @@ export interface WebSocketDisconnectionEvent {
     code: number
     timestamp: number
 }
-// Legacy alias for backward compatibility
-export type routeItem = RouteItem
-
-export type routeList = (routeItem | groupRouteItem)[]
+export type routeList = (RouteItem | groupRouteItem)[]
