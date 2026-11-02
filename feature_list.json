@@ -841,8 +841,8 @@
             "owner": "Blazheiko",
             "branch": "fix/docs-audit-issues",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #288 (merge d4270d1; start #287): admin_guard answers 403 {status:'error', code:'forbidden'}; main + session-check pools and db:seed pin TimeZone=UTC (on a local PG in Europe/Kiev defaultNow() vs JS Date went from 2 h to 2 ms apart; pg test asserts UTC on both pools and fails without the option); token optional in LoginInputSchema. typecheck/lint/format:check clean, test backend 1861 / frontend 373 / api-playground 62 / shared 25, test:pg 88 passed / 64 skipped (Redis suites), docs:build + docs:verify, CI green. Item 76 partially fixed: login/init date DTO stays open. Details were in progress.md on fix/docs-audit-issues (removed from main by this PR)."
         }
     ]
 }
