@@ -831,8 +831,8 @@
             "owner": "Blazheiko",
             "branch": "refactor/small-dedup",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "H6 merged (#283): requireArticle/deleteScreenshotQuietly, appErrorToPayload (one HTTP/WS error body), normalizePath, ab2str, fetchJson<T>, requireUserId; backend 1855 tests (+11), test:pg 87 passed, typecheck/lint/format:check/build clean, docs:build+docs:verify passed, CI green incl. test-pg, test-redis. Style items left for team consent. Details were in progress.md on refactor/small-dedup (removed from main by this PR)."
         }
     ]
 }
