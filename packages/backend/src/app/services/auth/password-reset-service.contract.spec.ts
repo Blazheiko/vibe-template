@@ -112,6 +112,8 @@ interface Row {
     arrange?: () => void
     call: (service: Service) => Promise<unknown>
     error?: Expected
+    /** The call rejects: an infrastructure failure propagates (ADR 0004). */
+    throws?: true
     ok?: unknown
     after?: () => void
 }
@@ -256,7 +258,7 @@ const ROWS: readonly Row[] = [
             resetRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendPasswordResetEmail(7n),
-        error: internalError('Failed to invalidate password reset tokens'),
+        throws: true,
         after: () => {
             expect(resetRepositoryMock.create).not.toHaveBeenCalled()
         },
@@ -268,7 +270,7 @@ const ROWS: readonly Row[] = [
             resetRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendPasswordResetEmail(7n),
-        error: internalError('Failed to create password reset token'),
+        throws: true,
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
         },
@@ -290,10 +292,10 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(user())
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
-            emailServiceMock.send.mockResolvedValue(Result.err(new Error('smtp')))
+            emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
         call: (s) => s.sendPasswordResetEmail(7n),
-        error: internalError('Failed to send password reset email'),
+        throws: true,
     },
     {
         name: 'sendPasswordResetEmail · sent: only the hash of the token is stored',
@@ -375,7 +377,7 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockRejectedValue(new Error('scrypt'))
         },
         call: reset(),
-        error: internalError('Failed to hash password'),
+        throws: true,
         after: () => {
             expect(resetRepositoryMock.markUsed).not.toHaveBeenCalled()
         },
@@ -401,7 +403,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.update.mockResolvedValue(undefined)
         },
         call: reset(),
-        error: internalError('Failed to update password'),
+        throws: true,
         after: () => {
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
             expect(securityNotice).not.toHaveBeenCalled()
@@ -414,9 +416,7 @@ const ROWS: readonly Row[] = [
             challengeRepositoryMock.invalidatePendingForPhoneFlow.mockRejectedValue(new Error('db'))
         },
         call: reset(),
-        error: internalError(
-            'Failed to invalidate pending phone challenges after email password reset',
-        ),
+        throws: true,
         after: () => {
             expect(withTransactionMock).not.toHaveBeenCalled()
         },
@@ -542,7 +542,7 @@ const ROWS: readonly Row[] = [
             issueMock.mockRejectedValue(new Error('sms down'))
         },
         call: startPhone(),
-        error: internalError('Failed to issue SMS verification code'),
+        throws: true,
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
         },
@@ -554,7 +554,7 @@ const ROWS: readonly Row[] = [
             challengeRepositoryMock.markIssued.mockRejectedValue(new Error('db'))
         },
         call: startPhone(),
-        error: internalError('Failed to persist issued phone reset challenge'),
+        throws: true,
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
         },
@@ -805,17 +805,23 @@ describe.each(ROWS)('passwordResetService · $name', (row) => {
     it('answers as the table says and leaves the stated side effects', async () => {
         row.arrange?.()
         const { passwordResetService } = await import('./password-reset-service.js')
-        const result = (await row.call(passwordResetService)) as Result<unknown, AppError>
-
-        if (row.error === undefined) {
-            expect(
-                Result.isOk(result),
-                JSON.stringify(Result.isError(result) && result.error),
-            ).toBe(true)
-            if (Result.isOk(result) && row.ok !== undefined) expect(result.value).toEqual(row.ok)
+        // ADR 0004: an infrastructure failure is not an AppError; it propagates to the transport.
+        if (row.throws === true) {
+            await expect(row.call(passwordResetService)).rejects.toBeInstanceOf(Error)
         } else {
-            expect(Result.isError(result)).toBe(true)
-            if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.error)
+            const result = (await row.call(passwordResetService)) as Result<unknown, AppError>
+
+            if (row.error === undefined) {
+                expect(
+                    Result.isOk(result),
+                    JSON.stringify(Result.isError(result) && result.error),
+                ).toBe(true)
+                if (Result.isOk(result) && row.ok !== undefined)
+                    expect(result.value).toEqual(row.ok)
+            } else {
+                expect(Result.isError(result)).toBe(true)
+                if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.error)
+            }
         }
         // requestPasswordReset sends its mail from a detached promise: let it settle.
         await new Promise((resolve) => setImmediate(resolve))

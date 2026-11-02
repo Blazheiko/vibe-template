@@ -178,6 +178,14 @@
 2. `oauth-service`, `email-verification-service`, `password-reset-service`, `sms-challenge`, `one-time-token` — 37 викликів.
 3. `auth-service`, `enforce-throttle` — 34 виклики. Після цього `tryInternal` і `toInternalError` видалити повністю.
 
+**Знайдено в PR 2 (feat-090).**
+
+- Допоміжні модулі втратили «публічні тексти 500» (`failure` / `failures` у `sms-challenge.ts`, `one-time-token.ts`): `issueToken` і `openChallenge` повертають значення, `consumeTokenAndApply` кидає виняток при збої транзакції. `Result` лишився там, де є бізнес-відповідь (токен використано чи прострочено, невірний код, challenge більше не дійсний).
+- **Баг на `main`:** гонка при привʼязці email, яку вирішує унікальний індекс, давала 500, а не 409. Drizzle загортає помилку pg у `DrizzleQueryError`, і код `23505` лежить у `cause`, а стара перевірка дивилась на `cause.code` обгортки `tryInternal`. Модульний тест мокав сиру помилку з `code` і цього не бачив. Додано `isUniqueViolation` (`repositories/db-errors.ts`) і PG-тест зі справжнім унікальним індексом.
+- `emailService.send` кидає виняток при збої SMTP. Це прибирає подвійне логування з обмежень feat-086 і адресу отримувача з логу помилки.
+- OAuth callback ловить виняток сервісу й усе одно робить редирект, а не віддає 500 JSON.
+- Свідомі перехоплення в `requestPasswordReset` / `startPhonePasswordReset` (та сама «generic» відповідь, щоб не розкривати існування акаунта) переписані на явний `try/catch`.
+
 **Документація.** [`services.md`](../../documentation/backend/services.md), [`adding-a-feature.md`](../../documentation/backend/adding-a-feature.md), skill `backend-feature` (шаблон сервісу).
 
 ## Етап 5 — helper для контролерів (🟢)

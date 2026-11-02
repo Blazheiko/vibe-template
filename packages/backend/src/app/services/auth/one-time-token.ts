@@ -3,7 +3,6 @@ import { Result } from 'better-result'
 import { withTransaction, type ITokenRepository } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import type { AppError, AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 
 // The password reset, e-mail verification and e-mail linking tokens are one kind of thing: a
 // random secret mailed to the user, kept as its hash, valid until it expires, used once. What
@@ -34,35 +33,20 @@ export async function issueToken<TRow, TInsert extends { userId: bigint }>(
     options: {
         userId: bigint
         ttlMs: number
-        /** Public messages of the 500 when retiring the old tokens, or making the new one, fails. */
-        failures: { invalidate: string; create: string }
         extra?: Omit<TInsert, 'userId' | 'tokenHash' | 'expiresAt'>
     },
-): Promise<AppResult<string>> {
-    const invalidated = await tryInternal(
-        () => repository.invalidatePendingByUserId(options.userId),
-        options.failures.invalidate,
-    )
-    if (Result.isError(invalidated)) {
-        return Result.err(invalidated.error)
-    }
+): Promise<string> {
+    await repository.invalidatePendingByUserId(options.userId)
 
     const rawToken = createToken()
-    const created = await tryInternal(
-        () =>
-            repository.create({
-                ...options.extra,
-                userId: options.userId,
-                tokenHash: hashToken(rawToken),
-                expiresAt: new Date(Date.now() + options.ttlMs),
-            } as unknown as TInsert),
-        options.failures.create,
-    )
-    if (Result.isError(created)) {
-        return Result.err(created.error)
-    }
+    await repository.create({
+        ...options.extra,
+        userId: options.userId,
+        tokenHash: hashToken(rawToken),
+        expiresAt: new Date(Date.now() + options.ttlMs),
+    } as unknown as TInsert)
 
-    return Result.ok(rawToken)
+    return rawToken
 }
 
 /**
@@ -75,21 +59,11 @@ export async function findUsableToken<TRow extends TokenRow, TInsert>(
     repository: ITokenRepository<TRow, TInsert>,
     secret: string,
     answers: {
-        /** Public messages of the 500 when the lookup or the burning fails. */
-        failures: { load: string; markExpired: string }
         used: AppError
         expired: AppError
     },
 ): Promise<AppResult<TRow | undefined>> {
-    const found = await tryInternal(
-        () => repository.findByTokenHash(hashToken(secret)),
-        answers.failures.load,
-    )
-    if (Result.isError(found)) {
-        return Result.err(found.error)
-    }
-
-    const token = found.value
+    const token = await repository.findByTokenHash(hashToken(secret))
     if (token === undefined) {
         return Result.ok(undefined)
     }
@@ -99,13 +73,7 @@ export async function findUsableToken<TRow extends TokenRow, TInsert>(
     }
 
     if (token.expiresAt.getTime() < Date.now()) {
-        const burnt = await tryInternal(
-            () => repository.markUsed(token.id),
-            answers.failures.markExpired,
-        )
-        if (Result.isError(burnt)) {
-            return Result.err(burnt.error)
-        }
+        await repository.markUsed(token.id)
 
         return Result.err(answers.expired)
     }
@@ -118,24 +86,18 @@ export async function findUsableToken<TRow extends TokenRow, TInsert>(
  * `UPDATE ... SET used_at WHERE used_at IS NULL`: of two concurrent requests with one token
  * exactly one gets the row (`claimed: true`, with what `apply` returned), and a failure inside
  * `apply` rolls the claim back with everything else, so the link stays usable and nothing is
- * half done. `claimed: false`: somebody else used it first. `failure` is the public message of
- * the 500 when the transaction fails; the cause stays on the error (a unique violation is told
- * apart by it).
+ * half done. `claimed: false`: somebody else used it first. A failed transaction throws (a
+ * unique violation is told apart by the caller from the error's `code`).
  */
 export function consumeTokenAndApply<TRow extends TokenRow, TInsert, TValue>(
     repository: ITokenRepository<TRow, TInsert>,
     token: TRow,
     apply: (tx: DbTransaction) => Promise<TValue>,
-    failure: string,
-): Promise<AppResult<{ claimed: false } | { claimed: true; value: TValue }>> {
-    return tryInternal(
-        () =>
-            withTransaction(async (tx) => {
-                const claimed = await repository.markUsed(token.id, undefined, tx)
-                if (claimed === undefined) return { claimed: false as const }
+): Promise<{ claimed: false } | { claimed: true; value: TValue }> {
+    return withTransaction(async (tx) => {
+        const claimed = await repository.markUsed(token.id, undefined, tx)
+        if (claimed === undefined) return { claimed: false as const }
 
-                return { claimed: true as const, value: await apply(tx) }
-            }),
-        failure,
-    )
+        return { claimed: true as const, value: await apply(tx) }
+    })
 }

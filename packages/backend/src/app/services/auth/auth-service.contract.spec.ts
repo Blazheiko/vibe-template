@@ -148,6 +148,8 @@ interface Row {
     arrange?: () => void
     call: (service: Service) => Promise<unknown>
     error?: Expected
+    /** The call rejects: an infrastructure failure propagates (ADR 0004). */
+    throws?: true
     /** Side effects that must have happened / not happened, checked after the call. */
     after?: () => void
 }
@@ -263,7 +265,7 @@ const ROWS: readonly Row[] = [
             issueMock.mockRejectedValue(new Error('sms down'))
         },
         call: startReg,
-        error: internalError('Failed to issue SMS verification code'),
+        throws: true,
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
         },
@@ -276,7 +278,7 @@ const ROWS: readonly Row[] = [
             challengeRepositoryMock.markIssued.mockRejectedValue(new Error('db'))
         },
         call: startReg,
-        error: internalError('Failed to persist issued SMS challenge'),
+        throws: true,
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
         },
@@ -336,7 +338,7 @@ const ROWS: readonly Row[] = [
             issueMock.mockRejectedValue(new Error('sms down'))
         },
         call: startLink,
-        error: internalError('Failed to issue SMS verification code'),
+        throws: true,
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
         },
@@ -452,7 +454,7 @@ const ROWS: readonly Row[] = [
             challengeRepositoryMock.markConfirmed.mockRejectedValue(new Error('db'))
         },
         call: confirmReg(),
-        error: internalError('Failed to confirm SMS auth challenge'),
+        throws: true,
     },
     {
         name: 'confirmPhoneRegistration · right code',
@@ -952,16 +954,21 @@ describe.each(ROWS)('authService · $name', (row) => {
     it('answers as the table says and leaves the stated side effects', async () => {
         row.arrange?.()
         const { authService } = await import('./auth-service.js')
-        const result = (await row.call(authService)) as Result<unknown, AppError>
-
-        if (row.error === undefined) {
-            expect(
-                Result.isOk(result),
-                JSON.stringify(Result.isError(result) && result.error),
-            ).toBe(true)
+        // ADR 0004: an infrastructure failure is not an AppError; it propagates to the transport.
+        if (row.throws === true) {
+            await expect(row.call(authService)).rejects.toBeInstanceOf(Error)
         } else {
-            expect(Result.isError(result)).toBe(true)
-            if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.error)
+            const result = (await row.call(authService)) as Result<unknown, AppError>
+
+            if (row.error === undefined) {
+                expect(
+                    Result.isOk(result),
+                    JSON.stringify(Result.isError(result) && result.error),
+                ).toBe(true)
+            } else {
+                expect(Result.isError(result)).toBe(true)
+                if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.error)
+            }
         }
         row.after?.()
     })

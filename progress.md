@@ -1,40 +1,39 @@
-# feat-089 — Result For Expected Outcomes (1/3)
+# feat-090 — Result For Expected Outcomes (2/3)
 
-Plan: `docs/plan/error-handling-fix-plan.md`, stage 4, PR 1 of 3. ADR: `docs/adr/0004-result-for-expected-outcomes.md`.
+Plan: `docs/plan/error-handling-fix-plan.md`, stage 4, PR 2 of 3. ADR: `docs/adr/0004-result-for-expected-outcomes.md`.
 
 ## Current state
 
-Implemented, awaiting review. Start PR #298 merged (feat-088 → done, feat-089 → `in_progress`).
+Implemented, awaiting review. Start PR #300 merged (feat-089 → done, feat-090 → `in_progress`).
 
 ## Changes
 
-1. **ADR 0004**: `Result` only for outcomes the client must tell apart; infrastructure failures throw; the exception path answers like a returned error; best-effort steps and background tasks catch locally.
-2. **Prerequisite found while implementing**: a thrown error went to `handleError` → `sendErrorResponse`, which wrote no cookies, skipped `session.beforeSend` and sent no CORS headers. A `Result` error answered through `sendResponse` with them. Moving to exceptions would have left a client with a deleted session's cookie after a failure following `auth.login`. `server.ts` now runs `beforeSend` on the error path and passes the request's cookies and Origin to `sendErrorResponse` (CORS headers on error answers were missing before, for every thrown error).
-3. **Services without `tryInternal`** (37 calls removed, 71 left in auth services for PR 2/3): `avatar-service`, `push-subscription-service`, `knowledge-base-service`, `support-service`, `main-service`. Best-effort S3 deletes catch locally (`warn`). The support admission frees its lock when the budget reservation throws, then rethrows.
+- `oauth-service`, `email-verification-service`, `password-reset-service`, `sms-challenge`, `one-time-token`: 37 `tryInternal` calls removed (34 left: `auth-service` 33, `enforce-throttle` 1 — PR 3/3).
+- Helper APIs lost their "public 500 text" parameters: `issueToken` and `openChallenge` return the value; `consumeTokenAndApply` throws when the transaction fails; `findPendingChallenge`, `issueSmsChallenge`, `deliverChallenge`, `confirmChallenge` keep `Result` for business answers only. `deliverChallenge` invalidates the challenge and rethrows when the provider or the record step fails. Call sites in `auth-service` updated (arguments only).
+- `emailService.send` throws on a transport failure (no own `error` record with the recipient address). Fixes the double logging noted in feat-086; background senders log once.
+- OAuth callback catches a thrown service failure and still redirects (logs it via `redirectToError`).
+- `requestPasswordReset` / `startPhonePasswordReset`: the deliberate catches (same generic answer, no account enumeration) are explicit `try/catch` now.
+- `isUniqueViolation` (`repositories/db-errors.ts`): reads `23505` on the error or its `cause`.
 
-## Behaviour changes (intended, no compatibility needed)
+## Bug found and fixed
 
-- Infrastructure 500 text is `Internal server error` instead of `Failed to upload avatar` etc. No client matches those texts (only a `console.error` label in `UserAccount.vue`).
-- WS support admission during a Redis outage: `service_unavailable` now comes as a transport error (`error` envelope) instead of a business error in `data`; the frontend rejects both the same way (`hasResponseError`) and shows the same text.
-- The 500 log record now carries `route` and `method` (handleError context) in addition to `requestId`/`userId`.
+On `main`, the email-link race decided by the unique index answered **500, not 409**: Drizzle wraps the pg error in `DrizzleQueryError` (code on `cause`), and the old check read `code` from the wrapper. The unit test mocked a raw error with `code`, so it passed. New PG test with a real unique index; with the `cause` branch removed from `isUniqueViolation` it fails.
 
 ## Evidence of Completion
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check` clean.
-- `pnpm test`: backend 1916, frontend 373, api-playground 62, shared 25, documentation 26 passed.
-- `test:redis` 89, `test:pg` 152 (local; include support history/admission and push ownership over HTTP).
+- `pnpm test`: backend 1922, frontend 373, api-playground 62, shared 25, documentation 26 passed.
+- `test:redis` 89, `test:pg` 153 (local; token race / rollback suites included).
 - `pnpm docs:build && pnpm docs:verify` passed.
-- New tests: a thrown error keeps the cookies set before it (`http-cache-control.spec.ts`, fails if the cookies are not passed) and writes CORS headers; repository failures propagate (`rejects`) in avatar, KB, support specs; the support lock is freed when the budget check throws (fails without the `releaseLock` in the catch).
-- Manual on a fresh `dist` build (S3 on a closed port): avatar upload → 500 `{ code: 'internal_error', message: 'Internal server error' }`, one `error` record with `requestId`, `userId`, `route: api/avatar/upload`. Test user deleted afterwards.
-- Not run: a manual Redis outage for the support admission (covered by unit tests + `classifyError`).
+- Contract tables: rows whose failure now propagates are marked `throws: true` (the harness checks `rejects`); business rows unchanged.
+- Manual on a fresh `dist` build, SMTP on a closed port: forgot-password for a known and an unknown address both answer 200 with the generic text; the log has exactly one `error` per background send (`Unexpected error while sending … in background`) with the cause. Test user deleted afterwards.
 
 ## Files modified
 
-- `docs/adr/0004-result-for-expected-outcomes.md` (new), plan stage 4 note
-- `packages/backend/src/vendor/start/server.ts`, `src/vendor/utils/network/http-response-handlers.ts` (`setCookies` takes a `ReadonlyMap`)
-- `packages/backend/src/app/services/{user/avatar,notifications/push-subscription,support/knowledge-base,support/support,core/main}-service.ts` + specs; `avatar-controller.spec.ts`; `http-cache-control.spec.ts`
-- Docs: `documentation/backend/{services,adding-a-feature,repositories,ai,observability,request-lifecycle}.md`
+- `packages/backend/src/app/services/auth/{oauth,email-verification,password-reset,auth}-service.ts`, `sms-challenge.ts`, `one-time-token.ts`, `services/notifications/email-service.ts`, `repositories/db-errors.ts` (new), `controllers/http/auth/oauth-controller.ts`
+- Tests: the three contract specs, `one-time-token.spec.ts`, `sms-challenge.spec.ts`, `email-verification-service.spec.ts`, `email-service.spec.ts`, `oauth-controller.spec.ts`, `db-errors.spec.ts` (new), `one-time-token-race.pg.test.ts`
+- Docs: `documentation/backend/{repositories,mail}.md`; plan stage 4 notes
 
 ## Next step
 
-Review + merge, then "Mark feat-089 done" and PR 2/3: `oauth-service`, `email-verification-service`, `password-reset-service`, `sms-challenge`, `one-time-token` (37 calls).
+Review + merge, then "Mark feat-090 done" and PR 3/3: `auth-service` and `enforce-throttle` (34 calls), then remove `tryInternal` / `toInternalError`.

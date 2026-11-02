@@ -40,8 +40,6 @@ describe('hashToken and createToken', () => {
 })
 
 describe('issueToken', () => {
-    const failures = { invalidate: 'cannot retire', create: 'cannot create' }
-
     it('retires the old tokens first, then stores only the hash of the new one', async () => {
         repository.invalidatePendingByUserId.mockResolvedValue(2)
         repository.create.mockResolvedValue({ id: 1n })
@@ -50,11 +48,10 @@ describe('issueToken', () => {
         const result = await issueToken(repository, {
             userId: 7n,
             ttlMs: 60_000,
-            failures,
             extra: { targetEmail: 'new@example.com' },
         })
 
-        const secret = Result.isOk(result) ? result.value : ''
+        const secret = result
         expect(secret).toMatch(/^[\w-]{43}$/)
         expect(repository.invalidatePendingByUserId).toHaveBeenCalledWith(7n)
         const stored = repository.create.mock.calls[0]![0] as {
@@ -75,31 +72,26 @@ describe('issueToken', () => {
         )
     })
 
-    it('stops with its own message when retiring fails, and makes nothing', async () => {
-        repository.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
+    // ADR 0004: a storage failure propagates; nothing is made after a failed retire.
+    it('rejects when retiring fails, and makes nothing', async () => {
+        const dbError = new Error('db')
+        repository.invalidatePendingByUserId.mockRejectedValue(dbError)
         const { issueToken } = await load()
-        const result = await issueToken(repository, { userId: 7n, ttlMs: 1, failures })
-        expect(Result.isError(result) && result.error).toMatchObject({
-            _tag: 'Internal',
-            publicMessage: 'cannot retire',
-        })
+        await expect(issueToken(repository, { userId: 7n, ttlMs: 1 })).rejects.toBe(dbError)
         expect(repository.create).not.toHaveBeenCalled()
     })
 
-    it('answers with its own message when making the token fails', async () => {
+    it('rejects when making the token fails', async () => {
+        const dbError = new Error('db')
         repository.invalidatePendingByUserId.mockResolvedValue(0)
-        repository.create.mockRejectedValue(new Error('db'))
+        repository.create.mockRejectedValue(dbError)
         const { issueToken } = await load()
-        const result = await issueToken(repository, { userId: 7n, ttlMs: 1, failures })
-        expect(Result.isError(result) && result.error).toMatchObject({
-            publicMessage: 'cannot create',
-        })
+        await expect(issueToken(repository, { userId: 7n, ttlMs: 1 })).rejects.toBe(dbError)
     })
 })
 
 describe('findUsableToken', () => {
     const answers = {
-        failures: { load: 'cannot load', markExpired: 'cannot burn' },
         used: badRequest('used'),
         expired: badRequest('expired'),
     }
@@ -142,20 +134,16 @@ describe('findUsableToken', () => {
         expect(repository.markUsed).toHaveBeenCalledWith(11n)
     })
 
-    it('fails with its own message when the lookup or the burning fails', async () => {
+    it('rejects when the lookup or the burning fails', async () => {
         const { findUsableToken } = await load()
-        repository.findByTokenHash.mockRejectedValue(new Error('db'))
-        const lookup = await findUsableToken(repository, 'secret', answers)
-        expect(Result.isError(lookup) && lookup.error).toMatchObject({
-            publicMessage: 'cannot load',
-        })
+        const lookupError = new Error('db lookup')
+        repository.findByTokenHash.mockRejectedValue(lookupError)
+        await expect(findUsableToken(repository, 'secret', answers)).rejects.toBe(lookupError)
 
+        const burnError = new Error('db burn')
         repository.findByTokenHash.mockResolvedValue(row({ expiresAt: new Date(Date.now() - 1) }))
-        repository.markUsed.mockRejectedValue(new Error('db'))
-        const burning = await findUsableToken(repository, 'secret', answers)
-        expect(Result.isError(burning) && burning.error).toMatchObject({
-            publicMessage: 'cannot burn',
-        })
+        repository.markUsed.mockRejectedValue(burnError)
+        await expect(findUsableToken(repository, 'secret', answers)).rejects.toBe(burnError)
     })
 })
 
@@ -166,8 +154,8 @@ describe('consumeTokenAndApply', () => {
         repository.markUsed.mockResolvedValue(token)
         const apply = vi.fn().mockResolvedValue('done')
         const { consumeTokenAndApply } = await load()
-        const result = await consumeTokenAndApply(repository, token, apply, 'cannot apply')
-        expect(Result.isOk(result) && result.value).toEqual({ claimed: true, value: 'done' })
+        const result = await consumeTokenAndApply(repository, token, apply)
+        expect(result).toEqual({ claimed: true, value: 'done' })
         expect(repository.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
         expect(apply).toHaveBeenCalledWith(TX)
     })
@@ -176,25 +164,17 @@ describe('consumeTokenAndApply', () => {
         repository.markUsed.mockResolvedValue(undefined)
         const apply = vi.fn()
         const { consumeTokenAndApply } = await load()
-        const result = await consumeTokenAndApply(repository, token, apply, 'cannot apply')
-        expect(Result.isOk(result) && result.value).toEqual({ claimed: false })
+        const result = await consumeTokenAndApply(repository, token, apply)
+        expect(result).toEqual({ claimed: false })
         expect(apply).not.toHaveBeenCalled()
     })
 
-    it('turns a failing apply into the 500 with the cause kept (a unique violation is read from it)', async () => {
+    it('rejects with the original error when apply fails (a unique violation is read from it)', async () => {
         repository.markUsed.mockResolvedValue(token)
         const cause = Object.assign(new Error('duplicate key'), { code: '23505' })
         const { consumeTokenAndApply } = await load()
-        const result = await consumeTokenAndApply(
-            repository,
-            token,
-            () => Promise.reject(cause),
-            'cannot apply',
-        )
-        expect(Result.isError(result) && result.error).toEqual({
-            _tag: 'Internal',
-            publicMessage: 'cannot apply',
-            cause,
-        })
+        await expect(
+            consumeTokenAndApply(repository, token, () => Promise.reject(cause)),
+        ).rejects.toBe(cause)
     })
 })

@@ -44,13 +44,11 @@ import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-has
 import { Result } from 'better-result'
 import {
     badRequest,
-    internal,
     internalMessage,
     notFound,
     type AppResult,
     appErrorMessage,
 } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
@@ -96,6 +94,19 @@ function buildResetEmailContent(name: string, resetUrl: string): RenderedEmail {
     })
 }
 
+// ADR 0002: the rotated sessionToken is the revocation; deleting the old records is memory
+// cleanup. A failure is logged and must not fail a reset that has been committed.
+async function destroySessionsQuietly(previousSessionToken: string, userId: bigint): Promise<void> {
+    try {
+        await destroyAllSessions(previousSessionToken)
+    } catch (err: unknown) {
+        logger.warn(
+            { err, userId: String(userId) },
+            'Previous sessions not deleted after a password reset',
+        )
+    }
+}
+
 export const passwordResetService = {
     async requestPasswordReset(
         email: string,
@@ -105,37 +116,38 @@ export const passwordResetService = {
 
         // Before the lookup, and the same generic answer either way: the response
         // never tells whether the address exists or whether the budget is spent.
-        const throttles = await tryInternal(async () => {
+        // Every failure below is caught on purpose (ADR 0004, point 4): an error status would
+        // tell an address that gets this far apart from one that does not.
+        try {
             const byIp = await consumeAuthThrottle(
                 throttlePolicies.forgotPasswordIp,
                 requestMeta.ipAddress,
             )
-            if (!byIp.allowed || normalizedEmail === '') return byIp
-            return consumeAuthThrottle(throttlePolicies.forgotPasswordEmail, normalizedEmail)
-        }, 'Failed to enforce forgot password throttle')
-        if (Result.isError(throttles) || !throttles.value.allowed) {
-            if (Result.isError(throttles)) {
-                logger.warn({ err: throttles.error }, 'Forgot password throttle unavailable')
-            }
+            const allowed =
+                byIp.allowed &&
+                (normalizedEmail === '' ||
+                    (
+                        await consumeAuthThrottle(
+                            throttlePolicies.forgotPasswordEmail,
+                            normalizedEmail,
+                        )
+                    ).allowed)
+            if (!allowed) return Result.ok({ message: GENERIC_RESET_MESSAGE })
+        } catch (err: unknown) {
+            logger.warn({ err }, 'Forgot password throttle unavailable')
             return Result.ok({ message: GENERIC_RESET_MESSAGE })
         }
         let user: Awaited<ReturnType<typeof userRepository.findByEmail>> | undefined
         if (normalizedEmail !== '') {
-            const userResult = await tryInternal(
-                () => userRepository.findByEmail(normalizedEmail),
-                'Failed to load user by email',
-            )
-            if (Result.isError(userResult)) {
+            try {
+                user = await userRepository.findByEmail(normalizedEmail)
+            } catch (err: unknown) {
                 logger.warn(
-                    {
-                        err: userResult.error,
-                        emailMasked: maskEmailForLogs(normalizedEmail),
-                    },
+                    { err, emailMasked: maskEmailForLogs(normalizedEmail) },
                     'Failed to load user by email for password reset',
                 )
                 return Result.ok({ message: GENERIC_RESET_MESSAGE })
             }
-            user = userResult.value
         }
 
         if (user !== undefined) {
@@ -146,31 +158,15 @@ export const passwordResetService = {
     },
 
     async sendPasswordResetEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
-        const userResult = await tryInternal(
-            () => userRepository.findById(userId),
-            'Failed to load user',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
 
-        const issued = await issueToken(passwordResetRepository, {
+        const rawToken = await issueToken(passwordResetRepository, {
             userId,
             ttlMs: PASSWORD_RESET_TTL_MS,
-            failures: {
-                invalidate: 'Failed to invalidate password reset tokens',
-                create: 'Failed to create password reset token',
-            },
         })
-        if (Result.isError(issued)) {
-            return Result.err(issued.error)
-        }
-        const rawToken = issued.value
 
         if (user.email === null) {
             return Result.ok({ message: GENERIC_RESET_MESSAGE })
@@ -186,7 +182,7 @@ export const passwordResetService = {
         })
 
         if (Result.isError(sendResult)) {
-            return Result.err(internal(sendResult.error, 'Failed to send password reset email'))
+            return Result.err(sendResult.error)
         }
 
         return Result.ok({ message: 'Password reset email sent' })
@@ -239,29 +235,23 @@ export const passwordResetService = {
             return Result.err(phoneThrottle.error)
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findByPhone(normalizedPhone),
-            'Failed to load user by phone',
+        // Caught on purpose, like the e-mail flow: the answer stays the generic one.
+        const lookup = await userRepository.findByPhone(normalizedPhone).then(
+            (found) => ({ ok: true as const, user: found }),
+            (err: unknown) => ({ ok: false as const, err }),
         )
-        if (Result.isError(userResult)) {
+        if (!lookup.ok) {
             logger.warn(
-                {
-                    err: userResult.error,
-                    phoneMasked: maskPhoneForLogs(normalizedPhone),
-                },
+                { err: lookup.err, phoneMasked: maskPhoneForLogs(normalizedPhone) },
                 'Failed to load user by phone for password reset',
             )
             return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })
         }
 
-        const user = userResult.value
+        const user = lookup.user
         const shouldSendSms = user?.email === null
 
-        const pendingChallengeResult = await findPendingChallenge(
-            normalizedPhone,
-            RESET_PHONE_FLOW,
-            'Failed to load pending phone reset challenge',
-        )
+        const pendingChallengeResult = await findPendingChallenge(normalizedPhone, RESET_PHONE_FLOW)
         if (Result.isError(pendingChallengeResult)) {
             return Result.err(pendingChallengeResult.error)
         }
@@ -304,11 +294,6 @@ export const passwordResetService = {
                 phone: normalizedPhone,
                 flow: RESET_PHONE_FLOW,
                 metadata,
-                failures: {
-                    create: 'Failed to persist phone reset challenge',
-                    issue: 'Failed to issue SMS verification code',
-                    markIssued: 'Failed to persist issued phone reset challenge',
-                },
                 noLongerValid: 'Phone reset challenge is no longer valid',
             })
             if (Result.isError(issuedResult)) {
@@ -325,22 +310,18 @@ export const passwordResetService = {
 
         // Nothing to send: the number is unknown or the account has an e-mail. The challenge is
         // stored all the same, with a code hash nobody can match, so the answer looks the same.
-        const createdResult = await openChallenge({
+        const created = await openChallenge({
             phone: normalizedPhone,
             flow: RESET_PHONE_FLOW,
             codeHash: createBlindVerificationCodeHash(),
             metadata,
-            failure: 'Failed to persist phone reset challenge',
         })
-        if (Result.isError(createdResult)) {
-            return Result.err(createdResult.error)
-        }
 
         return Result.ok({
             message: GENERIC_PHONE_RESET_MESSAGE,
-            challengeId: createdResult.value.id,
-            expiresAt: createdResult.value.expiresAt.toISOString(),
-            resendAvailableAt: createdResult.value.resendAvailableAt.toISOString(),
+            challengeId: created.id,
+            expiresAt: created.expiresAt.toISOString(),
+            resendAvailableAt: created.resendAvailableAt.toISOString(),
         })
     },
 
@@ -372,10 +353,6 @@ export const passwordResetService = {
         }
 
         const found = await findUsableToken(passwordResetRepository, normalizedToken, {
-            failures: {
-                load: 'Failed to load password reset token',
-                markExpired: 'Failed to mark password reset token used',
-            },
             used: badRequest('Password reset link has already been used', 'used_token'),
             expired: badRequest('Password reset link has expired', 'expired_token'),
         })
@@ -388,38 +365,16 @@ export const passwordResetService = {
             return Result.err(badRequest('Password reset link is invalid', 'invalid_token'))
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findById(resetToken.userId),
-            'Failed to load user',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await userRepository.findById(resetToken.userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
-        const newPasswordHashResult = await tryInternal(
-            () => hashPassword(password),
-            'Failed to hash password',
-        )
-        if (Result.isError(newPasswordHashResult)) {
-            return Result.err(newPasswordHashResult.error)
-        }
-
-        const newPasswordHash = newPasswordHashResult.value
+        const newPasswordHash = await hashPassword(password)
         const previousSessionToken = user.sessionToken
 
         const userPhone = user.phone
         if (userPhone !== null && userPhone !== '') {
-            const invalidatePhoneChallengesResult = await tryInternal(
-                () => invalidatePendingPhoneChallenges(userPhone),
-                'Failed to invalidate pending phone challenges after email password reset',
-            )
-            if (Result.isError(invalidatePhoneChallengesResult)) {
-                return Result.err(invalidatePhoneChallengesResult.error)
-            }
+            await invalidatePendingPhoneChallenges(userPhone)
         }
 
         // feat-060: the token is claimed and its effect applied in ONE transaction. The
@@ -427,7 +382,7 @@ export const passwordResetService = {
         // requests with one link exactly one gets the row; a failure after it rolls both
         // back, the link stays usable and the password stays as it was. The rotated
         // sessionToken (ADR 0002) is part of the same commit.
-        const appliedResult = await consumeTokenAndApply(
+        const applied = await consumeTokenAndApply(
             passwordResetRepository,
             resetToken,
             async (tx) => {
@@ -439,28 +394,15 @@ export const passwordResetService = {
                 if (updated === undefined) throw new Error('User disappeared during reset')
                 return updated
             },
-            'Failed to update password',
         )
-        if (Result.isError(appliedResult)) {
-            return Result.err(appliedResult.error)
-        }
-        if (!appliedResult.value.claimed) {
+        if (!applied.claimed) {
             return Result.err(badRequest('Password reset link has already been used', 'used_token'))
         }
 
         // ADR 0002: the rotated sessionToken is the revocation. This only deletes records
         // that are already rejected, so a failure is logged and must not fail a reset that
         // has been committed.
-        const destroySessionsResult = await tryInternal(
-            () => destroyAllSessions(previousSessionToken),
-            'Failed to destroy sessions',
-        )
-        if (Result.isError(destroySessionsResult)) {
-            logger.warn(
-                { err: destroySessionsResult.error, userId: String(user.id) },
-                'Previous sessions not deleted after a password reset',
-            )
-        }
+        await destroySessionsQuietly(previousSessionToken, user.id)
 
         userNotificationService.security(user.id, 'password_reset')
         return Result.ok({ status: 'success' })
@@ -495,15 +437,7 @@ export const passwordResetService = {
 
         // Intentional: phone reset completion is not bound to the current browser session.
         // Users may request the SMS on one device and complete the reset from another.
-        const challengeResult = await tryInternal(
-            () => smsAuthChallengeRepository.findById(challengeId),
-            'Failed to load SMS auth challenge',
-        )
-        if (Result.isError(challengeResult)) {
-            return Result.err(challengeResult.error)
-        }
-
-        const challenge = challengeResult.value
+        const challenge = await smsAuthChallengeRepository.findById(challengeId)
         if (challenge?.flow !== RESET_PHONE_FLOW) {
             return Result.err(badRequest('Phone reset challenge is invalid'))
         }
@@ -526,73 +460,34 @@ export const passwordResetService = {
             return Result.err(badRequest('Invalid verification code'))
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findById(challengeUserId),
-            'Failed to load user for phone reset',
-        )
-        if (Result.isError(userResult)) {
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await userRepository.findById(challengeUserId)
         if (user?.email !== null || user.phone !== challenge.phone) {
             return Result.err(badRequest('Phone reset challenge is invalid'))
         }
 
         const confirmedResult = await confirmChallenge(challenge, {
-            failure: 'Failed to mark phone reset challenge confirmed',
             noLongerValid: 'Phone reset challenge is no longer valid',
         })
         if (Result.isError(confirmedResult)) {
             return Result.err(confirmedResult.error)
         }
 
-        const newPasswordHashResult = await tryInternal(
-            () => hashPassword(password),
-            'Failed to hash password',
-        )
-        if (Result.isError(newPasswordHashResult)) {
-            return Result.err(newPasswordHashResult.error)
-        }
+        const newPasswordHash = await hashPassword(password)
 
         const previousSessionToken = user.sessionToken
 
-        const invalidatePhoneChallengesResult = await tryInternal(
-            () => invalidatePendingPhoneChallenges(challenge.phone),
-            'Failed to invalidate pending phone challenges after phone password reset',
-        )
-        if (Result.isError(invalidatePhoneChallengesResult)) {
-            return Result.err(invalidatePhoneChallengesResult.error)
-        }
+        await invalidatePendingPhoneChallenges(challenge.phone)
 
-        const updatedUserResult = await tryInternal(
-            () =>
-                userRepository.update(user.id, {
-                    password: newPasswordHashResult.value,
-                    sessionToken: nanoid(),
-                }),
-            'Failed to update password',
-        )
-        if (Result.isError(updatedUserResult)) {
-            return Result.err(updatedUserResult.error)
-        }
-
-        const updatedUser = updatedUserResult.value
+        const updatedUser = await userRepository.update(user.id, {
+            password: newPasswordHash,
+            sessionToken: nanoid(),
+        })
         if (updatedUser === undefined) {
             return Result.err(internalMessage('Failed to update password'))
         }
 
         // ADR 0002: best-effort memory cleanup, see the email reset above.
-        const destroySessionsResult = await tryInternal(
-            () => destroyAllSessions(previousSessionToken),
-            'Failed to destroy sessions',
-        )
-        if (Result.isError(destroySessionsResult)) {
-            logger.warn(
-                { err: destroySessionsResult.error, userId: String(updatedUser.id) },
-                'Previous sessions not deleted after a password reset',
-            )
-        }
+        await destroySessionsQuietly(previousSessionToken, updatedUser.id)
 
         userNotificationService.security(updatedUser.id, 'password_reset')
         return Result.ok({ status: 'success' })

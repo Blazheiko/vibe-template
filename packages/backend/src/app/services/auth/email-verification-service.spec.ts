@@ -204,20 +204,20 @@ describe('emailVerificationService', () => {
         expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
     })
 
-    it('keeps background logging on service failure', async () => {
-        userRepositoryMock.findById.mockRejectedValue(new Error('db down'))
+    // ADR 0004: an infrastructure failure throws; the background sender catches it and
+    // logs it once as error with the cause (nobody else would).
+    it('logs a thrown failure in the background sender once, with the cause', async () => {
+        const dbError = new Error('db down')
+        userRepositoryMock.findById.mockRejectedValue(dbError)
 
         const { emailVerificationService } = await loadEmailVerificationService()
 
         await emailVerificationService.sendVerificationEmailInBackground(7n, 'manual resend')
 
-        expect(loggerMock.warn).toHaveBeenCalledWith(
-            expect.objectContaining({
-                userId: '7',
-                reason: 'Failed to load user',
-                trigger: 'manual resend',
-            }),
-            'Failed to send verification email in background',
+        expect(loggerMock.error).toHaveBeenCalledTimes(1)
+        expect(loggerMock.error).toHaveBeenCalledWith(
+            expect.objectContaining({ err: dbError, userId: '7', trigger: 'manual resend' }),
+            'Unexpected error while sending verification email in background',
         )
     })
 
