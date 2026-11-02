@@ -746,7 +746,7 @@
 
 ### 76. Дати користувача зсунуті на часовий пояс сервера
 
-> **Виправлено** (feat-085, [`docs-issues-fix-plan.md`](./docs-issues-fix-plan.md)): усі пули застосунку й `db:seed` відкривають з'єднання з `TimeZone=UTC` ([`pool-options.ts`](../../packages/backend/src/database/pool-options.ts)), тож `now()` і JS `Date` дають той самий пояс. Міграцію на `timestamptz` і спільний DTO для login/init не робили.
+> **Частково виправлено** (feat-085, [`docs-issues-fix-plan.md`](./docs-issues-fix-plan.md)): зсув часу виправлено — усі пули застосунку й `db:seed` відкривають з'єднання з `TimeZone=UTC` ([`pool-options.ts`](../../packages/backend/src/database/pool-options.ts)), тож `now()` і JS `Date` дають той самий пояс. Міграцію на `timestamptz` не робили. **Відкрито:** різний формат дат у відповідях login та init (спільний DTO через `userTransformer`) — не входив у feat-085.
 
 - **Що:** demo-акаунт, створений seed-ом одним викликом, у `GET /api/main/init` має `emailVerifiedAt: 2026-10-25T15:05:42Z` і `createdAt: 2026-10-25T17:05:42Z` (сервер у UTC+2). Одне з полів інтерпретується як локальний час замість UTC. Крім того, відповідь `POST /api/auth/login` віддає `created_at`/`updated_at` (snake_case, з офсетом), а `init` — `createdAt`/`updatedAt` (camelCase, `Z`).
 - **Причина (перевірено):** колонки оголошено як `timestamp` без часового поясу. `defaultNow()` пише `now()` у поясі сесії PostgreSQL (локальна інсталяція — `Europe/Kiev`), а значення з JS `Date` (`email_verified_at`) пишуться в UTC; node-pg читає обидва як UTC. Після `ALTER DATABASE ... SET timezone TO 'UTC'` зсув зникає. В образі `pgvector/pgvector` пояс UTC, тому в Docker проблеми не видно. Туторіал «Як додати фічу» повторює той самий патерн для `notes`.
