@@ -24,7 +24,7 @@ Middleware задаються списком назв на групі маршр
 
 ```text
 без cookie            → 401 {"status":"error","code":"unauthorized","message":"Session expired or not found",...}
-звичайний користувач  → 403 {"status":"forbidden","message":"Admin access required",...}
+звичайний користувач  → 403 {"status":"error","code":"forbidden","message":"Admin access required",...}
 ```
 
 `session_web` має стояти першим: решта читає сесію, яку він піднімає. Повний список middleware і як додати свій — нижче.
@@ -66,14 +66,18 @@ flowchart LR
 
 ```ts
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
+import { forbidden } from '#app/services/shared/errors.js'
+import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
+import { applyAppErrorStatus } from '#app/services/shared/apply-service-status.js'
 
 const myGuard: Middleware = async (
     context: HttpContext,
     next: () => Promise<void>,
 ): Promise<void> => {
     if (context.auth.getUserId() === null) {
-        context.responseData.status = 403
-        context.responseData.payload = { status: 'forbidden', message: 'Forbidden' }
+        const error = forbidden('Forbidden')
+        applyAppErrorStatus(context.responseData, error) // 403
+        context.responseData.payload = appErrorToPayload(error) // { status: 'error', code: 'forbidden', ... }
         return
     }
     await next()

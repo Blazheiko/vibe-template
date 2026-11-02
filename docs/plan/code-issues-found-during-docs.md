@@ -98,7 +98,7 @@
 | 52  | ~~Support AI: `langNative = 'ru'` зашито в коді~~ ✅                                                              | Середня      | AI / i18n                    |
 | 53  | ~~Неповний облік використання AI (переклад, тест промпту, embeddings, Mistral без usage)~~ ✅                     | Низька       | AI                           |
 | 54  | ~~Embeddings: `vector(1536)` зашито, `reindexAll` без батчів, пошук без порогу~~ ✅                               | Низька       | AI / БД                      |
-| 55  | `llm_text_usage.final_prompt` безстроково зберігає повні тексти (PII)                                             | Середня      | AI / приватність             |
+| 55  | ~~`llm_text_usage.final_prompt` безстроково зберігає повні тексти (PII)~~ ✅                                      | Середня      | AI / приватність             |
 | 56  | ~~Тест shared не містить жодного тесту (`pass 1` — порожній файл)~~ ✅                                            | Середня      | Тести / shared               |
 | 57  | ~~`guards` у shared порожні й закоментовані в `index.ts`~~ ✅                                                     | Низька       | shared                       |
 | 58  | ~~`EntityIdSchema` без `.brand()` — не брендований тип~~ ✅                                                       | Низька       | shared                       |
@@ -565,7 +565,7 @@
 
 ### 55. `llm_text_usage.final_prompt` зберігає повні тексти
 
-> **Відкладено** (рішення Р3 у [`open-issues-roadmap.md`](./open-issues-roadmap.md)): застосунок тестовий, промпти поки не очищаються. Повернутися до пункту перед роботою з реальними користувачами.
+> **Виправлено** пізніше (feat-065): [`purge-llm-prompts.ts`](../../packages/backend/src/scripts/purge-llm-prompts.ts) видаляє текст промптів, зберігаючи SHA-256 і довжину; retention — opt-in. Початкове рішення Р3 у [`open-issues-roadmap.md`](./open-issues-roadmap.md) («відкладено») застаріло.
 
 - **Що:** у `llm_text_usage.final_prompt` безстроково зберігаються повні повідомлення користувачів та історія, і адміністратор бачить їх через `/admin/usage/text`.
 - **Наслідок:** персональні дані без політики зберігання.
@@ -732,15 +732,21 @@
 
 ### 74. Спільні контракти ловлять розбіжності лише частково
 
+> **Частково виправлено:** `InitResponse` тепер виводиться зі схеми (`WithCanonicalError<typeof InitResponseSchema.infer>`, [`main-controller.ts`](../../packages/shared/src/responses/main-controller.ts)). Решта пункту (інші ручні типи, типи push-підписок, runtime-перевірка відповідей) окремо не перевірялася — див. [`docs-issues-fix-audit.md`](./docs-issues-fix-audit.md).
+
 - **Що:** перевірено перейменуванням полів у `packages/shared/src/responses` і `pnpm typecheck`. `AdminUserListItem.name` → помилки і в backend, і у frontend. `InitResponseSchema.wsUrl` → помилок немає: тип `InitResponse` написано вручну окремо від схеми і він `extends Record<string, unknown>`. Перейменування поля в інтерфейсі `InitResponse` дає одну помилку у frontend (`App.vue`), backend не помічає, бо зайві ключі дозволені. `PushSubscriptionSchema.isActive` → помилок немає: frontend має власні типи підписок, backend не прив'язує повернення до цього типу. `ResponseSchema` маршрутів використовується лише для серіалізації опису API (`serialize-routes.ts`), відповідь під час виконання не перевіряється.
 - **Пропозиція:** виводити типи відповідей лише зі схем (`.infer`) і прибрати ручні інтерфейси з `Record<string, unknown>`; у frontend `utils/api.ts` використовувати типи зі `shared/responses` замість локальних; розглянути перевірку відповіді за `ResponseSchema` у dev/test-режимі.
 
 ### 75. OAuth без налаштувань веде на провайдера з порожнім `client_id`
 
+> **Виправлено:** сервіс перевіряє `clientId`/`clientSecret`/`redirectUri` перед редиректом, `GET /auth/oauth/providers` віддає налаштовані провайдери, `SocialAuthButtons.vue` показує кнопки лише для них.
+
 - **Що:** з `.env.example` (порожні `GOOGLE_CLIENT_ID` тощо) `GET /api/auth/oauth/google/redirect` відповідає `302` на `accounts.google.com/...&client_id=&redirect_uri=`. Користувач бачить помилку Google замість зрозумілої відповіді застосунку, а кнопки соцвходу показуються, хоча провайдер не налаштований.
 - **Пропозиція:** повертати `404`/`503 provider_not_configured` для провайдера без `client_id`/`secret` і віддавати фронтенду список налаштованих провайдерів, щоб ховати зайві кнопки.
 
 ### 76. Дати користувача зсунуті на часовий пояс сервера
+
+> **Виправлено** (feat-085, [`docs-issues-fix-plan.md`](./docs-issues-fix-plan.md)): усі пули застосунку й `db:seed` відкривають з'єднання з `TimeZone=UTC` ([`pool-options.ts`](../../packages/backend/src/database/pool-options.ts)), тож `now()` і JS `Date` дають той самий пояс. Міграцію на `timestamptz` і спільний DTO для login/init не робили.
 
 - **Що:** demo-акаунт, створений seed-ом одним викликом, у `GET /api/main/init` має `emailVerifiedAt: 2026-10-25T15:05:42Z` і `createdAt: 2026-10-25T17:05:42Z` (сервер у UTC+2). Одне з полів інтерпретується як локальний час замість UTC. Крім того, відповідь `POST /api/auth/login` віддає `created_at`/`updated_at` (snake_case, з офсетом), а `init` — `createdAt`/`updatedAt` (camelCase, `Z`).
 - **Причина (перевірено):** колонки оголошено як `timestamp` без часового поясу. `defaultNow()` пише `now()` у поясі сесії PostgreSQL (локальна інсталяція — `Europe/Kiev`), а значення з JS `Date` (`email_verified_at`) пишуться в UTC; node-pg читає обидва як UTC. Після `ALTER DATABASE ... SET timezone TO 'UTC'` зсув зникає. В образі `pgvector/pgvector` пояс UTC, тому в Docker проблеми не видно. Туторіал «Як додати фічу» повторює той самий патерн для `notes`.
@@ -748,15 +754,21 @@
 
 ### 77. Поле `token` у схемі входу обов'язкове, але не використовується
 
+> **Виправлено** (feat-085): `token` опційний в обох формах `LoginInputSchema`; поле з рядком і далі приймається.
+
 - **Що:** `LoginInputSchema` вимагає `token: 'string <= 60'`, фронтенд завжди передає `props.token` (зазвичай порожній), а сервіс входу його не читає. Без поля вхід дає `422`, що збиває з пантелику при ручних запитах.
 - **Пропозиція:** зробити `token?` опційним або прибрати, якщо він ніде не потрібен; задокументувати призначення, якщо потрібен.
 
 ### 78. Вхід без CSRF-токена відхиляється при `CSRF_ENFORCE=true`
 
+> **Задокументовано:** потік описано в [`security.md#csrf`](../../documentation/backend/security.md#csrf) і гайдах «CSRF простими словами» та «Швидкий старт». Окремого режиму для не-браузерних клієнтів немає — без конкретної вимоги не робимо.
+
 - **Що:** `POST /api/auth/login` без попереднього `GET /api/main/init` дає `CSRF validation failed, reason: token_mismatch` (при `CSRF_ENFORCE=false` лише WARN). Для браузера це коректно, бо фронтенд спершу викликає `init`, але для API-клієнтів (мобільний застосунок, інтеграційні тести) поведінка неочевидна.
 - **Пропозиція:** описати в `auth-security.md` (зроблено в гайді «Швидкий старт»); за потреби — окремий режим для не-браузерних клієнтів.
 
 ### 79. `admin_guard` відповідає не в канонічному форматі помилки
+
+> **Виправлено** (feat-085): HTTP `admin_guard` відповідає `403 {"status":"error","code":"forbidden",...}` через `forbidden()` + `appErrorToPayload`; `ws-admin-guard` уже використовував канонічну помилку.
 
 - **Що:** звичайний користувач на `GET /api/admin/users` отримує `403 {"status":"forbidden","message":"Admin access required","csrfToken":"..."}`. Решта помилок мають `{"status":"error","code":"<code>","message":...}` (`CanonicalErrorResponseSchema`), тож клієнт, що перевіряє `status === 'error'` або `code`, цю відмову не розпізнає.
 - **Пропозиція:** формувати відповідь `admin_guard` (і `ws-admin-guard`) через `forbidden()` з `errors.ts`, щоб отримати `status: 'error'`, `code: 'forbidden'`.

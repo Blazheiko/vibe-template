@@ -123,12 +123,7 @@ interface Row {
 }
 
 const login = (identifier: string) => (service: Service) =>
-    service.login(
-        { identifier, password: 'secret' } as never,
-        authMock as never,
-        sessionMock as never,
-        IP,
-    )
+    service.login({ identifier, password: 'secret' }, authMock as never, sessionMock as never, IP)
 const INVALID = { status: 401, code: 'unauthorized', message: 'Invalid email or password' }
 const badRequest = (message: string) => ({ status: 400, code: 'bad_request', message })
 
