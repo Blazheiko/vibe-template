@@ -1,6 +1,6 @@
 import type { HttpContext, WsContext } from '#vendor/types/types.js'
 import { forbidden } from '#app/services/shared/errors.js'
-import { appErrorToWsError } from '#app/services/shared/ws-error.js'
+import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 
 // WS counterpart of admin_guard: the WS dispatcher runs route middlewares with a
 // WsContext (no auth, no HTTP responseData), so the role comes from the
@@ -10,7 +10,7 @@ const wsAdminGuard = async (context: HttpContext, next: () => Promise<void>): Pr
     const wsContext = context as unknown as WsContext
     if (wsContext.userData?.role !== 'admin') {
         wsContext.responseData.status = '403'
-        wsContext.responseData.data = appErrorToWsError(forbidden('Access denied'))
+        wsContext.responseData.data = appErrorToPayload(forbidden('Access denied'))
         return
     }
     await next()

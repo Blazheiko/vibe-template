@@ -1,9 +1,7 @@
 import { isIP } from 'node:net'
 import { networkConfig } from '#config/network.js'
 import type { HttpRequest, HttpResponse } from '#vendor/start/server.js'
-
-const ab2str = (buffer: ArrayBuffer, encoding: BufferEncoding | undefined = 'utf8'): string =>
-    Buffer.from(buffer).toString(encoding)
+import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 
 function normalizeIp(value: string): string | null {
     const trimmed = value.trim()

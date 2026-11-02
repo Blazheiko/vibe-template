@@ -1,5 +1,5 @@
 import logger from '#vendor/utils/logger.js'
-import { normalizePath } from '#vendor/utils/network/http-request-handlers.js'
+import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
 import { isNoBodyMethod } from '#vendor/utils/routing/body-methods.js'
 import appConfig from '#config/app.js'
 import responseValidationConfig from '#config/response-validation.js'

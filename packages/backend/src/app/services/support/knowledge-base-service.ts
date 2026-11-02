@@ -37,6 +37,32 @@ function verifiedScreenshotType(file: UploadedFile): DetectedImageType | undefin
         : undefined
 }
 
+type ArticleRow = NonNullable<Awaited<ReturnType<typeof supportKnowledgeRepository.findById>>>
+
+// The article, or "not found": every operation on one article starts here.
+async function requireArticle(id: bigint): Promise<AppResult<ArticleRow>> {
+    const result = await tryInternal(
+        () => supportKnowledgeRepository.findById(id),
+        'Failed to load knowledge base article',
+    )
+    if (Result.isError(result)) {
+        return Result.err(result.error)
+    }
+    if (result.value === undefined) {
+        return Result.err(notFound('Article', 'Article not found'))
+    }
+    return Result.ok(result.value)
+}
+
+// A screenshot that cannot be removed from S3 must not fail the operation that replaces or
+// removes it: the object is left behind, and that is logged.
+async function deleteScreenshotQuietly(key: string, message: string): Promise<void> {
+    const result = await tryInternal(() => deleteFromS3(key), message)
+    if (Result.isError(result)) {
+        logger.warn({ err: result.error, key }, message)
+    }
+}
+
 export interface KbItemData {
     id: string
     title: string
@@ -93,17 +119,11 @@ export const knowledgeBaseService = {
     },
 
     async getById(id: bigint): Promise<AppResult<{ item: KbItemData }>> {
-        const result = await tryInternal(
-            () => supportKnowledgeRepository.findById(id),
-            'Failed to load knowledge base article',
-        )
+        const result = await requireArticle(id)
         if (Result.isError(result)) {
             return Result.err(result.error)
         }
 
-        if (result.value === undefined) {
-            return Result.err(notFound('Article', 'Article not found'))
-        }
         return Result.ok({ item: rowToData(result.value) })
     },
 
@@ -146,18 +166,11 @@ export const knowledgeBaseService = {
             isActive?: boolean
         },
     ): Promise<AppResult<{ item: KbItemData }>> {
-        const existingResult = await tryInternal(
-            () => supportKnowledgeRepository.findById(id),
-            'Failed to load knowledge base article',
-        )
+        const existingResult = await requireArticle(id)
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
         }
-
         const existing = existingResult.value
-        if (existing === undefined) {
-            return Result.err(notFound('Article', 'Article not found'))
-        }
 
         const updatedResult = await tryInternal(
             () => supportKnowledgeRepository.update(id, data),
@@ -191,31 +204,17 @@ export const knowledgeBaseService = {
     },
 
     async delete(id: bigint): Promise<AppResult<void>> {
-        const existingResult = await tryInternal(
-            () => supportKnowledgeRepository.findById(id),
-            'Failed to load knowledge base article',
-        )
+        const existingResult = await requireArticle(id)
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
         }
-
         const existing = existingResult.value
-        if (existing === undefined) {
-            return Result.err(notFound('Article', 'Article not found'))
-        }
 
         if (existing.screenshotKey !== null) {
-            const screenshotKey = existing.screenshotKey
-            const deleteScreenshotResult = await tryInternal(
-                () => deleteFromS3(screenshotKey),
+            await deleteScreenshotQuietly(
+                existing.screenshotKey,
                 'Failed to delete KB screenshot from S3',
             )
-            if (Result.isError(deleteScreenshotResult)) {
-                logger.warn(
-                    { err: deleteScreenshotResult.error, key: screenshotKey },
-                    'Failed to delete KB screenshot from S3',
-                )
-            }
         }
 
         const deletedResult = await tryInternal(
@@ -244,31 +243,17 @@ export const knowledgeBaseService = {
             return Result.err(badRequest('Invalid file type. Allowed: png, jpeg, webp'))
         }
 
-        const existingResult = await tryInternal(
-            () => supportKnowledgeRepository.findById(id),
-            'Failed to load knowledge base article',
-        )
+        const existingResult = await requireArticle(id)
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
         }
-
         const existing = existingResult.value
-        if (existing === undefined) {
-            return Result.err(notFound('Article', 'Article not found'))
-        }
 
         if (existing.screenshotKey !== null) {
-            const screenshotKey = existing.screenshotKey
-            const deleteScreenshotResult = await tryInternal(
-                () => deleteFromS3(screenshotKey),
+            await deleteScreenshotQuietly(
+                existing.screenshotKey,
                 'Failed to delete old KB screenshot',
             )
-            if (Result.isError(deleteScreenshotResult)) {
-                logger.warn(
-                    { err: deleteScreenshotResult.error },
-                    'Failed to delete old KB screenshot',
-                )
-            }
         }
 
         const s3Key = `knowledge-base/${String(id)}/${randomUUID()}.${IMAGE_EXTENSIONS[imageType]}`
@@ -305,31 +290,17 @@ export const knowledgeBaseService = {
     },
 
     async deleteScreenshot(id: bigint): Promise<AppResult<{ item: KbItemData }>> {
-        const existingResult = await tryInternal(
-            () => supportKnowledgeRepository.findById(id),
-            'Failed to load knowledge base article',
-        )
+        const existingResult = await requireArticle(id)
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
         }
-
         const existing = existingResult.value
-        if (existing === undefined) {
-            return Result.err(notFound('Article', 'Article not found'))
-        }
 
         if (existing.screenshotKey !== null) {
-            const screenshotKey = existing.screenshotKey
-            const deleteScreenshotResult = await tryInternal(
-                () => deleteFromS3(screenshotKey),
+            await deleteScreenshotQuietly(
+                existing.screenshotKey,
                 'Failed to delete KB screenshot from S3',
             )
-            if (Result.isError(deleteScreenshotResult)) {
-                logger.warn(
-                    { err: deleteScreenshotResult.error },
-                    'Failed to delete KB screenshot from S3',
-                )
-            }
         }
 
         const clearResult = await tryInternal(

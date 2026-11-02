@@ -279,19 +279,15 @@ import type { HttpContext } from '#vendor/types/types.js'
 import { Result } from 'better-result'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { noteService } from '#app/services/note/note-service.js'
 import { unauthorized } from '#app/services/shared/errors.js'
 import type { CreateNoteResponse, GetNotesResponse } from 'shared'
 import type { CreateNoteInput } from 'shared/schemas'
 
-function resolveUserId(context: HttpContext<unknown, unknown>): bigint | null {
-    const userId = context.auth.getUserId()
-    return userId === null ? null : BigInt(userId)
-}
-
 export default {
     async getNotes(context: HttpContext): Promise<GetNotesResponse> {
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -305,7 +301,7 @@ export default {
     },
 
     async createNote(context: HttpContext<CreateNoteInput>): Promise<CreateNoteResponse> {
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }

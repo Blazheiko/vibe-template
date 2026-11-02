@@ -1,7 +1,7 @@
 import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-service.js'
 import type { WsContext } from '#vendor/types/types.js'
 import { Result } from 'better-result'
-import { appErrorToWsError } from '#app/services/shared/ws-error.js'
+import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 import type { AdminOnlineUsersWsResponse } from 'shared/responses'
 
 export default {
@@ -9,7 +9,7 @@ export default {
         const result = adminWsChannelService.subscribeCurrentAdminConnection(context.ws)
         if (Result.isError(result)) {
             context.responseData.status = '403'
-            return appErrorToWsError(result.error)
+            return appErrorToPayload(result.error)
         }
         return { status: 'success' }
     },

@@ -2,7 +2,7 @@ import type { HttpContext } from '#vendor/types/types.js'
 import { Result } from 'better-result'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
-import { applyAppErrorStatus } from '#app/services/shared/apply-service-status.js'
+import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { pushSubscriptionService } from '#app/services/notifications/push-subscription-service.js'
 import { pushNotificationSenderService } from '#app/services/notifications/push-notification-sender-service.js'
 import {
@@ -39,21 +39,6 @@ function resolveSubscriptionId(context: HttpContext<unknown, unknown>): bigint |
 
 const subscriptionNotFound = (): AppError => notFound('Subscription', 'Subscription not found')
 
-function resolveUserId(context: HttpContext<unknown, unknown>): bigint | null {
-    if (!context.auth.check()) {
-        applyAppErrorStatus(context.responseData, unauthorized())
-        return null
-    }
-
-    const userId = context.auth.getUserId()
-    if (userId === null) {
-        applyAppErrorStatus(context.responseData, unauthorized())
-        return null
-    }
-
-    return BigInt(userId)
-}
-
 export default {
     async getVapidPublicKey(context: HttpContext): Promise<GetVapidPublicKeyResponse> {
         context.logger.info('getVapidPublicKey handler')
@@ -69,7 +54,7 @@ export default {
     async getSubscriptions(context: HttpContext): Promise<GetSubscriptionsResponse> {
         context.logger.info('getSubscriptions handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -90,7 +75,7 @@ export default {
     ): Promise<CreateSubscriptionResponse> {
         context.logger.info('createSubscription handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -111,7 +96,7 @@ export default {
     async getSubscription(context: HttpContext): Promise<GetSubscriptionResponse> {
         context.logger.info('getSubscription handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -137,7 +122,7 @@ export default {
     ): Promise<UpdateSubscriptionResponse> {
         context.logger.info('updateSubscription handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -167,7 +152,7 @@ export default {
     async deleteSubscription(context: HttpContext): Promise<DeleteSubscriptionResponse> {
         context.logger.info('deleteSubscription handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -188,7 +173,7 @@ export default {
     async getSubscriptionLogs(context: HttpContext): Promise<GetSubscriptionLogsResponse> {
         context.logger.info('getSubscriptionLogs handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -211,7 +196,7 @@ export default {
     ): Promise<GetSubscriptionStatisticsResponse> {
         context.logger.info('getSubscriptionStatistics handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -240,7 +225,7 @@ export default {
     ): Promise<DeactivateSubscriptionResponse> {
         context.logger.info('deactivateSubscription handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -264,7 +249,7 @@ export default {
     async testPush(context: HttpContext<PushSubscriptionTestInput>): Promise<TestPushResponse> {
         context.logger.info('testPush handler')
 
-        const userId = resolveUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
