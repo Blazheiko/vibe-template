@@ -1,0 +1,121 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "676fcf78-39af-48e4-b1f8-9af3169ce912",
+  "prevIds": [
+    "b7ef3dc7-b99a-4998-aed5-94b0f6989ace"
+  ],
+  "footprints": [
+    {
+      "statementType": "drop_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "support_chat_history",
+        "support_chat_history_user_idx"
+      ],
+      "writes": [
+        "s|idx|public.support_chat_history_user_idx",
+        "n|idx|public.support_chat_history_user_idx",
+        "e|idx|public.support_chat_history_user_idx",
+        "n|rel|public.support_chat_history_user_idx"
+      ],
+      "reads": [
+        "e|tbl|public.support_chat_history",
+        "n|sch|public",
+        "e|col|public.support_chat_history.user_id"
+      ],
+      "sharedWrites": []
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "support_chat_history",
+        "support_chat_history_user_created_idx"
+      ],
+      "writes": [
+        "s|idx|public.support_chat_history_user_created_idx",
+        "n|idx|public.support_chat_history_user_created_idx",
+        "e|idx|public.support_chat_history_user_created_idx",
+        "n|rel|public.support_chat_history_user_created_idx"
+      ],
+      "reads": [
+        "n|tbl|public.support_chat_history",
+        "n|sch|public",
+        "n|col|public.support_chat_history.user_id",
+        "n|col|public.support_chat_history.created_at"
+      ]
+    },
+    {
+      "statementType": "recreate_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "llm_text_usage"
+      ],
+      "writes": [
+        "s|fk|public.llm_text_usage.llm_text_usage_user_id_users_id_fkey",
+        "n|fk|public.llm_text_usage.llm_text_usage_user_id_users_id_fkey",
+        "e|fk|public.llm_text_usage.llm_text_usage_user_id_users_id_fkey",
+        "n|con|public.llm_text_usage.llm_text_usage_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.llm_text_usage",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.llm_text_usage.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ],
+      "sqlHash": "a997c67e2c1b3288"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "support_chat_history",
+        "name": "support_chat_history_user_created_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"support_chat_history_user_idx\"]"
+    },
+    {
+      "op": "alter",
+      "key": "fks\u0000[\"public\",\"llm_text_usage\",\"llm_text_usage_user_id_users_id_fkey\"]",
+      "set": {
+        "onDelete": "SET NULL"
+      }
+    }
+  ]
+}

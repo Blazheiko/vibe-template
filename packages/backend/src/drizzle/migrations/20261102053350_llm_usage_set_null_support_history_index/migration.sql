@@ -1,0 +1,3 @@
+DROP INDEX "support_chat_history_user_idx";--> statement-breakpoint
+CREATE INDEX "support_chat_history_user_created_idx" ON "support_chat_history" ("user_id","created_at");--> statement-breakpoint
+ALTER TABLE "llm_text_usage" DROP CONSTRAINT "llm_text_usage_user_id_users_id_fkey", ADD CONSTRAINT "llm_text_usage_user_id_users_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE SET NULL;

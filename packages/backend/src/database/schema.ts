@@ -299,9 +299,12 @@ export const llmTextUsage = pgTable(
     'llm_text_usage',
     {
         id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-        // NULL for system calls without a user (knowledge-base indexing).
+        // NULL for system calls without a user (knowledge-base indexing), and for the rows of a
+        // deleted user: the usage log is an audit of tokens and cost, which outlives the account
+        // (owner decision, feat-081). The row then has no link to a person; what is left of a
+        // prompt is removed by `llm:purge-prompts` by age, user or not.
         userId: bigint('user_id', { mode: 'bigint' }).references(() => users.id, {
-            onDelete: 'cascade',
+            onDelete: 'set null',
         }),
         llmSystemPromptId: bigint('llm_system_prompt_id', { mode: 'bigint' }).references(
             () => llmSystemPrompts.id,
@@ -366,7 +369,9 @@ export const supportChatHistory = pgTable(
         createdAt: timestamp('created_at').notNull().defaultNow(),
     },
     (table) => [
-        index('support_chat_history_user_idx').on(table.userId),
+        // The history of one user, newest first (the chat loads the tail); the leading user_id
+        // also serves every lookup by user alone.
+        index('support_chat_history_user_created_idx').on(table.userId, table.createdAt),
         uniqueIndex('support_chat_history_client_message_uidx').on(
             table.userId,
             table.clientMessageId,
