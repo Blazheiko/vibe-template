@@ -8,7 +8,10 @@ const ASSET_EXT_RE = /\.[a-z0-9]+$/i
 
 /** Normalise text for comparisons: drop zero-width chars, collapse whitespace. */
 export function normalizeText(text) {
-    return text.replace(/[​ ]/g, ' ').replace(/\s+/g, ' ').trim()
+    return text
+        .replace(/[\u200b\u00a0]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
 }
 
 /** Strip inline Markdown so a source line can be compared with rendered text. */

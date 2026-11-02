@@ -9,7 +9,7 @@
 ## Старт сесії
 
 1. Відкрити [`feature_list.json`](https://github.com/Blazheiko/vibe-template/blob/main/feature_list.json) і знайти фічу, у якої `owner` збігається з вами, а `status` дорівнює `in_progress`. Це ваша активна фіча.
-2. Перейти на гілку з поля `branch`. Файли `progress.md` і `session-handoff.md` цієї фічі лежать **на її гілці**, а не в `main`.
+2. Перейти на гілку з поля `branch`. Файли `progress.md` і `session-handoff.md` цієї фічі лежать **на її гілці**, а не в `main`: PR «Mark feat-XXX done», який перемикає фічу в `done`, видаляє їх з `main`, а докази лишаються в полі `evidence` у `feature_list.json`.
 3. Прочитати `progress.md`: стан минулої сесії, блокери, «Notes for Next Session». Якщо сесія продовжується, прочитати також `session-handoff.md`.
 4. Запустити [`./init.sh`](https://github.com/Blazheiko/vibe-template/blob/main/init.sh). Скрипт по черзі виконує `pnpm install`, `pnpm run typecheck`, `pnpm run lint`, `pnpm test` і `pnpm run build` (`set -e`, тож зупиняється на першій помилці). Якщо він падає, далі не працюємо.
 5. Кожен owner веде одну фічу за раз. Нова робота оформлюється новим записом у `feature_list.json` через PR у `main`, а не розширенням поточної фічі.

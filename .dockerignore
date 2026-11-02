@@ -1,6 +1,19 @@
 # Build context for Dockerfile (code-issues item 28): no secrets, no local
 # dependencies or build output — the image installs and builds everything itself.
 .git
+.claude
+.idea
+.omx
+.pnpm-store
+# docs/ is internal; only the support knowledge base is copied into the image (Dockerfile).
+# documentation/ stays: it is a pnpm workspace member, and --frozen-lockfile needs its package.json.
+docs/adr
+docs/plan
+docs/presentations
+docs/reference
+docs/requirements
+docs/screenshots
+docs/security
 **/node_modules
 **/dist
 **/coverage
