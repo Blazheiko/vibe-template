@@ -129,7 +129,7 @@ describe('login body validation runs before the login throttle', () => {
             sourceWsRoutes: [],
         } as never)
 
-        const status = await send(JSON.stringify({ email: 'not-an-email' }))
+        const status = await send(JSON.stringify({ identifier: 'x' }))
 
         expect(status).toBe('422 Unprocessable Entity')
         expect(controller).not.toHaveBeenCalled()
@@ -139,7 +139,7 @@ describe('login body validation runs before the login throttle', () => {
     it('passes a valid body to the controller (harness sanity check)', async () => {
         const status = await send(
             JSON.stringify({
-                email: 'user@example.com',
+                identifier: 'user@example.com',
                 password: 'secret123',
                 token: '',
             }),

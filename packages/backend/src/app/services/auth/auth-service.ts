@@ -82,10 +82,6 @@ function assertPhoneAuthEnabled(): AppResult<never> | undefined {
     return Result.err(badRequest('Phone authentication is disabled'))
 }
 
-function resolveLoginIdentifier(payload: LoginInput): string {
-    return 'identifier' in payload ? payload.identifier : payload.email
-}
-
 type LoginKey = { kind: 'email'; value: string } | { kind: 'phone'; value: string }
 
 /**
@@ -803,7 +799,7 @@ export const authService = {
         const { password } = payload
         const invalidCredentials = (): AppResult<never> =>
             Result.err(unauthorized('Invalid email or password'))
-        const loginKey = resolveLoginKey(resolveLoginIdentifier(payload))
+        const loginKey = resolveLoginKey(payload.identifier)
 
         // Consume before the lookup: same cost for every outcome, no check/increment race. A spent
         // counter answers like a wrong password: nothing tells the two apart.

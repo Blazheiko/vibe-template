@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
-const LEGACY_BASE_URL = ''
 const FALLBACK_BASE_URL = ''
 const BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || FALLBACK_BASE_URL
 
@@ -36,8 +35,7 @@ export const useApiSettingsStore = defineStore('api-settings', () => {
     // Actions
     const setBaseUrl = (url: string) => {
         const normalizedUrl = url.trim()
-        persistedBaseUrl.value =
-            !normalizedUrl || normalizedUrl === LEGACY_BASE_URL ? BASE_URL : normalizedUrl
+        persistedBaseUrl.value = normalizedUrl === '' ? BASE_URL : normalizedUrl
         saveToLocalStorage()
     }
 
@@ -116,8 +114,7 @@ export const useApiSettingsStore = defineStore('api-settings', () => {
                 // localStorage may hold settings from an older version.
                 const settingsData = JSON.parse(saved) as Partial<ApiSettings>
                 const savedBaseUrl = settingsData.baseUrl?.trim()
-                persistedBaseUrl.value =
-                    !savedBaseUrl || savedBaseUrl === LEGACY_BASE_URL ? BASE_URL : savedBaseUrl
+                persistedBaseUrl.value = !savedBaseUrl ? BASE_URL : savedBaseUrl
                 pathPrefix.value = settingsData.pathPrefix || ''
                 enableGlobalHeaders.value = settingsData.enableGlobalHeaders ?? true
                 // An older version stored the header values here too: forget them and rewrite
