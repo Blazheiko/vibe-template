@@ -801,8 +801,8 @@
             "owner": "Blazheiko",
             "branch": "chore/schema-cleanup",
             "dependencies": ["feat-065"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Phase M merged (#278): llm_text_usage.user_id ON DELETE SET NULL (owner decision), support_chat_history index (user_id, created_at), one migration, drizzle-kit generate says no schema changes; 3 new PG tests (2 fail without the migration), test:pg 87 passed, typecheck/lint/format:check/test/build clean, docs:build+docs:verify passed, CI green incl. test-pg."
         },
         {
             "id": "feat-082",
@@ -821,8 +821,8 @@
             "owner": "Blazheiko",
             "branch": "chore/locale-stubs",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Phase O merged (#280): en/uk/pl ship (owner decision), uk/pl real translations (to be read by native speakers), 15 stub locales removed, SHIPPED_LOCALE_CODES, loadLocale falls back to en, Support AI keeps getting the browser language; frontend 373 tests, Playwright mock 69 passed, typecheck/lint/format:check/build clean, docs:build+docs:verify passed, CI green."
         }
     ]
 }
