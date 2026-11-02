@@ -871,6 +871,16 @@
             "owner": "Blazheiko",
             "branch": "chore/error-path-cleanup",
             "dependencies": ["feat-086"],
+            "status": "done",
+            "evidence": "Merged #297 (merge f833d60; start #296): 3a without behaviour change - one app config import in server.ts, no alias or commented-out code, docRoutesHandler without new Promise, typed middlewares (Middleware<TContext>, httpMiddlewares/wsMiddlewares, executeWsMiddlewares) instead of casting WsContext to HttpContext; 3b log stream change - session auth.login/logout/logoutAll no longer log and rethrow (the controller logs the AppError once), name-only 'xxx handler' info lines removed from 5 controllers. Found and fixed: the OAuth callback redirect path had no 5xx record with its cause after feat-086 (reportControllerError). typecheck/lint/format:check clean, test backend 1915 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 152, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation: the old log-and-rethrow session-handler fails the 3 new tests. Manual on dist: /api/doc/routes 200, non-admin WS admin route 403 forbidden in data. Details were in progress.md on chore/error-path-cleanup (removed from main by this PR)."
+        },
+        {
+            "id": "feat-089",
+            "name": "Result For Expected Outcomes (1/3)",
+            "description": "docs/plan/error-handling-fix-plan.md stage 4, PR 1 of 3: ADR 0004 (Result only for expected outcomes, infrastructure failures throw); the HTTP exception path keeps session cookies, CORS and beforeSend like a normal answer; avatar, push-subscription, knowledge-base, support and main services drop tryInternal",
+            "owner": "Blazheiko",
+            "branch": "refactor/result-expected-outcomes-1",
+            "dependencies": ["feat-087", "feat-088"],
             "status": "in_progress",
             "evidence": ""
         }
