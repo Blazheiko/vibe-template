@@ -903,6 +903,16 @@
             "dependencies": ["feat-090"],
             "status": "done",
             "evidence": "Merged #303 (merge 9c3a7e5; start #302): auth-service drops its 33 tryInternal calls; enforceThrottle(policy, key, rejected) loses the unavailable 500 text (a Redis failure throws, the transport answers 503); best-effort throttle resets and old-session cleanup are explicit try/catch; changePassword catches a thrown session renewal (success with sessionRenewed: false, never a 500); tryInternal, toInternalError and result-helpers.ts removed - stage 4 complete. typecheck/lint/format:check clean, test backend 1916 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Fail-closed throttle tests check that the call rejects and nothing downstream ran. Manual on dist: register, logout, wrong password 401, login, change password (sessionRenewed true), logout-all, login with the new password; no error records. Details were in progress.md on refactor/result-expected-outcomes-3 (removed from main by this PR)."
+        },
+        {
+            "id": "feat-092",
+            "name": "Controller Respond Helper",
+            "description": "docs/plan/error-handling-fix-plan.md stage 5: respond(context, result, toBody?) / respondWs replace the repeated isError -> mapControllerError -> return value blocks in controllers; resetPassword and startPhonePasswordReset simplified",
+            "owner": "Blazheiko",
+            "branch": "refactor/controller-respond",
+            "dependencies": ["feat-091"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
