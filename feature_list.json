@@ -913,6 +913,16 @@
             "dependencies": ["feat-091"],
             "status": "done",
             "evidence": "Merged #306 (merge d0f3d7e; start #305): respond(context, result, toBody?) and respondWs replace 36 repeated isError -> mapControllerError -> return blocks (controllers -205/+106 lines, result binding kept for readability); resetPassword drops its no-op reason filter, startPhonePasswordReset spreads the value; 11 explicit isError remain where more logic follows. typecheck/lint/format:check clean, test backend 1928 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:pg 153, test:redis 89, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e (the start PR's e2e hung in playwright install-deps and was cancelled and rerun). Manual on dist: bad reset token 400 invalid_token, mismatch passwords_mismatch, push list 200, unknown push id 404. Details were in progress.md on refactor/controller-respond (removed from main by this PR)."
+        },
+        {
+            "id": "feat-093",
+            "name": "Remove Compatibility Code",
+            "description": "docs/plan/error-handling-fix-plan.md stage 7 (no backward compatibility needed): drop the legacy session cookie fallback (resolve-session-cookie legacy source, delete-legacy-session-cookie, forceCookie), LegacyLoginInputSchema (email variant of login), the routeItem type alias, and other compat leftovers found by search",
+            "owner": "Blazheiko",
+            "branch": "chore/remove-compat-code",
+            "dependencies": ["feat-092"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
