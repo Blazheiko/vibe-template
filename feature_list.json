@@ -881,6 +881,16 @@
             "owner": "Blazheiko",
             "branch": "refactor/result-expected-outcomes-1",
             "dependencies": ["feat-087", "feat-088"],
+            "status": "done",
+            "evidence": "Merged #299 (merge 24f64fd; start #298): ADR 0004 (Result only for expected outcomes, infrastructure failures throw); the HTTP exception path now runs session.beforeSend and writes the request's cookies and CORS headers like a returned error (before, a thrown error dropped both); 37 tryInternal calls removed in avatar, push-subscription, knowledge-base, support and main services (best-effort S3 deletes catch locally, the support admission frees its lock when the budget reservation throws). Intended changes: infrastructure 500 text is 'Internal server error'; a Redis outage in the WS support admission arrives as a transport error. typecheck/lint/format:check clean, test backend 1916 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 152, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. New tests fail without the fix (cookies on a thrown error, lock release). Manual on dist with S3 down: avatar upload 500 internal_error, one error record with requestId, userId, route. Details were in progress.md on refactor/result-expected-outcomes-1 (removed from main by this PR)."
+        },
+        {
+            "id": "feat-090",
+            "name": "Result For Expected Outcomes (2/3)",
+            "description": "docs/plan/error-handling-fix-plan.md stage 4, PR 2 of 3 (ADR 0004): oauth-service, email-verification-service, password-reset-service, sms-challenge and one-time-token drop tryInternal; known DB errors that mean a business outcome (unique index 23505) are caught explicitly",
+            "owner": "Blazheiko",
+            "branch": "refactor/result-expected-outcomes-2",
+            "dependencies": ["feat-089"],
             "status": "in_progress",
             "evidence": ""
         }
