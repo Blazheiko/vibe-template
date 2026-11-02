@@ -602,7 +602,7 @@
             "branch": "feat/session-token-cache",
             "dependencies": ["feat-059"],
             "status": "not-started",
-            "evidence": ""
+            "evidence": "Not planned: this was optional on the feat-059 benchmark. ADR 0002 records it: the extra users.session_token read costs p50 +0.27 ms / p95 +0.8 ms per authenticated request on local PostgreSQL, which does not justify a cache whose invalidation can fail and leave a revoked session usable. Revisit only if production load shows the read matters."
         },
         {
             "id": "feat-062",
@@ -823,6 +823,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Phase O merged (#280): en/uk/pl ship (owner decision), uk/pl real translations (to be read by native speakers), 15 stub locales removed, SHIPPED_LOCALE_CODES, loadLocale falls back to en, Support AI keeps getting the browser language; frontend 373 tests, Playwright mock 69 passed, typecheck/lint/format:check/build clean, docs:build+docs:verify passed, CI green."
+        },
+        {
+            "id": "feat-084",
+            "name": "Small Dedup",
+            "description": "docs/plan/code-review-fixes-tasks.md H6: requireArticle/deleteScreenshotQuietly in knowledge-base-service, one appError payload builder for HTTP and WS, one normalizePath and one ab2str, one generic fetchJson in oauth-service, one requireUserId for the controllers",
+            "owner": "Blazheiko",
+            "branch": "refactor/small-dedup",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
