@@ -38,12 +38,12 @@
 
 Це наявні правила, які зараз розкидані по `handleError` ([`server.ts:391`](../../packages/backend/src/vendor/start/server.ts)) і [`logger.ts`](../../packages/backend/src/vendor/utils/logger.ts). Етапи 1, 2 і 4 переносять їх в одне місце, а не змінюють:
 
-| Випадок                                                     | Рівень  | Sentry                                               | Відповідь                                        |
-| ----------------------------------------------------------- | ------- | ---------------------------------------------------- | ------------------------------------------------ |
-| 4xx (валідація, 413, 415, битий body, параметр, бізнес-4xx) | `warn`  | ні                                                   | без змін                                         |
-| Недоступність Redis (`isRedisUnavailable(err)` або `cause`) | `error` | **ні**: одна подія на інцидент дає `redis-health.ts` | 503 `service_unavailable`, `Retry-After: 1`      |
-| `SessionVerificationUnavailableError`                       | `error` | так                                                  | 503 `service_unavailable`, `Retry-After: 1`      |
-| Решта 5xx                                                   | `error` | так                                                  | 500 `internal_error` (у `local` — `String(err)`) |
+| Випадок                                                                                    | Рівень  | Sentry                                               | Відповідь                                        |
+| ------------------------------------------------------------------------------------------ | ------- | ---------------------------------------------------- | ------------------------------------------------ |
+| 4xx (валідація, 413, 415, битий body, параметр, бізнес-4xx)                                | `warn`  | ні                                                   | без змін                                         |
+| Недоступність Redis (`isRedisUnavailable(err)` або `cause`; голий код сокета не рахується) | `error` | **ні**: одна подія на інцидент дає `redis-health.ts` | 503 `service_unavailable`, `Retry-After: 1`      |
+| `SessionVerificationUnavailableError`                                                      | `error` | так                                                  | 503 `service_unavailable`, `Retry-After: 1`      |
+| Решта 5xx                                                                                  | `error` | так                                                  | 500 `internal_error` (у `local` — `String(err)`) |
 
 **Чому Redis треба фільтрувати явно.** `isRedisUnavailableEntry` у `logger.ts:59` пропускає подію в Sentry лише тоді, коли `err.type === 'RedisUnavailableError'`. Цю обгортку кидає тільки main-клієнт. Rate-limit клієнт ([`redis-rate-limit.ts`](../../packages/backend/src/database/redis-rate-limit.ts)) кидає сирі помилки ioredis, а `toInternalError` перетворює їх на `ServiceUnavailable` з сирою `cause`. Якщо логувати таку `cause` як `err`, фільтр не спрацює, і кожен запит під час інциденту створить окрему подію в Sentry. Тому рішення «Redis чи ні» приймає код через `isRedisUnavailable()`, а в лог передає `sentrySkip: true`: це поле `logger.ts` уже підтримує (рядок 82).
 
@@ -60,12 +60,18 @@
     - інакше `logger.error({ err: error.cause ?? error, appError: error._tag, ...(isRedisUnavailable(error.cause) ? { sentrySkip: true } : {}) }, appErrorMessage(error))`.
 2. Викликати її з `mapControllerError` (через `context.logger`, щоб був `requestId`/`userId`) і з WS-контролерів (`refuse` у support-controller, admin-ws-controller). Сигнатуру `mapControllerError` розширити до `Pick<HttpContext, 'responseData' | 'logger'>`.
 3. Прибрати наявні ручні `logger.error` у контролерах і сервісах лише там, де вони логують **той самий** `AppError` перед поверненням, щоб не було подвійних подій у Sentry. Ручні `warn` для best-effort гілок (наприклад, видалення старого аватара) не чіпати.
+4. **Додано під час реалізації (ручна перевірка).** `isRedisUnavailable` вважала Redis-збоєм будь-яку помилку з кодом `ECONNREFUSED` / `ECONNRESET` / `ETIMEDOUT` / `EPIPE`. Через `toInternalError` недоступний S3 давав 503 «спробуйте пізніше» замість 500, а з п. 1 ще й отримав би `sentrySkip`, тобто зник би з Sentry. Перевірку розділено:
+    - `isRedisUnavailable` — для помилки з невідомого джерела: лише ознаки, які дає тільки ioredis (обгортка `RedisUnavailableError`, `MaxRetriesPerRequestError`, повідомлення `Command timed out` / `Connection is closed` / `Stream isn't writeable`). Rate-limit клієнт (`enableOfflineQueue: false`, `maxRetriesPerRequest: 0`, `commandTimeout`) падає саме з ними;
+    - `isRedisCommandUnavailable` — для помилки Redis-команди в `withRedis` (`redis-health.ts`): додатково голі коди сокета, бо джерело відоме.
+
+    Наслідок: падіння S3, PostgreSQL чи SMTP з кодом сокета тепер дає 500 `internal_error` і подію в Sentry, а не 503.
 
 **Тести.** `controller-error.spec.ts`:
 
 - 500 → один `error` з `cause`;
 - 503 з `RedisUnavailableError` → `error` + `sentrySkip`;
-- 503 із сирою ioredis-помилкою (`ECONNREFUSED`, `MaxRetriesPerRequestError`) → `error` + `sentrySkip`;
+- 503 із сирою ioredis-помилкою (`Stream isn't writeable`, `Command timed out`, `MaxRetriesPerRequestError`) → `error` + `sentrySkip`;
+- голий `ECONNREFUSED` з іншого сервісу (S3) → `Internal`, без `sentrySkip`;
 - 404/409 → без логу.
 
 Окремо: тест на `logger.ts`, що запис із `sentrySkip` не доходить до `sentryService.captureException`; тест для WS `refuse`; регресія для `avatar-service` — падіння `uploadToS3` дає 500 і запис у лозі.
