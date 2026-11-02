@@ -861,8 +861,8 @@
             "owner": "Blazheiko",
             "branch": "fix/shared-error-classification",
             "dependencies": ["feat-086"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #294 (merge 975e105; start #293): HttpError base for the 7 transport error classes (each describes its status, code, client text, details, headers, log record); classifyError checks a Redis outage first (503, Retry-After, sentrySkip; RedisUnavailableError is an HttpError and would otherwise lose sentrySkip), then HttpError, then 500, and is used by handleError, the WS dispatcher and onMessage; HTTP body and the feat-048 WS envelope formatted separately, bodies and log messages unchanged. WS fixes: malformed JSON -> bad_request at warn (was internal_error at error), Redis outage in a handler -> service_unavailable (was internal_error), validation reply keeps the request event/timestamp (was ''). shared: receivedContentType may be null. typecheck/lint/format:check clean, test backend 1910 / frontend 373 / api-playground 62 / shared 25 / documentation 26, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation: HttpError before Redis fails 2 tests. Manual on a fresh dist build: WS {not json -> bad_request + warn; invalid WS message -> validation_failed with the request's event; HTTP malformed body -> 400. Details were in progress.md on fix/shared-error-classification (removed from main by this PR)."
         }
     ]
 }
