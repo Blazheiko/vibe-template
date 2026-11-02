@@ -1,5 +1,8 @@
 export {
     APP_LOCALE_CODES,
+    SHIPPED_LOCALE_CODES,
+    isShippedLocale,
+    type ShippedLocaleCode,
     resolveLanguageCode,
     resolveLanguageName,
     resolveLanguageNativeName,

@@ -1,8 +1,9 @@
 import { createI18n } from 'vue-i18n'
 import en from '@/locales/en'
-import { APP_LOCALE_CODES } from 'shared/enums'
+import { SHIPPED_LOCALE_CODES } from 'shared/enums'
 
-export const SUPPORTED_LOCALES = APP_LOCALE_CODES
+// Only the languages that have a file in `locales/`; any other language shows English.
+export const SUPPORTED_LOCALES = SHIPPED_LOCALE_CODES
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 type LocaleSchema = typeof en
 type LocaleMessageTree = Record<string, unknown>
@@ -40,15 +41,32 @@ export const i18n = createI18n({
     messages,
 })
 
-export async function loadLocale(locale: SupportedLocale): Promise<void> {
-    if (locale === 'en') return
+/**
+ * Makes the messages of `locale` available and returns the locale that is now usable: `locale`
+ * itself, or `'en'` when its file is missing or does not load (a failed chunk, an offline
+ * start), so that choosing a language can never leave the interface without text.
+ *
+ * @param importLocale replaces the dynamic import, for a test
+ */
+export async function loadLocale(
+    locale: SupportedLocale,
+    importLocale: (code: SupportedLocale) => Promise<{ default: unknown }> = (code) =>
+        import(`@/locales/${code}.ts`) as Promise<{ default: unknown }>,
+): Promise<SupportedLocale> {
+    if (locale === 'en') return 'en'
 
-    const messages = await import(`@/locales/${locale}.ts`)
-    i18n.global.setLocaleMessage(
-        locale,
-        mergeLocaleMessages(
-            en as LocaleMessageTree,
-            messages.default as LocaleMessageTree,
-        ) as LocaleSchema,
-    )
+    try {
+        const messages = await importLocale(locale)
+        i18n.global.setLocaleMessage(
+            locale,
+            mergeLocaleMessages(
+                en as LocaleMessageTree,
+                messages.default as LocaleMessageTree,
+            ) as LocaleSchema,
+        )
+        return locale
+    } catch (error) {
+        console.warn(`[i18n] Could not load the "${locale}" messages; showing English`, error)
+        return 'en'
+    }
 }

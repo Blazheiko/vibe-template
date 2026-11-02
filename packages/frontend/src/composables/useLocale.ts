@@ -12,8 +12,7 @@ export function useLocale() {
 
     async function applyLocale(code: string): Promise<void> {
         const lang = isSupportedLocale(code) ? code : 'en'
-        await loadLocale(lang)
-        locale.value = lang
+        locale.value = await loadLocale(lang)
     }
 
     async function applyLocaleFromNativeLanguage(langNative?: string | null): Promise<void> {
@@ -40,6 +39,15 @@ export function useLocale() {
     return { locale, applyLocaleFromNativeLanguage, initFromUser }
 }
 
+/**
+ * The language to ask the Support AI to answer in: the language of the browser among the ones
+ * the app recognises (many more than the interface has translations for), not the language of the
+ * interface. A Russian browser gets an English interface and a Russian answer.
+ */
+export function supportLanguage(): string {
+    return resolveLanguageCode(navigator.language)
+}
+
 // Standalone initializer for use outside of components (e.g. before app mount)
 export async function initLocaleStandalone(): Promise<void> {
     // One-time migration cleanup: legacy uiLang override no longer participates
@@ -47,6 +55,5 @@ export async function initLocaleStandalone(): Promise<void> {
     localStorage.removeItem('uiLang')
     const browserLang = resolveLanguageCode(navigator.language)
     const lang = isSupportedLocale(browserLang) ? browserLang : 'en'
-    await loadLocale(lang)
-    i18n.global.locale.value = lang
+    i18n.global.locale.value = await loadLocale(lang)
 }

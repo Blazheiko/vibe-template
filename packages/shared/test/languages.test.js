@@ -40,3 +40,17 @@ test('language names fall back to the raw code and ignore the region', () => {
     assert.equal(resolveLanguageName('xx'), 'xx')
     assert.equal(formatLanguageLabel('uk'), `Ukrainian (${resolveLanguageNativeName('uk')})`)
 })
+
+test('the shipped interface languages are a subset of the recognised ones, English first', async () => {
+    const { SHIPPED_LOCALE_CODES, isShippedLocale } = await import('../dist/enums/index.js')
+    assert.deepEqual([...SHIPPED_LOCALE_CODES], ['en', 'uk', 'pl'])
+    for (const code of SHIPPED_LOCALE_CODES) {
+        assert.equal(isAppLocaleCode(code), true, code)
+        assert.equal(isShippedLocale(code), true, code)
+    }
+    // recognised, but no interface translation
+    assert.equal(isAppLocaleCode('ru'), true)
+    assert.equal(isShippedLocale('ru'), false)
+    assert.equal(isShippedLocale('UK'), false)
+    assert.equal(isShippedLocale(''), false)
+})
