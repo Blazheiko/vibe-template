@@ -1,5 +1,7 @@
 import { env } from 'node:process'
 
+import { parseInteger } from '#vendor/utils/env/read-int.js'
+
 // feat-062: how often a server instance re-reads the role of the WebSocket
 // connections that hold the admin role. Nothing in the application changes
 // users.role (it is edited in the database), so this re-check is the only way a
@@ -10,15 +12,13 @@ const ADMIN_RECHECK_MIN_MS = 100
 const ADMIN_RECHECK_MAX_MS = 3_600_000
 
 export const readWsAdminRecheckIntervalMs = (source: NodeJS.ProcessEnv = env): number => {
-    const raw = source['WS_ADMIN_RECHECK_INTERVAL_MS']
-    if (raw === undefined || raw.trim() === '') return ADMIN_RECHECK_DEFAULT_MS
-    // Decimal digits only: Number() would also take "1e3" and "0x10".
-    const value = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN
-    if (!Number.isInteger(value) || value < ADMIN_RECHECK_MIN_MS || value > ADMIN_RECHECK_MAX_MS) {
-        throw new Error(
-            `WS_ADMIN_RECHECK_INTERVAL_MS must be an integer from ${String(ADMIN_RECHECK_MIN_MS)} to ${String(ADMIN_RECHECK_MAX_MS)}, got "${raw}"`,
-        )
-    }
+    const { value, error } = parseInteger(
+        'WS_ADMIN_RECHECK_INTERVAL_MS',
+        source['WS_ADMIN_RECHECK_INTERVAL_MS'],
+        ADMIN_RECHECK_DEFAULT_MS,
+        { min: ADMIN_RECHECK_MIN_MS, max: ADMIN_RECHECK_MAX_MS },
+    )
+    if (error !== null) throw new Error(error)
     return value
 }
 

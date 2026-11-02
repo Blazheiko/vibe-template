@@ -1,4 +1,4 @@
-import { env } from 'node:process'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 import { authConfig } from '#config/auth.js'
 
 // Registry of shared (Redis) limits for sensitive actions. Per-process limits
@@ -23,20 +23,11 @@ export interface ThrottlePolicy {
 }
 
 const HOUR_MS = 3_600_000
-const INTEGER = /^\d+$/
+const reader = createEnvReader()
 const errors: string[] = []
 
-const readInt = (name: string, fallback: number, min = 1): number => {
-    const raw = env[name]
-    if (raw === undefined) return fallback
-    const value = raw.trim()
-    const parsed = Number(value)
-    if (!INTEGER.test(value) || !Number.isSafeInteger(parsed) || parsed < min) {
-        errors.push(`${name} must be an integer >= ${String(min)}, got "${raw}"`)
-        return fallback
-    }
-    return parsed
-}
+const readInt = (name: string, fallback: number, min = 1): number =>
+    reader.int(name, fallback, { min })
 
 const fixedWindow = (
     scope: string,
@@ -246,4 +237,7 @@ export const validateThrottlePolicies = (
 
 errors.push(...validateThrottlePolicies(throttlePolicies))
 
-export const throttlePolicyConfigError: string | null = errors.length > 0 ? errors.join('; ') : null
+const problems = [...(reader.error === null ? [] : [reader.error]), ...errors]
+
+export const throttlePolicyConfigError: string | null =
+    problems.length > 0 ? problems.join('; ') : null
