@@ -19,6 +19,18 @@ export const APP_LOCALE_CODES = [
     'hi',
 ] as const
 
+/**
+ * The languages the interface has translations for (`packages/frontend/src/locales`). The
+ * Support AI and the language recognition above know more languages than the interface does;
+ * any other language shows the interface in English.
+ */
+export const SHIPPED_LOCALE_CODES = ['en', 'uk', 'pl'] as const
+export type ShippedLocaleCode = (typeof SHIPPED_LOCALE_CODES)[number]
+
+export function isShippedLocale(code: string): code is ShippedLocaleCode {
+    return (SHIPPED_LOCALE_CODES as readonly string[]).includes(code)
+}
+
 const APP_LOCALE_CODE_SET = new Set<string>(APP_LOCALE_CODES)
 
 export const LANGUAGE_NAME_BY_CODE: Record<string, string> = {

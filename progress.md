@@ -3,25 +3,28 @@
 ## Current State
 
 **Last Updated:** 2026-11-02
-**Active Feature:** feat-081 - Schema (review)
-**Branch:** `chore/schema-cleanup`
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase M
+**Active Feature:** feat-083 - Locale Stubs (review)
+**Branch:** `chore/locale-stubs`
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase O
 
 ## Status
 
-- [x] **Owner decision recorded: `llm_text_usage.user_id` is `ON DELETE SET NULL`.** The usage log (tokens, cost) outlives the account and the row no longer points at a person. What is left of a prompt text (only with `AI_USAGE_STORE_PROMPTS=true`) is removed by `llm:purge-prompts` by age, whoever the row belonged to (it filters by `created_at` only). The chat history (`support_chat_history`) is personal content and still goes with the user (cascade, tested)
-- [x] **`support_chat_history`**: index `(user_id, created_at)` replaces `(user_id)` (the leading column serves every lookup by user alone, so the old index was redundant)
-- [x] **One migration** `20261102053350_llm_usage_set_null_support_history_index` (`DROP INDEX`, `CREATE INDEX`, replace the FK); `drizzle-kit generate` run again says "No schema changes"
-- [x] **`schema-feat-081.pg.test.ts`** (3 tests on a real PostgreSQL): a deleted user's usage rows stay with `user_id` NULL; their chat history is gone; the index is `(user_id, created_at)` and the old one is not there. With the migration moved aside, 2 of the 3 fail
-- [x] Docs: `backend/database.md` (migration row), `backend/ai.md` (what happens to usage rows on deletion)
+Owner decision: the interface ships `en`, `uk`, `pl`.
+
+- [x] **`uk.ts` and `pl.ts` are real translations** of all 204 lines of `en.ts` (they were `export default en` copies). **Drafted by me, not by a native speaker: worth a read by someone who speaks them**, especially the legal-sounding `termsAgreeText` / `errorTerms`
+- [x] **The 15 other stub files are deleted** (`ar cs de es fr hi it ja ko nl pt ru sv tr zh`)
+- [x] **`SHIPPED_LOCALE_CODES = ['en','uk','pl']`** and `isShippedLocale` in `shared/enums`. `APP_LOCALE_CODES` (18) stays: language recognition and the Support AI use it
+- [x] **`loadLocale` can no longer leave the interface without text**: it returns the locale actually usable, `en` when the file is missing or fails to load (with a warning); `useLocale` and `initLocaleStandalone` apply what it returns
+- [x] **A regression avoided on the way**: `SupportView` sent `locale.value` (the UI locale) to the Support AI as the language to answer in. With only three interface languages that would have turned a Russian or German browser's answers into English, where before `locale.value` was `ru`/`de` (with English texts). It now sends `supportLanguage()`, the browser language among the 18
+- [x] **Tests**: `locales.spec.ts` (files = shipped list; uk/pl have exactly the keys of `en` and the same placeholders; translated, not copies; `loadLocale` success, failure, unknown language, partial translation), `useLocale.spec.ts` (browser language -> interface language for 10 cases; `supportLanguage`), `languages.test.js` (shared), Playwright `mock` `locale.spec.ts` (uk, pl, en, ru, de, ja, unknown browser languages show the right login page without page errors; the sign-in modal and its field error in Ukrainian)
+- [x] Docs: `frontend/index.md`, `backend/ai.md`, `guide/your-project.md`, `shared/index.md`
 
 ## Evidence of Completion
 
-| Check                                      | Result                                                            |
-| ------------------------------------------ | ----------------------------------------------------------------- |
-| `pnpm --filter backend test:pg`            | 87 passed (incl. 3 new), 64 skipped (Redis-only)                  |
-| `drizzle-kit generate` after the migration | "No schema changes"                                               |
-| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                            |
-| `pnpm build`                               | exit 0                                                            |
-| `pnpm test`                                | backend 1844, frontend 344, shared 24, api-playground 62, docs 26 |
-| `docs:build && docs:verify`                | passed                                                            |
+| Check                                      | Result                                                                  |
+| ------------------------------------------ | ----------------------------------------------------------------------- |
+| `pnpm typecheck` / `lint` / `format:check` | exit 0                                                                  |
+| `pnpm build`                               | exit 0                                                                  |
+| `pnpm test`                                | frontend 373 (+29), shared 25, backend 1844, api-playground 62, docs 26 |
+| Playwright `mock` project                  | all passed (61 + 8 new)                                                 |
+| `docs:build && docs:verify`                | passed                                                                  |

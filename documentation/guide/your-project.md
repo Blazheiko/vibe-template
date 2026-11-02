@@ -75,13 +75,13 @@
 
 ## 2. Змінити інтерфейс
 
-| Що змінити                  | Де                                                                                              |
-| --------------------------- | ----------------------------------------------------------------------------------------------- |
-| Кольори, базові стилі       | `packages/frontend/src/assets/base.css`, `main.css` (CSS-змінні `--color-*`)                    |
-| Сторінки                    | `packages/frontend/src/views/`                                                                  |
-| Маршрути фронтенду і доступ | `packages/frontend/src/router/index.ts` (guard для залогінених і адмінів)                       |
-| Шапка, меню, модалки входу  | `packages/frontend/src/components/` (`AppHeader`, `MenuButton`, `AuthModals`)                   |
-| Тексти й мови               | `packages/frontend/src/locales/` (18 мов; непотрібні можна видалити разом з реєстрацією в i18n) |
+| Що змінити                  | Де                                                                                                             |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Кольори, базові стилі       | `packages/frontend/src/assets/base.css`, `main.css` (CSS-змінні `--color-*`)                                   |
+| Сторінки                    | `packages/frontend/src/views/`                                                                                 |
+| Маршрути фронтенду і доступ | `packages/frontend/src/router/index.ts` (guard для залогінених і адмінів)                                      |
+| Шапка, меню, модалки входу  | `packages/frontend/src/components/` (`AppHeader`, `MenuButton`, `AuthModals`)                                  |
+| Тексти й мови               | `packages/frontend/src/locales/` (`en`, `uk`, `pl`; нову мову додають файлом і кодом у `SHIPPED_LOCALE_CODES`) |
 
 Деталі — на сторінці [Фронтенд](/frontend/).
 

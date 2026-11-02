@@ -5,6 +5,7 @@ import { useSupportStore } from '@/stores/support'
 import { useEventBus } from '@/utils/event-bus'
 import { apiPath } from '@/utils/api-path'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
+import { supportLanguage } from '@/composables/useLocale'
 import { getResponseMessage } from '@/utils/response-normalizer'
 import { SUPPORT_MESSAGE_MAX_LENGTH } from 'shared/limits'
 import { isEventForRequest, newClientMessageId, sendUntilAnswered } from '@/utils/support-send'
@@ -13,7 +14,7 @@ const props = defineProps<{
     embedded?: boolean
 }>()
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const store = useSupportStore()
 const eventBus = useEventBus()
 const { websocketApi } = useWebSocketConnection()
@@ -98,7 +99,7 @@ async function openChat(): Promise<boolean> {
     store.setError(null)
 
     try {
-        await websocketApi('support/support_open_chat', { language: locale.value })
+        await websocketApi('support/support_open_chat', { language: supportLanguage() })
         sessionReady.value = true
         return true
     } catch (error) {
@@ -138,7 +139,7 @@ async function sendMessage(textOverride?: string): Promise<void> {
     const result = await sendUntilAnswered(() =>
         websocketApi('support/support_chat', {
             message: text,
-            language: locale.value,
+            language: supportLanguage(),
             clientMessageId,
         }),
     )
