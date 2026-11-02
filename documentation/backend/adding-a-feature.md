@@ -117,7 +117,7 @@ export const notes = pgTable(
 ```
 
 ::: warning Часовий пояс
-Колонка `timestamp` без часового поясу зберігає `now()` у часовому поясі PostgreSQL, а читається як UTC. Якщо PostgreSQL працює не в UTC (наприклад, встановлений локально з поясом `Europe/Kiev`), `created_at` у відповіді буде зсунутий на різницю поясів. В образі `pgvector/pgvector` пояс UTC, і проблеми не видно. Так само оголошено дати в наявних таблицях шаблону, див. [п. 76](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md).
+Колонка `timestamp` без часового поясу: Drizzle пише й читає JS `Date` як UTC, а `now()` береться в часовому поясі сесії PostgreSQL. Тому всі з'єднання застосунку й `db:seed` відкриваються з `TimeZone=UTC` ([`pool-options.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/pool-options.ts)), і `created_at` не зсувається, навіть якщо сервер PostgreSQL налаштований на інший пояс. Прямий SQL-клієнт (psql тощо) бачить значення в UTC лише якщо сам встановить `SET TimeZone = 'UTC'`.
 :::
 
 Згенеруйте міграцію ([drizzle.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/drizzle.config.ts) пише їх у `src/drizzle/migrations` у форматі «тека на міграцію»):

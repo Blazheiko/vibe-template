@@ -25,4 +25,8 @@ describe('connectionOptions', () => {
         vi.stubEnv('PGSQL_SSL', 'require')
         expect((await load()).ssl).toEqual({ rejectUnauthorized: false })
     })
+
+    it('pins the session time zone to UTC', async () => {
+        expect((await load()).options).toBe('-c TimeZone=UTC')
+    })
 })

@@ -31,6 +31,11 @@ describe('admin_guard', () => {
 
         expect(next).not.toHaveBeenCalled()
         expect(ctx.responseData.status).toBe(403)
+        expect(ctx.responseData.payload).toEqual({
+            status: 'error',
+            code: 'forbidden',
+            message: 'Admin access required',
+        })
     })
 
     it('lets an admin through, looking the role up by service', async () => {

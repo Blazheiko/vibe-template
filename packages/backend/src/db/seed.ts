@@ -41,7 +41,17 @@ async function main(): Promise<void> {
     }
 
     const { host, port, user, password, database, ssl } = resolveDatabaseConfig()
-    const pool = new pg.Pool({ host, port, user, password, database, ssl: toPgSsl(ssl), max: 1 })
+    // TimeZone=UTC as in database/pool-options.ts: rows get their created_at from defaultNow().
+    const pool = new pg.Pool({
+        host,
+        port,
+        user,
+        password,
+        database,
+        ssl: toPgSsl(ssl),
+        max: 1,
+        options: '-c TimeZone=UTC',
+    })
     try {
         const db = drizzle({ client: pool })
         const report = await db.transaction((tx) =>

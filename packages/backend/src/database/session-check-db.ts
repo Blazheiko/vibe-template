@@ -31,7 +31,7 @@ export const SESSION_CHECK_POOL_MAX = 5
 export interface SessionCheckPoolOptions {
     connection: Pick<
         pg.PoolConfig,
-        'host' | 'port' | 'user' | 'password' | 'database' | 'ssl' | 'idleTimeoutMillis'
+        'host' | 'port' | 'user' | 'password' | 'database' | 'ssl' | 'idleTimeoutMillis' | 'options'
     >
     timeoutMs: number
     max: number

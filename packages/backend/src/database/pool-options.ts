@@ -11,4 +11,8 @@ export const connectionOptions = {
     idleTimeoutMillis: 30000,
     // PGSQL_SSL: false (default), true (verified TLS) or require (TLS, certificate not checked).
     ssl: toPgSsl(databaseConfig.ssl),
+    // The timestamp columns have no time zone. Drizzle writes and reads JS Dates as UTC, so the
+    // values the database fills in itself (defaultNow(), now()) must be UTC too, whatever the
+    // server's TimeZone is.
+    options: '-c TimeZone=UTC',
 }

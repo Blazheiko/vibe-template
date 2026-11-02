@@ -77,6 +77,16 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
         await pool.end()
     })
 
+    // Item 76: the timestamp columns are read as UTC, so now() must be UTC on every pool.
+    it('runs both pools in UTC, whatever the server TimeZone is', async () => {
+        for (const target of [pool, sessionCheckPool]) {
+            const { rows } = await target.query<{ tz: string }>(
+                `select current_setting('TimeZone') as tz`,
+            )
+            expect(rows[0]?.tz).toBe('UTC')
+        }
+    })
+
     it('answers normally through the dedicated pool', async () => {
         await expect(checkSessionToken(String(userId), userToken)).resolves.toBe('ok')
         await expect(checkSessionToken(String(userId), 'rotated')).resolves.toBe('mismatch')
