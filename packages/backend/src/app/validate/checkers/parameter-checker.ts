@@ -2,12 +2,15 @@
  * Validates URL path parameters using regex and length constraints.
  */
 
+import type { ParameterValidationErrorDetails } from 'shared/errors'
+import { HttpError } from '#vendor/utils/network/errors/http-error.js'
+
 /**
  * Error class for parameter validation failures
  */
-export class ParameterValidationError extends Error {
-    public readonly code: string = 'bad_request'
-    public readonly statusCode: number = 400
+export class ParameterValidationError extends HttpError {
+    public readonly code = 'bad_request'
+    public readonly statusCode = 400
     public readonly parameterName: string
     public readonly parameterValue: string
 
@@ -16,6 +19,18 @@ export class ParameterValidationError extends Error {
         this.name = 'ParameterValidationError'
         this.parameterName = parameterName
         this.parameterValue = parameterValue
+    }
+
+    override get publicMessage(): string {
+        return 'Invalid parameter'
+    }
+
+    override details(): ParameterValidationErrorDetails {
+        return {
+            kind: 'parameter_validation',
+            parameter: this.parameterName,
+            messages: [this.message],
+        }
     }
 }
 

@@ -129,6 +129,10 @@ curl -X POST -H 'Content-Type:' -d '{"email":"a@b.c"}' http://127.0.0.1:3000/api
 
 ## Обробка помилок (handleError)
 
+Виняток стає відповіддю через [`classifyError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/errors/classify-error.ts): спільна класифікація для HTTP і WebSocket. Вона дає статус, `code`, `message`, `details`, HTTP-заголовки й рівень логу. `handleError` у `server.ts` лише логує результат і відправляє `{ status: "error", code, message, details? }`; WS-диспетчер і `onMessage` кладуть ті самі `code`/`message`/`details` у конверт `error`. Класи помилок наслідують [`HttpError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/errors/http-error.ts) і самі описують свою відповідь, тож новий тип помилки не потребує змін у `server.ts`.
+
+Порядок перевірок у `classifyError` фіксований: спершу недоступність Redis (`503`, `Retry-After: 1`, `sentrySkip`), потім `HttpError`, потім решта (`500`). Redis стоїть першим, бо `RedisUnavailableError` теж `HttpError`, і загальна гілка втратила б `sentrySkip`.
+
 | Помилка                               | Статус             | `code`                                                                                               |
 | ------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------- |
 | `PayloadTooLargeError`                | 413                | `payload_too_large` (+ `details.limit`, `details.contentType`)                                       |
@@ -140,7 +144,7 @@ curl -X POST -H 'Content-Type:' -d '{"email":"a@b.c"}' http://127.0.0.1:3000/api
 | `SessionVerificationUnavailableError` | 503                | `service_unavailable`, заголовок `Retry-After: 1`                                                    |
 | інше                                  | 500                | `internal_error` (текст помилки лише при `env === "local"`)                                          |
 
-400, 413 і 415 логуються як `warn`, невідомі помилки — як `error` з контекстом для Sentry.
+4xx (400, 413, 415, 422) логуються як `warn`, 5xx — як `error` з контекстом для Sentry. Недоступність Redis визначається й за сирими помилками ioredis rate-limit клієнта (`Command timed out`, `Stream isn't writeable` тощо), а голий код сокета (`ECONNREFUSED` від S3 чи БД) — це 500.
 
 `RedisUnavailableError` ([redis-unavailable-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/errors/redis-unavailable-error.ts)) означає, що основний Redis-клієнт недоступний (з'єднання не `ready` або команда не вклалася в `REDIS_COMMAND_TIMEOUT_MS`). Відповідь — `503 service_unavailable` з `message: "Service temporarily unavailable. Try again later."` і `Retry-After: 1`; текст помилки ioredis у відповідь не потрапляє навіть при `APP_ENV=local`. Запис `logger.error` ("Request failed: Redis unavailable") лишається в stdout, але в Sentry не йде — див. [Observability](/backend/observability#відмова-redis). Сервісний шар (login, logout, `logoutAll`, WS-токен) дає той самий `503`: `tryInternal` у [result-helpers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/result-helpers.ts) повертає `AppError` `ServiceUnavailable`, коли причина — `RedisUnavailableError`. Формат тіла — `{ status: "error", code, message, details? }` (`sendErrorResponse`).
 
@@ -179,7 +183,7 @@ sequenceDiagram
 
 - **Upgrade** ([ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts), `handleUpgrade`): спершу ліміт upgrade за IP (`429`/`503`), потім токен: він передається першим значенням `Sec-WebSocket-Protocol`, друге — тип застосунку (`web`/`pwa`). Невалідний формат → `401`. Хук `onUpgrade` (у [app/start/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/index.ts) це `wsSessionAuth.verifyUpgradeToken`) повертає дані доступу, які кладуться в `userData`.
 - **Повідомлення** (`onMessage`): бінарні повідомлення ігноруються; рядок `ping` → `pong`; інакше JSON валідується зареєстрованим валідатором, перевіряється сесія (`wsSessionHandler`; без сесії — `closeExpiredSession`), і повідомлення передається в [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
-- **Диспетчер**: маршрут шукається за частиною `event` до `:`, далі `checkRateLimitWs`, `validateRoutePayload` (якщо є `validator`), middleware і handler. Невідома подія → помилка `not_found` («Route not found», [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts); детальніше — [WebSocket](/backend/websocket)), помилки валідації → `validation_failed`, решта → `internal_error`.
+- **Диспетчер**: маршрут шукається за частиною `event` до `:`, далі `checkRateLimitWs`, `validateRoutePayload` (якщо є `validator`), middleware і handler. Невідома подія → помилка `not_found` («Route not found», [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts); детальніше — [WebSocket](/backend/websocket)), винятки класифікує той самий `classifyError`: помилки валідації → `validation_failed`, недоступність Redis → `service_unavailable`, решта → `internal_error`.
 
 Про сесії, CSRF і автентифікацію — див. [Автентифікація](/backend/auth) і [Безпека](/backend/security).
 

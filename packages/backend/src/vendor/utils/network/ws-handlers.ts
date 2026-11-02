@@ -27,6 +27,13 @@ import configApp from '#config/app.js'
 import type { Validator } from '#vendor/contracts/validator.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
+import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
+import {
+    classifiedErrorBody,
+    classifyError,
+    logClassifiedError,
+    type ClassifiedError,
+} from '#vendor/utils/network/errors/classify-error.js'
 import { createWsErrorEnvelope } from '#vendor/utils/network/ws-error-envelope.js'
 import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 
@@ -223,28 +230,28 @@ const onMessage = async (
     // false: Redis is unavailable (already reported by redis-health, no log here).
     const refreshed = token === '' ? true : await refreshToken(token)
 
-    let event = ''
-    let timestamp = 0
+    let parsedMessage: unknown
+    try {
+        parsedMessage = JSON.parse(jsonMessage)
+    } catch {
+        // A client error like a malformed HTTP body: warn, no message text, no Sentry.
+        sendWsError(ws, '', 0, classifyAndLog(new MalformedBodyError('json')))
+        return
+    }
+
+    // Known before validation, so even a validation failure answers the request's
+    // event and the client can match it.
+    const { event, timestamp } = requestIdentity(parsedMessage)
 
     try {
-        const parsedMessage: unknown = JSON.parse(jsonMessage)
         const validatedMessage = getWsMessageValidator().validate(parsedMessage)
         if (!validatedMessage.ok) {
-            sendJson(ws, {
-                status: 'error',
-                error: createWsErrorEnvelope('validation_failed', 'Validation failure', {
-                    details: {
-                        kind: 'validation',
-                        messages: validatedMessage.messages,
-                        ...(validatedMessage.issues !== undefined
-                            ? { issues: validatedMessage.issues }
-                            : {}),
-                    },
-                }),
-                event,
-                timestamp,
-                data: null,
-            })
+            const error = new ValidationError(
+                validatedMessage.messages,
+                undefined,
+                validatedMessage.issues,
+            )
+            sendWsError(ws, event, timestamp, classifyAndLog(error))
             return
         }
         const message = validatedMessage.value
@@ -265,38 +272,56 @@ const onMessage = async (
         } else if (sessionResult.kind === 'missing') {
             closeExpiredSession(ws)
         } else {
-            const { session } = sessionResult
-            event = message.event
-            timestamp = message.timestamp
             // The dispatcher always answers, an unknown route included (not_found).
-            const result = await wsApiHandler(message, ws, userData, session, wsRoutesByUrl)
+            const result = await wsApiHandler(
+                message,
+                ws,
+                userData,
+                sessionResult.session,
+                wsRoutesByUrl,
+            )
             sendJson(ws, result)
         }
     } catch (err: unknown) {
-        logger.error({ err }, 'Error parse onMessage')
-        if (err instanceof ValidationError) {
-            sendJson(ws, {
-                status: 'error',
-                error: createWsErrorEnvelope('validation_failed', 'Validation failure', {
-                    details: {
-                        kind: 'validation',
-                        messages: ['Validation failure'],
-                    },
-                }),
-                event,
-                timestamp,
-                data: null,
-            })
-        } else {
-            sendJson(ws, {
-                status: 'error',
-                error: createWsErrorEnvelope('internal_error', 'Internal server error'),
-                event,
-                timestamp,
-                data: null,
-            })
-        }
+        sendWsError(ws, event, timestamp, classifyAndLog(err))
     }
+}
+
+/** `event` / `timestamp` of a parsed message when they have the right type, else empty. */
+const requestIdentity = (parsed: unknown): { event: string; timestamp: number } => {
+    const record = typeof parsed === 'object' && parsed !== null ? parsed : {}
+    const event = (record as { event?: unknown }).event
+    const timestamp = (record as { timestamp?: unknown }).timestamp
+    return {
+        event: typeof event === 'string' ? event : '',
+        timestamp: typeof timestamp === 'number' ? timestamp : 0,
+    }
+}
+
+const classifyAndLog = (err: unknown): ClassifiedError => {
+    const classified = classifyError(err)
+    logClassifiedError(logger, classified)
+    return classified
+}
+
+const sendWsError = (
+    ws: MyWebSocket,
+    event: string,
+    timestamp: number,
+    classified: ClassifiedError,
+): void => {
+    const { code, message, details } = classifiedErrorBody(classified)
+    sendJson(ws, {
+        status: 'error',
+        error: createWsErrorEnvelope(
+            code,
+            message,
+            details !== undefined ? { details } : undefined,
+        ),
+        event,
+        timestamp,
+        data: null,
+    })
 }
 
 const onOpen = (ws: MyWebSocket): void => {

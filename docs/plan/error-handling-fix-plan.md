@@ -103,7 +103,7 @@
     Порядок фіксується коментарем у коді й тестом (див. «Тести»). Фільтр `isRedisUnavailableEntry` у `logger.ts` лишається як друга лінія захисту, але класифікатор на нього не покладається.
     - `SyntaxError` з `JSON.parse` WS-повідомлення тут не розпізнається, це робиться явно в `onMessage` (п. 4), щоб не сховати справжні `SyntaxError` у коді.
 
-2. **Внутрішнє тіло помилки.** `{ code, message, details? }` однакове для обох транспортів. `details` вирівняти: зараз `kind` є не всюди, а в `ParameterValidationError` поле `messages` — масив з одного рядка.
+2. **Внутрішнє тіло помилки.** `{ code, message, details? }` однакове для обох транспортів. Під час реалізації з'ясувалося, що `details` уже відповідають контракту `ErrorDetails` у `shared/src/errors/error-codes.ts` (у кожного класу свій `kind`; помилки без деталей їх просто не мають). Тому тіла відповідей не змінювались. Виправлено лише тип: `receivedContentType` у `shared` став `string | null`, бо сервер уже відповідав `null`, коли немає заголовка `Content-Type`.
 3. **Форматування (окреме для кожного транспорту).**
     - HTTP: `handleError` = `classifyError` + лог + `sendErrorResponse(res, status, { status: 'error', ...body }, headers)`. HTTP-статус і заголовки (`Retry-After`) — частина HTTP-відповіді.
     - WS: диспетчер і `onMessage` = `classifyError` + лог + `setWsError(responseData, createWsErrorEnvelope(code, message, { details }))`. HTTP-статус і `headers` у WS не потрапляють, конверт лишається таким, як у feat-048.

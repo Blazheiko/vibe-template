@@ -162,3 +162,67 @@ describe('ws-api-dispatcher runtime response validation (feat-044)', () => {
         expect(JSON.stringify(result)).not.toContain('hash-secret')
     })
 })
+
+// feat-087: the dispatcher classifies a thrown error like handleError does for HTTP.
+describe('ws-api-dispatcher error classification', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        executeMiddlewaresMock.mockResolvedValue(true)
+        checkRateLimitWsMock.mockReturnValue({ allowed: true })
+    })
+
+    const dispatch = async (handler: () => unknown) => {
+        const route = defineWsRoute({ url: 'event_x', handler: handler as never })
+        const wsApiDispatcher = (await import('./ws-api-dispatcher.js')).default
+        return wsApiDispatcher(
+            { event: 'event_x', timestamp: 1, payload: {} },
+            { getUserData: () => ({ token: '' }) } as never,
+            { token: '', userId: '9' } as never,
+            {} as never,
+            { [route.url]: { ...route, responseCheck: null } },
+        )
+    }
+
+    it('answers a Redis outage from a handler with service_unavailable, not internal_error', async () => {
+        const { RedisUnavailableError } =
+            await import('#vendor/utils/network/errors/redis-unavailable-error.js')
+
+        const result = await dispatch(() => {
+            throw new RedisUnavailableError()
+        })
+
+        expect(result).toMatchObject({
+            status: 'error',
+            data: null,
+            error: { code: 'service_unavailable' },
+        })
+        // Logged per request for stdout, kept out of Sentry (one event per incident).
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ sentrySkip: true }),
+            'Request failed: Redis unavailable',
+        )
+    })
+
+    it('answers any other thrown error with internal_error and logs the context', async () => {
+        const err = new Error('boom')
+
+        const result = await dispatch(() => {
+            throw err
+        })
+
+        expect(result).toMatchObject({ status: 'error', error: { code: 'internal_error' } })
+        expect(logger.child).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: '9', route: 'event_x', wsEvent: 'event_x' }),
+        )
+        expect(logger.error).toHaveBeenCalledWith({ err }, 'Handle Error')
+    })
+
+    it('keeps a business error returned by the handler in data (feat-048)', async () => {
+        const body = { status: 'error', code: 'forbidden', message: 'Access denied' }
+
+        const result = await dispatch(() => body)
+
+        expect(result).toMatchObject({ status: '200', error: null, data: body })
+        expect(logger.error).not.toHaveBeenCalled()
+    })
+})

@@ -14,7 +14,11 @@ import type {
 } from '#vendor/types/types.js'
 import createWsContext from '../context/ws-context.js'
 import checkRateLimitWs, { createWsRateLimitErrorResponse } from '../rate-limit/ws-rate-limit.js'
-import { ValidationError } from '#app/validate/errors/validation-error.js'
+import {
+    classifiedErrorBody,
+    classifyError,
+    logClassifiedError,
+} from '#vendor/utils/network/errors/classify-error.js'
 import { validateRoutePayload } from '#vendor/utils/validation/validate-route-payload.js'
 import logger from '#vendor/utils/logger.js'
 import { isEmptyPayload } from '#vendor/utils/network/response-body.js'
@@ -109,33 +113,16 @@ export default async (
         }
         setWsError(responseData, createWsErrorEnvelope('not_found', 'Route not found'))
     } catch (e: unknown) {
-        if (e instanceof ValidationError) {
-            setWsError(
-                responseData,
-                createWsErrorEnvelope('validation_failed', 'Validation failure', {
-                    details: {
-                        kind: 'validation',
-                        messages: e.messages,
-                        ...(e.issues !== undefined ? { issues: e.issues } : {}),
-                    },
-                }),
-            )
-        } else {
-            logger.error(
-                {
-                    err: e,
-                    requestId,
-                    userId,
-                    route: routePath,
-                    wsEvent: message.event,
-                },
-                'WS Message Error',
-            )
-            setWsError(
-                responseData,
-                createWsErrorEnvelope('internal_error', 'Internal server error'),
-            )
-        }
+        const classified = classifyError(e)
+        logClassifiedError(
+            logger.child({ requestId, userId, route: routePath, wsEvent: message.event }),
+            classified,
+        )
+        const { code, message: text, details } = classifiedErrorBody(classified)
+        setWsError(
+            responseData,
+            createWsErrorEnvelope(code, text, details !== undefined ? { details } : undefined),
+        )
     }
 
     return responseData

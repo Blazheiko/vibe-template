@@ -52,7 +52,8 @@ export interface PayloadTooLargeErrorDetails {
 
 export interface UnsupportedMediaTypeErrorDetails {
     kind: 'unsupported_media_type'
-    receivedContentType?: string
+    /** `null`: the request had a body but no Content-Type header. */
+    receivedContentType?: string | null
     allowedKinds: string[]
 }
 
