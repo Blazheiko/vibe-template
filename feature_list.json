@@ -941,8 +941,8 @@
             "owner": "Blazheiko",
             "branch": "fix/error-path-review",
             "dependencies": ["feat-094"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #318 (merge 26ac5f8; start #317): code review fixes - a cookie of a session no longer in Redis no longer leaves the new anonymous session in the old storage namespace (and storeAnonymous switches to anon_session); the OAuth callback still redirects when the state cleanup fails; a path-parameter 400 carries CORS headers (Origin read before the metadata); the exception path sends the session cookie only (ADR 0004 point 3 updated). typecheck/lint/format:check clean, test backend 1928 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:redis 88, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Every new test fails without its fix. Manual on dist with CORS: invalid path parameter -> 400 with Access-Control-Allow-Origin. Details were in progress.md on fix/error-path-review (removed from main by this PR)."
         }
     ]
 }
