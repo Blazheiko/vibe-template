@@ -921,6 +921,16 @@
             "owner": "Blazheiko",
             "branch": "chore/remove-compat-code",
             "dependencies": ["feat-092"],
+            "status": "done",
+            "evidence": "Merged #312 (merge fcbae4c; start #311): removed the legacy session cookie fallback (resolve-session-cookie, delete-legacy-session-cookie, forceCookie, legacyCookieName; session_web reads only the active name), LegacyLoginInputSchema (login takes identifier only), the routeItem alias, the frontend uiLang localStorage migration, the unused raw ws export of useWebSocketConnection (frontend + api-playground) and api-playground LEGACY_BASE_URL. Kept on purpose: serialize-ark-schema fields (current api-playground format), vue-i18n legacy:false, WebsocketMessage.code. typecheck/lint/format:check clean, test backend 1922 / frontend 372 / api-playground 62 / shared 25 / documentation 26, frontend e2e 81, test:redis 88, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist: login with email -> 422, with identifier -> 200. Details were in progress.md on chore/remove-compat-code (removed from main by this PR)."
+        },
+        {
+            "id": "feat-094",
+            "name": "RequestSession Class",
+            "description": "docs/plan/error-handling-fix-plan.md stage 6: the per-request session state (closure variables in sessionHandler, the duplicated sessionInfo, four module-level WeakMaps/WeakSet and three beforeSend overwrites) moves into a RequestSession class with explicit transitions (login, logout, logoutAll, store anonymous) and one pre-send check; behaviour unchanged, readability is the goal",
+            "owner": "Blazheiko",
+            "branch": "refactor/request-session",
+            "dependencies": ["feat-093"],
             "status": "in_progress",
             "evidence": ""
         }
