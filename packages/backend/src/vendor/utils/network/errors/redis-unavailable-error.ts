@@ -1,9 +1,11 @@
+import { HttpError } from './http-error.js'
+
 /**
  * The main Redis client could not serve a command: not connected, timed out or
  * the connection dropped mid-command. Answered as 503 without the ioredis text;
  * the Sentry transport skips it (redis-health reports one event per incident).
  */
-export class RedisUnavailableError extends Error {
+export class RedisUnavailableError extends HttpError {
     readonly name = 'RedisUnavailableError'
     readonly code = 'service_unavailable'
     readonly statusCode = 503
@@ -11,6 +13,8 @@ export class RedisUnavailableError extends Error {
     constructor(message = 'Redis unavailable', options?: { cause?: unknown }) {
         super(message, options)
     }
+    // No overrides: classifyError answers a Redis outage in its own first branch
+    // (503, Retry-After, sentrySkip), before the generic HttpError one.
 }
 
 // ioredis messages that mean "no answer from the server", not a bug in the

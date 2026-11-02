@@ -24,13 +24,13 @@ import {
     type RequestAbortSignal,
 } from '../utils/network/http-request-handlers.js'
 import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
-import { ParameterValidationError } from '#app/validate/checkers/parameter-checker.js'
-import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'
-import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
-import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
-import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
 import { UnsupportedMediaTypeError } from '#vendor/utils/network/errors/unsupported-media-type-error.js'
+import {
+    classifiedErrorBody,
+    classifyError,
+    logClassifiedError,
+} from '#vendor/utils/network/errors/classify-error.js'
 import logger from '#vendor/utils/logger.js'
 import { isWsChannel, type WsChannel } from 'shared/guards'
 import {
@@ -393,107 +393,16 @@ export const handleError = (
     error: unknown,
     sentryContext?: HttpSentryContext,
 ): void => {
-    // The request's own logger: every record below carries requestId (and userId
-    // when known), including 413/415/422 thrown before the handler context exists.
-    const log = logger.child(definedFields(sentryContext ?? {}))
-    if (error instanceof PayloadTooLargeError) {
-        log.warn({ limit: error.limit, contentType: error.contentType }, 'Payload too large')
-        sendErrorResponse(res, error.statusCode, {
-            status: 'error',
-            code: error.code,
-            message: 'Payload too large',
-            details: {
-                kind: 'payload_too_large',
-                limit: error.limit,
-                contentType: error.contentType,
-            },
-        })
-    } else if (error instanceof RedisUnavailableError) {
-        // Still error level for stdout; the Sentry transport skips this type
-        // (redis-health reports one event per incident). No ioredis text in the body.
-        log.error({ err: error }, 'Request failed: Redis unavailable')
-        sendErrorResponse(
-            res,
-            error.statusCode,
-            {
-                status: 'error',
-                code: error.code,
-                message: 'Service temporarily unavailable. Try again later.',
-            },
-            { 'Retry-After': '1' },
-        )
-    } else if (error instanceof SessionVerificationUnavailableError) {
-        // Fail-closed: no sessionToken answer, no access. No driver text in the body.
-        log.error({ err: error }, 'Request failed: session verification unavailable')
-        sendErrorResponse(
-            res,
-            error.statusCode,
-            {
-                status: 'error',
-                code: error.code,
-                message: 'Service temporarily unavailable. Try again later.',
-            },
-            { 'Retry-After': '1' },
-        )
-    } else if (error instanceof MalformedBodyError) {
-        // A client error: warn without the body, keep it out of Sentry.
-        log.warn({ bodyKind: error.bodyKind }, 'Malformed request body')
-        sendErrorResponse(res, error.statusCode, {
-            status: 'error',
-            code: error.code,
-            message: error.message,
-        })
-    } else if (error instanceof UnsupportedMediaTypeError) {
-        log.warn(
-            {
-                receivedContentType: error.receivedContentType,
-                allowedKinds: error.allowedKinds,
-            },
-            'Unsupported media type',
-        )
-        sendErrorResponse(res, error.statusCode, {
-            status: 'error',
-            code: error.code,
-            message: 'Unsupported Media Type',
-            details: {
-                kind: 'unsupported_media_type',
-                receivedContentType: error.receivedContentType,
-                allowedKinds: error.allowedKinds,
-            },
-        })
-    } else if (error instanceof ValidationError) {
-        log.warn({ err: error }, 'Handle Error')
-        sendErrorResponse(res, error.statusCode, {
-            status: 'error',
-            code: error.code,
-            message: 'Validation failure',
-            details: {
-                kind: 'validation',
-                messages: error.messages,
-                ...(error.issues !== undefined ? { issues: error.issues } : {}),
-            },
-        })
-    } else if (error instanceof ParameterValidationError) {
-        log.warn({ err: error }, 'Handle Error')
-        sendErrorResponse(res, error.statusCode, {
-            status: 'error',
-            code: error.code,
-            message: 'Invalid parameter',
-            details: {
-                kind: 'parameter_validation',
-                parameter: error.parameterName,
-                messages: [error.message],
-            },
-        })
-    } else {
-        log.error({ err: error }, 'Handle Error')
-        const errorMessage = configApp.env === 'local' ? String(error) : 'Internal server error'
-        sendErrorResponse(res, 500, {
-            status: 'error',
-            code: 'internal_error',
-            message: errorMessage,
-        })
-    }
+    // The request's own logger: every record carries requestId (and userId when
+    // known), including 413/415/422 thrown before the handler context exists.
+    const classified = classifyError(error, { exposeInternalMessage: configApp.env === 'local' })
+    logClassifiedError(logger.child(definedFields(sentryContext ?? {})), classified)
+    sendErrorResponse(
+        res,
+        classified.status,
+        { status: 'error', ...classifiedErrorBody(classified) },
+        classified.headers,
+    )
 }
 
 const docRoutesHandler = async (

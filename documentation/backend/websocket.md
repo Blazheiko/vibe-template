@@ -166,14 +166,18 @@ const WsMessageSchema = type({
 3. `validateRoutePayload`, якщо в маршруту є `validator`; payload заморожується (`Object.freeze`).
 4. `createWsContext` → middleware маршруту (якщо є) → `handler(context)`; результат кладеться в `responseData.data`.
 
-| Ситуація                                 | `error.code`                                       |
-| ---------------------------------------- | -------------------------------------------------- |
-| невалідна форма повідомлення або payload | `validation_failed` (`details.kind: "validation"`) |
-| маршрут не знайдено                      | `not_found` («Route not found»)                    |
-| перевищено ліміт                         | `rate_limited` (`reason: rate_limit_exceeded`)     |
-| виняток у handler                        | `internal_error`                                   |
-| сесія зникла (вже відкрите з'єднання)    | `service:error` `unauthorized` + закриття `4001`   |
-| Redis недоступний                        | `service_unavailable`, з'єднання не закривається   |
+| Ситуація                                 | `error.code`                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| повідомлення — не JSON                   | `bad_request` («Malformed json body»), `event: ""`, лог `warn`                                               |
+| невалідна форма повідомлення або payload | `validation_failed` (`details.kind: "validation"`), `event` і `timestamp` із запиту, якщо вони рядок і число |
+| маршрут не знайдено                      | `not_found` («Route not found»)                                                                              |
+| перевищено ліміт                         | `rate_limited` (`reason: rate_limit_exceeded`)                                                               |
+| `RedisUnavailableError` у handler        | `service_unavailable`                                                                                        |
+| інший виняток у handler                  | `internal_error`                                                                                             |
+| сесія зникла (вже відкрите з'єднання)    | `service:error` `unauthorized` + закриття `4001`                                                             |
+| Redis недоступний                        | `service_unavailable`, з'єднання не закривається                                                             |
+
+Винятки в диспетчері й `onMessage` класифікує той самий [`classifyError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/errors/classify-error.ts), що й HTTP `handleError` (див. [Обробка помилок](/backend/request-lifecycle#обробка-помилок-handleerror)): ті самі `code`, `message`, `details` і рівні логу. Бізнес-помилки, які повертає контролер, як і раніше йдуть у `data` (feat-048).
 
 Перед диспетчером `onMessage` перевіряє сесію через `wsSessionHandler` ([session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts)) на **кожне** повідомлення, тож вихід із сесії по HTTP рве WS при наступному повідомленні.
 
