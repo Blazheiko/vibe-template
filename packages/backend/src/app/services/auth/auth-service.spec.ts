@@ -307,24 +307,62 @@ describe('authService', () => {
             )
         })
 
+        // Not measured on the wall clock (that failed whenever the machine was busy): the hash is a
+        // fake timer, and what is checked is that both answers wait for it, and are then the same.
         it('takes as long for a taken address as for a new one', async () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
             slowHash()
             userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 't' })
             sessionMock.destroySession.mockResolvedValue(undefined)
+            const { authService } = await loadAuthService()
 
-            userRepositoryMock.findByEmail.mockResolvedValue({ id: 7n, email: 'user@example.com' })
-            const taken = await register()
-            userRepositoryMock.findByEmail.mockResolvedValue(undefined)
-            const fresh = await register()
+            const registerWithFakeHash = async (): Promise<{
+                result: Awaited<ReturnType<typeof authService.registerByEmail>>
+                settledBeforeHash: boolean
+                settledAfterHash: boolean
+            }> => {
+                let settled = false
+                const pending = authService
+                    .registerByEmail(
+                        { name: 'Jane', email: 'user@example.com', password: 'secret', token: '' },
+                        authMock as any,
+                        sessionMock as any,
+                        loggerMock as any,
+                        { ipAddress: '127.0.0.1' },
+                    )
+                    .finally(() => {
+                        settled = true
+                    })
+                await vi.advanceTimersByTimeAsync(HASH_MS - 1)
+                const settledBeforeHash = settled
+                await vi.advanceTimersByTimeAsync(1)
+                const result = await pending
+                return { result, settledBeforeHash, settledAfterHash: settled }
+            }
 
-            expect(taken.elapsed).toBeGreaterThanOrEqual(HASH_MS * 0.8)
-            expect(fresh.elapsed).toBeGreaterThanOrEqual(HASH_MS * 0.8)
-            expect(Math.abs(taken.elapsed - fresh.elapsed)).toBeLessThan(HASH_MS)
-            // Same answer, too.
-            expect(Result.isOk(taken.result) && taken.result.value).toEqual(
-                Result.isOk(fresh.result) && fresh.result.value,
-            )
+            vi.useFakeTimers()
+            try {
+                userRepositoryMock.findByEmail.mockResolvedValue({
+                    id: 7n,
+                    email: 'user@example.com',
+                })
+                const taken = await registerWithFakeHash()
+                userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+                const fresh = await registerWithFakeHash()
+
+                // Neither answer is ready before the hash is done ...
+                expect(taken.settledBeforeHash).toBe(false)
+                expect(fresh.settledBeforeHash).toBe(false)
+                // ... both are ready right after it ...
+                expect(taken.settledAfterHash).toBe(true)
+                expect(fresh.settledAfterHash).toBe(true)
+                // ... and say the same.
+                expect(Result.isOk(taken.result) && taken.result.value).toEqual(
+                    Result.isOk(fresh.result) && fresh.result.value,
+                )
+            } finally {
+                vi.useRealTimers()
+            }
         })
 
         it('does not hash when the throttle already refused', async () => {
