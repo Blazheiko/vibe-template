@@ -853,6 +853,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #291 (merge 5830812; start #290): reportAppError logs every 5xx AppError once as error with its cause through the request logger (requestId/userId); 4xx and aborted requests not logged; Redis-outage causes carry sentrySkip. mapControllerError takes logger+signal, new mapWsControllerError for WS controllers; prompt-test-service no longer double-logs. Found in manual verification and fixed: isRedisUnavailable treated any bare ECONNREFUSED/ECONNRESET/ETIMEDOUT/EPIPE as Redis, so an unreachable S3 answered 503 and would have been hidden from Sentry; socket codes now count only in withRedis (isRedisCommandUnavailable). typecheck/lint/format:check clean, test backend 1888 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 152, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation: without the report call 3 tests fail. Manual: S3_ENDPOINT on a closed port -> avatar upload 500 'Failed to upload avatar' with one error record (requestId, ECONNREFUSED cause, no sentrySkip). Known limitation: email-service.send still logs its own failure (resendVerificationEmail logs twice), removed in stage 4. Details were in progress.md on fix/log-5xx-app-errors (removed from main by this PR)."
+        },
+        {
+            "id": "feat-087",
+            "name": "Shared Error Classification",
+            "description": "docs/plan/error-handling-fix-plan.md stage 2: HttpError base class and one classifyError(err) used by the HTTP handleError and the WS dispatcher/onMessage (Redis checked first: 503 + Retry-After + sentrySkip); HTTP body and WS envelope formatted separately (feat-048 envelope unchanged); WS fixes: malformed JSON -> bad_request at warn, Redis errors -> service_unavailable, validation reply keeps the request event",
+            "owner": "Blazheiko",
+            "branch": "fix/shared-error-classification",
+            "dependencies": ["feat-086"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
