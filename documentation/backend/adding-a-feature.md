@@ -253,14 +253,13 @@ export const noteService = {
 
 ## Крок 7. Controller
 
-Контролер — тонкий шар. Він дістає `userId` з `context.auth`, бере вже провалідований payload через `getTypedPayload`, викликає сервіс і перетворює помилку на канонічну відповідь через `mapControllerError` (ця функція ж виставляє HTTP-статус). Усі поля `context` (`httpData`, `responseData`, `session`, `auth`, `logger`) описані в [HttpContext докладно](/backend/controllers#httpcontext-докладно). Структуру взято з [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/notifications/push-subscription-controller.ts).
+Контролер — тонкий шар. Він дістає `userId` з `context.auth`, бере вже провалідований payload через `getTypedPayload`, викликає сервіс і повертає `respond(context, result, toBody)`: помилка стає канонічною відповіддю з правильним HTTP-статусом (`mapControllerError`), значення — тілом через `toBody`. Усі поля `context` (`httpData`, `responseData`, `session`, `auth`, `logger`) описані в [HttpContext докладно](/backend/controllers#httpcontext-докладно). Структуру взято з [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/notifications/push-subscription-controller.ts).
 
 ```ts
 // packages/backend/src/app/controllers/http/note/note-controller.ts
 import type { HttpContext } from '#vendor/types/types.js'
-import { Result } from 'better-result'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { noteService } from '#app/services/note/note-service.js'
 import { unauthorized } from '#app/services/shared/errors.js'
@@ -275,11 +274,7 @@ export default {
         }
 
         const result = await noteService.getNotes(userId)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', notes: result.value.notes }
+        return respond(context, result, (value) => ({ status: 'success', notes: value.notes }))
     },
 
     async createNote(context: HttpContext<CreateNoteInput>): Promise<CreateNoteResponse> {
@@ -290,11 +285,7 @@ export default {
 
         const payload = getTypedPayload(context)
         const result = await noteService.createNote(userId, payload)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', note: result.value.note }
+        return respond(context, result, (value) => ({ status: 'success', note: value.note }))
     },
 }
 ```

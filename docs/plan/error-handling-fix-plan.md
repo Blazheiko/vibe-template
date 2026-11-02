@@ -204,6 +204,8 @@
 
 Етап можна об'єднати з відповідним PR етапу 4.
 
+**Реалізовано (feat-092).** `respond(context, result, toBody?)` і `respondWs` у `controllers/shared/controller-error.ts`; 36 блоків `isError → mapControllerError → return` замінено, `const result = await …` лишено заради читабельності. `resetPassword` втратив ручну фільтрацію `reason`: схема відповіді вже приймає канонічну помилку з `reason`, а сервіс повертає лише п'ять відомих причин. `startPhonePasswordReset` тепер `{ status: 'success', ...value }` замість чотирьох `if`. Явний `Result.isError` лишився в 11 місцях, де після результату є ще логіка (статус `201`, редирект OAuth, оновлення сесії, допуск у WS-чат).
+
 ## Етап 6 — стан сесії (🟢, необов'язково)
 
 [`session-handler.ts:151-446`](../../packages/backend/src/vendor/utils/session/session-handler.ts) тримає три змінні стану в замиканні (`sessionInfo`, `cookieHeld`, `contextUserToken`) і 4 модульні `WeakMap`/`WeakSet`.

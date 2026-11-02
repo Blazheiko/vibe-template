@@ -1,7 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
-import { Result } from 'better-result'
 import { avatarService } from '#app/services/user/avatar-service.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { unauthorized } from '#app/services/shared/errors.js'
 import type { EmptyFormInput } from 'shared/schemas'
@@ -16,12 +15,7 @@ export default {
 
         const file = context.httpData.files?.get('avatar')
         const result = await avatarService.uploadAvatar(userId, file)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'ok', user: result.value.user }
+        return respond(context, result, (value) => ({ status: 'ok', user: value.user }))
     },
 
     async deleteAvatar(context: HttpContext): Promise<DeleteAvatarResponse> {
@@ -31,11 +25,6 @@ export default {
         }
 
         const result = await avatarService.deleteAvatar(userId)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'ok', user: result.value.user }
+        return respond(context, result, (value) => ({ status: 'ok', user: value.user }))
     },
 }

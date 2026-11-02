@@ -15,7 +15,7 @@ import type {
     SupportKnowledgeBaseUpdateInput,
 } from 'shared/schemas'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { badRequest, conflict } from '#app/services/shared/errors.js'
 import { knowledgeBaseInitService } from '#app/services/support/knowledge-base-init-service.js'
 
@@ -40,14 +40,11 @@ export default {
             page: query.page,
             limit: query.limit,
         })
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return {
+        return respond(context, result, (value) => ({
             status: 'ok',
-            data: result.value.items,
-            total: result.value.total,
-        }
+            data: value.items,
+            total: value.total,
+        }))
     },
 
     async getById(context: HttpContext): Promise<SupportKnowledgeBaseItemResponse> {
@@ -55,10 +52,7 @@ export default {
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
         const result = await knowledgeBaseService.getById(id)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok', data: result.value.item }
+        return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
     async create(
@@ -91,10 +85,7 @@ export default {
             ...(payload.category !== undefined ? { category: payload.category } : {}),
             ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
         })
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok', data: result.value.item }
+        return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
     async delete(context: HttpContext): Promise<SupportKnowledgeBaseDeleteResponse> {
@@ -102,10 +93,7 @@ export default {
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
         const result = await knowledgeBaseService.delete(id)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok' }
+        return respond(context, result, () => ({ status: 'ok' }))
     },
 
     async uploadScreenshot(
@@ -116,10 +104,7 @@ export default {
 
         const file = context.httpData.files?.get('screenshot')
         const result = await knowledgeBaseService.uploadScreenshot(id, file)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok', data: result.value.item }
+        return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
     async deleteScreenshot(context: HttpContext): Promise<SupportKnowledgeBaseItemResponse> {
@@ -127,10 +112,7 @@ export default {
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
         const result = await knowledgeBaseService.deleteScreenshot(id)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok', data: result.value.item }
+        return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
     async reindex(
@@ -140,20 +122,14 @@ export default {
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
         const result = await knowledgeBaseService.reindexArticle(id)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok', indexed: result.value.indexed }
+        return respond(context, result, (value) => ({ status: 'ok', indexed: value.indexed }))
     },
 
     async reindexAll(
         context: HttpContext<EmptyFormInput>,
     ): Promise<SupportKnowledgeBaseReindexResponse> {
         const result = await knowledgeBaseService.reindexAll()
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-        return { status: 'ok', indexed: result.value.indexed }
+        return respond(context, result, (value) => ({ status: 'ok', indexed: value.indexed }))
     },
 
     async startInit(

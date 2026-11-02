@@ -1,7 +1,7 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { readinessService } from '#app/services/core/readiness-service.js'
 import { mainService } from '#app/services/core/main-service.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { respond } from '#app/controllers/shared/controller-error.js'
 import type {
     InitResponse,
     PingResponse,
@@ -13,7 +13,6 @@ import type {
     TestMiddlewareResponse,
     UpdateWsTokenResponse,
 } from 'shared'
-import { Result } from 'better-result'
 
 export default {
     ping(): PingResponse {
@@ -43,20 +42,12 @@ export default {
 
     async updateWsToken(context: HttpContext): Promise<UpdateWsTokenResponse> {
         const result = await mainService.updateWsToken(context.session.sessionInfo ?? null)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'ok', ...result.value }
+        return respond(context, result, (value) => ({ status: 'ok', ...value }))
     },
 
     async init(context: HttpContext): Promise<InitResponse> {
         const result = await mainService.init(context.session.sessionInfo ?? null)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'ok', ...result.value }
+        return respond(context, result, (value) => ({ status: 'ok', ...value }))
     },
 
     setHeaderAndCookie({ responseData }: HttpContext): SetHeaderAndCookieResponse {

@@ -1,7 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
-import { Result } from 'better-result'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { pushSubscriptionService } from '#app/services/notifications/push-subscription-service.js'
 import { pushNotificationSenderService } from '#app/services/notifications/push-notification-sender-service.js'
@@ -56,14 +55,10 @@ export default {
         }
 
         const result = await pushSubscriptionService.getSubscriptions(userId)
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return {
+        return respond(context, result, (value) => ({
             status: 'success',
-            subscriptions: result.value.subscriptions,
-        }
+            subscriptions: value.subscriptions,
+        }))
     },
 
     async createSubscription(
@@ -76,15 +71,10 @@ export default {
 
         const payload = getTypedPayload(context)
         const result = await pushSubscriptionService.createSubscription(userId, payload)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return {
+        return respond(context, result, (value) => ({
             status: 'success',
-            subscription: result.value.subscription,
-        }
+            subscription: value.subscription,
+        }))
     },
 
     async getSubscription(context: HttpContext): Promise<GetSubscriptionResponse> {
@@ -98,15 +88,10 @@ export default {
             return mapControllerError(context, subscriptionNotFound())
         }
         const result = await pushSubscriptionService.getSubscription(userId, subscriptionId)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return {
+        return respond(context, result, (value) => ({
             status: 'success',
-            data: result.value.data,
-        }
+            data: value.data,
+        }))
     },
 
     async updateSubscription(
@@ -128,15 +113,10 @@ export default {
             subscriptionId,
             payload,
         )
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return {
+        return respond(context, result, (value) => ({
             status: 'success',
-            subscription: result.value.subscription,
-        }
+            subscription: value.subscription,
+        }))
     },
 
     async deleteSubscription(context: HttpContext): Promise<DeleteSubscriptionResponse> {
@@ -150,12 +130,7 @@ export default {
             return mapControllerError(context, subscriptionNotFound())
         }
         const result = await pushSubscriptionService.deleteSubscription(userId, subscriptionId)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', message: result.value.message }
+        return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 
     async getSubscriptionLogs(context: HttpContext): Promise<GetSubscriptionLogsResponse> {
@@ -169,12 +144,7 @@ export default {
             return mapControllerError(context, subscriptionNotFound())
         }
         const result = await pushSubscriptionService.getSubscriptionLogs(userId, subscriptionId)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return { status: 'success', data: result.value.data }
+        return respond(context, result, (value) => ({ status: 'success', data: value.data }))
     },
 
     async getSubscriptionStatistics(
@@ -193,15 +163,10 @@ export default {
             userId,
             subscriptionId,
         )
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return {
+        return respond(context, result, (value) => ({
             status: 'success',
-            data: result.value.data,
-        }
+            data: value.data,
+        }))
     },
 
     async deactivateSubscription(
@@ -217,15 +182,10 @@ export default {
             return mapControllerError(context, subscriptionNotFound())
         }
         const result = await pushSubscriptionService.deactivateSubscription(userId, subscriptionId)
-
-        if (Result.isError(result)) {
-            return mapControllerError(context, result.error)
-        }
-
-        return {
+        return respond(context, result, (value) => ({
             status: 'success',
-            data: result.value.data,
-        }
+            data: value.data,
+        }))
     },
 
     async testPush(context: HttpContext<PushSubscriptionTestInput>): Promise<TestPushResponse> {
