@@ -202,6 +202,52 @@ describe('session beforeSend', () => {
 // feat-088: a storage failure in auth.login / logout / logoutAll propagates without a
 // log record here; the service turns it into an AppError and the controller logs it
 // once (reportAppError), so one failure is one error record, not two.
+// feat-094: a request that replaces its own session keeps the cookie it set. Both
+// guards were untested before the RequestSession refactor.
+describe('session beforeSend after the request replaced its own session', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        storage.getSession.mockResolvedValue({
+            id: 's1',
+            data: { userId: '7', userToken: USER_TOKEN, csrfToken: 'c'.repeat(43) },
+            createdAt: new Date().toISOString(),
+        })
+    })
+
+    it('keeps the anonymous cookie of a logout over a refreshed signed-in cookie', async () => {
+        storage.claimCookieRefresh.mockResolvedValue(true)
+        const context = await run()
+
+        await context.auth.logout()
+        const anonymousCookie = context.responseData.cookies.get(sessionConfig.cookieName)
+        // The old session is gone now; checking it again must not drop the new cookie.
+        storage.sessionExists.mockResolvedValue(false)
+        await context.session.beforeSend?.()
+
+        expect(context.responseData.cookies.get(sessionConfig.cookieName)).toBe(anonymousCookie)
+        expect(storage.sessionExists).not.toHaveBeenCalled()
+    })
+
+    it('keeps the login cookie after the anonymous session was moved to Redis', async () => {
+        const responseData = createResponseData()
+        const context = createContext(
+            { method: 'post', headers: new Map(), cookies: new Map() } as never,
+            responseData,
+        )
+        await sessionHandler(context, undefined, undefined)
+        await context.session.updateSessionData({ oauthState: 's' })
+
+        await context.auth.login('7', USER_TOKEN)
+        const loginCookie = responseData.cookies.get(sessionConfig.cookieName)
+        // The login itself marked the old anonymous session; that must not undo its cookie.
+        storage.anonSessionSignedIn.mockResolvedValue(true)
+        await context.session.beforeSend?.()
+
+        expect(responseData.cookies.get(sessionConfig.cookieName)).toBe(loginCookie)
+        expect(storage.anonSessionSignedIn).not.toHaveBeenCalled()
+    })
+})
+
 describe('session auth methods on a storage failure', () => {
     const loggerError = (logger as unknown as { error: ReturnType<typeof vi.fn> }).error
 
