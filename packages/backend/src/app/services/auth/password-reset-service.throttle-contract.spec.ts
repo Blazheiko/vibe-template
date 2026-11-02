@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 import {
     appErrorCode,
     appErrorMessage,
@@ -93,7 +94,6 @@ interface Row {
     call: (service: Service) => Promise<unknown>
     consumed: readonly (readonly [string, string])[]
     blocked: { status: number; code: string; message: string }
-    unavailable: string
 }
 const badRequest = (message: string) => ({ status: 400, code: 'bad_request', message })
 
@@ -103,7 +103,6 @@ const ROWS: readonly Row[] = [
         call: (s) => s.startPhonePasswordReset(PHONE, undefined, { ...IP, sessionId: 's' }),
         consumed: [['reset_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone reset IP throttle',
     },
     {
         method: 'startPhonePasswordReset · phone',
@@ -113,14 +112,12 @@ const ROWS: readonly Row[] = [
             ['sms_send_phone', PHONE],
         ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone reset identifier throttle',
     },
     {
         method: 'resetPassword · ip',
         call: (s) => s.resetPassword('tok', 'new-password', 'new-password', IP),
         consumed: [['reset_password_ip', '203.0.113.9']],
         blocked: badRequest('Too many password reset attempts. Please try again later.'),
-        unavailable: 'Failed to enforce reset password throttle',
     },
     {
         method: 'completePhonePasswordReset · ip',
@@ -128,7 +125,6 @@ const ROWS: readonly Row[] = [
             s.completePhonePasswordReset('c', '123456', 'new-password', 'new-password', IP),
         consumed: [['confirm_reset_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone reset confirmation IP throttle',
     },
 ]
 
@@ -186,33 +182,23 @@ describe.each(ROWS)('passwordResetService throttle: $method', (row) => {
         untouchedDownstream()
     })
 
-    it('fails closed with a 500 and its own message when Redis does not answer', async () => {
+    // ADR 0004: a Redis failure is not an AppError; the call rejects (fail closed) and the
+    // transport answers. Nothing downstream may run on its behalf.
+    it('fails closed when Redis does not answer: the call rejects, nothing downstream runs', async () => {
         arrange(target, 'unavailable')
         const { passwordResetService } = await import('./password-reset-service.js')
-        const result = (await row.call(passwordResetService)) as Result<unknown, AppError>
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(describeError(result.error)).toEqual({
-                status: 500,
-                code: 'internal_error',
-                message: row.unavailable,
-            })
-        }
+        await expect(row.call(passwordResetService)).rejects.toThrow()
         untouchedDownstream()
     })
 
-    it('answers 503 and not 500 when Redis is unreachable', async () => {
+    it('a Redis outage becomes 503 at the transport, not 500', async () => {
         arrange(target, 'timeout')
         const { passwordResetService } = await import('./password-reset-service.js')
-        const result = (await row.call(passwordResetService)) as Result<unknown, AppError>
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(describeError(result.error)).toEqual({
-                status: 503,
-                code: 'service_unavailable',
-                message: 'Service temporarily unavailable. Try again later.',
-            })
-        }
+        const thrown = await row.call(passwordResetService).then(
+            () => undefined,
+            (err: unknown) => err,
+        )
+        expect(classifyError(thrown)).toMatchObject({ status: 503, code: 'service_unavailable' })
     })
 })
 

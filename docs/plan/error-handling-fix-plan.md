@@ -186,6 +186,13 @@
 - OAuth callback ловить виняток сервісу й усе одно робить редирект, а не віддає 500 JSON.
 - Свідомі перехоплення в `requestPasswordReset` / `startPhonePasswordReset` (та сама «generic» відповідь, щоб не розкривати існування акаунта) переписані на явний `try/catch`.
 
+**Знайдено в PR 3 (feat-091).**
+
+- `enforceThrottle(policy, key, rejected)`: текст для 500 (`unavailable`) прибрано, бо збій Redis кидається і транспорт дає 503.
+- `changePassword`: пароль уже змінено, тож виняток під час оновлення сесії (`renewSession` → `auth.login`) контролер ловить і відповідає успіхом із `sessionRenewed: false`, як раніше для `Result.err`. Без цього винятки перетворили б зроблену зміну пароля на 500.
+- Best-effort кроки (`resetAuthThrottle` після логіну й зміни пароля, видалення старих сесій) — явні `try/catch` з `warn`.
+- `tryInternal`, `toInternalError` і `result-helpers.ts` видалено.
+
 **Документація.** [`services.md`](../../documentation/backend/services.md), [`adding-a-feature.md`](../../documentation/backend/adding-a-feature.md), skill `backend-feature` (шаблон сервісу).
 
 ## Етап 5 — helper для контролерів (🟢)

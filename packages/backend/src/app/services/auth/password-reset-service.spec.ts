@@ -995,11 +995,13 @@ describe('auth throttle fail-closed (phone reset)', () => {
     it('rejects phone reset start without issuing a code', async () => {
         redisDown()
         const { passwordResetService } = await loadPasswordResetService()
-        const result = await passwordResetService.startPhonePasswordReset('+1 415 555 0123', 'US', {
-            ipAddress: '127.0.0.1',
-            sessionId: 'session-id',
-        })
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            passwordResetService.startPhonePasswordReset('+1 415 555 0123', 'US', {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+            }),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
         expect(issueVerificationCodeMock).not.toHaveBeenCalled()
@@ -1008,14 +1010,16 @@ describe('auth throttle fail-closed (phone reset)', () => {
     it('rejects phone reset completion without loading the challenge', async () => {
         redisDown()
         const { passwordResetService } = await loadPasswordResetService()
-        const result = await passwordResetService.completePhonePasswordReset(
-            'reset-challenge-1',
-            '123456',
-            'new-password',
-            'new-password',
-            { ipAddress: '127.0.0.1' },
-        )
-        expect(Result.isError(result)).toBe(true)
+        // ADR 0004: the Redis failure propagates; nothing downstream runs.
+        await expect(
+            passwordResetService.completePhonePasswordReset(
+                'reset-challenge-1',
+                '123456',
+                'new-password',
+                'new-password',
+                { ipAddress: '127.0.0.1' },
+            ),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(smsAuthChallengeRepositoryMock.findById).not.toHaveBeenCalled()
     })
@@ -1089,13 +1093,14 @@ describe('forgot password and reset password throttles', () => {
     ])('reset password: rejected without checking the token when %s', async (_n, arrange) => {
         arrange()
         const { passwordResetService } = await loadPasswordResetService()
-        const result = await passwordResetService.resetPassword(
-            'some-token',
-            'new-password',
-            'new-password',
-            { ipAddress: '10.0.0.4' },
-        )
-        expect(Result.isError(result)).toBe(true)
+        // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
+        const refused = await passwordResetService
+            .resetPassword('some-token', 'new-password', 'new-password', { ipAddress: '10.0.0.4' })
+            .then(
+                (result) => Result.isError(result),
+                () => true,
+            )
+        expect(refused).toBe(true)
         expect(passwordResetRepositoryMock.findByTokenHash).not.toHaveBeenCalled()
         expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'reset_password_ip' }),

@@ -336,10 +336,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const { context: ctxA } = await requestWith(a.cookie)
             cleanup.fail = true
 
-            const result = await authService.logoutAll(ctxA.auth, ctxA.session)
-
-            // The request reports the failed cleanup, but the rotation came first.
-            expect(Result.isError(result)).toBe(true)
+            // The request fails on the cleanup (ADR 0004: it throws), but the rotation came first.
+            await expect(authService.logoutAll(ctxA.auth, ctxA.session)).rejects.toThrow()
             cleanup.fail = false
             expect(await dbToken(user.id)).not.toBe(user.sessionToken)
             expect((await requestWith(a.cookie)).context.auth.check()).toBe(false)

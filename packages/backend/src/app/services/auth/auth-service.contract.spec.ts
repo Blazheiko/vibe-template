@@ -515,7 +515,7 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockRejectedValue(new Error('scrypt'))
         },
         call: completeReg,
-        error: internalError('Failed to hash password'),
+        throws: true,
     },
     // --- phone link, step 1 -----------------------------------------------------------------
     {
@@ -752,7 +752,7 @@ const ROWS: readonly Row[] = [
         name: 'logout · the session library throws',
         arrange: () => authMock.logout.mockRejectedValue(new Error('redis')),
         call: (s) => s.logout(authMock as never, sessionMock as never),
-        error: internalError('Failed to log out user'),
+        throws: true,
     },
     {
         name: 'logout · no rotated CSRF token',
@@ -811,7 +811,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.update.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.logoutAll(authMock as never, sessionMock as never),
-        error: internalError('Failed to revoke sessions'),
+        throws: true,
         after: () => {
             expect(authMock.logoutAll).not.toHaveBeenCalled()
         },
@@ -824,7 +824,7 @@ const ROWS: readonly Row[] = [
             authMock.logoutAll.mockRejectedValue(new Error('redis'))
         },
         call: (s) => s.logoutAll(authMock as never, sessionMock as never),
-        error: internalError('Failed to log out all sessions'),
+        throws: true,
         after: () => {
             expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
                 sessionToken: 'rotated-token',

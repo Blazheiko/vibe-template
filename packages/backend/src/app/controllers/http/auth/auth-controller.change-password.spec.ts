@@ -74,6 +74,23 @@ describe('AuthController.changePassword', () => {
         )
     })
 
+    // feat-091 (ADR 0004): the renewal now throws on a storage failure instead of returning
+    // an error; a done password change must still not become a 500.
+    it('still reports the changed password when the renewal throws', async () => {
+        const redisError = new Error('Command timed out')
+        renewSession.mockRejectedValue(redisError)
+        const context = createContext()
+
+        const response = await AuthController.changePassword(context)
+
+        expect(response).toEqual({ status: 'success', sessionRenewed: false })
+        expect(context.responseData.status).toBe(200)
+        expect(context.logger.error).toHaveBeenCalledWith(
+            { err: redisError },
+            'Session renewal after password change failed',
+        )
+    })
+
     it('does not renew the session when the password change fails', async () => {
         changePassword.mockResolvedValue(Result.err({ kind: 'bad_request', message: 'Wrong' }))
 

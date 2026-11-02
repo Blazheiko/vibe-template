@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 import {
     appErrorCode,
     appErrorMessage,
@@ -60,7 +61,6 @@ interface Row {
     call: (service: Service) => Promise<unknown>
     consumed: readonly (readonly [string, string])[]
     blocked: { status: number; code: string; message: string }
-    unavailable: string
 }
 
 const ROWS: readonly Row[] = [
@@ -73,7 +73,6 @@ const ROWS: readonly Row[] = [
             code: 'bad_request',
             message: 'Too many verification attempts. Please try again later.',
         },
-        unavailable: 'Failed to enforce email verification throttle',
     },
     {
         method: 'queueVerificationEmail · user',
@@ -84,7 +83,6 @@ const ROWS: readonly Row[] = [
             code: 'bad_request',
             message: 'Too many verification emails requested. Please try again later.',
         },
-        unavailable: 'Failed to enforce verification email throttle',
     },
 ]
 
@@ -140,30 +138,20 @@ describe.each(ROWS)('emailVerificationService throttle: $method', (row) => {
         untouchedDownstream()
     })
 
-    it('fails closed with a 500 and its own message when Redis does not answer', async () => {
+    // ADR 0004: a Redis failure is not an AppError; the call rejects (fail closed) and the
+    // transport answers. Nothing downstream may run on its behalf.
+    it('fails closed when Redis does not answer: the call rejects, nothing downstream runs', async () => {
         arrange(target, 'unavailable')
-        const result = (await row.call(await load())) as Result<unknown, AppError>
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(describeError(result.error)).toEqual({
-                status: 500,
-                code: 'internal_error',
-                message: row.unavailable,
-            })
-        }
+        await expect(row.call(await load())).rejects.toThrow()
         untouchedDownstream()
     })
 
-    it('answers 503 and not 500 when Redis is unreachable', async () => {
+    it('a Redis outage becomes 503 at the transport, not 500', async () => {
         arrange(target, 'timeout')
-        const result = (await row.call(await load())) as Result<unknown, AppError>
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(describeError(result.error)).toEqual({
-                status: 503,
-                code: 'service_unavailable',
-                message: 'Service temporarily unavailable. Try again later.',
-            })
-        }
+        const thrown = await row.call(await load()).then(
+            () => undefined,
+            (err: unknown) => err,
+        )
+        expect(classifyError(thrown)).toMatchObject({ status: 503, code: 'service_unavailable' })
     })
 })

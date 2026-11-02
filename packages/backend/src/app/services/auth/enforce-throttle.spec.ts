@@ -1,16 +1,14 @@
 import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { badRequest, unauthorized } from '#app/services/shared/errors.js'
+import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 import type { ThrottlePolicy } from '#config/throttle-policies.js'
 
 const consumeAuthThrottleMock = vi.fn()
 vi.mock('./auth-throttle-service.js', () => ({ consumeAuthThrottle: consumeAuthThrottleMock }))
 
 const policy = { scope: 'unit_test' } as ThrottlePolicy
-const answers = {
-    unavailable: 'Failed to enforce unit throttle',
-    rejected: badRequest('Too many tries'),
-}
+const rejected = badRequest('Too many tries')
 
 afterEach(() => {
     vi.resetAllMocks()
@@ -20,7 +18,7 @@ describe('enforceThrottle', () => {
     it('is ok while the counter allows the attempt, and consumes exactly this policy and key', async () => {
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
         const { enforceThrottle } = await import('./enforce-throttle.js')
-        const result = await enforceThrottle(policy, 'k', answers)
+        const result = await enforceThrottle(policy, 'k', rejected)
         expect(Result.isOk(result)).toBe(true)
         expect(consumeAuthThrottleMock).toHaveBeenCalledExactlyOnceWith(policy, 'k')
     })
@@ -28,31 +26,26 @@ describe('enforceThrottle', () => {
     it('answers with the given error once the counter is spent', async () => {
         consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 99 })
         const { enforceThrottle } = await import('./enforce-throttle.js')
-        const result = await enforceThrottle(policy, 'k', {
-            ...answers,
-            rejected: unauthorized('Invalid email or password'),
-        })
+        const result = await enforceThrottle(policy, 'k', unauthorized('Invalid email or password'))
         expect(Result.isError(result) && result.error).toEqual(
             unauthorized('Invalid email or password'),
         )
     })
 
-    it('fails closed with an internal error and its own message when Redis fails', async () => {
+    // ADR 0004: a Redis failure is not an AppError. It rejects (fail closed: the caller
+    // does nothing on its behalf) and the transport answers.
+    it('fails closed by rejecting with the Redis error', async () => {
         const cause = new Error('redis down')
         consumeAuthThrottleMock.mockRejectedValue(cause)
         const { enforceThrottle } = await import('./enforce-throttle.js')
-        const result = await enforceThrottle(policy, 'k', answers)
-        expect(Result.isError(result) && result.error).toEqual({
-            _tag: 'Internal',
-            publicMessage: 'Failed to enforce unit throttle',
-            cause,
-        })
+        await expect(enforceThrottle(policy, 'k', rejected)).rejects.toBe(cause)
     })
 
-    it('answers 503 and not 500 when Redis is unreachable', async () => {
-        consumeAuthThrottleMock.mockRejectedValue(new Error('Command timed out'))
+    it('a Redis outage becomes 503 at the transport, not 500', async () => {
+        const cause = new Error('Command timed out')
+        consumeAuthThrottleMock.mockRejectedValue(cause)
         const { enforceThrottle } = await import('./enforce-throttle.js')
-        const result = await enforceThrottle(policy, 'k', answers)
-        expect(Result.isError(result) && result.error._tag).toBe('ServiceUnavailable')
+        await expect(enforceThrottle(policy, 'k', rejected)).rejects.toBe(cause)
+        expect(classifyError(cause)).toMatchObject({ status: 503, code: 'service_unavailable' })
     })
 })

@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 import {
     appErrorCode,
     appErrorMessage,
@@ -119,7 +120,6 @@ interface Row {
     /** What the caller gets when the last counter is spent. */
     blocked: { status: number; code: string; message: string }
     /** What the caller gets when Redis fails on the last counter. */
-    unavailable: string
 }
 
 const login = (identifier: string) => (service: Service) =>
@@ -145,7 +145,6 @@ const ROWS: readonly Row[] = [
             ),
         consumed: [['register_email_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_REGISTRATIONS),
-        unavailable: 'Failed to enforce email registration IP throttle',
     },
     {
         method: 'registerByEmail · identifier',
@@ -167,14 +166,12 @@ const ROWS: readonly Row[] = [
             ['register_email_identifier', 'user@example.com'],
         ],
         blocked: badRequest(TOO_MANY_REGISTRATIONS),
-        unavailable: 'Failed to enforce email registration identifier throttle',
     },
     {
         method: 'startPhoneRegistration · ip',
         call: (s) => s.startPhoneRegistration({ phone: PHONE }, { ...IP, sessionId: 's' }),
         consumed: [['register_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce auth IP throttle',
     },
     {
         method: 'startPhoneRegistration · phone',
@@ -184,14 +181,12 @@ const ROWS: readonly Row[] = [
             ['sms_send_phone', PHONE],
         ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce auth phone throttle',
     },
     {
         method: 'confirmPhoneRegistration · ip',
         call: (s) => s.confirmPhoneRegistration({ challengeId: 'c', code: '123456' }, IP),
         consumed: [['confirm_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone confirmation IP throttle',
     },
     {
         method: 'startPhoneLink · ip',
@@ -206,7 +201,6 @@ const ROWS: readonly Row[] = [
             ),
         consumed: [['link_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone linking IP throttle',
     },
     {
         method: 'startPhoneLink · phone',
@@ -224,7 +218,6 @@ const ROWS: readonly Row[] = [
             ['sms_send_phone', PHONE],
         ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone linking identifier throttle',
     },
     {
         method: 'confirmPhoneLink · ip',
@@ -239,7 +232,6 @@ const ROWS: readonly Row[] = [
             ),
         consumed: [['confirm_link_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce phone linking confirmation IP throttle',
     },
     {
         method: 'startEmailLink · target',
@@ -250,7 +242,6 @@ const ROWS: readonly Row[] = [
             }),
         consumed: [['link_email_target', 'new@example.com']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce email linking target throttle',
     },
     {
         method: 'startEmailLink · user',
@@ -264,7 +255,6 @@ const ROWS: readonly Row[] = [
             ['link_email_user', '7'],
         ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce email linking user throttle',
     },
     {
         method: 'startEmailLink · cooldown',
@@ -279,14 +269,12 @@ const ROWS: readonly Row[] = [
             ['link_email_user_cooldown', '7'],
         ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
-        unavailable: 'Failed to enforce email linking cooldown',
     },
     {
         method: 'login · ip',
         call: login('user@example.com'),
         consumed: [['login_ip', '203.0.113.9']],
         blocked: INVALID,
-        unavailable: 'Failed to enforce login IP throttle',
     },
     {
         method: 'login · identifier (email)',
@@ -296,7 +284,6 @@ const ROWS: readonly Row[] = [
             ['login_identifier', 'user@example.com'],
         ],
         blocked: INVALID,
-        unavailable: 'Failed to enforce login identifier throttle',
     },
     {
         method: 'login · identifier (phone)',
@@ -306,14 +293,12 @@ const ROWS: readonly Row[] = [
             ['login_identifier', PHONE],
         ],
         blocked: INVALID,
-        unavailable: 'Failed to enforce login identifier throttle',
     },
     {
         method: 'changePassword · user',
         call: (s) => s.changePassword(7n, { currentPassword: 'old', newPassword: 'new-password' }),
         consumed: [['change_password_user', '7']],
         blocked: badRequest('Too many password change attempts. Please try again later.'),
-        unavailable: 'Failed to enforce change password throttle',
     },
 ]
 
@@ -373,22 +358,16 @@ describe.each(ROWS)('authService throttle: $method', (row) => {
         untouchedDownstream()
     })
 
-    it('fails closed with a 500 and its own message when Redis does not answer', async () => {
+    // ADR 0004: a Redis failure is not an AppError; the call rejects (fail closed) and the
+    // transport answers. Nothing downstream may run on its behalf.
+    it('fails closed when Redis does not answer: the call rejects, nothing downstream runs', async () => {
         arrange(row, 'unavailable')
         const { authService } = await import('./auth-service.js')
-        const result = (await row.call(authService)) as Result<unknown, AppError>
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(describeError(result.error)).toEqual({
-                status: 500,
-                code: 'internal_error',
-                message: row.unavailable,
-            })
-        }
+        await expect(row.call(authService)).rejects.toThrow()
         untouchedDownstream()
     })
 
-    it('answers 503 and not 500 when Redis is unreachable', async () => {
+    it('a Redis outage becomes 503 at the transport, not 500', async () => {
         const target = row.consumed.at(-1)![0]
         consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
             policy.scope === target
@@ -396,14 +375,10 @@ describe.each(ROWS)('authService throttle: $method', (row) => {
                 : Promise.resolve({ allowed: true, count: 1 }),
         )
         const { authService } = await import('./auth-service.js')
-        const result = (await row.call(authService)) as Result<unknown, AppError>
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(describeError(result.error)).toEqual({
-                status: 503,
-                code: 'service_unavailable',
-                message: 'Service temporarily unavailable. Try again later.',
-            })
-        }
+        const thrown = await row.call(authService).then(
+            () => undefined,
+            (err: unknown) => err,
+        )
+        expect(classifyError(thrown)).toMatchObject({ status: 503, code: 'service_unavailable' })
     })
 })

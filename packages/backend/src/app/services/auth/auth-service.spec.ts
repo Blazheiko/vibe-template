@@ -842,9 +842,10 @@ describe('authService', () => {
             userRepositoryMock.update.mockRejectedValue(new Error('db down'))
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
-
-            expect(Result.isError(result)).toBe(true)
+            // ADR 0004: the failure propagates; the transport answers 500 / 503.
+            await expect(
+                authService.logoutAll(authMock as any, sessionMock as any),
+            ).rejects.toThrow()
             expect(authMock.logoutAll).not.toHaveBeenCalled()
             expect(securityNotice).not.toHaveBeenCalled()
         })
@@ -854,9 +855,10 @@ describe('authService', () => {
             authMock.logoutAll.mockRejectedValue(new Error('redis down'))
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
-
-            expect(Result.isError(result)).toBe(true)
+            // ADR 0004: the failure propagates; the transport answers 500 / 503.
+            await expect(
+                authService.logoutAll(authMock as any, sessionMock as any),
+            ).rejects.toThrow()
             expect(userRepositoryMock.update).toHaveBeenCalledTimes(1)
         })
     })
@@ -1023,12 +1025,12 @@ describe('auth throttle fail-closed (email link)', () => {
         validatePasswordMock.mockResolvedValue(true)
 
         const { authService } = await loadAuthService()
-        const result = await authService.startEmailLink(9n, {
-            email: 'phone-only@example.com',
-            currentPassword: 'secret123',
-        })
-
-        expect(Result.isError(result)).toBe(true)
+        await expect(
+            authService.startEmailLink(9n, {
+                email: 'phone-only@example.com',
+                currentPassword: 'secret123',
+            }),
+        ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
     })
@@ -1047,27 +1049,6 @@ describe('authService while Redis is unavailable', () => {
             sessionToken: 'session-token',
         })
         validatePasswordMock.mockResolvedValue(true)
-    }
-
-    /** What the controller answers for this AppError (status, headers, body). */
-    const toResponse = async (error: unknown) => {
-        const { mapControllerError } = await import('#app/controllers/shared/controller-error.js')
-        const headers = new Map<string, string>()
-        const responseData = {
-            status: 200,
-            setHeader: (name: string, value: string) => {
-                headers.set(name, value)
-            },
-        }
-        const payload = mapControllerError(
-            {
-                responseData,
-                logger: { error: vi.fn() },
-                signal: new AbortController().signal,
-            } as never,
-            error as never,
-        )
-        return { status: responseData.status, headers, payload }
     }
 
     const operations: [
@@ -1121,21 +1102,25 @@ describe('authService while Redis is unavailable', () => {
             )
             const { authService } = await loadAuthService()
 
-            const result = (await run(authService)) as Result<unknown, unknown>
+            // ADR 0004: the failure propagates and the transport answers (classifyError).
+            // Imported after resetModules, so the error class is the one the service threw.
+            const { classifiedErrorBody, classifyError } =
+                await import('#vendor/utils/network/errors/classify-error.js')
+            const thrown = await run(authService).then(
+                () => undefined,
+                (err: unknown) => err,
+            )
 
-            expect(Result.isError(result)).toBe(true)
-            if (!Result.isError(result)) return
-            const response = await toResponse(result.error)
-            expect(response.status).toBe(503)
-            expect(response.headers.get('Retry-After')).toBe('1')
-            expect(response.payload).toEqual({
-                status: 'error',
+            expect(thrown).toBeInstanceOf(Error)
+            const classified = classifyError(thrown)
+            expect(classified.status).toBe(503)
+            expect(classified.headers).toEqual({ 'Retry-After': '1' })
+            expect(classifiedErrorBody(classified)).toEqual({
                 code: 'service_unavailable',
                 message: 'Service temporarily unavailable. Try again later.',
             })
-            expect(JSON.stringify(response.payload)).not.toMatch(/timed out|Failed to/)
-            // A partial logoutAll never reports success or a deletedCount.
-            expect(JSON.stringify(response.payload)).not.toContain('deletedCount')
+            // No ioredis text, and a partial logoutAll never reports success or a deletedCount.
+            expect(classified.message).not.toMatch(/timed out|Failed to|deletedCount/)
         },
     )
 
@@ -1144,12 +1129,15 @@ describe('authService while Redis is unavailable', () => {
         failWith(name, new Error('boom'))
         const { authService } = await loadAuthService()
 
-        const result = (await run(authService)) as Result<unknown, unknown>
+        const { classifyError } = await import('#vendor/utils/network/errors/classify-error.js')
+        const thrown = await run(authService).then(
+            () => undefined,
+            (err: unknown) => err,
+        )
 
-        expect(Result.isError(result)).toBe(true)
-        if (!Result.isError(result)) return
-        const response = await toResponse(result.error)
-        expect(response.status).toBe(500)
-        expect(response.headers.has('Retry-After')).toBe(false)
+        expect(thrown).toBeInstanceOf(Error)
+        const classified = classifyError(thrown)
+        expect(classified.status).toBe(500)
+        expect(classified.headers).toEqual({})
     })
 })
