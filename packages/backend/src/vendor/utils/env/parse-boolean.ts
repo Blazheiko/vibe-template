@@ -1,11 +1,27 @@
+const TRUE_VALUES = ['true', '1', 'yes', 'on'] as const
+const FALSE_VALUES = ['false', '0', 'no', 'off'] as const
+
 /**
- * Parse a string env value into a boolean.
+ * The one reading of a boolean environment variable (documentation/backend/configuration.md).
  *
- * Truthy values: 'true', '1', 'yes', 'on' (case-sensitive).
- * Falsy values: anything else.
- * Returns `defaultValue` when the env var is undefined.
+ * - `true`, `1`, `yes`, `on` -> true; `false`, `0`, `no`, `off` -> false (any letter case, outer
+ *   whitespace ignored)
+ * - missing or blank -> `defaultValue`
+ * - anything else -> a config error: a typo must not silently switch a flag
+ *
+ * @returns `value` is the fallback when `error` is set
  */
-export function parseBoolean(value: string | undefined, defaultValue = false): boolean {
-    if (value === undefined) return defaultValue
-    return value === 'true' || value === '1' || value === 'yes' || value === 'on'
+export function parseBoolean(
+    name: string,
+    raw: string | undefined,
+    defaultValue: boolean,
+): { value: boolean; error: string | null } {
+    if (raw === undefined || raw.trim() === '') return { value: defaultValue, error: null }
+    const text = raw.trim().toLowerCase()
+    if ((TRUE_VALUES as readonly string[]).includes(text)) return { value: true, error: null }
+    if ((FALSE_VALUES as readonly string[]).includes(text)) return { value: false, error: null }
+    return {
+        value: defaultValue,
+        error: `${name} must be one of ${[...TRUE_VALUES, ...FALSE_VALUES].join(', ')}, got "${raw}"`,
+    }
 }

@@ -2,12 +2,14 @@ import { duration } from 'metautil'
 import { env } from 'node:process'
 
 import appConfig from '#config/app.js'
-import { parseBoolean } from '#vendor/utils/env/parse-boolean.js'
+import { createEnvReader } from '#vendor/utils/env/env-reader.js'
+import { parseInteger } from '#vendor/utils/env/read-int.js'
 
 const LEGACY_COOKIE_NAME = 'uapi'
 const HOST_PREFIXED_COOKIE_NAME = '__Host-uapi'
 
-const useHostPrefix = parseBoolean(env['SESSION_COOKIE_HOST_PREFIX'], appConfig.isProductionLike)
+const reader = createEnvReader()
+const useHostPrefix = reader.bool('SESSION_COOKIE_HOST_PREFIX', appConfig.isProductionLike)
 
 const cookieName = useHostPrefix ? HOST_PREFIXED_COOKIE_NAME : LEGACY_COOKIE_NAME
 
@@ -36,15 +38,13 @@ const TOKEN_CHECK_TIMEOUT_DEFAULT_MS = 2000
 const TOKEN_CHECK_TIMEOUT_MAX_MS = 60_000
 
 export const readTokenCheckTimeoutMs = (source: NodeJS.ProcessEnv = env): number => {
-    const raw = source['SESSION_TOKEN_CHECK_TIMEOUT_MS']
-    if (raw === undefined || raw.trim() === '') return TOKEN_CHECK_TIMEOUT_DEFAULT_MS
-    // Decimal digits only: Number() would also take "1e3" and "0x10".
-    const value = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN
-    if (!Number.isInteger(value) || value <= 0 || value > TOKEN_CHECK_TIMEOUT_MAX_MS) {
-        throw new Error(
-            `SESSION_TOKEN_CHECK_TIMEOUT_MS must be an integer from 1 to ${String(TOKEN_CHECK_TIMEOUT_MAX_MS)}, got "${raw}"`,
-        )
-    }
+    const { value, error } = parseInteger(
+        'SESSION_TOKEN_CHECK_TIMEOUT_MS',
+        source['SESSION_TOKEN_CHECK_TIMEOUT_MS'],
+        TOKEN_CHECK_TIMEOUT_DEFAULT_MS,
+        { min: 1, max: TOKEN_CHECK_TIMEOUT_MAX_MS },
+    )
+    if (error !== null) throw new Error(error)
     return value
 }
 
@@ -68,4 +68,7 @@ export default Object.freeze({
         secure: env['APP_ENV'] !== 'local',
         sameSite: 'Lax', // 'Strict' || 'Lax' . 'None' is not secure use only for CSRF protection
     },
+
+    /** An unreadable SESSION_* flag, or `null`; `validateRuntimeConfig` throws on it. */
+    configError: reader.error,
 })

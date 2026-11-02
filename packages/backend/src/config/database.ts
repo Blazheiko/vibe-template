@@ -31,10 +31,12 @@ export const DATABASE_DEFAULTS = Object.freeze({
 const nonEmpty = (value: string | undefined): string | undefined =>
     value === undefined || value.trim() === '' ? undefined : value.trim()
 
+// Decimal digits only (the integer contract of documentation/backend/configuration.md); no import
+// of the shared reader here, this file is loaded by drizzle-kit without path aliases.
 const parsePort = (value: string | undefined): number => {
     const raw = nonEmpty(value)
     if (raw === undefined) return DATABASE_DEFAULTS.port
-    const port = Number(raw)
+    const port = /^\d+$/.test(raw) ? Number(raw) : Number.NaN
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
         throw new Error(`PGSQL_PORT must be an integer from 1 to 65535, got "${raw}"`)
     }
