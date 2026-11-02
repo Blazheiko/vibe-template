@@ -18,7 +18,6 @@ import {
     type AppResult,
     internalMessage,
 } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { KB_SCREENSHOT_MAX_FILE_BYTES } from '#app/services/shared/upload-limits.js'
 
 const ALLOWED_SCREENSHOT_TYPES: ReadonlySet<DetectedImageType> = new Set([
@@ -41,25 +40,20 @@ type ArticleRow = NonNullable<Awaited<ReturnType<typeof supportKnowledgeReposito
 
 // The article, or "not found": every operation on one article starts here.
 async function requireArticle(id: bigint): Promise<AppResult<ArticleRow>> {
-    const result = await tryInternal(
-        () => supportKnowledgeRepository.findById(id),
-        'Failed to load knowledge base article',
-    )
-    if (Result.isError(result)) {
-        return Result.err(result.error)
-    }
-    if (result.value === undefined) {
+    const article = await supportKnowledgeRepository.findById(id)
+    if (article === undefined) {
         return Result.err(notFound('Article', 'Article not found'))
     }
-    return Result.ok(result.value)
+    return Result.ok(article)
 }
 
 // A screenshot that cannot be removed from S3 must not fail the operation that replaces or
 // removes it: the object is left behind, and that is logged.
 async function deleteScreenshotQuietly(key: string, message: string): Promise<void> {
-    const result = await tryInternal(() => deleteFromS3(key), message)
-    if (Result.isError(result)) {
-        logger.warn({ err: result.error, key }, message)
+    try {
+        await deleteFromS3(key)
+    } catch (err: unknown) {
+        logger.warn({ err, key }, message)
     }
 }
 
@@ -99,22 +93,15 @@ export const knowledgeBaseService = {
     }): Promise<AppResult<{ items: KbItemData[]; total: number }>> {
         const limit = opts.limit ?? 50
         const offset = ((opts.page ?? 1) - 1) * limit
-        const result = await tryInternal(
-            () =>
-                supportKnowledgeRepository.findAll({
-                    ...(opts.category !== undefined ? { category: opts.category } : {}),
-                    limit,
-                    offset,
-                }),
-            'Failed to load knowledge base articles',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
+        const { rows, total } = await supportKnowledgeRepository.findAll({
+            ...(opts.category !== undefined ? { category: opts.category } : {}),
+            limit,
+            offset,
+        })
 
         return Result.ok({
-            items: result.value.rows.map(rowToData),
-            total: result.value.total,
+            items: rows.map(rowToData),
+            total,
         })
     },
 
@@ -133,25 +120,19 @@ export const knowledgeBaseService = {
         category?: string | null
         isActive?: boolean
     }): Promise<AppResult<{ item: KbItemData }>> {
-        const result = await tryInternal(
-            () => supportKnowledgeRepository.create(data),
-            'Failed to create knowledge base article',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
+        const created = await supportKnowledgeRepository.create(data)
 
         void supportEmbeddingService
-            .indexArticle(result.value.id, result.value.title, result.value.content)
+            .indexArticle(created.id, created.title, created.content)
             .catch((err: unknown) => {
                 logger.error(
-                    { err, articleId: String(result.value.id) },
+                    { err, articleId: String(created.id) },
                     'Failed to index new KB article',
                 )
             })
         return Result.ok({
             item: rowToData({
-                ...result.value,
+                ...created,
                 embeddingIndexed: false,
             }),
         })
@@ -172,32 +153,22 @@ export const knowledgeBaseService = {
         }
         const existing = existingResult.value
 
-        const updatedResult = await tryInternal(
-            () => supportKnowledgeRepository.update(id, data),
-            'Failed to update knowledge base article',
-        )
-        if (Result.isError(updatedResult)) {
-            return Result.err(updatedResult.error)
-        }
+        const updated = await supportKnowledgeRepository.update(id, data)
 
-        if (updatedResult.value === undefined) {
+        if (updated === undefined) {
             return Result.err(internalMessage('Failed to update article'))
         }
 
         if (data.title !== undefined || data.content !== undefined) {
             void supportEmbeddingService
-                .indexArticle(
-                    updatedResult.value.id,
-                    updatedResult.value.title,
-                    updatedResult.value.content,
-                )
+                .indexArticle(updated.id, updated.title, updated.content)
                 .catch((err: unknown) => {
                     logger.error({ err, articleId: String(id) }, 'Failed to re-index KB article')
                 })
         }
         return Result.ok({
             item: rowToData({
-                ...updatedResult.value,
+                ...updated,
                 embeddingIndexed: existing.embeddingIndexed,
             }),
         })
@@ -217,13 +188,7 @@ export const knowledgeBaseService = {
             )
         }
 
-        const deletedResult = await tryInternal(
-            () => supportKnowledgeRepository.delete(id),
-            'Failed to delete knowledge base article',
-        )
-        if (Result.isError(deletedResult)) {
-            return Result.err(deletedResult.error)
-        }
+        await supportKnowledgeRepository.delete(id)
 
         return Result.ok(undefined)
     },
@@ -257,26 +222,10 @@ export const knowledgeBaseService = {
         }
 
         const s3Key = `knowledge-base/${String(id)}/${randomUUID()}.${IMAGE_EXTENSIONS[imageType]}`
-        const uploadResult = await tryInternal(
-            // Screenshots are public help content: the browser loads them from CDN_URL, the
-            // only media origin allowed by the CSP img-src.
-            () =>
-                uploadToS3(s3Key, Buffer.from(file.data), imageType, {
-                    publicRead: true,
-                }),
-            'Failed to upload knowledge base screenshot',
-        )
-        if (Result.isError(uploadResult)) {
-            return Result.err(uploadResult.error)
-        }
-
-        const setScreenshotResult = await tryInternal(
-            () => supportKnowledgeRepository.setScreenshot(id, s3Key, imageType),
-            'Failed to update knowledge base screenshot',
-        )
-        if (Result.isError(setScreenshotResult)) {
-            return Result.err(setScreenshotResult.error)
-        }
+        // Screenshots are public help content: the browser loads them from CDN_URL, the
+        // only media origin allowed by the CSP img-src.
+        await uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true })
+        await supportKnowledgeRepository.setScreenshot(id, s3Key, imageType)
 
         return Result.ok({
             item: rowToData({
@@ -303,13 +252,7 @@ export const knowledgeBaseService = {
             )
         }
 
-        const clearResult = await tryInternal(
-            () => supportKnowledgeRepository.clearScreenshot(id),
-            'Failed to clear knowledge base screenshot',
-        )
-        if (Result.isError(clearResult)) {
-            return Result.err(clearResult.error)
-        }
+        await supportKnowledgeRepository.clearScreenshot(id)
 
         return Result.ok({
             item: rowToData({
@@ -323,14 +266,8 @@ export const knowledgeBaseService = {
     },
 
     async getScreenshotKey(articleId: bigint): Promise<AppResult<string | null>> {
-        const result = await tryInternal(
-            () => supportKnowledgeRepository.findById(articleId),
-            'Failed to load knowledge base article',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
-        return Result.ok(result.value?.screenshotKey ?? null)
+        const article = await supportKnowledgeRepository.findById(articleId)
+        return Result.ok(article?.screenshotKey ?? null)
     },
 
     async getScreenshotUrl(articleId: bigint): Promise<AppResult<{ url: string | null }>> {
@@ -357,37 +294,18 @@ export const knowledgeBaseService = {
     },
 
     async reindexArticle(id: bigint): Promise<AppResult<{ indexed: number }>> {
-        const result = await tryInternal(
-            () => supportKnowledgeRepository.findById(id),
-            'Failed to load knowledge base article',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
-        const row = result.value
+        const row = await supportKnowledgeRepository.findById(id)
         if (row === undefined) {
             return Result.err(notFound('Article', 'Article not found'))
         }
 
-        const indexResult = await tryInternal(
-            () => supportEmbeddingService.indexArticle(row.id, row.title, row.content),
-            'Failed to reindex knowledge base article',
-        )
-        if (Result.isError(indexResult)) {
-            return Result.err(indexResult.error)
-        }
+        await supportEmbeddingService.indexArticle(row.id, row.title, row.content)
 
         return Result.ok({ indexed: 1 })
     },
 
     async reindexAll(): Promise<AppResult<{ indexed: number }>> {
-        const result = await tryInternal(
-            () => supportEmbeddingService.reindexAll(),
-            'Failed to reindex knowledge base articles',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
-        return Result.ok({ indexed: result.value })
+        const indexed = await supportEmbeddingService.reindexAll()
+        return Result.ok({ indexed })
     },
 }

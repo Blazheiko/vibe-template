@@ -44,6 +44,7 @@ import {
 import executeMiddlewares from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
 import checkRateLimit, { checkGlobalRateLimit } from '#vendor/utils/rate-limit/http-rate-limit.js'
 import type {
+    Cookie,
     HttpContext,
     HttpData,
     MyWebSocket,
@@ -344,11 +345,20 @@ interface CanonicalErrorBody {
     reason?: string
 }
 
+/** What the request already decided about the response before it failed. */
+interface ErrorResponseExtras {
+    /** Set by the session layer or the handler; the session may already have changed. */
+    cookies?: ReadonlyMap<string, Cookie> | undefined
+    /** Request Origin, for the CORS headers a browser needs to read the error. */
+    origin?: string | undefined
+}
+
 const sendErrorResponse = (
     res: HttpResponse,
     status: number,
     body: CanonicalErrorBody,
     headers: Readonly<Record<string, string>> = {},
+    extras: ErrorResponseExtras = {},
 ): void => {
     res.cork(() => {
         writeHttpStatus(res, status)
@@ -357,6 +367,10 @@ const sendErrorResponse = (
         for (const [name, value] of Object.entries(headers)) {
             res.writeHeader(name, value)
         }
+        if (extras.cookies !== undefined && extras.cookies.size > 0) {
+            setCookies(res, extras.cookies)
+        }
+        if (corsConfig.enabled) setCorsHeader(res, extras.origin)
         res.writeHeader('content-type', 'application/json')
         res.end(makeJson(body))
     })
@@ -380,6 +394,7 @@ export const handleError = (
     res: HttpResponse,
     error: unknown,
     sentryContext?: HttpSentryContext,
+    extras?: ErrorResponseExtras,
 ): void => {
     // The request's own logger: every record carries requestId (and userId when
     // known), including 413/415/422 thrown before the handler context exists.
@@ -390,6 +405,7 @@ export const handleError = (
         classified.status,
         { status: 'error', ...classifiedErrorBody(classified) },
         classified.headers,
+        extras,
     )
 }
 
@@ -534,15 +550,40 @@ const setHttpHandler = async (
             sendResponse(res, responseData, origin)
         })
     } catch (err: unknown) {
+        // A thrown error answers like a returned one: the cookies the session layer set
+        // (a login that swapped the session) still reach the client, after the same
+        // beforeSend check, so the client is not left with a deleted session's cookie.
+        await runBeforeSendQuietly(context, requestId)
         if (abortSignal.aborted) return
         res.cork(() => {
-            handleError(res, err, {
-                requestId,
-                userId: context?.auth.getUserId() ?? undefined,
-                route: route.url,
-                method: route.method,
-            })
+            handleError(
+                res,
+                err,
+                {
+                    requestId,
+                    userId: context?.auth.getUserId() ?? undefined,
+                    route: route.url,
+                    method: route.method,
+                },
+                { cookies: responseData.cookies, origin },
+            )
         })
+    }
+}
+
+// beforeSend may itself fail (Redis down); the error answer must still go out, so its
+// failure is logged and the cookie it could not confirm is held back.
+const runBeforeSendQuietly = async (
+    context: HttpContext | undefined,
+    requestId: string,
+): Promise<void> => {
+    const beforeSend = context?.session.beforeSend
+    if (beforeSend === undefined) return
+    try {
+        await beforeSend()
+    } catch (err: unknown) {
+        context?.responseData.cookies.clear()
+        logger.warn({ err, requestId }, 'beforeSend failed on the error path; cookies dropped')
     }
 }
 

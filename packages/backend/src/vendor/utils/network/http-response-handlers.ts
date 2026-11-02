@@ -127,7 +127,7 @@ export const setApiCacheHeader = (res: HttpResponse, headers: Header[] = []): vo
 |   },
 |]
  */
-export const setCookies = (res: HttpResponse, cookies: Map<string, Cookie>): void => {
+export const setCookies = (res: HttpResponse, cookies: ReadonlyMap<string, Cookie>): void => {
     for (const cookie of cookies.values()) {
         const cookieHeader = `${cookie.name}=${encodeURIComponent(cookie.value)}`
         const pathPart = cookie.path !== undefined ? `; Path=${cookie.path}` : ''

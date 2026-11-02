@@ -8,7 +8,6 @@ import {
     type SerializedPushNotificationLog,
 } from '#app/transformers/index.js'
 import { conflict, internalMessage, notFound, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { getPushSubscriptionStatistics } from '#app/services/statistics/push-subscription-statistics-service.js'
 
 export const pushSubscriptionService = {
@@ -17,18 +16,10 @@ export const pushSubscriptionService = {
             subscriptions: ReturnType<typeof pushSubscriptionTransformer.serializeArrayWithLogs>
         }>
     > {
-        const subscriptionsResult = await tryInternal(
-            () => pushSubscriptionRepository.findByUserIdWithLogs(userId),
-            'Failed to load subscriptions',
-        )
-        if (Result.isError(subscriptionsResult)) {
-            return Result.err(subscriptionsResult.error)
-        }
+        const subscriptions = await pushSubscriptionRepository.findByUserIdWithLogs(userId)
 
         return Result.ok({
-            subscriptions: pushSubscriptionTransformer.serializeArrayWithLogs(
-                subscriptionsResult.value,
-            ),
+            subscriptions: pushSubscriptionTransformer.serializeArrayWithLogs(subscriptions),
         })
     },
 
@@ -40,15 +31,9 @@ export const pushSubscriptionService = {
             subscription: ReturnType<typeof pushSubscriptionTransformer.serialize>
         }>
     > {
-        const existingSubscriptionResult = await tryInternal(
-            () => pushSubscriptionRepository.findByEndpoint(payload.endpoint),
-            'Failed to load subscription',
+        const existingSubscription = await pushSubscriptionRepository.findByEndpoint(
+            payload.endpoint,
         )
-        if (Result.isError(existingSubscriptionResult)) {
-            return Result.err(existingSubscriptionResult.error)
-        }
-
-        const existingSubscription = existingSubscriptionResult.value
 
         if (existingSubscription !== undefined) {
             // The endpoint is unique across users. Moving it to another account is
@@ -62,28 +47,24 @@ export const pushSubscriptionService = {
                 return Result.err(conflict('Push subscription belongs to another user'))
             }
 
-            const updatedResult = await tryInternal(
-                () =>
-                    pushSubscriptionRepository.updateByEndpoint(payload.endpoint, userId, {
-                        p256dhKey: payload.p256dhKey,
-                        authKey: payload.authKey,
-                        userAgent: payload.userAgent,
-                        ipAddress: payload.ipAddress,
-                        deviceType: payload.deviceType,
-                        browserName: payload.browserName,
-                        browserVersion: payload.browserVersion,
-                        osName: payload.osName,
-                        osVersion: payload.osVersion,
-                        notificationTypes: payload.notificationTypes,
-                        timezone: payload.timezone,
-                        isActive: true,
-                    }),
-                'Failed to update subscription',
+            const updated = await pushSubscriptionRepository.updateByEndpoint(
+                payload.endpoint,
+                userId,
+                {
+                    p256dhKey: payload.p256dhKey,
+                    authKey: payload.authKey,
+                    userAgent: payload.userAgent,
+                    ipAddress: payload.ipAddress,
+                    deviceType: payload.deviceType,
+                    browserName: payload.browserName,
+                    browserVersion: payload.browserVersion,
+                    osName: payload.osName,
+                    osVersion: payload.osVersion,
+                    notificationTypes: payload.notificationTypes,
+                    timezone: payload.timezone,
+                    isActive: true,
+                },
             )
-            if (Result.isError(updatedResult)) {
-                return Result.err(updatedResult.error)
-            }
-            const updated = updatedResult.value
             if (updated === undefined) {
                 return Result.err(internalMessage('Failed to update subscription'))
             }
@@ -93,31 +74,24 @@ export const pushSubscriptionService = {
             })
         }
 
-        const createdResult = await tryInternal(
-            () =>
-                pushSubscriptionRepository.create({
-                    endpoint: payload.endpoint,
-                    p256dhKey: payload.p256dhKey,
-                    authKey: payload.authKey,
-                    userAgent: payload.userAgent ?? null,
-                    ipAddress: payload.ipAddress ?? null,
-                    deviceType: payload.deviceType ?? null,
-                    browserName: payload.browserName ?? null,
-                    browserVersion: payload.browserVersion ?? null,
-                    osName: payload.osName ?? null,
-                    osVersion: payload.osVersion ?? null,
-                    notificationTypes: payload.notificationTypes,
-                    timezone: payload.timezone ?? null,
-                    userId,
-                }),
-            'Failed to create subscription',
-        )
-        if (Result.isError(createdResult)) {
-            return Result.err(createdResult.error)
-        }
+        const created = await pushSubscriptionRepository.create({
+            endpoint: payload.endpoint,
+            p256dhKey: payload.p256dhKey,
+            authKey: payload.authKey,
+            userAgent: payload.userAgent ?? null,
+            ipAddress: payload.ipAddress ?? null,
+            deviceType: payload.deviceType ?? null,
+            browserName: payload.browserName ?? null,
+            browserVersion: payload.browserVersion ?? null,
+            osName: payload.osName ?? null,
+            osVersion: payload.osVersion ?? null,
+            notificationTypes: payload.notificationTypes,
+            timezone: payload.timezone ?? null,
+            userId,
+        })
 
         return Result.ok({
-            subscription: pushSubscriptionTransformer.serialize(createdResult.value),
+            subscription: pushSubscriptionTransformer.serialize(created),
         })
     },
 
@@ -129,19 +103,10 @@ export const pushSubscriptionService = {
             data: SerializedPushSubscription & { notificationLogs: SerializedPushNotificationLog[] }
         }>
     > {
-        const result = await tryInternal(
-            () =>
-                Promise.all([
-                    pushSubscriptionRepository.findByIdAndUserId(subscriptionId, userId),
-                    pushSubscriptionRepository.getLogsBySubscriptionId(subscriptionId, userId, 10),
-                ]),
-            'Failed to load subscription',
-        )
-        if (Result.isError(result)) {
-            return Result.err(result.error)
-        }
-
-        const [subscription, logs] = result.value
+        const [subscription, logs] = await Promise.all([
+            pushSubscriptionRepository.findByIdAndUserId(subscriptionId, userId),
+            pushSubscriptionRepository.getLogsBySubscriptionId(subscriptionId, userId, 10),
+        ])
 
         if (subscription === undefined) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
@@ -179,15 +144,7 @@ export const pushSubscriptionService = {
             ...(payload.osVersion !== undefined ? { osVersion: payload.osVersion } : {}),
         }
 
-        const updatedResult = await tryInternal(
-            () => pushSubscriptionRepository.update(subscriptionId, userId, updateData),
-            'Failed to update subscription',
-        )
-        if (Result.isError(updatedResult)) {
-            return Result.err(updatedResult.error)
-        }
-
-        const updated = updatedResult.value
+        const updated = await pushSubscriptionRepository.update(subscriptionId, userId, updateData)
         if (updated === undefined) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }
@@ -201,15 +158,7 @@ export const pushSubscriptionService = {
         userId: bigint,
         subscriptionId: bigint,
     ): Promise<AppResult<{ message: string }>> {
-        const deletedResult = await tryInternal(
-            () => pushSubscriptionRepository.delete(subscriptionId, userId),
-            'Failed to delete subscription',
-        )
-        if (Result.isError(deletedResult)) {
-            return Result.err(deletedResult.error)
-        }
-
-        const deleted = deletedResult.value
+        const deleted = await pushSubscriptionRepository.delete(subscriptionId, userId)
         if (!deleted) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }
@@ -225,15 +174,13 @@ export const pushSubscriptionService = {
             data: SerializedPushNotificationLog[]
         }>
     > {
-        const logsResult = await tryInternal(
-            () => pushSubscriptionRepository.getLogsBySubscriptionId(subscriptionId, userId, 50),
-            'Failed to load subscription logs',
+        const logs = await pushSubscriptionRepository.getLogsBySubscriptionId(
+            subscriptionId,
+            userId,
+            50,
         )
-        if (Result.isError(logsResult)) {
-            return Result.err(logsResult.error)
-        }
 
-        return Result.ok({ data: pushNotificationLogTransformer.serializeArray(logsResult.value) })
+        return Result.ok({ data: pushNotificationLogTransformer.serializeArray(logs) })
     },
 
     async getSubscriptionStatistics(
@@ -244,15 +191,7 @@ export const pushSubscriptionService = {
             data: NonNullable<Awaited<ReturnType<typeof getPushSubscriptionStatistics>>>
         }>
     > {
-        const dataResult = await tryInternal(
-            () => getPushSubscriptionStatistics(subscriptionId, userId),
-            'Failed to load subscription statistics',
-        )
-        if (Result.isError(dataResult)) {
-            return Result.err(dataResult.error)
-        }
-
-        const data = dataResult.value
+        const data = await getPushSubscriptionStatistics(subscriptionId, userId)
         if (data === undefined) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }
@@ -268,15 +207,7 @@ export const pushSubscriptionService = {
             data: ReturnType<typeof pushSubscriptionTransformer.serialize>
         }>
     > {
-        const deactivatedResult = await tryInternal(
-            () => pushSubscriptionRepository.deactivate(subscriptionId, userId),
-            'Failed to deactivate subscription',
-        )
-        if (Result.isError(deactivatedResult)) {
-            return Result.err(deactivatedResult.error)
-        }
-
-        const deactivated = deactivatedResult.value
+        const deactivated = await pushSubscriptionRepository.deactivate(subscriptionId, userId)
         if (deactivated === undefined) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }

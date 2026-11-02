@@ -4,10 +4,8 @@ import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import diskConfig from '#config/disk.js'
 import appConfig from '#config/app.js'
-import logger from '#vendor/utils/logger.js'
 import { Result } from 'better-result'
 import { notFound, unauthorized, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 
 interface StorageConfigPayload {
@@ -121,31 +119,12 @@ export const mainService = {
             return Result.err(unauthorized('Session expired'))
         }
 
-        const userResult = await tryInternal(
-            () => userRepository.findById(BigInt(userId)),
-            'Failed to load session user',
-        )
-        if (Result.isError(userResult)) {
-            logger.warn({ err: userResult.error, userId }, 'Failed to load session user')
-            return Result.err(userResult.error)
-        }
-
-        const user = userResult.value
+        const user = await userRepository.findById(BigInt(userId))
         if (user === undefined) {
             return Result.err(unauthorized('Session expired'))
         }
 
-        const wsTokenResult = await tryInternal(
-            () => generateWsToken(sessionInfo, String(user.id)),
-            'Failed to generate ws token',
-        )
-
-        if (Result.isError(wsTokenResult)) {
-            logger.warn({ err: wsTokenResult.error, userId }, 'Failed to initialize session')
-            return Result.err(wsTokenResult.error)
-        }
-
-        const wsToken = wsTokenResult.value
+        const wsToken = await generateWsToken(sessionInfo, String(user.id))
 
         const csrfToken = getSessionCsrfToken(sessionInfo)
         return Result.ok({

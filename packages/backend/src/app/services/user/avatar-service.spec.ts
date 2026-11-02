@@ -162,14 +162,8 @@ describe('avatarService', () => {
 
         expect(Result.isOk(result)).toBe(true)
         expect(loggerMock.warn).toHaveBeenCalledWith(
-            expect.objectContaining({
-                oldAvatarKey: 'avatars/7/old.webp',
-                err: expect.objectContaining({
-                    _tag: 'Internal',
-                    publicMessage: 'Failed to delete old avatar',
-                }),
-            }),
-            'Failed to delete old avatar S3 object',
+            { key: 'avatars/7/old.webp', err: expect.any(Error) },
+            'Failed to delete avatar S3 object',
         )
     })
 
