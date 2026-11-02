@@ -811,8 +811,8 @@
             "owner": "Blazheiko",
             "branch": "chore/env-parsing-contract",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Phase N merged (#275): one boolean/integer env contract (parseBoolean/parseInteger/createEnvReader); backend 1844 tests (+113), typecheck/lint/format:check/build clean, docs:build+docs:verify passed; CI green incl. test-pg, test-redis, e2e, e2e-live. Details were in progress.md on chore/env-parsing-contract (removed from main by this PR)."
         },
         {
             "id": "feat-083",
