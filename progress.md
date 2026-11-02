@@ -2,45 +2,26 @@
 
 ## Current State
 
-**Last Updated:** 2026-11-01
-**Active Feature:** feat-076 - Frontend Component Split (in progress, phase J, part 5)
-**Branch:** `refactor/frontend-split-components-5` (merged: part 1 `AuthModals.vue` #260, part 2 `stores/state.ts` #261, part 3 service worker #262, part 4 `MenuButton.vue` #263)
-**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase J
+**Last Updated:** 2026-11-02
+**Active Feature:** feat-080 - Repo Hygiene (review)
+**Branch:** `chore/repo-hygiene`
+**Plan:** `docs/plan/code-review-fixes-tasks.md`, phase L
 
 ## Status
 
-### Done in this PR (item 5 of phase J: api-playground `TestForm.vue`)
-
-`TestForm.vue` was 859 lines with an `any` for its result; it is now 558 and has no `any`:
-
-- [x] **`composables/useLoadTest.ts`**: `useLoadTest({ requestCount, threadCount, send?, onSingleResponse? })` → `testResult`, `isLoading`, `progress`, `progressPercentage`, `run(spec)`, `clear()`. One request, many on one thread, or many on several; the bar lingers 1 s after a run. The client is injectable, so it is tested without a network
-- [x] **`utils/load-test.ts`**: the typed shape of what the response pane shows (`TestResult`, `RequestOutcome`, `LoadStatistics`, ...: one interface for the four things it can be, replacing the `any`) and the pure parts: `executeRequest`, `executeThread`, `singleResultOf`, `summaryOf`, `failedRunOf`, `wsHandoffOf`. `SendHttp` is exported from `base-api.ts`
-- [x] **`utils/test-form-helpers.ts`**: `scrollToResponse(bodyId, sectionId)` and `formatResponseBody`, now shared with `TestFormWs.vue` (two copies of the same scroll code before)
-- [x] **Checked against the old code, not only by new tests**: the old `TestForm.vue` was mounted next to the new one with the same scripted client and fake clock, over 15 scenarios (GET/POST, bad body, bad/empty/`0` headers, one, many, threads, errors, throws, `wsUrl` handoff with and without a token and on an error), comparing the result, progress while running and after the linger, the client's calls, the handoff calls, the displayed body and the errors. All 15 identical; two mutations (the failed count, the default token) turned 3 and 2 of them red. The throwaway (it needed `jsdom`) is deleted and not committed
-- [x] Tests: `load-test.spec.ts`, `useLoadTest.spec.ts`, `test-form-helpers.spec.ts` (api-playground 26 → 62)
-- [x] Docs: `playground/index.md`
-
-One behaviour differs, on purpose: `buildUrl()` (which throws when a route has no `fullUrl`) is now called before the run starts. Before, it ran after `isLoading` was set and outside the `try`, so the form stayed "loading" for ever
-
-### Found, not changed
-
-The user-agent reading records what the server stores in `browser_name` / `os_name` / `device_type`, and it has two quirks that are now pinned by `push-device.spec.ts`:
-
-- **An Android phone is recorded as `Linux`** (its user agent contains "Linux", tested before "Android"), and **an iPhone as `macOS`** with version `Unknown` ("like Mac OS X", tested before "iPhone")
-- `getStorageFileUrl` adds the dynamic prefix first, on the source as given, so a source that already starts with the root prefix but not the dynamic one gets both again
-
-Both are bugs in data that is stored; fixing them changes what the admin sees (K3 already left the contract with the owner). They are said here so the decision is informed
-
-### Left for phase J
-
-None of its items: J's criteria remain (G2/G3 e2e green unchanged, manual golden path), then the "Mark feat-076 done" PR
+- [x] **`progress.md` / `session-handoff.md` off `main`**: the stale ones (feat-076) are removed; `AGENTS.md` and `documentation/guide/workflow.md` now say they live on the feature branch and that the "Mark feat-XXX done" PR deletes them from `main`, the evidence staying in `feature_list.json`. `init.sh` does not reference them
+- [x] **`.gitignore`** gets `.pnpm-store/`; **`.dockerignore`** gets `.claude`, `.idea`, `.omx`, `.pnpm-store` and the internal `docs/` subtrees, but **not** `docs/support-knowledge-base` (the Dockerfile copies it into the image) and **not** `documentation/` (a pnpm workspace member: `--frozen-lockfile` needs its `package.json`). The plan listed both; the first would break the image, the second the install
+- [x] **`presentation.html` → `docs/presentations/overview.html`** (not `presentation.html`: the name differs from `PRESENTATION.html` only by case, which collides on macOS); its screenshot paths and `docs/screenshots/README.md` updated
+- [x] **`AGENTS.md`**: `docs/` is internal, `documentation/` is the public site
+- [x] **ESLint for JS**: `*.js` / `*.mjs` / `*.cjs` are no longer ignored; they get the recommended rules without type information, Node globals (`globals`, new root devDependency) and no TypeScript return-type rules. `packages/backend/public/**` (the SPA copied in by the build, gitignored) is ignored instead. What it found: a literal zero-width space and a no-break space inside a regex in `documentation/scripts/verify/lib.mjs`, now written as `​` / ` ` (same pattern; its 26 tests pass)
+- [x] **CI**: every `uses:` in the four workflows is pinned to a commit SHA with the version in a comment (resolved from the current major tag); `.github/dependabot.yml` for `github-actions`, weekly
 
 ## Evidence of Completion
 
 | Check                                      | Result                                                            |
 | ------------------------------------------ | ----------------------------------------------------------------- |
+| `docker build .`                           | built (with the new `.dockerignore`)                              |
 | `pnpm typecheck` / `lint` / `format:check` | exit 0                                                            |
 | `pnpm build`                               | exit 0                                                            |
 | `pnpm test`                                | frontend 344, backend 1731, shared 24, api-playground 62, docs 26 |
-| Playwright `mock` project                  | 61 passed                                                         |
 | `docs:build && docs:verify`                | passed                                                            |

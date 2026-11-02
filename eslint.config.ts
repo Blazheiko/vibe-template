@@ -1,5 +1,6 @@
 import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
+import globals from 'globals'
 
 // packages/frontend and packages/api-playground have their own eslint.config.ts: ESLint 10
 // lints each file with the nearest config, so blocks for those packages do not belong here.
@@ -9,8 +10,8 @@ export default tseslint.config(
             '**/dist/**',
             '**/dist-e2e-mock/**',
             '**/node_modules/**',
-            '**/*.js',
-            '**/*.mjs',
+            // the SPA copied into the backend by scripts/prod-local.sh and the Dockerfile
+            'packages/backend/public/**',
             '**/coverage/**',
             '**/generated/**',
             'documentation/.vitepress/cache/**',
@@ -60,6 +61,22 @@ export default tseslint.config(
                 'error',
                 { fixMixedExportsWithInlineTypeSpecifier: true },
             ],
+            '@typescript-eslint/no-unused-vars': [
+                'error',
+                { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+            ],
+        },
+    },
+    {
+        // Plain JS (tests of `shared`, scripts, tool configs): the recommended rules, no type
+        // information (there is no tsconfig for these files).
+        files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
+        extends: [tseslint.configs.disableTypeChecked],
+        languageOptions: { globals: globals.node },
+        rules: {
+            // Type annotations belong to TypeScript.
+            '@typescript-eslint/explicit-function-return-type': 'off',
+            '@typescript-eslint/explicit-module-boundary-types': 'off',
             '@typescript-eslint/no-unused-vars': [
                 'error',
                 { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },

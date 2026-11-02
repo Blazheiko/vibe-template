@@ -14,7 +14,8 @@ The harness supports multiple parallel workers (humans and/or agents) under thes
 
 - **`feature_list.json` lives only on `main`.** It is the single source of truth for who is working on what. Changes go through a PR; no direct edits on feature branches.
 - **Each feature has exactly one `owner` and one `branch`.** Two people cannot share an `in_progress` row. If you want to help on someone else's feature, you contribute via PR to their branch, not by editing their `progress.md`.
-- **`progress.md` and `session-handoff.md` live on the feature branch.** They are per-feature working files, not global state. Merge-conflicts on these files mean two owners — fix the ownership, not the conflict.
+- **`progress.md` and `session-handoff.md` live on the feature branch.** They are per-feature working files, not global state; create them on the branch when you start. Merge-conflicts on these files mean two owners — fix the ownership, not the conflict.
+- **They do not stay on `main`.** Reviewers read them on the branch before the merge; the "Mark feat-XXX done" PR that flips the feature on `main` also deletes both files, with the evidence kept in the `evidence` field of `feature_list.json`.
 - **Status transitions are visible.** Flip `not-started` → `in_progress` → `review` → `done` via PRs that update `feature_list.json` on `main`. `blocked` is allowed; record the blocker in `progress.md` on the branch.
 - **Definition of Done still applies per feature** (typecheck/lint/test + manual verification + evidence). Reviewers check the feature branch's `progress.md` for the evidence block before approving the merge.
 - **Dependencies are enforced.** Do not start a feature whose `dependencies` are not yet `done`. If you need to start early, split the dependency into a smaller `feat-XXX` and complete that first.
@@ -30,6 +31,8 @@ A feature is `done` only when all of the following are recorded in `progress.md`
 - Feature entry in `feature_list.json` flipped to `done` with the evidence commit/output referenced
 
 ## Documentation
+
+`docs/` is internal (plans, requirements, ADRs, security reviews, presentations) and is not published or copied into the Docker image. `documentation/` is the public VitePress site.
 
 The VitePress site in `documentation/` is published to GitHub Pages (https://blazheiko.github.io/vibe-template/) from `main` by `.github/workflows/docs.yml`.
 
