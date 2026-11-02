@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { applyAppErrorStatus, appErrorToHttpPayload } from './apply-service-status.js'
-import { appErrorToWsError } from './ws-error.js'
+import { applyAppErrorStatus } from './apply-service-status.js'
+import { appErrorToPayload } from './app-error-payload.js'
 import { badRequest, conflict, forbidden, internal, notFound, unauthorized } from './errors.js'
 
 const APP_ERROR_CASES = [
@@ -26,15 +26,8 @@ describe('apply-service-status', () => {
         },
     )
 
-    it.each(APP_ERROR_CASES)(
-        'keeps HTTP and WS payload shapes aligned for %s',
-        ({ error }: AppErrorCase) => {
-            expect(appErrorToWsError(error)).toEqual(appErrorToHttpPayload(error))
-        },
-    )
-
     it('keeps internal public messages in the payload', () => {
-        expect(appErrorToHttpPayload(APP_ERROR_CASES[5].error)).toEqual({
+        expect(appErrorToPayload(APP_ERROR_CASES[5].error)).toEqual({
             status: 'error',
             message: 'Hidden',
             code: 'internal_error',

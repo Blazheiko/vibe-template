@@ -153,7 +153,7 @@ const WsMessageSchema = type({
 Помилки бувають двох видів:
 
 - **Помилка транспорту** — диспетчер не дійшов до відповіді обробника або відхилив її (маршрут не знайдено, невалідний payload, ліміт, виняток, перевірка відповіді, Redis): `status: "error"`, `data: null`, а `error` — конверт `{ code, message, reason?, details? }`. Конверт будує [ws-error-envelope.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-error-envelope.ts); `setWsError` ставить усі три поля разом, тож дані, які обробник встиг записати до винятку, клієнт не отримає.
-- **Бізнес-помилка** — обробник або middleware повернули помилку як результат (`appErrorToWsError`, наприклад `ws_admin_guard`): вона лежить у `data` як `{ status: "error", code, message, reason? }`, а `error: null`. Таку відповідь описує `ResponseSchema` маршруту (union з `CanonicalErrorResponseSchema`), як і в HTTP.
+- **Бізнес-помилка** — обробник або middleware повернули помилку як результат (`appErrorToPayload`, наприклад `ws_admin_guard`): вона лежить у `data` як `{ status: "error", code, message, reason? }`, а `error: null`. Таку відповідь описує `ResponseSchema` маршруту (union з `CanonicalErrorResponseSchema`), як і в HTTP.
 
 Відповідь починається з `data: null`: якщо middleware зупинив запит і нічого не записав, клієнт отримає `null`.
 
@@ -323,7 +323,7 @@ sequenceDiagram
 ## Як додати WS-маршрут
 
 1. Опишіть схему вхідних даних і відповіді в `packages/shared` (як `SupportChatInputSchema` і `SupportChatResponseSchema`).
-2. Додайте метод у контролер у `packages/backend/src/app/controllers/ws/`. Він отримує `WsContext<Input>`; payload беріть через `getTypedPayload(context)`, користувача — з `context.userData`, сокет — з `context.ws`. Помилки сервісів перетворюйте через `appErrorToWsError`. Тип результату анотуйте типом відповіді з `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` звіряє його з `ResponseSchema` ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Усі поля контексту описані в [WsContext докладно](/backend/controllers#wscontext-докладно).
+2. Додайте метод у контролер у `packages/backend/src/app/controllers/ws/`. Він отримує `WsContext<Input>`; payload беріть через `getTypedPayload(context)`, користувача — з `context.userData`, сокет — з `context.ws`. Помилки сервісів перетворюйте через `appErrorToPayload`. Тип результату анотуйте типом відповіді з `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` звіряє його з `ResponseSchema` ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Усі поля контексту описані в [WsContext докладно](/backend/controllers#wscontext-докладно).
 3. Зареєструйте маршрут у `ws-routes.ts` в наявній або новій групі з `prefix` і `rateLimit`:
 
 ```ts

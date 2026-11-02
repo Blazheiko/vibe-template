@@ -1,6 +1,7 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { authService } from '#app/services/auth/auth-service.js'
 import { Result } from 'better-result'
 import type {
@@ -205,17 +206,13 @@ export default {
     ): Promise<ChangePasswordResponse> {
         context.logger.info('changePassword handler')
 
-        if (!context.auth.check()) {
-            return mapControllerError(context, unauthorized())
-        }
-
-        const userId = context.auth.getUserId()
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.changePassword(BigInt(userId), payload)
+        const result = await authService.changePassword(userId, payload)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
         }
@@ -335,12 +332,12 @@ export default {
     async resendVerificationEmail(
         context: HttpContext<EmptyFormInput>,
     ): Promise<ResendVerificationEmailResponse> {
-        const userId = context.auth.getUserId()
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const result = await emailVerificationService.queueVerificationEmail(BigInt(userId))
+        const result = await emailVerificationService.queueVerificationEmail(userId)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
         }
@@ -351,13 +348,13 @@ export default {
     async startPhoneLink(
         context: HttpContext<LinkPhoneStartInput>,
     ): Promise<LinkPhoneStartResponse> {
-        const userId = context.auth.getUserId()
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.startPhoneLink(BigInt(userId), payload, {
+        const result = await authService.startPhoneLink(userId, payload, {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneLink'),
         })
@@ -371,13 +368,13 @@ export default {
     async confirmPhoneLink(
         context: HttpContext<LinkPhoneConfirmInput>,
     ): Promise<LinkPhoneConfirmResponse> {
-        const userId = context.auth.getUserId()
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.confirmPhoneLink(BigInt(userId), payload, {
+        const result = await authService.confirmPhoneLink(userId, payload, {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
         })
@@ -391,13 +388,13 @@ export default {
     async startEmailLink(
         context: HttpContext<LinkEmailStartInput>,
     ): Promise<LinkEmailStartResponse> {
-        const userId = context.auth.getUserId()
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.startEmailLink(BigInt(userId), payload)
+        const result = await authService.startEmailLink(userId, payload)
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
         }

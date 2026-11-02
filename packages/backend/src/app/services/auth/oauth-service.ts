@@ -10,24 +10,15 @@ import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
-async function fetchJson(
-    url: string,
-    headers?: Record<string, string>,
-): Promise<Record<string, unknown>> {
+type JsonObject = Record<string, unknown>
+
+// The provider's JSON answer, typed by the caller: it is only as trustworthy as the provider, so
+// every use reads the fields it needs defensively.
+async function fetchJson<T>(url: string, headers?: Record<string, string>): Promise<T> {
     const response = await fetch(url, headers !== undefined ? { headers } : undefined)
 
     const data = await (response as unknown as { json(): Promise<unknown> }).json()
-    return data as Record<string, unknown>
-}
-
-async function fetchJsonArray(
-    url: string,
-    headers?: Record<string, string>,
-): Promise<Record<string, unknown>[]> {
-    const response = await fetch(url, headers !== undefined ? { headers } : undefined)
-
-    const data = await (response as unknown as { json(): Promise<unknown> }).json()
-    return data as Record<string, unknown>[]
+    return data as T
 }
 
 const SUPPORTED_PROVIDERS = ['google', 'facebook', 'github', 'gitlab'] as const
@@ -96,7 +87,7 @@ interface OAuthUserInfo {
 }
 
 async function fetchGoogleUserInfo(accessToken: string): Promise<OAuthUserInfo> {
-    const data = await fetchJson('https://www.googleapis.com/oauth2/v2/userinfo', {
+    const data = await fetchJson<JsonObject>('https://www.googleapis.com/oauth2/v2/userinfo', {
         Authorization: `Bearer ${accessToken}`,
     })
     return {
@@ -114,7 +105,7 @@ async function fetchGoogleUserInfo(accessToken: string): Promise<OAuthUserInfo> 
 async function fetchFacebookUserInfo(accessToken: string): Promise<OAuthUserInfo> {
     // The token goes in the header: in the query string it lands in proxy and CDN logs and
     // in Referer headers.
-    const data = await fetchJson(
+    const data = await fetchJson<JsonObject>(
         'https://graph.facebook.com/me?fields=id,name,email,picture.type(large)',
         { Authorization: `Bearer ${accessToken}` },
     )
@@ -135,11 +126,11 @@ async function fetchFacebookUserInfo(accessToken: string): Promise<OAuthUserInfo
 
 async function fetchGitHubUserInfo(accessToken: string): Promise<OAuthUserInfo> {
     const headers = { Authorization: `Bearer ${accessToken}` }
-    const data = await fetchJson('https://api.github.com/user', headers)
+    const data = await fetchJson<JsonObject>('https://api.github.com/user', headers)
 
     // The public `email` of /user is not guaranteed to be verified, so the address
     // always comes from /user/emails: the primary one, and only when verified.
-    const emails = await fetchJsonArray('https://api.github.com/user/emails', headers)
+    const emails = await fetchJson<JsonObject[]>('https://api.github.com/user/emails', headers)
     const primary = emails.find((e) => e['primary'] === true && e['verified'] === true)
     const email = typeof primary?.['email'] === 'string' ? primary['email'] : ''
 
@@ -162,10 +153,10 @@ async function fetchGitHubUserInfo(accessToken: string): Promise<OAuthUserInfo> 
 
 async function fetchGitLabUserInfo(accessToken: string): Promise<OAuthUserInfo> {
     const headers = { Authorization: `Bearer ${accessToken}` }
-    const data = await fetchJson('https://gitlab.com/api/v4/user', headers)
+    const data = await fetchJson<JsonObject>('https://gitlab.com/api/v4/user', headers)
     // /api/v4/user has no verification flag; the OIDC userinfo endpoint does
     // (needs the `openid email` scopes).
-    const userinfo = await fetchJson('https://gitlab.com/oauth/userinfo', headers)
+    const userinfo = await fetchJson<JsonObject>('https://gitlab.com/oauth/userinfo', headers)
     const email = typeof data['email'] === 'string' ? data['email'] : ''
     return {
         id:

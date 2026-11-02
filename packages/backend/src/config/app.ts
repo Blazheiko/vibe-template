@@ -1,18 +1,12 @@
 import { env } from 'node:process'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
+import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
 
 const reader = createEnvReader()
 
 function stripTrailingSlash(value: string): string {
     return value.endsWith('/') ? value.slice(0, -1) : value
-}
-
-function normalizePath(path: string): string {
-    if (path === '') return ''
-    let normalizedPath = stripTrailingSlash(path)
-    if (normalizedPath.startsWith('/')) normalizedPath = normalizedPath.slice(1)
-    return normalizedPath
 }
 
 function normalizeUrl(url: string | undefined): string {

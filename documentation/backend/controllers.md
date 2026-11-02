@@ -29,7 +29,7 @@ flowchart LR
 
 - `http/` — обробники HTTP-маршрутів, згруповані за доменом;
 - `ws/` — обробники WebSocket-подій ([admin-ws-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/admin-ws-controller.ts), [support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts));
-- `shared/` — `mapControllerError` ([controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts)).
+- `shared/` — `mapControllerError` ([controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts)) і `requireUserId` ([require-user-id.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/require-user-id.ts)): id користувача сесії як `bigint` або `null`, і тоді контролер відповідає `mapControllerError(context, unauthorized())`.
 
 Окремої теки `static/` у контролерах немає: роздача статики живе у vendor-шарі.
 
@@ -216,14 +216,14 @@ await context.auth.login(result.value.userId, result.value.userToken)
 | `data`               | Сюди диспетчер кладе значення, яке повернув метод.                                                                              |
 | `error`              | Заповнює диспетчер для системних помилок (`not_found`, `validation_failed`, `internal_error`, rate limit) зі `status: 'error'`. |
 
-Помилку сервісу повертайте як дані через `appErrorToWsError`:
+Помилку сервісу повертайте як дані через `appErrorToPayload`:
 
 ```ts
 subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
     const result = adminWsChannelService.subscribeCurrentAdminConnection(context.ws)
     if (Result.isError(result)) {
         context.responseData.status = '403'
-        return appErrorToWsError(result.error)
+        return appErrorToPayload(result.error)
     }
     return { status: 'success' }
 }
@@ -252,7 +252,7 @@ subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
 const userData = context.userData
 if (userData?.userId === undefined) {
     context.responseData.status = '401'
-    return appErrorToWsError(unauthorized())
+    return appErrorToPayload(unauthorized())
 }
 const payload = getTypedPayload(context)
 void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid, context.signal)
@@ -270,13 +270,13 @@ void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid
 export function mapControllerError(
     context: Pick<HttpContext<unknown, unknown>, 'responseData'>,
     error: AppError,
-): ReturnType<typeof appErrorToHttpPayload> {
+): ReturnType<typeof appErrorToPayload> {
     applyAppErrorStatus(context.responseData, error)
-    return appErrorToHttpPayload(error)
+    return appErrorToPayload(error)
 }
 ```
 
-[`applyAppErrorStatus`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/apply-service-status.ts) виставляє HTTP-статус за `_tag` (`BadRequest`→400, `Unauthorized`→401, `Forbidden`→403, `NotFound`→404, `Conflict`→409, `RateLimited`→429 + `Retry-After`, `Internal`→500 — таблиця в [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)), а тіло має форму `{ status: 'error', message, code, reason? }`. Для WS є аналог [`appErrorToWsError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/ws-error.ts).
+[`applyAppErrorStatus`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/apply-service-status.ts) виставляє HTTP-статус за `_tag` (`BadRequest`→400, `Unauthorized`→401, `Forbidden`→403, `NotFound`→404, `Conflict`→409, `RateLimited`→429 + `Retry-After`, `Internal`→500 — таблиця в [errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/errors.ts)), а тіло має форму `{ status: 'error', message, code, reason? }`. Те саме тіло будує [`appErrorToPayload`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/app-error-payload.ts) і для WS: окремої функції для WebSocket немає.
 
 Типовий метод контролера наведено в [Кроці 7](/backend/adding-a-feature#крок-7-controller).
 
@@ -302,7 +302,7 @@ export function mapControllerError(
 
 - [ ] дістати `userId` (`context.auth` / `context.userData`), payload (`getTypedPayload`), `params`, `query`;
 - [ ] викликати один метод сервісу;
-- [ ] на `Result.isError` — `mapControllerError` (HTTP) або `appErrorToWsError` (WS);
+- [ ] на `Result.isError` — `mapControllerError` (HTTP) або `appErrorToPayload` (WS);
 - [ ] зібрати відповідь `{ status: 'success', ... }` за типом із `shared`;
 - [ ] за потреби — статус (`201`, `302`), cookies, заголовки, сесія.
 

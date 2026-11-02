@@ -1,6 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
-import { applyAppErrorStatus } from '#app/services/shared/apply-service-status.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { knowledgeBaseService } from '#app/services/support/knowledge-base-service.js'
 import { supportService } from '#app/services/support/support-service.js'
 import { badRequest, notFound, unauthorized } from '#app/services/shared/errors.js'
@@ -12,24 +12,11 @@ import type {
 import { Result } from 'better-result'
 import type { SupportChatHistoryQuery } from 'shared/schemas'
 
-function getUserId<TQuery>(context: HttpContext<unknown, TQuery>): bigint | null {
-    if (!context.auth.check()) {
-        applyAppErrorStatus(context.responseData, unauthorized())
-        return null
-    }
-    const id = context.auth.getUserId()
-    if (id === null) {
-        applyAppErrorStatus(context.responseData, unauthorized())
-        return null
-    }
-    return BigInt(id)
-}
-
 export default {
     async getChatHistory(
         context: HttpContext<unknown, SupportChatHistoryQuery>,
     ): Promise<SupportGetChatHistoryResponse> {
-        const userId = getUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -44,7 +31,7 @@ export default {
     },
 
     async deleteChatHistory(context: HttpContext): Promise<SupportDeleteChatHistoryResponse> {
-        const userId = getUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
@@ -57,7 +44,7 @@ export default {
     },
 
     async getScreenshot(context: HttpContext): Promise<SupportScreenshotResponse> {
-        const userId = getUserId(context)
+        const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
 
         const articleIdStr = context.httpData.params['articleId']

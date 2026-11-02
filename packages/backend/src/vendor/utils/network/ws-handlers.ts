@@ -28,6 +28,7 @@ import type { Validator } from '#vendor/contracts/validator.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { createWsErrorEnvelope } from '#vendor/utils/network/ws-error-envelope.js'
+import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 
 // ---------------------------------------------------------------------------
 // App hooks — registered at startup from app/start/index.ts
@@ -129,9 +130,6 @@ const serviceUnavailableMessage = (event: string): WsResponseData => ({
         'Service temporarily unavailable. Try again later.',
     ),
 })
-
-const ab2str = (buffer: ArrayBuffer, encoding: BufferEncoding | undefined = 'utf8'): string =>
-    Buffer.from(buffer).toString(encoding)
 
 const closeExpiredSession = (ws: MyWebSocket): void => {
     ws.cork(() => {

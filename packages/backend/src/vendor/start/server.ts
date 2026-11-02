@@ -17,13 +17,13 @@ import {
     getHeaders,
     getData,
     extractParameters,
-    normalizePath,
     parseCookies,
     detectBodyKind,
     resolveMaxBodySize,
     type BodyKind,
     type RequestAbortSignal,
 } from '../utils/network/http-request-handlers.js'
+import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
 import { ParameterValidationError } from '#app/validate/checkers/parameter-checker.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'

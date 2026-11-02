@@ -257,14 +257,6 @@ const getData = async (
 
 // ─── URL / params helpers ─────────────────────────────────────────────────────
 
-const normalizePath = (path: string): string => {
-    if (path === '') return ''
-    let normalizedPath = path
-    if (normalizedPath.endsWith('/')) normalizedPath = normalizedPath.slice(0, -1)
-    if (normalizedPath.startsWith('/')) normalizedPath = normalizedPath.slice(1)
-    return normalizedPath
-}
-
 const isValidUrl = (url: string): boolean => {
     // Check for multiple consecutive slashes (e.g., //, ///)
     return !/\/\/+/.test(url)
@@ -311,4 +303,4 @@ const parseCookies = (cookieHeader: string): Map<string, string> => {
     return list
 }
 
-export { getHeaders, getData, extractParameters, normalizePath, isValidUrl, parseCookies }
+export { getHeaders, getData, extractParameters, isValidUrl, parseCookies }
