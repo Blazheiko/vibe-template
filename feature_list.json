@@ -1011,6 +1011,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-102-error-log-scrubbing",
             "dependencies": [],
+            "status": "done",
+            "evidence": "Merged #345 (merge e04a596; start #344). toSafeError (vendor/utils/errors/scrub-error.ts) copies an error with its prototype: DrizzleQueryError / pg DatabaseError keep code, constraint, table, column, schema, routine, severity with a fixed message and rebuilt stack; query, params, detail, where, internalQuery, hint dropped from any error; cause / AggregateError / error fields scrubbed recursively; original untouched. pino err/error serializers and sentryService.captureException use it; the Sentry event processor replaces database messages in exception values (hint.originalException) and sanitizes extra, contexts, breadcrumbs at any depth. Finding corrected: drizzle 1.0.0-rc.5 adds params only with paramsInErrors (off in db.ts); the live leak was pg quoting a value (22P02). Evidence: typecheck, lint, format clean; pnpm test backend 2170, frontend 400, api-playground 62; test:pg local 15 files passed (5 skipped by condition), CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify passed; mutation: both scrub-error.pg.test.ts cases fail with logger.ts from main; manual via scrub-error.pg.test.ts on real PostgreSQL with the real prod logger (22P02 value and paramsInErrors hash/email absent from log line and Sentry payload). Details were in progress.md on fix/feat-102-error-log-scrubbing (removed from main by this PR)."
+        },
+        {
+            "id": "feat-103",
+            "name": "SMS Attempt Atomicity",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R02: verifySmsCode compares the code with a challenge read earlier and markConfirmed does not check the attempt budget, so concurrent wrong codes get more than AUTH_SMS_MAX_INVALID_ATTEMPTS comparisons; an atomic consumeAttempt (UPDATE ... attempt_count < max RETURNING) runs before every comparison, a late wrong attempt cannot invalidate a confirmed challenge (markInvalidatedIfPending), SMS repository methods take a transaction executor (prerequisite for R06a); tests on PostgreSQL for the three flows; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-103-sms-attempt-atomicity",
+            "dependencies": [],
             "status": "in_progress",
             "evidence": ""
         }

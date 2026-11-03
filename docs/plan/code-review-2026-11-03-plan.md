@@ -522,22 +522,22 @@ RETURNING *`.
 
 ## Стан
 
-| Фіча | id       | PR  | Стан        |
-| ---- | -------- | --- | ----------- |
-| R01  | feat-102 |     | in_progress |
-| R02  |          |     | not-started |
-| R03  |          |     | not-started |
-| R06a |          |     | not-started |
-| R11a |          |     | not-started |
-| R04  |          |     | not-started |
-| R05  |          |     | not-started |
-| R06b |          |     | not-started |
-| R07  |          |     | not-started |
-| R09  |          |     | not-started |
-| R08  |          |     | not-started |
-| R10  |          |     | not-started |
-| R11b |          |     | not-started |
-| R11c |          |     | not-started |
-| R11d |          |     | not-started |
-| R12a |          |     | not-started |
-| R12b |          |     | not-started |
+| Фіча | id       | PR   | Стан        |
+| ---- | -------- | ---- | ----------- |
+| R01  | feat-102 | #345 | done        |
+| R02  | feat-103 |      | in_progress |
+| R03  |          |      | not-started |
+| R06a |          |      | not-started |
+| R11a |          |      | not-started |
+| R04  |          |      | not-started |
+| R05  |          |      | not-started |
+| R06b |          |      | not-started |
+| R07  |          |      | not-started |
+| R09  |          |      | not-started |
+| R08  |          |      | not-started |
+| R10  |          |      | not-started |
+| R11b |          |      | not-started |
+| R11c |          |      | not-started |
+| R11d |          |      | not-started |
+| R12a |          |      | not-started |
+| R12b |          |      | not-started |
