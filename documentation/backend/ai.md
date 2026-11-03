@@ -120,7 +120,7 @@ sequenceDiagram
     S-->>U: support_chat_complete
 ```
 
-Системний промпт збирає [`support-llm-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-llm-service.ts). Він підставляє контекст замість `{context}`, а якщо плейсхолдера немає, дописує контекст у кінець і логує попередження. Окремо додається інструкція відповідати рідною мовою користувача. Невдалий переклад не зупиняє чат: сервіс повертає оригінальний запит.
+Системний промпт збирає [`support-llm-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-llm-service.ts). Він підставляє контекст замість `{context}` дослівно: `$&`, `$'`, `` $` `` і `$$` у тексті статей не трактуються як шаблони заміни. Якщо плейсхолдера немає, дописує контекст у кінець і логує попередження. Окремо додається інструкція відповідати рідною мовою користувача. Невдалий переклад не зупиняє чат: сервіс повертає оригінальний запит.
 
 ## Історія чату
 

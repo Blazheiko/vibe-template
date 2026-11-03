@@ -1,48 +1,34 @@
-# feat-104 — Push Endpoint SSRF
+# feat-105 — Prompt Context Replace
 
-Plan: `docs/plan/code-review-2026-11-03-plan.md`, item R03 (owner decision Д1: allowlist of hosts). Branch: `fix/feat-104-push-endpoint-ssrf` (from `main` at `486f25b`, `main` merged in after #348).
+Plan: `docs/plan/code-review-2026-11-03-plan.md`, item R11a. Branch: `fix/feat-105-prompt-context-replace` (from `main` at `774b1fb`).
 
 ## Current State
 
 Implemented; PR open.
 
-- `config/push.ts`: `readPushConfig(env)` (testable).
-    - `PUSH_ALLOWED_ENDPOINT_HOSTS`: comma list; default FCM, Mozilla, `.notify.windows.com`, Apple. Entries are validated as host names or `.domain` suffixes.
-    - `PUSH_MAX_SUBSCRIPTIONS_PER_USER`: default 20, min 1.
-    - `configError` is wired into `validateRuntimeConfig` (`Invalid push configuration`).
-- `services/notifications/push-endpoint-policy.ts` (new) `isAllowedPushEndpoint` requires:
-    - `https:`, no userinfo, no explicit port, no IP literal;
-    - a host that equals an entry, or is a subdomain on a DNS label boundary for a `.domain` entry. The host is lowercased, the trailing dot dropped, and IDN compared in punycode.
-- `push-subscription-service.ts` `upsertSubscription`:
-    - endpoint not allowed → `400 push_endpoint_not_allowed`, before any DB access;
-    - a new or moved-in subscription at the cap → `409 push_subscription_limit`, counted with `countByUserId(userId, tx)` under the user row lock of `withCurrentSession`.
-- `push-notification-sender-service.ts`: re-checks every endpoint before sending, skips disallowed ones with a `warn`, and passes no proxy/agent options to `web-push`.
-- `http-routes.ts`: `POST /push-subscriptions/test-push` limited to 5/min.
-- `push-notification-log-transformer.ts` + `shared` `PushLogRowSchema`:
-    - responses carry `statusCode` and `reason` (`gone` / `rejected` / `network_error` / `null`) instead of `errorMessage` / `responseData`;
-    - this covers `GET /push-subscriptions/:id/logs` and `GET /:id` `notificationLogs`. `GET /push-subscriptions` summaries never had them.
-- Docs: `documentation/backend/web-push-notification.md` (new section «Обмеження endpoint», log shape, config), `configuration.md`, `packages/backend/.env.example`.
+- `support-llm-service.ts` `chatStream`: `systemPromptTemplate.replace('{context}', () => knowledgeContext)`. The missing-placeholder fallback is now detected with `includes('{context}')`, not by comparing the result with the template; that comparison was also wrong when the context itself was `{context}`.
+- Docs: `documentation/backend/ai.md`.
 
 ## Files Modified
 
-- `packages/backend/src/config/push.ts`, `push.spec.ts` (new)
-- `packages/backend/src/app/start/validate-runtime-config.ts`
-- `packages/backend/src/app/services/notifications/push-endpoint-policy.ts` (new) + spec; `push-transport-redirect.spec.ts` (new)
-- `packages/backend/src/app/services/notifications/push-subscription-service.ts` + spec; `push-notification-sender-service.ts` + spec
-- `packages/backend/src/app/repositories/notifications/push-subscription-repository.ts` (`countByUserId`)
-- `packages/backend/src/app/transformers/push-notification-log-transformer.ts` + spec
-- `packages/backend/src/app/routes/http-routes.ts`
-- `packages/shared/src/responses/push-subscription-controller.ts`
-- `packages/backend/src/app/controllers/http/notifications/push-subscription-ownership.pg.test.ts` (fixtures on an allowed host, new feat-104 block)
-- Docs and `.env.example` as above.
+- `packages/backend/src/app/services/support/support-llm-service.ts`
+- `packages/backend/src/app/services/support/support-llm-service.spec.ts` (new)
+- `documentation/backend/ai.md`
 
 ## Evidence of Completion
 
-See the PR description. In short: typecheck, lint, format clean; `pnpm test`; `test:pg` (`push-subscription-ownership.pg.test.ts` 22 passed over real HTTP + PostgreSQL); docs build + verify. The mutation check is that all 7 new HTTP cases fail with `main`'s service, transformer, routes and shared schema.
-
-Manual / transport: `push-transport-redirect.spec.ts` sends with real `web-push` to a local TLS server that answers 302 to a second server. The send fails with `statusCode: 302`, and the second server gets 0 requests.
+- `pnpm typecheck`, `pnpm lint`, `pnpm format:check` clean.
+- `pnpm test`: backend 2232, frontend 400, api-playground 62 passed.
+- `pnpm docs:build && pnpm docs:verify` passed.
+- `support-llm-service.spec.ts`, 7 cases:
+    - context with `$&`, `$'`, `` $` ``, `$$`, `$1 $<name>` is put in verbatim;
+    - no placeholder → appended, with a warning;
+    - a context equal to `{context}` is not mistaken for a missing placeholder.
+- Mutation check: on `main`'s service, 5 of the 7 cases fail. The `$1 $<name>` case passes there too, because a string pattern has no capture groups.
+- Manual: not applicable beyond the spec. The prompt is built in memory; there is no LLM call in tests.
+- No PG / Redis code touched.
 
 ## Notes for Next Session
 
 - Remaining: merge the PR after green checks, then the done PR.
-- Next by the plan order: R11a (prompt `$&` replace), then R06a (phone reset transaction, needs feat-103's executors).
+- Next by the plan order: R06a (phone reset transaction).

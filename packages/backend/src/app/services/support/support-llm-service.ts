@@ -69,8 +69,10 @@ export const supportLlmService = {
         const modelOverride = promptService.getModel('SUPPORT_SYSTEM')
         const adapter = getTextAdapterForModel(modelOverride)
 
-        let injected = systemPromptTemplate.replace('{context}', knowledgeContext)
-        if (injected === systemPromptTemplate) {
+        // A function replacement: `$&`, `$'`, `` $` `` and `$$` in admin-written knowledge-base
+        // text stay as they are (feat-105).
+        let injected = systemPromptTemplate.replace('{context}', () => knowledgeContext)
+        if (!systemPromptTemplate.includes('{context}')) {
             logger.warn(
                 {
                     templateSource:
