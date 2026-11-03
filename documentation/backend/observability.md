@@ -9,12 +9,24 @@
 - **Рівень.** `LOG_LEVEL` ([`config/logging.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/logging.ts)): `fatal`, `error`, `warn`, `info` (за замовчуванням), `debug`, `trace` або `silent`, без огляду на регістр. Невідоме значення зупиняє старт (`Invalid logging configuration`).
 - **Формат.** Якщо `APP_ENV` дорівнює `prod` або `production`, логи йдуть у stdout як JSON-рядки (`destination({ sync: false })`). В інших оточеннях використовується `pino-pretty` з кольорами; пакет імпортується динамічно лише поза production.
 - **Потоки.** `multistream` має два потоки: основний (stdout) і `sentryStream` рівня `error`, який пересилає помилки в Sentry (див. нижче).
-- **Серіалізатори.** Додано лише серіалізатор `bigint` → рядок.
+- **Серіалізатори.** `bigint` → рядок; `err` і `error` — стандартний серіалізатор pino поверх безпечної копії помилки (див. [Помилки БД у логах](#помилки-бд-у-логах)).
 - **Redaction.** Опції pino `redact` немає. Маскування робиться вручну: хелпери `maskEmailForLogs` / маскування телефону в [mask-sensitive.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/mask-sensitive.ts).
 
 ::: danger Токени в логах
 Оскільки автоматичного redact немає, усе, що передано в об'єкт логу, пишеться як є. Відома проблема №3 у [code-issues-found-during-docs.md](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md) — токени потрапляють у логи. Не логуйте `httpData`, заголовки чи тіла запитів цілком.
 :::
+
+### Помилки БД у логах
+
+Помилка запиту може нести дані користувача. Повідомлення помилки `pg` може цитувати значення (`invalid input syntax for type bigint: "…"`), а `detail` — рядок або ключ; pino вбудовує повідомлення `cause` у запис. Клієнт drizzle з `paramsInErrors: true` ще й кладе параметри запиту (хеш пароля, `session_token`, email) у `message` і `stack` `DrizzleQueryError` та зберігає `query` / `params` як поля; `db` застосунку цю опцію не вмикає, захист діє на випадок, якщо її ввімкнуть. Тому логер і Sentry отримують не саму помилку, а її копію з [scrub-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/errors/scrub-error.ts) (`toSafeError`):
+
+- **Помилка БД** (`DrizzleQueryError` або `pg` `DatabaseError`) зберігає лише `code`, `constraint`, `table`, `column`, `schema`, `routine`, `severity`. Повідомлення фіксоване: `Failed query (params redacted)` або `Database error (code=23505 constraint=users_email_unique)`. `stack` перебудовується з цього повідомлення і кадрів (`at …`).
+- **Будь-яка помилка** втрачає поля `query`, `params`, `detail`, `where`, `internalQuery`, `hint`.
+- `cause`, `AggregateError.errors` і помилки в полях обробляються так само, рекурсивно (цикли зберігаються, глибина обмежена). `cause`, що не є помилкою, відкидається.
+- Копія має той самий прототип, тому `err.type` (ім'я класу, напр. `RedisUnavailableError`) не змінюється.
+- Оригінальна помилка не змінюється: її далі читає [db-errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/db-errors.ts).
+
+Захищені лише ключі `err` і `error` (а також помилка першим аргументом, `logger.error(err)`). Помилка, вкладена глибше в об'єкт логу, або текст помилки, вставлений у `msg`, пишуться як є.
 
 ### Логер запиту
 
@@ -71,9 +83,12 @@ SENTRY_TRACES_SAMPLE_RATE=0
 
 Додатково event processor `sanitizeEvent`:
 
-- видаляє з `tags`, `extra`, `contexts` ключі, що збігаються з `/token|secret|password|cookie|auth|api[_-]?key|bearer/i`;
+- видаляє з `tags` ключі, що збігаються з `/token|secret|password|cookie|auth|api[_-]?key|bearer/i`; з `extra`, `contexts` і `breadcrumbs[].data` — на будь-якій глибині, разом з парою `query` + `params`;
+- замінює повідомлення помилок БД у `exception.values[].value` (Sentry будує їх з оригінальної помилки, коли сам ловить uncaught exception), а також текст `Failed query: …` у `message`, `breadcrumbs[].message` і рядках `extra` / `contexts`;
 - видаляє заголовки `authorization`, `cookie` і ті, що збігаються з тим самим regex;
 - видаляє `request.data`, якщо `status_code >= 400`, інакше обрізає його до 10 КБ.
+
+`sentryService.captureException` передає в Sentry безпечну копію помилки (`toSafeError`), а `sentryStream` — запис, уже серіалізований логером з такої копії.
 
 З користувача в Sentry передається лише `id` (`scope.setUser({ id })`).
 
