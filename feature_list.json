@@ -993,6 +993,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #334 (merge ae4c81d; start #333): persistRegisteredUser catches isUniqueViolation around userRepository.create before the verification mail, the challenge invalidation, the session destroy and the login, and returns a sentinel each caller maps: email registration answers the generic message in strict and non-strict mode (the non-strict loser neither logs in nor destroys its session), register/phone/complete-profile answers 409 Phone already exist; confirmPhoneLink catches it around updateIfSessionToken and answers 409 Phone is already linked to another account (challenge stays confirmed, known trade-off). Any 23505 is read as a lost race (assumption documented in code). bothReadBeforeEitherWrites moved to src/test-support/race-barrier.ts. typecheck/lint/format:check clean, test backend 2141 (+9) / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:pg 182 (+4: register-race.pg.test.ts holds both requests after the lookup until both have read: strict, non-strict, phone completion with two confirmed challenges, phone link with two accounts and two challenges), docs:build + docs:verify, CI green incl. quality, e2e, e2e-live, test-pg, test-redis. Mutation checks: old auth-service.ts fails all 4 pg and 6 unit tests; dropping only the non-strict mapping fails exactly the non-strict tests. Manual on dist, concurrent curl pairs with one email: old code answered 500 in a pair; new strict both 200 generic, one row; new non-strict one 200 with user and one 200 generic, one row. Details were in progress.md on fix/feat-100-register-race (removed from main by this PR)."
+        },
+        {
+            "id": "feat-101",
+            "name": "Session Layer Cleanup",
+            "description": "docs/plan/session-layer-cleanup-plan.md: logout-all answers 200 once the session_token rotation succeeded, whatever the Redis cleanup does (new anonymous cookie and the logout_all notification included); destroyAllSessions drops the unreachable retry cursor and keepSessionId and returns { deleted, complete }; the stored anonymous session cookie gets anonAge; the unused session_api middleware is removed; Session.destroySession/destroyAllSessions signatures fixed; OAuth state compared in constant time; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-101-session-cleanup",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
