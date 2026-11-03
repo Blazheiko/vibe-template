@@ -70,7 +70,11 @@ export default {
         }
 
         const payload = getTypedPayload(context)
-        const result = await pushSubscriptionService.createSubscription(userId, payload)
+        const result = await pushSubscriptionService.createSubscription(
+            userId,
+            payload,
+            context.auth.getPresentedUserToken(),
+        )
         return respond(context, result, (value) => ({
             status: 'success',
             subscription: value.subscription,
@@ -112,6 +116,7 @@ export default {
             userId,
             subscriptionId,
             payload,
+            context.auth.getPresentedUserToken(),
         )
         return respond(context, result, (value) => ({
             status: 'success',

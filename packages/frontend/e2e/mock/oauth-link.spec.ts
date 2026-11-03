@@ -23,6 +23,14 @@ test.describe('OAuth sign-in into an existing account', () => {
         )
     })
 
+    test('a spent mail budget is explained (feat-098)', async ({ page }) => {
+        await page.goto('/?error=oauth_failed&reason=too_many_attempts')
+
+        await expect(page.getByRole('alert')).toHaveText(
+            'Too many sign-in emails were sent. Please try again later.',
+        )
+    })
+
     test('the confirmation page signs in and opens the account', async ({ page, api }) => {
         await api.answer(
             'auth/oauth/link/confirm',

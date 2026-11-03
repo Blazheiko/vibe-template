@@ -8,7 +8,9 @@ import {
     type SerializedPushNotificationLog,
 } from '#app/transformers/index.js'
 import { conflict, internalMessage, notFound, type AppResult } from '#app/services/shared/errors.js'
+import type { DbTransaction } from '#app/repositories/index.js'
 import { getPushSubscriptionStatistics } from '#app/services/statistics/push-subscription-statistics-service.js'
+import { withCurrentSession } from '#app/services/auth/session-guard.js'
 
 export const pushSubscriptionService = {
     async getSubscriptions(userId: bigint): Promise<
@@ -23,76 +25,22 @@ export const pushSubscriptionService = {
         })
     },
 
+    /**
+     * feat-098: written under the user's row lock and only while the request's session is
+     * current, so a request admitted before a claim cannot add a device after it.
+     */
     async createSubscription(
         userId: bigint,
         payload: CreateSubscriptionInput,
+        presentedSessionToken: string | undefined,
     ): Promise<
         AppResult<{
             subscription: ReturnType<typeof pushSubscriptionTransformer.serialize>
         }>
     > {
-        const existingSubscription = await pushSubscriptionRepository.findByEndpoint(
-            payload.endpoint,
+        return await withCurrentSession(userId, presentedSessionToken, (tx) =>
+            upsertSubscription(userId, payload, tx),
         )
-
-        if (existingSubscription !== undefined) {
-            // The endpoint is unique across users. Moving it to another account is
-            // allowed only when the caller also proves possession of the browser's
-            // keys (same device, account switch); a leaked endpoint alone is not enough.
-            const ownedByAnotherUser = existingSubscription.userId !== userId
-            const sameKeys =
-                existingSubscription.p256dhKey === payload.p256dhKey &&
-                existingSubscription.authKey === payload.authKey
-            if (ownedByAnotherUser && !sameKeys) {
-                return Result.err(conflict('Push subscription belongs to another user'))
-            }
-
-            const updated = await pushSubscriptionRepository.updateByEndpoint(
-                payload.endpoint,
-                userId,
-                {
-                    p256dhKey: payload.p256dhKey,
-                    authKey: payload.authKey,
-                    userAgent: payload.userAgent,
-                    ipAddress: payload.ipAddress,
-                    deviceType: payload.deviceType,
-                    browserName: payload.browserName,
-                    browserVersion: payload.browserVersion,
-                    osName: payload.osName,
-                    osVersion: payload.osVersion,
-                    notificationTypes: payload.notificationTypes,
-                    timezone: payload.timezone,
-                    isActive: true,
-                },
-            )
-            if (updated === undefined) {
-                return Result.err(internalMessage('Failed to update subscription'))
-            }
-
-            return Result.ok({
-                subscription: pushSubscriptionTransformer.serialize(updated),
-            })
-        }
-
-        const created = await pushSubscriptionRepository.create({
-            endpoint: payload.endpoint,
-            p256dhKey: payload.p256dhKey,
-            authKey: payload.authKey,
-            userAgent: payload.userAgent ?? null,
-            ipAddress: payload.ipAddress ?? null,
-            deviceType: payload.deviceType ?? null,
-            browserName: payload.browserName ?? null,
-            browserVersion: payload.browserVersion ?? null,
-            osName: payload.osName ?? null,
-            osVersion: payload.osVersion ?? null,
-            notificationTypes: payload.notificationTypes,
-            timezone: payload.timezone ?? null,
-            userId,
-        })
-
-        return Result.ok({
-            subscription: pushSubscriptionTransformer.serialize(created),
-        })
     },
 
     async getSubscription(
@@ -120,10 +68,12 @@ export const pushSubscriptionService = {
         })
     },
 
+    /** feat-098: like `createSubscription`, only while the request's session is current. */
     async updateSubscription(
         userId: bigint,
         subscriptionId: bigint,
         payload: UpdateSubscriptionInput,
+        presentedSessionToken: string | undefined,
     ): Promise<
         AppResult<{
             subscription: ReturnType<typeof pushSubscriptionTransformer.serialize>
@@ -144,13 +94,17 @@ export const pushSubscriptionService = {
             ...(payload.osVersion !== undefined ? { osVersion: payload.osVersion } : {}),
         }
 
-        const updated = await pushSubscriptionRepository.update(subscriptionId, userId, updateData)
-        if (updated === undefined) {
-            return Result.err(notFound('Subscription', 'Subscription not found'))
-        }
-
-        return Result.ok({
-            subscription: pushSubscriptionTransformer.serialize(updated),
+        return await withCurrentSession(userId, presentedSessionToken, async (tx) => {
+            const updated = await pushSubscriptionRepository.update(
+                subscriptionId,
+                userId,
+                updateData,
+                tx,
+            )
+            if (updated === undefined) {
+                return Result.err(notFound('Subscription', 'Subscription not found'))
+            }
+            return Result.ok({ subscription: pushSubscriptionTransformer.serialize(updated) })
         })
     },
 
@@ -216,4 +170,78 @@ export const pushSubscriptionService = {
             data: pushSubscriptionTransformer.serialize(deactivated),
         })
     },
+}
+
+async function upsertSubscription(
+    userId: bigint,
+    payload: CreateSubscriptionInput,
+    tx: DbTransaction,
+): Promise<AppResult<{ subscription: SerializedPushSubscription }>> {
+    const existingSubscription = await pushSubscriptionRepository.findByEndpoint(
+        payload.endpoint,
+        tx,
+    )
+
+    if (existingSubscription !== undefined) {
+        // The endpoint is unique across users. Moving it to another account is
+        // allowed only when the caller also proves possession of the browser's
+        // keys (same device, account switch); a leaked endpoint alone is not enough.
+        const ownedByAnotherUser = existingSubscription.userId !== userId
+        const sameKeys =
+            existingSubscription.p256dhKey === payload.p256dhKey &&
+            existingSubscription.authKey === payload.authKey
+        if (ownedByAnotherUser && !sameKeys) {
+            return Result.err(conflict('Push subscription belongs to another user'))
+        }
+
+        const updated = await pushSubscriptionRepository.updateByEndpoint(
+            payload.endpoint,
+            userId,
+            {
+                p256dhKey: payload.p256dhKey,
+                authKey: payload.authKey,
+                userAgent: payload.userAgent,
+                ipAddress: payload.ipAddress,
+                deviceType: payload.deviceType,
+                browserName: payload.browserName,
+                browserVersion: payload.browserVersion,
+                osName: payload.osName,
+                osVersion: payload.osVersion,
+                notificationTypes: payload.notificationTypes,
+                timezone: payload.timezone,
+                isActive: true,
+            },
+            tx,
+        )
+        if (updated === undefined) {
+            return Result.err(internalMessage('Failed to update subscription'))
+        }
+
+        return Result.ok({
+            subscription: pushSubscriptionTransformer.serialize(updated),
+        })
+    }
+
+    const created = await pushSubscriptionRepository.create(
+        {
+            endpoint: payload.endpoint,
+            p256dhKey: payload.p256dhKey,
+            authKey: payload.authKey,
+            userAgent: payload.userAgent ?? null,
+            ipAddress: payload.ipAddress ?? null,
+            deviceType: payload.deviceType ?? null,
+            browserName: payload.browserName ?? null,
+            browserVersion: payload.browserVersion ?? null,
+            osName: payload.osName ?? null,
+            osVersion: payload.osVersion ?? null,
+            notificationTypes: payload.notificationTypes,
+            timezone: payload.timezone ?? null,
+            userId,
+        },
+        tx,
+    )
+
+    return Result.ok({
+        subscription: pushSubscriptionTransformer.serialize(created),
+    })
 }

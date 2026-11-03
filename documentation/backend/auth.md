@@ -186,6 +186,9 @@ Cookie сесії читає [`session-handler.ts`](https://github.com/Blazheiko
 | `POST /api/auth/link-email/start`               | видача токена під блокуванням користувача (`issueTokenLocked`)                                  |
 | `POST /api/auth/logout-all`                     | `updateIfSessionToken` при ротації токена                                                       |
 | `POST /api/avatar/upload`, `DELETE /api/avatar` | `updateIfSessionToken`; новий файл у сховищі видаляється, старий лишається                      |
+| `POST /api/push-subscriptions`, `PUT …/:id`     | `withCurrentSession`: запис у транзакції під блокуванням рядка користувача                      |
+
+Записи в інші таблиці, які claim має прибрати (push-підписки), одним оператором не перевіриш. Їх робить [`withCurrentSession`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/session-guard.ts): транзакція бере те саме блокування `FOR UPDATE`, що й claim, і порівнює пред'явлений токен під ним. Тож запит або комітиться раніше за claim (і claim видаляє записане), або бачить ротований токен.
 
 Відповідь, коли токен уже не актуальний, — `401` з `reason: "session_revoked"`, і жодних змін. Для `change-password` програш умовного `UPDATE` через **іншу зміну пароля** (дві паралельні зміни з однаковим старим паролем) лишається `409`.
 

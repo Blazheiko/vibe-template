@@ -7,6 +7,7 @@ import {
     userRepository,
     withTransaction,
 } from '#app/repositories/index.js'
+import type { UserRow } from '#app/repositories/index.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { Result } from 'better-result'
 import {
@@ -23,6 +24,7 @@ import {
     destroySessionsQuietly,
 } from '#app/services/auth/account-claim-service.js'
 import { emailVerificationService } from '#app/services/auth/email-verification-service.js'
+import { enforceEmailLinkThrottles } from '#app/services/auth/enforce-throttle.js'
 import {
     findUsableToken,
     hashToken,
@@ -71,6 +73,8 @@ export const OAUTH_LINK_REVOKED = 'oauth_link_revoked'
 export const OAUTH_LINK_WRONG_SESSION = 'oauth_link_wrong_session'
 export const OAUTH_ALREADY_LINKED = 'oauth_already_linked'
 export const EMAIL_CHANGED = 'email_changed'
+// feat-098: a mail budget of the address or the account is spent.
+export const TOO_MANY_ATTEMPTS = 'too_many_attempts'
 
 const OAUTH_LINK_TTL_MS = 30 * 60 * 1000
 
@@ -369,91 +373,7 @@ export const oauthService = {
             providerAvatar: userInfo.avatar,
         }
 
-        const existingOAuth = await oauthAccountRepository.findByProviderAndProviderId(
-            provider,
-            userInfo.id,
-        )
-        logger.info({ existingOAuth: existingOAuth !== undefined }, 'oauth account lookup')
-
-        if (existingOAuth !== undefined) {
-            // feat-097: the link and the sessionToken are read again under the user's row
-            // lock, the lock a claim takes. Either the claim removed the link (seen here), or
-            // the token read here is the one a later claim rotates away (ADR 0002).
-            const signIn = await withTransaction(async (tx) => {
-                const user = await userRepository.lockById(existingOAuth.userId, tx)
-                if (user === undefined) return { kind: 'missing' as const }
-                const link = await oauthAccountRepository.findLinkForUser(
-                    provider,
-                    userInfo.id,
-                    user.id,
-                    tx,
-                )
-                if (link === undefined) return { kind: 'revoked' as const }
-                return { kind: 'ok' as const, sessionToken: user.sessionToken }
-            })
-            if (signIn.kind === 'missing') return Result.err(notFound('User', 'User not found'))
-            if (signIn.kind === 'revoked') {
-                return Result.err(
-                    badRequest(
-                        'This sign-in method was removed from the account',
-                        OAUTH_LINK_REVOKED,
-                    ),
-                )
-            }
-            return await finishSignIn(auth, existingOAuth.userId, signIn.sessionToken)
-        }
-
-        const existingUser = await userRepository.findByEmail(userInfo.email)
-        logger.info(
-            {
-                existingUser: existingUser !== undefined,
-                emailTrust: userInfo.emailTrust,
-                userId: existingUser !== undefined ? String(existingUser.id) : null,
-            },
-            'oauth user by email lookup',
-        )
-
-        if (existingUser !== undefined) {
-            if (userInfo.emailTrust === 'authoritative') {
-                return await linkTrusted(auth, existingUser.id, identity)
-            }
-            // Any other provider: the account's owner confirms the link by mail, from this
-            // browser session (feat-097).
-            return await startMailedLink(existingUser.id, identity, sessionId)
-        }
-
-        if (userInfo.emailTrust === 'authoritative') {
-            logger.info({ email: maskEmailForLogs(userInfo.email) }, 'oauth creating new user')
-            const newUser = await userRepository.create({
-                name: userInfo.name,
-                email: userInfo.email,
-                password: null,
-                avatar: userInfo.avatar,
-                emailVerifiedAt: new Date(),
-            })
-            await oauthAccountRepository.create({ userId: newUser.id, ...identity })
-            return await finishSignIn(auth, newUser.id, newUser.sessionToken)
-        }
-
-        // feat-097: an address the provider does not prove is not written to users.email:
-        // the account is created without one (the address stays in oauth_accounts) and gets
-        // it when its owner confirms the mailed link from a session of this account.
-        logger.info(
-            { email: maskEmailForLogs(userInfo.email) },
-            'oauth creating user, email pending',
-        )
-        const newUser = await userRepository.create({
-            name: userInfo.name,
-            email: null,
-            password: null,
-            avatar: userInfo.avatar,
-        })
-        await oauthAccountRepository.create({ userId: newUser.id, ...identity })
-        const signedIn = await finishSignIn(auth, newUser.id, newUser.sessionToken)
-        if (Result.isOk(signedIn)) {
-            await sendFirstEmailLinkQuietly(newUser.id, userInfo.email, newUser.sessionToken)
-        }
-        return signedIn
+        return await signInWithIdentity(auth, identity, userInfo.emailTrust, sessionId)
     },
 
     /**
@@ -561,6 +481,8 @@ export const oauthService = {
             return Result.err(badRequest('There is no address to confirm', 'no_pending_email'))
         }
         const email = normalizeEmail(providerEmail)
+        const throttled = await enforceEmailLinkThrottles(email, userId, tooManyLinkMails())
+        if (Result.isError(throttled)) return Result.err(throttled.error)
         if (await userRepository.emailExistsForOtherUser(email, userId)) {
             return Result.err(conflict('Email is already linked to another account'))
         }
@@ -590,6 +512,8 @@ const emailChanged = (): AppError =>
     conflict('The account email changed after this sign-in started', EMAIL_CHANGED)
 const alreadyLinked = (): AppError =>
     conflict('This sign-in method is already linked to an account', OAUTH_ALREADY_LINKED)
+const tooManyLinkMails = (): AppError =>
+    badRequest('Too many emails were sent. Please try again later.', TOO_MANY_ATTEMPTS)
 
 async function finishSignIn(
     auth: Auth,
@@ -654,6 +578,14 @@ async function startMailedLink(
     if (sessionId === null) {
         return Result.err(badRequest('OAuth sign-in requires a session'))
     }
+    // feat-098: the same mail budgets as linking an address from the account page, before
+    // the token: a spent budget neither mails nor cancels the owner's pending link.
+    const throttled = await enforceEmailLinkThrottles(
+        identity.providerEmail,
+        userId,
+        tooManyLinkMails(),
+    )
+    if (Result.isError(throttled)) return Result.err(throttled.error)
     const issued = await issueTokenLocked(oauthLinkVerificationRepository, {
         userId,
         ttlMs: OAUTH_LINK_TTL_MS,
@@ -711,6 +643,111 @@ async function startMailedLink(
     return Result.ok({ redirectUrl: oauthConfig.frontendLinkPendingUrl })
 }
 
+/**
+ * What a callback does with the provider's identity (feat-097): sign in by its link, link it
+ * to the account with its address, or create an account for it. A new account and its first
+ * link are one transaction (feat-098): when a concurrent callback for the same identity
+ * commits first, the unique link rolls this one back with its user, and the decision is made
+ * once more, now finding the winner's link.
+ */
+async function signInWithIdentity(
+    auth: Auth,
+    identity: OAuthIdentity,
+    emailTrust: OAuthUserInfo['emailTrust'],
+    sessionId: string | null,
+    isRetry = false,
+): Promise<AppResult<{ redirectUrl: string }>> {
+    const { provider, providerUserId, providerEmail } = identity
+    const existingOAuth = await oauthAccountRepository.findByProviderAndProviderId(
+        provider,
+        providerUserId,
+    )
+    logger.info({ existingOAuth: existingOAuth !== undefined }, 'oauth account lookup')
+
+    if (existingOAuth !== undefined) {
+        // feat-097: the link and the sessionToken are read again under the user's row
+        // lock, the lock a claim takes. Either the claim removed the link (seen here), or
+        // the token read here is the one a later claim rotates away (ADR 0002).
+        const signIn = await withTransaction(async (tx) => {
+            const user = await userRepository.lockById(existingOAuth.userId, tx)
+            if (user === undefined) return { kind: 'missing' as const }
+            const link = await oauthAccountRepository.findLinkForUser(
+                provider,
+                providerUserId,
+                user.id,
+                tx,
+            )
+            if (link === undefined) return { kind: 'revoked' as const }
+            return { kind: 'ok' as const, sessionToken: user.sessionToken }
+        })
+        if (signIn.kind === 'missing') return Result.err(notFound('User', 'User not found'))
+        if (signIn.kind === 'revoked') {
+            return Result.err(
+                badRequest('This sign-in method was removed from the account', OAUTH_LINK_REVOKED),
+            )
+        }
+        return await finishSignIn(auth, existingOAuth.userId, signIn.sessionToken)
+    }
+
+    const existingUser = await userRepository.findByEmail(providerEmail)
+    logger.info(
+        {
+            existingUser: existingUser !== undefined,
+            emailTrust,
+            userId: existingUser !== undefined ? String(existingUser.id) : null,
+        },
+        'oauth user by email lookup',
+    )
+
+    if (existingUser !== undefined) {
+        if (emailTrust === 'authoritative') {
+            return await linkTrusted(auth, existingUser.id, identity)
+        }
+        // Any other provider: the account's owner confirms the link by mail, from this
+        // browser session (feat-097).
+        return await startMailedLink(existingUser.id, identity, sessionId)
+    }
+
+    // feat-097: an address the provider does not prove is not written to users.email: the
+    // account is created without one (the address stays in oauth_accounts) and gets it when
+    // its owner confirms the mailed link from a session of this account.
+    const authoritative = emailTrust === 'authoritative'
+    logger.info(
+        { email: maskEmailForLogs(providerEmail), authoritative },
+        'oauth creating new user',
+    )
+    let newUser: UserRow
+    try {
+        newUser = await withTransaction(async (tx) => {
+            const created = await userRepository.create(
+                {
+                    name: identity.providerName,
+                    email: authoritative ? providerEmail : null,
+                    password: null,
+                    avatar: identity.providerAvatar,
+                    ...(authoritative ? { emailVerifiedAt: new Date() } : {}),
+                },
+                tx,
+            )
+            await oauthAccountRepository.create({ userId: created.id, ...identity }, tx)
+            return created
+        })
+    } catch (err: unknown) {
+        // The link (or, for Google, the address) was taken by a concurrent callback.
+        if (isUniqueViolation(err) && !isRetry) {
+            logger.info({ provider }, 'oauth new user lost a race, deciding again')
+            return await signInWithIdentity(auth, identity, emailTrust, sessionId, true)
+        }
+        throw err
+    }
+
+    const signedIn = await finishSignIn(auth, newUser.id, newUser.sessionToken)
+    if (Result.isOk(signedIn) && !authoritative) {
+        await sendFirstEmailLinkQuietly(newUser.id, providerEmail, newUser.sessionToken)
+    }
+    return signedIn
+}
+
 /** The first address of a new account goes out after sign-in; a failure only logs. */
 async function sendFirstEmailLinkQuietly(
     userId: bigint,
@@ -718,6 +755,12 @@ async function sendFirstEmailLinkQuietly(
     sessionToken: string,
 ): Promise<void> {
     try {
+        // feat-098: the mail budgets apply to the first mail too; a spent one only skips it.
+        const throttled = await enforceEmailLinkThrottles(email, userId, tooManyLinkMails())
+        if (Result.isError(throttled)) {
+            logger.warn({ userId: String(userId) }, 'first email link throttled')
+            return
+        }
         const sent = await emailVerificationService.sendLinkVerificationEmail(
             userId,
             email,

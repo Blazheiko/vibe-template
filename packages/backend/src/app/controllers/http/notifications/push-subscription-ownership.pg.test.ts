@@ -53,18 +53,29 @@ vi.mock('#config/app.js', async (importOriginal) => {
 })
 
 // The session and CSRF layers have their own tests (Redis). Here `session_web` only
-// turns the `x-test-user` header into the request's user, so the real route table,
-// body validation, `auth_guard`, controller, service and repository run unchanged.
+// turns the `x-test-user` header into the request's user (and `x-test-token` into the
+// session token it presents, feat-098), so the real route table, body validation,
+// `auth_guard`, controller, service and repository run unchanged.
 vi.mock('#vendor/utils/middlewares/ws/session-web.js', () => ({
     default: async (
         context: {
             httpData: { headers: Map<string, string> }
-            auth: { check: () => boolean; getUserId: () => string | null }
+            auth: {
+                check: () => boolean
+                getUserId: () => string | null
+                getPresentedUserToken: () => string | undefined
+            }
         },
         next: () => Promise<void>,
     ): Promise<void> => {
         const userId = context.httpData.headers.get('x-test-user') ?? null
-        context.auth = { ...context.auth, check: () => userId !== null, getUserId: () => userId }
+        const token = context.httpData.headers.get('x-test-token')
+        context.auth = {
+            ...context.auth,
+            check: () => userId !== null,
+            getUserId: () => userId,
+            getPresentedUserToken: () => token,
+        }
         await next()
     },
 }))
@@ -85,13 +96,15 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     const now = Date.now()
     const ids = { owner: 0n, other: 0n, ownerSub: 0n, otherSub: 0n, missing: 0n }
     let stopServer: ((type?: string) => Promise<void>) | undefined
+    const sessionTokens = new Map<string, string>()
 
     const insertUser = async (name: string): Promise<bigint> => {
         const [row] = await db
             .insert(users)
             .values({ name, email: `${name}-${String(now)}@example.test` })
-            .returning({ id: users.id })
+            .returning({ id: users.id, sessionToken: users.sessionToken })
         if (row === undefined) throw new Error('user not inserted')
+        sessionTokens.set(String(row.id), row.sessionToken)
         return row.id
     }
 
@@ -129,7 +142,11 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
         options: { user?: bigint; body?: unknown } = {},
     ): Promise<HttpResult> => {
         const headers: Record<string, string> = {}
-        if (options.user !== undefined) headers['x-test-user'] = String(options.user)
+        if (options.user !== undefined) {
+            headers['x-test-user'] = String(options.user)
+            const token = sessionTokens.get(String(options.user))
+            if (token !== undefined) headers['x-test-token'] = token
+        }
         const hasBody = options.body !== undefined
         if (hasBody) headers['content-type'] = 'application/json'
         const response = await fetch(
@@ -363,6 +380,36 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
 
             expect(result.status).toBe(409)
             expect((await rowOf(id))?.userId).toBe(ids.owner)
+        })
+    })
+
+    // feat-098: a request whose session was revoked (a claim rotated the token) after it
+    // was admitted writes nothing.
+    describe('POST /push-subscriptions from a revoked session', () => {
+        it('answers 401 session_revoked and inserts nothing', async () => {
+            const endpoint = `https://push.example.test/revoked-${String(now)}`
+            sessionTokens.set(String(ids.other), 'token-before-the-claim')
+
+            try {
+                const result = await call('POST', '', {
+                    user: ids.other,
+                    body: { endpoint, p256dhKey: 'key', authKey: 'auth' },
+                })
+
+                expect(result.status).toBe(401)
+                expect(result.body).toMatchObject({ reason: 'session_revoked' })
+            } finally {
+                const [row] = await db
+                    .select({ sessionToken: users.sessionToken })
+                    .from(users)
+                    .where(eq(users.id, ids.other))
+                if (row !== undefined) sessionTokens.set(String(ids.other), row.sessionToken)
+            }
+            const rows = await db
+                .select()
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.endpoint, endpoint))
+            expect(rows).toHaveLength(0)
         })
     })
 })

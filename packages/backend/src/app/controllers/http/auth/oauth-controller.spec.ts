@@ -17,6 +17,7 @@ vi.mock('#app/services/auth/oauth-service.js', () => ({
     OAUTH_LINK_REVOKED: 'oauth_link_revoked',
     EMAIL_CHANGED: 'email_changed',
     OAUTH_ALREADY_LINKED: 'oauth_already_linked',
+    TOO_MANY_ATTEMPTS: 'too_many_attempts',
     oauthService: { handleCallback, getConfiguredProviders, confirmLink, resendFirstEmailLink },
 }))
 vi.mock('#config/oauth.js', () => ({

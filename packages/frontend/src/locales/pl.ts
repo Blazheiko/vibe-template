@@ -79,6 +79,7 @@ const pl: typeof en = {
         socialLoginEmailChanged:
             'Adres e-mail konta zmienił się podczas logowania. Spróbuj ponownie.',
         socialLoginAlreadyLinked: 'Ta metoda logowania jest już powiązana z innym kontem.',
+        socialLoginTooManyAttempts: 'Wysłano zbyt wiele e-maili logowania. Spróbuj później.',
     },
 
     auth: {

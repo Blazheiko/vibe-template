@@ -92,6 +92,8 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
     const { emailVerificationService } =
         await import('#app/services/auth/email-verification-service.js')
     const { passwordResetService } = await import('#app/services/auth/password-reset-service.js')
+    const { pushSubscriptionService } =
+        await import('#app/services/notifications/push-subscription-service.js')
     const { hashPassword } = await import('metautil')
 
     const now = Date.now()
@@ -142,6 +144,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
         email: string
         verified?: boolean
         hd?: string
+        name?: string
     }): void => {
         vi.stubGlobal(
             'fetch',
@@ -154,7 +157,11 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                           verified_email: profile.verified ?? true,
                           ...(profile.hd !== undefined ? { hd: profile.hd } : {}),
                       }
-                    : { id: profile.id, email: profile.email, name: 'Facebook Person' }
+                    : {
+                          id: profile.id,
+                          email: profile.email,
+                          name: profile.name ?? 'Facebook Person',
+                      }
                 return Promise.resolve({ json: () => Promise.resolve(body) })
             }),
         )
@@ -490,6 +497,136 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                     ),
                 )
             expect(pending).toHaveLength(0)
+        })
+    })
+    // feat-098: what a request admitted before a claim may still write after it.
+    describe('a push subscription from a session a claim revoked', () => {
+        const subscription = (label: string) => ({
+            endpoint: `https://push.test/${label}-${String(now)}-${String(counter)}`,
+            p256dhKey: 'attacker-key',
+            authKey: 'attacker-auth',
+            notificationTypes: ['system'],
+        })
+        const devicesOf = async (userId: bigint) =>
+            db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId))
+
+        it('is refused after the claim, and nothing is inserted', async () => {
+            const email = address('push')
+            const attacker = await insertUser({ email })
+            // The attacker's request was authenticated with this token; the owner then claims.
+            provider({ id: `g-push-${String(now)}`, email })
+            const claimed = await callback('google', fakeAuth().auth)
+            expect(Result.isOk(claimed)).toBe(true)
+
+            const result = await pushSubscriptionService.createSubscription(
+                attacker.id,
+                subscription('after-claim') as never,
+                attacker.sessionToken,
+            )
+
+            expect(Result.isError(result) && result.error).toMatchObject({
+                reason: 'session_revoked',
+            })
+            expect(await devicesOf(attacker.id)).toHaveLength(0)
+        })
+
+        it('waits for a claim holding the user lock, then is refused', async () => {
+            const attacker = await insertUser({ email: address('push-lock') })
+            const client = await pool.connect()
+            try {
+                await client.query('BEGIN')
+                await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [
+                    attacker.id.toString(),
+                ])
+                let settled = false
+                const pending = pushSubscriptionService
+                    .createSubscription(
+                        attacker.id,
+                        subscription('during-claim') as never,
+                        attacker.sessionToken,
+                    )
+                    .finally(() => {
+                        settled = true
+                    })
+                await new Promise((resolve) => setTimeout(resolve, 200))
+                expect(settled).toBe(false)
+                // What a claim does under the lock: rotate the token, remove the devices.
+                await client.query('UPDATE users SET session_token = $1 WHERE id = $2', [
+                    `rotated-${String(now)}`,
+                    attacker.id.toString(),
+                ])
+                await client.query('DELETE FROM push_subscriptions WHERE user_id = $1', [
+                    attacker.id.toString(),
+                ])
+                await client.query('COMMIT')
+
+                const result = await pending
+                expect(Result.isError(result) && result.error).toMatchObject({
+                    reason: 'session_revoked',
+                })
+            } finally {
+                client.release()
+            }
+            expect(await devicesOf(attacker.id)).toHaveLength(0)
+        })
+
+        it('is written while the session is current (control)', async () => {
+            const owner = await insertUser({ email: address('push-ok'), verified: true })
+
+            const result = await pushSubscriptionService.createSubscription(
+                owner.id,
+                subscription('current') as never,
+                owner.sessionToken,
+            )
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(await devicesOf(owner.id)).toHaveLength(1)
+        })
+    })
+
+    describe('concurrent callbacks of one new identity (feat-098)', () => {
+        it('leave one user and one link; both browsers are signed in to it', async () => {
+            const email = address('twice', 'example.com')
+            const facebookId = `fb-twice-${String(now)}`
+            const name = `Twice ${String(now)}`
+            provider({ id: facebookId, email, name })
+            // Both callbacks pass the link lookup before either creates anything.
+            const realFind =
+                oauthAccountRepository.findByProviderAndProviderId.bind(oauthAccountRepository)
+            let arrived = 0
+            let release: () => void = () => undefined
+            const bothArrived = new Promise<void>((resolve) => {
+                release = resolve
+            })
+            vi.spyOn(oauthAccountRepository, 'findByProviderAndProviderId').mockImplementation(
+                async (...args) => {
+                    const row = await realFind(...args)
+                    arrived += 1
+                    if (arrived === 2) release()
+                    if (arrived <= 2) await bothArrived
+                    return row
+                },
+            )
+            const first = fakeAuth()
+            const second = fakeAuth()
+
+            const results = await Promise.all([
+                callback('facebook', first.auth, 'browser-one'),
+                callback('facebook', second.auth, 'browser-two'),
+            ])
+
+            expect(results.map((result) => Result.isOk(result))).toEqual([true, true])
+            const created = await db.select().from(users).where(eq(users.name, name))
+            for (const row of created) createdUserIds.push(row.id)
+            expect(created).toHaveLength(1)
+            const links = await db
+                .select()
+                .from(oauthAccounts)
+                .where(eq(oauthAccounts.providerUserId, facebookId))
+            expect(links).toHaveLength(1)
+            expect(links[0]?.userId).toBe(created[0]?.id)
+            expect(first.state.login?.userId).toBe(String(created[0]?.id))
+            expect(second.state.login?.userId).toBe(String(created[0]?.id))
         })
     })
 })
