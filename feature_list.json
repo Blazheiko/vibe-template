@@ -943,6 +943,26 @@
             "dependencies": ["feat-094"],
             "status": "done",
             "evidence": "Merged #318 (merge 26ac5f8; start #317): code review fixes - a cookie of a session no longer in Redis no longer leaves the new anonymous session in the old storage namespace (and storeAnonymous switches to anon_session); the OAuth callback still redirects when the state cleanup fails; a path-parameter 400 carries CORS headers (Origin read before the metadata); the exception path sends the session cookie only (ADR 0004 point 3 updated). typecheck/lint/format:check clean, test backend 1928 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:redis 88, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Every new test fails without its fix. Manual on dist with CORS: invalid path parameter -> 400 with Access-Control-Allow-Origin. Details were in progress.md on fix/error-path-review (removed from main by this PR)."
+        },
+        {
+            "id": "feat-096",
+            "name": "Credential Transaction Foundation",
+            "description": "docs/plan/oauth-pre-hijack-plan.md, foundation part: one transaction owner for one-time tokens (runTokenTransaction: lock user -> check state -> consume with clock_timestamp() -> apply -> invalidate the rest by user_id without exceptId), serialized issuance (issueTokenLocked under the same user lock), Auth.getPresentedUserToken() (immutable token of the initial request) and a presented-session-token guard on every session-initiated change of users/credentials (changePassword, phone/email link, logoutAll, avatar). Existing flows move to the new contract; OAuth behaviour unchanged; PostgreSQL concurrency tests",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-096-credential-transactions",
+            "dependencies": ["feat-095"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-097",
+            "name": "OAuth Pre-Hijack Protection",
+            "description": "docs/plan/oauth-pre-hijack-plan.md, OAuth part: Google trusted only when authoritative (verified_email + gmail.com or matching hd), other providers confirm by email with session binding (oauth_link_verifications); users.email stays null for untrusted OAuth sign-ups until confirmed (addFirstEmail keeps credentials); claim of an unverified account wipes password, phone, OAuth links and pending tokens and rotates sessionToken; OAuth sign-in by an existing link re-checks it under the user lock; /verify-email for registration requires the password or the account's session; password reset on an unverified account claims it; frontend, docs, e2e",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-097-oauth-pre-hijack",
+            "dependencies": ["feat-096"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
