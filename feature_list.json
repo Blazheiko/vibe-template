@@ -981,8 +981,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-099-login-timing",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #331 (merge 2ca40bd; start #330): login always runs scrypt: an unknown email/phone and an OAuth-only account (null or empty hash) check the password against getDummyPasswordHash() (dummy-password-hash.ts: random password hashed once by metautil hashPassword, memoized, reset on failure, so its scrypt parameters match real hashes), and a pass against it never signs in. typecheck/lint/format:check clean, test backend 2132 (+13) / frontend 400 / api-playground 62 / shared 25 / documentation 26, docs:build + docs:verify, CI green incl. quality, e2e, e2e-live, test-pg, test-redis. Mutation check: dropping the 'no stored hash' guard fails 2 tests. Manual on dist, median of 20 wrong-password logins: real account 75.0 -> 75.2 ms, unknown email 2.6 -> 74.9 ms, OAuth-only 1.9 -> 76.3 ms; right password still 200. Open follow-up: phone password reset awaits SMS delivery only for a registered number without email (similar timing signal). Details were in progress.md on fix/feat-099-login-timing (removed from main by this PR)."
         }
     ]
 }
