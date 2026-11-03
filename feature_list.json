@@ -951,8 +951,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-096-credential-transactions",
             "dependencies": ["feat-095"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #322 (merge 1604cfb; start #321): runTokenTransaction owns the one-time token transaction (lock user FOR UPDATE -> check -> consume with clock_timestamp() -> apply -> retire the rest by user_id, no exceptId), issueTokenLocked serializes issuance under the same lock, Auth.getPresentedUserToken() keeps the token RequestSession.restore verified, and change-password, link-phone start/confirm, link-email start, logout-all and avatar upload/delete compare it with users.session_token atomically (401 session_revoked). Password reset retires phone challenges inside its transaction. typecheck/lint/format:check clean, test backend 1986 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:pg 163, test:redis 88, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation checks: now() instead of clock_timestamp(), issuance without the lock, changePassword without the token condition each fail a new pg test. Manual on dist: change-password from A 200, B 401, logout-all 200, A 401. Details were in progress.md on fix/feat-096-credential-transactions (removed from main by this PR)."
         },
         {
             "id": "feat-097",
