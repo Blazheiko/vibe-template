@@ -1,7 +1,7 @@
 import { db } from '#database/db.js'
 import type { DbExecutor } from '../transaction.js'
 import { smsAuthChallenges } from '#database/schema.js'
-import { and, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 
 export type SmsAuthChallengeRow = InferSelectModel<typeof smsAuthChallenges>
@@ -24,9 +24,23 @@ export interface SmsAuthChallengeRepository {
         id: string,
         data: Pick<SmsAuthChallengeInsert, 'codeHash' | 'providerRequestId' | 'metadata'>,
     ): Promise<SmsAuthChallengeRow | undefined>
-    incrementAttemptCount(id: string): Promise<SmsAuthChallengeRow | undefined>
-    markConfirmed(id: string): Promise<SmsAuthChallengeRow | undefined>
+    /**
+     * Spends one try of the budget, atomically: the row comes back only if the challenge is
+     * still waiting (not confirmed, not invalidated, not expired) and had fewer than
+     * `maxAttempts` tries. Every comparison of a code must be preceded by a spent try.
+     */
+    consumeAttempt(
+        id: string,
+        maxAttempts: number,
+        executor?: DbExecutor,
+    ): Promise<SmsAuthChallengeRow | undefined>
+    markConfirmed(id: string, executor?: DbExecutor): Promise<SmsAuthChallengeRow | undefined>
     markInvalidated(id: string): Promise<SmsAuthChallengeRow | undefined>
+    /** Invalidates a challenge that is not confirmed yet; a confirmed one stays as it is. */
+    markInvalidatedIfPending(
+        id: string,
+        executor?: DbExecutor,
+    ): Promise<SmsAuthChallengeRow | undefined>
 }
 
 export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
@@ -118,23 +132,31 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
         return updated
     },
 
-    async incrementAttemptCount(id) {
+    async consumeAttempt(id, maxAttempts, executor = db) {
         const now = new Date()
-        const [updated] = await db
+        const [updated] = await executor
             .update(smsAuthChallenges)
             .set({
                 attemptCount: sql`${smsAuthChallenges.attemptCount} + 1`,
                 updatedAt: now,
             })
-            .where(eq(smsAuthChallenges.id, id))
+            .where(
+                and(
+                    eq(smsAuthChallenges.id, id),
+                    isNull(smsAuthChallenges.confirmedAt),
+                    isNull(smsAuthChallenges.invalidatedAt),
+                    gt(smsAuthChallenges.expiresAt, now),
+                    lt(smsAuthChallenges.attemptCount, maxAttempts),
+                ),
+            )
             .returning()
 
         return updated
     },
 
-    async markConfirmed(id) {
+    async markConfirmed(id, executor = db) {
         const now = new Date()
-        const [updated] = await db
+        const [updated] = await executor
             .update(smsAuthChallenges)
             .set({
                 confirmedAt: now,
@@ -162,6 +184,26 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
                 updatedAt: now,
             })
             .where(eq(smsAuthChallenges.id, id))
+            .returning()
+
+        return updated
+    },
+
+    async markInvalidatedIfPending(id, executor = db) {
+        const now = new Date()
+        const [updated] = await executor
+            .update(smsAuthChallenges)
+            .set({
+                invalidatedAt: now,
+                updatedAt: now,
+            })
+            .where(
+                and(
+                    eq(smsAuthChallenges.id, id),
+                    isNull(smsAuthChallenges.confirmedAt),
+                    isNull(smsAuthChallenges.invalidatedAt),
+                ),
+            )
             .returning()
 
         return updated

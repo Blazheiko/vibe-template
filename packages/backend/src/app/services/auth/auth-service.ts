@@ -506,7 +506,9 @@ export const authService = {
             return Result.err(badRequest('Phone registration challenge is no longer valid'))
         }
 
-        const codeResult = await verifySmsCode(challenge, payload.code)
+        const codeResult = await verifySmsCode(challenge, payload.code, {
+            noLongerValid: 'Phone registration challenge is no longer valid',
+        })
         if (Result.isError(codeResult)) {
             return Result.err(codeResult.error)
         }
@@ -749,7 +751,9 @@ export const authService = {
             return Result.err(badRequest('Phone linking challenge is no longer valid'))
         }
 
-        const codeResult = await verifySmsCode(challenge, payload.code)
+        const codeResult = await verifySmsCode(challenge, payload.code, {
+            noLongerValid: 'Phone linking challenge is no longer valid',
+        })
         if (Result.isError(codeResult)) {
             return Result.err(codeResult.error)
         }

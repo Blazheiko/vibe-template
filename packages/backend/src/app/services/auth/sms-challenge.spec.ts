@@ -11,9 +11,10 @@ const repo = {
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
     invalidatePendingForPhoneFlow: vi.fn(),
-    incrementAttemptCount: vi.fn(),
+    consumeAttempt: vi.fn(),
     markConfirmed: vi.fn(),
     markInvalidated: vi.fn(),
+    markInvalidatedIfPending: vi.fn(),
     markIssued: vi.fn(),
 }
 const issueMock = vi.fn()
@@ -219,41 +220,67 @@ describe('deliverChallenge and issueSmsChallenge: a start that fails half way le
 })
 
 describe('verifySmsCode', () => {
-    it('accepts the right code and costs nothing', async () => {
+    const answers = { noLongerValid: 'no longer valid' }
+
+    it('spends a try before it compares, also for the right code', async () => {
+        repo.consumeAttempt.mockResolvedValue(row({ attemptCount: 1 }))
         const { verifySmsCode } = await load()
-        const result = await verifySmsCode(row() as never, '123456')
+        const result = await verifySmsCode(row() as never, '123456', answers)
         expect(Result.isOk(result)).toBe(true)
-        expect(repo.incrementAttemptCount).not.toHaveBeenCalled()
+        expect(repo.consumeAttempt).toHaveBeenCalledWith('ch-1', 3, undefined)
+        expect(repo.markInvalidatedIfPending).not.toHaveBeenCalled()
     })
 
-    it('counts a wrong code as a try and keeps the challenge while the budget lasts', async () => {
-        repo.incrementAttemptCount.mockResolvedValue({ attemptCount: 1 })
+    it('compares with the code hash of the row the spent try returned', async () => {
+        repo.consumeAttempt.mockResolvedValue(row({ attemptCount: 1, codeHash: otp('654321') }))
         const { verifySmsCode } = await load()
-        const result = await verifySmsCode(row() as never, '000000')
+        expect(Result.isOk(await verifySmsCode(row() as never, '654321', answers))).toBe(true)
+    })
+
+    it('a wrong code keeps the challenge while the budget lasts', async () => {
+        repo.consumeAttempt.mockResolvedValue(row({ attemptCount: 1 }))
+        const { verifySmsCode } = await load()
+        const result = await verifySmsCode(row() as never, '000000', answers)
         expect(Result.isError(result) && result.error).toEqual({
             _tag: 'BadRequest',
             message: 'Invalid verification code',
         })
-        expect(repo.incrementAttemptCount).toHaveBeenCalledWith('ch-1')
+        expect(repo.markInvalidatedIfPending).not.toHaveBeenCalled()
+    })
+
+    it('the wrong code that spends the budget invalidates a pending challenge', async () => {
+        repo.consumeAttempt.mockResolvedValue(row({ attemptCount: 3 }))
+        const { verifySmsCode } = await load()
+        await verifySmsCode(row({ attemptCount: 2 }) as never, '000000', answers)
+        expect(repo.markInvalidatedIfPending).toHaveBeenCalledWith('ch-1', undefined)
         expect(repo.markInvalidated).not.toHaveBeenCalled()
     })
 
-    it('the try that spends the budget invalidates the challenge', async () => {
-        repo.incrementAttemptCount.mockResolvedValue({ attemptCount: 3 })
+    it('the right code on the last try does not invalidate', async () => {
+        repo.consumeAttempt.mockResolvedValue(row({ attemptCount: 3 }))
         const { verifySmsCode } = await load()
-        await verifySmsCode(row({ attemptCount: 2 }) as never, '000000')
-        expect(repo.markInvalidated).toHaveBeenCalledWith('ch-1')
+        expect(Result.isOk(await verifySmsCode(row() as never, '123456', answers))).toBe(true)
+        expect(repo.markInvalidatedIfPending).not.toHaveBeenCalled()
     })
 
-    it('counts from the row it holds when the counter update returns nothing', async () => {
-        repo.incrementAttemptCount.mockResolvedValue(undefined)
+    it('answers noLongerValid without comparing when no try can be spent', async () => {
+        repo.consumeAttempt.mockResolvedValue(undefined)
         const { verifySmsCode } = await load()
-        await verifySmsCode(row({ attemptCount: 2 }) as never, '000000')
-        expect(repo.markInvalidated).toHaveBeenCalledWith('ch-1')
+        const result = await verifySmsCode(row() as never, '123456', answers)
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            message: 'no longer valid',
+        })
+        expect(repo.markInvalidatedIfPending).not.toHaveBeenCalled()
+    })
 
-        repo.markInvalidated.mockClear()
-        await verifySmsCode(row({ attemptCount: 0 }) as never, '000000')
-        expect(repo.markInvalidated).not.toHaveBeenCalled()
+    it('passes the executor to both statements', async () => {
+        const tx = {} as never
+        repo.consumeAttempt.mockResolvedValue(row({ attemptCount: 3 }))
+        const { verifySmsCode } = await load()
+        await verifySmsCode(row() as never, '000000', answers, tx)
+        expect(repo.consumeAttempt).toHaveBeenCalledWith('ch-1', 3, tx)
+        expect(repo.markInvalidatedIfPending).toHaveBeenCalledWith('ch-1', tx)
     })
 })
 
@@ -265,7 +292,7 @@ describe('confirmChallenge', () => {
         const { confirmChallenge } = await load()
         const result = await confirmChallenge(row() as never, answers)
         expect(Result.isOk(result)).toBe(true)
-        expect(repo.markConfirmed).toHaveBeenCalledWith('ch-1')
+        expect(repo.markConfirmed).toHaveBeenCalledWith('ch-1', undefined)
     })
 
     it('answers 400 when the challenge stopped being valid meanwhile', async () => {

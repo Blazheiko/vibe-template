@@ -35,7 +35,8 @@ const challengeRepositoryMock = {
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
     invalidatePendingForPhoneFlow: vi.fn(),
-    incrementAttemptCount: vi.fn(),
+    consumeAttempt: vi.fn(),
+    markInvalidatedIfPending: vi.fn(),
     markConfirmed: vi.fn(),
     markInvalidated: vi.fn(),
     markIssued: vi.fn(),
@@ -92,6 +93,15 @@ const IP = { ipAddress: '203.0.113.9' }
 const PHONE = '+380501234567'
 
 beforeEach(() => {
+    // feat-103: every code check spends a try first; by default the try succeeds on the row
+    // findById returns.
+    challengeRepositoryMock.consumeAttempt.mockImplementation(async (id: string) => {
+        const found = (await challengeRepositoryMock.findById(id)) as
+            { attemptCount?: number } | undefined
+        return found === undefined
+            ? undefined
+            : { ...found, attemptCount: (found.attemptCount ?? 0) + 1 }
+    })
     process.env['AUTH_PHONE_ENABLED'] = 'true'
     process.env['APP_KEY'] = SECRET
     process.env['AUTH_SMS_MAX_INVALID_ATTEMPTS'] = '3'
@@ -884,25 +894,30 @@ const ROWS: readonly Row[] = [
         name: 'completePhonePasswordReset · wrong code counts an attempt',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(challenge())
-            challengeRepositoryMock.incrementAttemptCount.mockResolvedValue({ attemptCount: 1 })
         },
         call: completePhone('000000'),
         error: badRequest('Invalid verification code'),
         after: () => {
-            expect(challengeRepositoryMock.incrementAttemptCount).toHaveBeenCalledWith('ch-1')
-            expect(challengeRepositoryMock.markInvalidated).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.consumeAttempt).toHaveBeenCalledWith(
+                'ch-1',
+                3,
+                undefined,
+            )
+            expect(challengeRepositoryMock.markInvalidatedIfPending).not.toHaveBeenCalled()
         },
     },
     {
         name: 'completePhonePasswordReset · the last wrong attempt invalidates the challenge',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(challenge({ attemptCount: 2 }))
-            challengeRepositoryMock.incrementAttemptCount.mockResolvedValue({ attemptCount: 3 })
         },
         call: completePhone('000000'),
         error: badRequest('Invalid verification code'),
         after: () => {
-            expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-1')
+            expect(challengeRepositoryMock.markInvalidatedIfPending).toHaveBeenCalledWith(
+                'ch-1',
+                undefined,
+            )
         },
     },
     {

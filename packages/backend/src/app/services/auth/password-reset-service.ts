@@ -451,7 +451,9 @@ export const passwordResetService = {
             return Result.err(badRequest('Phone reset challenge is no longer valid'))
         }
 
-        const codeResult = await verifySmsCode(challenge, code)
+        const codeResult = await verifySmsCode(challenge, code, {
+            noLongerValid: 'Phone reset challenge is no longer valid',
+        })
         if (Result.isError(codeResult)) {
             return Result.err(codeResult.error)
         }

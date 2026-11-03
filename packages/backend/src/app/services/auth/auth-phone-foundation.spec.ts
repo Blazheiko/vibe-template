@@ -18,7 +18,8 @@ const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
     markIssued: vi.fn(),
     findById: vi.fn(),
-    incrementAttemptCount: vi.fn(),
+    consumeAttempt: vi.fn(),
+    markInvalidatedIfPending: vi.fn(),
     markConfirmed: vi.fn(),
     markInvalidated: vi.fn(),
 }
@@ -121,6 +122,15 @@ function hashOtp(code: string): string {
 }
 
 beforeEach(() => {
+    // feat-103: every code check spends a try first; by default the try succeeds on the row
+    // findById returns.
+    smsAuthChallengeRepositoryMock.consumeAttempt.mockImplementation(async (id: string) => {
+        const found = (await smsAuthChallengeRepositoryMock.findById(id)) as
+            { attemptCount?: number } | undefined
+        return found === undefined
+            ? undefined
+            : { ...found, attemptCount: (found.attemptCount ?? 0) + 1 }
+    })
     consumeAuthThrottleMock.mockReset()
     consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
     resetAuthThrottleMock.mockReset()
@@ -466,9 +476,6 @@ describe('authService phone foundation', () => {
             createdAt: new Date('2026-05-15T10:00:00.000Z'),
             updatedAt: new Date('2026-05-15T10:00:00.000Z'),
         })
-        smsAuthChallengeRepositoryMock.incrementAttemptCount.mockResolvedValue({
-            attemptCount: 5,
-        })
         smsAuthChallengeRepositoryMock.markInvalidated.mockResolvedValue({
             id: 'challenge-1',
         })
@@ -483,10 +490,15 @@ describe('authService phone foundation', () => {
         )
 
         expect(Result.isError(result)).toBe(true)
-        expect(smsAuthChallengeRepositoryMock.incrementAttemptCount).toHaveBeenCalledWith(
+        expect(smsAuthChallengeRepositoryMock.consumeAttempt).toHaveBeenCalledWith(
             'challenge-1',
+            5,
+            undefined,
         )
-        expect(smsAuthChallengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('challenge-1')
+        expect(smsAuthChallengeRepositoryMock.markInvalidatedIfPending).toHaveBeenCalledWith(
+            'challenge-1',
+            undefined,
+        )
     })
 
     it('completes phone registration after confirmation and creates a phone-only user', async () => {
