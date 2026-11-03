@@ -1041,6 +1041,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-105-prompt-context-replace",
             "dependencies": [],
+            "status": "done",
+            "evidence": "Merged #351 (merge b9be160; start #350). support-llm-service puts the knowledge-base context in with a function replacement; the fallback checks includes('{context}'). Evidence: typecheck, lint, format clean; pnpm test backend 2232, frontend 400, api-playground 62; docs build+verify; CI quality/e2e/e2e-live/build/test-pg/test-redis green; support-llm-service.spec.ts 7 cases ($&, $', $`, $$, $1 $<name> verbatim; missing placeholder appended with a warning; context equal to {context}); mutation: 5 of 7 fail on main. Details were in progress.md on fix/feat-105-prompt-context-replace (removed from main by this PR)."
+        },
+        {
+            "id": "feat-106",
+            "name": "Phone Reset Transaction",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R06a: completePhonePasswordReset checks email IS NULL and the phone on an unlocked read, then confirms the challenge, retires the phone challenges and updates the password in separate statements; it now locks the user, re-checks email/phone on the locked row and confirms the challenge, retires the challenges and reset tokens and rotates the password in one transaction that also rolls back on a business refusal; a wrong code still keeps its spent try (outside the transaction); PostgreSQL tests with barriers",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-106-phone-reset-transaction",
+            "dependencies": ["feat-103"],
             "status": "in_progress",
             "evidence": ""
         }
