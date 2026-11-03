@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { authConfig } from '#config/auth.js'
 import { smsAuthChallengeRepository, type SmsAuthChallengeRow } from '#app/repositories/index.js'
+import type { DbExecutor } from '#app/repositories/transaction.js'
 import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import { badRequest, type AppResult } from '#app/services/shared/errors.js'
 import { hashOtpVerificationCode, verifyOtpVerificationCode } from './otp-verification-hash.js'
@@ -117,20 +118,34 @@ export async function issueSmsChallenge(options: {
 }
 
 /**
- * Checks the code the user typed. A wrong code costs one try; the try that exhausts the budget
- * invalidates the challenge. Answers `Invalid verification code` for a wrong code.
+ * Checks the code the user typed. Every check spends one try first, in one statement that also
+ * re-checks the challenge is still waiting: concurrent requests cannot compare more codes than
+ * the budget allows, whatever row they read before. A challenge that stopped waiting (confirmed,
+ * invalidated, expired or out of tries) answers `noLongerValid` without a comparison; a wrong code
+ * answers `Invalid verification code`, and the try that exhausts the budget invalidates the
+ * challenge unless it was confirmed meanwhile. A right code spends its try too.
  */
 export async function verifySmsCode(
     challenge: SmsAuthChallengeRow,
     code: string,
+    answers: { noLongerValid: string },
+    executor?: DbExecutor,
 ): Promise<AppResult<void>> {
-    if (verifyOtpVerificationCode(code, challenge.codeHash)) {
+    const spent = await smsAuthChallengeRepository.consumeAttempt(
+        challenge.id,
+        authConfig.smsMaxInvalidAttempts,
+        executor,
+    )
+    if (spent === undefined) {
+        return Result.err(badRequest(answers.noLongerValid))
+    }
+
+    if (verifyOtpVerificationCode(code, spent.codeHash)) {
         return Result.ok(undefined)
     }
 
-    const updated = await smsAuthChallengeRepository.incrementAttemptCount(challenge.id)
-    if ((updated?.attemptCount ?? challenge.attemptCount + 1) >= authConfig.smsMaxInvalidAttempts) {
-        await smsAuthChallengeRepository.markInvalidated(challenge.id)
+    if (spent.attemptCount >= authConfig.smsMaxInvalidAttempts) {
+        await smsAuthChallengeRepository.markInvalidatedIfPending(challenge.id, executor)
     }
 
     return Result.err(badRequest('Invalid verification code'))
@@ -140,8 +155,9 @@ export async function verifySmsCode(
 export async function confirmChallenge(
     challenge: SmsAuthChallengeRow,
     answers: { noLongerValid: string },
+    executor?: DbExecutor,
 ): Promise<AppResult<void>> {
-    const confirmed = await smsAuthChallengeRepository.markConfirmed(challenge.id)
+    const confirmed = await smsAuthChallengeRepository.markConfirmed(challenge.id, executor)
     if (confirmed === undefined) {
         return Result.err(badRequest(answers.noLongerValid))
     }

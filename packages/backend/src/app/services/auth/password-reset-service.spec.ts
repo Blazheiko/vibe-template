@@ -23,7 +23,8 @@ const smsAuthChallengeRepositoryMock = {
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
     invalidatePendingForPhoneFlow: vi.fn(),
-    incrementAttemptCount: vi.fn(),
+    consumeAttempt: vi.fn(),
+    markInvalidatedIfPending: vi.fn(),
     markConfirmed: vi.fn(),
     markInvalidated: vi.fn(),
     markIssued: vi.fn(),
@@ -126,6 +127,15 @@ function hashOtp(code: string): string {
 }
 
 beforeEach(() => {
+    // feat-103: every code check spends a try first; by default the try succeeds on the row
+    // findById returns.
+    smsAuthChallengeRepositoryMock.consumeAttempt.mockImplementation(async (id: string) => {
+        const found = (await smsAuthChallengeRepositoryMock.findById(id)) as
+            { attemptCount?: number } | undefined
+        return found === undefined
+            ? undefined
+            : { ...found, attemptCount: (found.attemptCount ?? 0) + 1 }
+    })
     consumeAuthThrottleMock.mockReset()
     consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
 })

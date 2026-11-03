@@ -31,7 +31,8 @@ const smsAuthChallengeRepositoryMock = {
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
     invalidatePendingForPhoneFlow: vi.fn(),
-    incrementAttemptCount: vi.fn(),
+    consumeAttempt: vi.fn(),
+    markInvalidatedIfPending: vi.fn(),
     markConfirmed: vi.fn(),
     markInvalidated: vi.fn(),
     markIssued: vi.fn(),
@@ -88,6 +89,15 @@ vi.mock('#logger', () => ({ default: loggerMock }))
 const originalEnv = { ...process.env }
 
 beforeEach(() => {
+    // feat-103: every code check spends a try first; by default the try succeeds on the row
+    // findById returns.
+    smsAuthChallengeRepositoryMock.consumeAttempt.mockImplementation(async (id: string) => {
+        const found = (await smsAuthChallengeRepositoryMock.findById(id)) as
+            { attemptCount?: number } | undefined
+        return found === undefined
+            ? undefined
+            : { ...found, attemptCount: (found.attemptCount ?? 0) + 1 }
+    })
     process.env['AUTH_PHONE_ENABLED'] = 'true'
     process.env['APP_KEY'] = 'a'.repeat(32)
     process.env['FRONTEND_URL'] = 'https://app.example.com'
