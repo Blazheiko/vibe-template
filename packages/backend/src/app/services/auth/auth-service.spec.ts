@@ -10,7 +10,17 @@ const userRepositoryMock = {
     emailExistsForOtherUser: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateIfSessionToken: vi.fn(),
+    findSessionToken: vi.fn(),
     changePasswordIfCurrent: vi.fn(),
+}
+
+// The user token the request's session cookie presented (Auth.getPresentedUserToken).
+const PRESENTED_TOKEN = 'presented-session-token'
+const SESSION_REVOKED_ERROR = {
+    _tag: 'Unauthorized',
+    message: 'Session has been revoked',
+    reason: 'session_revoked',
 }
 
 const authMock = {
@@ -18,6 +28,7 @@ const authMock = {
     logout: vi.fn(),
     logoutAll: vi.fn(),
     getUserId: vi.fn(() => '7'),
+    getPresentedUserToken: vi.fn((): string | undefined => PRESENTED_TOKEN),
 }
 
 const securityNotice = vi.fn()
@@ -439,6 +450,7 @@ describe('authService', () => {
             id: 9n,
             email: null,
             password: 'stored-password-hash',
+            sessionToken: PRESENTED_TOKEN,
         })
         validatePasswordMock.mockResolvedValue(true)
         consumeAuthThrottleMock
@@ -451,10 +463,14 @@ describe('authService', () => {
         )
 
         const { authService } = await loadAuthService()
-        const result = await authService.startEmailLink(9n, {
-            email: 'phone-only@example.com',
-            currentPassword: 'secret123',
-        })
+        const result = await authService.startEmailLink(
+            9n,
+            {
+                email: 'phone-only@example.com',
+                currentPassword: 'secret123',
+            },
+            PRESENTED_TOKEN,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
@@ -484,7 +500,11 @@ describe('authService', () => {
             }),
             '9',
         )
-        expect(sendLinkVerificationEmailMock).toHaveBeenCalledWith(9n, 'phone-only@example.com')
+        expect(sendLinkVerificationEmailMock).toHaveBeenCalledWith(
+            9n,
+            'phone-only@example.com',
+            PRESENTED_TOKEN,
+        )
     })
 
     it('throttles email linking by target email', async () => {
@@ -492,15 +512,20 @@ describe('authService', () => {
             id: 9n,
             email: null,
             password: 'stored-password-hash',
+            sessionToken: PRESENTED_TOKEN,
         })
         validatePasswordMock.mockResolvedValue(true)
         consumeAuthThrottleMock.mockResolvedValueOnce({ allowed: false, count: 4 })
 
         const { authService } = await loadAuthService()
-        const result = await authService.startEmailLink(9n, {
-            email: 'victim@example.com',
-            currentPassword: 'secret123',
-        })
+        const result = await authService.startEmailLink(
+            9n,
+            {
+                email: 'victim@example.com',
+                currentPassword: 'secret123',
+            },
+            PRESENTED_TOKEN,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -517,6 +542,7 @@ describe('authService', () => {
             id: 9n,
             email: null,
             password: 'stored-password-hash',
+            sessionToken: PRESENTED_TOKEN,
         })
         validatePasswordMock.mockResolvedValue(true)
         consumeAuthThrottleMock
@@ -525,10 +551,14 @@ describe('authService', () => {
             .mockResolvedValueOnce({ allowed: false, count: 2 })
 
         const { authService } = await loadAuthService()
-        const result = await authService.startEmailLink(9n, {
-            email: 'victim@example.com',
-            currentPassword: 'secret123',
-        })
+        const result = await authService.startEmailLink(
+            9n,
+            {
+                email: 'victim@example.com',
+                currentPassword: 'secret123',
+            },
+            PRESENTED_TOKEN,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -820,7 +850,7 @@ describe('authService', () => {
     describe('logoutAll rotates the sessionToken first (ADR 0002)', () => {
         it('rotates users.sessionToken before it deletes the records', async () => {
             const order: string[] = []
-            userRepositoryMock.update.mockImplementation(async () => {
+            userRepositoryMock.updateIfSessionToken.mockImplementation(async () => {
                 order.push('rotate')
                 return { id: 7n }
             })
@@ -833,13 +863,16 @@ describe('authService', () => {
             await authService.logoutAll(authMock as any, sessionMock as any)
 
             expect(order).toEqual(['rotate', 'delete records'])
-            expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
-                sessionToken: expect.stringMatching(/^[\w-]{21}$/),
-            })
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                PRESENTED_TOKEN,
+                { sessionToken: expect.stringMatching(/^[\w-]{21}$/) },
+            )
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
         })
 
         it('fails without touching Redis when the rotation fails', async () => {
-            userRepositoryMock.update.mockRejectedValue(new Error('db down'))
+            userRepositoryMock.updateIfSessionToken.mockRejectedValue(new Error('db down'))
 
             const { authService } = await loadAuthService()
             // ADR 0004: the failure propagates; the transport answers 500 / 503.
@@ -851,7 +884,7 @@ describe('authService', () => {
         })
 
         it('reports an error when the record cleanup fails, but the rotation already happened', async () => {
-            userRepositoryMock.update.mockResolvedValue({ id: 7n })
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue({ id: 7n })
             authMock.logoutAll.mockRejectedValue(new Error('redis down'))
 
             const { authService } = await loadAuthService()
@@ -859,7 +892,54 @@ describe('authService', () => {
             await expect(
                 authService.logoutAll(authMock as any, sessionMock as any),
             ).rejects.toThrow()
-            expect(userRepositoryMock.update).toHaveBeenCalledTimes(1)
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledTimes(1)
+        })
+
+        // feat-096: a request let in before a revocation must not rotate the new token away.
+        it('refuses a request without a presented token: 401 session_revoked, nothing rotated', async () => {
+            authMock.getPresentedUserToken.mockReturnValueOnce(undefined)
+            userRepositoryMock.findSessionToken.mockResolvedValue('current-token')
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+            expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(authMock.logoutAll).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        })
+
+        it('answers 401 session_revoked when the token was rotated before the conditional write', async () => {
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+            userRepositoryMock.findSessionToken.mockResolvedValue('rotated-by-a-claim')
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                PRESENTED_TOKEN,
+                { sessionToken: expect.any(String) },
+            )
+            expect(userRepositoryMock.findSessionToken).toHaveBeenCalledWith(7n)
+            expect(authMock.logoutAll).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        })
+
+        it('answers not found when the user is gone', async () => {
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+            userRepositoryMock.findSessionToken.mockResolvedValue(undefined)
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error._tag).toBe('NotFound')
+            expect(authMock.logoutAll).not.toHaveBeenCalled()
         })
     })
 
@@ -885,7 +965,7 @@ describe('authService', () => {
     })
 
     it('returns the rotated CSRF token after logoutAll mutates the session', async () => {
-        userRepositoryMock.update.mockResolvedValue({ id: 7n })
+        userRepositoryMock.updateIfSessionToken.mockResolvedValue({ id: 7n })
         authMock.logoutAll.mockImplementation(async () => {
             sessionMock.sessionInfo = {
                 id: 'anonymous-session-id',
@@ -913,10 +993,11 @@ describe('authService', () => {
         userRepositoryMock.findById.mockResolvedValue(undefined)
 
         const { authService } = await loadAuthService()
-        const result = await authService.changePassword(7n, {
-            currentPassword: 'old-secret',
-            newPassword: 'new-secret',
-        })
+        const result = await authService.changePassword(
+            7n,
+            { currentPassword: 'old-secret', newPassword: 'new-secret' },
+            PRESENTED_TOKEN,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -927,6 +1008,7 @@ describe('authService', () => {
             })
         }
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
     })
 
     describe('changePassword rotates the sessionToken (ADR 0002)', () => {
@@ -941,12 +1023,15 @@ describe('authService', () => {
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
             destroyAllSessionsMock.mockResolvedValue(2)
         }
-        const change = async () => {
+        // Not a default parameter: `change(undefined)` must present no token.
+        const change = async (...args: [presented?: string | undefined]) => {
+            const presented = args.length === 0 ? 'previous-session-token' : args[0]
             const { authService } = await loadAuthService()
-            return authService.changePassword(7n, {
-                currentPassword: 'old-secret',
-                newPassword: 'new-secret',
-            })
+            return authService.changePassword(
+                7n,
+                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                presented,
+            )
         }
 
         it('writes the new hash and a rotated token in one conditional update', async () => {
@@ -957,13 +1042,14 @@ describe('authService', () => {
             expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(
                 7n,
                 'stored-hash',
+                'previous-session-token',
                 { password: 'new-hash', sessionToken: expect.stringMatching(/^[\w-]{21}$/) },
             )
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
             expect(Result.isOk(result)).toBe(true)
             if (Result.isOk(result)) {
                 const call = userRepositoryMock.changePasswordIfCurrent.mock.calls[0]
-                expect(result.value.sessionToken).toBe(call?.[2].sessionToken)
+                expect(result.value.sessionToken).toBe(call?.[3].sessionToken)
                 expect(result.value.sessionToken).not.toBe('previous-session-token')
             }
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_changed')
@@ -991,6 +1077,17 @@ describe('authService', () => {
         it('answers a conflict when another request changed the password first', async () => {
             arrangeUser()
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
+            // The re-read after the lost write finds another password (and its rotation).
+            userRepositoryMock.findById.mockResolvedValueOnce({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            userRepositoryMock.findById.mockResolvedValueOnce({
+                id: 7n,
+                password: 'hash-of-the-other-change',
+                sessionToken: 'token-of-the-other-change',
+            })
 
             const result = await change()
 
@@ -1010,6 +1107,93 @@ describe('authService', () => {
             expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
         })
+
+        // feat-096: the row read may already be the one a claim or a logout-all left.
+        it.each([
+            ['no presented token', undefined],
+            ['a presented token that is no longer current', 'stale-session-token'],
+        ])('refuses %s with 401 session_revoked and writes nothing', async (_name, presented) => {
+            arrangeUser()
+
+            const result = await change(presented)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+            expect(validatePasswordMock).not.toHaveBeenCalled()
+            expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        })
+
+        it('answers 401 session_revoked when only the token was rotated before the write', async () => {
+            arrangeUser()
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
+            userRepositoryMock.findById.mockResolvedValueOnce({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            // The re-read: same password, the token rotated by a logout-all elsewhere.
+            userRepositoryMock.findById.mockResolvedValueOnce({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'rotated-elsewhere',
+            })
+
+            const result = await change()
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+            expect(userRepositoryMock.findById).toHaveBeenCalledTimes(2)
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        })
+
+        it('answers not found when the user is gone by the re-read after a lost write', async () => {
+            arrangeUser()
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
+            userRepositoryMock.findById.mockResolvedValueOnce({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            userRepositoryMock.findById.mockResolvedValueOnce(undefined)
+
+            const result = await change()
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error._tag).toBe('NotFound')
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+        })
+    })
+})
+
+describe('startEmailLink session guard (feat-096)', () => {
+    it.each([
+        ['no presented token', undefined],
+        ['a presented token that is no longer current', 'stale-session-token'],
+    ])('refuses %s with 401 session_revoked and sends nothing', async (_name, presented) => {
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 9n,
+            email: null,
+            password: 'stored-password-hash',
+            sessionToken: PRESENTED_TOKEN,
+        })
+        validatePasswordMock.mockResolvedValue(true)
+
+        const { authService } = await loadAuthService()
+        const result = await authService.startEmailLink(
+            9n,
+            { email: 'phone-only@example.com', currentPassword: 'secret123' },
+            presented,
+        )
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+        expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
     })
 })
 
@@ -1021,15 +1205,20 @@ describe('auth throttle fail-closed (email link)', () => {
             id: 9n,
             email: null,
             password: 'stored-password-hash',
+            sessionToken: PRESENTED_TOKEN,
         })
         validatePasswordMock.mockResolvedValue(true)
 
         const { authService } = await loadAuthService()
         await expect(
-            authService.startEmailLink(9n, {
-                email: 'phone-only@example.com',
-                currentPassword: 'secret123',
-            }),
+            authService.startEmailLink(
+                9n,
+                {
+                    email: 'phone-only@example.com',
+                    currentPassword: 'secret123',
+                },
+                PRESENTED_TOKEN,
+            ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
@@ -1075,7 +1264,7 @@ describe('authService while Redis is unavailable', () => {
         [
             'logoutAll',
             () => {
-                userRepositoryMock.update.mockResolvedValue({ id: 7n })
+                userRepositoryMock.updateIfSessionToken.mockResolvedValue({ id: 7n })
             },
             (s) => s.logoutAll(authMock as any, sessionMock as any),
         ],

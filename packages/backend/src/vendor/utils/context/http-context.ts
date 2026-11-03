@@ -14,6 +14,7 @@ const getDefaultSession = (): Session => {
 }
 const getDefaultAuth = (): Auth => ({
     getUserId: () => null,
+    getPresentedUserToken: () => undefined,
     check: () => false,
     login: () => Promise.resolve(false),
     logout: () => Promise.resolve(false),

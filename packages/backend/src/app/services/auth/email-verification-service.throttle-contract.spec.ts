@@ -12,18 +12,25 @@ import type { emailVerificationService } from './email-verification-service.js'
 // feat-069 (G1): the throttle steps of emailVerificationService as a table, before they are
 // folded into `enforceThrottle()` (H1). Same reading as auth-service.throttle-contract.spec.ts.
 
-const userRepositoryMock = { findById: vi.fn(), findByEmail: vi.fn(), update: vi.fn() }
+const userRepositoryMock = {
+    findById: vi.fn(),
+    findByEmail: vi.fn(),
+    update: vi.fn(),
+    lockById: vi.fn(),
+}
 const emailVerificationRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailLinkVerificationRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailServiceMock = { send: vi.fn() }
 const consumeAuthThrottleMock = vi.fn()
@@ -110,9 +117,11 @@ async function load(): Promise<Service> {
 
 function untouchedDownstream(): void {
     expect(userRepositoryMock.findById).not.toHaveBeenCalled()
+    expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
     expect(userRepositoryMock.update).not.toHaveBeenCalled()
     expect(emailVerificationRepositoryMock.findByTokenHash).not.toHaveBeenCalled()
     expect(emailVerificationRepositoryMock.create).not.toHaveBeenCalled()
+    expect(emailVerificationRepositoryMock.markUsed).not.toHaveBeenCalled()
     expect(emailServiceMock.send).not.toHaveBeenCalled()
 }
 

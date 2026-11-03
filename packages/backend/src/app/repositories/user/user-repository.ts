@@ -58,6 +58,23 @@ export interface IUserRepository {
     /** Pass the transaction when the update belongs to one (see `withTransaction`). */
     update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
     /**
+     * The user's row locked FOR UPDATE until `tx` ends, or undefined when the user does not
+     * exist. Every flow that changes credentials or consumes a one-time token locks the user
+     * first, so they run one at a time per user (feat-096).
+     */
+    lockById(id: bigint, tx: DbExecutor): Promise<UserRow | undefined>
+    /**
+     * Updates the user only while users.session_token is still `expectedSessionToken`, the
+     * token the request presented (`Auth.getPresentedUserToken`). Undefined when the user is
+     * gone or the token was rotated after the request was let in (feat-096).
+     */
+    updateIfSessionToken(
+        id: bigint,
+        expectedSessionToken: string,
+        data: UserUpdate,
+        executor?: DbExecutor,
+    ): Promise<UserRow | undefined>
+    /**
      * The current roles of these users by id; a user that no longer exists is absent.
      * Bounded like findSessionToken: it rejects once SESSION_TOKEN_CHECK_TIMEOUT_MS has
      * passed, and the statement is cancelled on the server.
@@ -67,12 +84,15 @@ export interface IUserRepository {
     findSessionToken(id: bigint): Promise<string | undefined>
     /**
      * Sets a new password and rotates the sessionToken only if the stored password is
-     * still `currentPassword` (null/'' for an account that has none yet). Undefined
-     * when another request changed it first: two concurrent changes cannot both win.
+     * still `currentPassword` (null/'' for an account that has none yet) and the
+     * sessionToken is still `expectedSessionToken`, the one the request presented.
+     * Undefined when another request changed either first: two concurrent changes cannot
+     * both win, and a change let in before a revocation cannot outlive it.
      */
     changePasswordIfCurrent(
         id: bigint,
         currentPassword: string | null,
+        expectedSessionToken: string,
         data: { password: string; sessionToken: string },
     ): Promise<UserRow | undefined>
     delete(id: bigint): Promise<boolean>
@@ -227,6 +247,25 @@ export const userRepository: IUserRepository = {
         return row
     },
 
+    async lockById(id, tx) {
+        return await tx
+            .select()
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1)
+            .for('update')
+            .then((rows) => rows.at(0))
+    },
+
+    async updateIfSessionToken(id, expectedSessionToken, data, executor = db) {
+        const [row] = await executor
+            .update(users)
+            .set({ ...data, updatedAt: new Date() })
+            .where(and(eq(users.id, id), eq(users.sessionToken, expectedSessionToken)))
+            .returning()
+        return row
+    },
+
     // On the session-check pool, which cancels a stuck query: the WS admin re-check runs
     // one pass at a time, so a query that hangs would stop every later pass (feat-062).
     async findRolesByIds(ids) {
@@ -248,7 +287,7 @@ export const userRepository: IUserRepository = {
         return row?.sessionToken
     },
 
-    async changePasswordIfCurrent(id, currentPassword, data) {
+    async changePasswordIfCurrent(id, currentPassword, expectedSessionToken, data) {
         const [row] = await db
             .update(users)
             .set({
@@ -259,6 +298,7 @@ export const userRepository: IUserRepository = {
             .where(
                 and(
                     eq(users.id, id),
+                    eq(users.sessionToken, expectedSessionToken),
                     currentPassword === null || currentPassword === ''
                         ? or(isNull(users.password), eq(users.password, ''))
                         : eq(users.password, currentPassword),

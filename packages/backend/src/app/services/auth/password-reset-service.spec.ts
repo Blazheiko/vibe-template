@@ -8,6 +8,7 @@ const userRepositoryMock = {
     findById: vi.fn(),
     findByPhone: vi.fn(),
     update: vi.fn(),
+    lockById: vi.fn(),
 }
 
 const passwordResetRepositoryMock = {
@@ -15,6 +16,7 @@ const passwordResetRepositoryMock = {
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
@@ -172,7 +174,7 @@ describe('passwordResetService', () => {
     })
 
     it('creates a token and sends email', async () => {
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
             name: 'Jane',
             email: 'jane@example.com',
@@ -199,8 +201,11 @@ describe('passwordResetService', () => {
         const result = await passwordResetService.sendPasswordResetEmail(7n)
 
         expect(Result.isOk(result)).toBe(true)
-        expect(passwordResetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n)
+        // feat-096: issued under the user lock, in one transaction.
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+        expect(passwordResetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
         expect(passwordResetRepositoryMock.create).toHaveBeenCalledTimes(1)
+        expect(passwordResetRepositoryMock.create).toHaveBeenCalledWith(expect.anything(), TX)
 
         const createArg = passwordResetRepositoryMock.create.mock.calls[0]?.[0]
         expect(createArg.userId).toBe(7n)
@@ -224,9 +229,7 @@ describe('passwordResetService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        passwordResetRepositoryMock.markUsed.mockResolvedValue({
-            id: 11n,
-        })
+        passwordResetRepositoryMock.burn.mockResolvedValue(undefined)
 
         const { passwordResetService } = await loadPasswordResetService()
         const result = await passwordResetService.resetPassword(
@@ -244,7 +247,9 @@ describe('passwordResetService', () => {
                 message: 'Password reset link has expired',
             })
         }
-        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+        expect(passwordResetRepositoryMock.burn).toHaveBeenCalledWith(11n)
+        expect(passwordResetRepositoryMock.markUsed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
     it('rejects already used reset tokens', async () => {
@@ -274,6 +279,8 @@ describe('passwordResetService', () => {
             })
         }
         expect(userRepositoryMock.findById).not.toHaveBeenCalled()
+        expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
+        expect(passwordResetRepositoryMock.markUsed).not.toHaveBeenCalled()
     })
 
     it('rejects mismatched passwords', async () => {
@@ -305,7 +312,7 @@ describe('passwordResetService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
             phone: '+14155550123',
             sessionToken: 'old-session-token',
@@ -336,10 +343,12 @@ describe('passwordResetService', () => {
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
             '+14155550123',
             'reset_phone',
+            TX,
         )
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
             '+14155550123',
             'link_phone',
+            TX,
         )
         expect(userRepositoryMock.update).toHaveBeenCalledWith(
             7n,
@@ -349,7 +358,33 @@ describe('passwordResetService', () => {
             },
             TX,
         )
-        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+        // feat-096: the previous session token and the phone are read from the locked row.
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+        expect(userRepositoryMock.findById).not.toHaveBeenCalled()
+        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+        expect(passwordResetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
+        // Order: lock -> consume -> update -> phone challenges (same transaction) -> retire the
+        // other links; the sessions are cleaned up only after the commit.
+        const order = (fn: { mock: { invocationCallOrder: number[] } }) =>
+            fn.mock.invocationCallOrder[0]!
+        expect(order(userRepositoryMock.lockById)).toBeLessThan(
+            order(passwordResetRepositoryMock.markUsed),
+        )
+        expect(order(passwordResetRepositoryMock.markUsed)).toBeLessThan(
+            order(userRepositoryMock.update),
+        )
+        expect(order(userRepositoryMock.update)).toBeLessThan(
+            order(passwordResetRepositoryMock.invalidatePendingByUserId),
+        )
+        expect(order(userRepositoryMock.update)).toBeLessThan(
+            order(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow),
+        )
+        expect(order(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow)).toBeLessThan(
+            order(passwordResetRepositoryMock.invalidatePendingByUserId),
+        )
+        expect(order(passwordResetRepositoryMock.invalidatePendingByUserId)).toBeLessThan(
+            order(destroyAllSessionsMock),
+        )
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
             expect(result.value).toEqual({ status: 'success' })
@@ -487,9 +522,9 @@ describe('passwordResetService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
-            phone: null,
+            phone: '+14155550123',
             sessionToken: 'old-session-token',
         })
         hashPasswordMock.mockResolvedValue('hashed-password')
@@ -513,6 +548,76 @@ describe('passwordResetService', () => {
         }
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
         expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+        // feat-096: the phone challenges are retired only after a reset that committed.
+        expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
+        expect(passwordResetRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+    })
+
+    // feat-096: the link was still valid at the first look but expired while the request
+    // waited for the user lock; the consuming claim refuses it and says so.
+    it('answers expired when the token expired while waiting for the user lock', async () => {
+        // Valid for 5 ms from the lookup on, the lock takes 20 ms.
+        passwordResetRepositoryMock.findByTokenHash.mockImplementation(() =>
+            Promise.resolve({
+                id: 11n,
+                userId: 7n,
+                tokenHash: 'hash',
+                expiresAt: new Date(Date.now() + 5),
+                usedAt: null,
+                createdAt: new Date(),
+            }),
+        )
+        userRepositoryMock.lockById.mockImplementation(
+            () =>
+                new Promise((resolve) =>
+                    setTimeout(() => {
+                        resolve({ id: 7n, phone: null, sessionToken: 'old-session-token' })
+                    }, 20),
+                ),
+        )
+        hashPasswordMock.mockResolvedValue('hashed-password')
+        passwordResetRepositoryMock.markUsed.mockResolvedValue(undefined)
+
+        const { passwordResetService } = await loadPasswordResetService()
+        const result = await passwordResetService.resetPassword(
+            'valid-token',
+            'new-password',
+            'new-password',
+            { ipAddress: '127.0.0.1' },
+        )
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            reason: 'expired_token',
+            message: 'Password reset link has expired',
+        })
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+    })
+
+    it('answers not found when the user is gone by the time the lock is taken', async () => {
+        passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 11n,
+            userId: 7n,
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.lockById.mockResolvedValue(undefined)
+        hashPasswordMock.mockResolvedValue('hashed-password')
+
+        const { passwordResetService } = await loadPasswordResetService()
+        const result = await passwordResetService.resetPassword(
+            'valid-token',
+            'new-password',
+            'new-password',
+            { ipAddress: '127.0.0.1' },
+        )
+
+        expect(Result.isError(result) && result.error).toMatchObject({ _tag: 'NotFound' })
+        expect(passwordResetRepositoryMock.markUsed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
     it('still marks the token used when the Redis cleanup fails', async () => {
@@ -524,7 +629,7 @@ describe('passwordResetService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
             phone: null,
             sessionToken: 'old-session-token',
@@ -560,7 +665,7 @@ describe('passwordResetService', () => {
             TX,
         )
         expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-session-token')
-        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+        expect(passwordResetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
     })
 
     it('completes phone-only password reset and revokes all sessions', async () => {
@@ -614,10 +719,12 @@ describe('passwordResetService', () => {
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
             '+14155550123',
             'reset_phone',
+            undefined,
         )
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
             '+14155550123',
             'link_phone',
+            undefined,
         )
         expect(userRepositoryMock.update).toHaveBeenCalledWith(8n, {
             password: 'hashed-password',

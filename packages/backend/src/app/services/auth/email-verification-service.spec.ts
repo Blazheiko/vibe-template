@@ -5,6 +5,7 @@ const userRepositoryMock = {
     findById: vi.fn(),
     findByEmail: vi.fn(),
     update: vi.fn(),
+    lockById: vi.fn(),
 }
 
 const emailVerificationRepositoryMock = {
@@ -12,12 +13,14 @@ const emailVerificationRepositoryMock = {
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailLinkVerificationRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 
 const emailServiceMock = {
@@ -83,7 +86,7 @@ afterEach(() => {
 
 describe('emailVerificationService', () => {
     it('sends a verification email for an unverified user', async () => {
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
             name: 'Jane',
             email: 'jane@example.com',
@@ -110,8 +113,17 @@ describe('emailVerificationService', () => {
         if (Result.isOk(result)) {
             expect(result.value).toEqual({ message: 'Verification email sent' })
         }
-        expect(emailVerificationRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n)
+        // feat-096: issued under the user lock, in the same transaction.
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+        expect(emailVerificationRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(
+            7n,
+            TX,
+        )
         expect(emailVerificationRepositoryMock.create).toHaveBeenCalledTimes(1)
+        expect(emailVerificationRepositoryMock.create).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: 7n }),
+            TX,
+        )
         expect(emailServiceMock.send).toHaveBeenCalledWith(
             expect.objectContaining({
                 to: 'jane@example.com',
@@ -144,7 +156,7 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        emailVerificationRepositoryMock.markUsed.mockResolvedValue({ id: 11n })
+        emailVerificationRepositoryMock.burn.mockResolvedValue(undefined)
 
         const { emailVerificationService } = await loadEmailVerificationService()
         const result = await emailVerificationService.verifyEmail('expired-token', {
@@ -158,7 +170,9 @@ describe('emailVerificationService', () => {
                 message: 'Verification link has expired',
             })
         }
-        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+        expect(emailVerificationRepositoryMock.burn).toHaveBeenCalledWith(11n)
+        expect(emailVerificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
     it('verifies an unverified user and marks the token used', async () => {
@@ -170,7 +184,7 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
             emailVerifiedAt: null,
         })
@@ -201,14 +215,20 @@ describe('emailVerificationService', () => {
             },
             TX,
         )
-        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+        // The user's other pending verification links are retired with the claim.
+        expect(emailVerificationRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(
+            7n,
+            TX,
+        )
     })
 
     // ADR 0004: an infrastructure failure throws; the background sender catches it and
     // logs it once as error with the cause (nobody else would).
     it('logs a thrown failure in the background sender once, with the cause', async () => {
         const dbError = new Error('db down')
-        userRepositoryMock.findById.mockRejectedValue(dbError)
+        userRepositoryMock.lockById.mockRejectedValue(dbError)
 
         const { emailVerificationService } = await loadEmailVerificationService()
 
@@ -222,11 +242,12 @@ describe('emailVerificationService', () => {
     })
 
     it('sends an email link verification for a phone-only account', async () => {
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             name: 'Jane',
             email: null,
             emailVerifiedAt: null,
+            sessionToken: 'session-8',
         })
         emailLinkVerificationRepositoryMock.invalidatePendingByUserId.mockResolvedValue(0)
         emailLinkVerificationRepositoryMock.create.mockResolvedValue({
@@ -246,10 +267,16 @@ describe('emailVerificationService', () => {
         const result = await emailVerificationService.sendLinkVerificationEmail(
             8n,
             'new@example.com',
+            'session-8',
         )
 
         expect(Result.isOk(result)).toBe(true)
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
         expect(emailLinkVerificationRepositoryMock.create).toHaveBeenCalledTimes(1)
+        expect(emailLinkVerificationRepositoryMock.create).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: 8n, targetEmail: 'new@example.com' }),
+            TX,
+        )
         expect(emailServiceMock.send).toHaveBeenCalledWith(
             expect.objectContaining({
                 to: 'new@example.com',
@@ -268,7 +295,7 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({ id: 7n, emailVerifiedAt: null })
+        userRepositoryMock.lockById.mockResolvedValue({ id: 7n, emailVerifiedAt: null })
         emailVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
 
         const { emailVerificationService } = await loadEmailVerificationService()
@@ -297,7 +324,7 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({ id: 8n, email: null })
+        userRepositoryMock.lockById.mockResolvedValue({ id: 8n, email: null })
         userRepositoryMock.findByEmail.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
 
@@ -327,7 +354,7 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
         })
@@ -356,6 +383,118 @@ describe('emailVerificationService', () => {
             }),
             TX,
         )
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
+        expect(emailLinkVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(15n, TX)
+        expect(emailLinkVerificationRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(
+            8n,
+            TX,
+        )
+    })
+
+    // feat-096: the account got an address after the link was mailed (another link, a
+    // change); the locked row says so, the link is spent and nothing is overwritten.
+    it('does not link the email when the locked user already has one', async () => {
+        emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
+        emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 15n,
+            userId: 8n,
+            targetEmail: 'new@example.com',
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+        userRepositoryMock.lockById.mockResolvedValue({ id: 8n, email: 'other@example.com' })
+        emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({
+            id: 15n,
+            usedAt: new Date(),
+        })
+
+        const { emailVerificationService } = await loadEmailVerificationService()
+        const result = await emailVerificationService.verifyEmail('link-token', {
+            ipAddress: '127.0.0.1',
+        })
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toEqual({
+                _tag: 'Conflict',
+                message: 'Email is already linked to this account',
+            })
+        }
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
+        expect(emailLinkVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(15n, TX)
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        expect(emailLinkVerificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+    })
+})
+
+describe('sendLinkVerificationEmail session guard (feat-096)', () => {
+    it.each([
+        ['a rotated session token', 'session-old'],
+        ['no presented session token', undefined],
+    ])(
+        'refuses with session_revoked for %s, issues no token and sends no mail',
+        async (_n, presented) => {
+            userRepositoryMock.lockById.mockResolvedValue({
+                id: 8n,
+                name: 'Jane',
+                email: null,
+                emailVerifiedAt: null,
+                sessionToken: 'session-current',
+            })
+
+            const { emailVerificationService } = await loadEmailVerificationService()
+            const result = await emailVerificationService.sendLinkVerificationEmail(
+                8n,
+                'new@example.com',
+                presented,
+            )
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) {
+                expect(result.error).toEqual({
+                    _tag: 'Unauthorized',
+                    message: 'Session has been revoked',
+                    reason: 'session_revoked',
+                })
+            }
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
+            expect(
+                emailLinkVerificationRepositoryMock.invalidatePendingByUserId,
+            ).not.toHaveBeenCalled()
+            expect(emailLinkVerificationRepositoryMock.create).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+        },
+    )
+
+    it('refuses when the locked user already has an email, issues no token and sends no mail', async () => {
+        userRepositoryMock.lockById.mockResolvedValue({
+            id: 8n,
+            name: 'Jane',
+            email: 'jane@example.com',
+            emailVerifiedAt: new Date(),
+            sessionToken: 'session-8',
+        })
+
+        const { emailVerificationService } = await loadEmailVerificationService()
+        const result = await emailVerificationService.sendLinkVerificationEmail(
+            8n,
+            'new@example.com',
+            'session-8',
+        )
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toEqual({
+                _tag: 'BadRequest',
+                message: 'Email is already linked to this account',
+            })
+        }
+        expect(emailLinkVerificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+        expect(emailLinkVerificationRepositoryMock.create).not.toHaveBeenCalled()
+        expect(emailServiceMock.send).not.toHaveBeenCalled()
     })
 })
 
@@ -370,12 +509,13 @@ it('maps a unique email race during link verification to a conflict', async () =
         usedAt: null,
         createdAt: new Date(),
     })
-    userRepositoryMock.findById.mockResolvedValue({
+    userRepositoryMock.lockById.mockResolvedValue({
         id: 8n,
         email: null,
     })
     userRepositoryMock.findByEmail.mockResolvedValue(undefined)
     userRepositoryMock.update.mockRejectedValue({ code: '23505' })
+    emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({ id: 16n, usedAt: new Date() })
 
     const { emailVerificationService } = await loadEmailVerificationService()
     const result = await emailVerificationService.verifyEmail('link-token', {
@@ -391,11 +531,7 @@ it('maps a unique email race during link verification to a conflict', async () =
     }
     // The claim ran in the same transaction as the failed update, so it is rolled back
     // with it (proved against PostgreSQL); here it is only handed that transaction.
-    expect(emailLinkVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(
-        expect.anything(),
-        undefined,
-        TX,
-    )
+    expect(emailLinkVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(16n, TX)
 })
 
 describe('verification throttles', () => {

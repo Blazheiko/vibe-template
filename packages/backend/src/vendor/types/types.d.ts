@@ -78,6 +78,13 @@ export type Middleware<TContext = HttpContext> = (
 
 export interface Auth {
     getUserId: () => string | null
+    /**
+     * The user token of the session cookie this request came with, once the session was
+     * verified as current (ADR 0002), or undefined for an anonymous or revoked one. Fixed for
+     * the whole request: a login, logout or renewal inside the request does not change it.
+     * A change of credentials compares it with users.session_token in the same statement.
+     */
+    getPresentedUserToken: () => string | undefined
     check: () => boolean
     login: (userId: string | undefined, userToken: string | undefined) => Promise<boolean>
     logout: () => Promise<boolean>

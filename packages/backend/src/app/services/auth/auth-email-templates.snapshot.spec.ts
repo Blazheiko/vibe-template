@@ -14,24 +14,28 @@ const userRepositoryMock = {
     findById: vi.fn(),
     findByEmail: vi.fn(),
     update: vi.fn(),
+    lockById: vi.fn(),
 }
 const passwordResetRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailVerificationRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailLinkVerificationRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailServiceMock = { send: vi.fn() }
 
@@ -103,12 +107,17 @@ function configure(): void {
     process.env['APP_KEY'] = 'a'.repeat(32)
 }
 
-function arrange(name: string): void {
-    userRepositoryMock.findById.mockResolvedValue({
+const SESSION = 'session-7'
+
+function arrange(name: string, over: Record<string, unknown> = {}): void {
+    // feat-096: the token is issued on the locked user row.
+    userRepositoryMock.lockById.mockResolvedValue({
         id: 7n,
         name,
         email: 'jane@example.com',
         emailVerifiedAt: null,
+        sessionToken: SESSION,
+        ...over,
     })
     for (const repo of [
         passwordResetRepositoryMock,
@@ -145,12 +154,14 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
     })
 
     it('email linking', async () => {
-        arrange(name)
+        // A link adds an address to an account that has none (a phone-only account).
+        arrange(name, { email: null })
         configure()
         const { emailVerificationService } = await import('./email-verification-service.js')
         const result = await emailVerificationService.sendLinkVerificationEmail(
             7n,
             'new@example.com',
+            SESSION,
         )
         expect(Result.isOk(result)).toBe(true)
         await expect(render(sentMail())).toMatchFileSnapshot(

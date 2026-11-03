@@ -279,12 +279,15 @@ describe('authService legacy regressions', () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 7n,
             password: 'stored-password-hash',
+            sessionToken: 'previous-session-token',
         })
 
         const { authService } = await loadAuthService()
-        const result = await authService.changePassword(7n, {
-            newPassword: 'new-password-123',
-        })
+        const result = await authService.changePassword(
+            7n,
+            { newPassword: 'new-password-123' },
+            'previous-session-token',
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -295,6 +298,7 @@ describe('authService legacy regressions', () => {
         }
         expect(hashPasswordMock).not.toHaveBeenCalled()
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
     })
 
     it('allows setting a first password for accounts that do not already have one', async () => {
@@ -310,16 +314,20 @@ describe('authService legacy regressions', () => {
         })
 
         const { authService } = await loadAuthService()
-        const result = await authService.changePassword(9n, {
-            newPassword: 'new-password-123',
-        })
+        const result = await authService.changePassword(
+            9n,
+            { newPassword: 'new-password-123' },
+            'previous-session-token',
+        )
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password-123')
         // No password stored yet: the conditional update expects exactly that (null).
-        expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(9n, null, {
-            password: 'new-password-hash',
-            sessionToken: expect.any(String),
-        })
+        expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(
+            9n,
+            null,
+            'previous-session-token',
+            { password: 'new-password-hash', sessionToken: expect.any(String) },
+        )
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
             expect(result.value).toEqual({ status: 'success', sessionToken: expect.any(String) })
@@ -358,14 +366,19 @@ describe('change password throttle', () => {
         ['Redis fails', () => consumeAuthThrottleMock.mockRejectedValue(new Error('redis down'))],
     ])('rejects without checking the current password when %s', async (_name, arrange) => {
         arrange()
-        userRepositoryMock.findById.mockResolvedValue({ id: 7n, password: 'stored-password-hash' })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            password: 'stored-password-hash',
+            sessionToken: 'previous-session-token',
+        })
         const { authService } = await loadAuthService()
         // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
         const refused = await authService
-            .changePassword(7n, {
-                currentPassword: 'guess',
-                newPassword: 'new-password-123',
-            })
+            .changePassword(
+                7n,
+                { currentPassword: 'guess', newPassword: 'new-password-123' },
+                'previous-session-token',
+            )
             .then(
                 (result) => Result.isError(result),
                 () => true,
@@ -393,10 +406,11 @@ describe('change password throttle', () => {
         hashPasswordMock.mockResolvedValue('new-password-hash')
         userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
         const { authService } = await loadAuthService()
-        const result = await authService.changePassword(7n, {
-            currentPassword: 'secret123',
-            newPassword: 'new-password-123',
-        })
+        const result = await authService.changePassword(
+            7n,
+            { currentPassword: 'secret123', newPassword: 'new-password-123' },
+            'previous-session-token',
+        )
         expect(Result.isOk(result)).toBe(true)
         expect(resetAuthThrottleMock).toHaveBeenCalledWith(
             expect.objectContaining({ scope: 'change_password_user' }),

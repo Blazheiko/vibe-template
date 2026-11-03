@@ -9,6 +9,7 @@ const userRepositoryMock = {
     phoneExistsForOtherUser: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateIfSessionToken: vi.fn(),
 }
 
 const smsAuthChallengeRepositoryMock = {
@@ -618,7 +619,11 @@ describe('authService phone foundation', () => {
                 phone: '+1 415 555 0123',
                 currentPassword: 'secret123',
             },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
+            },
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -637,7 +642,7 @@ describe('authService phone foundation', () => {
                 phone: '+1 415 555 0123',
                 currentPassword: 'secret123',
             },
-            { ipAddress: '127.0.0.1', sessionId: null },
+            { ipAddress: '127.0.0.1', sessionId: null, presentedSessionToken: 'session-token' },
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -699,6 +704,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
             },
         )
 
@@ -749,7 +755,7 @@ describe('authService phone foundation', () => {
             id: 'link-challenge-1',
             confirmedAt: new Date(),
         })
-        userRepositoryMock.update.mockResolvedValue({
+        userRepositoryMock.updateIfSessionToken.mockResolvedValue({
             id: 7n,
             email: 'user@example.com',
             phone: '+14155550123',
@@ -775,13 +781,15 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
             },
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
+        expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, 'session-token', {
             phone: '+14155550123',
         })
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
     it('rejects phone link confirmation when the challenge session does not match', async () => {
@@ -818,6 +826,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
             },
         )
 
@@ -854,6 +863,7 @@ describe('authService phone foundation', () => {
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
             },
         )
 
@@ -902,7 +912,11 @@ describe('authService phone foundation', () => {
                 phone: '+1 415 555 0123',
                 currentPassword: 'secret123',
             },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
+            },
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -911,6 +925,101 @@ describe('authService phone foundation', () => {
         }
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
         expect(issueVerificationCodeMock).not.toHaveBeenCalled()
+    })
+})
+
+// feat-096: a phone is linked only from the session that is still the user's current one.
+describe('phone linking session guard (feat-096)', () => {
+    const SESSION_REVOKED_ERROR = {
+        _tag: 'Unauthorized',
+        message: 'Session has been revoked',
+        reason: 'session_revoked',
+    }
+    const owner = {
+        id: 7n,
+        email: 'user@example.com',
+        phone: null,
+        name: 'Jane',
+        password: 'hashed-password',
+        sessionToken: 'session-token',
+    }
+    const arrangeConfirm = (): void => {
+        smsAuthChallengeRepositoryMock.findById.mockResolvedValue({
+            id: 'link-challenge-1',
+            flow: 'link_phone',
+            phone: '+14155550123',
+            codeHash: hashOtp('123456'),
+            metadata: { userId: '7', sessionId: 'session-id' },
+            attemptCount: 0,
+            expiresAt: new Date('2099-05-15T10:10:00.000Z'),
+            confirmedAt: null,
+            invalidatedAt: null,
+        })
+        userRepositoryMock.findById.mockResolvedValue(owner)
+        userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
+        smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
+            id: 'link-challenge-1',
+            confirmedAt: new Date(),
+        })
+    }
+    const confirm = async (presentedSessionToken: string | undefined) => {
+        const { authService } = await loadAuthService()
+        return authService.confirmPhoneLink(
+            7n,
+            { challengeId: 'link-challenge-1', code: '123456' },
+            { ipAddress: '127.0.0.1', sessionId: 'session-id', presentedSessionToken },
+        )
+    }
+
+    it.each([
+        ['no presented token', undefined],
+        ['a presented token that is no longer current', 'stale-token'],
+    ])('startPhoneLink refuses %s with 401 and issues no code', async (_name, presented) => {
+        userRepositoryMock.findById.mockResolvedValue(owner)
+        validatePasswordMock.mockResolvedValue(true)
+
+        const { authService } = await loadAuthService()
+        const result = await authService.startPhoneLink(
+            7n,
+            { phone: '+1 415 555 0123', currentPassword: 'secret123' },
+            { ipAddress: '127.0.0.1', sessionId: 'session-id', presentedSessionToken: presented },
+        )
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+        expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
+        expect(issueVerificationCodeMock).not.toHaveBeenCalled()
+    })
+
+    it.each([
+        ['no presented token', undefined],
+        ['a presented token that is no longer current', 'stale-token'],
+    ])('confirmPhoneLink refuses %s with 401 and links nothing', async (_name, presented) => {
+        arrangeConfirm()
+
+        const result = await confirm(presented)
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+        expect(smsAuthChallengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    })
+
+    it('confirmPhoneLink answers 401 when the session is revoked before the conditional write', async () => {
+        arrangeConfirm()
+        userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+
+        const result = await confirm('session-token')
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
+        expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, 'session-token', {
+            phone: '+14155550123',
+        })
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 })
 
@@ -965,7 +1074,11 @@ describe('auth throttle fail-closed (phone flows)', () => {
             authService.startPhoneLink(
                 7n,
                 { phone: '+1 415 555 0123', currentPassword: 'secret123' },
-                { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+                {
+                    ipAddress: '127.0.0.1',
+                    sessionId: 'session-id',
+                    presentedSessionToken: 'session-token',
+                },
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
@@ -981,7 +1094,11 @@ describe('auth throttle fail-closed (phone flows)', () => {
             authService.confirmPhoneLink(
                 7n,
                 { challengeId: 'link-challenge-1', code: '123456' },
-                { ipAddress: '127.0.0.1', sessionId: 'session-id' },
+                {
+                    ipAddress: '127.0.0.1',
+                    sessionId: 'session-id',
+                    presentedSessionToken: 'session-token',
+                },
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)

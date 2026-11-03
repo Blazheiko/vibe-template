@@ -11,7 +11,10 @@ import {
 const userRepositoryMock = {
     findById: vi.fn(),
     update: vi.fn(),
+    updateIfSessionToken: vi.fn(),
 }
+
+const SESSION_TOKEN = 'presented-token'
 
 const uploadToS3Mock = vi.fn()
 const deleteFromS3Mock = vi.fn()
@@ -49,9 +52,10 @@ describe('avatarService', () => {
             name: 'Alice',
             email: 'alice@example.com',
             avatar: null,
+            sessionToken: SESSION_TOKEN,
         })
         uploadToS3Mock.mockResolvedValue(undefined)
-        userRepositoryMock.update.mockResolvedValue({
+        userRepositoryMock.updateIfSessionToken.mockResolvedValue({
             id: 7n,
             name: 'Alice',
             email: 'alice@example.com',
@@ -59,11 +63,15 @@ describe('avatarService', () => {
         })
 
         const { avatarService } = await loadAvatarService()
-        const result = await avatarService.uploadAvatar(7n, {
-            filename: 'avatar',
-            type: 'image/webp',
-            data: WEBP_BYTES,
-        } as never)
+        const result = await avatarService.uploadAvatar(
+            7n,
+            {
+                filename: 'avatar',
+                type: 'image/webp',
+                data: WEBP_BYTES,
+            } as never,
+            SESSION_TOKEN,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -77,19 +85,32 @@ describe('avatarService', () => {
     })
 
     describe('content check and storage (code-issues items 44, 45, 46)', () => {
-        const user = { id: 7n, name: 'Alice', email: 'alice@example.com', avatar: null }
+        const user = {
+            id: 7n,
+            name: 'Alice',
+            email: 'alice@example.com',
+            avatar: null,
+            sessionToken: SESSION_TOKEN,
+        }
 
         it('stores a PNG publicly under a .png key, ignoring the client file name', async () => {
             userRepositoryMock.findById.mockResolvedValue(user)
             uploadToS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.update.mockResolvedValue({ ...user, avatar: 'avatars/7/x.png' })
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue({
+                ...user,
+                avatar: 'avatars/7/x.png',
+            })
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.uploadAvatar(7n, {
-                filename: 'evil.exe',
-                type: 'image/png',
-                data: PNG_BYTES,
-            } as never)
+            const result = await avatarService.uploadAvatar(
+                7n,
+                {
+                    filename: 'evil.exe',
+                    type: 'image/png',
+                    data: PNG_BYTES,
+                } as never,
+                SESSION_TOKEN,
+            )
 
             expect(Result.isOk(result)).toBe(true)
             expect(uploadToS3Mock).toHaveBeenCalledWith(
@@ -107,11 +128,15 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue(user)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.uploadAvatar(7n, {
-                filename: 'a.png',
-                type,
-                data,
-            } as never)
+            const result = await avatarService.uploadAvatar(
+                7n,
+                {
+                    filename: 'a.png',
+                    type,
+                    data,
+                } as never,
+                SESSION_TOKEN,
+            )
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) {
@@ -124,14 +149,21 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue({ ...user, avatar: 'avatars/7/old.webp' })
             uploadToS3Mock.mockResolvedValue(undefined)
             deleteFromS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.update.mockResolvedValue({ ...user, avatar: 'avatars/7/new.webp' })
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue({
+                ...user,
+                avatar: 'avatars/7/new.webp',
+            })
 
             const { avatarService } = await loadAvatarService()
-            await avatarService.uploadAvatar(7n, {
-                filename: 'a.webp',
-                type: 'image/webp',
-                data: WEBP_BYTES,
-            } as never)
+            await avatarService.uploadAvatar(
+                7n,
+                {
+                    filename: 'a.webp',
+                    type: 'image/webp',
+                    data: WEBP_BYTES,
+                } as never,
+                SESSION_TOKEN,
+            )
 
             expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/old.webp')
         })
@@ -143,10 +175,11 @@ describe('avatarService', () => {
             name: 'Alice',
             email: 'alice@example.com',
             avatar: 'avatars/7/old.webp',
+            sessionToken: SESSION_TOKEN,
         })
         uploadToS3Mock.mockResolvedValue(undefined)
         deleteFromS3Mock.mockRejectedValue(new Error('S3 delete failed'))
-        userRepositoryMock.update.mockResolvedValue({
+        userRepositoryMock.updateIfSessionToken.mockResolvedValue({
             id: 7n,
             name: 'Alice',
             email: 'alice@example.com',
@@ -154,11 +187,15 @@ describe('avatarService', () => {
         })
 
         const { avatarService } = await loadAvatarService()
-        const result = await avatarService.uploadAvatar(7n, {
-            filename: 'avatar.webp',
-            type: 'image/webp',
-            data: WEBP_BYTES,
-        } as never)
+        const result = await avatarService.uploadAvatar(
+            7n,
+            {
+                filename: 'avatar.webp',
+                type: 'image/webp',
+                data: WEBP_BYTES,
+            } as never,
+            SESSION_TOKEN,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         expect(loggerMock.warn).toHaveBeenCalledWith(
@@ -171,7 +208,7 @@ describe('avatarService', () => {
         userRepositoryMock.findById.mockResolvedValue(undefined)
 
         const { avatarService } = await loadAvatarService()
-        const result = await avatarService.deleteAvatar(7n)
+        const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -181,5 +218,130 @@ describe('avatarService', () => {
                 message: 'User not found',
             })
         }
+    })
+    // feat-096: the avatar changes only while the session that asked is still current.
+    describe('session guard (feat-096)', () => {
+        const owner = {
+            id: 7n,
+            name: 'Alice',
+            email: 'alice@example.com',
+            avatar: 'avatars/7/old.webp',
+            sessionToken: SESSION_TOKEN,
+        }
+        const webp = { filename: 'a.webp', type: 'image/webp', data: WEBP_BYTES } as never
+        const revoked = {
+            _tag: 'Unauthorized',
+            message: 'Session has been revoked',
+            reason: 'session_revoked',
+        }
+
+        it.each([
+            ['no presented token', undefined],
+            ['a presented token that is no longer current', 'stale-token'],
+        ])('uploadAvatar refuses %s with 401 and writes nothing', async (_name, presented) => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+
+            const { avatarService } = await loadAvatarService()
+            const result = await avatarService.uploadAvatar(7n, webp, presented)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(revoked)
+            expect(uploadToS3Mock).not.toHaveBeenCalled()
+            expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(deleteFromS3Mock).not.toHaveBeenCalled()
+        })
+
+        it('uploadAvatar takes back the new object and keeps the old one when the write loses', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            uploadToS3Mock.mockResolvedValue(undefined)
+            deleteFromS3Mock.mockResolvedValue(undefined)
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+
+            const { avatarService } = await loadAvatarService()
+            const result = await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(revoked)
+            const newKey = uploadToS3Mock.mock.calls[0]?.[0] as string
+            expect(newKey).toMatch(/^avatars\/7\/[0-9a-f-]{36}\.webp$/)
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                SESSION_TOKEN,
+                { avatar: newKey },
+            )
+            expect(deleteFromS3Mock).toHaveBeenCalledTimes(1)
+            expect(deleteFromS3Mock).toHaveBeenCalledWith(newKey)
+            expect(deleteFromS3Mock).not.toHaveBeenCalledWith('avatars/7/old.webp')
+        })
+
+        it('uploadAvatar deletes the old object only after the conditional write', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            uploadToS3Mock.mockResolvedValue(undefined)
+            deleteFromS3Mock.mockResolvedValue(undefined)
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue({
+                ...owner,
+                avatar: 'avatars/7/new.webp',
+            })
+
+            const { avatarService } = await loadAvatarService()
+            const result = await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/old.webp')
+            expect(
+                userRepositoryMock.updateIfSessionToken.mock.invocationCallOrder[0],
+            ).toBeLessThan(deleteFromS3Mock.mock.invocationCallOrder[0] ?? 0)
+        })
+
+        it('deleteAvatar refuses a request without a presented token and writes nothing', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+
+            const { avatarService } = await loadAvatarService()
+            const result = await avatarService.deleteAvatar(7n, undefined)
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(revoked)
+            expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(deleteFromS3Mock).not.toHaveBeenCalled()
+        })
+
+        it('deleteAvatar keeps the object when the conditional write loses', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+
+            const { avatarService } = await loadAvatarService()
+            const result = await avatarService.deleteAvatar(7n, 'stale-token')
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) expect(result.error).toEqual(revoked)
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                'stale-token',
+                { avatar: null },
+            )
+            expect(deleteFromS3Mock).not.toHaveBeenCalled()
+        })
+
+        it('deleteAvatar clears the row, then deletes the old object', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            deleteFromS3Mock.mockResolvedValue(undefined)
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue({ ...owner, avatar: null })
+
+            const { avatarService } = await loadAvatarService()
+            const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                SESSION_TOKEN,
+                { avatar: null },
+            )
+            expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/old.webp')
+            expect(
+                userRepositoryMock.updateIfSessionToken.mock.invocationCallOrder[0],
+            ).toBeLessThan(deleteFromS3Mock.mock.invocationCallOrder[0] ?? 0)
+        })
     })
 })

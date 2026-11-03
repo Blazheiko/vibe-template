@@ -19,12 +19,14 @@ const userRepositoryMock = {
     findById: vi.fn(),
     findByPhone: vi.fn(),
     update: vi.fn(),
+    lockById: vi.fn(),
 }
 const passwordResetRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
@@ -148,8 +150,10 @@ function untouchedDownstream(): void {
     expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
     expect(userRepositoryMock.findByPhone).not.toHaveBeenCalled()
     expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
     expect(passwordResetRepositoryMock.findByTokenHash).not.toHaveBeenCalled()
     expect(passwordResetRepositoryMock.create).not.toHaveBeenCalled()
+    expect(passwordResetRepositoryMock.markUsed).not.toHaveBeenCalled()
     expect(smsAuthChallengeRepositoryMock.findById).not.toHaveBeenCalled()
     expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
     expect(issueVerificationCodeMock).not.toHaveBeenCalled()

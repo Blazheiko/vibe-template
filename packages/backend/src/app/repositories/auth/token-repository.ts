@@ -5,7 +5,7 @@ import type {
     emailVerifications,
     passwordResetTokens,
 } from '#database/schema.js'
-import { and, eq, isNull, type InferInsertModel, type InferSelectModel } from 'drizzle-orm'
+import { and, eq, gt, isNull, sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm'
 
 /**
  * The three one-time-token tables (password reset, e-mail verification, e-mail linking) have the
@@ -16,16 +16,29 @@ import { and, eq, isNull, type InferInsertModel, type InferSelectModel } from 'd
 export type TokenTable =
     typeof passwordResetTokens | typeof emailVerifications | typeof emailLinkVerifications
 
+// The wall clock at the moment the statement runs. `now()` is fixed when the transaction
+// starts, so a token that expired while the transaction waited for the user lock would
+// still pass `expires_at > now()` (feat-096). The columns are `timestamp` without time
+// zone holding UTC (drizzle writes Date.toISOString()), hence the explicit conversion.
+const statementTime = sql`(clock_timestamp() AT TIME ZONE 'UTC')`
+
 export interface ITokenRepository<TRow, TInsert> {
-    create(data: TInsert): Promise<TRow>
+    create(data: TInsert, executor?: DbExecutor): Promise<TRow>
     findByTokenHash(tokenHash: string): Promise<TRow | undefined>
-    invalidatePendingByUserId(userId: bigint): Promise<number>
     /**
-     * Claims the token: `used_at` is set only if it is still NULL, so of two concurrent
-     * requests with one token exactly one gets the row back. Undefined: already used.
-     * Pass the transaction in which the token's effect is applied.
+     * Retires every pending token of the user in this table. No exception by id: ids of
+     * different tables are unrelated, and a consumed token is no longer pending anyway.
      */
-    markUsed(id: bigint, usedAt?: Date, executor?: DbExecutor): Promise<TRow | undefined>
+    invalidatePendingByUserId(userId: bigint, executor?: DbExecutor): Promise<number>
+    /**
+     * Claims the token: `used_at` is set only if it is still NULL and the token has not
+     * expired at this instant (`clock_timestamp()`), so of two concurrent requests with one
+     * token exactly one gets the row back. Undefined: used or expired. Pass the transaction
+     * in which the token's effect is applied.
+     */
+    markUsed(id: bigint, executor?: DbExecutor): Promise<TRow | undefined>
+    /** Marks an expired token used, so it is gone for good. No expiry condition. */
+    burn(id: bigint): Promise<void>
 }
 
 /**
@@ -42,8 +55,8 @@ export function createTokenRepository<T extends TokenTable>(
     type Row = InferSelectModel<T>
 
     return {
-        async create(data): Promise<Row> {
-            const [created] = await db
+        async create(data, executor = db): Promise<Row> {
+            const [created] = await executor
                 .insert(t)
                 .values(data as InferInsertModel<typeof passwordResetTokens>)
                 .returning()
@@ -63,23 +76,30 @@ export function createTokenRepository<T extends TokenTable>(
                 .then((rows) => rows.at(0) as Row | undefined)
         },
 
-        async invalidatePendingByUserId(userId): Promise<number> {
-            const result = await db
+        async invalidatePendingByUserId(userId, executor = db): Promise<number> {
+            const result = await executor
                 .update(t)
-                .set({ usedAt: new Date() })
+                .set({ usedAt: statementTime })
                 .where(and(eq(t.userId, userId), isNull(t.usedAt)))
                 .returning({ id: t.id })
 
             return result.length
         },
 
-        async markUsed(id, usedAt = new Date(), executor = db): Promise<Row | undefined> {
+        async markUsed(id, executor = db): Promise<Row | undefined> {
             return await executor
                 .update(t)
-                .set({ usedAt })
-                .where(and(eq(t.id, id), isNull(t.usedAt)))
+                .set({ usedAt: statementTime })
+                .where(and(eq(t.id, id), isNull(t.usedAt), gt(t.expiresAt, statementTime)))
                 .returning()
                 .then((rows) => rows.at(0) as Row | undefined)
+        },
+
+        async burn(id): Promise<void> {
+            await db
+                .update(t)
+                .set({ usedAt: statementTime })
+                .where(and(eq(t.id, id), isNull(t.usedAt)))
         },
     }
 }

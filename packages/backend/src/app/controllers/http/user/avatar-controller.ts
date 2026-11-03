@@ -14,7 +14,11 @@ export default {
         }
 
         const file = context.httpData.files?.get('avatar')
-        const result = await avatarService.uploadAvatar(userId, file)
+        const result = await avatarService.uploadAvatar(
+            userId,
+            file,
+            context.auth.getPresentedUserToken(),
+        )
         return respond(context, result, (value) => ({ status: 'ok', user: value.user }))
     },
 
@@ -24,7 +28,10 @@ export default {
             return mapControllerError(context, unauthorized())
         }
 
-        const result = await avatarService.deleteAvatar(userId)
+        const result = await avatarService.deleteAvatar(
+            userId,
+            context.auth.getPresentedUserToken(),
+        )
         return respond(context, result, (value) => ({ status: 'ok', user: value.user }))
     },
 }

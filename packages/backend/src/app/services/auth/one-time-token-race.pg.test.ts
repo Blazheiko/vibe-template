@@ -52,6 +52,10 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     const { emailVerificationService } =
         await import('#app/services/auth/email-verification-service.js')
     const { hashPassword, validatePassword } = await import('metautil')
+    const { runTokenTransaction, issueTokenLocked } =
+        await import('#app/services/auth/one-time-token.js')
+    const { withTransaction } = await import('#app/repositories/index.js')
+    const { badRequest } = await import('#app/services/shared/errors.js')
 
     const now = Date.now()
     const OLD_PASSWORD = 'old-secret-123'
@@ -59,13 +63,17 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     const createdUserIds: bigint[] = []
     let counter = 0
 
-    const insertUser = async (verified = false) => {
+    // An email link adds an address to an account without one (feat-096 checks it under
+    // the lock), so those tests insert users with `withEmail: false`.
+    const insertUser = async (verified = false, withEmail = true) => {
         counter += 1
         const [row] = await db
             .insert(users)
             .values({
                 name: `token-race-${String(counter)}`,
-                email: `token-race-${String(counter)}-${String(now)}@example.test`,
+                email: withEmail
+                    ? `token-race-${String(counter)}-${String(now)}@example.test`
+                    : null,
                 password: await hashPassword(OLD_PASSWORD),
                 emailVerifiedAt: verified ? new Date() : null,
             })
@@ -300,7 +308,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         const link = (token: string) => emailVerificationService.verifyEmail(token, META)
 
         it('lets exactly one of two concurrent links win', async () => {
-            const user = await insertUser(true)
+            const user = await insertUser(true, false)
             const target = `linked-race-${String(now)}@example.test`
             const token = await newLinkToken(user.id, target)
             bothReadBeforeEitherWrites(emailLinkVerificationRepository, 'findByTokenHash')
@@ -317,7 +325,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         // address by the time of the update; the real unique index answers, wrapped by
         // Drizzle, and isUniqueViolation must still read it as a 409, not a 500.
         it('answers 409 when the unique index rejects the address, and keeps the link', async () => {
-            const user = await insertUser(true)
+            const user = await insertUser(true, false)
             const other = await insertUser(true)
             const token = await newLinkToken(user.id, other.email ?? '')
             vi.spyOn(userRepository, 'findByEmail').mockResolvedValueOnce(undefined)
@@ -333,7 +341,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         })
 
         it('rolls the new email and the token back when the request fails after the write', async () => {
-            const user = await insertUser(true)
+            const user = await insertUser(true, false)
             const target = `linked-rollback-${String(now)}@example.test`
             const token = await newLinkToken(user.id, target)
             failAfterWrite(userRepository, 'update')
@@ -345,6 +353,155 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
             expect(Result.isOk(await link(token.raw))).toBe(true)
             expect((await userRow(user.id))?.email).toBe(target)
+        })
+    })
+
+    // feat-096: the transaction contract itself, against real row locks.
+    describe('runTokenTransaction and issueTokenLocked', () => {
+        /** Holds the user's row lock in another transaction until `release` is called. */
+        const holdUserLock = async (userId: bigint) => {
+            let release: () => void = () => undefined
+            const released = new Promise<void>((resolve) => {
+                release = resolve
+            })
+            let locked: () => void = () => undefined
+            const isLocked = new Promise<void>((resolve) => {
+                locked = resolve
+            })
+            const done = withTransaction(async (tx) => {
+                await userRepository.lockById(userId, tx)
+                locked()
+                await released
+            })
+            await isLocked
+            return { release, done }
+        }
+
+        const pendingCount = async (
+            table:
+                | typeof passwordResetTokens
+                | typeof emailVerifications
+                | typeof emailLinkVerifications,
+            userId: bigint,
+        ): Promise<number> => {
+            const rows = await db
+                .select({ usedAt: table.usedAt })
+                .from(table)
+                .where(eq(table.userId, userId))
+            return rows.filter((row) => row.usedAt === null).length
+        }
+
+        it("retires the other tables' pending tokens even when their id equals the consumed one", async () => {
+            const user = await insertUser()
+            // The same id in two tables: an exception by id would keep the reset token alive.
+            const sharedId = 900_000_000n + BigInt(counter)
+            const [verification] = await db
+                .insert(emailVerifications)
+                .values({
+                    id: sharedId,
+                    userId: user.id,
+                    tokenHash: sha256(`v-${String(sharedId)}`),
+                    expiresAt: future(),
+                })
+                .returning()
+            await db.insert(passwordResetTokens).values({
+                id: sharedId,
+                userId: user.id,
+                tokenHash: sha256(`r-${String(sharedId)}`),
+                expiresAt: future(),
+            })
+            if (verification === undefined) throw new Error('token not inserted')
+
+            const outcome = await runTokenTransaction(emailVerificationRepository, verification, {
+                apply: () => Promise.resolve('done'),
+                invalidate: [emailVerificationRepository, passwordResetRepository],
+            })
+
+            expect(outcome).toEqual({ kind: 'applied', value: 'done' })
+            expect(await usedAt(emailVerifications, sharedId)).not.toBeNull()
+            expect(await usedAt(passwordResetTokens, sharedId)).not.toBeNull()
+            expect(await pendingCount(passwordResetTokens, user.id)).toBe(0)
+        })
+
+        it('refuses a token that expired while waiting for the user lock, changing nothing', async () => {
+            const user = await insertUser()
+            // Valid when the transaction starts, expired by the time it gets the lock.
+            const token = await newResetToken(user.id, new Date(Date.now() + 1500))
+            const [row] = await db
+                .select()
+                .from(passwordResetTokens)
+                .where(eq(passwordResetTokens.id, token.id))
+            if (row === undefined) throw new Error('token not found')
+            const lock = await holdUserLock(user.id)
+            const apply = vi.fn(() => Promise.resolve())
+
+            const outcome = runTokenTransaction(passwordResetRepository, row, { apply })
+            await new Promise((resolve) => setTimeout(resolve, 2500))
+            lock.release()
+            await lock.done
+
+            expect(await outcome).toEqual({ kind: 'unusable', reason: 'expired' })
+            expect(apply).not.toHaveBeenCalled()
+            expect(await usedAt(passwordResetTokens, token.id)).toBeNull()
+        }, 10_000)
+
+        it('leaves exactly one usable token after two concurrent issuances', async () => {
+            const user = await insertUser()
+
+            const results = await Promise.all([
+                issueTokenLocked(passwordResetRepository, { userId: user.id, ttlMs: 60_000 }),
+                issueTokenLocked(passwordResetRepository, { userId: user.id, ttlMs: 60_000 }),
+            ])
+
+            expect(results.every((result) => Result.isOk(result))).toBe(true)
+            expect(await pendingCount(passwordResetTokens, user.id)).toBe(1)
+        })
+
+        it('makes an issuance wait for a token transaction and check the row it left', async () => {
+            const user = await insertUser(false)
+            const token = await newVerificationToken(user.id)
+            const [row] = await db
+                .select()
+                .from(emailVerifications)
+                .where(eq(emailVerifications.id, token.id))
+            if (row === undefined) throw new Error('token not found')
+            let applying: () => void = () => undefined
+            const isApplying = new Promise<void>((resolve) => {
+                applying = resolve
+            })
+            let finish: () => void = () => undefined
+            const finished = new Promise<void>((resolve) => {
+                finish = resolve
+            })
+
+            // The verification holds the lock while it applies ...
+            const verified = runTokenTransaction(emailVerificationRepository, row, {
+                apply: async (locked, tx) => {
+                    await userRepository.update(locked.id, { emailVerifiedAt: new Date() }, tx)
+                    applying()
+                    await finished
+                },
+            })
+            await isApplying
+            // ... so a resend issued now waits, then sees the account verified.
+            const issued = issueTokenLocked(emailVerificationRepository, {
+                userId: user.id,
+                ttlMs: 60_000,
+                check: (locked) =>
+                    locked.emailVerifiedAt === null
+                        ? Result.ok(undefined)
+                        : Result.err(badRequest('Email is already verified')),
+            })
+            // Long enough for the issuance to reach its read while the lock is held.
+            await new Promise((resolve) => setTimeout(resolve, 300))
+            finish()
+
+            expect((await verified).kind).toBe('applied')
+            const result = await issued
+            expect(Result.isError(result) && result.error).toMatchObject({
+                message: 'Email is already verified',
+            })
+            expect(await pendingCount(emailVerifications, user.id)).toBe(0)
         })
     })
 })

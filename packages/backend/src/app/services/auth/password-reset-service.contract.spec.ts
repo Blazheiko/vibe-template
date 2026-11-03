@@ -21,12 +21,14 @@ const userRepositoryMock = {
     findById: vi.fn(),
     findByPhone: vi.fn(),
     update: vi.fn(),
+    lockById: vi.fn(),
 }
 const resetRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const challengeRepositoryMock = {
     create: vi.fn(),
@@ -183,7 +185,7 @@ const startPhone =
 
 function arrangeResetOk(over: Record<string, unknown> = {}): void {
     resetRepositoryMock.findByTokenHash.mockResolvedValue(token())
-    userRepositoryMock.findById.mockResolvedValue(user(over))
+    userRepositoryMock.lockById.mockResolvedValue(user(over))
     hashPasswordMock.mockResolvedValue('new-hash')
     resetRepositoryMock.markUsed.mockResolvedValue(token())
     userRepositoryMock.update.mockResolvedValue(user())
@@ -210,7 +212,7 @@ const ROWS: readonly Row[] = [
         name: 'requestPasswordReset · known address: generic answer, mail goes out in the background',
         arrange: () => {
             userRepositoryMock.findByEmail.mockResolvedValue(user())
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
@@ -247,14 +249,14 @@ const ROWS: readonly Row[] = [
     // --- sendPasswordResetEmail -------------------------------------------------------------
     {
         name: 'sendPasswordResetEmail · unknown user',
-        arrange: () => userRepositoryMock.findById.mockResolvedValue(undefined),
+        arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
         call: (s) => s.sendPasswordResetEmail(7n),
         error: err(404, 'not_found', 'User not found'),
     },
     {
         name: 'sendPasswordResetEmail · earlier tokens are invalidated before a new one is made',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendPasswordResetEmail(7n),
@@ -266,7 +268,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendPasswordResetEmail · the token cannot be stored',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendPasswordResetEmail(7n),
@@ -276,21 +278,25 @@ const ROWS: readonly Row[] = [
         },
     },
     {
-        name: 'sendPasswordResetEmail · an account without an e-mail: token stored, nothing sent',
+        // feat-096: refused on the locked row, so no token is made for an account without
+        // an address (and its earlier ones are left alone); the answer is still generic.
+        name: 'sendPasswordResetEmail · an account without an e-mail: no token, nothing sent',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user({ email: null }))
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
         },
         call: (s) => s.sendPasswordResetEmail(7n),
         ok: { message: GENERIC_EMAIL },
         after: () => {
+            expect(resetRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+            expect(resetRepositoryMock.create).not.toHaveBeenCalled()
             expect(emailServiceMock.send).not.toHaveBeenCalled()
         },
     },
     {
         name: 'sendPasswordResetEmail · the transport fails',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
@@ -300,7 +306,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendPasswordResetEmail · sent: only the hash of the token is stored',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
@@ -320,6 +326,17 @@ const ROWS: readonly Row[] = [
             expect(created.tokenHash).not.toContain(raw)
             expect(created.expiresAt.getTime() - Date.now()).toBeGreaterThan(59 * 60_000)
             expect(created.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(60 * 60_000)
+            // feat-096: lock, retire and store in one transaction, in that order.
+            expect(withTransactionMock).toHaveBeenCalledTimes(1)
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+            expect(resetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
+            expect(resetRepositoryMock.create).toHaveBeenCalledWith(expect.anything(), TX)
+            expect(userRepositoryMock.lockById.mock.invocationCallOrder[0]).toBeLessThan(
+                resetRepositoryMock.invalidatePendingByUserId.mock.invocationCallOrder[0]!,
+            )
+            expect(
+                resetRepositoryMock.invalidatePendingByUserId.mock.invocationCallOrder[0],
+            ).toBeLessThan(resetRepositoryMock.create.mock.invocationCallOrder[0]!)
         },
     },
     // --- resetPassword (by e-mail link) -----------------------------------------------------
@@ -356,7 +373,8 @@ const ROWS: readonly Row[] = [
         call: reset(),
         error: badRequest('Password reset link has expired', 'expired_token'),
         after: () => {
-            expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+            expect(resetRepositoryMock.burn).toHaveBeenCalledWith(11n)
+            expect(resetRepositoryMock.markUsed).not.toHaveBeenCalled()
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     },
@@ -364,21 +382,30 @@ const ROWS: readonly Row[] = [
         name: 'resetPassword · the user is gone',
         arrange: () => {
             resetRepositoryMock.findByTokenHash.mockResolvedValue(token())
-            userRepositoryMock.findById.mockResolvedValue(undefined)
+            userRepositoryMock.lockById.mockResolvedValue(undefined)
+            hashPasswordMock.mockResolvedValue('new-hash')
         },
         call: reset(),
         error: err(404, 'not_found', 'User not found'),
+        after: () => {
+            expect(resetRepositoryMock.markUsed).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+        },
     },
     {
         name: 'resetPassword · hashing fails, the token stays usable',
         arrange: () => {
             resetRepositoryMock.findByTokenHash.mockResolvedValue(token())
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             hashPasswordMock.mockRejectedValue(new Error('scrypt'))
         },
         call: reset(),
         throws: true,
         after: () => {
+            // Hashed before the transaction: the user lock is not held over scrypt.
+            expect(withTransactionMock).not.toHaveBeenCalled()
+            expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
             expect(resetRepositoryMock.markUsed).not.toHaveBeenCalled()
         },
     },
@@ -392,8 +419,34 @@ const ROWS: readonly Row[] = [
         error: badRequest('Password reset link has already been used', 'used_token'),
         after: () => {
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(resetRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
             expect(securityNotice).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'resetPassword · the token expired while waiting for the user lock',
+        arrange: () => {
+            arrangeResetOk()
+            // Valid for 5 ms from the lookup on; the claim comes 20 ms later and refuses it.
+            resetRepositoryMock.findByTokenHash.mockImplementation(() =>
+                Promise.resolve(token({ expiresAt: new Date(Date.now() + 5) })),
+            )
+            resetRepositoryMock.markUsed.mockImplementation(
+                () =>
+                    new Promise((resolve) =>
+                        setTimeout(() => {
+                            resolve(undefined)
+                        }, 20),
+                    ),
+            )
+        },
+        call: reset(),
+        error: badRequest('Password reset link has expired', 'expired_token'),
+        after: () => {
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
         },
     },
     {
@@ -410,7 +463,9 @@ const ROWS: readonly Row[] = [
         },
     },
     {
-        name: 'resetPassword · a phone challenge cannot be invalidated',
+        // feat-096: the phone challenges are retired in the reset's transaction (the phone is
+        // read from the locked row): their failure rolls the reset back, nothing half done.
+        name: 'resetPassword · a phone challenge cannot be invalidated, the reset rolls back',
         arrange: () => {
             arrangeResetOk({ phone: PHONE })
             challengeRepositoryMock.invalidatePendingForPhoneFlow.mockRejectedValue(new Error('db'))
@@ -418,7 +473,23 @@ const ROWS: readonly Row[] = [
         call: reset(),
         throws: true,
         after: () => {
-            expect(withTransactionMock).not.toHaveBeenCalled()
+            expect(withTransactionMock).toHaveBeenCalledTimes(1)
+            expect(userRepositoryMock.update).toHaveBeenCalledWith(
+                7n,
+                { password: 'new-hash', sessionToken: 'rotated-token' },
+                TX,
+            )
+            expect(userRepositoryMock.update.mock.invocationCallOrder[0]).toBeLessThan(
+                challengeRepositoryMock.invalidatePendingForPhoneFlow.mock.invocationCallOrder[0]!,
+            )
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
+                PHONE,
+                'reset_phone',
+                TX,
+            )
+            // The throw left the transaction, so nothing after the commit ran.
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
         },
     },
     {
@@ -446,19 +517,30 @@ const ROWS: readonly Row[] = [
         ok: { status: 'success' },
         after: () => {
             expect(withTransactionMock).toHaveBeenCalledTimes(1)
-            expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+            expect(userRepositoryMock.findById).not.toHaveBeenCalled()
+            expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
             expect(userRepositoryMock.update).toHaveBeenCalledWith(
                 7n,
                 { password: 'new-hash', sessionToken: 'rotated-token' },
                 TX,
             )
+            expect(resetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
+            expect(userRepositoryMock.lockById.mock.invocationCallOrder[0]).toBeLessThan(
+                resetRepositoryMock.markUsed.mock.invocationCallOrder[0]!,
+            )
+            expect(resetRepositoryMock.markUsed.mock.invocationCallOrder[0]).toBeLessThan(
+                userRepositoryMock.update.mock.invocationCallOrder[0]!,
+            )
             expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
                 PHONE,
                 'reset_phone',
+                TX,
             )
             expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
                 PHONE,
                 'link_phone',
+                TX,
             )
             expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-token')
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
@@ -785,6 +867,7 @@ const ROWS: readonly Row[] = [
             expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
                 PHONE,
                 'reset_phone',
+                undefined,
             )
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
         },
@@ -831,7 +914,7 @@ describe.each(ROWS)('passwordResetService · $name', (row) => {
 
 describe('passwordResetService · sendPasswordResetEmailInBackground', () => {
     it('logs a failed send as a warning with the reason and the trigger, and does not throw', async () => {
-        userRepositoryMock.findById.mockResolvedValue(undefined)
+        userRepositoryMock.lockById.mockResolvedValue(undefined)
         const { passwordResetService } = await import('./password-reset-service.js')
         await expect(
             passwordResetService.sendPasswordResetEmailInBackground(7n, 'manual request'),
@@ -856,7 +939,7 @@ describe('passwordResetService · sendPasswordResetEmailInBackground', () => {
     })
 
     it('stays quiet when the mail goes out', async () => {
-        userRepositoryMock.findById.mockResolvedValue(user())
+        userRepositoryMock.lockById.mockResolvedValue(user())
         resetRepositoryMock.create.mockResolvedValue({ id: 1n })
         emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         const { passwordResetService } = await import('./password-reset-service.js')

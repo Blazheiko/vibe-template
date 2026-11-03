@@ -1,4 +1,5 @@
 import { db } from '#database/db.js'
+import type { DbExecutor } from '../transaction.js'
 import { smsAuthChallenges } from '#database/schema.js'
 import { and, eq, gt, isNull, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
@@ -14,7 +15,11 @@ export interface SmsAuthChallengeRepository {
         phone: string,
         flow: SmsAuthChallengeFlow,
     ): Promise<SmsAuthChallengeRow | undefined>
-    invalidatePendingForPhoneFlow(phone: string, flow: SmsAuthChallengeFlow): Promise<number>
+    invalidatePendingForPhoneFlow(
+        phone: string,
+        flow: SmsAuthChallengeFlow,
+        executor?: DbExecutor,
+    ): Promise<number>
     markIssued(
         id: string,
         data: Pick<SmsAuthChallengeInsert, 'codeHash' | 'providerRequestId' | 'metadata'>,
@@ -69,9 +74,9 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
             .then((rows) => rows.at(0))
     },
 
-    async invalidatePendingForPhoneFlow(phone, flow) {
+    async invalidatePendingForPhoneFlow(phone, flow, executor = db) {
         const now = new Date()
-        const rows = await db
+        const rows = await executor
             .update(smsAuthChallenges)
             .set({
                 invalidatedAt: now,

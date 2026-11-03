@@ -11,7 +11,7 @@ import {
 import logger from '#logger'
 import {
     badRequest,
-    internalMessage,
+    sessionRevoked,
     notFound,
     type AppResult,
 } from '#app/services/shared/errors.js'
@@ -62,9 +62,14 @@ async function deleteAvatarObject(key: string): Promise<void> {
 }
 
 export const avatarService = {
+    /**
+     * `presentedSessionToken`: `Auth.getPresentedUserToken()`. The row changes only while it
+     * is still the user's current sessionToken (feat-096).
+     */
     async uploadAvatar(
         userId: bigint,
         file: UploadedFile | undefined,
+        presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ user: AvatarUserPayload }>> {
         if (file === undefined) {
             return Result.err(badRequest('No file uploaded'))
@@ -83,6 +88,9 @@ export const avatarService = {
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
+        if (presentedSessionToken === undefined || user.sessionToken !== presentedSessionToken) {
+            return Result.err(sessionRevoked())
+        }
 
         // Extension from the verified type; the client's file name is not used.
         const s3Key = `avatars/${String(userId)}/${randomUUID()}.${IMAGE_EXTENSIONS[imageType]}`
@@ -90,28 +98,41 @@ export const avatarService = {
         // Public like KB screenshots: the frontend loads avatars from CDN_URL (decision R1).
         await uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true })
 
-        if (user.avatar !== null) await deleteAvatarObject(user.avatar)
-
-        const updated = await userRepository.update(userId, { avatar: s3Key })
+        // The row first, the old object after: a refused update (session revoked meanwhile)
+        // must leave the current avatar in place and take back the new upload.
+        const updated = await userRepository.updateIfSessionToken(userId, presentedSessionToken, {
+            avatar: s3Key,
+        })
         if (updated === undefined) {
-            return Result.err(internalMessage('Failed to update user'))
+            await deleteAvatarObject(s3Key)
+            return Result.err(sessionRevoked())
         }
+
+        if (user.avatar !== null) await deleteAvatarObject(user.avatar)
 
         return Result.ok({ user: serializeUser(updated) })
     },
 
-    async deleteAvatar(userId: bigint): Promise<AppResult<{ user: AvatarUserPayload }>> {
+    async deleteAvatar(
+        userId: bigint,
+        presentedSessionToken: string | undefined,
+    ): Promise<AppResult<{ user: AvatarUserPayload }>> {
         const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
+        if (presentedSessionToken === undefined) {
+            return Result.err(sessionRevoked())
+        }
+
+        const updated = await userRepository.updateIfSessionToken(userId, presentedSessionToken, {
+            avatar: null,
+        })
+        if (updated === undefined) {
+            return Result.err(sessionRevoked())
+        }
 
         if (user.avatar !== null) await deleteAvatarObject(user.avatar)
-
-        const updated = await userRepository.update(userId, { avatar: null })
-        if (updated === undefined) {
-            return Result.err(internalMessage('Failed to update user'))
-        }
 
         return Result.ok({ user: serializeUser(updated) })
     },

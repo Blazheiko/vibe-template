@@ -186,10 +186,11 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
 
             // The request of session A: change the password, then renew its session.
             const { context: ctxA, responseData: responseA } = await requestWith(a.cookie)
-            const changed = await authService.changePassword(user.id, {
-                currentPassword: OLD_PASSWORD,
-                newPassword: 'new-secret-456',
-            })
+            const changed = await authService.changePassword(
+                user.id,
+                { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                ctxA.auth.getPresentedUserToken(),
+            )
             expect(Result.isOk(changed)).toBe(true)
             if (!Result.isOk(changed)) return
             const renewed = await authService.renewSession(
@@ -231,10 +232,11 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             // The cleanup fails, so the Redis records stay: only the sessionToken check
             // can refuse them.
             cleanup.fail = true
-            const changed = await authService.changePassword(user.id, {
-                currentPassword: OLD_PASSWORD,
-                newPassword: 'new-secret-456',
-            })
+            const changed = await authService.changePassword(
+                user.id,
+                { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                user.sessionToken,
+            )
             expect(Result.isOk(changed)).toBe(true)
             expect(await getSession(session.sessionId, user.sessionToken)).not.toBeNull()
 
@@ -250,10 +252,11 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const b = await signIn(user)
             cleanup.fail = true
 
-            const changed = await authService.changePassword(user.id, {
-                currentPassword: OLD_PASSWORD,
-                newPassword: 'new-secret-456',
-            })
+            const changed = await authService.changePassword(
+                user.id,
+                { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                user.sessionToken,
+            )
 
             // The change itself succeeded; the records are still in Redis ...
             expect(Result.isOk(changed)).toBe(true)
@@ -284,14 +287,16 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             })
 
             const [first, second] = await Promise.all([
-                authService.changePassword(user.id, {
-                    currentPassword: OLD_PASSWORD,
-                    newPassword: 'winner-one-111',
-                }),
-                authService.changePassword(user.id, {
-                    currentPassword: OLD_PASSWORD,
-                    newPassword: 'winner-two-222',
-                }),
+                authService.changePassword(
+                    user.id,
+                    { currentPassword: OLD_PASSWORD, newPassword: 'winner-one-111' },
+                    user.sessionToken,
+                ),
+                authService.changePassword(
+                    user.id,
+                    { currentPassword: OLD_PASSWORD, newPassword: 'winner-two-222' },
+                    user.sessionToken,
+                ),
             ])
 
             const results = [first, second]
@@ -311,6 +316,133 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const winnerPassword = Result.isOk(first) ? 'winner-one-111' : 'winner-two-222'
             expect(await validatePassword(winnerPassword, row?.password ?? '')).toBe(true)
             expect(row?.sessionToken).toBe(winner.value.sessionToken)
+        })
+    })
+
+    // feat-096: the token a request presented, as RequestSession.restore verified it.
+    describe('the presented user token', () => {
+        it('is the token of the signed-in cookie, and stays it after a login in the request', async () => {
+            const user = await insertUser('presented-login')
+            const other = await insertUser('presented-other')
+            const a = await signIn(user)
+            const { context } = await requestWith(a.cookie)
+            expect(context.auth.getPresentedUserToken()).toBe(user.sessionToken)
+
+            await context.auth.login(String(other.id), other.sessionToken)
+
+            expect(context.auth.getUserId()).toBe(String(other.id))
+            expect(context.auth.getPresentedUserToken()).toBe(user.sessionToken)
+        })
+
+        it('stays the initial one after the session is renewed under a new token', async () => {
+            const user = await insertUser('presented-renew')
+            const a = await signIn(user)
+            const { context } = await requestWith(a.cookie)
+            const changed = await authService.changePassword(
+                user.id,
+                { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                context.auth.getPresentedUserToken(),
+            )
+            if (!Result.isOk(changed)) throw new Error('password change failed')
+            const renewed = await authService.renewSession(
+                context.auth,
+                context.session,
+                changed.value.sessionToken,
+            )
+            expect(Result.isOk(renewed)).toBe(true)
+
+            expect(context.auth.getPresentedUserToken()).toBe(user.sessionToken)
+        })
+
+        it('is undefined for an anonymous request and for a revoked session', async () => {
+            const user = await insertUser('presented-revoked')
+            const a = await signIn(user)
+            const { context: anonymous } = newContext()
+            await sessionHandler(anonymous, undefined, undefined)
+            expect(anonymous.auth.getPresentedUserToken()).toBeUndefined()
+
+            await userRepository.update(user.id, {
+                sessionToken: `rotated${String(now)}`.slice(0, 24),
+            })
+
+            const { context } = await requestWith(a.cookie)
+            expect(context.auth.check()).toBe(false)
+            expect(context.auth.getPresentedUserToken()).toBeUndefined()
+        })
+    })
+
+    // feat-096: a request let in before a revocation must not change credentials after it.
+    // The revocation here is what a claim does to the row (password NULL, token rotated);
+    // the claim itself comes with feat-097.
+    describe('a change of credentials let in before a revocation', () => {
+        const revokeLikeAClaim = async (id: bigint): Promise<string> => {
+            const rotated = `claim${String(Date.now())}${String(id)}`.slice(0, 24)
+            await userRepository.update(id, { password: null, sessionToken: rotated })
+            return rotated
+        }
+
+        it('refuses a password change that reads the row after the revocation', async () => {
+            const user = await insertUser('admitted-change-after')
+            const a = await signIn(user)
+            // The request passed the session check ...
+            const { context } = await requestWith(a.cookie)
+            expect(context.auth.check()).toBe(true)
+            // ... the revocation commits ...
+            const rotated = await revokeLikeAClaim(user.id)
+
+            // ... and the request goes on: it reads password NULL, so it would not ask for
+            // the current one.
+            const result = await authService.changePassword(
+                user.id,
+                { newPassword: 'attacker-secret-1' },
+                context.auth.getPresentedUserToken(),
+            )
+
+            expect(Result.isError(result) && result.error).toMatchObject({
+                _tag: 'Unauthorized',
+                reason: 'session_revoked',
+            })
+            const [row] = await db.select().from(users).where(eq(users.id, user.id))
+            expect(row?.password).toBeNull()
+            expect(row?.sessionToken).toBe(rotated)
+        })
+
+        it('refuses a password change whose read came before the revocation', async () => {
+            const user = await insertUser('admitted-change-before')
+            const a = await signIn(user)
+            const { context } = await requestWith(a.cookie)
+            let rotated = ''
+            const realFindById = userRepository.findById.bind(userRepository)
+            vi.spyOn(userRepository, 'findById').mockImplementationOnce(async (id) => {
+                const row = await realFindById(id)
+                rotated = await revokeLikeAClaim(user.id)
+                return row
+            })
+
+            const result = await authService.changePassword(
+                user.id,
+                { currentPassword: OLD_PASSWORD, newPassword: 'attacker-secret-1' },
+                context.auth.getPresentedUserToken(),
+            )
+
+            expect(Result.isError(result)).toBe(true)
+            const [row] = await db.select().from(users).where(eq(users.id, user.id))
+            expect(row?.password).toBeNull()
+            expect(row?.sessionToken).toBe(rotated)
+        })
+
+        it('refuses logout everywhere after the revocation, keeping the new token', async () => {
+            const user = await insertUser('admitted-logout-all')
+            const a = await signIn(user)
+            const { context } = await requestWith(a.cookie)
+            const rotated = await revokeLikeAClaim(user.id)
+
+            const result = await authService.logoutAll(context.auth, context.session)
+
+            expect(Result.isError(result) && result.error).toMatchObject({
+                reason: 'session_revoked',
+            })
+            expect(await dbToken(user.id)).toBe(rotated)
         })
     })
 
