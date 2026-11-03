@@ -410,6 +410,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             const rawToken = `reset-${crypto.randomUUID()}`
             const created = await passwordResetRepository.create({
                 userId: user.id,
+                // feat-097: the address the link was mailed to.
+                targetEmail: user.email,
                 tokenHash: createHash('sha256').update(rawToken).digest('hex'),
                 expiresAt: new Date(Date.now() + 60_000),
             })
@@ -451,6 +453,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             const rawToken = `reset-${crypto.randomUUID()}`
             await passwordResetRepository.create({
                 userId: user.id,
+                // feat-097: the address the link was mailed to.
+                targetEmail: user.email,
                 tokenHash: createHash('sha256').update(rawToken).digest('hex'),
                 expiresAt: new Date(Date.now() + 60_000),
             })

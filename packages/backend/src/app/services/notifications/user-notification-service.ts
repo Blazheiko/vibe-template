@@ -7,7 +7,8 @@ import {
 // Business events that send a push (code-issues item 72). Fire-and-forget: a push
 // failure or slow push service never changes or delays the response that triggered it.
 
-export type SecurityEvent = 'new_sign_in' | 'password_changed' | 'password_reset' | 'logout_all'
+export type SecurityEvent =
+    'new_sign_in' | 'password_changed' | 'password_reset' | 'logout_all' | 'account_claimed'
 
 const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
     new_sign_in: {
@@ -31,6 +32,12 @@ const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
     logout_all: {
         title: 'Signed out everywhere',
         body: 'All sessions of your account were signed out.',
+        url: '/account',
+        tag: 'security-sessions',
+    },
+    account_claimed: {
+        title: 'Account secured',
+        body: 'Your email was confirmed. Earlier sign-in methods and sessions were removed.',
         url: '/account',
         tag: 'security-sessions',
     },

@@ -49,10 +49,19 @@ const originalEnv = { ...process.env }
 // A stand-in for the transaction `withTransaction` hands to the repositories; the real
 // commit/rollback behaviour is proved against PostgreSQL (one-time-token-race.pg.test.ts).
 const TX = vi.hoisted(() => ({ transaction: true }))
+// feat-097: the repositories a claim of an unverified account touches (account-claim-service).
+const claimRepositoryMocks = vi.hoisted(() => ({
+    emailVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    emailLinkVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    oauthLinkVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    oauthAccountRepository: { deleteByUserId: vi.fn() },
+    pushSubscriptionRepository: { deleteByUserId: vi.fn() },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     passwordResetRepository: passwordResetRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
+    ...claimRepositoryMocks,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(TX),
 }))
 
@@ -103,6 +112,13 @@ async function loadPasswordResetService() {
     process.env['APP_KEY'] = 'a'.repeat(32)
     process.env['AUTH_PHONE_ENABLED'] = 'true'
     return import('./password-reset-service.js')
+}
+
+// feat-097: a reset of an account whose address is verified is not a claim.
+const VERIFIED_USER = {
+    id: 7n,
+    email: 'jane@example.com',
+    emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
 }
 
 function hashOtp(code: string): string {
@@ -225,6 +241,7 @@ describe('passwordResetService', () => {
             id: 11n,
             userId: 7n,
             tokenHash: 'hash',
+            targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() - 1000),
             usedAt: null,
             createdAt: new Date(),
@@ -257,6 +274,7 @@ describe('passwordResetService', () => {
             id: 11n,
             userId: 7n,
             tokenHash: 'hash',
+            targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: new Date(),
             createdAt: new Date(),
@@ -308,12 +326,13 @@ describe('passwordResetService', () => {
             id: 11n,
             userId: 7n,
             tokenHash: 'hash',
+            targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: null,
             createdAt: new Date(),
         })
         userRepositoryMock.lockById.mockResolvedValue({
-            id: 7n,
+            ...VERIFIED_USER,
             phone: '+14155550123',
             sessionToken: 'old-session-token',
         })
@@ -518,12 +537,13 @@ describe('passwordResetService', () => {
             id: 11n,
             userId: 7n,
             tokenHash: 'hash',
+            targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: null,
             createdAt: new Date(),
         })
         userRepositoryMock.lockById.mockResolvedValue({
-            id: 7n,
+            ...VERIFIED_USER,
             phone: '+14155550123',
             sessionToken: 'old-session-token',
         })
@@ -562,6 +582,7 @@ describe('passwordResetService', () => {
                 id: 11n,
                 userId: 7n,
                 tokenHash: 'hash',
+                targetEmail: 'jane@example.com',
                 expiresAt: new Date(Date.now() + 5),
                 usedAt: null,
                 createdAt: new Date(),
@@ -571,7 +592,11 @@ describe('passwordResetService', () => {
             () =>
                 new Promise((resolve) =>
                     setTimeout(() => {
-                        resolve({ id: 7n, phone: null, sessionToken: 'old-session-token' })
+                        resolve({
+                            ...VERIFIED_USER,
+                            phone: null,
+                            sessionToken: 'old-session-token',
+                        })
                     }, 20),
                 ),
         )
@@ -600,6 +625,7 @@ describe('passwordResetService', () => {
             id: 11n,
             userId: 7n,
             tokenHash: 'hash',
+            targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: null,
             createdAt: new Date(),
@@ -625,12 +651,13 @@ describe('passwordResetService', () => {
             id: 11n,
             userId: 7n,
             tokenHash: 'hash',
+            targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: null,
             createdAt: new Date(),
         })
         userRepositoryMock.lockById.mockResolvedValue({
-            id: 7n,
+            ...VERIFIED_USER,
             phone: null,
             sessionToken: 'old-session-token',
         })

@@ -87,8 +87,14 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
     const newResetToken = async (userId: bigint, expiresAt = future()) => {
         const raw = `reset-${crypto.randomUUID()}`
+        // feat-097: a reset link is for the address it was mailed to.
+        const [owner] = await db
+            .select({ email: users.email })
+            .from(users)
+            .where(eq(users.id, userId))
         const row = await passwordResetRepository.create({
             userId,
+            targetEmail: owner?.email ?? null,
             tokenHash: sha256(raw),
             expiresAt,
         })
@@ -273,7 +279,13 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     })
 
     describe('email verification token', () => {
-        const verify = (token: string) => emailVerificationService.verifyEmail(token, META)
+        // feat-097: a registration link needs the account's password from a signed-out browser.
+        const verify = (token: string) =>
+            emailVerificationService.verifyEmail(token, META, {
+                userId: null,
+                presentedSessionToken: undefined,
+                password: OLD_PASSWORD,
+            })
 
         it('lets exactly one of two concurrent verifications win', async () => {
             const user = await insertUser(false)
@@ -305,7 +317,12 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     })
 
     describe('email link token', () => {
-        const link = (token: string) => emailVerificationService.verifyEmail(token, META)
+        // feat-097: an email link works only from a current session of the account that asked.
+        const link = (token: string, user: { id: bigint; sessionToken: string }) =>
+            emailVerificationService.verifyEmail(token, META, {
+                userId: user.id,
+                presentedSessionToken: user.sessionToken,
+            })
 
         it('lets exactly one of two concurrent links win', async () => {
             const user = await insertUser(true, false)
@@ -313,7 +330,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             const token = await newLinkToken(user.id, target)
             bothReadBeforeEitherWrites(emailLinkVerificationRepository, 'findByTokenHash')
 
-            const results = await Promise.all([link(token.raw), link(token.raw)])
+            const results = await Promise.all([link(token.raw, user), link(token.raw, user)])
 
             expect(results.filter((result) => Result.isOk(result))).toHaveLength(1)
             expect(results.filter((result) => Result.isError(result))).toHaveLength(1)
@@ -330,7 +347,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             const token = await newLinkToken(user.id, other.email ?? '')
             vi.spyOn(userRepository, 'findByEmail').mockResolvedValueOnce(undefined)
 
-            const result = await link(token.raw)
+            const result = await link(token.raw, user)
 
             expect(Result.isError(result) && result.error).toMatchObject({
                 _tag: 'Conflict',
@@ -347,11 +364,11 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             failAfterWrite(userRepository, 'update')
 
             // ADR 0004: the failure propagates (the transport answers 500).
-            await expect(link(token.raw)).rejects.toThrow()
+            await expect(link(token.raw, user)).rejects.toThrow()
             expect((await userRow(user.id))?.email).toBe(user.email)
             expect(await usedAt(emailLinkVerifications, token.id)).toBeNull()
 
-            expect(Result.isOk(await link(token.raw))).toBe(true)
+            expect(Result.isOk(await link(token.raw, user))).toBe(true)
             expect((await userRow(user.id))?.email).toBe(target)
         })
     })

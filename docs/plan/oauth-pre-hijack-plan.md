@@ -119,7 +119,7 @@ Google документує ([Verify the Google ID token](https://developers.goo
 - `auth.login` з **новим** `sessionToken` (ADR 0002);
 - `userNotificationService.security(userId, 'account_claimed')`.
 
-Дані акаунта (контент, чати) залишаються, `name` і `avatar` оновлюються з профілю провайдера.
+Дані акаунта (контент, чати, `name`, `avatar`) залишаються: власник змінює їх сам (рішення при реалізації feat-097).
 
 ### Вхід за існуючою прив'язкою (ревізія 4, P1 п.1)
 

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { authApi, mainApi } from '@/utils/api'
+import { getErrorReason } from '@/utils/response-normalizer'
 import { useUserStore } from '@/stores/user'
 
 defineOptions({
@@ -14,28 +15,64 @@ const router = useRouter()
 const { t } = useI18n()
 const userStore = useUserStore()
 
-const status = ref<'loading' | 'success' | 'error'>('loading')
+// `password`: a registration link opened without a session of its account (feat-097) needs
+// the account's password; the link stays usable until the right one is entered.
+const status = ref<'loading' | 'password' | 'success' | 'error'>('loading')
 const message = ref('')
+const password = ref('')
+const passwordError = ref('')
+const isSubmitting = ref(false)
 
 const token = computed(() => {
     const rawToken = route.query.token
     return typeof rawToken === 'string' ? rawToken.trim() : ''
 })
 
-async function verifyEmail(): Promise<void> {
+// The refusals the user can act on; any other error shows the server's message.
+const ERROR_MESSAGES: Record<string, () => string> = {
+    email_link_wrong_session: () => t('emailVerification.wrongSession'),
+    session_revoked: () => t('emailVerification.sessionRevoked'),
+}
+
+async function verifyEmail(withPassword?: string): Promise<void> {
     if (token.value === '') {
         status.value = 'error'
         message.value = t('emailVerification.invalid')
         return
     }
 
-    status.value = 'loading'
     message.value = ''
+    passwordError.value = ''
+    isSubmitting.value = true
+    const { data, error } = await authApi
+        .verifyEmail(
+            withPassword === undefined
+                ? { token: token.value }
+                : { token: token.value, password: withPassword },
+        )
+        .finally(() => {
+            isSubmitting.value = false
+        })
 
-    const { data, error } = await authApi.verifyEmail({ token: token.value })
     if (error) {
+        const reason = getErrorReason(data)
+        if (reason === 'password_required') {
+            status.value = 'password'
+            return
+        }
+        if (reason === 'invalid_password') {
+            status.value = 'password'
+            passwordError.value = t('emailVerification.passwordIncorrect')
+            return
+        }
+        // A network failure while the password form is open: keep the form for another try.
+        if (status.value === 'password' && error.transportCode === 0) {
+            passwordError.value = error.message
+            return
+        }
+        const known = reason === undefined ? undefined : ERROR_MESSAGES[reason]
         status.value = 'error'
-        message.value = error.message || t('emailVerification.invalid')
+        message.value = known?.() ?? (error.message || t('emailVerification.invalid'))
         return
     }
 
@@ -47,6 +84,7 @@ async function verifyEmail(): Promise<void> {
 
     status.value = 'success'
     message.value = data.message || t('emailVerification.success')
+    password.value = ''
 
     if (userStore.user) {
         const { data: initData, error: initError } = await mainApi.init()
@@ -54,6 +92,15 @@ async function verifyEmail(): Promise<void> {
             userStore.setUser(initData.user)
         }
     }
+}
+
+function submitPassword(): void {
+    if (isSubmitting.value) return
+    if (password.value === '') {
+        passwordError.value = t('emailVerification.passwordEmpty')
+        return
+    }
+    void verifyEmail(password.value)
 }
 
 function goToAccount(): void {
@@ -84,6 +131,43 @@ onMounted(() => {
             <p v-if="status === 'loading'" class="verify-email-state">
                 {{ t('emailVerification.loading') }}
             </p>
+
+            <form
+                v-else-if="status === 'password'"
+                class="verify-email-form"
+                novalidate
+                @submit.prevent="submitPassword"
+            >
+                <h1>{{ t('emailVerification.confirm') }}</h1>
+                <p class="verify-email-message">{{ t('emailVerification.passwordPrompt') }}</p>
+                <label class="verify-email-label" for="verify-email-password">
+                    {{ t('emailVerification.passwordLabel') }}
+                </label>
+                <input
+                    id="verify-email-password"
+                    v-model="password"
+                    class="verify-email-input"
+                    type="password"
+                    name="password"
+                    autocomplete="current-password"
+                    maxlength="32"
+                    :aria-invalid="passwordError !== ''"
+                    :aria-describedby="passwordError ? 'verify-email-password-error' : undefined"
+                />
+                <p
+                    v-if="passwordError"
+                    id="verify-email-password-error"
+                    class="verify-email-error"
+                    role="alert"
+                >
+                    {{ passwordError }}
+                </p>
+                <div class="verify-email-actions">
+                    <button type="submit" class="verify-email-primary" :disabled="isSubmitting">
+                        {{ t('emailVerification.confirm') }}
+                    </button>
+                </div>
+            </form>
 
             <template v-else-if="status === 'success'">
                 <h1>{{ t('emailVerification.successTitle') }}</h1>
@@ -168,5 +252,42 @@ onMounted(() => {
 
 .verify-email-primary:hover {
     background: var(--primary-hover);
+}
+
+.verify-email-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.verify-email-form {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+}
+
+.verify-email-form h1,
+.verify-email-form .verify-email-message {
+    text-align: center;
+}
+
+.verify-email-label {
+    margin-top: 20px;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.verify-email-input {
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.verify-email-error {
+    margin: 8px 0 0;
+    color: #dc3545;
 }
 </style>

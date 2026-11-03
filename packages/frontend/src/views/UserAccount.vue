@@ -7,7 +7,7 @@ import { usePushStore } from '@/stores/push'
 import { avatarApi, authApi, pushSubscriptionApi } from '@/utils/api'
 import { buildAvatarUrl } from '@/utils/avatar-url'
 import { passwordLengthProblem } from '@/utils/validate-password'
-import { getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
+import { getErrorReason, getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
 import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
@@ -48,6 +48,15 @@ const linkEmail = ref('')
 const linkEmailCurrentPassword = ref('')
 const linkEmailMessage = ref('')
 const isLinkingEmail = ref(false)
+
+// feat-097: an account created through GitHub, GitLab or Facebook gets no email until its owner
+// opens the link mailed to the provider's address. Such an account has neither an email nor a
+// phone (a phone-only account has a phone, and linking a phone needs a password it lacks).
+const awaitsEmailConfirmation = computed(
+    () => user.value !== null && !user.value.email && !user.value.phone,
+)
+const pendingEmailMessage = ref('')
+const isResendingPendingEmail = ref(false)
 
 const darkMode = ref(stateStore.darkMode)
 const fontSize = computed({
@@ -191,6 +200,30 @@ async function resendVerificationEmail(): Promise<void> {
         data ?? error,
         error?.message ?? t('account.emailVerification.success'),
     )
+}
+
+async function resendPendingEmailLink(): Promise<void> {
+    if (isResendingPendingEmail.value) return
+    isResendingPendingEmail.value = true
+    pendingEmailMessage.value = ''
+    try {
+        const { data, error } = await authApi.resendOAuthEmailLink()
+        if (!error && data?.status === 'success') {
+            pendingEmailMessage.value = t('account.emailVerification.pendingSent')
+            return
+        }
+        if (getErrorReason(data) === 'no_pending_email') {
+            pendingEmailMessage.value = t('account.emailVerification.noPendingEmail')
+            return
+        }
+        if (error?.transportCode === 409) {
+            pendingEmailMessage.value = t('account.emailVerification.pendingConflict')
+            return
+        }
+        pendingEmailMessage.value = getResponseMessage(data, error?.message ?? '')
+    } finally {
+        isResendingPendingEmail.value = false
+    }
 }
 
 async function startPhoneLink(): Promise<void> {
@@ -381,6 +414,19 @@ watch(
                     <button type="button" @click="resendVerificationEmail">
                         {{ t('account.emailVerification.resend') }}
                     </button>
+                </p>
+                <p v-if="awaitsEmailConfirmation" class="status-warning pending-email">
+                    {{ t('account.emailVerification.pending') }}
+                    <button
+                        type="button"
+                        :disabled="isResendingPendingEmail"
+                        @click="resendPendingEmailLink"
+                    >
+                        {{ t('account.emailVerification.resendPending') }}
+                    </button>
+                </p>
+                <p v-if="pendingEmailMessage" class="form-message" role="status">
+                    {{ pendingEmailMessage }}
                 </p>
             </div>
             <button v-if="avatarUrl" class="secondary-button" type="button" @click="deleteAvatar">

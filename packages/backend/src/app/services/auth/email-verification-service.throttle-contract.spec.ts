@@ -62,6 +62,7 @@ afterEach(() => {
 type Service = typeof emailVerificationService
 
 const IP = { ipAddress: '203.0.113.9' }
+const ANONYMOUS = { userId: null, presentedSessionToken: undefined }
 
 interface Row {
     method: string
@@ -73,7 +74,7 @@ interface Row {
 const ROWS: readonly Row[] = [
     {
         method: 'verifyEmail · ip',
-        call: (s) => s.verifyEmail('token', IP),
+        call: (s) => s.verifyEmail('token', IP, ANONYMOUS),
         consumed: [['verify_email_ip', '203.0.113.9']],
         blocked: {
             status: 400,
@@ -162,5 +163,86 @@ describe.each(ROWS)('emailVerificationService throttle: $method', (row) => {
             (err: unknown) => err,
         )
         expect(classifyError(thrown)).toMatchObject({ status: 503, code: 'service_unavailable' })
+    })
+})
+
+// feat-097: a registration link opened outside the account's session needs its password; the
+// guesses are counted per account after the IP counter, before the password is compared.
+describe('emailVerificationService throttle: verifyEmail · password per user', () => {
+    const target = 'verify_email_password_user'
+    const requester = { ...ANONYMOUS, password: 'guess' }
+
+    function arrangeToken(): void {
+        emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 11n,
+            userId: 7n,
+            usedAt: null,
+            expiresAt: new Date(Date.now() + 600_000),
+        })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            emailVerifiedAt: null,
+            password: 'stored-hash',
+            sessionToken: 'session-7',
+        })
+    }
+
+    function untouchedAccount(): void {
+        expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        expect(emailVerificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+    }
+
+    it('consumes the counters in this order, with these keys', async () => {
+        arrangeToken()
+        arrange(target, 'blocked')
+        await (await load()).verifyEmail('token', IP, requester)
+        expect(
+            consumeAuthThrottleMock.mock.calls.map(([policy, key]) => [
+                (policy as { scope: string }).scope,
+                key,
+            ]),
+        ).toEqual([
+            ['verify_email_ip', '203.0.113.9'],
+            [target, '7'],
+        ])
+    })
+
+    it('answers a spent counter with the stated error and does not use the link', async () => {
+        arrangeToken()
+        arrange(target, 'blocked')
+        const result = await (await load()).verifyEmail('token', IP, requester)
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(describeError(result.error)).toEqual({
+                status: 400,
+                code: 'bad_request',
+                message: 'Too many verification attempts. Please try again later.',
+            })
+        }
+        untouchedAccount()
+    })
+
+    it('fails closed when Redis does not answer', async () => {
+        arrangeToken()
+        arrange(target, 'unavailable')
+        await expect((await load()).verifyEmail('token', IP, requester)).rejects.toThrow()
+        untouchedAccount()
+    })
+
+    it('is not consumed without a password or from the account session', async () => {
+        arrangeToken()
+        arrange(target, 'blocked')
+        const service = await load()
+        await service.verifyEmail('token', IP, ANONYMOUS)
+        await service.verifyEmail('token', IP, {
+            userId: 7n,
+            presentedSessionToken: 'session-7',
+        })
+        expect(
+            consumeAuthThrottleMock.mock.calls.filter(
+                ([policy]) => (policy as { scope: string }).scope === target,
+            ),
+        ).toEqual([])
     })
 })

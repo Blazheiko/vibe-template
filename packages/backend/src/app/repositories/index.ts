@@ -6,6 +6,7 @@ export { oauthAccountRepository } from './auth/oauth-account-repository.js'
 export { emailVerificationRepository } from './auth/email-verification-repository.js'
 export { emailLinkVerificationRepository } from './auth/email-link-verification-repository.js'
 export { passwordResetRepository } from './auth/password-reset-repository.js'
+export { oauthLinkVerificationRepository } from './auth/oauth-link-verification-repository.js'
 export { userOnlineRepository } from './communication/user-online-repository.js'
 export { smsAuthChallengeRepository } from './auth/sms-auth-challenge-repository.js'
 export { promptRepository } from './ai/prompt-repository.js'
@@ -45,6 +46,10 @@ export type {
 } from './notifications/push-notification-log-repository.js'
 export type { OAuthAccountRow, OAuthAccountInsert } from './auth/oauth-account-repository.js'
 export type { ITokenRepository } from './auth/token-repository.js'
+export type {
+    OAuthLinkVerificationRow,
+    OAuthLinkVerificationInsert,
+} from './auth/oauth-link-verification-repository.js'
 export type {
     EmailVerificationRow,
     EmailVerificationInsert,

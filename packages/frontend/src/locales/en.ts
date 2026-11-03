@@ -22,6 +22,31 @@ export default {
         invalid: 'This verification link is invalid or has expired.',
         openAccount: 'Open account',
         goToLogin: 'Go to sign in',
+        passwordPrompt: 'Enter the password of this account to confirm the email.',
+        passwordLabel: 'Password',
+        passwordEmpty: 'Enter your password',
+        passwordIncorrect: 'The password is incorrect.',
+        confirm: 'Confirm email',
+        wrongSession:
+            'Sign in to the account that asked to link this email, then open the link again.',
+        sessionRevoked: 'Your session has ended. Sign in again, then open the link again.',
+    },
+
+    oauthLink: {
+        loading: 'Confirming your sign-in...',
+        successTitle: 'Sign-in confirmed',
+        success: 'The sign-in method is now linked to your account.',
+        errorTitle: 'Could not confirm the sign-in',
+        wrongSession:
+            'Open this link in the browser where you started signing in. If that is not possible, sign in again with the same provider from this browser to get a new link.',
+        used: 'This link has already been used or was replaced by a newer one. Sign in again to get a new link.',
+        expired: 'This link has expired. Sign in again with the same provider to get a new link.',
+        invalid: 'This link is invalid.',
+        emailChanged: 'The email of the account changed after this sign-in started. Sign in again.',
+        alreadyLinked: 'This sign-in method is already linked to an account.',
+        failed: 'Could not confirm the sign-in. Please try again.',
+        openAccount: 'Open account',
+        goToLogin: 'Go to sign in',
     },
 
     login: {
@@ -39,8 +64,13 @@ export default {
         mobileTitle: 'Welcome to Vibe Template',
         mobileSubtitle: 'Explore an educational full-stack application template',
         socialLoginFailed: 'Social login failed. Please try again.',
-        socialLoginEmailUnverified:
-            'An account with this email already exists. Sign in with your password.',
+        socialLoginLinkPending:
+            'An account with this email already exists. We sent a confirmation link to that email: open it in this browser to finish signing in.',
+        socialLoginLinkRevoked:
+            'This sign-in method is no longer linked to the account. Sign in another way.',
+        socialLoginEmailChanged:
+            'The account email changed while you were signing in. Please try again.',
+        socialLoginAlreadyLinked: 'This sign-in method is already linked to another account.',
     },
 
     auth: {
@@ -159,6 +189,11 @@ export default {
             notVerified: 'Email not verified',
             resend: 'Resend verification email',
             success: 'Verification email sent',
+            pending: 'Email awaits confirmation. Open the link we sent to it.',
+            resendPending: 'Send the confirmation link again',
+            pendingSent: 'Confirmation link sent',
+            noPendingEmail: 'There is no email to confirm. Link one below.',
+            pendingConflict: 'This email is already linked to another account.',
         },
         security: {
             title: 'Security',

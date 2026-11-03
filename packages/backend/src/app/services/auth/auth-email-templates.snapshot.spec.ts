@@ -45,6 +45,9 @@ vi.mock('#app/repositories/index.js', () => ({
     smsAuthChallengeRepository: {},
     emailVerificationRepository: emailVerificationRepositoryMock,
     emailLinkVerificationRepository: emailLinkVerificationRepositoryMock,
+    oauthLinkVerificationRepository: {},
+    oauthAccountRepository: {},
+    pushSubscriptionRepository: {},
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
 }))
 vi.mock('#app/services/notifications/email-service.js', () => ({ emailService: emailServiceMock }))

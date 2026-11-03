@@ -94,7 +94,9 @@ async findById(id) {
 },
 ```
 
-Типи рядків виводяться через `InferSelectModel<typeof users>` / `InferInsertModel<typeof users>`. Транзакцій (`db.transaction`) у коді застосунку зараз немає.
+Типи рядків виводяться через `InferSelectModel<typeof users>` / `InferInsertModel<typeof users>`. Транзакції сервіси відкривають через `withTransaction` (див. [Репозиторії](/backend/repositories#транзакціі)).
+
+Одноразові токени живуть у чотирьох таблицях з однаковою основою (`user_id`, `token_hash`, `expires_at`, `used_at`): `email_verifications`, `email_link_verifications` (`target_email`), `password_reset_tokens` (`target_email` — адреса, на яку пішов лист) і `oauth_link_verifications` (міграція `oauth_link_verifications`): pending-прив'язка OAuth-ідентичності до існуючого акаунта з профілем провайдера (`provider`, `provider_user_id`, `provider_email`, `provider_name`, `provider_avatar`), адресою акаунта на момент відправки (`target_email`) і хешем id браузерної сесії, з якої почався вхід (`session_binding_hash`). Токени провайдера не зберігаються. Див. [OAuth](/backend/oauth#прив-язка-за-email).
 
 ## pgvector
 

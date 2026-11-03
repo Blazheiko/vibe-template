@@ -1,9 +1,16 @@
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import UserAccount from '../UserAccount.vue'
 import en from '../../locales/en'
+
+const { currentUser, resendOAuthEmailLinkMock } = vi.hoisted(() => {
+    const currentUser: { value: Record<string, unknown> } = {
+        value: { id: '1', name: 'Jane', email: 'jane@example.com' },
+    }
+    return { currentUser, resendOAuthEmailLinkMock: vi.fn() }
+})
 
 vi.mock('@/utils/api', () => ({
     avatarApi: { upload: vi.fn(), delete: vi.fn() },
@@ -13,12 +20,15 @@ vi.mock('@/utils/api', () => ({
         startPhoneLink: vi.fn(),
         confirmPhoneLink: vi.fn(),
         startEmailLink: vi.fn(),
+        resendOAuthEmailLink: resendOAuthEmailLinkMock,
     },
     pushSubscriptionApi: { testPush: vi.fn() },
 }))
 vi.mock('@/stores/user', () => ({
     useUserStore: () => ({
-        user: { id: '1', name: 'Jane', email: 'jane@example.com' },
+        get user() {
+            return currentUser.value
+        },
         setUser: vi.fn(),
     }),
 }))
@@ -89,5 +99,60 @@ describe('UserAccount password fields', () => {
         expect(wrapper.find('input[type="email"]').attributes('autocomplete')).toBe('email')
         expect(wrapper.find('input[type="email"]').attributes('name')).toBeTruthy()
         expect(wrapper.find('input[autocomplete="tel"]').exists()).toBe(true)
+    })
+})
+
+// feat-097: an account created through GitHub, GitLab or Facebook has no email until its owner
+// confirms the provider's address.
+describe('UserAccount email awaiting confirmation', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        currentUser.value = { id: '2', name: 'Octo', email: null, phone: null }
+    })
+
+    const pending = (wrapper: ReturnType<typeof mountAccount>) => wrapper.find('.pending-email')
+
+    it('is shown for an account with neither an email nor a phone', () => {
+        expect(pending(mountAccount()).text()).toContain(en.account.emailVerification.pending)
+    })
+
+    it('is not shown for an account with an email or a phone-only account', () => {
+        currentUser.value = { id: '1', name: 'Jane', email: 'jane@example.com' }
+        expect(pending(mountAccount()).exists()).toBe(false)
+        currentUser.value = { id: '3', name: 'Phone', email: null, phone: '+15550000000' }
+        expect(pending(mountAccount()).exists()).toBe(false)
+    })
+
+    it('sends the link again', async () => {
+        resendOAuthEmailLinkMock.mockResolvedValueOnce({
+            data: { status: 'success', message: 'sent' },
+            error: null,
+        })
+        const wrapper = mountAccount()
+        await pending(wrapper).find('button').trigger('click')
+        await flushPromises()
+
+        expect(resendOAuthEmailLinkMock).toHaveBeenCalledOnce()
+        expect(wrapper.text()).toContain(en.account.emailVerification.pendingSent)
+    })
+
+    it.each([
+        [400, 'no_pending_email', en.account.emailVerification.noPendingEmail],
+        [409, undefined, en.account.emailVerification.pendingConflict],
+    ])('explains a %i refusal', async (status, reason, text) => {
+        resendOAuthEmailLinkMock.mockResolvedValueOnce({
+            data: {
+                status: 'error',
+                code: status === 409 ? 'conflict' : 'bad_request',
+                message: 'refused',
+                ...(reason === undefined ? {} : { reason }),
+            },
+            error: { message: 'refused', transportCode: status },
+        })
+        const wrapper = mountAccount()
+        await pending(wrapper).find('button').trigger('click')
+        await flushPromises()
+
+        expect(wrapper.text()).toContain(text)
     })
 })

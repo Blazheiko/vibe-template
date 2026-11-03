@@ -57,6 +57,20 @@ vi.mock('#logger', () => ({
     default: loggerMock,
 }))
 
+const validatePasswordMock = vi.hoisted(() => vi.fn())
+vi.mock('metautil', () => ({ validatePassword: validatePasswordMock }))
+
+// feat-097: who opens the link. The registration link's owner signed in to that account; the
+// email link's requester is the session of the account that asked for it.
+const OWN_SESSION_7 = { userId: 7n, presentedSessionToken: 'session-7' }
+const OWN_SESSION_8 = { userId: 8n, presentedSessionToken: 'session-8' }
+const ANONYMOUS = { userId: null, presentedSessionToken: undefined }
+type Requester = Parameters<
+    Awaited<
+        ReturnType<typeof loadEmailVerificationService>
+    >['emailVerificationService']['verifyEmail']
+>[2]
+
 function restoreEnv(): void {
     for (const key of Object.keys(process.env)) {
         if (!(key in originalEnv)) {
@@ -159,9 +173,11 @@ describe('emailVerificationService', () => {
         emailVerificationRepositoryMock.burn.mockResolvedValue(undefined)
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('expired-token', {
-            ipAddress: '127.0.0.1',
-        })
+        const result = await emailVerificationService.verifyEmail(
+            'expired-token',
+            { ipAddress: '127.0.0.1' },
+            ANONYMOUS,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -184,6 +200,11 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            emailVerifiedAt: null,
+            sessionToken: 'session-7',
+        })
         userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
             emailVerifiedAt: null,
@@ -198,9 +219,11 @@ describe('emailVerificationService', () => {
         })
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('valid-token', {
-            ipAddress: '127.0.0.1',
-        })
+        const result = await emailVerificationService.verifyEmail(
+            'valid-token',
+            { ipAddress: '127.0.0.1' },
+            OWN_SESSION_7,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -295,13 +318,20 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            emailVerifiedAt: null,
+            sessionToken: 'session-7',
+        })
         userRepositoryMock.lockById.mockResolvedValue({ id: 7n, emailVerifiedAt: null })
         emailVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('raced-token', {
-            ipAddress: '127.0.0.1',
-        })
+        const result = await emailVerificationService.verifyEmail(
+            'raced-token',
+            { ipAddress: '127.0.0.1' },
+            OWN_SESSION_7,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -324,14 +354,20 @@ describe('emailVerificationService', () => {
             usedAt: null,
             createdAt: new Date(),
         })
-        userRepositoryMock.lockById.mockResolvedValue({ id: 8n, email: null })
+        userRepositoryMock.lockById.mockResolvedValue({
+            id: 8n,
+            email: null,
+            sessionToken: 'session-8',
+        })
         userRepositoryMock.findByEmail.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('raced-link', {
-            ipAddress: '127.0.0.1',
-        })
+        const result = await emailVerificationService.verifyEmail(
+            'raced-link',
+            { ipAddress: '127.0.0.1' },
+            OWN_SESSION_8,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -357,6 +393,7 @@ describe('emailVerificationService', () => {
         userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
+            sessionToken: 'session-8',
         })
         userRepositoryMock.findByEmail.mockResolvedValue(undefined)
         userRepositoryMock.update.mockResolvedValue({
@@ -370,9 +407,11 @@ describe('emailVerificationService', () => {
         })
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('link-token', {
-            ipAddress: '127.0.0.1',
-        })
+        const result = await emailVerificationService.verifyEmail(
+            'link-token',
+            { ipAddress: '127.0.0.1' },
+            OWN_SESSION_8,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         expect(userRepositoryMock.update).toHaveBeenCalledWith(
@@ -405,16 +444,22 @@ describe('emailVerificationService', () => {
             createdAt: new Date(),
         })
         userRepositoryMock.findByEmail.mockResolvedValue(undefined)
-        userRepositoryMock.lockById.mockResolvedValue({ id: 8n, email: 'other@example.com' })
+        userRepositoryMock.lockById.mockResolvedValue({
+            id: 8n,
+            email: 'other@example.com',
+            sessionToken: 'session-8',
+        })
         emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({
             id: 15n,
             usedAt: new Date(),
         })
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.verifyEmail('link-token', {
-            ipAddress: '127.0.0.1',
-        })
+        const result = await emailVerificationService.verifyEmail(
+            'link-token',
+            { ipAddress: '127.0.0.1' },
+            OWN_SESSION_8,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -512,15 +557,18 @@ it('maps a unique email race during link verification to a conflict', async () =
     userRepositoryMock.lockById.mockResolvedValue({
         id: 8n,
         email: null,
+        sessionToken: 'session-8',
     })
     userRepositoryMock.findByEmail.mockResolvedValue(undefined)
     userRepositoryMock.update.mockRejectedValue({ code: '23505' })
     emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({ id: 16n, usedAt: new Date() })
 
     const { emailVerificationService } = await loadEmailVerificationService()
-    const result = await emailVerificationService.verifyEmail('link-token', {
-        ipAddress: '127.0.0.1',
-    })
+    const result = await emailVerificationService.verifyEmail(
+        'link-token',
+        { ipAddress: '127.0.0.1' },
+        OWN_SESSION_8,
+    )
 
     expect(Result.isError(result)).toBe(true)
     if (Result.isError(result)) {
@@ -546,9 +594,7 @@ describe('verification throttles', () => {
         const { emailVerificationService } = await loadEmailVerificationService()
         // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
         const refused = await emailVerificationService
-            .verifyEmail('some-token', {
-                ipAddress: '10.0.0.5',
-            })
+            .verifyEmail('some-token', { ipAddress: '10.0.0.5' }, ANONYMOUS)
             .then(
                 (result) => Result.isError(result),
                 () => true,
@@ -583,5 +629,258 @@ describe('verification throttles', () => {
             expect.objectContaining({ scope: 'resend_verification_user' }),
             '7',
         )
+    })
+})
+
+// feat-097: a registration link confirms the account only for its owner: a session of that
+// account, or the account's password. A refusal before the transaction leaves the link usable.
+describe('verifyEmail · the owner of a registration link', () => {
+    const registrationToken = () => ({
+        id: 11n,
+        userId: 7n,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+        createdAt: new Date(),
+    })
+    const owner = (over: Record<string, unknown> = {}) => ({
+        id: 7n,
+        email: 'jane@example.com',
+        emailVerifiedAt: null,
+        password: 'stored-hash',
+        sessionToken: 'session-7',
+        ...over,
+    })
+
+    function arrange(over: Record<string, unknown> = {}): void {
+        emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(registrationToken())
+        userRepositoryMock.findById.mockResolvedValue(owner(over))
+        userRepositoryMock.lockById.mockResolvedValue(owner(over))
+        userRepositoryMock.update.mockResolvedValue(owner({ emailVerifiedAt: new Date() }))
+        emailVerificationRepositoryMock.markUsed.mockResolvedValue({ id: 11n })
+    }
+
+    const verify = async (requester: Requester) => {
+        const { emailVerificationService } = await loadEmailVerificationService()
+        return emailVerificationService.verifyEmail(
+            'reg-token',
+            { ipAddress: '10.0.0.1' },
+            requester,
+        )
+    }
+
+    const expectNotConsumed = (): void => {
+        expect(emailVerificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    }
+
+    it('its own current session confirms without a password', async () => {
+        arrange()
+
+        const result = await verify(OWN_SESSION_7)
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            7n,
+            { emailVerifiedAt: expect.any(Date) },
+            TX,
+        )
+    })
+
+    it.each([
+        ['nobody signed in', ANONYMOUS],
+        ['another account', { userId: 9n, presentedSessionToken: 'session-7' }],
+        ['a revoked session of the account', { userId: 7n, presentedSessionToken: 'old-session' }],
+        ['the account without a presented token', { userId: 7n, presentedSessionToken: undefined }],
+    ])('%s without a password: 403 password_required, the link is not used', async (_n, who) => {
+        arrange()
+
+        const result = await verify(who)
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'Forbidden',
+            message: 'Enter the password of this account to confirm the email',
+            reason: 'password_required',
+        })
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expectNotConsumed()
+    })
+
+    it('an empty password is a missing one', async () => {
+        arrange()
+
+        const result = await verify({ ...ANONYMOUS, password: '' })
+
+        expect(Result.isError(result) && result.error).toMatchObject({
+            _tag: 'Forbidden',
+            reason: 'password_required',
+        })
+        expectNotConsumed()
+    })
+
+    it('a wrong password: 400 invalid_password, the link is not used', async () => {
+        arrange()
+        validatePasswordMock.mockResolvedValue(false)
+
+        const result = await verify({ ...ANONYMOUS, password: 'guess' })
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            message: 'Password is incorrect',
+            reason: 'invalid_password',
+        })
+        expect(validatePasswordMock).toHaveBeenCalledWith('guess', 'stored-hash')
+        expectNotConsumed()
+    })
+
+    it('an account without a password cannot be confirmed by one', async () => {
+        arrange({ password: null })
+
+        const result = await verify({ ...ANONYMOUS, password: 'anything' })
+
+        expect(Result.isError(result) && result.error).toMatchObject({
+            _tag: 'BadRequest',
+            reason: 'invalid_password',
+        })
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expectNotConsumed()
+    })
+
+    it('the right password confirms from another browser', async () => {
+        arrange()
+        validatePasswordMock.mockResolvedValue(true)
+
+        const result = await verify({ ...ANONYMOUS, password: 'secret' })
+
+        expect(Result.isOk(result) && result.value).toEqual({
+            message: 'Email confirmed successfully',
+        })
+        expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
+            expect.objectContaining({ scope: 'verify_email_password_user' }),
+            '7',
+        )
+        expect(emailVerificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+    })
+
+    it('password attempts are throttled per user before the password is checked', async () => {
+        arrange()
+        consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+            Promise.resolve(
+                policy.scope === 'verify_email_password_user'
+                    ? { allowed: false, count: 6 }
+                    : { allowed: true, count: 1 },
+            ),
+        )
+
+        const result = await verify({ ...ANONYMOUS, password: 'guess' })
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            message: 'Too many verification attempts. Please try again later.',
+        })
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expectNotConsumed()
+    })
+
+    it('an already verified account skips the owner check', async () => {
+        arrange({ emailVerifiedAt: new Date() })
+
+        const result = await verify(ANONYMOUS)
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+        expect(consumeAuthThrottleMock).not.toHaveBeenCalledWith(
+            expect.objectContaining({ scope: 'verify_email_password_user' }),
+            expect.anything(),
+        )
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    })
+
+    it('a token whose user is gone answers not found', async () => {
+        arrange()
+        userRepositoryMock.findById.mockResolvedValue(undefined)
+
+        const result = await verify(OWN_SESSION_7)
+
+        expect(Result.isError(result) && result.error).toMatchObject({ _tag: 'NotFound' })
+        expectNotConsumed()
+    })
+})
+
+// feat-097: an email link works only in a session of the account that asked for it.
+describe('verifyEmail · the session of an email link', () => {
+    function arrange(): void {
+        emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
+        emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
+            id: 15n,
+            userId: 8n,
+            targetEmail: 'new@example.com',
+            tokenHash: 'hash',
+            expiresAt: new Date(Date.now() + 60_000),
+            usedAt: null,
+            createdAt: new Date(),
+        })
+        userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+        userRepositoryMock.lockById.mockResolvedValue({
+            id: 8n,
+            email: null,
+            sessionToken: 'session-8',
+        })
+        emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({ id: 15n })
+    }
+
+    const verify = async (requester: Requester) => {
+        const { emailVerificationService } = await loadEmailVerificationService()
+        return emailVerificationService.verifyEmail(
+            'link-token',
+            { ipAddress: '10.0.0.1' },
+            requester,
+        )
+    }
+
+    it.each([
+        ['nobody signed in', ANONYMOUS],
+        ['another account', { userId: 9n, presentedSessionToken: 'session-9' }],
+    ])('%s: 403 email_link_wrong_session, the link is not used', async (_n, who) => {
+        arrange()
+
+        const result = await verify(who)
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'Forbidden',
+            message: 'Open this link while signed in to the account that asked for it',
+            reason: 'email_link_wrong_session',
+        })
+        expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
+        expect(emailLinkVerificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+    })
+
+    it('a password does not stand in for the session', async () => {
+        arrange()
+
+        const result = await verify({ ...ANONYMOUS, password: 'secret' })
+
+        expect(Result.isError(result) && result.error).toMatchObject({
+            reason: 'email_link_wrong_session',
+        })
+        expect(validatePasswordMock).not.toHaveBeenCalled()
+    })
+
+    it('a revoked session of the account: 401 session_revoked, nothing linked', async () => {
+        arrange()
+
+        const result = await verify({ userId: 8n, presentedSessionToken: 'session-old' })
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'Unauthorized',
+            message: 'Session has been revoked',
+            reason: 'session_revoked',
+        })
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 })

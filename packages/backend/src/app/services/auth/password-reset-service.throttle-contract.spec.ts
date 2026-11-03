@@ -45,10 +45,19 @@ const destroyAllSessionsMock = vi.fn()
 const hashPasswordMock = vi.fn()
 const loggerMock = { warn: vi.fn(), error: vi.fn(), info: vi.fn() }
 
+// feat-097: the repositories a claim of an unverified account touches (account-claim-service).
+const claimRepositoryMocks = vi.hoisted(() => ({
+    emailVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    emailLinkVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    oauthLinkVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    oauthAccountRepository: { deleteByUserId: vi.fn() },
+    pushSubscriptionRepository: { deleteByUserId: vi.fn() },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     passwordResetRepository: passwordResetRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
+    ...claimRepositoryMocks,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
 }))
 vi.mock('#app/services/notifications/email-service.js', () => ({ emailService: emailServiceMock }))

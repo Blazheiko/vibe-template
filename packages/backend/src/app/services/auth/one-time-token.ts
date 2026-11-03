@@ -42,9 +42,14 @@ export async function issueTokenLocked<TRow, TInsert extends { userId: bigint }>
     options: {
         userId: bigint
         ttlMs: number
-        extra?: Omit<TInsert, 'userId' | 'tokenHash' | 'expiresAt'>
+        /** Extra columns; a function gets the locked row (e.g. the address the mail goes to). */
+        extra?:
+            | Omit<TInsert, 'userId' | 'tokenHash' | 'expiresAt'>
+            | ((user: UserRow) => Omit<TInsert, 'userId' | 'tokenHash' | 'expiresAt'>)
         /** Whether a token may be issued for the user as locked; an error is the answer. */
         check?: (user: UserRow) => AppResult<void>
+        /** Which earlier tokens to retire; by default every pending one of the user. */
+        invalidatePending?: (tx: DbTransaction) => Promise<number>
     },
 ): Promise<AppResult<{ rawToken: string; user: UserRow }>> {
     return await withTransaction(async (tx) => {
@@ -58,12 +63,17 @@ export async function issueTokenLocked<TRow, TInsert extends { userId: bigint }>
             if (Result.isError(allowed)) return Result.err(allowed.error)
         }
 
-        await repository.invalidatePendingByUserId(options.userId, tx)
+        if (options.invalidatePending !== undefined) {
+            await options.invalidatePending(tx)
+        } else {
+            await repository.invalidatePendingByUserId(options.userId, tx)
+        }
 
+        const extra = typeof options.extra === 'function' ? options.extra(user) : options.extra
         const rawToken = createToken()
         await repository.create(
             {
-                ...options.extra,
+                ...extra,
                 userId: options.userId,
                 tokenHash: hashToken(rawToken),
                 expiresAt: new Date(Date.now() + options.ttlMs),

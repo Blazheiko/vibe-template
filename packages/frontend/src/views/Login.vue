@@ -18,6 +18,13 @@ const eventBus = useEventBus()
 
 const isLoginModalVisible = ref(false)
 const oauthError = ref('')
+const oauthNotice = ref('')
+
+const OAUTH_ERROR_REASONS = {
+    oauth_link_revoked: 'login.socialLoginLinkRevoked',
+    email_changed: 'login.socialLoginEmailChanged',
+    oauth_already_linked: 'login.socialLoginAlreadyLinked',
+} as const
 const isRegisterModalVisible = ref(false)
 const logoText = ref('VIBE')
 const typingComplete = ref(false)
@@ -92,12 +99,19 @@ onMounted(() => {
         return
     }
 
+    if (queryOauth === 'link_pending') {
+        // feat-097: the provider's email belongs to an existing account. Nobody is signed in
+        // yet: the link mailed to that address finishes the sign-in, in this browser only.
+        oauthNotice.value = t('login.socialLoginLinkPending')
+        void router.replace({ query: {} })
+    }
+
     if (queryError === 'oauth_failed') {
-        // The backend adds a reason when it refuses to link an existing account
-        // through an email the provider does not vouch for.
+        // The backend adds a reason for the refusals the user can act on (feat-097).
+        const reason = route.query.reason
         oauthError.value =
-            route.query.reason === 'oauth_email_unverified'
-                ? t('login.socialLoginEmailUnverified')
+            typeof reason === 'string' && reason in OAUTH_ERROR_REASONS
+                ? t(OAUTH_ERROR_REASONS[reason as keyof typeof OAUTH_ERROR_REASONS])
                 : t('login.socialLoginFailed')
         void router.replace({ query: {} })
     }
@@ -199,7 +213,8 @@ onMounted(() => {
                 </div>
             </div>
 
-            <div v-if="oauthError" class="oauth-error">{{ oauthError }}</div>
+            <div v-if="oauthError" class="oauth-error" role="alert">{{ oauthError }}</div>
+            <div v-if="oauthNotice" class="oauth-notice" role="status">{{ oauthNotice }}</div>
 
             <div class="auth-buttons">
                 <button class="auth-button" @click="showLoginModal">{{ t('login.signIn') }}</button>
@@ -219,7 +234,8 @@ onMounted(() => {
                 <h1>{{ t('login.mobileTitle') }}</h1>
                 <p>{{ t('login.mobileSubtitle') }}</p>
             </div>
-            <div v-if="oauthError" class="oauth-error">{{ oauthError }}</div>
+            <div v-if="oauthError" class="oauth-error" role="alert">{{ oauthError }}</div>
+            <div v-if="oauthNotice" class="oauth-notice" role="status">{{ oauthNotice }}</div>
             <div class="auth-buttons">
                 <button class="auth-button" @click="showLoginModal">{{ t('login.signIn') }}</button>
                 <button class="auth-button register" @click="showRegisterModal">
@@ -547,7 +563,8 @@ onMounted(() => {
     }
 }
 
-.oauth-error {
+.oauth-error,
+.oauth-notice {
     width: 100%;
     max-width: 400px;
     padding: 12px 16px;
@@ -563,6 +580,11 @@ onMounted(() => {
 .dark-theme .oauth-error {
     background-color: rgba(220, 53, 69, 0.2);
     color: #ff6b6b;
+}
+
+.oauth-notice {
+    background-color: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    color: var(--text-primary);
 }
 
 @media (max-width: 768px) {

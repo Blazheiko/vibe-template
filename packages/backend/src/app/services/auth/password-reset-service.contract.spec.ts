@@ -50,10 +50,19 @@ const loggerMock = { warn: vi.fn(), error: vi.fn(), info: vi.fn() }
 const TX = vi.hoisted(() => ({ transaction: true }))
 const withTransactionMock = vi.fn(<T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(TX))
 
+// feat-097: the repositories a claim of an unverified account touches (account-claim-service).
+const claimRepositoryMocks = vi.hoisted(() => ({
+    emailVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    emailLinkVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    oauthLinkVerificationRepository: { invalidatePendingByUserId: vi.fn() },
+    oauthAccountRepository: { deleteByUserId: vi.fn() },
+    pushSubscriptionRepository: { deleteByUserId: vi.fn() },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     passwordResetRepository: resetRepositoryMock,
     smsAuthChallengeRepository: challengeRepositoryMock,
+    ...claimRepositoryMocks,
     withTransaction: (work: (tx: unknown) => Promise<unknown>) => withTransactionMock(work),
 }))
 vi.mock('#app/services/notifications/email-service.js', () => ({ emailService: emailServiceMock }))
@@ -156,6 +165,8 @@ const user = (over: Record<string, unknown> = {}) => ({
     id: 7n,
     name: 'Jane',
     email: 'jane@example.com',
+    // feat-097: verified unless a row says otherwise (an unverified one is claimed).
+    emailVerifiedAt: new Date('2026-01-01T00:00:00Z'),
     phone: null,
     sessionToken: 'old-token',
     ...over,
@@ -165,6 +176,8 @@ const phoneOnlyUser = (over: Record<string, unknown> = {}) =>
 const token = (over: Record<string, unknown> = {}) => ({
     id: 11n,
     userId: 7n,
+    // feat-097: the address the link was mailed to.
+    targetEmail: 'jane@example.com',
     usedAt: null,
     expiresAt: FUTURE,
     ...over,
@@ -322,6 +335,8 @@ const ROWS: readonly Row[] = [
             const raw = /token=([\w-]+)/.exec(mail.text)![1]!
             expect(mail.to).toBe('jane@example.com')
             expect(created.userId).toBe(7n)
+            // feat-097: the address of the locked row, which a reset later proves.
+            expect(created).toMatchObject({ targetEmail: 'jane@example.com' })
             expect(created.tokenHash).toMatch(/^[0-9a-f]{64}$/)
             expect(created.tokenHash).not.toContain(raw)
             expect(created.expiresAt.getTime() - Date.now()).toBeGreaterThan(59 * 60_000)
@@ -543,6 +558,122 @@ const ROWS: readonly Row[] = [
                 TX,
             )
             expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-token')
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
+        },
+    },
+    // feat-097: the link proves the address it was mailed to, and only while the account
+    // still has it. A refusal uses the link up and changes nothing else.
+    ...(
+        [
+            [
+                'the account address changed after the link was sent',
+                { targetEmail: 'old@example.com' },
+            ],
+            ['the link has no address (issued before feat-097)', { targetEmail: null }],
+        ] as const
+    ).map(([label, over]): Row => ({
+        name: `resetPassword · ${label}: 409 email_changed, the link is used up`,
+        arrange: () => {
+            arrangeResetOk()
+            resetRepositoryMock.findByTokenHash.mockResolvedValue(token(over))
+        },
+        call: reset(),
+        error: err(
+            409,
+            'conflict',
+            'The account email changed after this link was sent',
+            'email_changed',
+        ),
+        after: () => {
+            expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+            expect(securityNotice).not.toHaveBeenCalled()
+        },
+    })),
+    {
+        name: 'resetPassword · the address matches up to case and spaces',
+        arrange: () => {
+            arrangeResetOk({ email: 'Jane@Example.com' })
+            resetRepositoryMock.findByTokenHash.mockResolvedValue(
+                token({ targetEmail: ' jane@example.COM ' }),
+            )
+        },
+        call: reset(),
+        ok: { status: 'success' },
+    },
+    {
+        // feat-097: the first proof of the mailbox on an unverified account hands it to the
+        // mailbox owner: everything set up before the address was proven goes.
+        name: 'resetPassword · an unverified account is claimed by the reset',
+        arrange: () => {
+            arrangeResetOk({ emailVerifiedAt: null, phone: PHONE })
+        },
+        call: reset(),
+        ok: { status: 'success' },
+        after: () => {
+            expect(withTransactionMock).toHaveBeenCalledTimes(1)
+            expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+            expect(userRepositoryMock.update).toHaveBeenCalledTimes(1)
+            expect(userRepositoryMock.update).toHaveBeenCalledWith(
+                7n,
+                {
+                    emailVerifiedAt: expect.any(Date),
+                    password: 'new-hash',
+                    phone: null,
+                    sessionToken: 'rotated-token',
+                },
+                TX,
+            )
+            expect(claimRepositoryMocks.oauthAccountRepository.deleteByUserId).toHaveBeenCalledWith(
+                7n,
+                TX,
+            )
+            expect(
+                claimRepositoryMocks.pushSubscriptionRepository.deleteByUserId,
+            ).toHaveBeenCalledWith(7n, TX)
+            for (const repository of [
+                claimRepositoryMocks.emailVerificationRepository,
+                claimRepositoryMocks.emailLinkVerificationRepository,
+                claimRepositoryMocks.oauthLinkVerificationRepository,
+                resetRepositoryMock,
+            ]) {
+                expect(repository.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
+            }
+            // The claim retires the phone's challenges once, in the same transaction.
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledTimes(2)
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
+                PHONE,
+                'reset_phone',
+                TX,
+            )
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
+                PHONE,
+                'link_phone',
+                TX,
+            )
+            expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-token')
+            expect(securityNotice).toHaveBeenCalledTimes(1)
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'account_claimed')
+        },
+    },
+    {
+        name: 'resetPassword · a verified account is not claimed: phone, links and push stay',
+        arrange: () => {
+            arrangeResetOk({ phone: PHONE })
+        },
+        call: reset(),
+        ok: { status: 'success' },
+        after: () => {
+            expect(
+                claimRepositoryMocks.oauthAccountRepository.deleteByUserId,
+            ).not.toHaveBeenCalled()
+            expect(
+                claimRepositoryMocks.pushSubscriptionRepository.deleteByUserId,
+            ).not.toHaveBeenCalled()
+            expect(
+                claimRepositoryMocks.emailVerificationRepository.invalidatePendingByUserId,
+            ).not.toHaveBeenCalled()
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
         },
     },

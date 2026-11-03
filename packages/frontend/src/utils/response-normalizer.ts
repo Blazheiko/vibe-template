@@ -144,6 +144,12 @@ export const hasResponseError = (value: unknown): boolean => {
     return false
 }
 
+/** The machine-readable `reason` of an error answer (e.g. `password_required`), if any. */
+export const getErrorReason = (value: unknown): string | undefined => {
+    if (!hasResponseError(value) || !isRecord(value)) return undefined
+    return readString(value.reason) ?? readString(getErrorRecord(value)?.reason)
+}
+
 export const normalizeResponseError = (
     value: unknown,
     fallbackMessage: string,

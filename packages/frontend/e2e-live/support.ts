@@ -151,7 +151,11 @@ export async function createVerifiedAccount(browser: Browser, sink: MailSink): P
         const token = new URL(
             await linkFromMail(sink, account.email, '/verify-email'),
         ).searchParams.get('token')
-        const verified = await tab.post('/api/auth/verify-email', { token })
+        // feat-097: from a signed-out browser the registration link needs the password.
+        const verified = await tab.post('/api/auth/verify-email', {
+            token,
+            password: account.password,
+        })
         expect(verified.status()).toBe(200)
     } finally {
         await context.close()
