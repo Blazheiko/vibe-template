@@ -1021,6 +1021,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-103-sms-attempt-atomicity",
             "dependencies": [],
+            "status": "done",
+            "evidence": "Merged #347 (merge 486f25b; start #346). consumeAttempt (one UPDATE ... attempt_count < max, not confirmed/invalidated/expired, RETURNING) replaces incrementAttemptCount and runs before every code comparison (the right code too); no row -> no-longer-valid without comparing; the wrong code that spends the last try calls markInvalidatedIfPending, so a confirmed challenge stays confirmed; SMS repository methods and verifySmsCode/confirmChallenge take a transaction executor (for R06a). Evidence: typecheck, lint, format clean; pnpm test backend 2173, frontend 400, api-playground 62; test:pg local 16 files/121 passed (5 skipped by condition), CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; sms-attempt-race.pg.test.ts on real PostgreSQL (budget 3, 10 parallel): 3 comparisons and invalidated for a stale row and through confirmPhoneRegistration, confirmPhoneLink, completePhonePasswordReset with a findById barrier; two right codes -> one confirmation; a held late wrong code does not invalidate a confirmed challenge; mutation: 6 of 7 cases fail on main's code. Details were in progress.md on fix/feat-103-sms-attempt-atomicity (removed from main by this PR)."
+        },
+        {
+            "id": "feat-104",
+            "name": "Push Endpoint SSRF",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R03 (decision Д1: allowlist of hosts): any signed-in user can store any URL as a push endpoint and the server POSTs to it, with transport errors returned by the log endpoints; endpoints are checked against PUSH_ALLOWED_ENDPOINT_HOSTS (https only, exact host or suffix on a DNS label boundary, no userinfo, port, IP literal) on create/update and before every send; PUSH_MAX_SUBSCRIPTIONS_PER_USER caps subscriptions; test-push gets a rate limit; push log responses carry status, statusCode and a normalized reason instead of errorMessage/responseData; web-push redirect behaviour pinned by a test; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-104-push-endpoint-ssrf",
+            "dependencies": [],
             "status": "in_progress",
             "evidence": ""
         }
