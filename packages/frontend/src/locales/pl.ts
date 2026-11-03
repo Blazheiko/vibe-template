@@ -26,6 +26,32 @@ const pl: typeof en = {
         invalid: 'Ten link weryfikacyjny jest nieprawidłowy lub wygasł.',
         openAccount: 'Otwórz konto',
         goToLogin: 'Przejdź do logowania',
+        passwordPrompt: 'Wpisz hasło tego konta, aby potwierdzić adres e-mail.',
+        passwordLabel: 'Hasło',
+        passwordEmpty: 'Wpisz hasło',
+        passwordIncorrect: 'Hasło jest nieprawidłowe.',
+        confirm: 'Potwierdź adres e-mail',
+        wrongSession:
+            'Zaloguj się na konto, które poprosiło o powiązanie tego adresu, i otwórz link ponownie.',
+        sessionRevoked: 'Twoja sesja wygasła. Zaloguj się ponownie i otwórz link jeszcze raz.',
+    },
+
+    oauthLink: {
+        loading: 'Potwierdzamy logowanie...',
+        successTitle: 'Logowanie potwierdzone',
+        success: 'Metoda logowania została powiązana z Twoim kontem.',
+        errorTitle: 'Nie udało się potwierdzić logowania',
+        wrongSession:
+            'Otwórz ten link w przeglądarce, w której rozpocząłeś logowanie. Jeśli to niemożliwe, zaloguj się przez tego samego dostawcę w tej przeglądarce, aby otrzymać nowy link.',
+        used: 'Ten link został już użyty lub zastąpiony nowszym. Zaloguj się ponownie, aby otrzymać nowy link.',
+        expired: 'Ten link wygasł. Zaloguj się przez tego samego dostawcę, aby otrzymać nowy link.',
+        invalid: 'Ten link jest nieprawidłowy.',
+        emailChanged:
+            'Adres e-mail konta zmienił się po rozpoczęciu logowania. Zaloguj się ponownie.',
+        alreadyLinked: 'Ta metoda logowania jest już powiązana z kontem.',
+        failed: 'Nie udało się potwierdzić logowania. Spróbuj ponownie.',
+        openAccount: 'Otwórz konto',
+        goToLogin: 'Przejdź do logowania',
     },
 
     login: {
@@ -46,8 +72,13 @@ const pl: typeof en = {
         mobileSubtitle: 'Poznaj edukacyjny szablon aplikacji full-stack',
         socialLoginFailed:
             'Logowanie przez media społecznościowe nie powiodło się. Spróbuj ponownie.',
-        socialLoginEmailUnverified:
-            'Konto z tym adresem e-mail już istnieje. Zaloguj się za pomocą hasła.',
+        socialLoginLinkPending:
+            'Konto z tym adresem e-mail już istnieje. Wysłaliśmy na ten adres link potwierdzający: otwórz go w tej przeglądarce, aby dokończyć logowanie.',
+        socialLoginLinkRevoked:
+            'Ta metoda logowania nie jest już powiązana z kontem. Zaloguj się w inny sposób.',
+        socialLoginEmailChanged:
+            'Adres e-mail konta zmienił się podczas logowania. Spróbuj ponownie.',
+        socialLoginAlreadyLinked: 'Ta metoda logowania jest już powiązana z innym kontem.',
     },
 
     auth: {
@@ -165,6 +196,11 @@ const pl: typeof en = {
             notVerified: 'Adres e-mail niepotwierdzony',
             resend: 'Wyślij wiadomość weryfikacyjną ponownie',
             success: 'Wiadomość weryfikacyjna została wysłana',
+            pending: 'Adres e-mail czeka na potwierdzenie. Otwórz link, który na niego wysłaliśmy.',
+            resendPending: 'Wyślij link potwierdzający ponownie',
+            pendingSent: 'Link potwierdzający został wysłany',
+            noPendingEmail: 'Brak adresu e-mail do potwierdzenia. Powiąż go poniżej.',
+            pendingConflict: 'Ten adres e-mail jest już powiązany z innym kontem.',
         },
         security: {
             title: 'Bezpieczeństwo',

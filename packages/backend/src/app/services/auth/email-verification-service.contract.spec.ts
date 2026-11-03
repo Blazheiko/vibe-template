@@ -118,14 +118,18 @@ const record = (over: Record<string, unknown> = {}) => ({
 const linkRecord = (over: Record<string, unknown> = {}) =>
     record({ targetEmail: 'New@Example.com', ...over })
 
+/** feat-097: the link is opened from the current session of the account it belongs to. */
+const OWN_SESSION = { userId: 7n, presentedSessionToken: SESSION }
 const verify =
     (token = 'tok') =>
     (s: Service) =>
-        s.verifyEmail(token, IP)
+        s.verifyEmail(token, IP, OWN_SESSION)
 
 /** A verification token (not a link token) that is found, and a user to confirm. */
 function arrangeVerify(over: Record<string, unknown> = {}): void {
     verificationRepositoryMock.findByTokenHash.mockResolvedValue(record())
+    // feat-097: the owner check reads the account before the transaction.
+    userRepositoryMock.findById.mockResolvedValue(user(over))
     userRepositoryMock.lockById.mockResolvedValue(user(over))
     verificationRepositoryMock.markUsed.mockResolvedValue(record())
     userRepositoryMock.update.mockResolvedValue(user())
@@ -387,6 +391,20 @@ const ROWS: readonly Row[] = [
         name: 'verifyEmail · the user is gone',
         arrange: () => {
             verificationRepositoryMock.findByTokenHash.mockResolvedValue(record())
+            userRepositoryMock.findById.mockResolvedValue(undefined)
+        },
+        call: verify(),
+        error: err(404, 'not_found', 'User not found'),
+        after: () => {
+            expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
+            expect(verificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'verifyEmail · the user is gone by the time the lock is taken',
+        arrange: () => {
+            arrangeVerify()
             userRepositoryMock.lockById.mockResolvedValue(undefined)
         },
         call: verify(),

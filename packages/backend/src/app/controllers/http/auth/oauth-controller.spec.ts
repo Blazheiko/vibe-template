@@ -4,14 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // The OAuth callback is a browser navigation: every outcome must be a 302 back to the
 // frontend, never an error status that leaves the user on a raw JSON page.
 
-const { handleCallback, getConfiguredProviders } = vi.hoisted(() => ({
-    handleCallback: vi.fn(),
-    getConfiguredProviders: vi.fn(),
-}))
+const { handleCallback, getConfiguredProviders, confirmLink, resendFirstEmailLink } = vi.hoisted(
+    () => ({
+        handleCallback: vi.fn(),
+        getConfiguredProviders: vi.fn(),
+        confirmLink: vi.fn(),
+        resendFirstEmailLink: vi.fn(),
+    }),
+)
 
 vi.mock('#app/services/auth/oauth-service.js', () => ({
-    OAUTH_EMAIL_UNVERIFIED: 'oauth_email_unverified',
-    oauthService: { handleCallback, getConfiguredProviders },
+    OAUTH_LINK_REVOKED: 'oauth_link_revoked',
+    EMAIL_CHANGED: 'email_changed',
+    OAUTH_ALREADY_LINKED: 'oauth_already_linked',
+    oauthService: { handleCallback, getConfiguredProviders, confirmLink, resendFirstEmailLink },
 }))
 vi.mock('#config/oauth.js', () => ({
     default: {
@@ -153,22 +159,149 @@ describe('OAuthController.callback', () => {
         expect(context.logger.error).not.toHaveBeenCalled()
     })
 
-    it('adds the reason when an existing account needs a verified email', async () => {
-        handleCallback.mockResolvedValue(
-            Result.err({
-                _tag: 'Conflict',
-                message: 'An account with this email already exists.',
-                reason: 'oauth_email_unverified',
-            }),
+    // feat-097: the browser session is what a mailed link confirmation is bound to.
+    it('passes the browser session id to the service', async () => {
+        handleCallback.mockResolvedValue(Result.ok({ redirectUrl: '/?oauth=success' }))
+        const context = createContext({ code: 'c', state: 'state-1' })
+
+        await OAuthController.callback(context)
+
+        expect(handleCallback).toHaveBeenCalledWith(
+            'google',
+            'c',
+            'state-1',
+            'state-1',
+            null,
+            context.auth,
+            's1',
         )
+    })
+
+    it.each([
+        ['BadRequest', 'oauth_link_revoked'],
+        ['Conflict', 'email_changed'],
+        ['Conflict', 'oauth_already_linked'],
+    ])('adds the reason of a %s %s to the error redirect', async (tag, reason) => {
+        handleCallback.mockResolvedValue(Result.err({ _tag: tag, message: 'x', reason }))
         const context = createContext({ code: 'c', state: 'state-1' })
 
         await OAuthController.callback(context)
 
         expect(context.responseData.status).toBe(302)
-        expect(context.headers.get('Location')).toBe(
-            '/?error=oauth_failed&reason=oauth_email_unverified',
+        expect(context.headers.get('Location')).toBe(`/?error=oauth_failed&reason=${reason}`)
+    })
+
+    it.each([['oauth_email_unverified'], ['used_token'], ['anything_else']])(
+        'does not put an unlisted reason (%s) into the redirect',
+        async (reason) => {
+            handleCallback.mockResolvedValue(Result.err({ _tag: 'Conflict', message: 'x', reason }))
+            const context = createContext({ code: 'c', state: 'state-1' })
+
+            await OAuthController.callback(context)
+
+            expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
+        },
+    )
+})
+
+const createJsonContext = (options: {
+    payload?: unknown
+    sessionId?: string | null
+    userId?: string | null
+    presentedToken?: string
+}) => {
+    const userId = options.userId ?? null
+    return {
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        signal: new AbortController().signal,
+        httpData: { params: {}, query: {}, payload: options.payload ?? null },
+        responseData: { status: 200, setHeader: vi.fn() },
+        session: {
+            sessionInfo:
+                options.sessionId === null ? null : { id: options.sessionId ?? 's1', data: {} },
+        },
+        auth: {
+            check: () => userId !== null,
+            getUserId: () => userId,
+            getPresentedUserToken: () => options.presentedToken,
+        },
+    } as never as Parameters<typeof OAuthController.confirmLink>[0]
+}
+
+describe('OAuthController.confirmLink', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    it('passes the token, auth and session id and answers the service value', async () => {
+        confirmLink.mockResolvedValue(Result.ok({ status: 'success' }))
+        const context = createJsonContext({ payload: { token: 'tok' } })
+
+        const response = await OAuthController.confirmLink(context)
+
+        expect(confirmLink).toHaveBeenCalledWith('tok', context.auth, 's1')
+        expect(response).toEqual({ status: 'success' })
+    })
+
+    it('passes null without a session', async () => {
+        confirmLink.mockResolvedValue(Result.ok({ status: 'success' }))
+        const context = createJsonContext({ payload: { token: 'tok' }, sessionId: null })
+
+        await OAuthController.confirmLink(context)
+
+        expect(confirmLink).toHaveBeenCalledWith('tok', context.auth, null)
+    })
+
+    it('maps a wrong-session refusal to 403 with its reason', async () => {
+        confirmLink.mockResolvedValue(
+            Result.err({
+                _tag: 'Forbidden',
+                message: 'Open this link in the browser where you started signing in',
+                reason: 'oauth_link_wrong_session',
+            }),
         )
+        const context = createJsonContext({ payload: { token: 'tok' } })
+
+        const response = await OAuthController.confirmLink(context)
+
+        expect(context.responseData.status).toBe(403)
+        expect(response).toMatchObject({ status: 'error', reason: 'oauth_link_wrong_session' })
+    })
+})
+
+describe('OAuthController.resendEmailLink', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    it('answers 401 without a signed-in user and does not call the service', async () => {
+        const context = createJsonContext({})
+
+        await OAuthController.resendEmailLink(context)
+
+        expect(context.responseData.status).toBe(401)
+        expect(resendFirstEmailLink).not.toHaveBeenCalled()
+    })
+
+    it('passes the user id and the presented session token', async () => {
+        resendFirstEmailLink.mockResolvedValue(Result.ok({ message: 'Verification email sent' }))
+        const context = createJsonContext({ userId: '7', presentedToken: 'presented' })
+
+        const response = await OAuthController.resendEmailLink(context)
+
+        expect(resendFirstEmailLink).toHaveBeenCalledWith(7n, 'presented')
+        expect(response).toEqual({ status: 'success', message: 'Verification email sent' })
+    })
+
+    it('maps a service error', async () => {
+        resendFirstEmailLink.mockResolvedValue(
+            Result.err({ _tag: 'Conflict', message: 'Email is already linked to another account' }),
+        )
+        const context = createJsonContext({ userId: '7', presentedToken: 'presented' })
+
+        await OAuthController.resendEmailLink(context)
+
+        expect(context.responseData.status).toBe(409)
     })
 })
 

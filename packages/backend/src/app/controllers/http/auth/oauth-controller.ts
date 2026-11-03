@@ -45,7 +45,7 @@ const redirectToError = (
     reportControllerError(context, error)
     const reason =
         'reason' in error &&
-        error.reason !== undefined &&
+        typeof error.reason === 'string' &&
         (REDIRECT_REASONS as readonly string[]).includes(error.reason)
             ? error.reason
             : null

@@ -4,6 +4,8 @@ import { apiPath } from './api-path'
 import { adminQueryString } from './admin-query'
 import type {
     OAuthProvidersResponse,
+    OAuthLinkConfirmResponse,
+    EmailLinkResendResponse,
     UploadAvatarResponse,
     DeleteAvatarResponse,
     InitResponse,
@@ -39,6 +41,7 @@ import type {
     LoginInput,
     ResetPasswordInput,
     VerifyEmailInput,
+    OAuthLinkConfirmInput,
     AdminKnowledgeBaseListQueryInput,
     AdminOnlineHistoryListQueryInput,
     AdminUserListQueryInput,
@@ -63,6 +66,26 @@ const isSuccessfulResponse = <T extends Record<string, unknown>>(
 export const authApi = {
     getOAuthProviders: async (): Promise<ApiResponse<OAuthProvidersResponse>> => {
         return baseApi.http<OAuthProvidersResponse>('GET', apiPath('auth/oauth/providers'))
+    },
+
+    /**
+     * feat-097: the mailed link that confirms an OAuth link. It works only in the browser
+     * session that started the sign-in, which is usually still anonymous: `public` recovery.
+     */
+    confirmOAuthLink: async (
+        body: OAuthLinkConfirmInput,
+    ): Promise<ApiResponse<OAuthLinkConfirmResponse>> => {
+        return baseApi.http<OAuthLinkConfirmResponse>(
+            'POST',
+            apiPath('auth/oauth/link/confirm'),
+            body,
+            { csrfRecovery: 'public' },
+        )
+    },
+
+    /** feat-097: send again the link that confirms the address of an account without one. */
+    resendOAuthEmailLink: async (): Promise<ApiResponse<EmailLinkResendResponse>> => {
+        return baseApi.http<EmailLinkResendResponse>('POST', apiPath('auth/oauth/email/resend'))
     },
 
     login: async (body: LoginInput): Promise<ApiResponse<LoginResponse>> => {

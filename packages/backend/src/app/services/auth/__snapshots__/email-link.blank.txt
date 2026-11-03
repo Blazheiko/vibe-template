@@ -3,10 +3,12 @@ subject: Confirm your new email
 --- text ---
 Hello.
 
-Please confirm this new email address for your Vibe Template account by opening this link:
+Please confirm this new email address for your Vibe Template account by opening this link
+in the browser where you are signed in to that account:
 https://app.example.com/verify-email?token=<TOKEN>
 
 This link will expire in 24 hours.
+If you did not request this, ignore this email.
 --- html ---
 <!DOCTYPE html>
 <html lang="en">
@@ -41,7 +43,7 @@ This link will expire in 24 hours.
                         Hello.
                       </p>
                       <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:#5E6977;">
-                        Confirm this email to finish linking it to your Vibe Template account.
+                        Confirm this email to finish linking it to your Vibe Template account. Open the link in the browser where you are signed in to that account.
                       </p>
                       <p style="margin:0 0 28px;font-size:15px;line-height:1.65;color:#5E6977;word-break:break-word;">
                         <a href="https://app.example.com/verify-email?token=<TOKEN>" style="color:#A8627A;text-decoration:underline;">
@@ -49,7 +51,7 @@ This link will expire in 24 hours.
                         </a>
                       </p>
                       <div style="padding-top:20px;border-top:1px solid #D8DDE6;font-size:14px;line-height:1.7;color:#5E6977;">
-                        This link will expire in 24 hours. If you did not request this change, you can safely ignore this email.
+                        This link will expire in 24 hours. If you did not request this, ignore this email: the link does nothing unless you are signed in to the account that asked for it.
                       </div>
                     </td>
                   </tr>

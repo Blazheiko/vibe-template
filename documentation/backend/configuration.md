@@ -142,6 +142,7 @@
 | `AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS`             | Інтервал, не частіше за який лист підтвердження надсилається повторно після входу в непідтверджений акаунт (мс) | `300000` |
 | `AUTH_RESET_PASSWORD_MAX_ATTEMPTS_PER_IP_PER_HOUR`     | Спроби скидання пароля за токеном з одного IP                                                                   | `20`     |
 | `AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR`       | Спроби підтвердження email за токеном з одного IP                                                               | `20`     |
+| `AUTH_VERIFY_EMAIL_PASSWORD_MAX_ATTEMPTS_PER_HOUR`     | Неправильні паролі на посиланні підтвердження реєстрації для одного акаунта                                     | `5`      |
 
 Наявні `AUTH_SMS_*`, `AUTH_EMAIL_REGISTER_*` і `AUTH_EMAIL_LINK_*` (розділ «Автентифікація: email і телефон» нижче) теж потрапляють у реєстр і з тією самою валідацією.
 
@@ -183,22 +184,23 @@
 
 ## OAuth
 
-| Змінна                       | Призначення                              | Default                | Обов'язковість (умова)           | Читає файл                                                                                            |
-| ---------------------------- | ---------------------------------------- | ---------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `GOOGLE_CLIENT_ID`           | Client ID Google                         | `""`                   | Ні (потрібна для Google OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GOOGLE_CLIENT_SECRET`       | Client secret Google                     | `""`                   | Ні (потрібна для Google OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GOOGLE_REDIRECT_URI`        | Redirect URI Google                      | `""`                   | Ні (потрібна для Google OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `FACEBOOK_CLIENT_ID`         | Client ID Facebook                       | `""`                   | Ні (потрібна для Facebook OAuth) | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `FACEBOOK_CLIENT_SECRET`     | Client secret Facebook                   | `""`                   | Ні (потрібна для Facebook OAuth) | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `FACEBOOK_REDIRECT_URI`      | Redirect URI Facebook                    | `""`                   | Ні (потрібна для Facebook OAuth) | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GITHUB_CLIENT_ID`           | Client ID GitHub                         | `""`                   | Ні (потрібна для GitHub OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GITHUB_CLIENT_SECRET`       | Client secret GitHub                     | `""`                   | Ні (потрібна для GitHub OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GITHUB_REDIRECT_URI`        | Redirect URI GitHub                      | `""`                   | Ні (потрібна для GitHub OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GITLAB_CLIENT_ID`           | Client ID GitLab                         | `""`                   | Ні (потрібна для GitLab OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GITLAB_CLIENT_SECRET`       | Client secret GitLab                     | `""`                   | Ні (потрібна для GitLab OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `GITLAB_REDIRECT_URI`        | Redirect URI GitLab                      | `""`                   | Ні (потрібна для GitLab OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `OAUTH_FRONTEND_SUCCESS_URL` | Куди перенаправити після успішного входу | `/?oauth=success`      | Ні                               | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
-| `OAUTH_FRONTEND_ERROR_URL`   | Куди перенаправити після помилки         | `/?error=oauth_failed` | Ні                               | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| Змінна                            | Призначення                                                   | Default                | Обов'язковість (умова)           | Читає файл                                                                                            |
+| --------------------------------- | ------------------------------------------------------------- | ---------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GOOGLE_CLIENT_ID`                | Client ID Google                                              | `""`                   | Ні (потрібна для Google OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GOOGLE_CLIENT_SECRET`            | Client secret Google                                          | `""`                   | Ні (потрібна для Google OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GOOGLE_REDIRECT_URI`             | Redirect URI Google                                           | `""`                   | Ні (потрібна для Google OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `FACEBOOK_CLIENT_ID`              | Client ID Facebook                                            | `""`                   | Ні (потрібна для Facebook OAuth) | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `FACEBOOK_CLIENT_SECRET`          | Client secret Facebook                                        | `""`                   | Ні (потрібна для Facebook OAuth) | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `FACEBOOK_REDIRECT_URI`           | Redirect URI Facebook                                         | `""`                   | Ні (потрібна для Facebook OAuth) | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GITHUB_CLIENT_ID`                | Client ID GitHub                                              | `""`                   | Ні (потрібна для GitHub OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GITHUB_CLIENT_SECRET`            | Client secret GitHub                                          | `""`                   | Ні (потрібна для GitHub OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GITHUB_REDIRECT_URI`             | Redirect URI GitHub                                           | `""`                   | Ні (потрібна для GitHub OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GITLAB_CLIENT_ID`                | Client ID GitLab                                              | `""`                   | Ні (потрібна для GitLab OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GITLAB_CLIENT_SECRET`            | Client secret GitLab                                          | `""`                   | Ні (потрібна для GitLab OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `GITLAB_REDIRECT_URI`             | Redirect URI GitLab                                           | `""`                   | Ні (потрібна для GitLab OAuth)   | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `OAUTH_FRONTEND_SUCCESS_URL`      | Куди перенаправити після успішного входу                      | `/?oauth=success`      | Ні                               | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `OAUTH_FRONTEND_ERROR_URL`        | Куди перенаправити після помилки                              | `/?error=oauth_failed` | Ні                               | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
+| `OAUTH_FRONTEND_LINK_PENDING_URL` | Куди перенаправити, коли прив'язку чекає підтвердження листом | `/?oauth=link_pending` | Ні                               | [oauth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/oauth.ts) |
 
 ## База даних
 

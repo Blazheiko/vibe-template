@@ -11,6 +11,7 @@ import AdminUserOnlineView from '@/views/admin/AdminUserOnlineView.vue'
 import AdminHistoryOnlineView from '@/views/admin/AdminHistoryOnlineView.vue'
 import VerifyEmailView from '@/views/VerifyEmailView.vue'
 import ResetPasswordView from '@/views/ResetPasswordView.vue'
+import OAuthLinkConfirmView from '@/views/OAuthLinkConfirmView.vue'
 import { useUserStore, waitForApp } from '@/stores/user'
 
 // Не вызывайте store вне функции навигационной защиты
@@ -37,6 +38,13 @@ const routes: RouteRecordRaw[] = [
         path: '/verify-email',
         name: 'VerifyEmail',
         component: VerifyEmailView,
+        meta: { hideHeader: true },
+    },
+    {
+        // feat-097: the mailed link that confirms an OAuth sign-in into an existing account.
+        path: '/oauth/link/confirm',
+        name: 'OAuthLinkConfirm',
+        component: OAuthLinkConfirmView,
         meta: { hideHeader: true },
     },
     {

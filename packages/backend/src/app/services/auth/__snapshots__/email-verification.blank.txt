@@ -3,10 +3,12 @@ subject: Confirm your email
 --- text ---
 Hello.
 
-Please confirm your email address by opening this link:
+Please confirm your email address by opening this link
+and entering the password you chose when you signed up:
 https://app.example.com/verify-email?token=<TOKEN>
 
 This link will expire in 24 hours.
+If you did not create an account, ignore this email.
 --- html ---
 <!DOCTYPE html>
 <html lang="en">
@@ -44,7 +46,7 @@ This link will expire in 24 hours.
                         Hello.
                       </p>
                       <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:#5E6977;">
-                        Finish setting up your Vibe Template account by confirming this email address. The button below will take you straight back into the app.
+                        Finish setting up your Vibe Template account by confirming this email address. You will be asked for the password you chose when you signed up.
                       </p>
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 28px;">
                         <tr>
@@ -74,7 +76,7 @@ This link will expire in 24 hours.
                         </tr>
                       </table>
                       <div style="padding-top:20px;border-top:1px solid #D8DDE6;font-size:14px;line-height:1.7;color:#5E6977;">
-                        This link will expire in 24 hours. If you did not create an account, you can safely ignore this email.
+                        This link will expire in 24 hours. If you did not create an account, ignore this email: without the account password the link confirms nothing.
                       </div>
                     </td>
                   </tr>

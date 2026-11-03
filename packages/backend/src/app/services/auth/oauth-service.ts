@@ -66,9 +66,6 @@ function getConfiguredProviders(): OAuthProvider[] {
     return SUPPORTED_PROVIDERS.filter(isProviderConfigured)
 }
 
-// Shown to the user (via the frontend) when an existing account would be linked
-// through an email the provider does not vouch for.
-export const OAUTH_EMAIL_UNVERIFIED = 'oauth_email_unverified'
 // feat-097: the reasons a callback or a link confirmation can end with.
 export const OAUTH_LINK_REVOKED = 'oauth_link_revoked'
 export const OAUTH_LINK_WRONG_SESSION = 'oauth_link_wrong_session'
