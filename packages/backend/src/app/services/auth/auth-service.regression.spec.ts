@@ -243,36 +243,92 @@ describe('authService legacy regressions', () => {
         }
     })
 
-    it('answers a login to an account without a local password like a wrong password', async () => {
-        consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
-        userRepositoryMock.findByEmail.mockResolvedValue({
-            id: 7n,
-            email: 'user@example.com',
-            emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
-            password: null,
-            sessionToken: 'session-token',
+    // Every miss runs scrypt once, like a wrong password: a fast answer would tell that the
+    // address is not registered or belongs to an OAuth-only account.
+    describe.each([
+        { label: 'an unknown email', user: undefined },
+        {
+            label: 'an account without a local password',
+            user: {
+                id: 7n,
+                email: 'user@example.com',
+                emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
+                password: null,
+                sessionToken: 'session-token',
+            },
+        },
+        {
+            label: 'an account with an empty password hash',
+            user: {
+                id: 7n,
+                email: 'user@example.com',
+                emailVerifiedAt: new Date('2026-05-30T00:00:00.000Z'),
+                password: '',
+                sessionToken: 'session-token',
+            },
+        },
+    ])('login to $label', ({ user }) => {
+        async function attemptLogin() {
+            const { authService } = await loadAuthService()
+            return authService.login(
+                {
+                    identifier: 'user@example.com',
+                    password: 'secret123',
+                    token: '',
+                },
+                authMock as any,
+                sessionMock as any,
+                { ipAddress: '127.0.0.1' },
+            )
+        }
+
+        beforeEach(() => {
+            userRepositoryMock.findByEmail.mockResolvedValue(user)
+            hashPasswordMock.mockResolvedValue('dummy-hash')
         })
 
-        const { authService } = await loadAuthService()
-        const result = await authService.login(
-            {
-                identifier: 'user@example.com',
-                password: 'secret123',
-                token: '',
-            },
-            authMock as any,
-            sessionMock as any,
-            { ipAddress: '127.0.0.1' },
-        )
+        it('checks the password against the dummy hash and answers like a wrong password', async () => {
+            validatePasswordMock.mockResolvedValue(false)
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error).toEqual({
-                _tag: 'Unauthorized',
-                message: 'Invalid email or password',
-            })
-        }
-        expect(validatePasswordMock).not.toHaveBeenCalled()
+            const result = await attemptLogin()
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) {
+                expect(result.error).toEqual({
+                    _tag: 'Unauthorized',
+                    message: 'Invalid email or password',
+                })
+            }
+            expect(validatePasswordMock).toHaveBeenCalledTimes(1)
+            expect(validatePasswordMock).toHaveBeenCalledWith('secret123', 'dummy-hash')
+            expect(authMock.login).not.toHaveBeenCalled()
+        })
+
+        it('never signs in, even when the dummy hash check passes', async () => {
+            validatePasswordMock.mockResolvedValue(true)
+
+            const result = await attemptLogin()
+
+            expect(Result.isError(result)).toBe(true)
+            if (Result.isError(result)) {
+                expect(result.error).toEqual({
+                    _tag: 'Unauthorized',
+                    message: 'Invalid email or password',
+                })
+            }
+            expect(authMock.login).not.toHaveBeenCalled()
+            expect(resetAuthThrottleMock).not.toHaveBeenCalled()
+        })
+
+        it('hashes the dummy password once for repeated misses', async () => {
+            validatePasswordMock.mockResolvedValue(false)
+
+            await attemptLogin()
+            await attemptLogin()
+
+            expect(hashPasswordMock).toHaveBeenCalledTimes(1)
+            expect(validatePasswordMock).toHaveBeenCalledTimes(2)
+        })
     })
 
     it('requires the current password before changing an existing password', async () => {

@@ -174,6 +174,37 @@ describe('authService phone foundation', () => {
         expect(Result.isOk(result)).toBe(true)
     })
 
+    it('checks an unknown phone against the dummy hash and answers like a wrong password', async () => {
+        consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+        userRepositoryMock.findByPhone.mockResolvedValue(undefined)
+        hashPasswordMock.mockResolvedValue('dummy-hash')
+        validatePasswordMock.mockResolvedValue(false)
+
+        const { authService } = await loadAuthService()
+        const result = await authService.login(
+            {
+                identifier: '+1 415 555 0123',
+                password: 'secret123',
+                token: '',
+            },
+            authMock as any,
+            sessionMock as any,
+            { ipAddress: '127.0.0.1' },
+        )
+
+        expect(userRepositoryMock.findByPhone).toHaveBeenCalledWith('+14155550123')
+        expect(validatePasswordMock).toHaveBeenCalledTimes(1)
+        expect(validatePasswordMock).toHaveBeenCalledWith('secret123', 'dummy-hash')
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toEqual({
+                _tag: 'Unauthorized',
+                message: 'Invalid email or password',
+            })
+        }
+        expect(authMock.login).not.toHaveBeenCalled()
+    })
+
     it('starts phone registration without storing a pre-account password hash', async () => {
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
         userRepositoryMock.findByPhone.mockResolvedValue(undefined)
