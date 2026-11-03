@@ -528,9 +528,9 @@ RETURNING *`.
 | ---- | -------- | ---- | ----------- |
 | R01  | feat-102 | #345 | done        |
 | R02  | feat-103 | #347 | done        |
-| R03  | feat-104 |      | in_progress |
+| R03  | feat-104 | #349 | done        |
 | R06a |          |      | not-started |
-| R11a |          |      | not-started |
+| R11a | feat-105 |      | in_progress |
 | R04  |          |      | not-started |
 | R05  |          |      | not-started |
 | R06b |          |      | not-started |
