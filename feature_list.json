@@ -10,13 +10,7 @@
             "status",
             "evidence"
         ],
-        "status_values": [
-            "not-started",
-            "in_progress",
-            "blocked",
-            "review",
-            "done"
-        ],
+        "status_values": ["not-started", "in_progress", "blocked", "review", "done"],
         "notes": "owner = team member or agent name responsible. branch = git branch where progress.md and session-handoff.md for this feature live. Only the owner edits the feature's row; everyone else opens a PR to change it."
     },
     "features": [
@@ -106,9 +100,7 @@
             "description": "VitePress documentation v2 pages (stage 6 of docs/plan/vitepress-documentation-tasks.md, T6.1-T6.10d): controllers/services, repositories/transformers, validation, websocket, storage, mail/push, AI, observability, caching/ETag, testing, deployment, shared/frontend/playground, workflow and reference pages. One page per PR.",
             "owner": "Blazheiko",
             "branch": "feat/docs-v2",
-            "dependencies": [
-                "feat-003"
-            ],
+            "dependencies": ["feat-003"],
             "status": "done",
             "evidence": "Stage 6 pages merged via PRs #9, #10, #13, #14, #15, #16, #17, #18; Pages deploy run 39391819578; evidence in progress.md"
         },
@@ -128,9 +120,7 @@
             "description": "Redis-backed rate-limit store so HTTP L1, per-route and WS upgrade limits are shared across instances (leftover of item 2 / finding C-2). Today the counter lives in process memory; the nginx edge limit in documentation/backend/deployment.md is the workaround. Details: docs/plan/code-issues-found-during-docs.md item 2, docs/plan/ws-upgrade-rate-limit-plan.md; plan: docs/plan/redis-rate-limit-plan.md; tasks: docs/plan/redis-rate-limit-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/redis-rate-limit",
-            "dependencies": [
-                "feat-005"
-            ],
+            "dependencies": ["feat-005"],
             "status": "done",
             "evidence": "PR #32 (feat/redis-rate-limit, review fixes 94c6963): typecheck, lint, backend 466, frontend 41, test:redis 16 (CI job redis-tests green), docs:build + docs:verify, manual check with two backends on one Redis; evidence in progress.md on feat/redis-rate-limit"
         },
@@ -180,9 +170,7 @@
             "description": "CI workflow ci.yml (format:check, typecheck, lint, test, e2e on all Playwright projects, coverage artifact), vitest testTimeout, pnpm in Playwright webServer (code-issues items 36, 37, 38). Roadmap F01: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/app-ci",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #55 (merge 7e649c6): ci.yml quality + e2e, first run without caches green (run 40089711640), negative controls red at lint (40089935251) and test (40090062773), coverage artifact, testTimeout 15 s, pnpm in Playwright; branch protection on main requires quality and e2e (strict); evidence in progress.md on feat/app-ci"
         },
@@ -192,9 +180,7 @@
             "description": ".dockerignore with canary checks of builder stage and image layers, non-root user app, HEALTHCHECK, exec-form CMD node, migrations as one-shot runs (code-issues items 28, 29, 30). Roadmap F02: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/docker-hardening",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #67 (merge 1d10df8): .dockerignore (context 83.45 MB -> 124.7 kB, build 337 -> 172 s), user app uid 999, HEALTHCHECK checking the ping body, exec CMD, one-shot migrations; canary absent in builder stage, layers and history (positive controls); healthy/unhealthy scenarios; docker stop exit 0; docs:build + docs:verify; evidence in progress.md on feat/docker-hardening"
         },
@@ -204,9 +190,7 @@
             "description": "401 before res.upgrade without a live session; Cache-Control: no-store on API responses by default (code-issues items 18, 42). Roadmap F03: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/response-safety",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #69 (merge 73184a3): 401 before WS upgrade without a session + frontend refreshes the token after a failed handshake (bounded, e2e negative control 28 -> <=2 refreshes), Cache-Control no-store on API responses; backend 715, frontend 50, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual check on a running backend; evidence in progress.md on feat/response-safety"
         },
@@ -216,9 +200,7 @@
             "description": "test-push -> POST, declarative auth_guard on push-subscriptions and role guard on admin WS route, subscription transfer only with matching p256dh/auth (decision R2) (code-issues items 47, 48, 67). Roadmap F04: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/push-access",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #59: POST test-push with body schema, auth_guard on push routes except vapid-public-key, ws_admin_guard on admin WS group, transfer only with matching keys (409 otherwise), 404 for non-numeric subscription ids; route access matrix test with negative control; backend 686, frontend 45, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual check on a disposable DB incl. WS; evidence in progress.md on feat/push-access"
         },
@@ -228,10 +210,7 @@
             "description": "push-notification-log-repository, findByUserIdWithLogs in 2 queries keeping the 5-latest-logs contract, SQL aggregates for statistics, bounded parallel send with batch log insert (code-issues items 20, 21, 49). Roadmap F05: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/push-data-access",
-            "dependencies": [
-                "feat-021",
-                "feat-036"
-            ],
+            "dependencies": ["feat-021", "feat-036"],
             "status": "done",
             "evidence": "PR #61: push-notification-log-repository, findByUserIdWithLogs in 2 queries, SQL statistics, sendToUser with concurrency 5 and one batch write; test:pg 15 (deep-equal to verbatim legacy copies, query counts), sender unit 5, backend 691, frontend 45, typecheck, lint, build, docs:build + docs:verify, manual HTTP check on a disposable DB; new code-issues item 72; evidence in progress.md on feat/push-data-access"
         },
@@ -241,9 +220,7 @@
             "description": "buildKey in deleteFromS3, magic-bytes file type check, publicRead avatars (decision R1), restricted corsS3.xml (code-issues items 32, 44, 45, 46). Roadmap F06: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/storage-hardening",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #71 (merge fa1342d): buildObjectKey + deleteFromS3 with relative keys, detectImageType (magic bytes) for avatars and KB screenshots, public avatars, GET/HEAD-only bucket CORS; specs RED first, backend 731, frontend 50, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual upload against MinIO; evidence in progress.md on feat/storage-hardening"
         },
@@ -253,9 +230,7 @@
             "description": "WS event prefix from VITE_API_PATH_PREFIX, remove dead WS code (user-storage, unreachable branch, websocket-base reconnect) (code-issues items 17, 19). Roadmap F07: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/ws-cleanup",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #73 (merge caf4c99): WS events from VITE_API_PATH_PREFIX, pending-request check fixed (feat-009 follow-up), user-storage/unreachable branch/WebsocketBase removed; frontend 58, backend 731, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual WS with API_PATH_PREFIX=v1; new code-issues item 73; evidence in progress.md on feat/ws-cleanup"
         },
@@ -265,9 +240,7 @@
             "description": "controllers and ws-coordinator go through services, complete repositories barrel, no logger in repositories, clearEmbedding in a transaction (code-issues items 22, 24, 25). Roadmap F08: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/layering-cleanup",
-            "dependencies": [
-                "feat-036"
-            ],
+            "dependencies": ["feat-036"],
             "status": "done",
             "evidence": "PR #63 (merge 0dd6975): adminUserService, userRoleService for ws-coordinator and admin_guard, full repositories barrel, no logger in repositories, clearEmbedding in one UPDATE; layering.spec.ts with negative control; test:pg 18, backend 703, frontend 45, typecheck, lint, build, docs:build + docs:verify; manual check on a disposable DB; evidence in progress.md on feat/layering-cleanup"
         },
@@ -277,9 +250,7 @@
             "description": "ArkType errors as messages[{path,message}], remove dead validation/controller code, ADR 0001 leftovers decided (code-issues items 26, 27). Roadmap F09: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/validation-cleanup",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #65 (merge 18af90b): per-field issues in 422/WS details, dead validation code removed, ADR 0001 leftovers decided; flip missed in chore PR #66, recorded in the final chore PR"
         },
@@ -289,9 +260,7 @@
             "description": "validate AI_TEXT_DRIVER, AI_REQUEST_TIMEOUT_MS with AbortSignal and cancellation on HTTP abort/WS close, prompt-controller through AI service with domain errors 502/504 (code-issues items 23, 50, 51). Roadmap F10: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/ai-reliability",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #75 (merge a00fdcf): AI_TEXT_DRIVER validated, AI_REQUEST_TIMEOUT_MS + caller signal in all adapters, HttpContext/WsContext signals (Support AI and prompt test cancel), promptTestService with upstream_error 502 / upstream_timeout 504; backend 763, frontend 58, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual against a fake provider; evidence in progress.md on feat/ai-reliability"
         },
@@ -301,9 +270,7 @@
             "description": "usage for translation, prompt test and embeddings; nullable token columns (NULL = provider did not report usage) with migration and contracts (code-issues items 53). Roadmap F11: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/ai-usage-accounting",
-            "dependencies": [
-                "feat-027"
-            ],
+            "dependencies": ["feat-027"],
             "status": "done",
             "evidence": "PR #77 (merge 551a7f8): migration llm_usage_nullable (NULL = unknown usage, user_id NULL for indexing, SUPPORT_EMBEDDING), translation/prompt test/embeddings recorded, adapters record NULL instead of dropping, callsWithoutUsage; drizzle-kit check, migration on a DB with rows, test:pg 21, backend 771, frontend 58, e2e 12, typecheck, lint, build, docs; evidence in progress.md on feat/ai-usage-accounting"
         },
@@ -313,9 +280,7 @@
             "description": "Support AI language from profile/request, embedding dimension check, batched reindexAll, distance threshold, prompt cache TTL (code-issues items 43, 52, 54). Roadmap F12: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/ai-quality",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #79 (merge 074c648): answer language from the UI locale with SUPPORT_DEFAULT_LANGUAGE, embedding dimension check, batched reindexAll, SUPPORT_SEARCH_MAX_DISTANCE, prompt cache TTL with background refresh; backend 797, test:pg 22, frontend 58, e2e 12, typecheck, lint, build, docs:build + docs:verify; evidence in progress.md on feat/ai-quality"
         },
@@ -325,9 +290,7 @@
             "description": "LOG_LEVEL, requestId/userId in error logs, GET /ready with DB and Redis checks, HEALTHCHECK on /ready (code-issues items 33, 34, 35). Roadmap F13: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/observability",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #81 (merge df9c591): LOG_LEVEL, requestId from the first request step and userId in request logs (handleError child logger), GET /ready with DB+Redis checks, HEALTHCHECK on /api/ready, pg.Pool error no longer crashes the server; backend 815, test:redis 31, frontend 58, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual DB/Redis outage and image health checks; evidence in progress.md on feat/observability"
         },
@@ -337,9 +300,7 @@
             "description": "immutable only for /assets, RFC 9110 If-None-Match, bounded RAM cache with streaming for large files, precompressed br/gz (code-issues items 39, 40, 41). Roadmap F14: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/static-caching",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #83 (merge 9d46bcf): immutable only for /assets, RFC 9110 If-None-Match, memory budget with streaming from disk, br/gzip variants at startup; backend 841, test:redis 31, frontend 58, e2e 12, typecheck, lint, build, docs:build + docs:verify; manual on real uWS with the frontend build and a 5 MiB file; evidence in progress.md on feat/static-caching"
         },
@@ -349,9 +310,7 @@
             "description": "real shared tests, guards export, branded EntityId (code-issues items 56, 57, 58). Roadmap F15: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/shared-cleanup",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #85 (merge ecbf624): 13 real shared tests, guards re-exported from the root, branded EntityId with a type test; shared 13, backend 843, frontend 58, e2e 12, typecheck, lint, build, docs:build + docs:verify; evidence in progress.md on feat/shared-cleanup"
         },
@@ -361,9 +320,7 @@
             "description": "relative VITE_BASE_URL fallback, typed VITE_* vars, playground prefix/wss/no fake queue (decision R4), /health in playground (code-issues items 59, 61, 62, 63, 64). Roadmap F16: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/frontend-playground",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #87 (merge 16d0ff5): same-origin VITE_BASE_URL fallback, typed VITE_*, prefix-aware playground (routes, /ping, proxy), wss, no fake queue; playground 11 tests, backend 843, frontend 58, e2e 12, typecheck, lint, build, docs:build + docs:verify; evidence in progress.md on feat/frontend-playground"
         },
@@ -373,9 +330,7 @@
             "description": "remove is_admin, role is the only source (decision R5): code first, then DROP COLUMN migration (code-issues items 66). Roadmap F17: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/drop-is-admin",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #89 (merge e303033): isAdmin removed from code and schema, migration 20261024171546_drop_users_is_admin; 0 is_admin/role mismatches on dev DB; fresh-DB migrate + seed + admin login 200 / user 403; typecheck, lint, test, build, e2e, docs:build + docs:verify; evidence in progress.md on feat/drop-is-admin"
         },
@@ -385,10 +340,7 @@
             "description": "enable strictTypeChecked rules for backend, frontend, api-playground (three PRs) (code-issues items 68). Roadmap F18: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/eslint-strict",
-            "dependencies": [
-                "feat-010",
-                "feat-018"
-            ],
+            "dependencies": ["feat-010", "feat-018"],
             "status": "done",
             "evidence": "PRs #91 (backend), #92 (frontend), #93 (api-playground): strictTypeChecked for all three, relaxations with reasons, dead root blocks removed; typecheck, lint, test (+redis, pg), build, e2e, docs:build + docs:verify; evidence in progress.md on feat/eslint-strict"
         },
@@ -398,9 +350,7 @@
             "description": "*.pg.test.ts convention, test:pg, temporary DB with migrations, pg-tests.yml with pgvector/pgvector:pg16 (prerequisite for feat-022 and feat-025). Roadmap F19: docs/plan/open-issues-roadmap.md; tasks: docs/plan/open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/pg-test-harness",
-            "dependencies": [
-                "feat-010"
-            ],
+            "dependencies": ["feat-010"],
             "status": "done",
             "evidence": "PR #57: *.pg.test.ts + test:pg with a throwaway database (pgvector, migrations, dropped in teardown), smoke test, pg-tests.yml green (3 passed, not skipped); local negative control still drops the database; pnpm test 671 without pg tests; typecheck, lint, format:check, docs:build + docs:verify; evidence in progress.md on feat/pg-test-harness"
         },
@@ -410,9 +360,7 @@
             "description": "fixes from the post-plan review (range 0655aca..main): WS responses under a non-api prefix, xAI abort/timeout swallowed (high); push log loss on deactivate failure, static stream hang on shrunk file, 304 without Vary, adapter timeout tests, strict VITE_* typing (medium); low findings and AC text sync in open-issues-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/review-fixes",
-            "dependencies": [
-                "feat-035"
-            ],
+            "dependencies": ["feat-035"],
             "status": "done",
             "evidence": "PR #96 (merge 818a45c): 2 high, 5 medium and the low review findings fixed with negative controls; backend 850, frontend 61, playground 14, redis 31, pg 22, e2e 12, typecheck, lint, build, docs:build + docs:verify; evidence in progress.md on feat/review-fixes"
         },
@@ -422,9 +370,7 @@
             "description": "code-issues items 71 (format:check covers vue/js/mjs/css, one formatting commit in .git-blame-ignore-revs), 72 (push on business events: new sign-in, password changed / reset / logout-all as system; support reply as mention with skipIfOnline), 73 (frontend HTTP paths and Vite proxy from VITE_API_PATH_PREFIX)",
             "owner": "Blazheiko",
             "branch": "feat/format-push-prefix",
-            "dependencies": [
-                "feat-037"
-            ],
+            "dependencies": ["feat-037"],
             "status": "done",
             "evidence": "PRs #99 (item 73: HTTP paths and proxy from VITE_API_PATH_PREFIX), #100 (item 72: push on sign-in, password change/reset, logout-all, support reply), #101 (item 71: format glob, formatting commit dd9db8b in .git-blame-ignore-revs); typecheck, lint, format:check, test, build, e2e, docs:build + docs:verify; evidence in progress.md on feat/format-push-prefix"
         },
@@ -434,9 +380,7 @@
             "description": "users.session_token (the per-user Redis session namespace, also part of the signed cookie) leaked in every userTransformer response (login, registration, OAuth, phone link); strip it, drop the unused findBySessionToken, document why the column exists",
             "owner": "Blazheiko",
             "branch": "feat/hide-session-token",
-            "dependencies": [
-                "feat-038"
-            ],
+            "dependencies": ["feat-038"],
             "status": "done",
             "evidence": "PR #106 (merge 10f5b51): sessionToken stripped by userTransformer, unused findBySessionToken removed, auth-security.md explains users.session_token; unit test fails without the fix; manual login on a fresh DB; backend 858, e2e 12, typecheck, lint, build, docs:build + docs:verify"
         },
@@ -446,9 +390,7 @@
             "description": "regression tests for findings marked 'closed, no test' in docs/security/security-analysis-status.md: C-1 (CORS origin outside allowlist), H-1 (error details only in local), H-3 (static extension allowlist and unsafe URL status), H-4 (default cookie sameSite Lax), M-2 (validation of urlencoded/multipart), M-3 (415 for content type not allowed by route), M-4 (non-digit Content-Length), L-1 (DELETE registered), L-2 (doc routes absent outside manual-test), L-3 (no 'Get Http Data' log); update the status table",
             "owner": "Blazheiko",
             "branch": "feat/security-regression-tests",
-            "dependencies": [
-                "feat-039"
-            ],
+            "dependencies": ["feat-039"],
             "status": "done",
             "evidence": "PR #109: regression tests for C-1, H-1, H-3, H-4, M-2, M-3, M-4, L-1, L-2, L-3, each checked by mutation; typecheck, lint, format:check, test (backend 908), docs:build + docs:verify; evidence in progress.md on feat/security-regression-tests"
         },
@@ -458,9 +400,7 @@
             "description": "serialize-routes.ts TODO(validation-docs): route docs accept non-ArkType validator.describe() payloads (a ready { expression, fields, jsonSchema } descriptor or a plain JSON Schema object), so a custom adapter shows its body/query schema in the playground; validators without a usable describe() still serialize without a schema; update documentation/backend/validation.md",
             "owner": "Blazheiko",
             "branch": "feat/neutral-route-doc-schemas",
-            "dependencies": [
-                "feat-040"
-            ],
+            "dependencies": ["feat-040"],
             "status": "done",
             "evidence": "PR #113: describeSchema() accepts ArkType, a ready descriptor or a JSON Schema object for validator/queryValidator; 6 new serialize-routes cases; typecheck, lint, format:check, test (backend 914), docs:build + docs:verify; evidence in progress.md on feat/neutral-route-doc-schemas"
         },
@@ -470,9 +410,7 @@
             "description": "docs/plan/csrf-hardening-plan.md: CSRF_ENFORCE and CSRF_STRICT_ORIGIN default to true, CSRF_ALLOWED_ORIGINS required in production-like envs, Sec-Fetch-Site check, login CSRF closed (fail-closed guard), anonymous session deleted on login + audit of auth transitions, frontend session/token model with one verified retry, Service Worker never caches API, e2e with enforcement on; task list in docs/plan/csrf-hardening-tasks.md",
             "owner": "Blazheiko",
             "branch": "feat/csrf-hardening",
-            "dependencies": [
-                "feat-041"
-            ],
+            "dependencies": ["feat-041"],
             "status": "done",
             "evidence": "PR #132 (merge f511388): CSRF_ENFORCE/CSRF_STRICT_ORIGIN default true, fail-closed guard, session rotation, SW API bypass; pnpm typecheck/lint/test clean, backend 975 tests, test:redis 45, test:e2e 12, test:e2e:security 7; evidence block in progress.md on feat/csrf-hardening. Rollout tasks T0.4, R.1-R.6 are per-environment and tracked outside the feature"
         },
@@ -482,9 +420,7 @@
             "description": "docs/plan/oauth-email-verification-plan.md: link an OAuth account to an existing user by email only when the provider reports the email as verified (Google verified_email, GitHub primary+verified, GitLab OIDC email_verified, Facebook never); new users from a verified email get emailVerifiedAt; GET /api/auth/oauth/providers lists configured providers, redirect to an unconfigured provider returns 404; frontend shows buttons only for configured providers (adds GitHub, GitLab) and a message for oauth_email_unverified; update documentation/backend/oauth.md",
             "owner": "Blazheiko",
             "branch": "feat/oauth-email-verification",
-            "dependencies": [
-                "feat-042"
-            ],
+            "dependencies": ["feat-042"],
             "status": "done",
             "evidence": "PR #138 (merge 89cb878; reviewed as #137): OAuth linking by email only for a provider-verified email, GET /api/auth/oauth/providers, buttons only for configured providers, callback errors always 302 with reason; pnpm typecheck/lint/format:check clean, pnpm test backend 1004 frontend 126; mutation checks on the linking guard and callback redirect; manual check against a running backend (providers list, 404 for unconfigured, 302 on callback errors, buttons and reason message in Chrome); evidence block in progress.md. Not done: real provider login (needs real credentials), test:e2e"
         },
@@ -504,10 +440,7 @@
             "description": "documentation/backend/response-validation.md «Розгортання»: the template has no production, so the rollout is a documented procedure for adopters — strict in dev/CI/e2e, log on staging for ≥ 7 days without mismatch records, log in production, optional production strict after ≥ 14 days without undeclared_key; rollback via RESPONSE_VALIDATION_CONTRACT or the previous backend version",
             "owner": "Blazheiko",
             "branch": "chore/response-validation-rollout",
-            "dependencies": [
-                "feat-044",
-                "feat-046"
-            ],
+            "dependencies": ["feat-044", "feat-046"],
             "status": "done",
             "evidence": "PR chore/response-validation-rollout: «Розгортання» section in documentation/backend/response-validation.md; pnpm docs:build && pnpm docs:verify passed. No rollout run: the template has no staging or production"
         },
@@ -517,9 +450,7 @@
             "description": "docs/plan/strip-response-fields-plan.md: ResponseSchema becomes an allow-list of response fields. RESPONSE_VALIDATION is renamed to RESPONSE_VALIDATION_CONTRACT (strict|log, no off, no sampling; old name accepted for one release); a schema mismatch is a 500 in both modes; undeclared keys are a 500 in strict and are stripped with a warn in log; unknown fields carrying DB or user data are detailed, the remaining ones are listed as exceptions without the guarantee",
             "owner": "Blazheiko",
             "branch": "feat/strip-response-fields",
-            "dependencies": [
-                "feat-044"
-            ],
+            "dependencies": ["feat-044"],
             "status": "done",
             "evidence": "PR #153 (merge 000879c): progress.md Evidence of Completion — typecheck/lint/format/test (backend 1138), e2e 12 passed, docs build/verify, bench:response within §4.7 (+50 % accepted), live crawl in log and strict with 0 response-validation records; T10 staging gate not applicable (template without production), kept as a deployment warning in docs"
         },
@@ -529,10 +460,7 @@
             "description": "docs/plan/wire-format-response-schemas-plan.md: response schemas describe the JSON the client receives — no Date or bigint in route schemas (a guard test), values are serialized in transformers (id → String, Date → toISOString), no morphs (the feat-046 fast path stays); push log/statistics and prompt routes get transformers; unused DB-shaped push schemas are removed; non-finite numbers become a 500 in inspectPayload",
             "owner": "Blazheiko",
             "branch": "feat/wire-format-response-schemas",
-            "dependencies": [
-                "feat-044",
-                "feat-046"
-            ],
+            "dependencies": ["feat-044", "feat-046"],
             "status": "done",
             "evidence": "PR #156 (merge 40d7653): progress.md Evidence of Completion — typecheck/lint/format/test (backend 1153), test:pg 23, e2e 12 passed, docs build/verify, bench:response within the +50 % limit, manual strict check of prompt and push routes"
         },
@@ -542,9 +470,7 @@
             "description": "docs/plan/ws-error-envelope-plan.md: every WS transport error (not_found, validation_failed, internal_error incl. a handler that threw after writing data, rate_limited, response validation) has status 'error', data null and the error envelope; one ws-error-envelope module with setWsError replaces three copies of createWsErrorEnvelope; the dispatcher starts with data null; business errors of controllers and middleware stay in data (out of scope)",
             "owner": "Blazheiko",
             "branch": "feat/ws-error-envelope",
-            "dependencies": [
-                "feat-044"
-            ],
+            "dependencies": ["feat-044"],
             "status": "done",
             "evidence": "PR #163 (merge 429416a): progress.md Evidence of Completion — typecheck/lint/format/test (backend 1156), e2e 12 passed, docs build/verify, manual WS check (unknown route and invalid payload answer data null)"
         },
@@ -554,9 +480,7 @@
             "description": "docs/plan/ws-async-message-validation-plan.md: typed registry of broadcast events in shared (5 events), typed broadcastService methods, one runtime createResponseCheck per event before serialization (strict/log as for responses); an invalid event is not sent; frontend keeps ArkType-free guards with a parity test against the registry",
             "owner": "Blazheiko",
             "branch": "feat/ws-async-message-validation",
-            "dependencies": [
-                "feat-044"
-            ],
+            "dependencies": ["feat-044"],
             "status": "done",
             "evidence": "PR #167 (aaa265a; #166 merged into the plan branch): typecheck/lint/format/test clean (backend 1174, frontend 168), e2e 12/12, docs build+verify; manual WS check of admin_user_online_upsert in strict/log; progress.md on feat/ws-async-message-validation"
         },
@@ -566,9 +490,7 @@
             "description": "docs/plan/typed-route-response-plan.md: defineRoute and defineWsRoute infer the handler return type from ResponseSchema, so a wrong or drifted schema is a tsc error; fix the mismatches the prototype found (testPush return type, wrong schema on GET /support/screenshot/:articleId, serialize-routes fixtures); update documentation/backend/routing.md and the controller guides",
             "owner": "Blazheiko",
             "branch": "feat/typed-route-response",
-            "dependencies": [
-                "feat-044"
-            ],
+            "dependencies": ["feat-044"],
             "status": "done",
             "evidence": "PR #150 (merge 27303ee): progress.md Evidence of Completion — typecheck/lint/test, e2e 12 passed, docs build/verify, tsc mutation check for HTTP and WS"
         },
@@ -578,9 +500,7 @@
             "description": "docs/plan/drop-legacy-response-validation-plan.md: remove the legacy RESPONSE_VALIDATION / RESPONSE_VALIDATION_SAMPLE_RATE mapping and the warnings field from config/response-validation.ts, its tests, the start-up warning loop, the docs warning and the .env.example line; the old variables are not checked at all (template without production); fix comments that still mention the off mode",
             "owner": "Blazheiko",
             "branch": "chore/drop-legacy-response-validation",
-            "dependencies": [
-                "feat-046"
-            ],
+            "dependencies": ["feat-046"],
             "status": "done",
             "evidence": "PR #159 (merge cce542b): progress.md Evidence of Completion — typecheck/lint/format/test (backend 1148), e2e 12 passed, docs build/verify, backend start with RESPONSE_VALIDATION_CONTRACT=log"
         },
@@ -600,9 +520,7 @@
             "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 2 (stage C): 21 patch/minor upgrades from the stage C table (ai, @ai-sdk/xai, openai, @arktype/type + @ark/util, @aws-sdk/*, @sentry/*, dotenv, nodemailer, vue-i18n, eslint, typescript-eslint + all 4 pnpm.overrides, eslint-plugin-vue, @vitest/eslint-plugin, vue-tsc, npm-run-all2, autoprefixer, postcss, node-html-parser); majors stay out of scope",
             "owner": "Blazheiko",
             "branch": "chore/deps-patch-minor",
-            "dependencies": [
-                "feat-052"
-            ],
+            "dependencies": ["feat-052"],
             "status": "done",
             "evidence": "PR #173 (merge a99e753): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174, frontend 168, api-playground 14, shared 14, docs 26), test:redis 45, test:pg 23, e2e 12, docs build/verify; frontend bundle 876.20 -> 879.24 kB; pnpm audit 16 -> 13; ArkType 2.2.9 duplicate prototype-key issues fixed in validate-response.ts. Not tested: mail:test, real S3 bucket, AI providers (no credentials)"
         },
@@ -612,9 +530,7 @@
             "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 4 (D.2): drizzle-orm and drizzle-kit 1.0.0-rc.4 -> 1.0.0-rc.5 together; inventory of rc.5 breaking changes against the code, typed db.execute, snapshots converted with drizzle-kit up (incremental format), test:pg, fresh DB create/migrate/seed + golden path",
             "owner": "Blazheiko",
             "branch": "chore/drizzle-rc5",
-            "dependencies": [
-                "feat-053"
-            ],
+            "dependencies": ["feat-053"],
             "status": "done",
             "evidence": "PR #176 (merge 1ca4b73): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174), test:pg 23, test:redis 45, e2e 12, db:generate no new migration after drizzle-kit up (incremental snapshots, migration.sql unchanged), fresh DB create/migrate/seed + e2e:security 7 + WS golden path, docs build/verify; rc.5 breaking changes inventoried against the code (typed db.execute; no RQBv2 queries)"
         },
@@ -634,9 +550,7 @@
             "description": "docs/plan/node-24.22.2-uws-20.71-upgrade-plan.md PR 3 (D.1): @mistralai/mistralai 2.7.0 -> 3.4.0; v3 migration guide vs mistralai-text-adapter.ts (client, chat.stream, events, usage, AbortSignal), typecheck against v3 types, adapter tests unchanged; real-key check only if a key is available",
             "owner": "Blazheiko",
             "branch": "chore/mistral-v3",
-            "dependencies": [
-                "feat-053"
-            ],
+            "dependencies": ["feat-053"],
             "status": "done",
             "evidence": "PR #181 (merge b7b0ff7): progress.md Evidence of Completion — typecheck/lint/format/build, test (backend 1174, AI adapters 28), real SDK 3.4.0 against a local fake SSE server (request shape, streamed text, usage mapping, abort via signal ~316 ms), pnpm audit 13 -> 12; signal moved from deprecated fetchOptions to flattened request options. Not tested: real Mistral API (no key)"
         },
@@ -666,9 +580,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md B: ADR 0002 — verify session userToken against users.sessionToken in the DB on every authenticated HTTP request and WS message (no cache, 503 when the DB is unavailable); rotate sessionToken in changePassword (conditional UPDATE), password reset and logoutAll; destroyAllSessions becomes best-effort cleanup",
             "owner": "Blazheiko",
             "branch": "fix/session-revocation",
-            "dependencies": [
-                "feat-058"
-            ],
+            "dependencies": ["feat-058"],
             "status": "done",
             "evidence": "PR #192 (merge 5837fdb): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1200, frontend 168, api-playground 14, shared 14, docs 26), test:pg 45 with Redis / 37 without (+8 session-revocation on real PostgreSQL and Redis: cleanup failure -> first request after recovery already 401, concurrent change-password -> one winner, database down -> 503, deleted user; 4 of 8 fail with the token check neutralised), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 45, none skipped); cost p50 0.10 -> 0.37 ms per sessionHandler on local PostgreSQL Review follow-up (branch fix/feat-059-review-followups): lookup deadline SESSION_TOKEN_CHECK_TIMEOUT_MS (default 2000 ms; a hung query -> 503), the HTTP contract proved over a real server with real session_web/csrf_guard/auth_guard on PostgreSQL+Redis (8 tests, incl. concurrent change-password and the reset flow with a failing Redis cleanup; 5 of 8 fail with the token check neutralised), plan phase B synced; test:pg 53 with Redis / 37 without, backend 1223. Second follow-up (branch fix/session-check-query-cancel): the lookup is cancelled, not abandoned — dedicated session-check pool with statement_timeout (server cancels, 57014) and query_timeout (stalled server, connection destroyed, slot freed); proved on real PostgreSQL with a table lock and a stalling proxy (5 tests; without statement_timeout 2 fail, without query_timeout 1 fails); backend 1232, test:pg 58 with Redis / 42 without, test:redis 61, test:e2e:security 7. Simplification (branch chore/simplify-session-check-timeouts): the application-level Promise.race and the SESSION_TOKEN_CHECK_POOL_MAX variable removed — the pool timeouts alone give the bound (all real-PostgreSQL tests pass without the race), the pool size is a constant; the hanging-lookup HTTP test now uses a real table lock."
         },
@@ -678,9 +590,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md B2: markUsed has no usedAt IS NULL, so two concurrent resets with one token both apply; claim-then-act in one DB transaction for password-reset, email-verification and email-link tokens, with a fault-injection test between claim and apply",
             "owner": "Blazheiko",
             "branch": "fix/one-time-token-race",
-            "dependencies": [
-                "feat-059"
-            ],
+            "dependencies": ["feat-059"],
             "status": "done",
             "evidence": "PR #198 (merge fd14970): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1225, frontend 168, api-playground 14, shared 14, docs 26), test:pg 68 with Redis / 51 without (+9 one-time-token-race on real PostgreSQL: 7 failed before the fix — exactly-one-winner got two in all three flows, the password / email stayed changed after a failure; +1 HTTP-level concurrent reset-password: one 200, the loser 400 used_token), test:redis 61, docs:build + docs:verify; mutation check (markUsed without used_at IS NULL) fails the deterministic and the HTTP race tests; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 68, none skipped)"
         },
@@ -690,9 +600,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md B3 (optional, only if the feat-059 auth_guard benchmark justifies it): cache users.sessionToken with an explicit SESSION_REVOCATION_MAX_DELAY and tests for a Redis failure during invalidation and the read/invalidate race",
             "owner": "Blazheiko",
             "branch": "feat/session-token-cache",
-            "dependencies": [
-                "feat-059"
-            ],
+            "dependencies": ["feat-059"],
             "status": "not-started",
             "evidence": "Not planned: this was optional on the feat-059 benchmark. ADR 0002 records it: the extra users.session_token read costs p50 +0.27 ms / p95 +0.8 ms per authenticated request on local PostgreSQL, which does not justify a cache whose invalidation can fail and leave a revoked session usable. Revisit only if production load shows the read matters."
         },
@@ -712,9 +620,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md D: support-chat admission contract (admit before ok, support_chat_error code), message length cap, per-user throttle, owner-token in-flight lock, atomic Redis LLM budget reservation, history pagination; per-route multipart body limit (file limit plus overhead) and avatar rateLimit",
             "owner": "Blazheiko",
             "branch": "fix/resource-limits",
-            "dependencies": [
-                "feat-058"
-            ],
+            "dependencies": ["feat-058"],
             "status": "done",
             "evidence": "PRs #206 (D4 per-route body limit, merge ba07fff), #207 + #208 + #209 (D0+D1 support chat admission: admit before ok, lease lock, idempotent resend by clientMessageId, 503 mapping), #210 (D2 daily LLM token budget, ADR 0003), #211 (D3 history pages, merge 271af46): progress.md Evidence of Completion per part — typecheck/lint/format, test (backend 1359, frontend 203, api-playground 14, shared 17, docs 26), test:pg 130 with Redis / 66 without, test:redis 89, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on each PR. Tests proved by mutation (renewal off, lost-lock checks off, ON CONFLICT off, cut-off call free, settle off, cursor ignored). ADR 0003 still proposed, awaiting the owner"
         },
@@ -774,11 +680,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md G: auth service behaviour snapshots, Playwright UI-state tests on mocks and live-backend session-revocation tests, before any auth refactor",
             "owner": "Blazheiko",
             "branch": "test/auth-regression-coverage",
-            "dependencies": [
-                "feat-059",
-                "feat-060",
-                "feat-066"
-            ],
+            "dependencies": ["feat-059", "feat-060", "feat-066"],
             "status": "done",
             "evidence": "G1 PR #231 (backend contract tables: 24 throttle steps + 157 state→answer rows + 3 mail snapshots, backend 1430→1685), G2 PR #232 (Playwright project mock, 60 tests on faked API), G3 PR #233 (e2e-live: real backend + PG + Redis + SMTP sink, 5 tests, CI job e2e-live). typecheck/lint/format:check/pnpm test/docs:build+verify clean; test:e2e:live passes 3 runs in a row and without packages/backend/.env."
         },
@@ -788,11 +690,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md H1: enforceThrottle() replaces 32 copies of the throttle boilerplate in the three auth services",
             "owner": "Blazheiko",
             "branch": "refactor/auth-enforce-throttle",
-            "dependencies": [
-                "feat-060",
-                "feat-069",
-                "feat-077"
-            ],
+            "dependencies": ["feat-060", "feat-069", "feat-077"],
             "status": "done",
             "evidence": "PR #240: enforceThrottle() in app/services/auth/enforce-throttle.ts replaces 20 copies in the three auth services (email-verification 2, password-reset 4, auth 14); 428 auth specs (G1 throttle tables included) pass without any change; helper mutations fail 45/35/22 specs. typecheck/lint/format:check/pnpm test (backend 1663)/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
@@ -802,9 +700,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md H2: one auth-normalize module (normalizeEmail, normalizePhone, isChallengeExpired, flow constants)",
             "owner": "Blazheiko",
             "branch": "refactor/auth-normalize",
-            "dependencies": [
-                "feat-070"
-            ],
+            "dependencies": ["feat-070"],
             "status": "done",
             "evidence": "PR #243: auth-normalize.ts (normalizeEmail, normalizePhone, isChallengeExpired, phone flows) replaces copies in auth, password-reset, email-verification, oauth services and the seed; 469 auth+db specs pass unchanged; table compares with the old trim().toLowerCase() on 13 edge inputs; mutations fail 1/13/18 specs. typecheck/lint/format:check/pnpm test (backend 1691)/test:pg/docs:build+verify clean; CI green."
         },
@@ -814,9 +710,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md H3: shared renderBrandedEmail() for the three transactional emails, byte-identical snapshots",
             "owner": "Blazheiko",
             "branch": "refactor/email-templates",
-            "dependencies": [
-                "feat-071"
-            ],
+            "dependencies": ["feat-071"],
             "status": "done",
             "evidence": "PR #245: renderBrandedEmail() in notifications/email-templates.ts replaces the three HTML templates (reset, verification, e-mail linking); the nine G1 file snapshots pass untouched (byte-identical, files unchanged in git); a one-digit layout mutation fails 6 of 9; email-templates.spec.ts (8). typecheck/lint/format:check/pnpm test (backend 1699)/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
@@ -826,9 +720,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md H4: createTokenRepository() and one-time-token.ts on top of the transactional consume from feat-060",
             "owner": "Blazheiko",
             "branch": "refactor/one-time-token-module",
-            "dependencies": [
-                "feat-072"
-            ],
+            "dependencies": ["feat-072"],
             "status": "done",
             "evidence": "PR #247: createTokenRepository() for the three token tables and one-time-token.ts (issueToken, findUsableToken, consumeTokenAndApply) used by password-reset and email-verification services; 9 PG race/fault-injection tests and 456 auth specs pass unchanged; one-time-token.spec.ts (13); mutations caught (claim without used_at IS NULL only by the PG tests). typecheck/lint/format:check/pnpm test (backend 1712)/test:pg/docs:build+verify clean; CI incl. test-pg, test-redis, e2e, e2e-live green."
         },
@@ -838,9 +730,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md H5: issueSmsChallenge()/verifySmsChallenge() replace the three start and three confirm copies",
             "owner": "Blazheiko",
             "branch": "refactor/sms-challenge",
-            "dependencies": [
-                "feat-073"
-            ],
+            "dependencies": ["feat-073"],
             "status": "done",
             "evidence": "PR #249: sms-challenge.ts (findPendingChallenge, openChallenge, deliverChallenge, issueSmsChallenge, verifySmsCode, confirmChallenge) used by the start/verify/confirm steps of phone registration, phone linking and phone password reset; 707 service specs (G1 phone rows, throttle tables, auth-phone-foundation) pass unchanged; sms-challenge.spec.ts (19) pins rollbacks and the try budget; mutations fail 4/5/7/3 specs. typecheck/lint/format:check/pnpm test (backend 1731)/test:pg/docs:build+verify clean; CI green."
         },
@@ -850,11 +740,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md I: WS transport in shared, shared password rules, admin-view composables, Sentry sanitizer, ArkType default workaround",
             "owner": "Blazheiko",
             "branch": "refactor/frontend-shared-dedup",
-            "dependencies": [
-                "feat-069",
-                "feat-078",
-                "feat-079"
-            ],
+            "dependencies": ["feat-069", "feat-078", "feat-079"],
             "status": "done",
             "evidence": "PRs #255-#258: password limits (shared/limits + validate-password), shared/patterns (phone shape, entity id), sentry sanitizeTree, ArkType .default() with compile-time output checks, shared/ws-client (classifyWsMessage, normalizeApiPrefix), playground on mitt, admin views (query builder, detail-modal composable, AdminFilterBar, admin.css; screenshots: 3 of 4 pages pixel-identical, Users filter buttons restyled). Left on purpose: WS connection core (two different implementations), second breadcrumb pass kept. typecheck/lint/format:check/build/pnpm test/Playwright mock (61)/docs:build+verify clean; CI green."
         },
@@ -864,10 +750,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md J: split AuthModals.vue, state.ts, main.ts, MenuButton.vue and the api-playground TestForm",
             "owner": "Blazheiko",
             "branch": "refactor/frontend-split-components",
-            "dependencies": [
-                "feat-069",
-                "feat-075"
-            ],
+            "dependencies": ["feat-069", "feat-075"],
             "status": "done",
             "evidence": "Phase J complete: AuthModals.vue (#260), stores/state.ts (#261), service worker out of main.ts (#262), MenuButton.vue (#263), api-playground TestForm.vue (#264). Each PR: typecheck/lint/format:check/test/build clean, Playwright mock 61 passed, e2e-live green in CI unchanged, docs:build+docs:verify passed; golden paths covered by the mock/e2e-live specs and per-PR old-vs-new comparisons. Evidence blocks in progress.md on refactor/frontend-split-components-{,2,3,4,5}."
         },
@@ -917,9 +800,7 @@
             "description": "docs/plan/code-review-fixes-tasks.md M: llm_text_usage.user_id on-delete and the support_chat_history (user_id, created_at) index in one migration",
             "owner": "Blazheiko",
             "branch": "chore/schema-cleanup",
-            "dependencies": [
-                "feat-065"
-            ],
+            "dependencies": ["feat-065"],
             "status": "done",
             "evidence": "Phase M merged (#278): llm_text_usage.user_id ON DELETE SET NULL (owner decision), support_chat_history index (user_id, created_at), one migration, drizzle-kit generate says no schema changes; 3 new PG tests (2 fail without the migration), test:pg 87 passed, typecheck/lint/format:check/test/build clean, docs:build+docs:verify passed, CI green incl. test-pg."
         },
@@ -979,9 +860,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 2: HttpError base class and one classifyError(err) used by the HTTP handleError and the WS dispatcher/onMessage (Redis checked first: 503 + Retry-After + sentrySkip); HTTP body and WS envelope formatted separately (feat-048 envelope unchanged); WS fixes: malformed JSON -> bad_request at warn, Redis errors -> service_unavailable, validation reply keeps the request event",
             "owner": "Blazheiko",
             "branch": "fix/shared-error-classification",
-            "dependencies": [
-                "feat-086"
-            ],
+            "dependencies": ["feat-086"],
             "status": "done",
             "evidence": "Merged #294 (merge 975e105; start #293): HttpError base for the 7 transport error classes (each describes its status, code, client text, details, headers, log record); classifyError checks a Redis outage first (503, Retry-After, sentrySkip; RedisUnavailableError is an HttpError and would otherwise lose sentrySkip), then HttpError, then 500, and is used by handleError, the WS dispatcher and onMessage; HTTP body and the feat-048 WS envelope formatted separately, bodies and log messages unchanged. WS fixes: malformed JSON -> bad_request at warn (was internal_error at error), Redis outage in a handler -> service_unavailable (was internal_error), validation reply keeps the request event/timestamp (was ''). shared: receivedContentType may be null. typecheck/lint/format:check clean, test backend 1910 / frontend 373 / api-playground 62 / shared 25 / documentation 26, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation: HttpError before Redis fails 2 tests. Manual on a fresh dist build: WS {not json -> bad_request + warn; invalid WS message -> validation_failed with the request's event; HTTP malformed body -> 400. Details were in progress.md on fix/shared-error-classification (removed from main by this PR)."
         },
@@ -991,9 +870,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 3: 3a without behaviour change (server.ts duplicate config import, alias, commented code, docRoutesHandler without new Promise, a middleware context type instead of the WS cast); 3b log stream change (no log-and-rethrow in session auth.login/logout/logoutAll, no per-method 'xxx handler' info logs in controllers)",
             "owner": "Blazheiko",
             "branch": "chore/error-path-cleanup",
-            "dependencies": [
-                "feat-086"
-            ],
+            "dependencies": ["feat-086"],
             "status": "done",
             "evidence": "Merged #297 (merge f833d60; start #296): 3a without behaviour change - one app config import in server.ts, no alias or commented-out code, docRoutesHandler without new Promise, typed middlewares (Middleware<TContext>, httpMiddlewares/wsMiddlewares, executeWsMiddlewares) instead of casting WsContext to HttpContext; 3b log stream change - session auth.login/logout/logoutAll no longer log and rethrow (the controller logs the AppError once), name-only 'xxx handler' info lines removed from 5 controllers. Found and fixed: the OAuth callback redirect path had no 5xx record with its cause after feat-086 (reportControllerError). typecheck/lint/format:check clean, test backend 1915 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 152, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation: the old log-and-rethrow session-handler fails the 3 new tests. Manual on dist: /api/doc/routes 200, non-admin WS admin route 403 forbidden in data. Details were in progress.md on chore/error-path-cleanup (removed from main by this PR)."
         },
@@ -1003,10 +880,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 4, PR 1 of 3: ADR 0004 (Result only for expected outcomes, infrastructure failures throw); the HTTP exception path keeps session cookies, CORS and beforeSend like a normal answer; avatar, push-subscription, knowledge-base, support and main services drop tryInternal",
             "owner": "Blazheiko",
             "branch": "refactor/result-expected-outcomes-1",
-            "dependencies": [
-                "feat-087",
-                "feat-088"
-            ],
+            "dependencies": ["feat-087", "feat-088"],
             "status": "done",
             "evidence": "Merged #299 (merge 24f64fd; start #298): ADR 0004 (Result only for expected outcomes, infrastructure failures throw); the HTTP exception path now runs session.beforeSend and writes the request's cookies and CORS headers like a returned error (before, a thrown error dropped both); 37 tryInternal calls removed in avatar, push-subscription, knowledge-base, support and main services (best-effort S3 deletes catch locally, the support admission frees its lock when the budget reservation throws). Intended changes: infrastructure 500 text is 'Internal server error'; a Redis outage in the WS support admission arrives as a transport error. typecheck/lint/format:check clean, test backend 1916 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 152, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. New tests fail without the fix (cookies on a thrown error, lock release). Manual on dist with S3 down: avatar upload 500 internal_error, one error record with requestId, userId, route. Details were in progress.md on refactor/result-expected-outcomes-1 (removed from main by this PR)."
         },
@@ -1016,9 +890,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 4, PR 2 of 3 (ADR 0004): oauth-service, email-verification-service, password-reset-service, sms-challenge and one-time-token drop tryInternal; known DB errors that mean a business outcome (unique index 23505) are caught explicitly",
             "owner": "Blazheiko",
             "branch": "refactor/result-expected-outcomes-2",
-            "dependencies": [
-                "feat-089"
-            ],
+            "dependencies": ["feat-089"],
             "status": "done",
             "evidence": "Merged #301 (merge 1cf297a; start #300): oauth, email-verification, password-reset, sms-challenge and one-time-token drop tryInternal (37 calls); helper APIs lose their public-500-text params (issueToken/openChallenge return values, consumeTokenAndApply throws on a failed transaction, Result kept for business answers); emailService.send throws on a transport failure (one log record, no recipient address); the OAuth callback still redirects on a thrown failure; deliberate catches in the reset flows are explicit try/catch. Bug fixed: the email-link race decided by the unique index answered 500 instead of 409 because Drizzle wraps the pg error (code on cause); isUniqueViolation + PG test with a real unique index. typecheck/lint/format:check clean, test backend 1922 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist with SMTP down: forgot-password answers the generic 200 for known and unknown addresses, one error record per background send. Details were in progress.md on refactor/result-expected-outcomes-2 (removed from main by this PR)."
         },
@@ -1028,9 +900,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 4, PR 3 of 3 (ADR 0004): auth-service and enforce-throttle drop tryInternal; tryInternal and toInternalError are removed",
             "owner": "Blazheiko",
             "branch": "refactor/result-expected-outcomes-3",
-            "dependencies": [
-                "feat-090"
-            ],
+            "dependencies": ["feat-090"],
             "status": "done",
             "evidence": "Merged #303 (merge 9c3a7e5; start #302): auth-service drops its 33 tryInternal calls; enforceThrottle(policy, key, rejected) loses the unavailable 500 text (a Redis failure throws, the transport answers 503); best-effort throttle resets and old-session cleanup are explicit try/catch; changePassword catches a thrown session renewal (success with sessionRenewed: false, never a 500); tryInternal, toInternalError and result-helpers.ts removed - stage 4 complete. typecheck/lint/format:check clean, test backend 1916 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:redis 89, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Fail-closed throttle tests check that the call rejects and nothing downstream ran. Manual on dist: register, logout, wrong password 401, login, change password (sessionRenewed true), logout-all, login with the new password; no error records. Details were in progress.md on refactor/result-expected-outcomes-3 (removed from main by this PR)."
         },
@@ -1040,9 +910,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 5: respond(context, result, toBody?) / respondWs replace the repeated isError -> mapControllerError -> return value blocks in controllers; resetPassword and startPhonePasswordReset simplified",
             "owner": "Blazheiko",
             "branch": "refactor/controller-respond",
-            "dependencies": [
-                "feat-091"
-            ],
+            "dependencies": ["feat-091"],
             "status": "done",
             "evidence": "Merged #306 (merge d0f3d7e; start #305): respond(context, result, toBody?) and respondWs replace 36 repeated isError -> mapControllerError -> return blocks (controllers -205/+106 lines, result binding kept for readability); resetPassword drops its no-op reason filter, startPhonePasswordReset spreads the value; 11 explicit isError remain where more logic follows. typecheck/lint/format:check clean, test backend 1928 / frontend 373 / api-playground 62 / shared 25 / documentation 26, test:pg 153, test:redis 89, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e (the start PR's e2e hung in playwright install-deps and was cancelled and rerun). Manual on dist: bad reset token 400 invalid_token, mismatch passwords_mismatch, push list 200, unknown push id 404. Details were in progress.md on refactor/controller-respond (removed from main by this PR)."
         },
@@ -1052,9 +920,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 7 (no backward compatibility needed): drop the legacy session cookie fallback (resolve-session-cookie legacy source, delete-legacy-session-cookie, forceCookie), LegacyLoginInputSchema (email variant of login), the routeItem type alias, and other compat leftovers found by search",
             "owner": "Blazheiko",
             "branch": "chore/remove-compat-code",
-            "dependencies": [
-                "feat-092"
-            ],
+            "dependencies": ["feat-092"],
             "status": "done",
             "evidence": "Merged #312 (merge fcbae4c; start #311): removed the legacy session cookie fallback (resolve-session-cookie, delete-legacy-session-cookie, forceCookie, legacyCookieName; session_web reads only the active name), LegacyLoginInputSchema (login takes identifier only), the routeItem alias, the frontend uiLang localStorage migration, the unused raw ws export of useWebSocketConnection (frontend + api-playground) and api-playground LEGACY_BASE_URL. Kept on purpose: serialize-ark-schema fields (current api-playground format), vue-i18n legacy:false, WebsocketMessage.code. typecheck/lint/format:check clean, test backend 1922 / frontend 372 / api-playground 62 / shared 25 / documentation 26, frontend e2e 81, test:redis 88, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist: login with email -> 422, with identifier -> 200. Details were in progress.md on chore/remove-compat-code (removed from main by this PR)."
         },
@@ -1064,9 +930,7 @@
             "description": "docs/plan/error-handling-fix-plan.md stage 6: the per-request session state (closure variables in sessionHandler, the duplicated sessionInfo, four module-level WeakMaps/WeakSet and three beforeSend overwrites) moves into a RequestSession class with explicit transitions (login, logout, logoutAll, store anonymous) and one pre-send check; behaviour unchanged, readability is the goal",
             "owner": "Blazheiko",
             "branch": "refactor/request-session",
-            "dependencies": [
-                "feat-093"
-            ],
+            "dependencies": ["feat-093"],
             "status": "done",
             "evidence": "Merged #315 (merge 4bb34e8; start #314): RequestSession (request-session.ts) keeps the per-request session state in fields (info, cookieHeld, storageToken, swapped, preSendCheck) and changes it only through methods (restore, attach, login, logout, logoutAll, the move of an anonymous session to Redis); four module-level WeakMaps/WeakSet became one preSendCheck field, three beforeSend overwrites one schedule(); session-handler.ts 534 -> 130 lines. Behaviour unchanged: every existing session test passed without edits. Mutation checks: four guards each fail a test; two had no test before (swapped guard after an anonymous move, id check after the request's own logout) and got one. typecheck/lint/format:check clean, test backend 1924 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:redis 88, test:pg 153, frontend e2e 81, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Manual on dist: full auth flow, no error records. Details were in progress.md on refactor/request-session (removed from main by this PR)."
         },
@@ -1076,9 +940,7 @@
             "description": "Code review of the error-handling plan (REQUEST CHANGES): a missing Redis record leaves the new anonymous session in the old storage namespace and storeAnonymous does not switch it; the OAuth callback's state cleanup can bypass the error redirect; a path-parameter 400 loses the CORS Origin; the exception path sends every accumulated cookie (make it the session cookie only)",
             "owner": "Blazheiko",
             "branch": "fix/error-path-review",
-            "dependencies": [
-                "feat-094"
-            ],
+            "dependencies": ["feat-094"],
             "status": "done",
             "evidence": "Merged #318 (merge 26ac5f8; start #317): code review fixes - a cookie of a session no longer in Redis no longer leaves the new anonymous session in the old storage namespace (and storeAnonymous switches to anon_session); the OAuth callback still redirects when the state cleanup fails; a path-parameter 400 carries CORS headers (Origin read before the metadata); the exception path sends the session cookie only (ADR 0004 point 3 updated). typecheck/lint/format:check clean, test backend 1928 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:redis 88, test:pg 153, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Every new test fails without its fix. Manual on dist with CORS: invalid path parameter -> 400 with Access-Control-Allow-Origin. Details were in progress.md on fix/error-path-review (removed from main by this PR)."
         },
@@ -1088,9 +950,7 @@
             "description": "docs/plan/oauth-pre-hijack-plan.md, foundation part: one transaction owner for one-time tokens (runTokenTransaction: lock user -> check state -> consume with clock_timestamp() -> apply -> invalidate the rest by user_id without exceptId), serialized issuance (issueTokenLocked under the same user lock), Auth.getPresentedUserToken() (immutable token of the initial request) and a presented-session-token guard on every session-initiated change of users/credentials (changePassword, phone/email link, logoutAll, avatar). Existing flows move to the new contract; OAuth behaviour unchanged; PostgreSQL concurrency tests",
             "owner": "Blazheiko",
             "branch": "fix/feat-096-credential-transactions",
-            "dependencies": [
-                "feat-095"
-            ],
+            "dependencies": ["feat-095"],
             "status": "done",
             "evidence": "Merged #322 (merge 1604cfb; start #321): runTokenTransaction owns the one-time token transaction (lock user FOR UPDATE -> check -> consume with clock_timestamp() -> apply -> retire the rest by user_id, no exceptId), issueTokenLocked serializes issuance under the same lock, Auth.getPresentedUserToken() keeps the token RequestSession.restore verified, and change-password, link-phone start/confirm, link-email start, logout-all and avatar upload/delete compare it with users.session_token atomically (401 session_revoked). Password reset retires phone challenges inside its transaction. typecheck/lint/format:check clean, test backend 1986 / frontend 372 / api-playground 62 / shared 25 / documentation 26, test:pg 163, test:redis 88, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e. Mutation checks: now() instead of clock_timestamp(), issuance without the lock, changePassword without the token condition each fail a new pg test. Manual on dist: change-password from A 200, B 401, logout-all 200, A 401. Details were in progress.md on fix/feat-096-credential-transactions (removed from main by this PR)."
         },
@@ -1100,9 +960,7 @@
             "description": "docs/plan/oauth-pre-hijack-plan.md, OAuth part: Google trusted only when authoritative (verified_email + gmail.com or matching hd), other providers confirm by email with session binding (oauth_link_verifications); users.email stays null for untrusted OAuth sign-ups until confirmed (addFirstEmail keeps credentials); claim of an unverified account wipes password, phone, OAuth links and pending tokens and rotates sessionToken; OAuth sign-in by an existing link re-checks it under the user lock; /verify-email for registration requires the password or the account's session; password reset on an unverified account claims it; frontend, docs, e2e",
             "owner": "Blazheiko",
             "branch": "fix/feat-097-oauth-pre-hijack",
-            "dependencies": [
-                "feat-096"
-            ],
+            "dependencies": ["feat-096"],
             "status": "done",
             "evidence": "Merged #325 (merge 064fae8; start #324): Google trusted only for verified Gmail and matching Workspace hd; other providers link to an existing account only via a mailed 30-minute link bound to the browser session that started the sign-in (oauth_link_verifications, POST /auth/oauth/link/confirm); new untrusted OAuth accounts get users.email = null until the owner confirms it from that account's session (resend POST /auth/oauth/email/resend); the first proof of the mailbox on an unverified account (authoritative Google, confirmed link, password reset with password_reset_tokens.target_email) claims it in one locked transaction (password, phone, OAuth links, push subscriptions, pending tokens and SMS challenges removed, session_token rotated); sign-in by an existing link re-checks it under the user lock; /verify-email registration links need the account password or its session. typecheck/lint/format:check clean, test backend 2102 / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:pg 173 (oauth-pre-hijack.pg.test.ts covers paths A-G), test:redis 88, Playwright mock 74, e2e-live 5, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e, e2e-live. Mutation checks: six protections removed one at a time each fail a pg test. Manual on dist: registration link without password 403, wrong 400, right 200. Details were in progress.md on fix/feat-097-oauth-pre-hijack (removed from main by this PR)."
         },
@@ -1112,9 +970,7 @@
             "description": "Review of feat-096/097: push subscription create/update only while the request's presented session token is current (checked under the user row lock, so a claim cannot be undone by an in-flight request); email-link throttles (per target address, per user, per-user cooldown) on every mail path of OAuth linking: the mailed link to an existing account, the first-address mail of a new OAuth account and its resend, enforced before a token is issued or a mail sent; a new OAuth user and its first oauth_accounts row created in one transaction, a concurrent callback for the same identity signs in through the winner's link instead of leaving an extra user",
             "owner": "Blazheiko",
             "branch": "fix/feat-098-oauth-review-followups",
-            "dependencies": [
-                "feat-097"
-            ],
+            "dependencies": ["feat-097"],
             "status": "done",
             "evidence": "Merged #328 (merge c4a75fe; start #327): push subscription create/update run in withCurrentSession (one transaction under the user row lock, presented session token compared under it, else 401 session_revoked), so a request admitted before a claim cannot re-add a device after it; enforceEmailLinkThrottles (linkEmailTarget, linkEmailUser, linkEmailUserCooldown) consumed before the token/mail on the mailed OAuth link, the first-address mail of a new OAuth user and its resend (reason too_many_attempts, explained on the login page); a new OAuth user and its first oauth_accounts row created in one transaction, a callback losing the race decides again and signs in by the winner's link. typecheck/lint/format:check clean, test backend 2119 / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:pg 178 (+5: push after a completed claim, push waiting on a held lock while the token rotates, control, concurrent callbacks leave one user and one link, HTTP POST with a stale token 401), test:redis 88, Playwright mock 87, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e, e2e-live. Mutation checks: guard without the token compare, guard without the lock, creation without a transaction each fail a pg test. Manual on dist: push create/update 200, after session_token rotation 401 and nothing written. Details were in progress.md on fix/feat-098-oauth-review-followups (removed from main by this PR)."
         },
