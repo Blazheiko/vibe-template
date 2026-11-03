@@ -50,6 +50,10 @@ const start = async (): Promise<void> => {
         process.on('SIGINT', stopSIGINT)
         process.on('SIGHUP', stopSIGHUP)
         process.on('SIGTERM', stopSIGTERM)
+        // There is deliberately no 'unhandledRejection' listener: without one, Node
+        // (--unhandled-rejections=throw, the default) raises an unhandled rejection as an
+        // uncaught exception with origin 'unhandledRejection', so it is logged, sent to
+        // Sentry and stops the server gracefully here like any other uncaught error.
         process.on('uncaughtException', stopUncaughtException)
     } catch (err: unknown) {
         logger.error({ err }, 'Failed to start application')

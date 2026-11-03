@@ -189,7 +189,7 @@ describe('authService', () => {
                     'If the email can be used for registration, continue with the verification instructions sent to your inbox.',
             })
         }
-        expect(sessionMock.destroySession).toHaveBeenCalledWith('session-id')
+        expect(sessionMock.destroySession).toHaveBeenCalledWith()
         expect(authMock.login).not.toHaveBeenCalled()
         expect(generateWsTokenMock).not.toHaveBeenCalled()
     })
@@ -235,7 +235,7 @@ describe('authService', () => {
             })
         }
         expect(sendVerificationEmailAfterRegistrationMock).toHaveBeenCalledWith(7n)
-        expect(sessionMock.destroySession).toHaveBeenCalledWith('session-id')
+        expect(sessionMock.destroySession).toHaveBeenCalledWith()
         expect(authMock.login).toHaveBeenCalledWith('7', 'session-token')
         expect(generateWsTokenMock).toHaveBeenCalledWith(sessionMock.sessionInfo, '7')
     })

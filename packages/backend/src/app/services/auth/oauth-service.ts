@@ -37,6 +37,7 @@ import type { Auth } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
+import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
 type JsonObject = Record<string, unknown>
@@ -317,7 +318,8 @@ export const oauthService = {
             return Result.err(notFound('OAuthProvider', `Provider not configured: ${provider}`))
         }
 
-        if (storedState !== receivedState) {
+        // Constant time, like every other secret comparison here.
+        if (!safeEqual(storedState, receivedState)) {
             return Result.err(badRequest('OAuth state mismatch'))
         }
 

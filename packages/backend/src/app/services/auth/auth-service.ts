@@ -267,7 +267,7 @@ async function finalizeRegistration(
         return Result.err(userCreatedResult.error)
     }
 
-    await session.destroySession(session.sessionInfo?.id)
+    await session.destroySession()
 
     return await buildAuthSuccess(
         userCreatedResult.value,
@@ -372,7 +372,7 @@ async function registerEmailFlow(
         return Result.err(registeredUserResult.error)
     }
 
-    await session.destroySession(session.sessionInfo?.id)
+    await session.destroySession()
 
     return genericEmailRegistrationAnswer()
 }

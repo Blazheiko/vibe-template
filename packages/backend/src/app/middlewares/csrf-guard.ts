@@ -1,10 +1,9 @@
-import { timingSafeEqual } from 'node:crypto'
-
 import { CsrfRejectReason } from 'shared/errors'
 
 import csrfConfig, { isExactOrigin } from '#config/csrf.js'
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
 import { isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 
 const UNSAFE_METHODS = new Set<string>(['post', 'put', 'patch', 'delete', 'del'])
 
@@ -58,10 +57,7 @@ const safeTokenEqual = (expected: string | undefined, submitted: string | undefi
     if (!isValidCsrfToken(expected) || !isValidCsrfToken(submitted)) {
         return false
     }
-    const expectedBuffer = Buffer.from(expected)
-    const submittedBuffer = Buffer.from(submitted)
-    if (expectedBuffer.length !== submittedBuffer.length) return false
-    return timingSafeEqual(expectedBuffer, submittedBuffer)
+    return safeEqual(expected, submitted)
 }
 
 const shouldContinueAfterViolation = (context: HttpContext, reason: CsrfRejectReason): boolean => {

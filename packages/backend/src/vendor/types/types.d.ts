@@ -106,7 +106,8 @@ export interface Session {
     sessionInfo: SessionInfo | null
     updateSessionData: (newData: SessionData) => Promise<SessionInfo | null>
     changeSessionData: (newData: SessionData) => Promise<SessionInfo | null>
-    destroySession: (sessionId: string | undefined) => Promise<void>
+    /** Deletes the current session's record; it does not issue a new session. */
+    destroySession: () => Promise<void>
     /** Run by the server after the handler, right before the response is sent. */
     beforeSend?: () => Promise<void>
 }
