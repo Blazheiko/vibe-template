@@ -2,6 +2,7 @@ import { Result } from 'better-result'
 import { userRepository, withTransaction } from '#app/repositories/index.js'
 import type { DbTransaction, UserRow } from '#app/repositories/index.js'
 import { sessionRevoked, type AppResult } from '#app/services/shared/errors.js'
+import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 
 /**
  * Runs `work` in one transaction under the user's row lock, and only while the session
@@ -19,7 +20,7 @@ export async function withCurrentSession<T>(
     if (presentedSessionToken === undefined) return Result.err(sessionRevoked())
     return await withTransaction(async (tx) => {
         const user = await userRepository.lockById(userId, tx)
-        if (user?.sessionToken !== presentedSessionToken) {
+        if (user === undefined || !safeEqual(user.sessionToken, presentedSessionToken)) {
             return Result.err(sessionRevoked())
         }
         return await work(tx, user)
