@@ -22,12 +22,12 @@
 
 ### Де ще та сама гонка
 
-| Місце | Перевірка | Запис | Зараз | Має бути |
-|---|---|---|---|---|
-| Реєстрація email (strict і non-strict) | `findByEmail` | `create` | 500 | `GENERIC_EMAIL_REGISTRATION_MESSAGE`, як для зайнятої адреси |
-| `completePhoneRegistration` | `findByPhone` | `create` | 500 | 409 `Phone already exist` (як у перевірці вище) |
-| `confirmPhoneLink` | `phoneExistsForOtherUser` | `updateIfSessionToken` | 500 | 409 `Phone is already linked to another account` |
-| OAuth new user (`oauth-service.ts`) | — | — | ✅ уже перехоплено з повтором | — |
+| Місце                                  | Перевірка                 | Запис                  | Зараз                         | Має бути                                                     |
+| -------------------------------------- | ------------------------- | ---------------------- | ----------------------------- | ------------------------------------------------------------ |
+| Реєстрація email (strict і non-strict) | `findByEmail`             | `create`               | 500                           | `GENERIC_EMAIL_REGISTRATION_MESSAGE`, як для зайнятої адреси |
+| `completePhoneRegistration`            | `findByPhone`             | `create`               | 500                           | 409 `Phone already exist` (як у перевірці вище)              |
+| `confirmPhoneLink`                     | `phoneExistsForOtherUser` | `updateIfSessionToken` | 500                           | 409 `Phone is already linked to another account`             |
+| OAuth new user (`oauth-service.ts`)    | —                         | —                      | ✅ уже перехоплено з повтором | —                                                            |
 
 ### Наслідки
 
@@ -74,6 +74,7 @@ try {
 Програвший не знищує сесію, як і в гілці `existResult !== undefined`.
 
 **Email, non-strict-режим:** відповіді різні, і це очікувано:
+
 - переможець: створює сесію, `auth.login`, повертає `AuthSuccessPayload` з користувачем;
 - програвший: `Conflict` з `finalizeRegistration` → загальне повідомлення, **без**
   `session.destroySession` і **без** `auth.login`.
@@ -107,11 +108,11 @@ try {
 перевірки, що тримає першого читача, доки не прочитає другий). Винести його в спільний
 тестовий хелпер (наприклад `app/services/auth/__test-utils__/race.ts`), щоб не дублювати.
 
-| Сценарій | Бар'єр на | Підготовка |
-|---|---|---|
-| Реєстрація email | `userRepository.findByEmail` | Два запити з однаковим email (різний регістр — окремий кейс на `LOWER`) |
-| Phone completion | `userRepository.findByPhone` | Два **окремі** підтверджені challenge на один номер у двох різних сесіях |
-| Link phone | `userRepository.phoneExistsForOtherUser` | Два **різні** акаунти, кожен зі своєю сесією і своїм підтвердженим challenge на один номер |
+| Сценарій         | Бар'єр на                                | Підготовка                                                                                 |
+| ---------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Реєстрація email | `userRepository.findByEmail`             | Два запити з однаковим email (різний регістр — окремий кейс на `LOWER`)                    |
+| Phone completion | `userRepository.findByPhone`             | Два **окремі** підтверджені challenge на один номер у двох різних сесіях                   |
+| Link phone       | `userRepository.phoneExistsForOtherUser` | Два **різні** акаунти, кожен зі своєю сесією і своїм підтвердженим challenge на один номер |
 
 В останніх двох рядках challenge мають бути окремими. Інакше другий запит відсіється як
 повторне використання challenge, і тест перевірятиме не конфлікт унікальності.
@@ -135,6 +136,7 @@ try {
 
 `create` / `updateIfSessionToken` відхиляються з `{ code: '23505' }` і з Drizzle-обгорткою
 (код у `cause`):
+
 - email strict і non-strict → загальна відповідь; лист не відправлено; `destroySession` і
   `auth.login` не викликано;
 - phone completion → 409; `markInvalidated` не викликано;
@@ -150,10 +152,10 @@ try {
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `pnpm test`, `test:pg` — зелені.
 - Вручну на dist, два паралельні `curl` на реєстрацію з одним email:
-  - strict: обидва 200 із загальним повідомленням, в `users` один рядок;
-  - non-strict: один 200 з користувачем і сесією, один 200 із загальним повідомленням, в
-    `users` один рядок.
-  Ручна перевірка гонку не гарантує; детермінованість забезпечують pg-тести.
+    - strict: обидва 200 із загальним повідомленням, в `users` один рядок;
+    - non-strict: один 200 з користувачем і сесією, один 200 із загальним повідомленням, в
+      `users` один рядок.
+      Ручна перевірка гонку не гарантує; детермінованість забезпечують pg-тести.
 - `pnpm docs:build && pnpm docs:verify`, якщо документацію змінено.
 - PR → зелений CI → merge commit; окремий PR «Mark feat-100 done» з `evidence` у
   `feature_list.json`.
