@@ -98,7 +98,11 @@ export interface DestroyAllSessionsResult {
      * more after the answer was given up on, so the real count can be higher.
      */
     deleted: number
-    /** The SCAN reached cursor 0 without an error: no session of the user is left. */
+    /**
+     * The SCAN reached cursor 0 without an error. Not a promise that no record is left: a
+     * concurrent request can write one behind the scan. Such a record is already revoked
+     * by the rotated session token, so it opens nothing.
+     */
     complete: boolean
 }
 

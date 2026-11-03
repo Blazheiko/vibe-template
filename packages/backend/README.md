@@ -360,7 +360,7 @@ End-to-end pipeline of a single HTTP request, with the module that owns each ste
 ┌──────────────────────────────────────────────────────────────────┐
 │  Middleware chain  —  src/app/middlewares/kernel.ts              │
 │  group middlewares + route middlewares, executed in order        │
-│  e.g.  session_web  →  auth_guard  →  partner_guard              │
+│  e.g.  session_web  →  csrf_guard  →  auth_guard  →  admin_guard │
 │  any middleware that does NOT call next() short-circuits         │
 └────────────┬─────────────────────────────────────────────────────┘
              ▼
@@ -400,7 +400,7 @@ End-to-end pipeline of a single HTTP request, with the module that owns each ste
 
 Side-channels:
 
-- **Session / auth** — `context.session` (Redis via `#database/redis.js`) and `context.auth` are populated by `session_web` / `session_api` middleware before `auth_guard` runs.
+- **Session / auth** — `context.session` (Redis via `#database/redis.js`) and `context.auth` are populated by the `session_web` middleware before `auth_guard` runs.
 - **Logging** — every step logs through `context.logger` (Pino, scoped by `requestId`).
 - **WebSocket** — same shape, but the chain replaces "readAndParseBody" with `ws-api-dispatcher.ts` and "Controller" with handlers in `src/app/controllers/ws/`. Connection-level state lives in `src/app/websocket/{ws-session-auth, ws-connection-registry, ws-coordinator}.ts`.
 
@@ -690,22 +690,24 @@ Middleware lives in `src/app/middlewares/` and is registered by string key in `s
 ```ts
 // src/app/middlewares/kernel.ts
 import sessionWeb from '#vendor/utils/middlewares/ws/session-web.js'
-import sessionAPI from '#vendor/utils/middlewares/http/session-api.js'
-import csrfGuard from '#app/middlewares/csrf-guard.js'
 import authGuard from '#vendor/utils/middlewares/core/auth-guard.js'
 import adminGuard from '#app/middlewares/admin-guard.js'
-import partnerGuard from '#app/middlewares/partner-guard.js'
+import csrfGuard from '#app/middlewares/csrf-guard.js'
+import wsAdminGuard from '#app/middlewares/ws-admin-guard.js'
+import type { Middleware, WsContext } from '#vendor/types/types.js'
 
-const middlewares: Record<string, Function> = {
+// Two maps, one per transport: a middleware gets the context type it was written for.
+// A route naming a middleware of the other transport fails like an unknown name.
+export const httpMiddlewares: Readonly<Record<string, Middleware>> = {
     session_web: sessionWeb,
-    session_api: sessionAPI,
     csrf_guard: csrfGuard,
     auth_guard: authGuard,
     admin_guard: adminGuard,
-    partner_guard: partnerGuard,
 }
 
-export default middlewares
+export const wsMiddlewares: Readonly<Record<string, Middleware<WsContext>>> = {
+    ws_admin_guard: wsAdminGuard,
+}
 ```
 
 ### Middleware signature
@@ -749,14 +751,13 @@ export default adminGuard
 
 ### Built-in middleware
 
-| Key             | Description                                                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `session_web`   | Loads/creates a Redis session from cookie                                                                                   |
-| `session_api`   | Loads session from `Authorization` header token                                                                             |
-| `csrf_guard`    | Validates `X-CSRF-Token` on unsafe methods for cookie-backed routes; registered after `session_web` and before `auth_guard` |
-| `auth_guard`    | Aborts with 401 if `context.auth.check()` is false                                                                          |
-| `admin_guard`   | Aborts with 403 if user's `role` is not `admin`                                                                             |
-| `partner_guard` | Aborts with 403 if user is not a partner account                                                                            |
+| Key              | Description                                                                                                                 |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `session_web`    | Loads/creates a Redis session from cookie                                                                                   |
+| `csrf_guard`     | Validates `X-CSRF-Token` on unsafe methods for cookie-backed routes; registered after `session_web` and before `auth_guard` |
+| `auth_guard`     | Aborts with 401 if `context.auth.check()` is false                                                                          |
+| `admin_guard`    | Aborts with 403 if user's `role` is not `admin`                                                                             |
+| `ws_admin_guard` | WebSocket routes: answers `403` without calling the handler if `userData.role` is not `admin`                               |
 
 ---
 
