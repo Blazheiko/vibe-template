@@ -49,3 +49,35 @@ describe('enforceThrottle', () => {
         expect(classifyError(cause)).toMatchObject({ status: 503, code: 'service_unavailable' })
     })
 })
+
+describe('enforceEmailLinkThrottles', () => {
+    it('consumes the address, account and cooldown budgets, in that order', async () => {
+        consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+        const { enforceEmailLinkThrottles } = await import('./enforce-throttle.js')
+        const { throttlePolicies } = await import('#config/throttle-policies.js')
+
+        const result = await enforceEmailLinkThrottles('user@example.com', 7n, rejected)
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(consumeAuthThrottleMock.mock.calls).toEqual([
+            [throttlePolicies.linkEmailTarget, 'user@example.com'],
+            [throttlePolicies.linkEmailUser, '7'],
+            [throttlePolicies.linkEmailUserCooldown, '7'],
+        ])
+    })
+
+    it.each([0, 1, 2])(
+        'answers the given error and stops once budget %i is spent',
+        async (spent) => {
+            for (let i = 0; i < 3; i++) {
+                consumeAuthThrottleMock.mockResolvedValueOnce({ allowed: i !== spent, count: 1 })
+            }
+            const { enforceEmailLinkThrottles } = await import('./enforce-throttle.js')
+
+            const result = await enforceEmailLinkThrottles('user@example.com', 7n, rejected)
+
+            expect(Result.isError(result) && result.error).toEqual(rejected)
+            expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(spent + 1)
+        },
+    )
+})

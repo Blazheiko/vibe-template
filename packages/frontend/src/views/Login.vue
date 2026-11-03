@@ -24,6 +24,7 @@ const OAUTH_ERROR_REASONS = {
     oauth_link_revoked: 'login.socialLoginLinkRevoked',
     email_changed: 'login.socialLoginEmailChanged',
     oauth_already_linked: 'login.socialLoginAlreadyLinked',
+    too_many_attempts: 'login.socialLoginTooManyAttempts',
 } as const
 const isRegisterModalVisible = ref(false)
 const logoText = ref('VIBE')

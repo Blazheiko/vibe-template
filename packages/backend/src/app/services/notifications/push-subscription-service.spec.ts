@@ -26,6 +26,16 @@ vi.mock('#app/repositories/index.js', () => ({
     pushSubscriptionRepository: pushSubscriptionRepositoryMock,
 }))
 
+const withCurrentSessionMock = vi.fn(
+    (_userId: bigint, _token: string | undefined, work: (tx: unknown) => Promise<unknown>) =>
+        work(TX),
+)
+const TX = { tx: true }
+
+vi.mock('#app/services/auth/session-guard.js', () => ({
+    withCurrentSession: withCurrentSessionMock,
+}))
+
 vi.mock('#app/transformers/index.js', () => ({
     pushSubscriptionTransformer: pushSubscriptionTransformerMock,
 }))
@@ -72,12 +82,16 @@ describe('pushSubscriptionService', () => {
         })
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
-        const result = await pushSubscriptionService.createSubscription(7n, {
-            endpoint: 'https://push.example.com/ep',
-            p256dhKey: 'key',
-            authKey: 'auth',
-            notificationTypes: ['system'],
-        } as any)
+        const result = await pushSubscriptionService.createSubscription(
+            7n,
+            {
+                endpoint: 'https://push.example.com/ep',
+                p256dhKey: 'key',
+                authKey: 'auth',
+                notificationTypes: ['system'],
+            } as any,
+            'token-7',
+        )
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -87,6 +101,56 @@ describe('pushSubscriptionService', () => {
                 },
             })
         }
+    })
+
+    it('writes inside the session guard, with its transaction', async () => {
+        pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(undefined)
+        pushSubscriptionRepositoryMock.create.mockResolvedValue({ id: 2n })
+
+        const { pushSubscriptionService } = await loadPushSubscriptionService()
+        await pushSubscriptionService.createSubscription(
+            7n,
+            { endpoint: 'https://push.example.com/new', p256dhKey: 'k', authKey: 'a' },
+            'token-7',
+        )
+
+        expect(withCurrentSessionMock).toHaveBeenCalledWith(7n, 'token-7', expect.any(Function))
+        expect(pushSubscriptionRepositoryMock.findByEndpoint).toHaveBeenCalledWith(
+            'https://push.example.com/new',
+            TX,
+        )
+        expect(pushSubscriptionRepositoryMock.create).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: 7n }),
+            TX,
+        )
+    })
+
+    it('does not write when the session guard refuses', async () => {
+        withCurrentSessionMock.mockResolvedValueOnce(
+            Result.err({ _tag: 'Unauthorized', reason: 'session_revoked' }),
+        )
+
+        const { pushSubscriptionService } = await loadPushSubscriptionService()
+        const created = await pushSubscriptionService.createSubscription(
+            7n,
+            { endpoint: 'https://push.example.com/new', p256dhKey: 'k', authKey: 'a' },
+            'stale-token',
+        )
+        withCurrentSessionMock.mockResolvedValueOnce(
+            Result.err({ _tag: 'Unauthorized', reason: 'session_revoked' }),
+        )
+        const updated = await pushSubscriptionService.updateSubscription(
+            7n,
+            1n,
+            { isActive: true },
+            'stale-token',
+        )
+
+        expect(Result.isError(created)).toBe(true)
+        expect(Result.isError(updated)).toBe(true)
+        expect(pushSubscriptionRepositoryMock.findByEndpoint).not.toHaveBeenCalled()
+        expect(pushSubscriptionRepositoryMock.create).not.toHaveBeenCalled()
+        expect(pushSubscriptionRepositoryMock.update).not.toHaveBeenCalled()
     })
 
     describe('endpoint owned by another user', () => {
@@ -106,17 +170,22 @@ describe('pushSubscriptionService', () => {
             })
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
-            const result = await pushSubscriptionService.createSubscription(7n, {
-                endpoint: existing.endpoint,
-                p256dhKey: 'key',
-                authKey: 'auth',
-            })
+            const result = await pushSubscriptionService.createSubscription(
+                7n,
+                {
+                    endpoint: existing.endpoint,
+                    p256dhKey: 'key',
+                    authKey: 'auth',
+                },
+                'token-7',
+            )
 
             expect(Result.isOk(result)).toBe(true)
             expect(pushSubscriptionRepositoryMock.updateByEndpoint).toHaveBeenCalledWith(
                 existing.endpoint,
                 7n,
                 expect.objectContaining({ p256dhKey: 'key', authKey: 'auth' }),
+                TX,
             )
         })
 
@@ -127,10 +196,14 @@ describe('pushSubscriptionService', () => {
             pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(existing)
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
-            const result = await pushSubscriptionService.createSubscription(7n, {
-                endpoint: existing.endpoint,
-                ...keys,
-            })
+            const result = await pushSubscriptionService.createSubscription(
+                7n,
+                {
+                    endpoint: existing.endpoint,
+                    ...keys,
+                },
+                'token-7',
+            )
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) {

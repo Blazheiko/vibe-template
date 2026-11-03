@@ -40,21 +40,26 @@ export type PushSubscriptionWithLogs = PushSubscriptionRow & {
 }
 
 export interface IPushSubscriptionRepository {
-    create(data: PushSubscriptionInsert): Promise<PushSubscriptionRow>
+    create(data: PushSubscriptionInsert, executor?: DbExecutor): Promise<PushSubscriptionRow>
     findById(id: bigint): Promise<PushSubscriptionRow | undefined>
     findByIdAndUserId(id: bigint, userId: bigint): Promise<PushSubscriptionRow | undefined>
-    findByEndpoint(endpoint: string): Promise<PushSubscriptionRow | undefined>
+    findByEndpoint(
+        endpoint: string,
+        executor?: DbExecutor,
+    ): Promise<PushSubscriptionRow | undefined>
     findByUserId(userId: bigint): Promise<PushSubscriptionRow[]>
     findByUserIdWithLogs(userId: bigint): Promise<PushSubscriptionWithLogs[]>
     update(
         id: bigint,
         userId: bigint,
         data: PushSubscriptionUpdate,
+        executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
     updateByEndpoint(
         endpoint: string,
         userId: bigint,
         data: PushSubscriptionUpdate,
+        executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
     deactivate(id: bigint, userId: bigint): Promise<PushSubscriptionRow | undefined>
     touchLastUsed(ids: bigint[], userId: bigint): Promise<void>
@@ -69,9 +74,9 @@ export interface IPushSubscriptionRepository {
 }
 
 export const pushSubscriptionRepository: IPushSubscriptionRepository = {
-    async create(data) {
+    async create(data, executor = db) {
         const now = new Date()
-        const [created] = await db
+        const [created] = await executor
             .insert(pushSubscriptions)
             .values({
                 ...data,
@@ -103,8 +108,8 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
             .then((rows) => rows.at(0))
     },
 
-    async findByEndpoint(endpoint) {
-        return await db
+    async findByEndpoint(endpoint, executor = db) {
+        return await executor
             .select()
             .from(pushSubscriptions)
             .where(eq(pushSubscriptions.endpoint, endpoint))
@@ -143,8 +148,8 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
 
     // The row comes from the owner-scoped UPDATE itself: re-reading it by id alone
     // would hand back another user's subscription when the WHERE matched nothing.
-    async update(id, userId, data) {
-        const [row] = await db
+    async update(id, userId, data, executor = db) {
+        const [row] = await executor
             .update(pushSubscriptions)
             .set({ ...data, updatedAt: new Date(), lastUsedAt: new Date() })
             .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, userId)))
@@ -155,12 +160,13 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
     // No owner filter on purpose: the endpoint is unique across users, and moving it to
     // another account (same device, account switch) is allowed after the service has
     // checked the browser's keys.
-    async updateByEndpoint(endpoint, userId, data) {
-        await db
+    async updateByEndpoint(endpoint, userId, data, executor = db) {
+        const [row] = await executor
             .update(pushSubscriptions)
             .set({ ...data, userId, updatedAt: new Date(), lastUsedAt: new Date() })
             .where(eq(pushSubscriptions.endpoint, endpoint))
-        return pushSubscriptionRepository.findByEndpoint(endpoint)
+            .returning()
+        return row
     },
 
     async touchLastUsed(ids, userId) {

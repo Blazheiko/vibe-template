@@ -21,7 +21,7 @@ import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
-import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import { enforceEmailLinkThrottles, enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import {
     confirmChallenge,
     findPendingChallenge,
@@ -784,31 +784,13 @@ export const authService = {
 
         const email = normalizeEmail(payload.email)
 
-        const targetThrottle = await enforceThrottle(
-            throttlePolicies.linkEmailTarget,
+        const throttled = await enforceEmailLinkThrottles(
             email,
+            userId,
             badRequest('Too many verification attempts. Please try again later.'),
         )
-        if (Result.isError(targetThrottle)) {
-            return Result.err(targetThrottle.error)
-        }
-
-        const userThrottle = await enforceThrottle(
-            throttlePolicies.linkEmailUser,
-            String(userId),
-            badRequest('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(userThrottle)) {
-            return Result.err(userThrottle.error)
-        }
-
-        const userCooldown = await enforceThrottle(
-            throttlePolicies.linkEmailUserCooldown,
-            String(userId),
-            badRequest('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(userCooldown)) {
-            return Result.err(userCooldown.error)
+        if (Result.isError(throttled)) {
+            return Result.err(throttled.error)
         }
 
         const emailExists = await userRepository.emailExistsForOtherUser(email, userId)

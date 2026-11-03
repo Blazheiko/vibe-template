@@ -71,6 +71,7 @@ export default {
         socialLoginEmailChanged:
             'The account email changed while you were signing in. Please try again.',
         socialLoginAlreadyLinked: 'This sign-in method is already linked to another account.',
+        socialLoginTooManyAttempts: 'Too many sign-in emails were sent. Please try again later.',
     },
 
     auth: {

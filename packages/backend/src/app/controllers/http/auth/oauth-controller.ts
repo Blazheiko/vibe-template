@@ -10,6 +10,7 @@ import {
     OAUTH_ALREADY_LINKED,
     OAUTH_LINK_REVOKED,
     oauthService,
+    TOO_MANY_ATTEMPTS,
 } from '#app/services/auth/oauth-service.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
@@ -32,7 +33,12 @@ import type {
 } from 'shared'
 
 // The reasons the frontend explains to the user (feat-097); any other error is generic.
-const REDIRECT_REASONS = [OAUTH_LINK_REVOKED, EMAIL_CHANGED, OAUTH_ALREADY_LINKED] as const
+const REDIRECT_REASONS = [
+    OAUTH_LINK_REVOKED,
+    EMAIL_CHANGED,
+    OAUTH_ALREADY_LINKED,
+    TOO_MANY_ATTEMPTS,
+] as const
 
 // The callback is a browser navigation, so every outcome must be a redirect back to
 // the frontend: an error status would leave the user on a raw JSON page.

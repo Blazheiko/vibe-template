@@ -44,7 +44,7 @@ export interface AdminUserDetailRow {
 }
 
 export interface IUserRepository {
-    create(data: UserInsert): Promise<UserRow>
+    create(data: UserInsert, executor?: DbExecutor): Promise<UserRow>
     findById(id: bigint): Promise<UserRow | undefined>
     findByEmail(email: string): Promise<UserRow | undefined>
     findByPhone(phone: string): Promise<UserRow | undefined>
@@ -99,9 +99,9 @@ export interface IUserRepository {
 }
 
 export const userRepository: IUserRepository = {
-    async create(data) {
+    async create(data, executor = db) {
         const now = new Date()
-        const [created] = await db
+        const [created] = await executor
             .insert(users)
             .values({
                 ...data,

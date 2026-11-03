@@ -32,6 +32,7 @@ const destroySessionsQuietlyMock = vi.fn()
 const sendLinkVerificationEmailMock = vi.fn()
 const emailServiceMock = { send: vi.fn() }
 const securityMock = vi.fn()
+const enforceEmailLinkThrottlesMock = vi.fn()
 
 const authMock = {
     login: vi.fn(),
@@ -107,6 +108,11 @@ vi.mock('#app/services/auth/account-claim-service.js', () => ({
 
 vi.mock('#app/services/auth/email-verification-service.js', () => ({
     emailVerificationService: { sendLinkVerificationEmail: sendLinkVerificationEmailMock },
+}))
+
+// The budgets themselves are covered by enforce-throttle.spec.ts and the Redis tests.
+vi.mock('#app/services/auth/enforce-throttle.js', () => ({
+    enforceEmailLinkThrottles: enforceEmailLinkThrottlesMock,
 }))
 
 vi.mock('#app/services/notifications/email-service.js', () => ({ emailService: emailServiceMock }))
@@ -306,7 +312,20 @@ async function unsetCredential(
     })
 }
 
+const THROTTLED = {
+    _tag: 'BadRequest',
+    message: 'Too many emails were sent. Please try again later.',
+    reason: 'too_many_attempts',
+}
+
+const spendMailBudget = (): void => {
+    enforceEmailLinkThrottlesMock.mockImplementation((_email, _userId, rejected) =>
+        Promise.resolve(Result.err(rejected)),
+    )
+}
+
 beforeEach(() => {
+    enforceEmailLinkThrottlesMock.mockResolvedValue(Result.ok(undefined))
     claimAnswers(false)
     destroySessionsQuietlyMock.mockResolvedValue(undefined)
 })
@@ -682,6 +701,39 @@ describe('oauthService.handleCallback', () => {
             expectNoSignIn()
         })
 
+        it('consumes the mail budgets of the address and the account before the token', async () => {
+            stubGitHub()
+            givenExistingUserByEmail()
+
+            await callback('github')
+
+            expect(enforceEmailLinkThrottlesMock).toHaveBeenCalledWith(
+                'user@example.com',
+                5n,
+                THROTTLED,
+            )
+            expect(order(enforceEmailLinkThrottlesMock)).toBeLessThan(
+                order(oauthLinkVerificationRepositoryMock.create),
+            )
+        })
+
+        it('a spent mail budget: 400 too_many_attempts, no token, no mail, no pending link retired', async () => {
+            stubGitHub()
+            givenExistingUserByEmail()
+            spendMailBudget()
+
+            const result = await callback('github')
+
+            expectError(result, THROTTLED)
+            expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
+            expect(
+                oauthLinkVerificationRepositoryMock.invalidatePendingByUserIdAndProvider,
+            ).not.toHaveBeenCalled()
+            expect(oauthLinkVerificationRepositoryMock.create).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+            expectNoSignIn()
+        })
+
         it('binds the link to the browser session and retires only this provider pending links', async () => {
             stubGitHub()
             givenExistingUserByEmail()
@@ -856,21 +908,28 @@ describe('oauthService.handleCallback', () => {
             expect(Result.isOk(result) && result.value).toEqual({
                 redirectUrl: 'https://app.example.com/oauth/success',
             })
-            expect(userRepositoryMock.create).toHaveBeenCalledWith({
-                name: 'Jane',
-                email: 'jane@gmail.com',
-                password: null,
-                avatar: 'https://cdn.example.com/g.png',
-                emailVerifiedAt: expect.any(Date),
-            })
-            expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith({
-                userId: 8n,
-                provider: 'google',
-                providerUserId: 'g-1',
-                providerEmail: 'jane@gmail.com',
-                providerName: 'Jane',
-                providerAvatar: 'https://cdn.example.com/g.png',
-            })
+            expect(userRepositoryMock.create).toHaveBeenCalledWith(
+                {
+                    name: 'Jane',
+                    email: 'jane@gmail.com',
+                    password: null,
+                    avatar: 'https://cdn.example.com/g.png',
+                    emailVerifiedAt: expect.any(Date),
+                },
+                TX,
+            )
+            // feat-098: the user and its first link are one transaction.
+            expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
+                {
+                    userId: 8n,
+                    provider: 'google',
+                    providerUserId: 'g-1',
+                    providerEmail: 'jane@gmail.com',
+                    providerName: 'Jane',
+                    providerAvatar: 'https://cdn.example.com/g.png',
+                },
+                TX,
+            )
             expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token')
             expect(securityMock).toHaveBeenCalledWith(8n, 'new_sign_in')
             expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
@@ -886,21 +945,27 @@ describe('oauthService.handleCallback', () => {
                 redirectUrl: 'https://app.example.com/oauth/success',
             })
             // Exactly these fields: no address and no verification.
-            expect(userRepositoryMock.create).toHaveBeenCalledWith({
-                name: 'Jane',
-                email: null,
-                password: null,
-                avatar: 'https://cdn.example.com/avatar.png',
-            })
+            expect(userRepositoryMock.create).toHaveBeenCalledWith(
+                {
+                    name: 'Jane',
+                    email: null,
+                    password: null,
+                    avatar: 'https://cdn.example.com/avatar.png',
+                },
+                TX,
+            )
             // The address stays with the OAuth account until its owner confirms it.
-            expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith({
-                userId: 8n,
-                provider: 'github',
-                providerUserId: 'provider-user-1',
-                providerEmail: 'user@example.com',
-                providerName: 'Jane',
-                providerAvatar: 'https://cdn.example.com/avatar.png',
-            })
+            expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
+                {
+                    userId: 8n,
+                    provider: 'github',
+                    providerUserId: 'provider-user-1',
+                    providerEmail: 'user@example.com',
+                    providerName: 'Jane',
+                    providerAvatar: 'https://cdn.example.com/avatar.png',
+                },
+                TX,
+            )
             expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token')
             expect(sendLinkVerificationEmailMock).toHaveBeenCalledWith(
                 8n,
@@ -908,6 +973,74 @@ describe('oauthService.handleCallback', () => {
                 'new-session-token',
             )
             expect(order(authMock.login)).toBeLessThan(order(sendLinkVerificationEmailMock))
+            expect(enforceEmailLinkThrottlesMock).toHaveBeenCalledWith(
+                'user@example.com',
+                8n,
+                THROTTLED,
+            )
+            expect(order(enforceEmailLinkThrottlesMock)).toBeLessThan(
+                order(sendLinkVerificationEmailMock),
+            )
+        })
+
+        // feat-098: a concurrent callback for the same identity committed its user and link
+        // first; this transaction rolled back, and the decision is made once more.
+        it('a lost race for the link signs in through the winner link, nothing mailed', async () => {
+            stubGitHub()
+            givenNewUser()
+            oauthAccountRepositoryMock.create.mockRejectedValueOnce(
+                Object.assign(new Error('duplicate key'), { code: '23505' }),
+            )
+            oauthAccountRepositoryMock.findByProviderAndProviderId
+                .mockResolvedValueOnce(undefined)
+                .mockResolvedValueOnce({ id: 21n, userId: 7n })
+            userRepositoryMock.lockById.mockResolvedValue({ id: 7n, sessionToken: 'winner-token' })
+            oauthAccountRepositoryMock.findLinkForUser.mockResolvedValue({ id: 21n, userId: 7n })
+
+            const result = await callback('github')
+
+            expect(Result.isOk(result) && result.value).toEqual({
+                redirectUrl: 'https://app.example.com/oauth/success',
+            })
+            expect(userRepositoryMock.create).toHaveBeenCalledTimes(1)
+            expect(authMock.login).toHaveBeenCalledExactlyOnceWith('7', 'winner-token')
+            expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
+        })
+
+        it('decides again only once: a second unique violation is thrown', async () => {
+            stubGitHub()
+            givenNewUser()
+            const duplicate = Object.assign(new Error('duplicate key'), { code: '23505' })
+            oauthAccountRepositoryMock.create.mockRejectedValue(duplicate)
+
+            await expect(callback('github')).rejects.toBe(duplicate)
+            expect(userRepositoryMock.create).toHaveBeenCalledTimes(2)
+            expectNoSignIn()
+        })
+
+        it('any other database error is thrown without a retry', async () => {
+            stubGitHub()
+            givenNewUser()
+            const failure = new Error('connection lost')
+            oauthAccountRepositoryMock.create.mockRejectedValue(failure)
+
+            await expect(callback('github')).rejects.toBe(failure)
+            expect(userRepositoryMock.create).toHaveBeenCalledTimes(1)
+            expectNoSignIn()
+        })
+
+        it('a spent mail budget skips the first mail; the sign-in stands', async () => {
+            stubGitHub()
+            givenNewUser()
+            spendMailBudget()
+
+            const result = await callback('github')
+
+            expect(Result.isOk(result) && result.value).toEqual({
+                redirectUrl: 'https://app.example.com/oauth/success',
+            })
+            expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token')
+            expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
         })
 
         it('Google with a third-party address is not trusted for a new account either', async () => {
@@ -918,9 +1051,11 @@ describe('oauthService.handleCallback', () => {
 
             expect(userRepositoryMock.create).toHaveBeenCalledWith(
                 expect.objectContaining({ email: null }),
+                TX,
             )
             expect(userRepositoryMock.create).toHaveBeenCalledWith(
                 expect.not.objectContaining({ emailVerifiedAt: expect.anything() }),
+                TX,
             )
             expect(sendLinkVerificationEmailMock).toHaveBeenCalledWith(
                 8n,
@@ -1459,6 +1594,24 @@ describe('oauthService.resendFirstEmailLink', () => {
             'user@example.com',
             'presented-token',
         )
+        expect(enforceEmailLinkThrottlesMock).toHaveBeenCalledWith(
+            'user@example.com',
+            7n,
+            THROTTLED,
+        )
+    })
+
+    it('a spent mail budget: 400 too_many_attempts before any lookup or mail', async () => {
+        oauthAccountRepositoryMock.findByUserId.mockResolvedValue([
+            { providerEmail: 'user@example.com' },
+        ])
+        spendMailBudget()
+
+        const result = await resend('presented-token')
+
+        expectError(result, THROTTLED)
+        expect(userRepositoryMock.emailExistsForOtherUser).not.toHaveBeenCalled()
+        expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
     })
 
     it('answers what the link sender answers (a revoked session included)', async () => {
