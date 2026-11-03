@@ -961,7 +961,7 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-097-oauth-pre-hijack",
             "dependencies": ["feat-096"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
