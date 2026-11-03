@@ -8,6 +8,7 @@ import {
     passwordResetRepository,
     userRepository,
 } from '#app/repositories/index.js'
+import type { DbTransaction } from '#app/repositories/transaction.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
@@ -66,11 +67,17 @@ function createBlindVerificationCodeHash(): string {
     return hashOtpVerificationCode(randomBytes(32).toString('hex'))
 }
 
-async function invalidatePendingPhoneChallenges(phone: string): Promise<void> {
-    await Promise.all([
-        smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, RESET_PHONE_FLOW),
-        smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, LINK_PHONE_FLOW),
-    ])
+async function invalidatePendingPhoneChallenges(
+    phone: string,
+    executor?: DbTransaction,
+): Promise<void> {
+    // One after the other: inside a transaction both statements share one connection.
+    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(
+        phone,
+        RESET_PHONE_FLOW,
+        executor,
+    )
+    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, LINK_PHONE_FLOW, executor)
 }
 
 function buildResetEmailContent(name: string, resetUrl: string): RenderedEmail {
@@ -378,11 +385,12 @@ export const passwordResetService = {
                     tx,
                 )
                 if (updated === undefined) throw new Error('User disappeared during reset')
-                return {
-                    userId: user.id,
-                    phone: user.phone,
-                    previousSessionToken: user.sessionToken,
+                // In the same commit: a failure leaves the password as it was, and a reset
+                // never stays half done with the phone challenges still pending.
+                if (user.phone !== null && user.phone !== '') {
+                    await invalidatePendingPhoneChallenges(user.phone, tx)
                 }
+                return { userId: user.id, previousSessionToken: user.sessionToken }
             },
             invalidate: [passwordResetRepository],
         })
@@ -397,10 +405,6 @@ export const passwordResetService = {
             )
         }
         const user = applied.value
-
-        if (user.phone !== null && user.phone !== '') {
-            await invalidatePendingPhoneChallenges(user.phone)
-        }
 
         // ADR 0002: the rotated sessionToken is the revocation. This only deletes records
         // that are already rejected, so a failure is logged and must not fail a reset that

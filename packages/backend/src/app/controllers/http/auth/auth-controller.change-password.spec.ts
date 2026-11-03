@@ -29,7 +29,11 @@ const createContext = () => {
         logger,
         httpData: { payload: { currentPassword: 'old-password', newPassword: 'new-password' } },
         responseData: { status: 200 },
-        auth: { check: () => true, getUserId: () => '7' },
+        auth: {
+            check: () => true,
+            getUserId: () => '7',
+            getPresentedUserToken: () => 'presented-token',
+        },
         session: { sessionInfo: { id: 's1', data: { userId: '7' } } },
         signal: new AbortController().signal,
     } as never as Parameters<typeof AuthController.changePassword>[0] & {
@@ -96,6 +100,33 @@ describe('AuthController.changePassword', () => {
 
         await AuthController.changePassword(createContext())
 
+        expect(renewSession).not.toHaveBeenCalled()
+    })
+
+    // feat-096: the service compares the token the request presented with users.session_token.
+    it('hands the service the presented session token', async () => {
+        renewSession.mockResolvedValue(
+            Result.ok({ csrfToken: 'c'.repeat(43), wsUrl: 'wss://x/ws', wsToken: 'ws-token' }),
+        )
+
+        await AuthController.changePassword(createContext())
+
+        expect(changePassword).toHaveBeenCalledWith(
+            7n,
+            { currentPassword: 'old-password', newPassword: 'new-password' },
+            'presented-token',
+        )
+    })
+
+    it('answers 401 session_revoked without renewing when the session was revoked', async () => {
+        const { sessionRevoked } = await import('#app/services/shared/errors.js')
+        changePassword.mockResolvedValue(Result.err(sessionRevoked()))
+        const context = createContext()
+
+        const response = await AuthController.changePassword(context)
+
+        expect(context.responseData.status).toBe(401)
+        expect(response).toMatchObject({ code: 'unauthorized', reason: 'session_revoked' })
         expect(renewSession).not.toHaveBeenCalled()
     })
 })

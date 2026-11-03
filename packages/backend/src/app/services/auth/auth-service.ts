@@ -1055,13 +1055,19 @@ export const authService = {
         )
 
         if (updated === undefined) {
-            const current = await userRepository.findSessionToken(userId)
-            if (current !== presentedSessionToken) {
-                return Result.err(sessionRevoked())
+            // Which condition lost: another change of the password (its own token rotation
+            // comes with it) is the old conflict; a token rotated without one (a claim,
+            // logout everywhere) means this session was revoked meanwhile.
+            const current = await userRepository.findById(userId)
+            if (current === undefined) {
+                return Result.err(notFound('User', 'User not found'))
             }
-            return Result.err(
-                conflict('Password was changed by another request. Please try again.'),
-            )
+            if (current.password !== storedPassword) {
+                return Result.err(
+                    conflict('Password was changed by another request. Please try again.'),
+                )
+            }
+            return Result.err(sessionRevoked())
         }
 
         await resetThrottleQuietly(

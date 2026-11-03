@@ -14,18 +14,25 @@ import type { emailVerificationService } from './email-verification-service.js'
 // email-verification-service.throttle-contract.spec.ts; the mails are frozen in
 // auth-email-templates.snapshot.spec.ts.
 
-const userRepositoryMock = { findById: vi.fn(), findByEmail: vi.fn(), update: vi.fn() }
+const userRepositoryMock = {
+    findById: vi.fn(),
+    findByEmail: vi.fn(),
+    update: vi.fn(),
+    lockById: vi.fn(),
+}
 const verificationRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const linkRepositoryMock = {
     create: vi.fn(),
     findByTokenHash: vi.fn(),
     invalidatePendingByUserId: vi.fn(),
     markUsed: vi.fn(),
+    burn: vi.fn(),
 }
 const emailServiceMock = { send: vi.fn() }
 const consumeAuthThrottleMock = vi.fn()
@@ -49,6 +56,8 @@ const originalEnv = { ...process.env }
 const FUTURE = new Date(Date.now() + 600_000)
 const PAST = new Date(Date.now() - 1000)
 const IP = { ipAddress: '203.0.113.9' }
+/** The session token the request presented, the user's current one unless a row says not. */
+const SESSION = 'session-7'
 
 beforeEach(() => {
     process.env['FRONTEND_URL'] = 'https://app.example.com'
@@ -96,6 +105,7 @@ const user = (over: Record<string, unknown> = {}) => ({
     name: 'Jane',
     email: 'jane@example.com',
     emailVerifiedAt: null,
+    sessionToken: SESSION,
     ...over,
 })
 const record = (over: Record<string, unknown> = {}) => ({
@@ -116,7 +126,7 @@ const verify =
 /** A verification token (not a link token) that is found, and a user to confirm. */
 function arrangeVerify(over: Record<string, unknown> = {}): void {
     verificationRepositoryMock.findByTokenHash.mockResolvedValue(record())
-    userRepositoryMock.findById.mockResolvedValue(user(over))
+    userRepositoryMock.lockById.mockResolvedValue(user(over))
     verificationRepositoryMock.markUsed.mockResolvedValue(record())
     userRepositoryMock.update.mockResolvedValue(user())
 }
@@ -124,7 +134,7 @@ function arrangeVerify(over: Record<string, unknown> = {}): void {
 function arrangeLink(): void {
     verificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
     linkRepositoryMock.findByTokenHash.mockResolvedValue(linkRecord())
-    userRepositoryMock.findById.mockResolvedValue(user({ email: null }))
+    userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
     userRepositoryMock.findByEmail.mockResolvedValue(undefined)
     linkRepositoryMock.markUsed.mockResolvedValue(linkRecord())
     userRepositoryMock.update.mockResolvedValue(user())
@@ -134,25 +144,26 @@ const ROWS: readonly Row[] = [
     // --- sendVerificationEmail --------------------------------------------------------------
     {
         name: 'sendVerificationEmail · unknown user',
-        arrange: () => userRepositoryMock.findById.mockResolvedValue(undefined),
+        arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
         call: (s) => s.sendVerificationEmail(7n),
         error: err(404, 'not_found', 'User not found'),
     },
     {
         name: 'sendVerificationEmail · already verified: nothing is made, nothing is sent',
         arrange: () =>
-            userRepositoryMock.findById.mockResolvedValue(user({ emailVerifiedAt: new Date() })),
+            userRepositoryMock.lockById.mockResolvedValue(user({ emailVerifiedAt: new Date() })),
         call: (s) => s.sendVerificationEmail(7n),
         ok: { message: 'Email is already verified' },
         after: () => {
             expect(verificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+            expect(verificationRepositoryMock.create).not.toHaveBeenCalled()
             expect(emailServiceMock.send).not.toHaveBeenCalled()
         },
     },
     {
         name: 'sendVerificationEmail · earlier tokens are invalidated first',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendVerificationEmail(7n),
@@ -164,7 +175,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendVerificationEmail · the token cannot be stored',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
         call: (s) => s.sendVerificationEmail(7n),
@@ -174,21 +185,23 @@ const ROWS: readonly Row[] = [
         },
     },
     {
-        name: 'sendVerificationEmail · an account without an e-mail',
+        name: 'sendVerificationEmail · an account without an e-mail: refused on the locked row, no token',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user({ email: null }))
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
         },
         call: (s) => s.sendVerificationEmail(7n),
         error: badRequest('Email verification requires an email address'),
         after: () => {
+            expect(verificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+            expect(verificationRepositoryMock.create).not.toHaveBeenCalled()
             expect(emailServiceMock.send).not.toHaveBeenCalled()
         },
     },
     {
         name: 'sendVerificationEmail · the transport fails',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
@@ -198,7 +211,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendVerificationEmail · sent: only the hash of the token is stored, for 24 hours',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
@@ -219,22 +232,71 @@ const ROWS: readonly Row[] = [
             expect(created.tokenHash).not.toContain(raw)
             expect(created.expiresAt.getTime() - Date.now()).toBeGreaterThan(23 * 3_600_000)
             expect(created.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(24 * 3_600_000)
+            // feat-096: lock, retire and store in one transaction, in that order.
+            expect(withTransactionMock).toHaveBeenCalledTimes(1)
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+            expect(verificationRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(
+                7n,
+                TX,
+            )
+            expect(verificationRepositoryMock.create).toHaveBeenCalledWith(expect.anything(), TX)
+            expect(userRepositoryMock.lockById.mock.invocationCallOrder[0]).toBeLessThan(
+                verificationRepositoryMock.invalidatePendingByUserId.mock.invocationCallOrder[0]!,
+            )
+            expect(
+                verificationRepositoryMock.invalidatePendingByUserId.mock.invocationCallOrder[0],
+            ).toBeLessThan(verificationRepositoryMock.create.mock.invocationCallOrder[0]!)
         },
     },
     // --- sendLinkVerificationEmail ----------------------------------------------------------
     {
         name: 'sendLinkVerificationEmail · unknown user',
-        arrange: () => userRepositoryMock.findById.mockResolvedValue(undefined),
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
+        arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
         error: err(404, 'not_found', 'User not found'),
+    },
+    {
+        name: 'sendLinkVerificationEmail · the session was rotated after the request was let in',
+        arrange: () =>
+            userRepositoryMock.lockById.mockResolvedValue(
+                user({ email: null, sessionToken: 'session-rotated' }),
+            ),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        error: err(401, 'unauthorized', 'Session has been revoked'),
+        after: () => {
+            expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+            expect(linkRepositoryMock.create).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'sendLinkVerificationEmail · no presented session token',
+        arrange: () => userRepositoryMock.lockById.mockResolvedValue(user({ email: null })),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', undefined),
+        error: err(401, 'unauthorized', 'Session has been revoked'),
+        after: () => {
+            expect(linkRepositoryMock.create).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'sendLinkVerificationEmail · the locked account already has an address',
+        arrange: () => userRepositoryMock.lockById.mockResolvedValue(user()),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
+        error: badRequest('Email is already linked to this account'),
+        after: () => {
+            expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+            expect(linkRepositoryMock.create).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+        },
     },
     {
         name: 'sendLinkVerificationEmail · earlier link tokens are invalidated first',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
         throws: true,
         after: () => {
             expect(linkRepositoryMock.create).not.toHaveBeenCalled()
@@ -243,35 +305,38 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendLinkVerificationEmail · the token cannot be stored',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
         throws: true,
     },
     {
         name: 'sendLinkVerificationEmail · the transport fails',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
         throws: true,
     },
     {
         name: 'sendLinkVerificationEmail · the mail goes to the NEW address, the token remembers it',
         arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(user({ email: null }))
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             linkRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com'),
+        call: (s) => s.sendLinkVerificationEmail(7n, 'new@example.com', SESSION),
         ok: { message: 'Verification email will be sent shortly' },
         after: () => {
             expect(linkRepositoryMock.create).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: 7n, targetEmail: 'new@example.com' }),
+                TX,
             )
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+            expect(linkRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
             expect(emailServiceMock.send).toHaveBeenCalledWith(
                 expect.objectContaining({ to: 'new@example.com' }),
             )
@@ -313,7 +378,8 @@ const ROWS: readonly Row[] = [
         call: verify(),
         error: badRequest('Verification link has expired'),
         after: () => {
-            expect(verificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+            expect(verificationRepositoryMock.burn).toHaveBeenCalledWith(11n)
+            expect(verificationRepositoryMock.markUsed).not.toHaveBeenCalled()
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     },
@@ -321,10 +387,14 @@ const ROWS: readonly Row[] = [
         name: 'verifyEmail · the user is gone',
         arrange: () => {
             verificationRepositoryMock.findByTokenHash.mockResolvedValue(record())
-            userRepositoryMock.findById.mockResolvedValue(undefined)
+            userRepositoryMock.lockById.mockResolvedValue(undefined)
         },
         call: verify(),
         error: err(404, 'not_found', 'User not found'),
+        after: () => {
+            expect(verificationRepositoryMock.markUsed).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        },
     },
     {
         name: 'verifyEmail · the claim is lost to a concurrent request',
@@ -334,6 +404,30 @@ const ROWS: readonly Row[] = [
         },
         call: verify(),
         error: badRequest('Verification link has already been used'),
+        after: () => {
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(verificationRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'verifyEmail · the token expired while waiting for the user lock',
+        arrange: () => {
+            arrangeVerify()
+            // Still valid at the first look, gone by the consuming claim.
+            verificationRepositoryMock.findByTokenHash.mockImplementation(() =>
+                Promise.resolve(record({ expiresAt: new Date(Date.now() + 5) })),
+            )
+            verificationRepositoryMock.markUsed.mockImplementation(
+                () =>
+                    new Promise((resolve) =>
+                        setTimeout(() => {
+                            resolve(undefined)
+                        }, 20),
+                    ),
+            )
+        },
+        call: verify(),
+        error: badRequest('Verification link has expired'),
         after: () => {
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
@@ -356,11 +450,19 @@ const ROWS: readonly Row[] = [
         ok: { message: 'Email confirmed successfully' },
         after: () => {
             expect(withTransactionMock).toHaveBeenCalledTimes(1)
-            expect(verificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+            expect(verificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
             expect(userRepositoryMock.update).toHaveBeenCalledWith(
                 7n,
                 { emailVerifiedAt: expect.any(Date) },
                 TX,
+            )
+            expect(verificationRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(
+                7n,
+                TX,
+            )
+            expect(userRepositoryMock.lockById.mock.invocationCallOrder[0]).toBeLessThan(
+                verificationRepositoryMock.markUsed.mock.invocationCallOrder[0]!,
             )
         },
     },
@@ -372,7 +474,7 @@ const ROWS: readonly Row[] = [
         call: verify(),
         ok: { message: 'Email confirmed successfully' },
         after: () => {
-            expect(verificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+            expect(verificationRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     },
@@ -395,17 +497,36 @@ const ROWS: readonly Row[] = [
         call: verify(),
         error: badRequest('Verification link has expired'),
         after: () => {
-            expect(linkRepositoryMock.markUsed).toHaveBeenCalledWith(11n)
+            expect(linkRepositoryMock.burn).toHaveBeenCalledWith(11n)
+            expect(linkRepositoryMock.markUsed).not.toHaveBeenCalled()
         },
     },
     {
         name: 'verifyEmail · the link token user is gone',
         arrange: () => {
             arrangeLink()
-            userRepositoryMock.findById.mockResolvedValue(undefined)
+            userRepositoryMock.lockById.mockResolvedValue(undefined)
         },
         call: verify(),
         error: err(404, 'not_found', 'User not found'),
+        after: () => {
+            expect(linkRepositoryMock.markUsed).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'verifyEmail · the locked account got an address meanwhile: link spent, not applied',
+        arrange: () => {
+            arrangeLink()
+            userRepositoryMock.lockById.mockResolvedValue(user({ email: 'other@example.com' }))
+        },
+        call: verify(),
+        error: err(409, 'conflict', 'Email is already linked to this account'),
+        after: () => {
+            expect(linkRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            expect(linkRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
+        },
     },
     {
         name: 'verifyEmail · the address got taken by another account meanwhile',
@@ -460,12 +581,14 @@ const ROWS: readonly Row[] = [
         ok: { message: 'Email linked successfully' },
         after: () => {
             expect(userRepositoryMock.findByEmail).toHaveBeenCalledWith('new@example.com')
-            expect(linkRepositoryMock.markUsed).toHaveBeenCalledWith(11n, undefined, TX)
+            expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
+            expect(linkRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
             expect(userRepositoryMock.update).toHaveBeenCalledWith(
                 7n,
                 { email: 'new@example.com', emailVerifiedAt: expect.any(Date) },
                 TX,
             )
+            expect(linkRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
         },
     },
     // --- queueVerificationEmail -------------------------------------------------------------
@@ -489,6 +612,8 @@ const ROWS: readonly Row[] = [
         name: 'queueVerificationEmail · answers at once, the mail goes out in the background',
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(user())
+            // The background sender issues the token under the user lock.
+            userRepositoryMock.lockById.mockResolvedValue(user())
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
@@ -541,7 +666,7 @@ describe.each(ROWS)('emailVerificationService · $name', (row) => {
 
 describe('emailVerificationService · the background senders', () => {
     it('log a failed send as a warning with the reason and the trigger, and do not throw', async () => {
-        userRepositoryMock.findById.mockResolvedValue(undefined)
+        userRepositoryMock.lockById.mockResolvedValue(undefined)
         const service = await load()
         await expect(
             service.sendVerificationEmailInBackground(7n, 'manual resend'),
@@ -566,7 +691,7 @@ describe('emailVerificationService · the background senders', () => {
     })
 
     it('after registration tell the log why the mail was sent', async () => {
-        userRepositoryMock.findById.mockResolvedValue(undefined)
+        userRepositoryMock.lockById.mockResolvedValue(undefined)
         const service = await load()
         await service.sendVerificationEmailAfterRegistration(7n)
         expect(loggerMock.warn).toHaveBeenCalledWith(

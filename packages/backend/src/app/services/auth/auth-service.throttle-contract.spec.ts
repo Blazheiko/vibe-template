@@ -22,6 +22,8 @@ const userRepositoryMock = {
     phoneExistsForOtherUser: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateIfSessionToken: vi.fn(),
+    findSessionToken: vi.fn(),
     changePasswordIfCurrent: vi.fn(),
 }
 const smsAuthChallengeRepositoryMock = {
@@ -92,6 +94,7 @@ beforeEach(() => {
         email: null,
         phone: null,
         password: 'stored-hash',
+        sessionToken: TOKEN,
     })
 })
 
@@ -108,6 +111,8 @@ afterEach(() => {
 type Service = typeof authService
 
 const IP = { ipAddress: '203.0.113.9' }
+/** The user token the request presented; current for the user above (feat-096). */
+const TOKEN = 'presented-token'
 const PHONE = '+380501234567'
 const TOO_MANY_VERIFICATIONS = 'Too many verification attempts. Please try again later.'
 const TOO_MANY_REGISTRATIONS = 'Too many registration attempts. Please try again later.'
@@ -197,6 +202,7 @@ const ROWS: readonly Row[] = [
                 {
                     ...IP,
                     sessionId: 's',
+                    presentedSessionToken: TOKEN,
                 },
             ),
         consumed: [['link_phone_ip', '203.0.113.9']],
@@ -211,6 +217,7 @@ const ROWS: readonly Row[] = [
                 {
                     ...IP,
                     sessionId: 's',
+                    presentedSessionToken: TOKEN,
                 },
             ),
         consumed: [
@@ -228,6 +235,7 @@ const ROWS: readonly Row[] = [
                 {
                     ...IP,
                     sessionId: 's',
+                    presentedSessionToken: TOKEN,
                 },
             ),
         consumed: [['confirm_link_phone_ip', '203.0.113.9']],
@@ -236,20 +244,14 @@ const ROWS: readonly Row[] = [
     {
         method: 'startEmailLink · target',
         call: (s) =>
-            s.startEmailLink(7n, {
-                email: ' New@Example.com ',
-                currentPassword: 'secret',
-            }),
+            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
         consumed: [['link_email_target', 'new@example.com']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startEmailLink · user',
         call: (s) =>
-            s.startEmailLink(7n, {
-                email: ' New@Example.com ',
-                currentPassword: 'secret',
-            }),
+            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
         consumed: [
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
@@ -259,10 +261,7 @@ const ROWS: readonly Row[] = [
     {
         method: 'startEmailLink · cooldown',
         call: (s) =>
-            s.startEmailLink(7n, {
-                email: ' New@Example.com ',
-                currentPassword: 'secret',
-            }),
+            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
         consumed: [
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
@@ -296,7 +295,8 @@ const ROWS: readonly Row[] = [
     },
     {
         method: 'changePassword · user',
-        call: (s) => s.changePassword(7n, { currentPassword: 'old', newPassword: 'new-password' }),
+        call: (s) =>
+            s.changePassword(7n, { currentPassword: 'old', newPassword: 'new-password' }, TOKEN),
         consumed: [['change_password_user', '7']],
         blocked: badRequest('Too many password change attempts. Please try again later.'),
     },
@@ -332,6 +332,7 @@ function untouchedDownstream(): void {
     expect(issueVerificationCodeMock).not.toHaveBeenCalled()
     expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
     expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
+    expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
     expect(destroyAllSessionsMock).not.toHaveBeenCalled()
     expect(authMock.login).not.toHaveBeenCalled()
 }

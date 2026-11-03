@@ -47,6 +47,18 @@ vi.mock('#app/repositories/index.js', async (importActual) => {
                 }
                 return Promise.resolve({ id })
             },
+            // feat-096: logout-all rotates only while the presented token is current.
+            updateIfSessionToken: (
+                id: bigint,
+                expected: string,
+                data: { sessionToken?: string },
+            ) => {
+                if (fakeUsers.tokens.get(String(id)) !== expected) return Promise.resolve(undefined)
+                if (data.sessionToken !== undefined) {
+                    fakeUsers.tokens.set(String(id), data.sessionToken)
+                }
+                return Promise.resolve({ id })
+            },
         },
     }
 })
