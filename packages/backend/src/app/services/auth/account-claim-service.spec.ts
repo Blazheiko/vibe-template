@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => {
         oauthAccountRepository: { deleteByUserId: vi.fn() },
         pushSubscriptionRepository: { deleteByUserId: vi.fn() },
         smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn() },
-        destroyAllSessions: vi.fn(),
+        destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     }
 })

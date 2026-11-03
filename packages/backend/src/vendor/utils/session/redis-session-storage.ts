@@ -1,4 +1,4 @@
-import type { SessionData, SessionInfo } from '#vendor/types/types.js'
+import type { DestroyAllSessionsResult, SessionData, SessionInfo } from '#vendor/types/types.js'
 import redis, { withRedis } from '#database/redis.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import logger from '#vendor/utils/logger.js'
@@ -180,40 +180,18 @@ const withTimer = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
     }
 }
 
-/** How long an unfinished logoutAll keeps its SCAN cursor for a repeat. */
-const LOGOUT_ALL_CURSOR_TTL_SECONDS = 600
-
 /**
- * Deletes every session of the user. Resolves with the count only when SCAN
- * reached cursor 0; otherwise (deadline REDIS_LOGOUT_ALL_DEADLINE_MS exhausted,
- * Redis unavailable) rejects with RedisUnavailableError.
+ * Deletes every session of the user: SCAN from cursor 0 over `session:<userToken>:*`, a DEL
+ * per page. The whole loop is bounded by REDIS_LOGOUT_ALL_DEADLINE_MS.
  *
- * Two modes:
- * - Interactive logoutAll (`keepSessionId` = the caller's own session): the
- *   session is skipped and deleted only after the scan completes, so a repeat
- *   after a stop is still authenticated; the SCAN cursor is saved after each
- *   batch under a key of that session and a repeat resumes from it, so on a
- *   large keyspace repeats make progress. A SCAN cursor is not bound to a
- *   connection. Sessions created behind the saved cursor between attempts are
- *   not seen by the resumed scan.
- * - Full revocation (no `keepSessionId`, e.g. password reset): always scans
- *   from 0 and never reads or writes a cursor, so progress left by an
- *   interactive run (which skipped its own session) cannot hide a session.
+ * ADR 0002: this is memory cleanup, not the revocation; the caller has already rotated
+ * users.session_token, so every record left is rejected anyway and expires by TTL. Hence an
+ * unavailable Redis or the deadline does not reject: the result says `complete: false` and
+ * a warning is logged. Any other error (a bug) is rethrown.
  */
-export const destroyAllSessions = async (
-    userToken: string,
-    keepSessionId?: string,
-): Promise<number> => {
+export const destroyAllSessions = async (userToken: string): Promise<DestroyAllSessionsResult> => {
     const prefix = redisConfig.keyPrefix
     const pattern = sanitizeRedisKey(`${prefix}session:${userToken}:*`)
-    const keepKey =
-        keepSessionId !== undefined
-            ? sanitizeRedisKey(`session:${userToken}:${keepSessionId}`)
-            : undefined
-    const cursorKey =
-        keepSessionId !== undefined
-            ? sanitizeRedisKey(`logout_all:cursor:${userToken}:${keepSessionId}`)
-            : undefined
     logger.info({ userToken: maskTokenForLogs(userToken) }, 'Destroying all sessions for userToken')
     const deadline = Date.now() + redisConfig.logoutAllDeadlineMs
     // Each await gets what is left of the budget, capped by the command timeout,
@@ -228,51 +206,36 @@ export const destroyAllSessions = async (
 
     // Use SCAN instead of KEYS for DoS protection
     // SCAN doesn't block Redis and is safe for production
-    let deletedCount = 0
+    let deleted = 0
 
     try {
-        let cursor =
-            cursorKey === undefined ? '0' : ((await step(() => redis.get(cursorKey))) ?? '0')
+        let cursor = '0'
         do {
             const [nextCursor, foundKeys] = await step(() =>
                 redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100),
             )
             // Remove the prefix from keys since redis.del will add it automatically
-            const keys = removePrefixFromKeys(foundKeys, prefix).filter((key) => key !== keepKey)
+            const keys = removePrefixFromKeys(foundKeys, prefix)
             if (keys.length > 0) {
-                deletedCount += await step(() => redis.del(...keys))
+                deleted += await step(() => redis.del(...keys))
             }
             cursor = nextCursor
-            // Saved after the DEL: a lost save only repeats an idempotent batch.
-            if (cursorKey !== undefined && cursor !== '0') {
-                await step(() => redis.setex(cursorKey, LOGOUT_ALL_CURSOR_TTL_SECONDS, cursor))
-            }
         } while (cursor !== '0')
-
-        // Cursor and the kept session go together (MULTI): a stop between two
-        // separate DELs would leave either a full rescan from 0 or an
-        // unauthenticated client with sessions left.
-        if (keepKey !== undefined && cursorKey !== undefined) {
-            const results = await step(() => redis.multi().del(cursorKey).del(keepKey).exec())
-            const keptDeleted = results?.[1]?.[1]
-            deletedCount += typeof keptDeleted === 'number' ? keptDeleted : 0
-        }
     } catch (err: unknown) {
-        if (err instanceof RedisUnavailableError) {
-            logger.warn(
-                { userToken: maskTokenForLogs(userToken), deletedCount },
-                'Stopped deleting all sessions: Redis unavailable or deadline exceeded',
-            )
-        }
-        throw err
+        if (!(err instanceof RedisUnavailableError)) throw err
+        logger.warn(
+            { userToken: maskTokenForLogs(userToken), deleted },
+            'Stopped deleting all sessions: Redis unavailable or deadline exceeded',
+        )
+        return { deleted, complete: false }
     }
 
     logger.info(
-        { userToken: maskTokenForLogs(userToken), deletedCount },
+        { userToken: maskTokenForLogs(userToken), deleted },
         'Deleted all sessions for userToken',
     )
 
-    return deletedCount
+    return { deleted, complete: true }
 }
 
 const removePrefixFromKeys = (keys: string[], prefix: string): string[] => {

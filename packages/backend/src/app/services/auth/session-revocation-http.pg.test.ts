@@ -96,19 +96,19 @@ vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     consumeAuthThrottle: () => Promise.resolve({ allowed: true, count: 1 }),
     resetAuthThrottle: () => Promise.resolve(undefined),
 }))
+const security = vi.hoisted(() => vi.fn())
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
-    userNotificationService: { security: vi.fn(), supportReply: vi.fn() },
+    userNotificationService: { security, supportReply: vi.fn() },
 }))
 
 const cleanup = vi.hoisted(() => ({ fail: false }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) => {
     const actual = await importActual<typeof SessionStorage>()
-    const { RedisUnavailableError } =
-        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     return {
         ...actual,
+        // What the real one answers when Redis is unreachable: nothing deleted, not complete.
         destroyAllSessions: (...args: Parameters<typeof actual.destroyAllSessions>) => {
-            if (cleanup.fail) return Promise.reject(new RedisUnavailableError('cleanup failed'))
+            if (cleanup.fail) return Promise.resolve({ deleted: 0, complete: false })
             return actual.destroyAllSessions(...args)
         },
     }
@@ -384,20 +384,34 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             expect((await rowOf(user.id))?.sessionToken).not.toBe(user.sessionToken)
         })
 
-        it('answers 503 when the cleanup fails, but every session is already revoked', async () => {
+        // feat-101: once the token is rotated, a failed cleanup does not fail the request.
+        it('answers 200 with a new anonymous session when the cleanup fails', async () => {
             const user = await insertUser('http-logout-all-down')
             const a = await signedIn(user.email ?? '')
             const b = await signedIn(user.email ?? '')
+            const oldCookie = a.cookie
+            const oldCsrf = a.csrf
+            security.mockClear()
             cleanup.fail = true
 
-            const reply = await a.request('POST', '/auth/logout-all', { body: {} })
+            const reply = a.keep(await a.request('POST', '/auth/logout-all', { body: {} }))
 
-            expect(reply.status).toBe(503)
-            expect(reply.body).toMatchObject({ status: 'error', code: 'service_unavailable' })
-            expect(reply.headers.get('retry-after')).toBe('1')
+            expect(reply.status).toBe(200)
+            expect(reply.body).toMatchObject({
+                status: 'success',
+                deletedCount: 0,
+                csrfToken: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/),
+            })
+            expect(reply.body['csrfToken']).not.toBe(oldCsrf)
+            expect(reply.setCookie).toBeDefined()
+            expect(a.cookie).not.toBe(oldCookie)
+            expect(security).toHaveBeenCalledWith(user.id, 'logout_all')
             cleanup.fail = false
+            // Redis is back, the records were never deleted, and none of them opens anything.
             expect((await b.request('GET', '/main/init')).status).toBe(401)
-            // A cannot repeat the request: its session is revoked too.
+            const stale = new Browser()
+            stale.cookie = oldCookie
+            expect((await stale.request('GET', '/main/init')).status).toBe(401)
             expect((await a.request('GET', '/main/init')).status).toBe(401)
         })
     })

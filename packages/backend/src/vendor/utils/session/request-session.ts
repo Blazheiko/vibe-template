@@ -1,6 +1,11 @@
 import crypto from 'node:crypto'
 
-import type { HttpContext, SessionData, SessionInfo } from '#vendor/types/types.js'
+import type {
+    DestroyAllSessionsResult,
+    HttpContext,
+    SessionData,
+    SessionInfo,
+} from '#vendor/types/types.js'
 import sessionConfig from '#config/session.js'
 import {
     anonSessionSignedIn,
@@ -113,7 +118,8 @@ type PreSendCheck =
  * States: an anonymous session held only in its signed cookie (`cookieHeld`), an
  * anonymous session stored in Redis, or a signed-in session stored in Redis. Changes:
  * storing data in a cookie-held session moves it to Redis; `login` replaces any session
- * with a new signed-in one; `logout` / `logoutAll` replace it with a new cookie-held one.
+ * with a new signed-in one; `logout` / `logoutAll` replace it with a new cookie-held one
+ * (`logoutAll` also when its cleanup of the other records fails).
  */
 export class RequestSession {
     private info: SessionInfo
@@ -364,19 +370,25 @@ export class RequestSession {
     }
 
     /**
-     * Deletes every session record of the user, the current one last (it survives a stopped
-     * run, so the client can repeat logoutAll while still authenticated), then starts a new
-     * anonymous session. Returns how many records were deleted.
+     * Deletes every session record of the user, then starts a new anonymous session. The
+     * caller rotates users.session_token first (ADR 0002): that is the revocation, this is
+     * memory cleanup, and the anonymous session is issued even when the cleanup stops or
+     * throws. Returns what the cleanup reports (`deleted: 0, complete: true` for a guest).
      */
-    private async logoutAll(): Promise<number> {
+    private async logoutAll(): Promise<DestroyAllSessionsResult> {
         const userToken = this.signedInUserToken()
-        if (userToken === undefined) return 0
+        if (userToken === undefined) return { deleted: 0, complete: true }
 
-        const deletedCount = await destroyAllSessions(userToken, this.info.id)
-        logger.info({ userId: this.info.data.userId, deletedCount }, `User logged out all sessions`)
-
-        this.becomeAnonymous()
-        return deletedCount
+        try {
+            const result = await destroyAllSessions(userToken)
+            logger.info(
+                { userId: this.info.data.userId, ...result },
+                `User logged out all sessions`,
+            )
+            return result
+        } finally {
+            this.becomeAnonymous()
+        }
     }
 
     private signedInUserToken(): string | undefined {

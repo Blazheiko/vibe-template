@@ -36,7 +36,12 @@ const smsAuthChallengeRepositoryMock = {
     markInvalidated: vi.fn(),
     markIssued: vi.fn(),
 }
-const authMock = { login: vi.fn(), logout: vi.fn(), logoutAll: vi.fn(), getUserId: vi.fn() }
+const authMock = {
+    login: vi.fn(),
+    logout: vi.fn(),
+    logoutAll: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
+    getUserId: vi.fn(),
+}
 const sessionMock = { sessionInfo: { id: 'session-id', data: {} }, destroySession: vi.fn() }
 const loggerMock = { warn: vi.fn(), info: vi.fn(), error: vi.fn() }
 const hashPasswordMock = vi.fn()
@@ -44,7 +49,7 @@ const validatePasswordMock = vi.fn()
 const consumeAuthThrottleMock = vi.fn()
 const issueVerificationCodeMock = vi.fn()
 const sendLinkVerificationEmailMock = vi.fn()
-const destroyAllSessionsMock = vi.fn()
+const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,

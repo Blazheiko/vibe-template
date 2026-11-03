@@ -42,7 +42,7 @@ const challengeRepositoryMock = {
 }
 const emailServiceMock = { send: vi.fn() }
 const issueMock = vi.fn()
-const destroyAllSessionsMock = vi.fn()
+const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const hashPasswordMock = vi.fn()
 const consumeAuthThrottleMock = vi.fn()
 const securityNotice = vi.fn()
@@ -202,7 +202,7 @@ function arrangeResetOk(over: Record<string, unknown> = {}): void {
     hashPasswordMock.mockResolvedValue('new-hash')
     resetRepositoryMock.markUsed.mockResolvedValue(token())
     userRepositoryMock.update.mockResolvedValue(user())
-    destroyAllSessionsMock.mockResolvedValue(undefined)
+    destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
 }
 function arrangePhoneOk(): void {
     challengeRepositoryMock.findById.mockResolvedValue(challenge())
@@ -210,7 +210,7 @@ function arrangePhoneOk(): void {
     challengeRepositoryMock.markConfirmed.mockResolvedValue(challenge())
     hashPasswordMock.mockResolvedValue('new-hash')
     userRepositoryMock.update.mockResolvedValue(phoneOnlyUser())
-    destroyAllSessionsMock.mockResolvedValue(undefined)
+    destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
 }
 function arrangeStartOk(found: ReturnType<typeof phoneOnlyUser> | undefined): void {
     userRepositoryMock.findByPhone.mockResolvedValue(found)

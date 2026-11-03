@@ -26,7 +26,7 @@ const SESSION_REVOKED_ERROR = {
 const authMock = {
     login: vi.fn(),
     logout: vi.fn(),
-    logoutAll: vi.fn(),
+    logoutAll: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
     getUserId: vi.fn(() => '7'),
     getPresentedUserToken: vi.fn((): string | undefined => PRESENTED_TOKEN),
 }
@@ -57,9 +57,28 @@ const resetAuthThrottleMock = vi.fn()
 const sendVerificationEmailAfterRegistrationMock = vi.fn()
 const sendLinkVerificationEmailMock = vi.fn()
 const sendVerificationEmailInBackgroundMock = vi.fn()
-const destroyAllSessionsMock = vi.fn()
+const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const ROTATED_LOGOUT_CSRF_TOKEN = 'b'.repeat(43)
 const ROTATED_LOGOUT_ALL_CSRF_TOKEN = 'c'.repeat(43)
+const ANONYMOUS_AFTER_LOGOUT_ALL = {
+    id: 'anonymous-session-id',
+    data: { csrfToken: ROTATED_LOGOUT_ALL_CSRF_TOKEN },
+}
+
+// The module logger of auth-service (not the request logger passed in as loggerMock).
+const moduleLogger = vi.hoisted(() => {
+    const l: Record<string, unknown> = {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+        trace: vi.fn(),
+        fatal: vi.fn(),
+    }
+    l['child'] = () => l
+    return l as Record<'info' | 'warn' | 'error' | 'debug', ReturnType<typeof vi.fn>>
+})
+vi.mock('#vendor/utils/logger.js', () => ({ default: moduleLogger }))
 
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
@@ -856,7 +875,7 @@ describe('authService', () => {
             })
             authMock.logoutAll.mockImplementation(async () => {
                 order.push('delete records')
-                return 2
+                return { deleted: 2, complete: true }
             })
 
             const { authService } = await loadAuthService()
@@ -883,16 +902,61 @@ describe('authService', () => {
             expect(securityNotice).not.toHaveBeenCalled()
         })
 
-        it('reports an error when the record cleanup fails, but the rotation already happened', async () => {
+        // feat-101: after the rotation the sessions are revoked; the cleanup is memory and
+        // cannot turn the answer into an error.
+        it('succeeds when the cleanup stops after the rotation: partial count, warning, notice', async () => {
             userRepositoryMock.updateIfSessionToken.mockResolvedValue({ id: 7n })
-            authMock.logoutAll.mockRejectedValue(new Error('redis down'))
+            authMock.logoutAll.mockImplementation(async () => {
+                sessionMock.sessionInfo = ANONYMOUS_AFTER_LOGOUT_ALL
+                return { deleted: 2, complete: false }
+            })
 
             const { authService } = await loadAuthService()
-            // ADR 0004: the failure propagates; the transport answers 500 / 503.
-            await expect(
-                authService.logoutAll(authMock as any, sessionMock as any),
-            ).rejects.toThrow()
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledTimes(1)
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isOk(result)).toBe(true)
+            if (Result.isOk(result)) {
+                expect(result.value).toEqual({
+                    status: 'success',
+                    deletedCount: 2,
+                    csrfToken: ROTATED_LOGOUT_ALL_CSRF_TOKEN,
+                })
+            }
+            expect(moduleLogger.warn).toHaveBeenCalledWith(
+                expect.objectContaining({ userId: '7', deleted: 2 }),
+                expect.stringContaining('not every session record was deleted'),
+            )
+            expect(moduleLogger.error).not.toHaveBeenCalled()
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
+        })
+
+        it('succeeds when the cleanup throws after the rotation: error logged, notice sent', async () => {
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue({ id: 7n })
+            const bug = new Error('bug in cleanup')
+            // RequestSession issues the anonymous session in `finally`, also on a throw.
+            authMock.logoutAll.mockImplementation(async () => {
+                sessionMock.sessionInfo = ANONYMOUS_AFTER_LOGOUT_ALL
+                throw bug
+            })
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isOk(result)).toBe(true)
+            if (Result.isOk(result)) {
+                expect(result.value).toEqual({
+                    status: 'success',
+                    deletedCount: 0,
+                    csrfToken: ROTATED_LOGOUT_ALL_CSRF_TOKEN,
+                })
+            }
+            // One logger.error: the transport sends it to Sentry, no separate capture.
+            expect(moduleLogger.error).toHaveBeenCalledTimes(1)
+            expect(moduleLogger.error).toHaveBeenCalledWith(
+                { err: bug, userId: '7' },
+                expect.stringContaining('deleting the session records failed'),
+            )
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
         })
 
         // feat-096: a request let in before a revocation must not rotate the new token away.
@@ -971,7 +1035,7 @@ describe('authService', () => {
                 id: 'anonymous-session-id',
                 data: { csrfToken: ROTATED_LOGOUT_ALL_CSRF_TOKEN },
             }
-            return 3
+            return { deleted: 3, complete: true }
         })
 
         const { authService } = await loadAuthService()
@@ -1021,7 +1085,7 @@ describe('authService', () => {
             validatePasswordMock.mockResolvedValue(true)
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
-            destroyAllSessionsMock.mockResolvedValue(2)
+            destroyAllSessionsMock.mockResolvedValue({ deleted: 2, complete: true })
         }
         // Not a default parameter: `change(undefined)` must present no token.
         const change = async (...args: [presented?: string | undefined]) => {
@@ -1260,21 +1324,15 @@ describe('authService while Redis is unavailable', () => {
             },
             (s) => s.login(LOGIN_INPUT, authMock as any, sessionMock as any, LOGIN_CONTEXT),
         ],
+        // logoutAll is not here: after the rotation a cleanup failure answers success
+        // (feat-101, see 'logoutAll rotates the sessionToken first').
         ['logout', () => {}, (s) => s.logout(authMock as any, sessionMock as any)],
-        [
-            'logoutAll',
-            () => {
-                userRepositoryMock.updateIfSessionToken.mockResolvedValue({ id: 7n })
-            },
-            (s) => s.logoutAll(authMock as any, sessionMock as any),
-        ],
     ]
 
     const failWith = (name: string, err: Error): void => {
         if (name.startsWith('WS token')) generateWsTokenMock.mockRejectedValue(err)
         else if (name === 'login') authMock.login.mockRejectedValue(err)
-        else if (name === 'logout') authMock.logout.mockRejectedValue(err)
-        else authMock.logoutAll.mockRejectedValue(err)
+        else authMock.logout.mockRejectedValue(err)
     }
 
     it.each(operations)(
@@ -1308,8 +1366,8 @@ describe('authService while Redis is unavailable', () => {
                 code: 'service_unavailable',
                 message: 'Service temporarily unavailable. Try again later.',
             })
-            // No ioredis text, and a partial logoutAll never reports success or a deletedCount.
-            expect(classified.message).not.toMatch(/timed out|Failed to|deletedCount/)
+            // No ioredis text.
+            expect(classified.message).not.toMatch(/timed out|Failed to/)
         },
     )
 

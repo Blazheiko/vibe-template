@@ -33,7 +33,7 @@ const emailServiceMock = {
     send: vi.fn(),
 }
 
-const destroyAllSessionsMock = vi.fn()
+const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const hashPasswordMock = vi.fn()
 const nanoidMock = vi.fn(() => 'new-session-token')
 const consumeAuthThrottleMock = vi.fn()
@@ -337,7 +337,7 @@ describe('passwordResetService', () => {
             sessionToken: 'old-session-token',
         })
         hashPasswordMock.mockResolvedValue('hashed-password')
-        destroyAllSessionsMock.mockResolvedValue(2)
+        destroyAllSessionsMock.mockResolvedValue({ deleted: 2, complete: true })
         userRepositoryMock.update.mockResolvedValue({
             id: 7n,
             password: 'hashed-password',
@@ -724,7 +724,7 @@ describe('passwordResetService', () => {
             password: 'hashed-password',
             sessionToken: 'new-session-token',
         })
-        destroyAllSessionsMock.mockResolvedValue(3)
+        destroyAllSessionsMock.mockResolvedValue({ deleted: 3, complete: true })
         smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
             id: 'reset-challenge-1',
             confirmedAt: new Date(),
@@ -841,7 +841,7 @@ describe('passwordResetService', () => {
             password: 'hashed-password',
             sessionToken: 'new-session-token',
         })
-        destroyAllSessionsMock.mockResolvedValue(3)
+        destroyAllSessionsMock.mockResolvedValue({ deleted: 3, complete: true })
         smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
             id: 'reset-challenge-1',
             confirmedAt: new Date(),

@@ -40,7 +40,7 @@ const challengeRepositoryMock = {
 const authMock = {
     login: vi.fn(),
     logout: vi.fn(),
-    logoutAll: vi.fn(),
+    logoutAll: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
     getUserId: vi.fn(),
     getPresentedUserToken: vi.fn(),
 }
@@ -56,7 +56,7 @@ const validatePasswordMock = vi.fn()
 const hashPasswordMock = vi.fn()
 const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
-const destroyAllSessionsMock = vi.fn()
+const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const securityNotice = vi.fn()
 const generateWsTokenMock = vi.fn()
 const issueMock = vi.fn()
@@ -947,19 +947,31 @@ const ROWS: readonly Row[] = [
         },
     },
     {
-        name: 'logoutAll · deleting the records fails after the rotation',
+        // feat-101: after the rotation the cleanup is memory; its failure is logged only.
+        name: 'logoutAll · deleting the records throws after the rotation: still success',
         arrange: () => {
             authMock.getUserId.mockReturnValue('7')
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
-            authMock.logoutAll.mockRejectedValue(new Error('redis'))
+            authMock.logoutAll.mockRejectedValue(new Error('bug'))
         },
         call: (s) => s.logoutAll(authMock as never, sessionMock as never),
-        throws: true,
         after: () => {
             expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
                 sessionToken: 'rotated-token',
             })
-            expect(securityNotice).not.toHaveBeenCalled()
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
+        },
+    },
+    {
+        name: 'logoutAll · the cleanup stops after the rotation: still success',
+        arrange: () => {
+            authMock.getUserId.mockReturnValue('7')
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
+            authMock.logoutAll.mockResolvedValue({ deleted: 1, complete: false })
+        },
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        after: () => {
+            expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
         },
     },
     {
@@ -967,7 +979,7 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             authMock.getUserId.mockReturnValue('7')
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
-            authMock.logoutAll.mockResolvedValue(3)
+            authMock.logoutAll.mockResolvedValue({ deleted: 3, complete: true })
         },
         call: (s) => s.logoutAll(authMock as never, sessionMock as never),
         after: () => {
@@ -1086,7 +1098,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.findById.mockResolvedValue(account({ password: null }))
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
-            destroyAllSessionsMock.mockResolvedValue(undefined)
+            destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
         },
         call: change({ newPassword: 'new-password' }),
         after: () => {
@@ -1124,7 +1136,7 @@ const ROWS: readonly Row[] = [
             validatePasswordMock.mockResolvedValue(true)
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
-            destroyAllSessionsMock.mockResolvedValue(undefined)
+            destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
         },
         call: change({ currentPassword: 'old', newPassword: 'new-password' }),
         after: () => {
@@ -1183,7 +1195,7 @@ describe('authService · success payloads', () => {
     it('logoutAll reports how many records were deleted', async () => {
         authMock.getUserId.mockReturnValue('7')
         userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
-        authMock.logoutAll.mockResolvedValue(3)
+        authMock.logoutAll.mockResolvedValue({ deleted: 3, complete: true })
         const { authService } = await import('./auth-service.js')
         const result = await authService.logoutAll(authMock as never, sessionMock as never)
         expect(Result.isOk(result) && result.value).toEqual({
@@ -1215,7 +1227,7 @@ describe('authService · success payloads', () => {
         validatePasswordMock.mockResolvedValue(true)
         hashPasswordMock.mockResolvedValue('new-hash')
         userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
-        destroyAllSessionsMock.mockResolvedValue(undefined)
+        destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
         const { authService } = await import('./auth-service.js')
         const result = await authService.changePassword(
             7n,
