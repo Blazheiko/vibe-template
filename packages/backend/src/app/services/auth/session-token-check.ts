@@ -1,5 +1,6 @@
 import { userRepository } from '#app/repositories/index.js'
 import logger from '#logger'
+import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import type { SessionTokenStatus } from '#vendor/utils/session/session-token-check.js'
 
 /**
@@ -20,7 +21,7 @@ export const checkSessionToken = async (
     try {
         const current = await userRepository.findSessionToken(BigInt(userId))
         if (current === undefined) return 'mismatch'
-        return current === userToken ? 'ok' : 'mismatch'
+        return safeEqual(current, userToken) ? 'ok' : 'mismatch'
     } catch (err) {
         logger.error({ err }, 'Session token lookup failed')
         return 'unavailable'

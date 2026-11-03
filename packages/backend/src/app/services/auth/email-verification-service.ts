@@ -32,6 +32,7 @@ import {
     type RenderedEmail,
 } from '#app/services/notifications/email-templates.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
+import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 
 const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
 function buildVerificationUrl(token: string): string {
@@ -266,7 +267,11 @@ export const emailVerificationService = {
                         // meanwhile (another link, a change) is not overwritten.
                         check: (user) => {
                             // The session that opened the link must still be current.
-                            if (user.sessionToken !== requester.presentedSessionToken) {
+                            const presented = requester.presentedSessionToken
+                            if (
+                                presented === undefined ||
+                                !safeEqual(user.sessionToken, presented)
+                            ) {
                                 return Result.err(sessionRevoked())
                             }
                             return user.email === null || user.email === ''
@@ -309,7 +314,7 @@ export const emailVerificationService = {
         const ownSession =
             requester.userId === owner.id &&
             requester.presentedSessionToken !== undefined &&
-            requester.presentedSessionToken === owner.sessionToken
+            safeEqual(requester.presentedSessionToken, owner.sessionToken)
         if (!ownSession && owner.emailVerifiedAt === null) {
             const passwordResult = await checkOwnerPassword(owner, requester.password)
             if (Result.isError(passwordResult)) return Result.err(passwordResult.error)
@@ -403,7 +408,7 @@ export const emailVerificationService = {
             check: (user) => {
                 if (
                     presentedSessionToken === undefined ||
-                    user.sessionToken !== presentedSessionToken
+                    !safeEqual(user.sessionToken, presentedSessionToken)
                 ) {
                     return Result.err(sessionRevoked())
                 }
