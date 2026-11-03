@@ -8,6 +8,7 @@ import { createWsRoutesByUrl, routesHandler } from '#vendor/start/router.js'
 import httpRoutes from '#app/routes/http-routes.js'
 import wsRoutes from '#app/routes/ws-routes.js'
 import { promptService } from '#app/services/ai/prompt-service.js'
+import { getDummyPasswordHash } from '#app/services/auth/dummy-password-hash.js'
 import '#app/start/index.js'
 import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
@@ -35,6 +36,12 @@ const start = async (): Promise<void> => {
 
         connectRateLimitRedis()
         await promptService.load()
+        // The first login without a password to check would otherwise pay two scrypt calls
+        // (making the dummy hash, then checking it) and stand out by its time. Not fatal:
+        // getDummyPasswordHash forgets a failure and the login makes the hash itself.
+        await getDummyPasswordHash().catch((err: unknown) => {
+            logger.warn({ err }, 'Dummy password hash not prepared at startup')
+        })
         const processedHttpRoutes = routesHandler(httpRoutes)
         const processedWsRoutes = routesHandler(wsRoutes)
 
