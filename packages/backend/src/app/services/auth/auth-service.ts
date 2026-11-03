@@ -17,6 +17,7 @@ import {
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { emailVerificationService } from '#app/services/auth/email-verification-service.js'
+import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { getDummyPasswordHash } from '#app/services/auth/dummy-password-hash.js'
 import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
@@ -75,6 +76,17 @@ type RegisterEmailFlowPayload = AuthSuccessPayload | GenericAcceptedPayload
 
 const GENERIC_EMAIL_REGISTRATION_MESSAGE =
     'If the email can be used for registration, continue with the verification instructions sent to your inbox.'
+
+const genericEmailRegistrationAnswer = (): AppResult<GenericAcceptedPayload> =>
+    Result.ok({ status: 'success', message: GENERIC_EMAIL_REGISTRATION_MESSAGE })
+
+/**
+ * The registration lost a race: the email or phone was taken after the lookup (feat-100).
+ * Compared by reference; each caller turns it into its own answer and never returns it as is.
+ */
+const REGISTRATION_TAKEN = conflict('Registration identifier already taken')
+
+const isRegistrationTaken = (error: unknown): boolean => error === REGISTRATION_TAKEN
 
 function assertPhoneAuthEnabled(): AppResult<never> | undefined {
     if (authConfig.phoneAuthEnabled) {
@@ -194,12 +206,25 @@ async function persistRegisteredUser(
         challengeIdToInvalidate?: string
     },
 ): Promise<AppResult<Awaited<ReturnType<typeof userRepository.create>>>> {
-    const userCreated = await userRepository.create({
-        name: createUserInput.name,
-        email: createUserInput.email,
-        phone: createUserInput.phone,
-        password: createUserInput.passwordHash,
-    })
+    let userCreated: Awaited<ReturnType<typeof userRepository.create>>
+    try {
+        userCreated = await userRepository.create({
+            name: createUserInput.name,
+            email: createUserInput.email,
+            phone: createUserInput.phone,
+            password: createUserInput.passwordHash,
+        })
+    } catch (err: unknown) {
+        // feat-100: a concurrent registration took the email or phone between the lookup and
+        // this insert. Any unique violation is read as that: a registration fills only one of
+        // email/phone, and the other unique column, session_token, is a random nanoid. A new
+        // unique column filled at registration would have to check the index name here.
+        // Caught before the mail, the challenge, the session and the login: no side effects.
+        if (isUniqueViolation(err)) {
+            return Result.err(REGISTRATION_TAKEN)
+        }
+        throw err
+    }
 
     if (options.sendEmailVerification) {
         void emailVerificationService.sendVerificationEmailAfterRegistration(userCreated.id)
@@ -305,14 +330,11 @@ async function registerEmailFlow(
     const existResult = await userRepository.findByEmail(email)
 
     if (existResult !== undefined) {
-        return Result.ok({
-            status: 'success',
-            message: GENERIC_EMAIL_REGISTRATION_MESSAGE,
-        })
+        return genericEmailRegistrationAnswer()
     }
 
     if (!authConfig.strictRegistration) {
-        return await finalizeRegistration(
+        const registered = await finalizeRegistration(
             {
                 name,
                 email,
@@ -325,6 +347,11 @@ async function registerEmailFlow(
                 sendEmailVerification: true,
             },
         )
+        // Lost the race to a concurrent registration: answered like a taken address.
+        if (Result.isError(registered) && isRegistrationTaken(registered.error)) {
+            return genericEmailRegistrationAnswer()
+        }
+        return registered
     }
 
     const registeredUserResult = await persistRegisteredUser(
@@ -339,15 +366,15 @@ async function registerEmailFlow(
         },
     )
     if (Result.isError(registeredUserResult)) {
+        if (isRegistrationTaken(registeredUserResult.error)) {
+            return genericEmailRegistrationAnswer()
+        }
         return Result.err(registeredUserResult.error)
     }
 
     await session.destroySession(session.sessionInfo?.id)
 
-    return Result.ok({
-        status: 'success',
-        message: GENERIC_EMAIL_REGISTRATION_MESSAGE,
-    })
+    return genericEmailRegistrationAnswer()
 }
 
 export const authService = {
@@ -545,7 +572,7 @@ export const authService = {
 
         const passwordHash = await hashPassword(payload.password)
 
-        return await finalizeRegistration(
+        const registered = await finalizeRegistration(
             {
                 name: payload.name,
                 email: null,
@@ -559,6 +586,11 @@ export const authService = {
                 challengeIdToInvalidate: challenge.id,
             },
         )
+        // Another registration took the number after the check above: the same answer.
+        if (Result.isError(registered) && isRegistrationTaken(registered.error)) {
+            return Result.err(conflict('Phone already exist'))
+        }
+        return registered
     },
 
     async startPhoneLink(
@@ -748,11 +780,19 @@ export const authService = {
 
         // feat-096: linked only while the session that asked is still current, in the same
         // statement: a revocation that committed after the check above wins.
-        const updatedUser = await userRepository.updateIfSessionToken(
-            userId,
-            presentedSessionToken,
-            { phone: challenge.phone },
-        )
+        let updatedUser: UserRow | undefined
+        try {
+            updatedUser = await userRepository.updateIfSessionToken(userId, presentedSessionToken, {
+                phone: challenge.phone,
+            })
+        } catch (err: unknown) {
+            // feat-100: another account linked or registered the number after the check above;
+            // the unique index answers. The challenge stays confirmed: the user starts again.
+            if (isUniqueViolation(err)) {
+                return Result.err(conflict('Phone is already linked to another account'))
+            }
+            throw err
+        }
         if (updatedUser === undefined) {
             return Result.err(sessionRevoked())
         }

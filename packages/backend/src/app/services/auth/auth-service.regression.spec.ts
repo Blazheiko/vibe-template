@@ -33,6 +33,7 @@ const validatePasswordMock = vi.fn()
 const generateWsTokenMock = vi.fn()
 const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
+const sendVerificationEmailAfterRegistrationMock = vi.fn()
 
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
@@ -68,7 +69,7 @@ vi.mock('#app/services/communication/get-ws-url-service.js', () => ({
 
 vi.mock('#app/services/auth/email-verification-service.js', () => ({
     emailVerificationService: {
-        sendVerificationEmailAfterRegistration: vi.fn(),
+        sendVerificationEmailAfterRegistration: sendVerificationEmailAfterRegistrationMock,
     },
 }))
 
@@ -472,5 +473,69 @@ describe('change password throttle', () => {
             expect.objectContaining({ scope: 'change_password_user' }),
             '7',
         )
+    })
+})
+
+// feat-100: two registrations with one email both pass the lookup; the second insert hits the
+// unique index. The loser answers like a taken address instead of 500, without side effects.
+describe('email registration losing the race to the unique index', () => {
+    const GENERIC = {
+        status: 'success',
+        message:
+            'If the email can be used for registration, continue with the verification instructions sent to your inbox.',
+    }
+    const pgUniqueViolation = Object.assign(new Error('duplicate key'), { code: '23505' })
+    const drizzleWrapped = new Error('Failed query: insert into "users"', {
+        cause: pgUniqueViolation,
+    })
+
+    const register = async () => {
+        const { authService } = await loadAuthService()
+        return await authService.registerByEmail(
+            { name: 'Jane', email: 'user@example.com', password: 'secret123', token: '' },
+            authMock as any,
+            sessionMock as any,
+            loggerMock as any,
+            { ipAddress: '127.0.0.1' },
+        )
+    }
+
+    const savedStrict = process.env['AUTH_STRICT_REGISTRATION']
+    afterEach(() => {
+        if (savedStrict === undefined) delete process.env['AUTH_STRICT_REGISTRATION']
+        else process.env['AUTH_STRICT_REGISTRATION'] = savedStrict
+    })
+
+    describe.each([
+        ['strict', 'true'],
+        ['non-strict', 'false'],
+    ])('%s registration', (_mode, strict) => {
+        beforeEach(() => {
+            process.env['AUTH_STRICT_REGISTRATION'] = strict
+            userRepositoryMock.findByEmail.mockResolvedValue(undefined)
+            hashPasswordMock.mockResolvedValue('hashed-password')
+        })
+
+        it.each([
+            ['the driver error', pgUniqueViolation],
+            ['the error wrapped by Drizzle', drizzleWrapped],
+        ])('answers the generic message for %s', async (_label, err) => {
+            userRepositoryMock.create.mockRejectedValue(err)
+
+            const result = await register()
+
+            expect(Result.isOk(result) && result.value).toEqual(GENERIC)
+            expect(sendVerificationEmailAfterRegistrationMock).not.toHaveBeenCalled()
+            expect(sessionMock.destroySession).not.toHaveBeenCalled()
+            expect(authMock.login).not.toHaveBeenCalled()
+        })
+
+        it('still throws any other database error', async () => {
+            userRepositoryMock.create.mockRejectedValue(
+                Object.assign(new Error('connection lost'), { code: '08006' }),
+            )
+
+            await expect(register()).rejects.toThrow('connection lost')
+        })
     })
 })

@@ -1266,3 +1266,117 @@ describe('login throttle', () => {
         )
     })
 })
+
+// feat-100: the number was taken after the lookup; the unique index answers. The same 409 as
+// the lookup, not 500, and nothing after the write runs.
+describe('phone writes losing the race to the unique index', () => {
+    const uniqueViolation = new Error('Failed query', {
+        cause: Object.assign(new Error('duplicate key'), { code: '23505' }),
+    })
+
+    it('completePhoneRegistration answers 409 Phone already exist', async () => {
+        smsAuthChallengeRepositoryMock.findById.mockResolvedValue({
+            id: 'challenge-1',
+            flow: 'register_phone',
+            phone: '+14155550123',
+            codeHash: 'hashed-code',
+            providerRequestId: 'fake-1',
+            metadata: { sessionId: 'session-id' },
+            attemptCount: 0,
+            sendCount: 1,
+            resendAvailableAt: new Date('2099-05-15T10:01:00.000Z'),
+            expiresAt: new Date('2099-05-15T10:10:00.000Z'),
+            confirmedAt: new Date('2026-05-15T10:00:30.000Z'),
+            invalidatedAt: null,
+            createdAt: new Date('2026-05-15T10:00:00.000Z'),
+            updatedAt: new Date('2026-05-15T10:00:30.000Z'),
+        })
+        userRepositoryMock.findByPhone.mockResolvedValue(undefined)
+        hashPasswordMock.mockResolvedValue('hashed-password')
+        userRepositoryMock.create.mockRejectedValue(uniqueViolation)
+
+        const { authService } = await loadAuthService()
+        const result = await authService.completePhoneRegistration(
+            { challengeId: 'challenge-1', name: 'Phone User', password: 'secret123', token: '' },
+            authMock as any,
+            sessionMock as any,
+            loggerMock as any,
+            { sessionId: 'session-id' },
+        )
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'Conflict',
+            message: 'Phone already exist',
+        })
+        expect(smsAuthChallengeRepositoryMock.markInvalidated).not.toHaveBeenCalled()
+        expect(sessionMock.destroySession).not.toHaveBeenCalled()
+        expect(authMock.login).not.toHaveBeenCalled()
+    })
+
+    const linkChallenge = () => ({
+        id: 'link-challenge-1',
+        flow: 'link_phone',
+        phone: '+14155550123',
+        codeHash: hashOtp('123456'),
+        providerRequestId: 'fake-link-1',
+        metadata: {
+            userId: '7',
+            ipAddress: '127.0.0.1',
+            provider: 'fake',
+            sessionId: 'session-id',
+        },
+        attemptCount: 0,
+        sendCount: 1,
+        resendAvailableAt: new Date('2099-05-15T10:01:00.000Z'),
+        expiresAt: new Date('2099-05-15T10:10:00.000Z'),
+        confirmedAt: null,
+        invalidatedAt: null,
+        createdAt: new Date('2026-05-15T10:00:00.000Z'),
+        updatedAt: new Date('2026-05-15T10:00:01.000Z'),
+    })
+
+    const confirmLink = async () => {
+        smsAuthChallengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            email: 'user@example.com',
+            phone: null,
+            name: 'Jane',
+            password: 'hashed-password',
+            sessionToken: 'session-token',
+        })
+        userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
+        smsAuthChallengeRepositoryMock.markConfirmed.mockResolvedValue({
+            id: 'link-challenge-1',
+            confirmedAt: new Date(),
+        })
+
+        const { authService } = await loadAuthService()
+        return await authService.confirmPhoneLink(
+            7n,
+            { challengeId: 'link-challenge-1', code: '123456' },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
+            },
+        )
+    }
+
+    it('confirmPhoneLink answers 409 Phone is already linked to another account', async () => {
+        userRepositoryMock.updateIfSessionToken.mockRejectedValue(uniqueViolation)
+
+        const result = await confirmLink()
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'Conflict',
+            message: 'Phone is already linked to another account',
+        })
+    })
+
+    it('confirmPhoneLink still throws any other database error', async () => {
+        userRepositoryMock.updateIfSessionToken.mockRejectedValue(new Error('connection lost'))
+
+        await expect(confirmLink()).rejects.toThrow('connection lost')
+    })
+})

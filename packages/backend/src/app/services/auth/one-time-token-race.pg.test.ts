@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 
 // feat-060: the reset, email-verification and email-link tokens are single-use. They
 // used to be read, checked, applied and only then marked used, with `UPDATE ... WHERE
@@ -131,32 +132,6 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     ): Promise<Date | null | undefined> => {
         const [row] = await db.select({ usedAt: table.usedAt }).from(table).where(eq(table.id, id))
         return row?.usedAt
-    }
-
-    /**
-     * Holds the first caller of `method` after it has read until a second caller has
-     * read too, so both requests have passed the "unused" check before either applies
-     * the token: the race, made deterministic.
-     */
-    const bothReadBeforeEitherWrites = <T extends object>(
-        repository: T,
-        method: keyof T & string,
-    ): void => {
-        const original = (repository[method] as (...args: unknown[]) => Promise<unknown>).bind(
-            repository,
-        )
-        let readers = 0
-        let release: () => void = () => undefined
-        const gate = new Promise<void>((resolve) => {
-            release = resolve
-        })
-        vi.spyOn(repository, method as never).mockImplementation((async (...args: unknown[]) => {
-            const result = await original(...args)
-            readers += 1
-            if (readers >= 2) release()
-            await gate
-            return result
-        }) as never)
     }
 
     /** The write succeeds, then the request fails: what a crash right after it looks like. */
