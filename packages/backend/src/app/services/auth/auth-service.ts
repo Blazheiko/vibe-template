@@ -17,6 +17,7 @@ import {
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { emailVerificationService } from '#app/services/auth/email-verification-service.js'
+import { getDummyPasswordHash } from '#app/services/auth/dummy-password-hash.js'
 import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
@@ -851,19 +852,19 @@ export const authService = {
         const user = await (loginKey.kind === 'email'
             ? userRepository.findByEmail(loginKey.value)
             : userRepository.findByPhone(loginKey.value))
-        if (user === undefined) {
-            return invalidCredentials()
-        }
+        // An unknown identifier and an OAuth-only account check the password against a dummy
+        // hash: the same scrypt call as a wrong password, so neither the answer nor its time
+        // reveals whether the account exists. A pass against the dummy hash never signs in.
+        const passwordHash =
+            user !== undefined && user.password !== null && user.password !== ''
+                ? user.password
+                : undefined
+        const valid = await validatePassword(
+            password,
+            passwordHash ?? (await getDummyPasswordHash()),
+        )
 
-        // Same answer as a wrong password: do not reveal that an OAuth-only account exists.
-        const passwordHash = user.password
-        if (passwordHash === null || passwordHash === '') {
-            return invalidCredentials()
-        }
-
-        const valid = await validatePassword(password, passwordHash)
-
-        if (!valid) {
+        if (user === undefined || passwordHash === undefined || !valid) {
             return invalidCredentials()
         }
 
