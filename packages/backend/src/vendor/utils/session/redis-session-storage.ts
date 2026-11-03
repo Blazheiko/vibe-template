@@ -3,8 +3,8 @@ import redis, { withRedis } from '#database/redis.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import logger from '#vendor/utils/logger.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
-import sessionConfig from '#config/session.js'
 import redisConfig from '#config/redis.js'
+import { storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
 
 /**
  * Sanitizes Redis keys for protection against injections
@@ -78,11 +78,6 @@ export const sessionExists = async (sessionId: string, userToken: string): Promi
     return (await withRedis(() => redis.exists(key))) === 1
 }
 
-// Anonymous sessions stored in Redis (they hold data, e.g. OAuth state) expire like the
-// cookie-held ones; signed-in sessions keep the full age.
-const ttlFor = (userToken: string): number =>
-    userToken === 'anon_session' ? sessionConfig.anonAge : sessionConfig.age
-
 export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     // Authenticated sessions use the user's nanoid token; anonymous sessions use shared prefix
     const userToken =
@@ -92,7 +87,7 @@ export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     const json = JSON.stringify(sessionInfo, (_, v: unknown) =>
         typeof v === 'bigint' ? v.toString() : v,
     )
-    await withRedis(() => redis.setex(redisKey, ttlFor(userToken), json))
+    await withRedis(() => redis.setex(redisKey, storedSessionTtl(userToken), json))
 }
 
 export const getSession = async (
@@ -103,7 +98,9 @@ export const getSession = async (
 
     const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
 
-    const sessionJson = await withRedis(() => redis.getex(redisKey, 'EX', ttlFor(userToken)))
+    const sessionJson = await withRedis(() =>
+        redis.getex(redisKey, 'EX', storedSessionTtl(userToken)),
+    )
 
     if (sessionJson === null) return null
 

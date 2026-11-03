@@ -334,3 +334,42 @@ describe('session auth methods on a storage failure', () => {
         expectAnonymous(context)
     })
 })
+
+// feat-101: the re-sent cookie of a stored session lives as long as its Redis record. A
+// stored anonymous session presents the anon_session namespace as its user token.
+describe('the lifetime of a re-sent stored session cookie', () => {
+    const restoreWith = async (cookieUserToken: string, data: Record<string, unknown>) => {
+        storage.getSession.mockResolvedValue({
+            id: 's1',
+            data: { csrfToken: 'c'.repeat(43), ...data },
+            createdAt: new Date().toISOString(),
+        })
+        const responseData = createResponseData()
+        const context = createContext(
+            { method: 'get', headers: new Map(), cookies: new Map() } as never,
+            responseData,
+        )
+        await sessionHandler(context, createSignedToken(`${cookieUserToken}.s1`), undefined)
+        return responseData.cookies.get(sessionConfig.cookieName)
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        // The refresh is due, so the cookie is sent again on this request.
+        storage.claimCookieRefresh.mockResolvedValue(true)
+    })
+
+    it('a stored anonymous session gets the anonymous lifetime', async () => {
+        expect(sessionConfig.anonAge).not.toBe(sessionConfig.age)
+
+        const cookie = await restoreWith('anon_session', {})
+
+        expect(cookie?.maxAge).toBe(sessionConfig.anonAge)
+    })
+
+    it('a signed-in session gets the full lifetime', async () => {
+        const cookie = await restoreWith(USER_TOKEN, { userId: '7', userToken: USER_TOKEN })
+
+        expect(cookie?.maxAge).toBe(sessionConfig.age)
+    })
+})

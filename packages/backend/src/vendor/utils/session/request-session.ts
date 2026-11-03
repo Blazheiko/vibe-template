@@ -24,12 +24,13 @@ import {
 import logger from '#vendor/utils/logger.js'
 import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
 import { assertSessionTokenCurrent } from '#vendor/utils/session/session-token-check.js'
+import { ANON_SESSION_NAMESPACE, storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { createAnonSessionToken, createSignedToken } from '#vendor/utils/session/token-handler.js'
 import { generateCsrfToken, isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
 
 /** Storage namespace of a session without a user. */
-const ANON_TOKEN = 'anon_session'
+const ANON_TOKEN = ANON_SESSION_NAMESPACE
 
 /**
  * How often the cookie of an unchanged stored session is sent again to slide its expiry.
@@ -245,11 +246,9 @@ export class RequestSession {
                     userToken: userToken ?? ANON_TOKEN,
                 })
             }
-            session.issueStoredCookie(
-                info.id,
-                userToken,
-                userToken === undefined ? sessionConfig.anonAge : sessionConfig.age,
-            )
+            // Same lifetime as the record: a stored anonymous session presents the
+            // anon_session namespace as its user token, not undefined.
+            session.issueStoredCookie(info.id, userToken, storedSessionTtl(userToken ?? ANON_TOKEN))
         }
 
         return session
