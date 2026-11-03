@@ -1031,6 +1031,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-104-push-endpoint-ssrf",
             "dependencies": [],
+            "status": "done",
+            "evidence": "Merged #349 (merge 774b1fb; start #348). isAllowedPushEndpoint (https, default port, no userinfo, no IP literal, host = PUSH_ALLOWED_ENDPOINT_HOSTS entry or subdomain of a .domain entry on a label boundary) on create/update (400 push_endpoint_not_allowed) and before every send; PUSH_MAX_SUBSCRIPTIONS_PER_USER=20 counted under the user row lock (409 push_subscription_limit); test-push 5/min; log responses carry statusCode + reason instead of errorMessage/responseData; web-push redirect behaviour pinned against a local TLS server (302 -> rejected, target 0 hits). Evidence: typecheck, lint, format clean; pnpm test backend 2225, frontend 400, api-playground 62; test:pg local 16 files/128 passed (5 skipped by condition), CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; push-subscription-ownership.pg.test.ts over a real uWS server + PostgreSQL: disallowed endpoints 400 and nothing stored, GET /, /:id, /:id/logs hide ECONNREFUSED, two parallel POSTs for the last slot -> 200 + 409 and 20 rows, 6th test-push 429; mutation: all 7 new HTTP cases fail on main's code. Details were in progress.md on fix/feat-104-push-endpoint-ssrf (removed from main by this PR)."
+        },
+        {
+            "id": "feat-105",
+            "name": "Prompt Context Replace",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R11a: support-llm-service puts the knowledge-base context into the system prompt with String.replace('{context}', text), which reads $&, $`, $' and $$ in admin-written knowledge-base text as replacement patterns; the context goes in verbatim (function replacement), the missing-placeholder fallback is detected without comparing strings",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-105-prompt-context-replace",
+            "dependencies": [],
             "status": "in_progress",
             "evidence": ""
         }
