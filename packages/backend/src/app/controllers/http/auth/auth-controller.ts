@@ -150,7 +150,11 @@ export default {
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.changePassword(userId, payload)
+        const result = await authService.changePassword(
+            userId,
+            payload,
+            context.auth.getPresentedUserToken(),
+        )
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
         }
@@ -264,6 +268,7 @@ export default {
         const result = await authService.startPhoneLink(userId, payload, {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneLink'),
+            presentedSessionToken: context.auth.getPresentedUserToken(),
         })
         return respond(context, result)
     },
@@ -280,6 +285,7 @@ export default {
         const result = await authService.confirmPhoneLink(userId, payload, {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
+            presentedSessionToken: context.auth.getPresentedUserToken(),
         })
         return respond(context, result)
     },
@@ -293,7 +299,11 @@ export default {
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.startEmailLink(userId, payload)
+        const result = await authService.startEmailLink(
+            userId,
+            payload,
+            context.auth.getPresentedUserToken(),
+        )
         return respond(context, result)
     },
 }

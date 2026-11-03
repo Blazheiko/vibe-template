@@ -11,6 +11,8 @@ import {
     badRequest,
     conflict,
     notFound,
+    sessionRevoked,
+    type AppError,
     type AppResult,
     appErrorMessage,
 } from '#app/services/shared/errors.js'
@@ -18,9 +20,10 @@ import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import {
-    consumeTokenAndApply,
     findUsableToken,
-    issueToken,
+    issueTokenLocked,
+    runTokenTransaction,
+    type TokenTransactionOutcome,
 } from '#app/services/auth/one-time-token.js'
 import {
     renderBrandedEmail,
@@ -71,22 +74,50 @@ function buildEmailContent(name: string, verificationUrl: string): RenderedEmail
     })
 }
 
+/** The answer for a token transaction that did not apply, or undefined when it did. */
+function tokenOutcomeError(
+    outcome: TokenTransactionOutcome<unknown>,
+    used: AppError,
+    expired: AppError,
+): AppError | undefined {
+    switch (outcome.kind) {
+        case 'applied':
+            return undefined
+        case 'unusable':
+            return outcome.reason === 'expired' ? expired : used
+        case 'rejected':
+            return outcome.error
+        case 'user_missing':
+            return notFound('User', 'User not found')
+    }
+}
+
 export const emailVerificationService = {
     async sendVerificationEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
-        const user = await userRepository.findById(userId)
-        if (user === undefined) {
-            return Result.err(notFound('User', 'User not found'))
-        }
-
-        if (user.emailVerifiedAt !== null) {
-            return Result.ok({ message: 'Email is already verified' })
-        }
-
-        const rawToken = await issueToken(emailVerificationRepository, {
+        const ALREADY_VERIFIED = 'already_verified'
+        const issued = await issueTokenLocked(emailVerificationRepository, {
             userId,
             ttlMs: EMAIL_VERIFICATION_TTL_MS,
+            // Checked on the locked row: a verification or a change of address that
+            // committed meanwhile is seen here, not after a token was issued for it.
+            check: (user) => {
+                if (user.emailVerifiedAt !== null) {
+                    return Result.err(badRequest('Email is already verified', ALREADY_VERIFIED))
+                }
+                if (user.email === null) {
+                    return Result.err(badRequest('Email verification requires an email address'))
+                }
+                return Result.ok(undefined)
+            },
         })
+        if (Result.isError(issued)) {
+            if ('reason' in issued.error && issued.error.reason === ALREADY_VERIFIED) {
+                return Result.ok({ message: 'Email is already verified' })
+            }
+            return Result.err(issued.error)
+        }
 
+        const { rawToken, user } = issued.value
         if (user.email === null) {
             return Result.err(badRequest('Email verification requires an email address'))
         }
@@ -159,37 +190,37 @@ export const emailVerificationService = {
                 return Result.err(badRequest('Verification link is invalid'))
             }
 
-            const user = await userRepository.findById(linkVerification.userId)
-            if (user === undefined) {
-                return Result.err(notFound('User', 'User not found'))
-            }
-
-            const conflictingUser = await userRepository.findByEmail(
-                normalizeEmail(linkVerification.targetEmail),
-            )
-
-            if (conflictingUser !== undefined && conflictingUser.id !== user.id) {
+            const targetEmail = normalizeEmail(linkVerification.targetEmail)
+            const conflictingUser = await userRepository.findByEmail(targetEmail)
+            if (conflictingUser !== undefined && conflictingUser.id !== linkVerification.userId) {
                 return Result.err(conflict('Email is already linked to another account'))
             }
 
-            // feat-060: claim the token and link the email in ONE transaction; a failure
-            // rolls both back (the link stays usable).
-            let applied: Awaited<ReturnType<typeof consumeTokenAndApply>>
+            // feat-096: lock the user, check the row, consume the token and link the
+            // address in ONE transaction; a failure rolls all of it back (the link stays
+            // usable).
+            let linked: TokenTransactionOutcome<void>
             try {
-                applied = await consumeTokenAndApply(
+                linked = await runTokenTransaction(
                     emailLinkVerificationRepository,
                     linkVerification,
-                    async (tx) => {
-                        const updated = await userRepository.update(
-                            user.id,
-                            {
-                                email: normalizeEmail(linkVerification.targetEmail),
-                                emailVerifiedAt: new Date(),
-                            },
-                            tx,
-                        )
-                        if (updated === undefined)
-                            throw new Error('User disappeared during linking')
+                    {
+                        // The link adds an address to an account that has none; one linked
+                        // meanwhile (another link, a change) is not overwritten.
+                        check: (user) =>
+                            user.email === null || user.email === ''
+                                ? Result.ok(undefined)
+                                : Result.err(conflict('Email is already linked to this account')),
+                        apply: async (user, tx) => {
+                            const updated = await userRepository.update(
+                                user.id,
+                                { email: targetEmail, emailVerifiedAt: new Date() },
+                                tx,
+                            )
+                            if (updated === undefined)
+                                throw new Error('User disappeared during linking')
+                        },
+                        invalidate: [emailLinkVerificationRepository],
                     },
                 )
             } catch (err: unknown) {
@@ -200,24 +231,15 @@ export const emailVerificationService = {
                 }
                 throw err
             }
-            if (!applied.claimed) {
-                return Result.err(usedMessage)
-            }
+            const linkError = tokenOutcomeError(linked, usedMessage, expiredMessage)
+            if (linkError !== undefined) return Result.err(linkError)
 
             return Result.ok({ message: 'Email linked successfully' })
         }
 
-        const user = await userRepository.findById(verification.userId)
-        if (user === undefined) {
-            return Result.err(notFound('User', 'User not found'))
-        }
-
-        // feat-060: claim the token and confirm the email in ONE transaction (see the link
-        // branch above).
-        const applied = await consumeTokenAndApply(
-            emailVerificationRepository,
-            verification,
-            async (tx) => {
+        // feat-096: the verification is applied under the user lock, see the link branch.
+        const verified = await runTokenTransaction(emailVerificationRepository, verification, {
+            apply: async (user, tx) => {
                 if (user.emailVerifiedAt === null) {
                     const updated = await userRepository.update(
                         user.id,
@@ -228,10 +250,10 @@ export const emailVerificationService = {
                         throw new Error('User disappeared during verification')
                 }
             },
-        )
-        if (!applied.claimed) {
-            return Result.err(usedMessage)
-        }
+            invalidate: [emailVerificationRepository],
+        })
+        const verifyError = tokenOutcomeError(verified, usedMessage, expiredMessage)
+        if (verifyError !== undefined) return Result.err(verifyError)
 
         return Result.ok({ message: 'Email confirmed successfully' })
     },
@@ -287,20 +309,36 @@ export const emailVerificationService = {
         await this.sendVerificationEmailInBackground(userId, 'registration')
     },
 
+    /**
+     * `presentedSessionToken`: the token of the session that asked (`Auth.getPresentedUserToken`).
+     * The link is issued only while it is still the user's current one (feat-096).
+     */
     async sendLinkVerificationEmail(
         userId: bigint,
         targetEmail: string,
+        presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ message: string }>> {
-        const user = await userRepository.findById(userId)
-        if (user === undefined) {
-            return Result.err(notFound('User', 'User not found'))
-        }
-
-        const rawToken = await issueToken(emailLinkVerificationRepository, {
+        const issued = await issueTokenLocked(emailLinkVerificationRepository, {
             userId,
             ttlMs: EMAIL_VERIFICATION_TTL_MS,
             extra: { targetEmail },
+            check: (user) => {
+                if (
+                    presentedSessionToken === undefined ||
+                    user.sessionToken !== presentedSessionToken
+                ) {
+                    return Result.err(sessionRevoked())
+                }
+                if (user.email !== null && user.email !== '') {
+                    return Result.err(badRequest('Email is already linked to this account'))
+                }
+                return Result.ok(undefined)
+            },
         })
+        if (Result.isError(issued)) {
+            return Result.err(issued.error)
+        }
+        const { rawToken, user } = issued.value
 
         const verificationUrl = buildVerificationUrl(rawToken)
         const emailContent = buildLinkEmailContent(user.name, verificationUrl)

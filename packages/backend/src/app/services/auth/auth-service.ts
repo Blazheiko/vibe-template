@@ -9,6 +9,7 @@ import {
     badRequest,
     conflict,
     internalMessage,
+    sessionRevoked,
     notFound,
     unauthorized,
     type AppResult,
@@ -115,13 +116,22 @@ async function resetThrottleQuietly(
     }
 }
 
+/**
+ * The user, once the request's session is still current and the password is right.
+ * `presentedSessionToken` is `Auth.getPresentedUserToken()`: a session revoked after the
+ * request was let in (a claim, a password change elsewhere) is refused here (feat-096).
+ */
 async function requireCurrentPasswordReauth(
     userId: bigint,
     currentPassword: string,
+    presentedSessionToken: string | undefined,
 ): Promise<AppResult<UserRow>> {
     const user = await userRepository.findById(userId)
     if (user === undefined) {
         return Result.err(notFound('User', 'User not found'))
+    }
+    if (presentedSessionToken === undefined || user.sessionToken !== presentedSessionToken) {
+        return Result.err(sessionRevoked())
     }
 
     const passwordHash = user.password
@@ -553,7 +563,11 @@ export const authService = {
     async startPhoneLink(
         userId: bigint,
         payload: LinkPhoneStartInput,
-        requestMeta: { ipAddress: string; sessionId: string | null },
+        requestMeta: {
+            ipAddress: string
+            sessionId: string | null
+            presentedSessionToken: string | undefined
+        },
     ): Promise<
         AppResult<{
             status: 'success'
@@ -571,7 +585,11 @@ export const authService = {
             return Result.err(badRequest('Phone linking requires an active session'))
         }
 
-        const reauthResult = await requireCurrentPasswordReauth(userId, payload.currentPassword)
+        const reauthResult = await requireCurrentPasswordReauth(
+            userId,
+            payload.currentPassword,
+            requestMeta.presentedSessionToken,
+        )
         if (Result.isError(reauthResult)) {
             return Result.err(reauthResult.error)
         }
@@ -643,7 +661,11 @@ export const authService = {
     async confirmPhoneLink(
         userId: bigint,
         payload: LinkPhoneConfirmInput,
-        requestMeta: { ipAddress: string; sessionId: string | null },
+        requestMeta: {
+            ipAddress: string
+            sessionId: string | null
+            presentedSessionToken: string | undefined
+        },
     ): Promise<
         AppResult<{
             status: 'success'
@@ -699,9 +721,13 @@ export const authService = {
             return Result.err(codeResult.error)
         }
 
+        const presentedSessionToken = requestMeta.presentedSessionToken
         const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
+        }
+        if (presentedSessionToken === undefined || user.sessionToken !== presentedSessionToken) {
+            return Result.err(sessionRevoked())
         }
         if (user.phone !== null && user.phone !== '') {
             return Result.err(badRequest('Phone is already linked to this account'))
@@ -719,9 +745,15 @@ export const authService = {
             return Result.err(confirmedResult.error)
         }
 
-        const updatedUser = await userRepository.update(userId, { phone: challenge.phone })
+        // feat-096: linked only while the session that asked is still current, in the same
+        // statement: a revocation that committed after the check above wins.
+        const updatedUser = await userRepository.updateIfSessionToken(
+            userId,
+            presentedSessionToken,
+            { phone: challenge.phone },
+        )
         if (updatedUser === undefined) {
-            return Result.err(internalMessage('Failed to link phone to user account'))
+            return Result.err(sessionRevoked())
         }
 
         return Result.ok({
@@ -734,8 +766,13 @@ export const authService = {
     async startEmailLink(
         userId: bigint,
         payload: LinkEmailStartInput,
+        presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ status: 'success'; message: string }>> {
-        const reauthResult = await requireCurrentPasswordReauth(userId, payload.currentPassword)
+        const reauthResult = await requireCurrentPasswordReauth(
+            userId,
+            payload.currentPassword,
+            presentedSessionToken,
+        )
         if (Result.isError(reauthResult)) {
             return Result.err(reauthResult.error)
         }
@@ -779,7 +816,11 @@ export const authService = {
             return Result.err(conflict('Email is already linked to another account'))
         }
 
-        const sendResult = await emailVerificationService.sendLinkVerificationEmail(userId, email)
+        const sendResult = await emailVerificationService.sendLinkVerificationEmail(
+            userId,
+            email,
+            presentedSessionToken,
+        )
         if (Result.isError(sendResult)) {
             return Result.err(sendResult.error)
         }
@@ -925,10 +966,21 @@ export const authService = {
         // ADR 0002: rotating the sessionToken is the revocation. It comes first and its
         // failure fails the request; auth.logoutAll() below only deletes the records,
         // and every one of them is already rejected if that step fails.
+        // feat-096: only while the session that asked is still current; a request let in
+        // before a revocation must not rotate the owner's new token away.
         if (userId !== null) {
-            const rotated = await userRepository.update(BigInt(userId), { sessionToken: nanoid() })
+            const presented = auth.getPresentedUserToken()
+            const rotated =
+                presented === undefined
+                    ? undefined
+                    : await userRepository.updateIfSessionToken(BigInt(userId), presented, {
+                          sessionToken: nanoid(),
+                      })
             if (rotated === undefined) {
-                return Result.err(notFound('User', 'User not found'))
+                const current = await userRepository.findSessionToken(BigInt(userId))
+                return Result.err(
+                    current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
+                )
             }
         }
         const result = await auth.logoutAll()
@@ -949,6 +1001,7 @@ export const authService = {
     async changePassword(
         userId: bigint,
         payload: ChangePasswordInput,
+        presentedSessionToken: string | undefined,
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
         const throttle = await enforceThrottle(
@@ -963,6 +1016,11 @@ export const authService = {
         const user = await userRepository.findById(userId)
         if (user === undefined) {
             return Result.err(notFound('User', 'User not found'))
+        }
+        // feat-096: the row read here may already be the one a claim left (password NULL,
+        // token rotated). The session must still be the current one, here and in the update.
+        if (presentedSessionToken === undefined || user.sessionToken !== presentedSessionToken) {
+            return Result.err(sessionRevoked())
         }
 
         const storedPassword = user.password
@@ -984,16 +1042,23 @@ export const authService = {
 
         // ADR 0002: the new password and the rotated sessionToken are one conditional
         // UPDATE. Every other session of the user stops working with it, whether or not
-        // the Redis cleanup below finishes; and of two concurrent changes made against
-        // the same current password only one finds it still in place.
+        // the Redis cleanup below finishes; of two concurrent changes made against the
+        // same current password only one finds it still in place; and a change let in
+        // before a revocation finds the presented sessionToken gone (feat-096).
         const previousSessionToken = user.sessionToken
         const rotatedSessionToken = nanoid()
-        const updated = await userRepository.changePasswordIfCurrent(userId, storedPassword, {
-            password: newPasswordHash,
-            sessionToken: rotatedSessionToken,
-        })
+        const updated = await userRepository.changePasswordIfCurrent(
+            userId,
+            storedPassword,
+            presentedSessionToken,
+            { password: newPasswordHash, sessionToken: rotatedSessionToken },
+        )
 
         if (updated === undefined) {
+            const current = await userRepository.findSessionToken(userId)
+            if (current !== presentedSessionToken) {
+                return Result.err(sessionRevoked())
+            }
             return Result.err(
                 conflict('Password was changed by another request. Please try again.'),
             )

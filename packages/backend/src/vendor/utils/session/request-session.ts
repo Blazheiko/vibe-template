@@ -124,15 +124,22 @@ export class RequestSession {
     /** login / logout replaced the session in this request: its own Set-Cookie is current. */
     private swapped = false
     private preSendCheck: PreSendCheck | null = null
+    /**
+     * The user token of the signed-in session the request presented and `restore` verified
+     * as current. Set once and never changed: login, logout and renewal in this request
+     * replace `info` and `storageToken`, not this.
+     */
+    private readonly presentedUserToken: string | undefined
 
     private constructor(
         private readonly context: HttpContext,
         info: SessionInfo,
-        state: { cookieHeld: boolean; storageToken: string },
+        state: { cookieHeld: boolean; storageToken: string; presentedUserToken?: string },
     ) {
         this.info = info
         this.cookieHeld = state.cookieHeld
         this.storageToken = state.storageToken
+        this.presentedUserToken = state.presentedUserToken
     }
 
     /**
@@ -198,9 +205,16 @@ export class RequestSession {
             if (updated !== null) info = updated
         }
 
+        // Only a signed-in session presents a user token worth comparing with
+        // users.session_token; an anonymous one presents none.
+        const signedInToken =
+            presentedUserToken !== undefined && typeof info.data.userId === 'string'
+                ? presentedUserToken
+                : undefined
         const session = new RequestSession(context, info, {
             cookieHeld,
             storageToken: userToken ?? ANON_TOKEN,
+            ...(signedInToken !== undefined ? { presentedUserToken: signedInToken } : {}),
         })
 
         if (startsNew) {
@@ -243,6 +257,7 @@ export class RequestSession {
         session.changeSessionData = this.changeData.bind(this)
         session.destroySession = this.destroy.bind(this)
         auth.getUserId = this.userId.bind(this)
+        auth.getPresentedUserToken = this.getPresentedUserToken.bind(this)
         auth.check = this.isSignedIn.bind(this)
         auth.login = this.login.bind(this)
         auth.logout = this.logout.bind(this)
@@ -271,6 +286,10 @@ export class RequestSession {
 
     private isSignedIn(): boolean {
         return Boolean(this.info.data.userId)
+    }
+
+    private getPresentedUserToken(): string | undefined {
+        return this.presentedUserToken
     }
 
     private userId(): string | null {

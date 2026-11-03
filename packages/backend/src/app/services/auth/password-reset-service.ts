@@ -19,9 +19,9 @@ import {
     verifySmsCode,
 } from '#app/services/auth/sms-challenge.js'
 import {
-    consumeTokenAndApply,
     findUsableToken,
-    issueToken,
+    issueTokenLocked,
+    runTokenTransaction,
 } from '#app/services/auth/one-time-token.js'
 import {
     renderBrandedEmail,
@@ -158,16 +158,24 @@ export const passwordResetService = {
     },
 
     async sendPasswordResetEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
-        const user = await userRepository.findById(userId)
-        if (user === undefined) {
-            return Result.err(notFound('User', 'User not found'))
-        }
-
-        const rawToken = await issueToken(passwordResetRepository, {
+        const NO_EMAIL = 'no_email'
+        // feat-096: issued under the user lock; an account without an address gets no token.
+        const issued = await issueTokenLocked(passwordResetRepository, {
             userId,
             ttlMs: PASSWORD_RESET_TTL_MS,
+            check: (user) =>
+                user.email === null
+                    ? Result.err(badRequest('No email address', NO_EMAIL))
+                    : Result.ok(undefined),
         })
+        if (Result.isError(issued)) {
+            if ('reason' in issued.error && issued.error.reason === NO_EMAIL) {
+                return Result.ok({ message: GENERIC_RESET_MESSAGE })
+            }
+            return Result.err(issued.error)
+        }
 
+        const { rawToken, user } = issued.value
         if (user.email === null) {
             return Result.ok({ message: GENERIC_RESET_MESSAGE })
         }
@@ -356,46 +364,50 @@ export const passwordResetService = {
             return Result.err(badRequest('Password reset link is invalid', 'invalid_token'))
         }
 
-        const user = await userRepository.findById(resetToken.userId)
-        if (user === undefined) {
-            return Result.err(notFound('User', 'User not found'))
-        }
         const newPasswordHash = await hashPassword(password)
-        const previousSessionToken = user.sessionToken
 
-        const userPhone = user.phone
-        if (userPhone !== null && userPhone !== '') {
-            await invalidatePendingPhoneChallenges(userPhone)
-        }
-
-        // feat-060: the token is claimed and its effect applied in ONE transaction. The
-        // claim is `UPDATE ... SET used_at WHERE used_at IS NULL`, so of two concurrent
-        // requests with one link exactly one gets the row; a failure after it rolls both
-        // back, the link stays usable and the password stays as it was. The rotated
-        // sessionToken (ADR 0002) is part of the same commit.
-        const applied = await consumeTokenAndApply(
-            passwordResetRepository,
-            resetToken,
-            async (tx) => {
+        // feat-096: lock the user, consume the token and set the password with the rotated
+        // sessionToken (ADR 0002) in ONE transaction. Of two concurrent requests with one
+        // link exactly one consumes it; a failure after the claim rolls everything back, the
+        // link stays usable and the password stays as it was.
+        const applied = await runTokenTransaction(passwordResetRepository, resetToken, {
+            apply: async (user, tx) => {
                 const updated = await userRepository.update(
                     user.id,
                     { password: newPasswordHash, sessionToken: nanoid() },
                     tx,
                 )
                 if (updated === undefined) throw new Error('User disappeared during reset')
-                return updated
+                return {
+                    userId: user.id,
+                    phone: user.phone,
+                    previousSessionToken: user.sessionToken,
+                }
             },
-        )
-        if (!applied.claimed) {
-            return Result.err(badRequest('Password reset link has already been used', 'used_token'))
+            invalidate: [passwordResetRepository],
+        })
+        if (applied.kind === 'user_missing') {
+            return Result.err(notFound('User', 'User not found'))
+        }
+        if (applied.kind === 'unusable' || applied.kind === 'rejected') {
+            return Result.err(
+                applied.kind === 'unusable' && applied.reason === 'expired'
+                    ? badRequest('Password reset link has expired', 'expired_token')
+                    : badRequest('Password reset link has already been used', 'used_token'),
+            )
+        }
+        const user = applied.value
+
+        if (user.phone !== null && user.phone !== '') {
+            await invalidatePendingPhoneChallenges(user.phone)
         }
 
         // ADR 0002: the rotated sessionToken is the revocation. This only deletes records
         // that are already rejected, so a failure is logged and must not fail a reset that
         // has been committed.
-        await destroySessionsQuietly(previousSessionToken, user.id)
+        await destroySessionsQuietly(user.previousSessionToken, user.userId)
 
-        userNotificationService.security(user.id, 'password_reset')
+        userNotificationService.security(user.userId, 'password_reset')
         return Result.ok({ status: 'success' })
     },
 

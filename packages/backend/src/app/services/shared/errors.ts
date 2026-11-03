@@ -3,7 +3,7 @@ import type { Result as ResultType } from 'better-result'
 
 export type AppError =
     | { _tag: 'BadRequest'; message: string; reason?: string }
-    | { _tag: 'Unauthorized'; message: string }
+    | { _tag: 'Unauthorized'; message: string; reason?: string }
     | { _tag: 'Forbidden'; message: string; reason?: string }
     | { _tag: 'NotFound'; resource: string; message: string }
     | { _tag: 'Conflict'; message: string; reason?: string }
@@ -65,8 +65,22 @@ export function badRequest(message: string, reason?: string): AppError {
     }
 }
 
-export function unauthorized(message = 'Unauthorized'): AppError {
-    return { _tag: 'Unauthorized', message }
+export function unauthorized(message = 'Unauthorized', reason?: string): AppError {
+    return {
+        _tag: 'Unauthorized',
+        message,
+        ...(reason !== undefined ? { reason } : {}),
+    }
+}
+
+export const SESSION_REVOKED = 'session_revoked'
+
+/**
+ * The session the request presented is no longer current: its users.session_token was
+ * rotated (ADR 0002) after the request was let in, e.g. by a claim or a password change.
+ */
+export function sessionRevoked(): AppError {
+    return unauthorized('Session has been revoked', SESSION_REVOKED)
 }
 
 export function forbidden(message: string, reason?: string): AppError {
