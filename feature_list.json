@@ -1003,6 +1003,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #338 (merge b7890b8; start #337): logout-all answers 200 once users.session_token is rotated, whatever the Redis cleanup does (new anonymous cookie and CSRF token from RequestSession.logoutAll's finally, logout_all notice; complete: false logged as a warning, a thrown cleanup with logger.error); a failed rotation still fails before cleanup and notice. destroyAllSessions(userToken) scans from 0 and returns { deleted, complete } (confirmed deletions), the retry cursor and keepSessionId are gone; change password and destroySessionsQuietly keep their outer catch. Session.destroyAllSessions removed, Session.destroySession() takes no argument. Re-sent stored anonymous cookie gets anonAge (storedSessionTtl in session-ttl.ts). session_api removed. OAuth state compared with safeEqual (CSRF keeps its format check). typecheck/lint/format:check clean, test backend 2152 (+11) / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:redis 91 (logout-all.redis.test.ts rewritten on the new contract), test:pg 182, nothing skipped, docs:build + docs:verify, CI green incl. quality, e2e, e2e-live, test-pg, test-redis. Mutation checks: the anonymous-lifetime test fails on the old request-session.ts, the logout-all-throws test fails without the finally. Manual on dist (local PostgreSQL + Redis): two browsers -> 200 deletedCount 2, all cookies 401; REDIS_LOGOUT_ALL_DEADLINE_MS=1 -> 200 deletedCount 0, records left but every cookie 401, warnings logged; Redis paused before the request -> 503 and the session still valid afterwards (no rotation); stored anonymous cookie re-sent with Max-Age=7200. Details were in progress.md on fix/feat-101-session-cleanup (removed from main by this PR)."
+        },
+        {
+            "id": "feat-102",
+            "name": "Error Log Scrubbing",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R01: DrizzleQueryError / pg DatabaseError carry query params (password hash, session_token, email) in message, stack, params and cause; a safe error representation (no params, query, detail; stack rebuilt from the safe message; cause walked recursively) is used by the pino err/error serializers and by Sentry beforeSend (exception values, nested extra/contexts/breadcrumbs); the original error is not mutated; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-102-error-log-scrubbing",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
