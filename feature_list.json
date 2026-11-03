@@ -951,7 +951,7 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-096-credential-transactions",
             "dependencies": ["feat-095"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
