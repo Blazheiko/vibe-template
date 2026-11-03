@@ -228,7 +228,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             })
             await db.insert(pushSubscriptions).values({
                 userId: attacker.id,
-                endpoint: `https://push.test/${String(now)}`,
+                endpoint: `https://fcm.googleapis.com/fcm/send/${String(now)}`,
                 p256dhKey: 'key',
                 authKey: 'auth',
             })
@@ -502,7 +502,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
     // feat-098: what a request admitted before a claim may still write after it.
     describe('a push subscription from a session a claim revoked', () => {
         const subscription = (label: string) => ({
-            endpoint: `https://push.test/${label}-${String(now)}-${String(counter)}`,
+            endpoint: `https://fcm.googleapis.com/fcm/send/${label}-${String(now)}-${String(counter)}`,
             p256dhKey: 'attacker-key',
             authKey: 'attacker-auth',
             notificationTypes: ['system'],

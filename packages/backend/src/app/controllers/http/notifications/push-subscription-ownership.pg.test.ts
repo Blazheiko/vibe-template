@@ -91,7 +91,7 @@ vi.mock('#app/middlewares/csrf-guard.js', () => ({
 // through a real uWebSockets.js server with the real route table and PostgreSQL.
 describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')
-    const { pushSubscriptions, users } = await import('#database/schema.js')
+    const { pushNotificationLogs, pushSubscriptions, users } = await import('#database/schema.js')
 
     const now = Date.now()
     const ids = { owner: 0n, other: 0n, ownerSub: 0n, otherSub: 0n, missing: 0n }
@@ -113,7 +113,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             .insert(pushSubscriptions)
             .values({
                 userId,
-                endpoint: `https://push.example.test/${tag}-${String(now)}`,
+                endpoint: `https://fcm.googleapis.com/fcm/send/${tag}-${String(now)}`,
                 p256dhKey: `p256dh-${tag}`,
                 authKey: `auth-${tag}`,
                 ipAddress: '203.0.113.7',
@@ -163,7 +163,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     }
 
     const expectNoLeak = (result: HttpResult, tag: string): void => {
-        expect(result.text).not.toContain('push.example.test')
+        expect(result.text).not.toContain(`/fcm/send/${tag}-`)
         expect(result.text).not.toContain(`p256dh-${tag}`)
         expect(result.text).not.toContain(`auth-${tag}`)
         expect(result.text).not.toContain('203.0.113.7')
@@ -387,7 +387,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     // was admitted writes nothing.
     describe('POST /push-subscriptions from a revoked session', () => {
         it('answers 401 session_revoked and inserts nothing', async () => {
-            const endpoint = `https://push.example.test/revoked-${String(now)}`
+            const endpoint = `https://fcm.googleapis.com/fcm/send/revoked-${String(now)}`
             sessionTokens.set(String(ids.other), 'token-before-the-claim')
 
             try {
@@ -410,6 +410,117 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
                 .from(pushSubscriptions)
                 .where(eq(pushSubscriptions.endpoint, endpoint))
             expect(rows).toHaveLength(0)
+        })
+    })
+
+    // feat-104 (R03): the server POSTs to the stored endpoint, so only allowed push services are
+    // stored, the number of devices is capped, and the transport error text stays in the database.
+    describe('push endpoint SSRF (feat-104)', () => {
+        const countFor = async (userId: bigint): Promise<number> =>
+            (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId)))
+                .length
+
+        it.each([
+            'https://10.0.0.5/admin',
+            'https://169.254.169.254/latest/meta-data',
+            'http://fcm.googleapis.com/fcm/send/x',
+            'https://evil.example/fcm.googleapis.com',
+        ])('POST answers 400 for %s and stores nothing', async (endpoint) => {
+            const before = await countFor(ids.owner)
+
+            const result = await call('POST', '', {
+                user: ids.owner,
+                body: { endpoint, p256dhKey: 'key', authKey: 'auth' },
+            })
+
+            expect(result.status).toBe(400)
+            expect(result.body).toMatchObject({ reason: 'push_endpoint_not_allowed' })
+            expect(await countFor(ids.owner)).toBe(before)
+        })
+
+        it('every channel that returns logs hides the transport error text', async () => {
+            const subscriptionId = await insertSubscription(ids.owner, 'logs')
+            await db.insert(pushNotificationLogs).values([
+                {
+                    userId: ids.owner,
+                    subscriptionId,
+                    messageTitle: 'failed',
+                    status: 'FAILED',
+                    errorMessage: 'connect ECONNREFUSED 10.0.0.5:22',
+                    responseData: { statusCode: null },
+                },
+                {
+                    userId: ids.owner,
+                    subscriptionId,
+                    messageTitle: 'gone',
+                    status: 'FAILED',
+                    errorMessage: 'Received unexpected response code 410 from 10.0.0.5',
+                    responseData: { statusCode: 410 },
+                },
+            ])
+
+            const channels = [
+                await call('GET', '', { user: ids.owner }),
+                await call('GET', `/${String(subscriptionId)}`, { user: ids.owner }),
+                await call('GET', `/${String(subscriptionId)}/logs`, { user: ids.owner }),
+            ]
+
+            for (const result of channels) {
+                expect(result.status).toBe(200)
+                expect(result.text).not.toContain('ECONNREFUSED')
+                expect(result.text).not.toContain('10.0.0.5')
+                expect(result.text).not.toContain('errorMessage')
+                expect(result.text).not.toContain('responseData')
+            }
+            const logs = (channels[2]?.body['data'] ?? []) as Record<string, unknown>[]
+            expect(logs).toEqual(
+                expect.arrayContaining([
+                    expect.objectContaining({ statusCode: null, reason: 'network_error' }),
+                    expect.objectContaining({ statusCode: 410, reason: 'gone' }),
+                ]),
+            )
+        })
+
+        it('two parallel POSTs for the last free slot store one subscription', async () => {
+            const capped = await insertUser('push-capped')
+            try {
+                for (let index = 0; index < 19; index += 1) {
+                    await insertSubscription(capped, `cap${String(index)}`)
+                }
+
+                const results = await Promise.all(
+                    ['a', 'b'].map((tag) =>
+                        call('POST', '', {
+                            user: capped,
+                            body: {
+                                endpoint: `https://fcm.googleapis.com/fcm/send/last-${tag}-${String(now)}`,
+                                p256dhKey: `key-${tag}`,
+                                authKey: `auth-${tag}`,
+                            },
+                        }),
+                    ),
+                )
+
+                expect(results.map((result) => result.status).sort()).toEqual([200, 409])
+                expect(results.find((result) => result.status === 409)?.body).toMatchObject({
+                    reason: 'push_subscription_limit',
+                })
+                expect(await countFor(capped)).toBe(20)
+            } finally {
+                await db.delete(users).where(eq(users.id, capped))
+            }
+        })
+
+        it('POST /test-push is rate limited', async () => {
+            const statuses: number[] = []
+            for (let index = 0; index < 6; index += 1) {
+                statuses.push(
+                    (await call('POST', '/test-push', { user: ids.owner, body: {} })).status,
+                )
+            }
+
+            expect(statuses.slice(0, 5)).not.toContain(429)
+            expect(statuses[5]).toBe(429)
         })
     })
 })

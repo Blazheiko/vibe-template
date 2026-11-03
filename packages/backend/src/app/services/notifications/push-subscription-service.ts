@@ -7,7 +7,15 @@ import {
     pushSubscriptionTransformer,
     type SerializedPushNotificationLog,
 } from '#app/transformers/index.js'
-import { conflict, internalMessage, notFound, type AppResult } from '#app/services/shared/errors.js'
+import {
+    badRequest,
+    conflict,
+    internalMessage,
+    notFound,
+    type AppResult,
+} from '#app/services/shared/errors.js'
+import pushConfig from '#config/push.js'
+import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
 import type { DbTransaction } from '#app/repositories/index.js'
 import { getPushSubscriptionStatistics } from '#app/services/statistics/push-subscription-statistics-service.js'
 import { withCurrentSession } from '#app/services/auth/session-guard.js'
@@ -177,6 +185,11 @@ async function upsertSubscription(
     payload: CreateSubscriptionInput,
     tx: DbTransaction,
 ): Promise<AppResult<{ subscription: SerializedPushSubscription }>> {
+    // feat-104: the server POSTs to this URL; only the allowed push services are stored.
+    if (!isAllowedPushEndpoint(payload.endpoint)) {
+        return Result.err(badRequest('Push endpoint is not allowed', 'push_endpoint_not_allowed'))
+    }
+
     const existingSubscription = await pushSubscriptionRepository.findByEndpoint(
         payload.endpoint,
         tx,
@@ -192,6 +205,10 @@ async function upsertSubscription(
             existingSubscription.authKey === payload.authKey
         if (ownedByAnotherUser && !sameKeys) {
             return Result.err(conflict('Push subscription belongs to another user'))
+        }
+        if (ownedByAnotherUser) {
+            const limited = await subscriptionLimitReached(userId, tx)
+            if (limited !== undefined) return limited
         }
 
         const updated = await pushSubscriptionRepository.updateByEndpoint(
@@ -222,6 +239,9 @@ async function upsertSubscription(
         })
     }
 
+    const limited = await subscriptionLimitReached(userId, tx)
+    if (limited !== undefined) return limited
+
     const created = await pushSubscriptionRepository.create(
         {
             endpoint: payload.endpoint,
@@ -244,4 +264,17 @@ async function upsertSubscription(
     return Result.ok({
         subscription: pushSubscriptionTransformer.serialize(created),
     })
+}
+
+// Counted under the user's row lock that withCurrentSession holds, so two requests cannot both
+// pass with one slot left.
+async function subscriptionLimitReached(
+    userId: bigint,
+    tx: DbTransaction,
+): Promise<AppResult<never> | undefined> {
+    const total = await pushSubscriptionRepository.countByUserId(userId, tx)
+    if (total < pushConfig.maxSubscriptionsPerUser) return undefined
+    return Result.err(
+        conflict('Too many push subscriptions for this account', 'push_subscription_limit'),
+    )
 }

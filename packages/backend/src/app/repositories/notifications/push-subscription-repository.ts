@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { pushNotificationLogs, pushSubscriptions } from '#database/schema.js'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, count, desc, eq, inArray } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
 
@@ -48,6 +48,8 @@ export interface IPushSubscriptionRepository {
         executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
     findByUserId(userId: bigint): Promise<PushSubscriptionRow[]>
+    /** How many subscriptions the user has, active or not. */
+    countByUserId(userId: bigint, executor?: DbExecutor): Promise<number>
     findByUserIdWithLogs(userId: bigint): Promise<PushSubscriptionWithLogs[]>
     update(
         id: bigint,
@@ -123,6 +125,14 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
             .from(pushSubscriptions)
             .where(eq(pushSubscriptions.userId, userId))
             .orderBy(desc(pushSubscriptions.createdAt))
+    },
+
+    async countByUserId(userId, executor = db) {
+        const [row] = await executor
+            .select({ total: count() })
+            .from(pushSubscriptions)
+            .where(eq(pushSubscriptions.userId, userId))
+        return row?.total ?? 0
     },
 
     async findByUserIdWithLogs(userId) {

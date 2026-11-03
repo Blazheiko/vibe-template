@@ -48,9 +48,10 @@ export const PushLogRowSchema = type({
     messageData: 'unknown',
     sentAt: 'string',
     status: PushLogStatusSchema,
-    errorMessage: 'string | null',
-    // Written by push-notification-sender-service.ts as { statusCode }.
-    responseData: type({ 'statusCode?': 'number | null' }).or('null'),
+    // feat-104: the HTTP status the push service answered, and why a send failed; the transport
+    // error text is never sent to the client.
+    statusCode: 'number | null',
+    reason: "'gone' | 'rejected' | 'network_error' | null",
 })
 
 export const GetSubscriptionsResponseSchema = type.or(

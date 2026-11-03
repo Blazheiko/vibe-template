@@ -49,13 +49,15 @@ pnpm --filter backend push:vapid --write
 
 ### Конфігурація
 
-[`config/push.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) читає три змінні:
+[`config/push.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) читає такі змінні:
 
-| Змінна              | За замовчуванням                     | Призначення                          |
-| ------------------- | ------------------------------------ | ------------------------------------ |
-| `VAPID_PUBLIC_KEY`  | `''`                                 | публічний ключ, віддається фронтенду |
-| `VAPID_PRIVATE_KEY` | `''`                                 | приватний ключ, секрет               |
-| `VAPID_SUBJECT`     | `mailto:admin@vibe-template.example` | контакт для push-сервісу             |
+| Змінна                            | За замовчуванням                                                                              | Призначення                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`                | `''`                                                                                          | публічний ключ, віддається фронтенду                                                                 |
+| `VAPID_PRIVATE_KEY`               | `''`                                                                                          | приватний ключ, секрет                                                                               |
+| `VAPID_SUBJECT`                   | `mailto:admin@vibe-template.example`                                                          | контакт для push-сервісу                                                                             |
+| `PUSH_ALLOWED_ENDPOINT_HOSTS`     | `fcm.googleapis.com,updates.push.services.mozilla.com,.notify.windows.com,web.push.apple.com` | хости push-сервісів, яким дозволено бути `endpoint` (див. [Обмеження endpoint](#обмеження-endpoint)) |
+| `PUSH_MAX_SUBSCRIPTIONS_PER_USER` | `20`                                                                                          | максимум підписок на акаунт                                                                          |
 
 Під час першої відправки [`push-notification-sender-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-notification-sender-service.ts) викликає `webpush.setVapidDetails(...)`. Якщо ключі порожні, пише `VAPID keys not configured — push notifications disabled` і нічого не надсилає (`{ sent: 0, failed: 0 }`). `GET /push-subscriptions/vapid-public-key` і `POST /push-subscriptions/test-push` у цьому випадку відповідають `500 VAPID keys not configured`, тож підписатися неможливо. Решта застосунку працює.
 
@@ -85,7 +87,22 @@ pnpm --filter backend push:vapid --write
 | `GET`    | `/push-subscriptions/:subscriptionId/statistics` | Статистика                                                                                                                                                   |
 | `PUT`    | `/push-subscriptions/:subscriptionId/deactivate` | Деактивувати                                                                                                                                                 |
 
+Журнал відправок у відповідях (`GET /push-subscriptions`, `GET /:subscriptionId` → `notificationLogs`, `GET /:subscriptionId/logs`) містить `status`, `statusCode` і `reason` (`gone` для 404/410, `rejected` для іншого коду, `network_error` без відповіді, `null` для `SENT`); текст помилки транспорту (`errorMessage`) і `responseData` клієнту не віддаються (feat-104).
+
 Маршрути з `:subscriptionId` працюють лише зі своїми підписками. `GET /:subscriptionId`, `PUT`, `DELETE`, `…/statistics` і `…/deactivate` для чужого й неіснуючого id дають однакову відповідь `404 Subscription not found`: чужий запис не змінюється і не потрапляє у відповідь. Для `PUT` і `deactivate` це забезпечує сам `UPDATE … WHERE id AND user_id … RETURNING` у [репозиторії](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-subscription-repository.ts), без повторного читання за одним id. `GET /:subscriptionId/logs` підписку не шукає: журнал фільтрується за власником, тож для чужого й неіснуючого id це `200` з порожнім списком `data` (чужі записи не повертаються). Перенесення підписки на іншого користувача можливе лише через `POST /push-subscriptions` з тими самими ключами (див. нижче).
+
+## Обмеження endpoint
+
+Бекенд робить `POST` на `endpoint`, який передав браузер, тому зберігаються лише адреси push-сервісів ([`push-endpoint-policy.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-endpoint-policy.ts), feat-104):
+
+- лише `https:`, порт за замовчуванням, без `user:password@`, без IP-адреси замість хоста;
+- хост дорівнює запису з `PUSH_ALLOWED_ENDPOINT_HOSTS` або, для запису з крапкою на початку (`.notify.windows.com`), є його піддоменом на межі DNS-мітки: `wns2-par02p.notify.windows.com` підходить, `evilnotify.windows.com` і `notify.windows.com.evil.io` — ні. Хост порівнюється в нижньому регістрі, без кінцевої крапки, у punycode.
+
+Інший `endpoint` у `POST /push-subscriptions` дає `400` з `reason: "push_endpoint_not_allowed"`. Перед кожною відправкою endpoint перевіряється ще раз: підписка, збережена до обмеження або під ширшим списком, запиту не отримує (у лог — `warn`). Невалідне значення `PUSH_ALLOWED_ENDPOINT_HOSTS` зупиняє старт (`Invalid push configuration`).
+
+`web-push` відправляє через `https.request`, який не переходить за редиректами; відповідь поза `2xx`, зокрема `3xx`, — це `FAILED`. Застосунок не передає `web-push` опцій `proxy` чи `agent`. Обидва факти закріплено тестами (`push-transport-redirect.spec.ts` на справжньому TLS-сервері, `push-notification-sender-service.spec.ts`).
+
+Нова підписка (зокрема перенесена з іншого акаунта) понад `PUSH_MAX_SUBSCRIPTIONS_PER_USER` дає `409` з `reason: "push_subscription_limit"`; підрахунок іде під блокуванням рядка користувача, тож два паралельні запити за останній слот не проходять обидва. `POST /push-subscriptions/test-push` (розсилає на всі пристрої) має власний ліміт 5 запитів на хвилину.
 
 ## Збереження підписки
 
@@ -117,7 +134,7 @@ pnpm --filter backend push:vapid --write
 }
 ```
 
-Активні підписки (з урахуванням `notificationType`) обробляються паралельно, не більше `PUSH_SEND_CONCURRENCY = 5` запитів до push-сервісу одночасно. Результат кожної спроби — рядок `pushNotificationLogs` зі статусом `SENT` (і `statusCode` відповіді) або `FAILED` (з `errorMessage`); після всіх відправок рядки пишуться одним `insertMany` через [`push-notification-log-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-notification-log-repository.ts), а `lastUsedAt` успішних підписок оновлюється одним `touchLastUsed`. Якщо запис не вдався, помилка логується, а результат `{ sent, failed }` відповідає фактичним відповідям push-сервісу.
+Активні підписки (з урахуванням `notificationType`) обробляються паралельно, не більше `PUSH_SEND_CONCURRENCY = 5` запитів до push-сервісу одночасно. Результат кожної спроби — рядок `pushNotificationLogs` зі статусом `SENT` (і `statusCode` відповіді) або `FAILED` (з `errorMessage`, який лишається в базі й у логах сервера); після всіх відправок рядки пишуться одним `insertMany` через [`push-notification-log-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-notification-log-repository.ts), а `lastUsedAt` успішних підписок оновлюється одним `touchLastUsed`. Якщо запис не вдався, помилка логується, а результат `{ sent, failed }` відповідає фактичним відповідям push-сервісу.
 
 **Прострочені підписки:** відповідь push-сервісу `410` або `404` деактивує підписку (`pushSubscriptionRepository.deactivate`). Окремої фонової очистки чи видалення неактивних записів немає.
 

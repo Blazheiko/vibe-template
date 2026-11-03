@@ -1,49 +1,48 @@
-# feat-103 — SMS Attempt Atomicity
+# feat-104 — Push Endpoint SSRF
 
-Plan: `docs/plan/code-review-2026-11-03-plan.md`, item R02. Branch: `fix/feat-103-sms-attempt-atomicity` (from `main` at `3d62d8e`).
+Plan: `docs/plan/code-review-2026-11-03-plan.md`, item R03 (owner decision Д1: allowlist of hosts). Branch: `fix/feat-104-push-endpoint-ssrf` (from `main` at `486f25b`, `main` merged in after #348).
 
 ## Current State
 
 Implemented; PR open.
 
-- `sms-auth-challenge-repository.ts`:
-    - `incrementAttemptCount` replaced by `consumeAttempt(id, max, executor?)`: one `UPDATE … SET attempt_count = attempt_count + 1 WHERE id AND confirmed_at IS NULL AND invalidated_at IS NULL AND expires_at > now AND attempt_count < max RETURNING *`.
-    - New `markInvalidatedIfPending(id, executor?)` (`confirmed_at IS NULL AND invalidated_at IS NULL`); `markInvalidated` keeps its unconditional meaning (registration retires a confirmed challenge with it).
-    - `markConfirmed` takes an executor.
-- `sms-challenge.ts` `verifySmsCode(challenge, code, { noLongerValid }, executor?)`:
-    - spends a try before every comparison (the right code too) and compares with the hash of the returned row;
-    - no row → `noLongerValid` without a comparison;
-    - a wrong code on the last try → `markInvalidatedIfPending`.
-    - `confirmChallenge` takes an executor (prerequisite for R06a).
-- The three flows pass their "… no longer valid" answer.
-- Docs: `documentation/backend/auth.md` (SMS paragraph), `configuration.md` (`AUTH_SMS_MAX_INVALID_ATTEMPTS` counts every check).
-
-Behaviour change: `AUTH_SMS_MAX_INVALID_ATTEMPTS` now bounds checks, not only wrong ones. A user who typed max-1 wrong codes and then the right one still passes; after the right code, a later retry of the same confirm (e.g. after a phone conflict) can find no try left and must restart.
+- `config/push.ts`: `readPushConfig(env)` (testable).
+    - `PUSH_ALLOWED_ENDPOINT_HOSTS`: comma list; default FCM, Mozilla, `.notify.windows.com`, Apple. Entries are validated as host names or `.domain` suffixes.
+    - `PUSH_MAX_SUBSCRIPTIONS_PER_USER`: default 20, min 1.
+    - `configError` is wired into `validateRuntimeConfig` (`Invalid push configuration`).
+- `services/notifications/push-endpoint-policy.ts` (new) `isAllowedPushEndpoint` requires:
+    - `https:`, no userinfo, no explicit port, no IP literal;
+    - a host that equals an entry, or is a subdomain on a DNS label boundary for a `.domain` entry. The host is lowercased, the trailing dot dropped, and IDN compared in punycode.
+- `push-subscription-service.ts` `upsertSubscription`:
+    - endpoint not allowed → `400 push_endpoint_not_allowed`, before any DB access;
+    - a new or moved-in subscription at the cap → `409 push_subscription_limit`, counted with `countByUserId(userId, tx)` under the user row lock of `withCurrentSession`.
+- `push-notification-sender-service.ts`: re-checks every endpoint before sending, skips disallowed ones with a `warn`, and passes no proxy/agent options to `web-push`.
+- `http-routes.ts`: `POST /push-subscriptions/test-push` limited to 5/min.
+- `push-notification-log-transformer.ts` + `shared` `PushLogRowSchema`:
+    - responses carry `statusCode` and `reason` (`gone` / `rejected` / `network_error` / `null`) instead of `errorMessage` / `responseData`;
+    - this covers `GET /push-subscriptions/:id/logs` and `GET /:id` `notificationLogs`. `GET /push-subscriptions` summaries never had them.
+- Docs: `documentation/backend/web-push-notification.md` (new section «Обмеження endpoint», log shape, config), `configuration.md`, `packages/backend/.env.example`.
 
 ## Files Modified
 
-- `packages/backend/src/app/repositories/auth/sms-auth-challenge-repository.ts`
-- `packages/backend/src/app/services/auth/sms-challenge.ts`, `auth-service.ts`, `password-reset-service.ts`
-- Specs: `sms-challenge.spec.ts` (verify cases rewritten), `auth-phone-foundation.spec.ts`, `auth-service.contract.spec.ts`, `auth-service.throttle-contract.spec.ts`, `password-reset-service.contract.spec.ts`, `password-reset-service.throttle-contract.spec.ts`, `password-reset-service.spec.ts` (mock renamed; default `consumeAttempt` spends a try on the `findById` row)
-- New: `packages/backend/src/app/services/auth/sms-attempt-race.pg.test.ts`
-- `documentation/backend/auth.md`, `documentation/backend/configuration.md`
+- `packages/backend/src/config/push.ts`, `push.spec.ts` (new)
+- `packages/backend/src/app/start/validate-runtime-config.ts`
+- `packages/backend/src/app/services/notifications/push-endpoint-policy.ts` (new) + spec; `push-transport-redirect.spec.ts` (new)
+- `packages/backend/src/app/services/notifications/push-subscription-service.ts` + spec; `push-notification-sender-service.ts` + spec
+- `packages/backend/src/app/repositories/notifications/push-subscription-repository.ts` (`countByUserId`)
+- `packages/backend/src/app/transformers/push-notification-log-transformer.ts` + spec
+- `packages/backend/src/app/routes/http-routes.ts`
+- `packages/shared/src/responses/push-subscription-controller.ts`
+- `packages/backend/src/app/controllers/http/notifications/push-subscription-ownership.pg.test.ts` (fixtures on an allowed host, new feat-104 block)
+- Docs and `.env.example` as above.
 
 ## Evidence of Completion
 
-- `pnpm typecheck`, `pnpm lint`, `pnpm format:check` clean.
-- `pnpm test`: backend 2173, frontend 400, api-playground 62 passed.
-- `pnpm --filter backend test:pg` locally: 16 files / 121 tests passed, 5 files skipped by their own conditions; `sms-attempt-race.pg.test.ts` ran 7 passed. Full run: CI `test-pg`.
-- `pnpm docs:build && pnpm docs:verify` passed.
-- `sms-attempt-race.pg.test.ts` (real PostgreSQL, budget 3, 10 parallel requests):
-    - 10 wrong codes on one stale row → exactly 3 comparisons, 3 × "Invalid verification code", 7 × no-longer-valid, `attempt_count = 3`, invalidated;
-    - two right codes → one confirmation;
-    - wrong code spending the last try held between its try and its invalidation while the right code confirms → stays confirmed, not invalidated;
-    - wrong code on a confirmed challenge → not compared, nothing changes;
-    - through `confirmPhoneRegistration`, `confirmPhoneLink`, `completePhonePasswordReset`, with a barrier holding all 10 requests after `findById` → 3 comparisons, invalidated, not confirmed.
-- Mutation check: against `main`'s `sms-challenge.ts`, repository and callers, 6 of the 7 cases fail. The two-right-codes case passes on `main` too, because `markConfirmed` already guaranteed it; it stays as a regression test.
-- Manual: the PG suite drives the three real service flows against PostgreSQL. No HTTP-level run, because the SMS provider is a fake in this template.
+See the PR description. In short: typecheck, lint, format clean; `pnpm test`; `test:pg` (`push-subscription-ownership.pg.test.ts` 22 passed over real HTTP + PostgreSQL); docs build + verify. The mutation check is that all 7 new HTTP cases fail with `main`'s service, transformer, routes and shared schema.
+
+Manual / transport: `push-transport-redirect.spec.ts` sends with real `web-push` to a local TLS server that answers 302 to a second server. The send fails with `statusCode: 302`, and the second server gets 0 requests.
 
 ## Notes for Next Session
 
 - Remaining: merge the PR after green checks, then the done PR.
-- Next: R03 (push endpoint SSRF). Owner decision Д1 is taken: allowlist of hosts. Д2, Д5, Д6 are taken as recommended; Д3 and Д4 are still open.
+- Next by the plan order: R11a (prompt `$&` replace), then R06a (phone reset transaction, needs feat-103's executors).
