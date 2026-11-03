@@ -572,7 +572,7 @@
             "branch": "fix/push-subscription-idor",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #188 (merge 37cc046): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1177, frontend 168, api-playground 14, shared 14, docs 26), test:pg 30 (+7 push-subscription-ownership: 3 failed with 200-instead-of-404 before the fix), test:redis 61, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on the PR Review follow-up (branch fix/feat-058-review-followups): the ownership test now goes over real HTTP (uWS server, real route table, body validation, auth_guard; session_web and csrf_guard replaced) \u2014 14 tests, 3 fail on the pre-fix repository with 200-instead-of-404; test:pg 37; docs contract corrected (\u2026/logs answers 200 with an empty list); dependencies of feat-070/075/076 aligned with the plan."
+            "evidence": "PR #188 (merge 37cc046): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1177, frontend 168, api-playground 14, shared 14, docs 26), test:pg 30 (+7 push-subscription-ownership: 3 failed with 200-instead-of-404 before the fix), test:redis 61, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on the PR Review follow-up (branch fix/feat-058-review-followups): the ownership test now goes over real HTTP (uWS server, real route table, body validation, auth_guard; session_web and csrf_guard replaced) — 14 tests, 3 fail on the pre-fix repository with 200-instead-of-404; test:pg 37; docs contract corrected (…/logs answers 200 with an empty list); dependencies of feat-070/075/076 aligned with the plan."
         },
         {
             "id": "feat-059",
@@ -582,7 +582,7 @@
             "branch": "fix/session-revocation",
             "dependencies": ["feat-058"],
             "status": "done",
-            "evidence": "PR #192 (merge 5837fdb): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1200, frontend 168, api-playground 14, shared 14, docs 26), test:pg 45 with Redis / 37 without (+8 session-revocation on real PostgreSQL and Redis: cleanup failure -> first request after recovery already 401, concurrent change-password -> one winner, database down -> 503, deleted user; 4 of 8 fail with the token check neutralised), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 45, none skipped); cost p50 0.10 -> 0.37 ms per sessionHandler on local PostgreSQL Review follow-up (branch fix/feat-059-review-followups): lookup deadline SESSION_TOKEN_CHECK_TIMEOUT_MS (default 2000 ms; a hung query -> 503), the HTTP contract proved over a real server with real session_web/csrf_guard/auth_guard on PostgreSQL+Redis (8 tests, incl. concurrent change-password and the reset flow with a failing Redis cleanup; 5 of 8 fail with the token check neutralised), plan phase B synced; test:pg 53 with Redis / 37 without, backend 1223. Second follow-up (branch fix/session-check-query-cancel): the lookup is cancelled, not abandoned \u2014 dedicated session-check pool with statement_timeout (server cancels, 57014) and query_timeout (stalled server, connection destroyed, slot freed); proved on real PostgreSQL with a table lock and a stalling proxy (5 tests; without statement_timeout 2 fail, without query_timeout 1 fails); backend 1232, test:pg 58 with Redis / 42 without, test:redis 61, test:e2e:security 7. Simplification (branch chore/simplify-session-check-timeouts): the application-level Promise.race and the SESSION_TOKEN_CHECK_POOL_MAX variable removed \u2014 the pool timeouts alone give the bound (all real-PostgreSQL tests pass without the race), the pool size is a constant; the hanging-lookup HTTP test now uses a real table lock."
+            "evidence": "PR #192 (merge 5837fdb): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1200, frontend 168, api-playground 14, shared 14, docs 26), test:pg 45 with Redis / 37 without (+8 session-revocation on real PostgreSQL and Redis: cleanup failure -> first request after recovery already 401, concurrent change-password -> one winner, database down -> 503, deleted user; 4 of 8 fail with the token check neutralised), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 45, none skipped); cost p50 0.10 -> 0.37 ms per sessionHandler on local PostgreSQL Review follow-up (branch fix/feat-059-review-followups): lookup deadline SESSION_TOKEN_CHECK_TIMEOUT_MS (default 2000 ms; a hung query -> 503), the HTTP contract proved over a real server with real session_web/csrf_guard/auth_guard on PostgreSQL+Redis (8 tests, incl. concurrent change-password and the reset flow with a failing Redis cleanup; 5 of 8 fail with the token check neutralised), plan phase B synced; test:pg 53 with Redis / 37 without, backend 1223. Second follow-up (branch fix/session-check-query-cancel): the lookup is cancelled, not abandoned — dedicated session-check pool with statement_timeout (server cancels, 57014) and query_timeout (stalled server, connection destroyed, slot freed); proved on real PostgreSQL with a table lock and a stalling proxy (5 tests; without statement_timeout 2 fail, without query_timeout 1 fails); backend 1232, test:pg 58 with Redis / 42 without, test:redis 61, test:e2e:security 7. Simplification (branch chore/simplify-session-check-timeouts): the application-level Promise.race and the SESSION_TOKEN_CHECK_POOL_MAX variable removed — the pool timeouts alone give the bound (all real-PostgreSQL tests pass without the race), the pool size is a constant; the hanging-lookup HTTP test now uses a real table lock."
         },
         {
             "id": "feat-060",
@@ -592,7 +592,7 @@
             "branch": "fix/one-time-token-race",
             "dependencies": ["feat-059"],
             "status": "done",
-            "evidence": "PR #198 (merge fd14970): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1225, frontend 168, api-playground 14, shared 14, docs 26), test:pg 68 with Redis / 51 without (+9 one-time-token-race on real PostgreSQL: 7 failed before the fix \u2014 exactly-one-winner got two in all three flows, the password / email stayed changed after a failure; +1 HTTP-level concurrent reset-password: one 200, the loser 400 used_token), test:redis 61, docs:build + docs:verify; mutation check (markUsed without used_at IS NULL) fails the deterministic and the HTTP race tests; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 68, none skipped)"
+            "evidence": "PR #198 (merge fd14970): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1225, frontend 168, api-playground 14, shared 14, docs 26), test:pg 68 with Redis / 51 without (+9 one-time-token-race on real PostgreSQL: 7 failed before the fix — exactly-one-winner got two in all three flows, the password / email stayed changed after a failure; +1 HTTP-level concurrent reset-password: one 200, the loser 400 used_token), test:redis 61, docs:build + docs:verify; mutation check (markUsed without used_at IS NULL) fails the deterministic and the HTTP race tests; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 68, none skipped)"
         },
         {
             "id": "feat-061",
@@ -612,7 +612,7 @@
             "branch": "fix/ws-admin-revoke",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #201 (merge a29f785): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1249, frontend 168, api-playground 14, shared 14, docs 26), test:pg 77 with Redis / 51 without (+9 admin-ws-revocation on a real uWebSockets.js server with real WebSocket clients, Redis sessions and PostgreSQL: a demoted admin stops receiving admin broadcasts and gets 403 on admin routes within the interval, another admin untouched, the connection stays open; 6 of 9 fail when the re-check never starts), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; plan deviation recorded: nothing in the application changes users.role, so the pub/sub layer has no producer and is not built \u2014 the periodic per-instance re-check from the database is the guarantee; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 77, none skipped) Review follow-up (branch fix/feat-062-review-followups): the role lookup runs on the bounded session-check pool (a query that hangs no longer stops every later re-check pass or holds the graceful shutdown; reproduced with a table lock: 1 pass in 1.7 s before, >=2 after; fails again with the main pool), revoke errors other than a closed socket are logged and counted in the pass report instead of swallowed; test:pg 79 with Redis / 52 without, backend 1252."
+            "evidence": "PR #201 (merge a29f785): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1249, frontend 168, api-playground 14, shared 14, docs 26), test:pg 77 with Redis / 51 without (+9 admin-ws-revocation on a real uWebSockets.js server with real WebSocket clients, Redis sessions and PostgreSQL: a demoted admin stops receiving admin broadcasts and gets 403 on admin routes within the interval, another admin untouched, the connection stays open; 6 of 9 fail when the re-check never starts), test:redis 61, docs:build + docs:verify, test:e2e:security 7 on the real prod server; plan deviation recorded: nothing in the application changes users.role, so the pub/sub layer has no producer and is not built — the periodic per-instance re-check from the database is the guarantee; CI quality/e2e/build/test-pg/test-redis green (test-pg ran all 77, none skipped) Review follow-up (branch fix/feat-062-review-followups): the role lookup runs on the bounded session-check pool (a query that hangs no longer stops every later re-check pass or holds the graceful shutdown; reproduced with a table lock: 1 pass in 1.7 s before, >=2 after; fails again with the main pool), revoke errors other than a closed socket are logged and counted in the pass report instead of swallowed; test:pg 79 with Redis / 52 without, backend 1252."
         },
         {
             "id": "feat-063",
@@ -622,7 +622,7 @@
             "branch": "fix/resource-limits",
             "dependencies": ["feat-058"],
             "status": "done",
-            "evidence": "PRs #206 (D4 per-route body limit, merge ba07fff), #207 + #208 + #209 (D0+D1 support chat admission: admit before ok, lease lock, idempotent resend by clientMessageId, 503 mapping), #210 (D2 daily LLM token budget, ADR 0003), #211 (D3 history pages, merge 271af46): progress.md Evidence of Completion per part \u2014 typecheck/lint/format, test (backend 1359, frontend 203, api-playground 14, shared 17, docs 26), test:pg 130 with Redis / 66 without, test:redis 89, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on each PR. Tests proved by mutation (renewal off, lost-lock checks off, ON CONFLICT off, cut-off call free, settle off, cursor ignored). ADR 0003 still proposed, awaiting the owner"
+            "evidence": "PRs #206 (D4 per-route body limit, merge ba07fff), #207 + #208 + #209 (D0+D1 support chat admission: admit before ok, lease lock, idempotent resend by clientMessageId, 503 mapping), #210 (D2 daily LLM token budget, ADR 0003), #211 (D3 history pages, merge 271af46): progress.md Evidence of Completion per part — typecheck/lint/format, test (backend 1359, frontend 203, api-playground 14, shared 17, docs 26), test:pg 130 with Redis / 66 without, test:redis 89, docs:build + docs:verify; CI quality/e2e/build/test-pg/test-redis green on each PR. Tests proved by mutation (renewal off, lost-lock checks off, ON CONFLICT off, cut-off call free, settle off, cursor ignored). ADR 0003 still proposed, awaiting the owner"
         },
         {
             "id": "feat-064",
@@ -632,7 +632,7 @@
             "branch": "fix/oauth-token-storage",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #214 (merge fc6295b): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1366, frontend 203, api-playground 14, shared 17, docs 26), test:pg 132 with Redis / 68 without (+2 on the migrated oauth_accounts table: no token columns, create/find round trip), test:redis 89, docs:build + docs:verify; drizzle-kit generate after the migration: no schema changes; 9 OAuth tests failed before the change, 4 fail with the raw email or the URL token restored; no access_token= left in packages/; CI quality/e2e/build/test-pg/test-redis green"
+            "evidence": "PR #214 (merge fc6295b): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1366, frontend 203, api-playground 14, shared 17, docs 26), test:pg 132 with Redis / 68 without (+2 on the migrated oauth_accounts table: no token columns, create/find round trip), test:redis 89, docs:build + docs:verify; drizzle-kit generate after the migration: no schema changes; 9 OAuth tests failed before the change, 4 fail with the raw email or the URL token restored; no access_token= left in packages/; CI quality/e2e/build/test-pg/test-redis green"
         },
         {
             "id": "feat-065",
@@ -642,7 +642,7 @@
             "branch": "fix/llm-prompt-retention",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #228 (merge c6349ee): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1430, frontend 257, api-playground 29, shared 17, docs 26), test:pg 148 with Redis / 84 without (+10 on a real PostgreSQL: purge by age and all, hash/length backfill equal to Node's, existing hash kept, idempotent, dry run), test:redis 89, docs:build + docs:verify; drizzle-kit generate: no schema changes; the llm:purge-prompts CLI run end to end on a scratch database; 20 unit tests failed before the change; CI quality/e2e/build/test-pg/test-redis green. Rollout: existing rows keep their text until llm:purge-prompts is run once"
+            "evidence": "PR #228 (merge c6349ee): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1430, frontend 257, api-playground 29, shared 17, docs 26), test:pg 148 with Redis / 84 without (+10 on a real PostgreSQL: purge by age and all, hash/length backfill equal to Node's, existing hash kept, idempotent, dry run), test:redis 89, docs:build + docs:verify; drizzle-kit generate: no schema changes; the llm:purge-prompts CLI run end to end on a scratch database; 20 unit tests failed before the change; CI quality/e2e/build/test-pg/test-redis green. Rollout: existing rows keep their text until llm:purge-prompts is run once"
         },
         {
             "id": "feat-066",
@@ -652,7 +652,7 @@
             "branch": "fix/auth-response-contract",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #218 (merge 9702ad1): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1377, frontend 203, api-playground 14, shared 17, docs 26), test:pg 132 with Redis / 68 without, test:redis 89, docs:build + docs:verify; 10 new tests failed before the change (unverified login = the same 401 error value as a wrong password, budget not reset, background resend once per interval, registration hashes before the lookup with equal duration); CI quality/e2e/build/test-pg/test-redis green"
+            "evidence": "PR #218 (merge 9702ad1): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1377, frontend 203, api-playground 14, shared 17, docs 26), test:pg 132 with Redis / 68 without, test:redis 89, docs:build + docs:verify; 10 new tests failed before the change (unverified login = the same 401 error value as a wrong password, budget not reset, background resend once per interval, registration hashes before the lookup with equal duration); CI quality/e2e/build/test-pg/test-redis green"
         },
         {
             "id": "feat-067",
@@ -662,7 +662,7 @@
             "branch": "fix/db-ssl-and-query-log",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #222 (merge cb77c5e): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1398, frontend 203, api-playground 14, shared 17, docs 26), test:pg 138 with Redis / 74 without (+6 on a real PostgreSQL: SQL statements printed in development and not for APP_IS_PRODUCTION=true or APP_ENV=prod; PGSQL_SSL=true reaches the main and the session-check pool), test:redis 89, docs:build + docs:verify; drizzle-kit generate: no schema changes, PGSQL_SSL=bogus rejected; CI quality/e2e/build/test-pg/test-redis green"
+            "evidence": "PR #222 (merge cb77c5e): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1398, frontend 203, api-playground 14, shared 17, docs 26), test:pg 138 with Redis / 74 without (+6 on a real PostgreSQL: SQL statements printed in development and not for APP_IS_PRODUCTION=true or APP_ENV=prod; PGSQL_SSL=true reaches the main and the session-check pool), test:redis 89, docs:build + docs:verify; drizzle-kit generate: no schema changes, PGSQL_SSL=bogus rejected; CI quality/e2e/build/test-pg/test-redis green"
         },
         {
             "id": "feat-068",
@@ -672,7 +672,7 @@
             "branch": "fix/frontend-hardening",
             "dependencies": [],
             "status": "done",
-            "evidence": "PR #225 (merge b756a70): progress.md Evidence of Completion \u2014 typecheck/lint/format, test (backend 1398, frontend 257, api-playground 29, shared 17, docs 26), docs:build + docs:verify; playground production build has no console.log strings; 4 playground store tests failed against the original store; dropping one autocomplete fails the UserAccount component test; CI quality/e2e/build green (no backend change, test-pg/test-redis not triggered)"
+            "evidence": "PR #225 (merge b756a70): progress.md Evidence of Completion — typecheck/lint/format, test (backend 1398, frontend 257, api-playground 29, shared 17, docs 26), docs:build + docs:verify; playground production build has no console.log strings; 4 playground store tests failed against the original store; dropping one autocomplete fails the UserAccount component test; CI quality/e2e/build green (no backend change, test-pg/test-redis not triggered)"
         },
         {
             "id": "feat-069",
@@ -682,7 +682,7 @@
             "branch": "test/auth-regression-coverage",
             "dependencies": ["feat-059", "feat-060", "feat-066"],
             "status": "done",
-            "evidence": "G1 PR #231 (backend contract tables: 24 throttle steps + 157 state\u2192answer rows + 3 mail snapshots, backend 1430\u21921685), G2 PR #232 (Playwright project mock, 60 tests on faked API), G3 PR #233 (e2e-live: real backend + PG + Redis + SMTP sink, 5 tests, CI job e2e-live). typecheck/lint/format:check/pnpm test/docs:build+verify clean; test:e2e:live passes 3 runs in a row and without packages/backend/.env."
+            "evidence": "G1 PR #231 (backend contract tables: 24 throttle steps + 157 state→answer rows + 3 mail snapshots, backend 1430→1685), G2 PR #232 (Playwright project mock, 60 tests on faked API), G3 PR #233 (e2e-live: real backend + PG + Redis + SMTP sink, 5 tests, CI job e2e-live). typecheck/lint/format:check/pnpm test/docs:build+verify clean; test:e2e:live passes 3 runs in a row and without packages/backend/.env."
         },
         {
             "id": "feat-070",
@@ -963,6 +963,16 @@
             "dependencies": ["feat-096"],
             "status": "done",
             "evidence": "Merged #325 (merge 064fae8; start #324): Google trusted only for verified Gmail and matching Workspace hd; other providers link to an existing account only via a mailed 30-minute link bound to the browser session that started the sign-in (oauth_link_verifications, POST /auth/oauth/link/confirm); new untrusted OAuth accounts get users.email = null until the owner confirms it from that account's session (resend POST /auth/oauth/email/resend); the first proof of the mailbox on an unverified account (authoritative Google, confirmed link, password reset with password_reset_tokens.target_email) claims it in one locked transaction (password, phone, OAuth links, push subscriptions, pending tokens and SMS challenges removed, session_token rotated); sign-in by an existing link re-checks it under the user lock; /verify-email registration links need the account password or its session. typecheck/lint/format:check clean, test backend 2102 / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:pg 173 (oauth-pre-hijack.pg.test.ts covers paths A-G), test:redis 88, Playwright mock 74, e2e-live 5, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e, e2e-live. Mutation checks: six protections removed one at a time each fail a pg test. Manual on dist: registration link without password 403, wrong 400, right 200. Details were in progress.md on fix/feat-097-oauth-pre-hijack (removed from main by this PR)."
+        },
+        {
+            "id": "feat-098",
+            "name": "OAuth Pre-Hijack Review Follow-ups",
+            "description": "Review of feat-096/097: push subscription create/update only while the request's presented session token is current (checked under the user row lock, so a claim cannot be undone by an in-flight request); email-link throttles (per target address, per user, per-user cooldown) on every mail path of OAuth linking: the mailed link to an existing account, the first-address mail of a new OAuth account and its resend, enforced before a token is issued or a mail sent; a new OAuth user and its first oauth_accounts row created in one transaction, a concurrent callback for the same identity signs in through the winner's link instead of leaving an extra user",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-098-oauth-review-followups",
+            "dependencies": ["feat-097"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
