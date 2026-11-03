@@ -400,7 +400,10 @@ export const oauthService = {
             return Result.err(badRequest('This link is invalid', 'invalid_token'))
         }
         // Not consumed on a wrong session: the owner can still open it in the right browser.
-        if (sessionId === null || hashToken(sessionId) !== verification.sessionBindingHash) {
+        if (
+            sessionId === null ||
+            !safeEqual(hashToken(sessionId), verification.sessionBindingHash)
+        ) {
             return Result.err(
                 forbidden(
                     'Open this link in the browser where you started signing in',
