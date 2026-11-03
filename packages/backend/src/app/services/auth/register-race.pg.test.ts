@@ -302,6 +302,9 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                 .from(users)
                 .where(eq(users.id, accounts[loser]!.id))
             expect(loserRow?.phone).toBeNull()
+            // Known trade-off: the code is confirmed before the write, so the loser's challenge
+            // is used up and the user starts the link again.
+            expect((await challengeRow(challenges[loser]!.id))?.confirmedAt).not.toBeNull()
         })
     })
 })
