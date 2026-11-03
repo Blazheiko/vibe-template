@@ -1,8 +1,10 @@
 // Seed errors may carry user data: DrizzleQueryError puts the query params (email, password
 // hash, session token) into `message`, and a pg error's `detail` / `message` can quote values.
-// Only an allowlist of structural fields is printed.
+// Only an allowlist of structural fields is printed, the same one the runtime logger keeps
+// (vendor/utils/errors/scrub-error.ts).
+import { SAFE_DB_ERROR_FIELDS } from '#vendor/utils/errors/scrub-error.js'
 
-const SAFE_FIELDS = ['code', 'constraint', 'table', 'column'] as const
+const SAFE_FIELDS = SAFE_DB_ERROR_FIELDS
 
 // Node system errors (ECONNREFUSED, ENOTFOUND, ...) have messages without user data.
 const isSystemError = (code: unknown): boolean => typeof code === 'string' && /^E[A-Z]+$/.test(code)

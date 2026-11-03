@@ -1,12 +1,18 @@
 import * as Sentry from '@sentry/node'
-import type { Event, NodeOptions, Scope, SeverityLevel } from '@sentry/node'
+import type { Event, EventHint, NodeOptions, Scope, SeverityLevel } from '@sentry/node'
 
 import sentryConfig from '#config/sentry.js'
+import {
+    databaseMessageReplacements,
+    redactQueryText,
+    toSafeError,
+} from '#vendor/utils/errors/scrub-error.js'
 import { appErrorMessage, type AppError } from '../shared/errors.js'
 
 const MAX_REQUEST_DATA_BYTES = 10 * 1024
 const SENSITIVE_KEY_RE = /token|secret|password|cookie|auth|api[_-]?key|bearer/i
 const REDACTED_HEADER_KEYS = new Set(['authorization', 'cookie'])
+const MAX_SANITIZE_DEPTH = 8
 
 export interface SentryContext {
     requestId?: string | undefined
@@ -89,6 +95,44 @@ function sanitizeRecord(record: Record<string, unknown>): void {
     }
 }
 
+// Nested values too: drops sensitive keys at every level, the params of anything that looks like a
+// query (`query` string + `params`), and the params a query-error message quotes.
+function sanitizeDeep(value: unknown, depth = 0): unknown {
+    if (typeof value === 'string') return redactQueryText(value)
+    if (value === null || typeof value !== 'object' || depth >= MAX_SANITIZE_DEPTH) return value
+
+    if (Array.isArray(value)) {
+        for (let index = 0; index < value.length; index += 1) {
+            value[index] = sanitizeDeep(value[index], depth + 1)
+        }
+        return value
+    }
+
+    const record = value as Record<string, unknown>
+    sanitizeRecord(record)
+    if (typeof record['query'] === 'string' && 'params' in record) {
+        Reflect.deleteProperty(record, 'params')
+        Reflect.deleteProperty(record, 'query')
+    }
+    for (const key of Object.keys(record)) {
+        record[key] = sanitizeDeep(record[key], depth + 1)
+    }
+    return record
+}
+
+// Exception values Sentry built from an original error it captured by itself (an uncaught
+// exception or rejection never passes through captureException).
+function sanitizeExceptions(event: Event, hint: EventHint | undefined): void {
+    const values = event.exception?.values
+    if (values === undefined) return
+
+    const replacements = databaseMessageReplacements(hint?.originalException)
+    for (const exception of values) {
+        if (typeof exception.value !== 'string') continue
+        exception.value = redactQueryText(replacements.get(exception.value) ?? exception.value)
+    }
+}
+
 function sanitizeHeaders(headers: Record<string, unknown>): void {
     for (const key of Object.keys(headers)) {
         if (REDACTED_HEADER_KEYS.has(key.toLowerCase()) || SENSITIVE_KEY_RE.test(key)) {
@@ -129,17 +173,34 @@ function sanitizeRequestData(request: Record<string, unknown>): void {
     request['data'] = truncateUtf8(serialized, MAX_REQUEST_DATA_BYTES)
 }
 
-function sanitizeEvent(event: Event): Event {
+function sanitizeEvent(event: Event, hint?: EventHint): Event {
     if (event.tags !== undefined) {
         sanitizeRecord(event.tags)
     }
 
     if (event.extra !== undefined) {
-        sanitizeRecord(event.extra)
+        sanitizeDeep(event.extra)
     }
 
     if (event.contexts !== undefined) {
-        sanitizeRecord(event.contexts)
+        sanitizeDeep(event.contexts)
+    }
+
+    if (typeof event.message === 'string') {
+        event.message = redactQueryText(event.message)
+    }
+
+    sanitizeExceptions(event, hint)
+
+    if (event.breadcrumbs !== undefined) {
+        for (const breadcrumb of event.breadcrumbs) {
+            if (typeof breadcrumb.message === 'string') {
+                breadcrumb.message = redactQueryText(breadcrumb.message)
+            }
+            if (breadcrumb.data !== undefined) {
+                sanitizeDeep(breadcrumb.data)
+            }
+        }
     }
 
     if (event.request !== undefined) {
@@ -223,7 +284,7 @@ function captureException(err: unknown, ctx: SentryContext = {}): void {
     }
 
     withScope(ctx, () => {
-        Sentry.captureException(normalizeException(err))
+        Sentry.captureException(toSafeError(normalizeException(err)))
     })
 }
 
@@ -288,7 +349,7 @@ function init(): void {
 
     try {
         Sentry.init(buildInitOptions())
-        Sentry.addEventProcessor((event: Event) => sanitizeEvent(event))
+        Sentry.addEventProcessor((event: Event, hint: EventHint) => sanitizeEvent(event, hint))
         active = true
     } catch (error) {
         active = false

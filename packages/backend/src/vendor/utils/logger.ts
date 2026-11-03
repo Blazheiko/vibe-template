@@ -1,8 +1,9 @@
-import { pino, destination, multistream } from 'pino'
+import { pino, destination, multistream, stdSerializers } from 'pino'
 
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import appConfig from '#config/app.js'
 import loggingConfig from '#config/logging.js'
+import { toSafeError } from '#vendor/utils/errors/scrub-error.js'
 
 type BackendLogger = ReturnType<typeof pino>
 
@@ -28,6 +29,11 @@ interface SentryLogContext {
 }
 
 const ERROR_LEVEL = 50
+
+// Errors are logged through a scrubbed copy: a failed query must not put its params (password
+// hashes, session tokens, emails) into stdout or, through sentryStream, into Sentry.
+const serializeError = (value: unknown): unknown =>
+    value instanceof Error ? stdSerializers.err(toSafeError(value)) : value
 const isProduction = appConfig.env === 'prod' || appConfig.env === 'production'
 const buildPretty = isProduction ? null : (await import('pino-pretty')).build
 
@@ -118,6 +124,8 @@ function createLogger(): BackendLogger {
             level: loggingConfig.level,
             serializers: {
                 bigint: (value: bigint): string => value.toString(),
+                err: serializeError,
+                error: serializeError,
             },
         }
 

@@ -163,3 +163,105 @@ describe('logger sentry forwarding', () => {
         })
     })
 })
+
+describe('logger error scrubbing', () => {
+    type Logger = Awaited<ReturnType<typeof loadLogger>>['default']
+
+    const SECRETS = ['secret-hash', 'tok-123', 'a@b.c']
+
+    async function failedQuery(): Promise<Error> {
+        const { DrizzleQueryError } = await import('drizzle-orm')
+        const { default: pg } = await import('pg')
+        const cause = new pg.DatabaseError('duplicate key value', 0, 'error')
+        cause.code = '23505'
+        cause.constraint = 'users_email_unique'
+        cause.detail = 'Key (email)=(a@b.c) already exists.'
+        return new DrizzleQueryError(
+            'update "users" set "password" = $1, "session_token" = $2 where "email" = $3',
+            ['secret-hash', 'tok-123', 'a@b.c'],
+            cause,
+        )
+    }
+
+    // Every record the logger writes, as the JSON line the streams get.
+    async function captureLines(log: (logger: Logger) => void): Promise<string[]> {
+        process.env['APP_ENV'] = 'prod'
+        const { default: logger, __loggerTestHooks } = await loadLogger()
+        const lines: string[] = []
+        const stream = __loggerTestHooks.sentryStream
+        const write = stream.write.bind(stream)
+        vi.spyOn(stream, 'write').mockImplementation((chunk: string) => {
+            lines.push(chunk)
+            return write(chunk)
+        })
+
+        log(logger)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        return lines
+    }
+
+    const logAs: [string, (logger: Logger, err: Error) => void][] = [
+        [
+            'err',
+            (logger, err) => {
+                logger.error({ err }, 'x')
+            },
+        ],
+        [
+            'error',
+            (logger, err) => {
+                logger.error({ error: err }, 'x')
+            },
+        ],
+        [
+            'first argument',
+            (logger, err) => {
+                logger.error(err)
+            },
+        ],
+    ]
+
+    it.each(logAs)('keeps query params out of the whole record (%s)', async (_label, log) => {
+        const err = await failedQuery()
+        const wrapped = new Error('change password failed', { cause: err })
+
+        const lines = await captureLines((logger) => {
+            log(logger, wrapped)
+        })
+
+        expect(lines).toHaveLength(1)
+        const line = lines[0] ?? ''
+        for (const secret of SECRETS) {
+            expect(line).not.toContain(secret)
+        }
+        expect(line).toContain('Failed query (params redacted)')
+        expect(line).toContain('code=23505 constraint=users_email_unique')
+        // The original is untouched: db-errors.ts still reads it.
+        expect(err.message).toContain('secret-hash')
+    })
+
+    it('hands Sentry the scrubbed error', async () => {
+        const err = await failedQuery()
+
+        await captureLines((logger) => {
+            logger.error({ err }, 'x')
+        })
+
+        const sent = JSON.stringify(captureExceptionMock.mock.calls[0]?.[0])
+        expect(sent).toContain('Failed query (params redacted)')
+        for (const secret of SECRETS) {
+            expect(sent).not.toContain(secret)
+        }
+    })
+
+    it('keeps the class name pino writes to err.type', async () => {
+        const { RedisUnavailableError } =
+            await import('#vendor/utils/network/errors/redis-unavailable-error.js')
+        const lines = await captureLines((logger) => {
+            logger.error({ err: new RedisUnavailableError('down') }, 'x')
+        })
+
+        const record = JSON.parse(lines[0] ?? '{}') as { err?: { type?: string } }
+        expect(record.err?.type).toBe('RedisUnavailableError')
+    })
+})
