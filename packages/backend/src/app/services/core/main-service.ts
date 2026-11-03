@@ -42,8 +42,8 @@ export const mainService = {
         const params: unknown[] = Object.entries(httpData.params)
 
         // Never echo headers that carry secrets back to the client. `cookie` is
-        // already excluded from httpData.headers, but `authorization` (Bearer) is
-        // kept there because session-api middleware needs it — so redact here.
+        // already excluded from httpData.headers, but `authorization` is kept there
+        // (handlers may read it) — so redact here.
         const SENSITIVE_HEADERS = new Set(['cookie', 'authorization'])
         httpData.headers.forEach((value, key) => {
             if (SENSITIVE_HEADERS.has(key)) return

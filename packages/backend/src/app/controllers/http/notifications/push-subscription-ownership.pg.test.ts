@@ -5,8 +5,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
 
-// session-api (loaded with the real route table) refuses to import without a key of
-// at least 32 characters; this one signs nothing here.
+// The session token handler (loaded with the real route table) refuses to import
+// without a key of at least 32 characters; this one signs nothing here.
 vi.hoisted(() => {
     process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
 })
