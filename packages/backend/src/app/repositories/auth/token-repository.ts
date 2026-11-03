@@ -3,6 +3,7 @@ import type { DbExecutor } from '../transaction.js'
 import type {
     emailLinkVerifications,
     emailVerifications,
+    oauthLinkVerifications,
     passwordResetTokens,
 } from '#database/schema.js'
 import { and, eq, gt, isNull, sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm'
@@ -14,7 +15,10 @@ import { and, eq, gt, isNull, sql, type InferInsertModel, type InferSelectModel 
  * in common is this repository.
  */
 export type TokenTable =
-    typeof passwordResetTokens | typeof emailVerifications | typeof emailLinkVerifications
+    | typeof passwordResetTokens
+    | typeof emailVerifications
+    | typeof emailLinkVerifications
+    | typeof oauthLinkVerifications
 
 // The wall clock at the moment the statement runs. `now()` is fixed when the transaction
 // starts, so a token that expired while the transaction waited for the user lock would

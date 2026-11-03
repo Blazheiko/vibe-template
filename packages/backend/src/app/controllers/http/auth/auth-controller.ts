@@ -238,9 +238,16 @@ export default {
 
     async verifyEmail(context: HttpContext<VerifyEmailInput>): Promise<VerifyEmailResponse> {
         const payload = getTypedPayload(context)
-        const result = await emailVerificationService.verifyEmail(payload.token, {
-            ipAddress: context.httpData.ip ?? '',
-        })
+        const userId = context.auth.getUserId()
+        const result = await emailVerificationService.verifyEmail(
+            payload.token,
+            { ipAddress: context.httpData.ip ?? '' },
+            {
+                userId: userId === null ? null : BigInt(userId),
+                presentedSessionToken: context.auth.getPresentedUserToken(),
+                ...(payload.password !== undefined ? { password: payload.password } : {}),
+            },
+        )
         return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 

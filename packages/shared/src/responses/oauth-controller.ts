@@ -26,3 +26,17 @@ export const OAuthProvidersResponseSchema = type({
     providers: OAuthProviderSchema.array(),
 })
 export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer
+
+// feat-097: a mailed OAuth link confirmed in the browser that started the sign-in.
+export const OAuthLinkConfirmResponseSchema = type.or(
+    { status: "'success'" },
+    CanonicalErrorResponseSchema,
+)
+export type OAuthLinkConfirmResponse = typeof OAuthLinkConfirmResponseSchema.infer
+
+// feat-097: the link confirming the first address of an account, sent again.
+export const EmailLinkResendResponseSchema = type.or(
+    { status: "'success'", 'message?': 'string' },
+    CanonicalErrorResponseSchema,
+)
+export type EmailLinkResendResponse = typeof EmailLinkResendResponseSchema.infer

@@ -8,7 +8,12 @@ import {
     passwordResetRepository,
     userRepository,
 } from '#app/repositories/index.js'
-import type { DbTransaction } from '#app/repositories/transaction.js'
+import {
+    addressMatches,
+    claimLocked,
+    destroySessionsQuietly,
+    invalidatePendingPhoneChallenges,
+} from '#app/services/auth/account-claim-service.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
@@ -30,7 +35,6 @@ import {
 } from '#app/services/notifications/email-templates.js'
 import {
     isChallengeExpired,
-    LINK_PHONE_FLOW,
     normalizeEmail,
     normalizePhone,
     RESET_PHONE_FLOW,
@@ -45,12 +49,12 @@ import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-has
 import { Result } from 'better-result'
 import {
     badRequest,
+    conflict,
     internalMessage,
     notFound,
     type AppResult,
     appErrorMessage,
 } from '#app/services/shared/errors.js'
-import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 
@@ -65,19 +69,6 @@ function buildResetUrl(token: string): string {
 
 function createBlindVerificationCodeHash(): string {
     return hashOtpVerificationCode(randomBytes(32).toString('hex'))
-}
-
-async function invalidatePendingPhoneChallenges(
-    phone: string,
-    executor?: DbTransaction,
-): Promise<void> {
-    // One after the other: inside a transaction both statements share one connection.
-    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(
-        phone,
-        RESET_PHONE_FLOW,
-        executor,
-    )
-    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, LINK_PHONE_FLOW, executor)
 }
 
 function buildResetEmailContent(name: string, resetUrl: string): RenderedEmail {
@@ -99,19 +90,6 @@ function buildResetEmailContent(name: string, resetUrl: string): RenderedEmail {
             'If you did not request a password reset, you can safely ignore this email.',
         ],
     })
-}
-
-// ADR 0002: the rotated sessionToken is the revocation; deleting the old records is memory
-// cleanup. A failure is logged and must not fail a reset that has been committed.
-async function destroySessionsQuietly(previousSessionToken: string, userId: bigint): Promise<void> {
-    try {
-        await destroyAllSessions(previousSessionToken)
-    } catch (err: unknown) {
-        logger.warn(
-            { err, userId: String(userId) },
-            'Previous sessions not deleted after a password reset',
-        )
-    }
 }
 
 export const passwordResetService = {
@@ -170,6 +148,9 @@ export const passwordResetService = {
         const issued = await issueTokenLocked(passwordResetRepository, {
             userId,
             ttlMs: PASSWORD_RESET_TTL_MS,
+            // feat-097: the reset proves this address; it claims the account only while the
+            // account still has it.
+            extra: (user) => ({ targetEmail: user.email }),
             check: (user) =>
                 user.email === null
                     ? Result.err(badRequest('No email address', NO_EMAIL))
@@ -373,33 +354,46 @@ export const passwordResetService = {
 
         const newPasswordHash = await hashPassword(password)
 
-        // feat-096: lock the user, consume the token and set the password with the rotated
-        // sessionToken (ADR 0002) in ONE transaction. Of two concurrent requests with one
-        // link exactly one consumes it; a failure after the claim rolls everything back, the
-        // link stays usable and the password stays as it was.
+        // feat-096/097: lock the user, check the address, consume the token and set the
+        // password with the rotated sessionToken (ADR 0002) in ONE transaction. On an
+        // account whose address was never verified the reset is a claim: the mailbox owner
+        // gets the account and everything set up before the address was proven goes away.
+        // Of two concurrent requests with one link exactly one consumes it; a failure rolls
+        // everything back, the link stays usable and the password stays as it was.
         const applied = await runTokenTransaction(passwordResetRepository, resetToken, {
+            check: (user) =>
+                resetToken.targetEmail !== null && addressMatches(user, resetToken.targetEmail)
+                    ? Result.ok(undefined)
+                    : Result.err(
+                          conflict(
+                              'The account email changed after this link was sent',
+                              'email_changed',
+                          ),
+                      ),
             apply: async (user, tx) => {
-                const updated = await userRepository.update(
-                    user.id,
-                    { password: newPasswordHash, sessionToken: nanoid() },
-                    tx,
-                )
-                if (updated === undefined) throw new Error('User disappeared during reset')
-                // In the same commit: a failure leaves the password as it was, and a reset
-                // never stays half done with the phone challenges still pending.
-                if (user.phone !== null && user.phone !== '') {
+                const outcome = await claimLocked(tx, user, { newPasswordHash })
+                // A claim retired them already; a verified account's phone stays, its
+                // pending challenges go, in the same commit.
+                if (!outcome.claimed && user.phone !== null && user.phone !== '') {
                     await invalidatePendingPhoneChallenges(user.phone, tx)
                 }
-                return { userId: user.id, previousSessionToken: user.sessionToken }
+                return {
+                    userId: user.id,
+                    previousSessionToken: outcome.previousSessionToken,
+                    claimed: outcome.claimed,
+                }
             },
             invalidate: [passwordResetRepository],
         })
         if (applied.kind === 'user_missing') {
             return Result.err(notFound('User', 'User not found'))
         }
-        if (applied.kind === 'unusable' || applied.kind === 'rejected') {
+        if (applied.kind === 'rejected') {
+            return Result.err(applied.error)
+        }
+        if (applied.kind === 'unusable') {
             return Result.err(
-                applied.kind === 'unusable' && applied.reason === 'expired'
+                applied.reason === 'expired'
                     ? badRequest('Password reset link has expired', 'expired_token')
                     : badRequest('Password reset link has already been used', 'used_token'),
             )
@@ -411,7 +405,10 @@ export const passwordResetService = {
         // has been committed.
         await destroySessionsQuietly(user.previousSessionToken, user.userId)
 
-        userNotificationService.security(user.userId, 'password_reset')
+        userNotificationService.security(
+            user.userId,
+            user.claimed ? 'account_claimed' : 'password_reset',
+        )
         return Result.ok({ status: 'success' })
     },
 

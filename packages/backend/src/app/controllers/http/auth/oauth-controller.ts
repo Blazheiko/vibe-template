@@ -2,19 +2,37 @@ import type { HttpContext } from '#vendor/types/types.js'
 import {
     mapControllerError,
     reportControllerError,
+    respond,
 } from '#app/controllers/shared/controller-error.js'
 import { Result } from 'better-result'
-import { OAUTH_EMAIL_UNVERIFIED, oauthService } from '#app/services/auth/oauth-service.js'
+import {
+    EMAIL_CHANGED,
+    OAUTH_ALREADY_LINKED,
+    OAUTH_LINK_REVOKED,
+    oauthService,
+} from '#app/services/auth/oauth-service.js'
+import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
+import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import {
     appErrorMessage,
     badRequest,
     internal,
+    unauthorized,
     type AppError,
 } from '#app/services/shared/errors.js'
 import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
-import type { OAuthCallbackQuery, OAuthRedirectQuery } from 'shared/schemas'
+import type { OAuthCallbackQuery, OAuthLinkConfirmInput, OAuthRedirectQuery } from 'shared/schemas'
 import oauthConfig from '#config/oauth.js'
-import type { OAuthCallbackResponse, OAuthProvidersResponse, OAuthRedirectResponse } from 'shared'
+import type {
+    EmailLinkResendResponse,
+    OAuthCallbackResponse,
+    OAuthLinkConfirmResponse,
+    OAuthProvidersResponse,
+    OAuthRedirectResponse,
+} from 'shared'
+
+// The reasons the frontend explains to the user (feat-097); any other error is generic.
+const REDIRECT_REASONS = [OAUTH_LINK_REVOKED, EMAIL_CHANGED, OAUTH_ALREADY_LINKED] as const
 
 // The callback is a browser navigation, so every outcome must be a redirect back to
 // the frontend: an error status would leave the user on a raw JSON page.
@@ -26,7 +44,11 @@ const redirectToError = (
     // A 5xx (database, session store) also goes to the log with its cause and to Sentry.
     reportControllerError(context, error)
     const reason =
-        'reason' in error && error.reason === OAUTH_EMAIL_UNVERIFIED ? OAUTH_EMAIL_UNVERIFIED : null
+        'reason' in error &&
+        error.reason !== undefined &&
+        (REDIRECT_REASONS as readonly string[]).includes(error.reason)
+            ? error.reason
+            : null
     context.responseData.status = 302
     context.responseData.setHeader('Location', withReason(oauthConfig.frontendErrorUrl, reason))
     // The status stays 302: only the body takes the canonical error shape.
@@ -109,6 +131,7 @@ export default {
                 receivedState,
                 codeVerifier,
                 auth,
+                session.sessionInfo?.id ?? null,
             )
         } catch (err: unknown) {
             // ADR 0004: an infrastructure failure throws, but this is a browser navigation:
@@ -137,5 +160,31 @@ export default {
         responseData.setHeader('Location', result.value.redirectUrl)
 
         return { status: 'success' }
+    },
+
+    /** feat-097: the mailed link that confirms an OAuth link, opened in the same browser. */
+    async confirmLink(
+        context: HttpContext<OAuthLinkConfirmInput>,
+    ): Promise<OAuthLinkConfirmResponse> {
+        const payload = getTypedPayload(context)
+        const result = await oauthService.confirmLink(
+            payload.token,
+            context.auth,
+            context.session.sessionInfo?.id ?? null,
+        )
+        return respond(context, result)
+    },
+
+    /** feat-097: the link that confirms the first address of an account, sent again. */
+    async resendEmailLink(context: HttpContext): Promise<EmailLinkResendResponse> {
+        const userId = requireUserId(context)
+        if (userId === null) {
+            return mapControllerError(context, unauthorized())
+        }
+        const result = await oauthService.resendFirstEmailLink(
+            userId,
+            context.auth.getPresentedUserToken(),
+        )
+        return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 }

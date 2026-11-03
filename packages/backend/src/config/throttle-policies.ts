@@ -181,6 +181,16 @@ export const throttlePolicies = {
         readInt('AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR', 20),
         HOUR_MS,
     ),
+    /**
+     * Wrong passwords on a registration link (feat-097): the link confirms the account only
+     * with its password, which must not become a way to guess it.
+     */
+    verifyEmailPasswordUser: fixedWindow(
+        'verify_email_password_user',
+        'user',
+        readInt('AUTH_VERIFY_EMAIL_PASSWORD_MAX_ATTEMPTS_PER_HOUR', 5),
+        HOUR_MS,
+    ),
     /** Support chat messages: each one costs several language-model calls (feat-063). */
     supportChatUser: fixedWindow(
         'support_chat_user',

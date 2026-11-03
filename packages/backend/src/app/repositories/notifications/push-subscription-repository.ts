@@ -2,6 +2,7 @@ import { db } from '#database/db.js'
 import { pushNotificationLogs, pushSubscriptions } from '#database/schema.js'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { DbExecutor } from '../transaction.js'
 
 import { pushNotificationLogRepository } from './push-notification-log-repository.js'
 
@@ -58,6 +59,8 @@ export interface IPushSubscriptionRepository {
     deactivate(id: bigint, userId: bigint): Promise<PushSubscriptionRow | undefined>
     touchLastUsed(ids: bigint[], userId: bigint): Promise<void>
     delete(id: bigint, userId: bigint): Promise<boolean>
+    /** Removes every subscription of the user: the devices of a claimed account (feat-097). */
+    deleteByUserId(userId: bigint, executor: DbExecutor): Promise<number>
     getLogsBySubscriptionId(
         subscriptionId: bigint,
         userId: bigint,
@@ -184,6 +187,14 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
             .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, userId)))
             .returning()
         return deleted.length > 0
+    },
+
+    async deleteByUserId(userId, executor) {
+        const deleted = await executor
+            .delete(pushSubscriptions)
+            .where(eq(pushSubscriptions.userId, userId))
+            .returning({ id: pushSubscriptions.id })
+        return deleted.length
     },
 
     async getLogsBySubscriptionId(subscriptionId, userId, limit = 50) {

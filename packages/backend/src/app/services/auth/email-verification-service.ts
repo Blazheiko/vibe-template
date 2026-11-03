@@ -7,9 +7,11 @@ import {
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { Result } from 'better-result'
+import { validatePassword } from 'metautil'
 import {
     badRequest,
     conflict,
+    forbidden,
     notFound,
     sessionRevoked,
     type AppError,
@@ -43,14 +45,16 @@ function buildLinkEmailContent(name: string, verificationUrl: string): RenderedE
         eyebrow: 'Email linking',
         title: 'Confirm your new email address',
         name,
-        intro: 'Confirm this email to finish linking it to your Vibe Template account.',
+        intro: 'Confirm this email to finish linking it to your Vibe Template account. Open the link in the browser where you are signed in to that account.',
         action: { kind: 'link', url: verificationUrl },
-        footer: 'This link will expire in 24 hours. If you did not request this change, you can safely ignore this email.',
+        footer: 'This link will expire in 24 hours. If you did not request this, ignore this email: the link does nothing unless you are signed in to the account that asked for it.',
         textLines: [
-            'Please confirm this new email address for your Vibe Template account by opening this link:',
+            'Please confirm this new email address for your Vibe Template account by opening this link',
+            'in the browser where you are signed in to that account:',
             verificationUrl,
             '',
             'This link will expire in 24 hours.',
+            'If you did not request this, ignore this email.',
         ],
     })
 }
@@ -62,16 +66,49 @@ function buildEmailContent(name: string, verificationUrl: string): RenderedEmail
         eyebrow: 'Email verification',
         title: 'Confirm your email address',
         name,
-        intro: 'Finish setting up your Vibe Template account by confirming this email address. The button below will take you straight back into the app.',
+        intro: 'Finish setting up your Vibe Template account by confirming this email address. You will be asked for the password you chose when you signed up.',
         action: { kind: 'button', label: 'Confirm email', url: verificationUrl },
-        footer: 'This link will expire in 24 hours. If you did not create an account, you can safely ignore this email.',
+        footer: 'This link will expire in 24 hours. If you did not create an account, ignore this email: without the account password the link confirms nothing.',
         textLines: [
-            'Please confirm your email address by opening this link:',
+            'Please confirm your email address by opening this link',
+            'and entering the password you chose when you signed up:',
             verificationUrl,
             '',
             'This link will expire in 24 hours.',
+            'If you did not create an account, ignore this email.',
         ],
     })
+}
+
+export const EMAIL_LINK_WRONG_SESSION = 'email_link_wrong_session'
+export const VERIFY_PASSWORD_REQUIRED = 'password_required'
+export const VERIFY_PASSWORD_INVALID = 'invalid_password'
+
+/** The registration link's owner check by password (feat-097). */
+async function checkOwnerPassword(
+    owner: { id: bigint; password: string | null },
+    password: string | undefined,
+): Promise<AppResult<void>> {
+    if (password === undefined || password === '') {
+        return Result.err(
+            forbidden(
+                'Enter the password of this account to confirm the email',
+                VERIFY_PASSWORD_REQUIRED,
+            ),
+        )
+    }
+    const throttle = await enforceThrottle(
+        throttlePolicies.verifyEmailPasswordUser,
+        String(owner.id),
+        badRequest('Too many verification attempts. Please try again later.'),
+    )
+    if (Result.isError(throttle)) return Result.err(throttle.error)
+
+    const stored = owner.password
+    const valid = stored !== null && stored !== '' && (await validatePassword(password, stored))
+    return valid
+        ? Result.ok(undefined)
+        : Result.err(badRequest('Password is incorrect', VERIFY_PASSWORD_INVALID))
 }
 
 /** The answer for a token transaction that did not apply, or undefined when it did. */
@@ -138,9 +175,20 @@ export const emailVerificationService = {
         return Result.ok({ message: 'Verification email sent' })
     },
 
+    /**
+     * `requester` is who opens the link (feat-097). A registration link confirms the account
+     * only from a session of that account or with its password, and an email link only from
+     * a session of the account that asked for it: a link mailed to somebody who did not ask
+     * for it does nothing when clicked.
+     */
     async verifyEmail(
         token: string,
         requestMeta: { ipAddress: string },
+        requester: {
+            userId: bigint | null
+            presentedSessionToken: string | undefined
+            password?: string
+        },
     ): Promise<AppResult<{ message: string }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.verifyEmailIp,
@@ -190,6 +238,15 @@ export const emailVerificationService = {
                 return Result.err(badRequest('Verification link is invalid'))
             }
 
+            if (requester.userId !== linkVerification.userId) {
+                return Result.err(
+                    forbidden(
+                        'Open this link while signed in to the account that asked for it',
+                        EMAIL_LINK_WRONG_SESSION,
+                    ),
+                )
+            }
+
             const targetEmail = normalizeEmail(linkVerification.targetEmail)
             const conflictingUser = await userRepository.findByEmail(targetEmail)
             if (conflictingUser !== undefined && conflictingUser.id !== linkVerification.userId) {
@@ -207,10 +264,15 @@ export const emailVerificationService = {
                     {
                         // The link adds an address to an account that has none; one linked
                         // meanwhile (another link, a change) is not overwritten.
-                        check: (user) =>
-                            user.email === null || user.email === ''
+                        check: (user) => {
+                            // The session that opened the link must still be current.
+                            if (user.sessionToken !== requester.presentedSessionToken) {
+                                return Result.err(sessionRevoked())
+                            }
+                            return user.email === null || user.email === ''
                                 ? Result.ok(undefined)
-                                : Result.err(conflict('Email is already linked to this account')),
+                                : Result.err(conflict('Email is already linked to this account'))
+                        },
                         apply: async (user, tx) => {
                             const updated = await userRepository.update(
                                 user.id,
@@ -235,6 +297,22 @@ export const emailVerificationService = {
             if (linkError !== undefined) return Result.err(linkError)
 
             return Result.ok({ message: 'Email linked successfully' })
+        }
+
+        // feat-097: who opens a registration link must be the account's owner: signed in to
+        // it, or knowing its password. Checked before the transaction, so a wrong password
+        // does not use the link up.
+        const owner = await userRepository.findById(verification.userId)
+        if (owner === undefined) {
+            return Result.err(notFound('User', 'User not found'))
+        }
+        const ownSession =
+            requester.userId === owner.id &&
+            requester.presentedSessionToken !== undefined &&
+            requester.presentedSessionToken === owner.sessionToken
+        if (!ownSession && owner.emailVerifiedAt === null) {
+            const passwordResult = await checkOwnerPassword(owner, requester.password)
+            if (Result.isError(passwordResult)) return Result.err(passwordResult.error)
         }
 
         // feat-096: the verification is applied under the user lock, see the link branch.

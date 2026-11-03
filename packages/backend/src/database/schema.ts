@@ -213,6 +213,9 @@ export const passwordResetTokens = pgTable(
         userId: bigint('user_id', { mode: 'bigint' })
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
+        // The address the link was mailed to (feat-097): a reset that claims an unverified
+        // account proves this address, and only while it is still the account's one.
+        targetEmail: varchar('target_email', { length: 255 }),
         tokenHash: varchar('token_hash', { length: 64 }).notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         usedAt: timestamp('used_at'),
@@ -277,6 +280,38 @@ export const oauthAccounts = pgTable(
             table.providerUserId,
         ),
         index('oauth_accounts_user_id_fkey').on(table.userId),
+    ],
+)
+
+/**
+ * feat-097: a pending link of an OAuth identity to an existing account, confirmed by a
+ * mailed one-time link. The provider's profile is kept so the link can be created on
+ * confirmation; the provider's tokens are not. The confirmation must come from the browser
+ * session that started the sign-in (`session_binding_hash`).
+ */
+export const oauthLinkVerifications = pgTable(
+    'oauth_link_verifications',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        provider: varchar('provider', { length: 50 }).notNull(),
+        providerUserId: varchar('provider_user_id', { length: 255 }).notNull(),
+        providerEmail: varchar('provider_email', { length: 255 }).notNull(),
+        providerName: varchar('provider_name', { length: 255 }),
+        providerAvatar: varchar('provider_avatar', { length: 500 }),
+        // The account's address when the link was issued: confirmed only while it is unchanged.
+        targetEmail: varchar('target_email', { length: 255 }).notNull(),
+        sessionBindingHash: varchar('session_binding_hash', { length: 64 }).notNull(),
+        tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+        expiresAt: timestamp('expires_at').notNull(),
+        usedAt: timestamp('used_at'),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+    },
+    (table) => [
+        unique('oauth_link_verifications_token_hash_key').on(table.tokenHash),
+        index('oauth_link_verifications_user_id_provider_idx').on(table.userId, table.provider),
     ],
 )
 
