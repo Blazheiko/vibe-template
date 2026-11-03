@@ -8,6 +8,7 @@ import {
     type PushSubscriptionRow,
 } from '#app/repositories/index.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
+import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
 
 export interface PushNotificationPayload {
     title: string
@@ -99,7 +100,17 @@ export const pushNotificationSenderService = {
         }
 
         const subscriptions = await pushSubscriptionRepository.findByUserId(userId)
-        const activeSubscriptions = subscriptions.filter((sub) => sub.isActive)
+        // feat-104: checked again before sending, so a row stored before the allowlist (or under a
+        // wider one) never gets a request.
+        const activeSubscriptions = subscriptions.filter((sub) => {
+            if (!sub.isActive) return false
+            if (isAllowedPushEndpoint(sub.endpoint)) return true
+            logger.warn(
+                { subscriptionId: String(sub.id) },
+                'Push subscription endpoint is not allowed, skipping',
+            )
+            return false
+        })
 
         if (activeSubscriptions.length === 0) {
             return { sent: 0, failed: 0 }

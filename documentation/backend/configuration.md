@@ -273,11 +273,13 @@
 
 ## Push-сповіщення (Web Push)
 
-| Змінна              | Призначення          | Default                              | Обов'язковість (умова) | Читає файл                                                                                          |
-| ------------------- | -------------------- | ------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------- |
-| `VAPID_PUBLIC_KEY`  | Публічний VAPID-ключ | `""`                                 | Для push               | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
-| `VAPID_PRIVATE_KEY` | Приватний VAPID-ключ | `""`                                 | Для push               | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
-| `VAPID_SUBJECT`     | VAPID subject        | `mailto:admin@vibe-template.example` | Ні                     | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
+| Змінна                            | Призначення                                                           | Default                                                                                       | Обов'язковість (умова)                | Читає файл                                                                                          |
+| --------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`                | Публічний VAPID-ключ                                                  | `""`                                                                                          | Для push                              | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
+| `VAPID_PRIVATE_KEY`               | Приватний VAPID-ключ                                                  | `""`                                                                                          | Для push                              | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
+| `VAPID_SUBJECT`                   | VAPID subject                                                         | `mailto:admin@vibe-template.example`                                                          | Ні                                    | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
+| `PUSH_ALLOWED_ENDPOINT_HOSTS`     | Хости push-сервісів для `endpoint`; через кому, `.domain` — піддомени | `fcm.googleapis.com,updates.push.services.mozilla.com,.notify.windows.com,web.push.apple.com` | Ні (невалідне значення зупиняє старт) | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
+| `PUSH_MAX_SUBSCRIPTIONS_PER_USER` | Максимум push-підписок на акаунт                                      | `20`                                                                                          | Ні                                    | [push.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/push.ts) |
 
 ## AI
 

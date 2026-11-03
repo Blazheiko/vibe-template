@@ -5,7 +5,12 @@ vi.mock('web-push', () => ({
     default: { setVapidDetails: vi.fn(), sendNotification },
 }))
 vi.mock('#config/push.js', () => ({
-    default: { vapidPublicKey: 'pub', vapidPrivateKey: 'priv', vapidSubject: 'mailto:x@y.z' },
+    default: {
+        vapidPublicKey: 'pub',
+        vapidPrivateKey: 'priv',
+        vapidSubject: 'mailto:x@y.z',
+        allowedEndpointHosts: ['fcm.googleapis.com'],
+    },
 }))
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -31,7 +36,7 @@ const { pushNotificationSenderService, PUSH_SEND_CONCURRENCY } =
 const subscription = (id: number, extra: Record<string, unknown> = {}) => ({
     id: BigInt(id),
     userId: 7n,
-    endpoint: `https://push.example.test/${String(id)}`,
+    endpoint: `https://fcm.googleapis.com/fcm/send/${String(id)}`,
     p256dhKey: `p${String(id)}`,
     authKey: `a${String(id)}`,
     isActive: true,
@@ -167,8 +172,8 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
             (call) => (call[0] as { endpoint: string }).endpoint,
         )
         expect(endpoints.sort()).toEqual([
-            'https://push.example.test/1',
-            'https://push.example.test/3',
+            'https://fcm.googleapis.com/fcm/send/1',
+            'https://fcm.googleapis.com/fcm/send/3',
         ])
     })
 
@@ -180,5 +185,61 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
             failed: 0,
         })
         expect(pushNotificationLogRepository.insertMany).not.toHaveBeenCalled()
+    })
+})
+
+// feat-104 (R03): a row stored before the allowlist (or under a wider one) gets no request.
+describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
+    beforeEach(() => {
+        sendNotification.mockReset()
+        sendNotification.mockResolvedValue({ statusCode: 201 })
+        pushNotificationLogRepository.insertMany.mockResolvedValue(undefined)
+        pushSubscriptionRepository.touchLastUsed.mockResolvedValue(undefined)
+    })
+
+    it('skips an endpoint outside the allowlist and sends to the rest', async () => {
+        pushSubscriptionRepository.findByUserId.mockResolvedValue([
+            subscription(1),
+            subscription(2, { endpoint: 'https://10.0.0.5/admin' }),
+        ])
+
+        const result = await pushNotificationSenderService.sendToUser(7n, {
+            title: 't',
+            body: 'b',
+        })
+
+        expect(result).toEqual({ sent: 1, failed: 0 })
+        expect(sendNotification).toHaveBeenCalledTimes(1)
+        expect((sendNotification.mock.calls[0]?.[0] as { endpoint: string }).endpoint).toBe(
+            'https://fcm.googleapis.com/fcm/send/1',
+        )
+    })
+
+    it('passes no transport options (no proxy, no agent) to web-push', async () => {
+        pushSubscriptionRepository.findByUserId.mockResolvedValue([subscription(1)])
+
+        await pushNotificationSenderService.sendToUser(7n, { title: 't', body: 'b' })
+
+        expect(sendNotification.mock.calls[0]).toHaveLength(2)
+    })
+
+    it('records a redirect answer as a failed send, without following it', async () => {
+        pushSubscriptionRepository.findByUserId.mockResolvedValue([subscription(1)])
+        sendNotification.mockRejectedValue(
+            Object.assign(new Error('Received unexpected response code'), { statusCode: 302 }),
+        )
+
+        const result = await pushNotificationSenderService.sendToUser(7n, {
+            title: 't',
+            body: 'b',
+        })
+
+        expect(result).toEqual({ sent: 0, failed: 1 })
+        expect(sendNotification).toHaveBeenCalledTimes(1)
+        const logs = pushNotificationLogRepository.insertMany.mock.calls[0]?.[0] as {
+            status: string
+            responseData: unknown
+        }[]
+        expect(logs[0]).toMatchObject({ status: 'FAILED', responseData: { statusCode: 302 } })
     })
 })

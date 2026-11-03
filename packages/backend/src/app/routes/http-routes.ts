@@ -315,6 +315,8 @@ export default [
                 ResponseSchema: ResponseSchemas.TestPushResponseSchema,
                 description: 'Send a test push notification to the current user',
                 middlewares: ['auth_guard'],
+                // feat-104: every call fans out to all the user's devices.
+                rateLimit: { windowMs: 60_000, maxRequests: 5 },
             }),
             defineRoute({
                 url: '/',

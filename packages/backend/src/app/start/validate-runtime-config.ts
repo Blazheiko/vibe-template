@@ -12,6 +12,7 @@ import sentryConfig from '#config/sentry.js'
 import cspConfig from '#config/csp.js'
 import csrfConfig from '#config/csrf.js'
 import { networkConfig } from '#config/network.js'
+import pushConfig from '#config/push.js'
 import rateLimitConfig from '#config/rate-limit.js'
 import redisConfig from '#config/redis.js'
 import { throttlePolicyConfigError } from '#config/throttle-policies.js'
@@ -45,6 +46,7 @@ export function validateRuntimeConfig(): void {
         ['mail', mailConfig.configError],
         ['CORS', corsConfig.configError],
         ['network', networkConfig.configError],
+        ['push', pushConfig.configError],
         ['Sentry', sentryConfig.configError],
         ['session', sessionConfig.configError],
     ]

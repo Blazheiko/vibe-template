@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const pushSubscriptionRepositoryMock = {
     findByUserIdWithLogs: vi.fn(),
     findByEndpoint: vi.fn(),
+    countByUserId: vi.fn().mockResolvedValue(0),
     updateByEndpoint: vi.fn(),
     create: vi.fn(),
     findByIdAndUserId: vi.fn(),
@@ -72,20 +73,20 @@ describe('pushSubscriptionService', () => {
         pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
             id: 1n,
             userId: 7n,
-            endpoint: 'https://push.example.com/ep',
+            endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
             p256dhKey: 'old-key',
             authKey: 'old-auth',
         })
         pushSubscriptionRepositoryMock.updateByEndpoint.mockResolvedValue({
             id: 1n,
-            endpoint: 'https://push.example.com/ep',
+            endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
         })
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
         const result = await pushSubscriptionService.createSubscription(
             7n,
             {
-                endpoint: 'https://push.example.com/ep',
+                endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
                 p256dhKey: 'key',
                 authKey: 'auth',
                 notificationTypes: ['system'],
@@ -97,7 +98,7 @@ describe('pushSubscriptionService', () => {
         if (Result.isOk(result)) {
             expect(result.value).toEqual({
                 subscription: {
-                    serialized: { id: 1n, endpoint: 'https://push.example.com/ep' },
+                    serialized: { id: 1n, endpoint: 'https://fcm.googleapis.com/fcm/send/ep' },
                 },
             })
         }
@@ -110,13 +111,13 @@ describe('pushSubscriptionService', () => {
         const { pushSubscriptionService } = await loadPushSubscriptionService()
         await pushSubscriptionService.createSubscription(
             7n,
-            { endpoint: 'https://push.example.com/new', p256dhKey: 'k', authKey: 'a' },
+            { endpoint: 'https://fcm.googleapis.com/fcm/send/new', p256dhKey: 'k', authKey: 'a' },
             'token-7',
         )
 
         expect(withCurrentSessionMock).toHaveBeenCalledWith(7n, 'token-7', expect.any(Function))
         expect(pushSubscriptionRepositoryMock.findByEndpoint).toHaveBeenCalledWith(
-            'https://push.example.com/new',
+            'https://fcm.googleapis.com/fcm/send/new',
             TX,
         )
         expect(pushSubscriptionRepositoryMock.create).toHaveBeenCalledWith(
@@ -133,7 +134,7 @@ describe('pushSubscriptionService', () => {
         const { pushSubscriptionService } = await loadPushSubscriptionService()
         const created = await pushSubscriptionService.createSubscription(
             7n,
-            { endpoint: 'https://push.example.com/new', p256dhKey: 'k', authKey: 'a' },
+            { endpoint: 'https://fcm.googleapis.com/fcm/send/new', p256dhKey: 'k', authKey: 'a' },
             'stale-token',
         )
         withCurrentSessionMock.mockResolvedValueOnce(
@@ -157,7 +158,7 @@ describe('pushSubscriptionService', () => {
         const existing = {
             id: 1n,
             userId: 3n,
-            endpoint: 'https://push.example.com/ep',
+            endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
             p256dhKey: 'key',
             authKey: 'auth',
         }
@@ -228,5 +229,80 @@ describe('pushSubscriptionService', () => {
                 message: 'Subscription not found',
             })
         }
+    })
+
+    // feat-104 (R03): the server POSTs to the stored endpoint.
+    describe('endpoint policy and subscription limit', () => {
+        const payload = (endpoint: string) => ({ endpoint, p256dhKey: 'k', authKey: 'a' })
+
+        it.each([
+            'http://fcm.googleapis.com/fcm/send/x',
+            'https://10.0.0.5/admin',
+            'https://169.254.169.254/latest/meta-data',
+            'https://evil.example/fcm.googleapis.com',
+        ])('rejects %s before touching the database', async (endpoint) => {
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            const result = await pushSubscriptionService.createSubscription(
+                7n,
+                payload(endpoint),
+                'token',
+            )
+
+            expect(Result.isError(result) && result.error).toEqual({
+                _tag: 'BadRequest',
+                message: 'Push endpoint is not allowed',
+                reason: 'push_endpoint_not_allowed',
+            })
+            expect(pushSubscriptionRepositoryMock.findByEndpoint).not.toHaveBeenCalled()
+            expect(pushSubscriptionRepositoryMock.create).not.toHaveBeenCalled()
+        })
+
+        it('refuses a new subscription once the user has the maximum', async () => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(undefined)
+            pushSubscriptionRepositoryMock.countByUserId.mockResolvedValueOnce(20)
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+
+            const result = await pushSubscriptionService.createSubscription(
+                7n,
+                payload('https://fcm.googleapis.com/fcm/send/new'),
+                'token',
+            )
+
+            expect(Result.isError(result) && result.error).toEqual({
+                _tag: 'Conflict',
+                message: 'Too many push subscriptions for this account',
+                reason: 'push_subscription_limit',
+            })
+            expect(pushSubscriptionRepositoryMock.countByUserId).toHaveBeenCalledWith(7n, TX)
+            expect(pushSubscriptionRepositoryMock.create).not.toHaveBeenCalled()
+        })
+
+        it('counts a subscription moved from another user, not one the user already has', async () => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
+                id: 1n,
+                userId: 7n,
+                endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
+                p256dhKey: 'k',
+                authKey: 'a',
+            })
+            pushSubscriptionRepositoryMock.updateByEndpoint.mockResolvedValue({ id: 1n })
+            pushSubscriptionRepositoryMock.countByUserId.mockResolvedValue(20)
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+
+            const own = await pushSubscriptionService.createSubscription(
+                7n,
+                payload('https://fcm.googleapis.com/fcm/send/ep'),
+                'token',
+            )
+            expect(Result.isOk(own)).toBe(true)
+
+            const moved = await pushSubscriptionService.createSubscription(
+                8n,
+                payload('https://fcm.googleapis.com/fcm/send/ep'),
+                'token',
+            )
+            expect(Result.isError(moved) && moved.error._tag).toBe('Conflict')
+            pushSubscriptionRepositoryMock.countByUserId.mockResolvedValue(0)
+        })
     })
 })
