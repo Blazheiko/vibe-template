@@ -24,6 +24,7 @@ import {
     openChallenge,
     verifySmsCode,
 } from '#app/services/auth/sms-challenge.js'
+import { withTransactionResult } from '#app/services/shared/transaction-result.js'
 import {
     findUsableToken,
     issueTokenLocked,
@@ -463,31 +464,47 @@ export const passwordResetService = {
             return Result.err(badRequest('Invalid verification code'))
         }
 
-        const user = await userRepository.findById(challengeUserId)
-        if (user?.email !== null || user.phone !== challenge.phone) {
-            return Result.err(badRequest('Phone reset challenge is invalid'))
-        }
-
-        const confirmedResult = await confirmChallenge(challenge, {
-            noLongerValid: 'Phone reset challenge is no longer valid',
-        })
-        if (Result.isError(confirmedResult)) {
-            return Result.err(confirmedResult.error)
-        }
-
+        // Hashed before the lock: the row stays locked only for the statements below.
         const newPasswordHash = await hashPassword(password)
 
-        const previousSessionToken = user.sessionToken
+        // feat-106: the user is locked first (feat-096) and the account re-checked on the locked
+        // row; the challenge is confirmed, the phone challenges and reset links retired and the
+        // password rotated in one transaction. A refusal or a failure on the way rolls all of it
+        // back, the confirmation included, so the code can be used again within its budget. The
+        // try spent by verifySmsCode above stays spent.
+        const reset = await withTransactionResult(async (tx) => {
+            const user = await userRepository.lockById(challengeUserId, tx)
+            if (user?.email !== null || user.phone !== challenge.phone) {
+                return Result.err(badRequest('Phone reset challenge is invalid'))
+            }
 
-        await invalidatePendingPhoneChallenges(challenge.phone)
+            const confirmedResult = await confirmChallenge(
+                challenge,
+                { noLongerValid: 'Phone reset challenge is no longer valid' },
+                tx,
+            )
+            if (Result.isError(confirmedResult)) {
+                return Result.err(confirmedResult.error)
+            }
 
-        const updatedUser = await userRepository.update(user.id, {
-            password: newPasswordHash,
-            sessionToken: nanoid(),
+            await invalidatePendingPhoneChallenges(challenge.phone, tx)
+            await passwordResetRepository.invalidatePendingByUserId(user.id, tx)
+
+            const updated = await userRepository.update(
+                user.id,
+                { password: newPasswordHash, sessionToken: nanoid() },
+                tx,
+            )
+            if (updated === undefined) {
+                return Result.err(internalMessage('Failed to update password'))
+            }
+
+            return Result.ok({ updatedUser: updated, previousSessionToken: user.sessionToken })
         })
-        if (updatedUser === undefined) {
-            return Result.err(internalMessage('Failed to update password'))
+        if (Result.isError(reset)) {
+            return Result.err(reset.error)
         }
+        const { updatedUser, previousSessionToken } = reset.value
 
         // ADR 0002: best-effort memory cleanup, see the email reset above.
         await destroySessionsQuietly(previousSessionToken, updatedUser.id)
