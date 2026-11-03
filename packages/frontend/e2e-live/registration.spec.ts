@@ -42,7 +42,10 @@ test('register by e-mail, confirm the link, sign in', async ({ browser, sink }) 
     await page.goto(first)
     await expect(page.getByRole('heading', { name: 'Verification failed' })).toBeVisible()
 
+    // feat-097: a registration link confirms the account only with its password.
     await page.goto(second)
+    await page.getByLabel('Password').fill(account.password)
+    await page.getByRole('button', { name: 'Confirm email' }).click()
     await expect(page.getByRole('heading', { name: 'Email confirmed' })).toBeVisible()
 
     await loginInUi(page, account)

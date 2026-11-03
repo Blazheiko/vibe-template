@@ -27,7 +27,7 @@ Branch: `fix/feat-097-oauth-pre-hijack`. Plan: [`docs/plan/oauth-pre-hijack-plan
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check` clean.
 - `pnpm test`: backend 2102 / frontend 400 / api-playground 62 / shared 25 / documentation 26.
 - `test:pg` 173 (incl. `oauth-pre-hijack.pg.test.ts`: paths A–G, mailed link session binding, address change, sign-in vs claim race, reset claim), `test:redis` 88.
-- Frontend Playwright mock project 74/74 (5 new in `e2e/mock/oauth-link.spec.ts`).
+- Frontend Playwright mock project 74/74 (5 new in `e2e/mock/oauth-link.spec.ts`); `test:e2e:live` 5/5 locally (registration link now confirmed with the password).
 - `pnpm docs:build && pnpm docs:verify` clean.
 - Mutation checks, each fails a pg test: claim never strips; no link re-check under the lock; no session binding; every Google address trusted; registration link without password; email link without own session.
 - Manual on `dist` (fresh migrated DB): `/auth/verify-email` registration link without password → 403 `password_required`, wrong → 400 `invalid_password`, right → 200 and verified; `/auth/oauth/link/confirm` unknown token → 400 `invalid_token`; `/auth/oauth/email/resend` signed out → 401. Real provider sign-in not exercised (no provider credentials locally; covered by pg tests with stubbed providers).
