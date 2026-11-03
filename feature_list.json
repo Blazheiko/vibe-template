@@ -973,6 +973,16 @@
             "dependencies": ["feat-097"],
             "status": "done",
             "evidence": "Merged #328 (merge c4a75fe; start #327): push subscription create/update run in withCurrentSession (one transaction under the user row lock, presented session token compared under it, else 401 session_revoked), so a request admitted before a claim cannot re-add a device after it; enforceEmailLinkThrottles (linkEmailTarget, linkEmailUser, linkEmailUserCooldown) consumed before the token/mail on the mailed OAuth link, the first-address mail of a new OAuth user and its resend (reason too_many_attempts, explained on the login page); a new OAuth user and its first oauth_accounts row created in one transaction, a callback losing the race decides again and signs in by the winner's link. typecheck/lint/format:check clean, test backend 2119 / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:pg 178 (+5: push after a completed claim, push waiting on a held lock while the token rotates, control, concurrent callbacks leave one user and one link, HTTP POST with a stale token 401), test:redis 88, Playwright mock 87, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e, e2e-live. Mutation checks: guard without the token compare, guard without the lock, creation without a transaction each fail a pg test. Manual on dist: push create/update 200, after session_token rotation 401 and nothing written. Details were in progress.md on fix/feat-098-oauth-review-followups (removed from main by this PR)."
+        },
+        {
+            "id": "feat-099",
+            "name": "Login Timing Equalization",
+            "description": "Login must not reveal by its answer time whether an email or phone is registered: an unknown identifier and an OAuth-only account (no password hash) run validatePassword against a dummy scrypt hash made by the same metautil hashPassword (memoized, same parameters as real hashes), and the result never counts as success; regression test that pinned 'validatePassword not called' inverted, docs/backend/auth.md updated, password-reset lookups checked for the same leak",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-099-login-timing",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
