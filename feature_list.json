@@ -961,8 +961,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-097-oauth-pre-hijack",
             "dependencies": ["feat-096"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #325 (merge 064fae8; start #324): Google trusted only for verified Gmail and matching Workspace hd; other providers link to an existing account only via a mailed 30-minute link bound to the browser session that started the sign-in (oauth_link_verifications, POST /auth/oauth/link/confirm); new untrusted OAuth accounts get users.email = null until the owner confirms it from that account's session (resend POST /auth/oauth/email/resend); the first proof of the mailbox on an unverified account (authoritative Google, confirmed link, password reset with password_reset_tokens.target_email) claims it in one locked transaction (password, phone, OAuth links, push subscriptions, pending tokens and SMS challenges removed, session_token rotated); sign-in by an existing link re-checks it under the user lock; /verify-email registration links need the account password or its session. typecheck/lint/format:check clean, test backend 2102 / frontend 400 / api-playground 62 / shared 25 / documentation 26, test:pg 173 (oauth-pre-hijack.pg.test.ts covers paths A-G), test:redis 88, Playwright mock 74, e2e-live 5, docs:build + docs:verify, CI green incl. test-pg, test-redis, e2e, e2e-live. Mutation checks: six protections removed one at a time each fail a pg test. Manual on dist: registration link without password 403, wrong 400, right 200. Details were in progress.md on fix/feat-097-oauth-pre-hijack (removed from main by this PR)."
         }
     ]
 }
