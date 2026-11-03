@@ -216,7 +216,8 @@ function arrangeResetOk(over: Record<string, unknown> = {}): void {
 }
 function arrangePhoneOk(): void {
     challengeRepositoryMock.findById.mockResolvedValue(challenge())
-    userRepositoryMock.findById.mockResolvedValue(phoneOnlyUser())
+    // feat-106: the account is read on the row locked inside the reset transaction.
+    userRepositoryMock.lockById.mockResolvedValue(phoneOnlyUser())
     challengeRepositoryMock.markConfirmed.mockResolvedValue(challenge())
     hashPasswordMock.mockResolvedValue('new-hash')
     userRepositoryMock.update.mockResolvedValue(phoneOnlyUser())
@@ -936,7 +937,7 @@ const ROWS: readonly Row[] = [
         name: 'completePhonePasswordReset · the account has an e-mail now',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(challenge())
-            userRepositoryMock.findById.mockResolvedValue(user({ phone: PHONE }))
+            userRepositoryMock.lockById.mockResolvedValue(user({ phone: PHONE }))
         },
         call: completePhone(),
         error: badRequest('Phone reset challenge is invalid'),
@@ -945,7 +946,7 @@ const ROWS: readonly Row[] = [
         name: 'completePhonePasswordReset · the account has another phone now',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(challenge())
-            userRepositoryMock.findById.mockResolvedValue(phoneOnlyUser({ phone: '+380509999999' }))
+            userRepositoryMock.lockById.mockResolvedValue(phoneOnlyUser({ phone: '+380509999999' }))
         },
         call: completePhone(),
         error: badRequest('Phone reset challenge is invalid'),
@@ -954,7 +955,7 @@ const ROWS: readonly Row[] = [
         name: 'completePhonePasswordReset · the user is gone',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(challenge())
-            userRepositoryMock.findById.mockResolvedValue(undefined)
+            userRepositoryMock.lockById.mockResolvedValue(undefined)
         },
         call: completePhone(),
         error: badRequest('Phone reset challenge is invalid'),
@@ -1005,16 +1006,19 @@ const ROWS: readonly Row[] = [
         call: completePhone(),
         ok: { status: 'success' },
         after: () => {
-            expect(userRepositoryMock.update).toHaveBeenCalledWith(7n, {
-                password: 'new-hash',
-                sessionToken: 'rotated-token',
-            })
+            expect(userRepositoryMock.update).toHaveBeenCalledWith(
+                7n,
+                { password: 'new-hash', sessionToken: 'rotated-token' },
+                TX,
+            )
             expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-token')
             expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
                 PHONE,
                 'reset_phone',
-                undefined,
+                TX,
             )
+            expect(challengeRepositoryMock.markConfirmed).toHaveBeenCalledWith('ch-1', TX)
+            expect(resetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
         },
     },

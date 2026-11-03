@@ -722,7 +722,8 @@ describe('passwordResetService', () => {
             createdAt: new Date(),
             updatedAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        // feat-106: read on the row locked inside the reset transaction.
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
             phone: '+14155550123',
@@ -756,17 +757,24 @@ describe('passwordResetService', () => {
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
             '+14155550123',
             'reset_phone',
-            undefined,
+            TX,
         )
         expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
             '+14155550123',
             'link_phone',
-            undefined,
+            TX,
         )
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(8n, {
-            password: 'hashed-password',
-            sessionToken: 'new-session-token',
-        })
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            8n,
+            { password: 'hashed-password', sessionToken: 'new-session-token' },
+            TX,
+        )
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
+        expect(smsAuthChallengeRepositoryMock.markConfirmed).toHaveBeenCalledWith(
+            'reset-challenge-1',
+            TX,
+        )
+        expect(passwordResetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(8n, TX)
     })
 
     it('completes the phone reset when the Redis cleanup fails', async () => {
@@ -786,7 +794,8 @@ describe('passwordResetService', () => {
             createdAt: new Date(),
             updatedAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        // feat-106: read on the row locked inside the reset transaction.
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
             phone: '+14155550123',
@@ -816,10 +825,17 @@ describe('passwordResetService', () => {
 
         expect(Result.isOk(result)).toBe(true)
         expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-session-token')
-        expect(userRepositoryMock.update).toHaveBeenCalledWith(8n, {
-            password: 'hashed-password',
-            sessionToken: 'new-session-token',
-        })
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            8n,
+            { password: 'hashed-password', sessionToken: 'new-session-token' },
+            TX,
+        )
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
+        expect(smsAuthChallengeRepositoryMock.markConfirmed).toHaveBeenCalledWith(
+            'reset-challenge-1',
+            TX,
+        )
+        expect(passwordResetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(8n, TX)
     })
 
     it('rejects phone reset completion if the account linked an email after challenge issuance', async () => {
@@ -839,7 +855,7 @@ describe('passwordResetService', () => {
             createdAt: new Date(),
             updatedAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: 'user@example.com',
             phone: '+14155550123',
@@ -876,6 +892,9 @@ describe('passwordResetService', () => {
             })
         }
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        // feat-106: refused on the locked row, before the challenge is confirmed.
+        expect(smsAuthChallengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
     it("rejects phone reset completion if the user's phone changed after challenge issuance", async () => {
@@ -895,7 +914,7 @@ describe('passwordResetService', () => {
             createdAt: new Date(),
             updatedAt: new Date(),
         })
-        userRepositoryMock.findById.mockResolvedValue({
+        userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
             phone: '+14155550999',
@@ -919,6 +938,9 @@ describe('passwordResetService', () => {
                 message: 'Phone reset challenge is invalid',
             })
         }
+        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        // feat-106: refused on the locked row, before the challenge is confirmed.
+        expect(smsAuthChallengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
