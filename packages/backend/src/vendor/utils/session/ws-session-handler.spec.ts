@@ -17,7 +17,7 @@ vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     updateSessionData: vi.fn(),
     changeSessionData: vi.fn(),
     destroySession: vi.fn(),
-    destroyAllSessions: vi.fn(),
+    destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
 }))
 
 // Signed cookies are not used by wsSessionHandler (and need APP_KEY).

@@ -10,7 +10,7 @@ const storage = vi.hoisted(() => ({
     updateSessionData: vi.fn(),
     changeSessionData: vi.fn(),
     destroySession: vi.fn(),
-    destroyAllSessions: vi.fn(),
+    destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
     claimCookieRefresh: vi.fn(),
     markCookieIssued: vi.fn(),
     sessionExists: vi.fn(),

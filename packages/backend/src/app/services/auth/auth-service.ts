@@ -267,7 +267,7 @@ async function finalizeRegistration(
         return Result.err(userCreatedResult.error)
     }
 
-    await session.destroySession(session.sessionInfo?.id)
+    await session.destroySession()
 
     return await buildAuthSuccess(
         userCreatedResult.value,
@@ -372,7 +372,7 @@ async function registerEmailFlow(
         return Result.err(registeredUserResult.error)
     }
 
-    await session.destroySession(session.sessionInfo?.id)
+    await session.destroySession()
 
     return genericEmailRegistrationAnswer()
 }
@@ -1006,7 +1006,23 @@ export const authService = {
                 )
             }
         }
-        const result = await auth.logoutAll()
+        // The sessions are revoked by now; what follows is memory cleanup and must not turn
+        // the answer into an error. auth.logoutAll() issues the anonymous session either way.
+        let deletedCount = 0
+        try {
+            const cleanup = await auth.logoutAll()
+            deletedCount = cleanup.deleted
+            if (!cleanup.complete) {
+                logger.warn(
+                    { userId, deleted: cleanup.deleted },
+                    'Logout-all: not every session record was deleted; they are revoked already',
+                )
+            }
+        } catch (err: unknown) {
+            // A bug, not an unavailable Redis (that comes as complete: false). Sentry gets it
+            // from the logger transport.
+            logger.error({ err, userId }, 'Logout-all: deleting the session records failed')
+        }
         if (userId !== null) userNotificationService.security(BigInt(userId), 'logout_all')
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
@@ -1016,7 +1032,7 @@ export const authService = {
 
         return Result.ok({
             status: 'success',
-            deletedCount: result,
+            deletedCount,
             csrfToken,
         })
     },
@@ -1102,7 +1118,13 @@ export const authService = {
         // Memory cleanup, not the revocation: a failure leaves records that are already
         // rejected, so it is logged and the password change still succeeds.
         try {
-            await destroyAllSessions(previousSessionToken)
+            const cleanup = await destroyAllSessions(previousSessionToken)
+            if (!cleanup.complete) {
+                logger.warn(
+                    { userId: String(userId), deleted: cleanup.deleted },
+                    'Not every previous session deleted after a password change',
+                )
+            }
         } catch (err: unknown) {
             logger.warn(
                 { err, userId: String(userId) },

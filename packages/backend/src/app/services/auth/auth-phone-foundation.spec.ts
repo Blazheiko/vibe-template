@@ -26,7 +26,7 @@ const smsAuthChallengeRepositoryMock = {
 const authMock = {
     login: vi.fn(),
     logout: vi.fn(),
-    logoutAll: vi.fn(),
+    logoutAll: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
 }
 
 const sessionMock = {
@@ -74,7 +74,7 @@ vi.mock('#app/transformers/index.js', () => ({
 
 // The real module loads config/session, which needs metautil's duration().
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
-    destroyAllSessions: vi.fn(),
+    destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
 }))
 
 vi.mock('metautil', () => ({

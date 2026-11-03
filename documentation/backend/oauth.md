@@ -36,7 +36,7 @@ sequenceDiagram
 
 Що відбувається в callback ([`oauthService.handleCallback`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/oauth-service.ts)):
 
-1. **Перевірка `state`.** Значення з query порівнюється з тим, що збережено в сесії на кроці redirect. Розбіжність — `OAuth state mismatch`: так відсікається підроблений callback (CSRF на вході). Після callback `oauthState` і `oauthCodeVerifier` видаляються з сесії.
+1. **Перевірка `state`.** Значення з query порівнюється з тим, що збережено в сесії на кроці redirect, за сталий час ([`safeEqual`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/safe-equal.ts)). Розбіжність — `OAuth state mismatch`: так відсікається підроблений callback (CSRF на вході). Після callback `oauthState` і `oauthCodeVerifier` видаляються з сесії.
 2. **Обмін `code` на токени** через `arctic` і запит профілю до API провайдера. Токен доступу використовується **один раз**, для цього запиту, і далі не зберігається (див. [нижче](#що-зберігається)). Facebook отримує токен у заголовку `Authorization: Bearer`, а не в query-рядку: у URL він потрапляє в логи проксі й CDN та в `Referer`.
 3. **Email обов'язковий.** Якщо провайдер не віддав email, вхід не відбувається (`Could not retrieve email from provider`). Email приводиться до нижнього регістру. Разом з email бекенд визначає, чи провайдер є **власником поштової скриньки** (`emailTrust`, див. [нижче](#довіра-до-адреси)).
 4. **Пошук користувача** (див. таблицю в [Прив'язка за email](#прив-язка-за-email)):

@@ -5,7 +5,6 @@ import {
     updateSessionData,
     changeSessionData,
     destroySession,
-    destroyAllSessions,
 } from '#vendor/utils/session/redis-session-storage.js'
 import logger from '#vendor/utils/logger.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
@@ -112,9 +111,6 @@ export const wsSessionHandler = async (
                 await changeSessionData(sessionInfo.id, newData, userToken),
             destroySession: async (): Promise<void> => {
                 await destroySession(sessionInfo.id, userToken)
-            },
-            destroyAllSessions: async (): Promise<number> => {
-                return await destroyAllSessions(userToken)
             },
         }
         return { kind: 'ok', session }

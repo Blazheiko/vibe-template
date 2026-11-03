@@ -58,7 +58,13 @@ export async function destroySessionsQuietly(
     userId: bigint,
 ): Promise<void> {
     try {
-        await destroyAllSessions(previousSessionToken)
+        const cleanup = await destroyAllSessions(previousSessionToken)
+        if (!cleanup.complete) {
+            logger.warn(
+                { userId: String(userId), deleted: cleanup.deleted },
+                'Not every previous session deleted after a password reset',
+            )
+        }
     } catch (err: unknown) {
         logger.warn(
             { err, userId: String(userId) },

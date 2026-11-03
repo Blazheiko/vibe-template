@@ -88,13 +88,12 @@ describe('updateSessionData', () => {
 })
 
 /**
- * A tiny keyspace for SCAN: `size` foreign keys interleaved with the user's
- * sessions, 10 keys per SCAN call, cursor = index of the next key.
+ * A tiny keyspace for SCAN: `foreign` keys of other users interleaved with the
+ * user's sessions, 10 keys per SCAN call, cursor = index of the next key.
  */
 const createKeyspace = (sessionIds: string[], foreign = 0) => {
-    const store = new Map<string, string>()
     const keys: string[] = []
-    for (let i = 0; i < foreign; i++) keys.push(`other:${String(i)}`)
+    for (let i = 0; i < foreign; i++) keys.push(`session:other${String(i)}:x`)
     sessionIds.forEach((id, n) => {
         keys.splice(
             Math.floor(((n + 1) * keys.length) / (sessionIds.length + 1)),
@@ -109,7 +108,7 @@ const createKeyspace = (sessionIds: string[], foreign = 0) => {
         const start = Number(cursor)
         const batch = keys.slice(start, start + 10)
         const next = start + 10 >= keys.length ? '0' : String(start + 10)
-        const match = pattern.slice(0, -1) // "test:session:<token>:*"
+        const match = pattern.slice(0, -1) // "test:session:<token>:"
         return [
             next,
             batch
@@ -120,41 +119,13 @@ const createKeyspace = (sessionIds: string[], foreign = 0) => {
     })
     redis.del.mockImplementation(async (...del: string[]) => {
         let n = 0
-        for (const k of del) {
-            if (live.delete(k) || store.delete(k)) n++
-        }
+        for (const k of del) if (live.delete(k)) n++
         return n
     })
-    redis.multi.mockImplementation(() => {
-        const queued: string[][] = []
-        const tx = {
-            del: (...del: string[]) => {
-                queued.push(del)
-                return tx
-            },
-            exec: async () => {
-                const results: [null, number][] = []
-                for (const del of queued) {
-                    let n = 0
-                    for (const k of del) if (live.delete(k) || store.delete(k)) n++
-                    results.push([null, n])
-                }
-                return results
-            },
-        }
-        return tx
-    })
-    redis.get.mockImplementation(async (k: string) => store.get(k) ?? null)
-    redis.setex.mockImplementation(async (k: string, _ttl: number, v: string) => {
-        store.set(k, v)
-        return 'OK'
-    })
     return {
-        live,
-        store,
         scanCursors,
-        has: (id: string) => live.has(`session:${USER_TOKEN}:${id}`),
-        sessions: () => [...live].filter((k) => k.startsWith('session:')),
+        sessions: () => [...live].filter((k) => k.startsWith(`session:${USER_TOKEN}:`)),
+        foreign: () => [...live].filter((k) => !k.startsWith(`session:${USER_TOKEN}:`)),
     }
 }
 
@@ -169,90 +140,77 @@ const failAfter = (ok: number): void => {
 }
 
 describe('destroyAllSessions', () => {
-    it('deletes every session after a full SCAN, the kept one last', async () => {
+    it('deletes every session of the user after a full SCAN from 0, nothing of other users', async () => {
         const ks = createKeyspace(['a', 'b', 'current', 'c'], 25)
 
-        await expect(storage.destroyAllSessions(USER_TOKEN, 'current')).resolves.toBe(4)
+        await expect(storage.destroyAllSessions(USER_TOKEN)).resolves.toEqual({
+            deleted: 4,
+            complete: true,
+        })
 
         expect(ks.sessions()).toEqual([])
-        expect(redis.multi).toHaveBeenCalledTimes(1) // cursor + kept session together
-        expect(ks.store.size).toBe(0) // cursor key removed
+        expect(ks.foreign()).toHaveLength(25)
+        expect(ks.scanCursors[0]).toBe('0')
+        // No retry cursor is read or written any more.
+        expect(redis.get).not.toHaveBeenCalled()
+        expect(redis.setex).not.toHaveBeenCalled()
+        expect(redis.multi).not.toHaveBeenCalled()
     })
 
-    it("a stopped run keeps the caller's session and the repeat resumes from the saved cursor", async () => {
-        const ks = createKeyspace(['a', 'current', 'b', 'c'], 25)
-        // get, scan, del?, setex ... fail somewhere in the middle of the keyspace
-        failAfter(5)
+    it('a run stopped by Redis resolves with the confirmed deletions and complete: false', async () => {
+        const ks = createKeyspace(['a', 'b', 'c', 'd'], 40) // a session at 8, 16, 24, 32: one per SCAN page
+        failAfter(4) // scan, del, scan, del: two pages done, the third SCAN fails
 
-        await expect(storage.destroyAllSessions(USER_TOKEN, 'current')).rejects.toBeInstanceOf(
-            RedisUnavailableError,
-        )
-        expect(ks.has('current')).toBe(true) // repeat stays authenticated
+        await expect(storage.destroyAllSessions(USER_TOKEN)).resolves.toEqual({
+            deleted: 2,
+            complete: false,
+        })
+        expect(ks.sessions()).toHaveLength(2)
         expect(logger.warn).toHaveBeenCalledWith(
-            expect.objectContaining({ deletedCount: expect.any(Number) }),
+            expect.objectContaining({ deleted: 2 }),
             expect.stringContaining('Stopped deleting all sessions'),
         )
         expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(USER_TOKEN)
-        const saved = ks.store.get(`logout_all:cursor:${USER_TOKEN}:current`)
-        expect(saved).toBeDefined()
-        expect(saved).not.toBe('0')
-
-        withRedis.mockImplementation(async (op) => op())
-        ks.scanCursors.length = 0
-        await expect(storage.destroyAllSessions(USER_TOKEN, 'current')).resolves.toBeGreaterThan(0)
-
-        expect(ks.scanCursors[0]).toBe(saved) // resumed, not restarted at 0
-        expect(ks.sessions()).toEqual([])
     })
 
-    it('full revocation after a stopped logoutAll ignores its cursor and deletes the skipped session', async () => {
-        const ks = createKeyspace(['current', 'a', 'b', 'c'], 60)
-        failAfter(8) // stops after the page with "current" was scanned and skipped
+    it('a failing first SCAN resolves with nothing deleted and complete: false', async () => {
+        const ks = createKeyspace(['a', 'b'], 5)
+        failAfter(0)
 
-        await expect(storage.destroyAllSessions(USER_TOKEN, 'current')).rejects.toBeInstanceOf(
-            RedisUnavailableError,
-        )
-        expect(ks.has('current')).toBe(true)
-        expect(ks.store.size).toBe(1) // the interactive cursor is behind "current"
+        await expect(storage.destroyAllSessions(USER_TOKEN)).resolves.toEqual({
+            deleted: 0,
+            complete: false,
+        })
+        expect(ks.sessions()).toHaveLength(2)
+    })
+
+    it('a repeat after a stop scans from 0 again and deletes the rest', async () => {
+        const ks = createKeyspace(['a', 'b', 'c', 'd'], 40)
+        failAfter(4)
+        await storage.destroyAllSessions(USER_TOKEN)
 
         withRedis.mockImplementation(async (op) => op())
         ks.scanCursors.length = 0
-        redis.get.mockClear()
-        await storage.destroyAllSessions(USER_TOKEN) // e.g. password reset
-
+        await expect(storage.destroyAllSessions(USER_TOKEN)).resolves.toEqual({
+            deleted: 2,
+            complete: true,
+        })
         expect(ks.scanCursors[0]).toBe('0')
-        expect(redis.get).not.toHaveBeenCalled()
         expect(ks.sessions()).toEqual([])
     })
 
-    it('repeats make progress on a keyspace larger than one attempt can scan', async () => {
-        const ks = createKeyspace(['a', 'b', 'c', 'current'], 400) // 41 SCAN pages
-        let attempts = 0
-        let finished = false
-        while (!finished && attempts < 50) {
-            attempts += 1
-            failAfter(9) // each attempt gets through only a few pages
-            finished = await storage.destroyAllSessions(USER_TOKEN, 'current').then(
-                () => true,
-                () => false,
-            )
-        }
+    it('rethrows an error that is not Redis being unavailable (a bug)', async () => {
+        createKeyspace(['a'])
+        const bug = new TypeError('bug')
+        redis.del.mockRejectedValue(bug)
 
-        expect(finished).toBe(true)
-        expect(attempts).toBeLessThan(50)
-        expect(ks.sessions()).toEqual([])
-        // No restart from 0 after the first attempt; at most the interrupted page
-        // is scanned again per attempt (the cursor is saved after its DEL).
-        expect(ks.scanCursors.filter((c) => c === '0')).toHaveLength(1)
-        const nonZero = ks.scanCursors.filter((c) => c !== '0')
-        expect(nonZero.length - new Set(nonZero).size).toBeLessThanOrEqual(attempts)
+        await expect(storage.destroyAllSessions(USER_TOKEN)).rejects.toBe(bug)
+        expect(logger.warn).not.toHaveBeenCalled()
     })
 
     it('gives up at the deadline, not deadline + command timeout', async () => {
         vi.useFakeTimers()
         const start = Date.now()
-        redis.get.mockResolvedValue(null)
-        redis.setex.mockResolvedValue('OK')
         const scanAfter = (ms: number) => () =>
             new Promise((resolve) =>
                 setTimeout(() => {
@@ -267,13 +225,13 @@ describe('destroyAllSessions', () => {
         redis.scan.mockImplementationOnce(() => new Promise(() => {}))
 
         let settledAt = 0
-        const result = storage.destroyAllSessions(USER_TOKEN).catch((err: unknown) => {
+        const result = storage.destroyAllSessions(USER_TOKEN).then((outcome) => {
             settledAt = Date.now()
-            return err
+            return outcome
         })
         await vi.advanceTimersByTimeAsync(3_000)
 
-        expect(await result).toBeInstanceOf(RedisUnavailableError)
+        expect(await result).toEqual({ deleted: 0, complete: false })
         expect(redis.scan).toHaveBeenCalledTimes(6)
         // Not 1990 + 500 (the command timeout): the remaining 10 ms only.
         expect(settledAt - start).toBe(2_000)

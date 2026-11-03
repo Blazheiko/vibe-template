@@ -68,14 +68,14 @@ const createContext = (overrides: Partial<HttpContext> = {}): HttpContext => {
             updateSessionData: vi.fn(),
             changeSessionData: vi.fn(),
             destroySession: vi.fn(),
-            destroyAllSessions: vi.fn(),
+            destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
         },
         auth: {
             getUserId: vi.fn(() => '7'),
             check: vi.fn(() => true),
             login: vi.fn(),
             logout: vi.fn(),
-            logoutAll: vi.fn(),
+            logoutAll: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
         },
     } as unknown as HttpContext
 

@@ -41,7 +41,7 @@ const smsAuthChallengeRepositoryMock = {
 const emailServiceMock = { send: vi.fn() }
 const consumeAuthThrottleMock = vi.fn()
 const issueVerificationCodeMock = vi.fn()
-const destroyAllSessionsMock = vi.fn()
+const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const hashPasswordMock = vi.fn()
 const loggerMock = { warn: vi.fn(), error: vi.fn(), info: vi.fn() }
 

@@ -55,7 +55,9 @@ vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     consumeAuthThrottle: vi.fn(),
     resetAuthThrottle: vi.fn(),
 }))
-vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({ destroyAllSessions: vi.fn() }))
+vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
+    destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
+}))
 vi.mock('#app/services/auth/sms-verification-provider.js', () => ({
     smsVerificationProvider: { issueVerificationCode: vi.fn() },
 }))

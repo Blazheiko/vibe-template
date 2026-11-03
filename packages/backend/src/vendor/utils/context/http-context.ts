@@ -9,7 +9,6 @@ const getDefaultSession = (): Session => {
         updateSessionData: async () => Promise.resolve(null),
         changeSessionData: async () => Promise.resolve(null),
         destroySession: async () => Promise.resolve(),
-        destroyAllSessions: async () => Promise.resolve(0),
     }
 }
 const getDefaultAuth = (): Auth => ({
@@ -18,7 +17,7 @@ const getDefaultAuth = (): Auth => ({
     check: () => false,
     login: () => Promise.resolve(false),
     logout: () => Promise.resolve(false),
-    logoutAll: () => Promise.resolve(0),
+    logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
 })
 
 export default (

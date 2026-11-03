@@ -31,7 +31,7 @@ vi.mock('#app/services/auth/email-verification-service.js', () => ({
     emailVerificationService: { sendVerificationEmailAfterRegistration: vi.fn() },
 }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
-    destroyAllSessions: () => Promise.resolve(0),
+    destroyAllSessions: () => Promise.resolve({ deleted: 0, complete: true }),
 }))
 
 const GENERIC = {

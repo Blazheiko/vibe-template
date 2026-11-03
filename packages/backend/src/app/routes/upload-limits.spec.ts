@@ -7,8 +7,8 @@ import {
     multipartBodyLimit,
 } from '#app/services/shared/upload-limits.js'
 
-// session-api (loaded with the route table) refuses to import without a key of at
-// least 32 characters; this one signs nothing here.
+// The session token handler (loaded with the route table) refuses to import without a
+// key of at least 32 characters; this one signs nothing here.
 vi.hoisted(() => {
     process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
 })

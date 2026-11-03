@@ -65,12 +65,11 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
 const cleanup = vi.hoisted(() => ({ fail: false }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) => {
     const actual = await importActual<typeof SessionStorage>()
-    const { RedisUnavailableError } =
-        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     return {
         ...actual,
+        // What the real one answers when Redis is unreachable: nothing deleted, not complete.
         destroyAllSessions: (...args: Parameters<typeof actual.destroyAllSessions>) => {
-            if (cleanup.fail) return Promise.reject(new RedisUnavailableError('cleanup failed'))
+            if (cleanup.fail) return Promise.resolve({ deleted: 0, complete: false })
             return actual.destroyAllSessions(...args)
         },
     }
@@ -461,16 +460,22 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             expect((await requestWith(b.cookie)).context.auth.check()).toBe(false)
         })
 
-        it('has already revoked everything when the Redis cleanup fails', async () => {
+        it('succeeds and has revoked everything when the Redis cleanup fails', async () => {
             const user = await insertUser('rev-logout-all-down')
             const a = await signIn(user)
             const b = await signIn(user)
             const { context: ctxA } = await requestWith(a.cookie)
             cleanup.fail = true
 
-            // The request fails on the cleanup (ADR 0004: it throws), but the rotation came first.
-            await expect(authService.logoutAll(ctxA.auth, ctxA.session)).rejects.toThrow()
+            // feat-101: the rotation is the revocation, the cleanup only memory.
+            const result = await authService.logoutAll(ctxA.auth, ctxA.session)
+            expect(Result.isOk(result) && result.value.deletedCount).toBe(0)
+            expect(ctxA.auth.check()).toBe(false)
+            // The records are still in Redis ...
+            expect(await getSession(a.sessionId, user.sessionToken)).not.toBeNull()
+            expect(await getSession(b.sessionId, user.sessionToken)).not.toBeNull()
             cleanup.fail = false
+            // ... and refused anyway.
             expect(await dbToken(user.id)).not.toBe(user.sessionToken)
             expect((await requestWith(a.cookie)).context.auth.check()).toBe(false)
             expect((await requestWith(b.cookie)).context.auth.check()).toBe(false)

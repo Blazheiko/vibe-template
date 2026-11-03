@@ -11,8 +11,6 @@ vi.mock('#database/redis.js', () => ({
     default: {
         scan: vi.fn(async () => ['0', ['test:session:tok:1', 'test:session:tok:2']]),
         del: vi.fn(async () => 2),
-        get: vi.fn(async () => null),
-        setex: vi.fn(async () => 'OK'),
     },
     withRedis: async <T>(op: () => Promise<T>): Promise<T> => op(),
 }))
@@ -23,7 +21,10 @@ const USER_TOKEN = 'abcdef0123456789abcdef0123456789'
 
 describe('destroyAllSessions logging', () => {
     it('logs only a masked userToken and no Redis pattern', async () => {
-        await expect(destroyAllSessions(USER_TOKEN)).resolves.toBe(2)
+        await expect(destroyAllSessions(USER_TOKEN)).resolves.toEqual({
+            deleted: 2,
+            complete: true,
+        })
 
         const logged = JSON.stringify(info.mock.calls)
         expect(info).toHaveBeenCalledTimes(2)

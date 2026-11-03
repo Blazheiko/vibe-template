@@ -33,7 +33,7 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: vi.fn(), supportReply: vi.fn() },
 }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
-    destroyAllSessions: () => Promise.resolve(0),
+    destroyAllSessions: () => Promise.resolve({ deleted: 0, complete: true }),
 }))
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex')

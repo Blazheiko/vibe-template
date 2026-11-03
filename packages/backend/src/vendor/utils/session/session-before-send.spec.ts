@@ -9,7 +9,7 @@ const storage = vi.hoisted(() => ({
     updateSessionData: vi.fn(),
     changeSessionData: vi.fn(),
     destroySession: vi.fn(),
-    destroyAllSessions: vi.fn(),
+    destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
     claimCookieRefresh: vi.fn(),
     markCookieIssued: vi.fn(),
     sessionExists: vi.fn(),
@@ -303,11 +303,73 @@ describe('session auth methods on a storage failure', () => {
         expect(loggerError).not.toHaveBeenCalled()
     })
 
-    it('auth.logoutAll rejects and leaves the logging to the caller', async () => {
+    // feat-101: the caller has rotated the sessionToken, so the request must leave signed
+    // out whatever the cleanup does; destroyAllSessions reports an unavailable Redis as
+    // complete: false and throws only on a bug.
+    const expectAnonymous = (context: Awaited<ReturnType<typeof run>>): void => {
+        expect(context.auth.check()).toBe(false)
+        expect(context.auth.getUserId()).toBeNull()
+        const cookie = context.responseData.cookies.get(sessionConfig.cookieName)
+        expect(cookie).toBeDefined()
+        expect(JSON.stringify(cookie)).not.toContain(USER_TOKEN)
+        expect(context.session.sessionInfo?.id).not.toBe('s1')
+        expect(context.session.sessionInfo?.data.csrfToken).not.toBe('c'.repeat(43))
+    }
+
+    it('auth.logoutAll rejects on a bug, leaves the logging to the caller, and still signs out', async () => {
         const context = await run()
-        storage.destroyAllSessions.mockRejectedValue(new RedisDown('destroy all failed'))
+        storage.destroyAllSessions.mockRejectedValue(new TypeError('destroy all failed'))
 
         await expect(context.auth.logoutAll()).rejects.toThrow('destroy all failed')
         expect(loggerError).not.toHaveBeenCalled()
+        expectAnonymous(context)
+    })
+
+    it('auth.logoutAll passes on an incomplete cleanup and signs out', async () => {
+        const context = await run()
+        storage.destroyAllSessions.mockResolvedValue({ deleted: 1, complete: false })
+
+        await expect(context.auth.logoutAll()).resolves.toEqual({ deleted: 1, complete: false })
+        expect(storage.destroyAllSessions).toHaveBeenCalledWith(USER_TOKEN)
+        expectAnonymous(context)
+    })
+})
+
+// feat-101: the re-sent cookie of a stored session lives as long as its Redis record. A
+// stored anonymous session presents the anon_session namespace as its user token.
+describe('the lifetime of a re-sent stored session cookie', () => {
+    const restoreWith = async (cookieUserToken: string, data: Record<string, unknown>) => {
+        storage.getSession.mockResolvedValue({
+            id: 's1',
+            data: { csrfToken: 'c'.repeat(43), ...data },
+            createdAt: new Date().toISOString(),
+        })
+        const responseData = createResponseData()
+        const context = createContext(
+            { method: 'get', headers: new Map(), cookies: new Map() } as never,
+            responseData,
+        )
+        await sessionHandler(context, createSignedToken(`${cookieUserToken}.s1`), undefined)
+        return responseData.cookies.get(sessionConfig.cookieName)
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        // The refresh is due, so the cookie is sent again on this request.
+        storage.claimCookieRefresh.mockResolvedValue(true)
+    })
+
+    it('a stored anonymous session gets the anonymous lifetime', async () => {
+        expect(sessionConfig.anonAge).not.toBe(sessionConfig.age)
+
+        const cookie = await restoreWith('anon_session', {})
+
+        expect(cookie?.maxAge).toBe(sessionConfig.anonAge)
+    })
+
+    it('a signed-in session gets the full lifetime', async () => {
+        const cookie = await restoreWith(USER_TOKEN, { userId: '7', userToken: USER_TOKEN })
+
+        expect(cookie?.maxAge).toBe(sessionConfig.age)
     })
 })

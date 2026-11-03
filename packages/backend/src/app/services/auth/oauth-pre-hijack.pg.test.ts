@@ -36,7 +36,7 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: (token: string) => {
         destroyed.tokens.push(token)
-        return Promise.resolve(0)
+        return Promise.resolve({ deleted: 0, complete: true })
     },
 }))
 vi.mock('#app/services/notifications/email-service.js', async () => {
@@ -182,7 +182,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                     return Promise.resolve(true)
                 },
                 logout: () => Promise.resolve(true),
-                logoutAll: () => Promise.resolve(0),
+                logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
             },
         }
     }

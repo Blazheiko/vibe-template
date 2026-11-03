@@ -88,15 +88,26 @@ export interface Auth {
     check: () => boolean
     login: (userId: string | undefined, userToken: string | undefined) => Promise<boolean>
     logout: () => Promise<boolean>
-    logoutAll: () => Promise<number>
+    logoutAll: () => Promise<DestroyAllSessionsResult>
+}
+
+/** Outcome of deleting all sessions of a user (destroyAllSessions, auth.logoutAll). */
+export interface DestroyAllSessionsResult {
+    /**
+     * Deletions Redis confirmed. A command still in flight when the deadline hit may delete
+     * more after the answer was given up on, so the real count can be higher.
+     */
+    deleted: number
+    /** The SCAN reached cursor 0 without an error: no session of the user is left. */
+    complete: boolean
 }
 
 export interface Session {
     sessionInfo: SessionInfo | null
     updateSessionData: (newData: SessionData) => Promise<SessionInfo | null>
     changeSessionData: (newData: SessionData) => Promise<SessionInfo | null>
-    destroySession: (sessionId: string | undefined) => Promise<void>
-    destroyAllSessions: (userId: string) => Promise<number>
+    /** Deletes the current session's record; it does not issue a new session. */
+    destroySession: () => Promise<void>
     /** Run by the server after the handler, right before the response is sent. */
     beforeSend?: () => Promise<void>
 }
