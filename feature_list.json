@@ -1151,8 +1151,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-116-storage-object-replacement",
             "dependencies": ["feat-114"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #382 (merge 2d25422; start #381). userRepository.replaceAvatarIfSessionToken and supportKnowledgeRepository.replaceScreenshot lock the row FOR UPDATE in a transaction, write the new key (the avatar only while the session token is current) and return the key they replaced; supportKnowledgeRepository.delete returns the screenshot key from DELETE ... RETURNING; setScreenshot/clearScreenshot removed. Avatar and KB screenshot: upload the new object, swap, delete the returned previous key; a thrown or refused swap deletes the new object; removals and article deletion delete the key from their own statement; content_version untouched. Evidence: typecheck, lint, format clean; pnpm test backend 2340, frontend 400, api-playground 62; test:pg with Redis 27/236, test:redis 11/107; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; storage-object-replacement.pg.test.ts (real PostgreSQL, in-memory S3, held uploads): KB parallel uploads, S3 upload failure, DB failure after upload, removal racing an upload, article deletion during an upload; avatar parallel uploads, DB failure, removal racing an upload; storage always ends with exactly the row object; mutation: main services/KB repository fail all 8 cases, deleting the pre-read avatar key fails the parallel case; manual: built backend /api/ready 200, DELETE /api/avatar without a session 401, SIGTERM exit 0 (no real S3 upload: the local .env points to an external store). Details were in progress.md on fix/feat-116-storage-object-replacement (removed from main by this PR)."
         }
     ]
 }
