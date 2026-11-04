@@ -540,6 +540,6 @@ RETURNING *`.
 | R10  | feat-113 | #373 | done        |
 | R11b | feat-114 | #376 | done        |
 | R11c | feat-115 | #379 | done        |
-| R11d | feat-116 |      | in_progress |
+| R11d | feat-116 | #382 | done        |
 | R12a |          |      | not-started |
 | R12b |          |      | not-started |
