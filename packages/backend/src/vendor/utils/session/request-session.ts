@@ -20,6 +20,7 @@ import {
     saveSession,
     sessionExists,
     updateSessionData,
+    consumeSessionData,
 } from '#vendor/utils/session/redis-session-storage.js'
 import logger from '#vendor/utils/logger.js'
 import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
@@ -276,6 +277,7 @@ export class RequestSession {
         session.sessionInfo = this.info
         session.updateSessionData = this.updateData.bind(this)
         session.changeSessionData = this.changeData.bind(this)
+        session.consumeSessionData = this.consumeData.bind(this)
         session.destroySession = this.destroy.bind(this)
         auth.getUserId = this.userId.bind(this)
         auth.getPresentedUserToken = this.getPresentedUserToken.bind(this)
@@ -299,6 +301,20 @@ export class RequestSession {
         return this.cookieHeld
             ? await this.storeAnonymous(newData)
             : await changeSessionData(this.info.id, newData, this.storageToken)
+    }
+
+    /**
+     * feat-119: removes single-use values only while they are still the expected ones. A
+     * cookie-held session has nothing stored to consume.
+     */
+    private async consumeData(
+        expected: Record<string, string>,
+        keys: readonly string[],
+    ): Promise<'consumed' | 'mismatch' | 'gone'> {
+        if (this.cookieHeld) return 'mismatch'
+        const result = await consumeSessionData(this.info.id, this.storageToken, expected, keys)
+        if (result.kind === 'consumed') this.setInfo(result.session)
+        return result.kind
     }
 
     private async destroy(): Promise<void> {

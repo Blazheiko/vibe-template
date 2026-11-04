@@ -42,6 +42,7 @@ const createContext = (query: { code?: string; state?: string }, storedState = '
         session: {
             sessionInfo: { id: 's1', data: { oauthState: storedState } },
             updateSessionData: vi.fn(() => Promise.resolve({ id: 's1', data: {} })),
+            consumeSessionData: vi.fn(() => Promise.resolve('consumed')),
         },
         auth: {},
         headers,
@@ -128,8 +129,8 @@ describe('OAuthController.callback', () => {
     })
 
     const consumeMock = (context: unknown): ReturnType<typeof vi.fn> =>
-        (context as { session: { updateSessionData: ReturnType<typeof vi.fn> } }).session
-            .updateSessionData
+        (context as { session: { consumeSessionData: ReturnType<typeof vi.fn> } }).session
+            .consumeSessionData
 
     // feat-119 (F2): the state is consumed before anything is done on its behalf.
     it('consumes the state before the sign-in', async () => {
@@ -139,10 +140,10 @@ describe('OAuthController.callback', () => {
         await OAuthController.callback(context)
 
         const consume = consumeMock(context)
-        expect(consume).toHaveBeenCalledWith({
-            oauthState: undefined,
-            oauthCodeVerifier: undefined,
-        })
+        expect(consume).toHaveBeenCalledWith({ oauthState: 'state-1' }, [
+            'oauthState',
+            'oauthCodeVerifier',
+        ])
         expect(consume.mock.invocationCallOrder[0]).toBeLessThan(
             handleCallback.mock.invocationCallOrder[0] ?? 0,
         )
@@ -150,7 +151,7 @@ describe('OAuthController.callback', () => {
 
     it('a session deleted after it was read (logout in another tab): no sign-in, error redirect', async () => {
         const context = createContext({ code: 'c', state: 'state-1' })
-        consumeMock(context).mockResolvedValue(null)
+        consumeMock(context).mockResolvedValue('gone')
 
         const response = await OAuthController.callback(context)
 
@@ -158,6 +159,23 @@ describe('OAuthController.callback', () => {
         expect(context.responseData.status).toBe(302)
         expect(context.headers.get('Location')).toContain('/?error=oauth_failed')
         expect(response).toMatchObject({ code: 'unauthorized', reason: 'session_revoked' })
+    })
+
+    // Review of feat-119: a state another callback consumed, or a new OAuth start replaced, is not
+    // this callback's to use.
+    it('a state already consumed or replaced: no sign-in, error redirect', async () => {
+        const context = createContext({ code: 'c', state: 'state-1' })
+        consumeMock(context).mockResolvedValue('mismatch')
+
+        const response = await OAuthController.callback(context)
+
+        expect(handleCallback).not.toHaveBeenCalled()
+        expect(context.responseData.status).toBe(302)
+        expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
+        expect(response).toMatchObject({
+            code: 'bad_request',
+            message: 'OAuth state was already used or replaced',
+        })
     })
 
     // feat-095: a failed session write must not turn the browser navigation into a JSON 5xx page.

@@ -135,20 +135,26 @@ export default {
         }
 
         // feat-119 (F2): the state and verifier are single-use and are consumed BEFORE anything
-        // happens on their behalf (accounts, mail, the login). The write goes over the stored
-        // record only (compare-and-set): a session a logout deleted after this request read it is
-        // not brought back, the callback stops here, and no new signed-in session is created.
-        let consumed: Awaited<ReturnType<typeof session.updateSessionData>>
+        // happens on their behalf (accounts, mail, the login), and only while the session still
+        // holds the state this request read. One compare-and-set decides:
+        // - gone: a logout deleted the session after it was read; nobody is signed in;
+        // - mismatch: another callback with the same state won, or a new OAuth start replaced it;
+        //   this callback stops and the newer state stays;
+        // - consumed: this callback is the only one that goes on.
+        let consumed: Awaited<ReturnType<typeof session.consumeSessionData>>
         try {
-            consumed = await session.updateSessionData({
-                oauthState: undefined,
-                oauthCodeVerifier: undefined,
-            })
+            consumed = await session.consumeSessionData({ oauthState: storedState }, [
+                'oauthState',
+                'oauthCodeVerifier',
+            ])
         } catch (err: unknown) {
             return redirectToError(context, internal(err, 'OAuth state could not be consumed'))
         }
-        if (consumed === null) {
+        if (consumed === 'gone') {
             return redirectToError(context, sessionRevoked())
+        }
+        if (consumed === 'mismatch') {
+            return redirectToError(context, badRequest('OAuth state was already used or replaced'))
         }
 
         let result: Awaited<ReturnType<typeof oauthService.handleCallback>>
