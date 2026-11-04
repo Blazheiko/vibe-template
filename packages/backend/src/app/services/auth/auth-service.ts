@@ -2,7 +2,12 @@ import { hashPassword, validatePassword } from 'metautil'
 import { Result } from 'better-result'
 import { nanoid } from 'nanoid'
 import type { Auth, Session } from '#vendor/types/types.js'
-import { smsAuthChallengeRepository, userRepository } from '#app/repositories/index.js'
+import {
+    passwordResetRepository,
+    smsAuthChallengeRepository,
+    userRepository,
+    withTransaction,
+} from '#app/repositories/index.js'
 import type { UserRow } from '#app/repositories/index.js'
 import { userTransformer } from '#app/transformers/index.js'
 import {
@@ -120,7 +125,7 @@ export function resolveLoginKey(identifier: string): LoginKey | null {
 async function resetThrottleQuietly(
     policy: ThrottlePolicy,
     key: string,
-    step: 'Login' | 'Change password',
+    step: 'Login' | 'Change password' | 'Password re-check',
 ): Promise<void> {
     try {
         await resetAuthThrottle(policy, key)
@@ -152,11 +157,28 @@ async function requireCurrentPasswordReauth(
         return Result.err(badRequest('Set a password before managing recovery methods'))
     }
 
+    // feat-109: spent before the check, from the same per-user budget as change-password, so a
+    // stolen session cannot guess the password through link-email / link-phone from many IPs.
+    const throttle = await enforceThrottle(
+        throttlePolicies.changePasswordUser,
+        String(userId),
+        badRequest('Too many password attempts. Please try again later.'),
+    )
+    if (Result.isError(throttle)) {
+        return Result.err(throttle.error)
+    }
+
     const validResult = await validatePassword(currentPassword, passwordHash)
 
     if (!validResult) {
         return Result.err(badRequest('Current password is incorrect'))
     }
+
+    await resetThrottleQuietly(
+        throttlePolicies.changePasswordUser,
+        String(userId),
+        'Password re-check',
+    )
 
     return Result.ok(user)
 }
@@ -997,11 +1019,25 @@ export const authService = {
         // before a revocation must not rotate the owner's new token away.
         if (userId !== null) {
             const presented = auth.getPresentedUserToken()
+            // feat-109: the pending password-reset links are retired with the rotation, in one
+            // transaction: "log out everywhere" also ends a reset somebody else asked for.
             const rotated =
                 presented === undefined
                     ? undefined
-                    : await userRepository.updateIfSessionToken(BigInt(userId), presented, {
-                          sessionToken: nanoid(),
+                    : await withTransaction(async (tx) => {
+                          const done = await userRepository.updateIfSessionToken(
+                              BigInt(userId),
+                              presented,
+                              { sessionToken: nanoid() },
+                              tx,
+                          )
+                          if (done !== undefined) {
+                              await passwordResetRepository.invalidatePendingByUserId(
+                                  BigInt(userId),
+                                  tx,
+                              )
+                          }
+                          return done
                       })
             if (rotated === undefined) {
                 const current = await userRepository.findSessionToken(BigInt(userId))
@@ -1090,12 +1126,22 @@ export const authService = {
         // before a revocation finds the presented sessionToken gone (feat-096).
         const previousSessionToken = user.sessionToken
         const rotatedSessionToken = nanoid()
-        const updated = await userRepository.changePasswordIfCurrent(
-            userId,
-            storedPassword,
-            presentedSessionToken,
-            { password: newPasswordHash, sessionToken: rotatedSessionToken },
-        )
+        // feat-109: the pending password-reset links go in the same transaction: a link asked
+        // for before the change cannot reset the password after it, and a failure retiring
+        // them rolls the change back.
+        const updated = await withTransaction(async (tx) => {
+            const changed = await userRepository.changePasswordIfCurrent(
+                userId,
+                storedPassword,
+                presentedSessionToken,
+                { password: newPasswordHash, sessionToken: rotatedSessionToken },
+                tx,
+            )
+            if (changed !== undefined) {
+                await passwordResetRepository.invalidatePendingByUserId(userId, tx)
+            }
+            return changed
+        })
 
         if (updated === undefined) {
             // Which condition lost: another change of the password (its own token rotation

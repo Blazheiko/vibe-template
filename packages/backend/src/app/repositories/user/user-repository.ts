@@ -94,6 +94,7 @@ export interface IUserRepository {
         currentPassword: string | null,
         expectedSessionToken: string,
         data: { password: string; sessionToken: string },
+        executor?: DbExecutor,
     ): Promise<UserRow | undefined>
     delete(id: bigint): Promise<boolean>
 }
@@ -287,8 +288,8 @@ export const userRepository: IUserRepository = {
         return row?.sessionToken
     },
 
-    async changePasswordIfCurrent(id, currentPassword, expectedSessionToken, data) {
-        const [row] = await db
+    async changePasswordIfCurrent(id, currentPassword, expectedSessionToken, data, executor = db) {
+        const [row] = await executor
             .update(users)
             .set({
                 password: data.password,

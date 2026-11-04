@@ -44,6 +44,10 @@ vi.mock('#app/repositories/index.js', async (importActual) => {
     const actual = await importActual<Record<string, unknown>>()
     return {
         ...actual,
+        // feat-109: logout-all rotates the token and retires the reset links in one
+        // transaction; there is no database in this suite.
+        withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
+        passwordResetRepository: { invalidatePendingByUserId: () => Promise.resolve(0) },
         userRepository: {
             findSessionToken: (id: bigint) => Promise.resolve(fakeUsers.tokens.get(String(id))),
             update: (id: bigint, data: { sessionToken?: string }) => {
