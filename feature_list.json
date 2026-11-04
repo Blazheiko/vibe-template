@@ -1171,8 +1171,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-118-llm-usage-audit",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #388 (merge 7c2f209; start #387). Migration 20261104165815_llm_usage_status adds llm_text_usage.status (completed/aborted/failed, default completed) and tokens_estimated; withUsageAudit wraps every text adapter from ai-provider and auditCall the embedding requests: the first stream step is the start (right after admission.budget.begin in the support pipeline), completion -> completed, AbortError or a consumer that stops -> aborted, timeout/other error -> failed, a never-read stream or an unconfigured adapter -> no row; usage reported (also before an abort, via onUsageReported) is real, else an estimate marked tokens_estimated; textUsageRecorder writes one row and gives the budget reported usage only; stats split reported/estimated tokens and count aborted/failed; API rows carry status/tokensEstimated; ADR 0003 addendum; ai.md, database.md. Evidence: typecheck, lint, format clean; pnpm test backend 2347, frontend 400, api-playground 62; test:pg with Redis 28/244, test:redis 11/107; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; usage-audit.pg.test.ts covers success, error before first chunk, usage then abort, abort without usage, cancel vs timeout, completion plus late reports -> one row, never started -> no row, stats; unit: Mistral cut on its last chunk keeps real tokens, failed Mistral/embedding, embedding estimate; mutation: no wrapper fails 5 PG cases, no one-row flag fails the late-report case; manual: db:migrate on a throwaway database gives both columns with defaults, built backend /api/ready 200, /api/admin/usage/stats without a session 401. Details were in progress.md on fix/feat-118-llm-usage-audit (removed from main by this PR)."
         }
     ]
 }
