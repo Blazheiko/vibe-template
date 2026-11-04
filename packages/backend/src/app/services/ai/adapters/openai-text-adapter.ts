@@ -251,6 +251,8 @@ export const openaiTextAdapter: ITextAdapter = {
         const first = yield* streamChatCompletion(basePayload, signal)
         let fullText = first.text
         let usage = first.usage
+        // Known before the tool round-trip: a call cut off in the second round keeps it (feat-118).
+        if (usage !== null) opts.onUsageReported?.(usage)
 
         if (opts.toolCallHandler !== undefined && first.toolCalls.length > 0) {
             logger.info(
@@ -286,6 +288,7 @@ export const openaiTextAdapter: ITextAdapter = {
             )
             fullText += second.text
             usage = mergeUsage(usage, second.usage)
+            if (usage !== null) opts.onUsageReported?.(usage)
         }
 
         if (usage === null) {

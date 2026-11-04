@@ -8,7 +8,12 @@ import type {
 import logger from '#logger'
 import { createHash } from 'node:crypto'
 import aiConfig from '#config/ai.js'
-import type { TextUsageCompleteHandler, TokenUsage } from '#app/services/ai/types.js'
+import { UNKNOWN_USAGE } from '#app/services/ai/types.js'
+import type {
+    TextCallStatus,
+    TextUsageCompleteHandler,
+    TokenUsage,
+} from '#app/services/ai/types.js'
 
 export type { TextFilter }
 
@@ -19,10 +24,13 @@ export interface TextUsageRecord {
     model: string
     feature: TextFeature
     finalPrompt: string
-    /** NULL when the provider did not report usage. */
+    /** NULL when unknown. With `tokensEstimated` they are an estimate, not the provider's. */
     promptTokens: number | null
     completionTokens: number | null
     totalTokens: number | null
+    /** How the call ended (feat-118); `completed` when not given. */
+    status?: TextCallStatus
+    tokensEstimated?: boolean
 }
 
 /** Characters as PostgreSQL's char_length counts them: a surrogate pair is one. */
@@ -66,6 +74,8 @@ export const llmUsageService = {
                 promptTokens: params.promptTokens,
                 completionTokens: params.completionTokens,
                 totalTokens: params.totalTokens,
+                status: params.status ?? 'completed',
+                tokensEstimated: params.tokensEstimated ?? false,
                 createdAt: new Date(),
             })
             .catch((err: unknown) => {
@@ -74,9 +84,11 @@ export const llmUsageService = {
     },
 
     /**
-     * `onComplete` handler for a text adapter call that records one usage row.
-     * `onUsage` sees the same reported usage (the daily budget settles with it); its failure
-     * never affects the row or the call.
+     * `onComplete` handler for one adapter call: it writes exactly one usage row (feat-118), with
+     * the status and the token origin the adapter's audit gives; a second report is ignored.
+     * `onUsage` sees what the provider reported (the daily budget settles with it), never an
+     * estimate: without a report the budget keeps its own estimate (ADR 0003). Its failure never
+     * affects the row or the call.
      */
     textUsageRecorder(
         feature: TextFeature,
@@ -84,7 +96,11 @@ export const llmUsageService = {
         llmSystemPromptId: bigint | null = null,
         onUsage?: (usage: TokenUsage) => void,
     ): TextUsageCompleteHandler {
-        return (usage, model, finalPrompt) => {
+        let recorded = false
+        return (usage, model, finalPrompt, end) => {
+            if (recorded) return
+            recorded = true
+            const tokensEstimated = end?.tokensEstimated ?? false
             llmUsageService.recordText({
                 userId,
                 llmSystemPromptId,
@@ -92,9 +108,11 @@ export const llmUsageService = {
                 feature,
                 finalPrompt,
                 ...usage,
+                status: end?.status ?? 'completed',
+                tokensEstimated,
             })
             try {
-                onUsage?.(usage)
+                onUsage?.(tokensEstimated ? UNKNOWN_USAGE : usage)
             } catch (err) {
                 logger.warn({ err }, 'llmUsageService: onUsage failed')
             }

@@ -52,19 +52,21 @@ export const mistralaiTextAdapter: ITextAdapter = {
         let hasUsage = false
 
         for await (const event of stream) {
-            const choice = event.data.choices[0]
-            const content = choice?.delta.content
-            if (typeof content === 'string' && content.length > 0) {
-                fullText += content
-                yield content
-            }
-            // Usage is provided in the last chunk
+            // Usage is provided in the last chunk. Kept before that chunk's text is handed on, so
+            // a consumer that stops on it still leaves real tokens (feat-118).
             const usage = event.data.usage
             if (usage !== undefined) {
                 promptTokens = usage.promptTokens ?? 0
                 completionTokens = usage.completionTokens ?? 0
                 totalTokens = usage.totalTokens ?? 0
                 hasUsage = true
+                opts.onUsageReported?.({ promptTokens, completionTokens, totalTokens })
+            }
+            const choice = event.data.choices[0]
+            const content = choice?.delta.content
+            if (typeof content === 'string' && content.length > 0) {
+                fullText += content
+                yield content
             }
         }
 

@@ -1,7 +1,7 @@
 import { promptService } from '#app/services/ai/prompt-service.js'
 import aiConfig from '#config/ai.js'
 import supportConfig from '#config/support.js'
-import type { TokenUsage } from '#app/services/ai/types.js'
+import { tokensOfText } from '#app/services/ai/usage/token-estimate.js'
 
 // What a support answer is expected to cost, per paid call (ADR 0003). The reservation is
 // this estimate; the settlement replaces it with what the provider reported.
@@ -13,20 +13,8 @@ export const BUDGET_CALLS = {
     chat: 'chat',
 } as const
 
-/**
- * Characters / 2, rounded up. A heuristic, not an upper bound: CJK, emoji and code can need
- * more tokens per character. The settlement corrects it in both directions.
- */
-export const tokensOfText = (text: string): number => Math.ceil(text.length / 2)
-
-/** Tokens a call is known to have used: the total, else prompt + completion, else unknown. */
-export function reportedTokens(usage: TokenUsage): number | null {
-    if (usage.totalTokens !== null) return usage.totalTokens
-    if (usage.promptTokens !== null && usage.completionTokens !== null) {
-        return usage.promptTokens + usage.completionTokens
-    }
-    return null
-}
+// Shared with the usage audit (feat-118).
+export { reportedTokens, tokensOfText } from '#app/services/ai/usage/token-estimate.js'
 
 const maxTokensOf = (
     type: 'SUPPORT_SYSTEM' | 'SUPPORT_FIRST_CHAT' | 'SUPPORT_QUERY_TRANSLATION',
