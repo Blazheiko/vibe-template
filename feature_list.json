@@ -1081,6 +1081,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-109-reauth-throttle-pending-tokens",
             "dependencies": ["feat-106"],
+            "status": "done",
+            "evidence": "Merged #362 (merge 5e3372c; start #361). requireCurrentPasswordReauth (link-email/start, link-phone/start) spends the per-user changePasswordUser budget before validatePassword and resets it after a right password (one budget with change-password); changePassword and logoutAll rotate and retire pending password-reset links in one transaction (changePasswordIfCurrent takes an executor), a failure rolls the rotation back. Evidence: typecheck, lint, format clean; pnpm test backend 2266, frontend 400, api-playground 62; test:pg with Redis 24 files/218 passed, test:redis 9/91; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; reauth-and-reset-links.pg.test.ts 8 cases on real PostgreSQL + Redis; mutation: 6 of 8 fail on main's auth-service (2 guards). Details were in progress.md on fix/feat-109-reauth-throttle-pending-tokens (removed from main by this PR)."
+        },
+        {
+            "id": "feat-110",
+            "name": "Client IP Keys",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R07 (decisions Д3: IPv6 /64, Д5: explicit unix-socket proxy flag): every per-IP limit keys on the full IPv6 /128, so one /64 gives an attacker a fresh budget per address; behind APP_UNIX_PATH the remote address is empty, every client is 'unknown' and shares one budget, and X-Forwarded-For is never read. Rate-limit and auth-throttle keys use one canonical key (IPv6 /64, IPv4-mapped to IPv4) while logs keep the full address; with a unix listener and TRUST_UNIX_SOCKET_PROXY=true the client IP comes from X-Forwarded-For (right to left, TRUSTED_PROXY_CIDRS skipped); docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-110-client-ip-keys",
+            "dependencies": [],
             "status": "in_progress",
             "evidence": ""
         }
