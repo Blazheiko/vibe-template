@@ -1,4 +1,4 @@
-import { createServer } from 'node:net'
+import { connect, createServer } from 'node:net'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -116,10 +116,15 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
     const clients: WebSocket[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
+    let inserted = 0
     const insertUser = async () => {
+        inserted += 1
         const [row] = await db
             .insert(users)
-            .values({ name: 'ws-reload', email: `ws-reload-${String(now)}@example.test` })
+            .values({
+                name: 'ws-reload',
+                email: `ws-reload-${String(now)}-${String(inserted)}@example.test`,
+            })
             .returning()
         if (row === undefined) throw new Error('user not inserted')
         createdUserIds.push(row.id)
@@ -222,5 +227,36 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
         release()
         await sleep(100)
         expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(1)
+    })
+
+    // feat-112 (R08): the last case, it stops the server. Every socket gets 4201 although every
+    // token revoke fails, and the listen socket is closed before.
+    it('stopServer closes every socket with 4201 even when Redis fails the revokes', async () => {
+        const first = await insertUser()
+        const firstClient = await Client.connect(await wsTokenFor(first))
+        const secondClient = await Client.connect(await wsTokenFor(first))
+        const codes: number[] = []
+        for (const client of [firstClient, secondClient]) {
+            client.ws.addEventListener('close', (event) => {
+                codes.push(event.code)
+            })
+        }
+        vi.spyOn(wsSessionAuth, 'revokeToken').mockRejectedValue(new Error('redis down'))
+
+        await stopServer?.('test')
+        await sleep(200)
+
+        expect(codes.sort()).toEqual([4201, 4201])
+        const refused = await new Promise<string>((resolve) => {
+            const socket = connect(PORT, '127.0.0.1')
+            socket.once('connect', () => {
+                socket.destroy()
+                resolve('connected')
+            })
+            socket.once('error', (err: NodeJS.ErrnoException) => {
+                resolve(err.code ?? 'error')
+            })
+        })
+        expect(refused).toBe('ECONNREFUSED')
     })
 })

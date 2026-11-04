@@ -43,6 +43,8 @@ interface Captured {
     status: string
     headers: Record<string, string>
     body: Buffer
+    /** feat-112: true when the answer ended with endWithoutBody (no Content-Length). */
+    withoutBody?: boolean
 }
 
 // A uWS response double; tryEnd accepts at most `window` bytes per call to force backpressure.
@@ -67,6 +69,11 @@ const createRes = (window = Number.POSITIVE_INFINITY) => {
         },
         end: (body?: string | Buffer) => {
             if (body !== undefined) captured.body = Buffer.from(body)
+            finished()
+            return res
+        },
+        endWithoutBody: () => {
+            captured.withoutBody = true
             finished()
             return res
         },
@@ -164,6 +171,8 @@ describe('If-None-Match (item 40)', () => {
         })
         expect(response.status).toBe('304 Not Modified')
         expect(response.body.length).toBe(0)
+        // feat-112: res.end() would add Content-Length: 0 to the 304.
+        expect(response.withoutBody).toBe(true)
     })
 
     it('answers 200 for another tag', async () => {

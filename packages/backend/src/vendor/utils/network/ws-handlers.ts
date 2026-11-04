@@ -178,21 +178,27 @@ const normalizeAppTypeProtocol = (rawAppType: string): 'web' | 'pwa' => {
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 
+// feat-112: every socket gets 4201 first, whatever Redis does; the token revokes then run
+// together and a failing one is only logged. (onClose revokes too; a DEL is idempotent.)
 const closeAllWs = async (): Promise<void> => {
     const hooks = getAppHooks()
-    for (const ws of wsStorage) {
-        const userData = ws.getUserData()
-        const token = userData.token
-        if (token !== '') {
-            await hooks.onRevokeToken(token)
-        }
+    const tokens: string[] = []
+    for (const ws of [...wsStorage]) {
         try {
+            const token = ws.getUserData().token
+            if (token !== '') tokens.push(token)
             ws.end(4201)
         } catch (e) {
             logger.error({ err: e }, 'closeAllWs error')
         }
     }
     wsStorage.clear()
+
+    const revoked = await Promise.allSettled(tokens.map((token) => hooks.onRevokeToken(token)))
+    const failed = revoked.filter((outcome) => outcome.status === 'rejected').length
+    if (failed > 0) {
+        logger.warn({ failed, total: tokens.length }, 'closeAllWs: some WS tokens were not revoked')
+    }
 }
 
 // ---------------------------------------------------------------------------

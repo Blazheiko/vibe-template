@@ -45,7 +45,22 @@ export function getDatabaseSslWarning(): string | null {
     return 'PGSQL_SSL=false: the connection to PostgreSQL is not encrypted; use PGSQL_SSL=true (verified) or require unless the database is reachable only over a trusted private network'
 }
 
+// feat-112: sockaddr_un.sun_path holds 104 bytes on macOS and the BSDs, 108 on Linux, the
+// terminating NUL included. uWS does not report a longer APP_UNIX_PATH: the process aborts in
+// native code with no log line, so it is refused here, before listen_unix.
+const UNIX_PATH_MAX_BYTES = process.platform === 'linux' ? 107 : 103
+
+export function getUnixPathError(unixPath: string | undefined = appConfig.unixPath): string | null {
+    if (unixPath === undefined) return null
+    const bytes = Buffer.byteLength(unixPath, 'utf8')
+    if (bytes <= UNIX_PATH_MAX_BYTES) return null
+    return `APP_UNIX_PATH is ${String(bytes)} bytes; a unix socket path can have at most ${String(UNIX_PATH_MAX_BYTES)} on this platform`
+}
+
 export function validateRuntimeConfig(): void {
+    const unixPathError = getUnixPathError()
+    if (unixPathError !== null) throw new Error(`Invalid app configuration: ${unixPathError}`)
+
     // Booleans and integers of the .env, read by one contract (feat-082)
     const unreadable: [string, string | null][] = [
         ['app', appConfig.configError],

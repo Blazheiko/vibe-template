@@ -607,8 +607,21 @@ const configureHttp = async (server: TemplatedApp, routes: ServerRoutes): Promis
         const staticCache = await cacheStaticSource()
         if (staticCache !== null) {
             staticCache.forEach((value, key) => {
-                server.get(key, async (res, req) => {
-                    await staticCacheHandler(res, req, value)
+                // feat-112: like the fallback route below, a throw must not become an unhandled
+                // rejection (which stops the server) and must still answer the request.
+                server.get(key, (res, req) => {
+                    staticCacheHandler(res, req, value).catch((err: unknown) => {
+                        logger.error({ err, url: key }, 'Unhandled static cache handler error')
+                        try {
+                            sendErrorResponse(res, 500, {
+                                status: 'error',
+                                code: 'internal_error',
+                                message: 'Internal error',
+                            })
+                        } catch {
+                            // Aborted or already answered: nothing left to send.
+                        }
+                    })
                 })
             })
         }
@@ -728,31 +741,37 @@ const setCorsHeader = (res: HttpResponse, requestOrigin: string | undefined): vo
 const initServer = async (routes: ServerRoutes): Promise<void> => {
     configureWebsockets(server, routes.wsRoutesByUrl)
     await configureHttp(server, routes)
-    if (appConfig.unixPath !== undefined) {
-        server.listen_unix((token) => {
-            logger.info(`Listening unix socket: ${appConfig.unixPath ?? ''}`)
-            state['listenSocket'] = token
-        }, appConfig.unixPath)
-    } else {
-        server.listen(appConfig.host, appConfig.port, (token) => {
-            if (token !== false) {
-                logger.info(`Listening http://${appConfig.host}:${String(appConfig.port)}`)
-                state['listenSocket'] = token
-            } else {
-                logger.error(`Failed to listen to port ${String(appConfig.port)}`)
-            }
-        })
+    // feat-112: a failed listen (port taken, a socket path the OS refuses, one over its length
+    // limit) gives `false`. It used to be logged as success (unix) or only logged (TCP), leaving a
+    // process that serves nothing. Now it rejects, and startup exits with the reason.
+    const unixPath = appConfig.unixPath
+    const where =
+        unixPath !== undefined
+            ? `unix socket ${unixPath}`
+            : `http://${appConfig.host}:${String(appConfig.port)}`
+    const token = await new Promise<uWS.us_listen_socket | false>((resolve) => {
+        if (unixPath !== undefined) {
+            server.listen_unix(resolve, unixPath)
+        } else {
+            server.listen(appConfig.host, appConfig.port, resolve)
+        }
+    })
+    if (token === false) {
+        throw new Error(`Failed to listen on ${where}`)
     }
+    state['listenSocket'] = token
+    logger.info(`Listening ${where}`)
 }
 
 const stopServer = async (type = 'handle'): Promise<void> => {
     logger.info(`server stop type: ${type}`)
     try {
-        await closeAllWs()
+        // feat-112: stop accepting first, so no connection arrives while the open ones close.
         if (state['listenSocket'] !== undefined) {
             uWS.us_listen_socket_close(state['listenSocket'] as uWS.us_listen_socket)
         }
         state['listenSocket'] = undefined
+        await closeAllWs()
     } catch (error) {
         logger.error({ err: error }, 'Server stop failed')
     }

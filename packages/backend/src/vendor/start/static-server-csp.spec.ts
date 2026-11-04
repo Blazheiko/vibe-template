@@ -72,6 +72,7 @@ const createRes = () => {
             captured.headers.push({ name, value })
         },
         end: (): void => {},
+        endWithoutBody: (): void => {},
     }
     return { res, captured }
 }

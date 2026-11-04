@@ -565,3 +565,24 @@ describe('env parsing contract', () => {
         expect(authConfig.configError).toContain('AUTH_SMS_MAX_INVALID_ATTEMPTS must be an integer')
     })
 })
+
+describe('APP_UNIX_PATH length (feat-112)', () => {
+    it('accepts a path within the platform limit and no path at all', async () => {
+        const { getUnixPathError } = await import('./validate-runtime-config.js')
+        expect(getUnixPathError(undefined)).toBeNull()
+        expect(getUnixPathError('/tmp/app.sock')).toBeNull()
+        expect(getUnixPathError(`/${'x'.repeat(102)}`)).toBeNull()
+    })
+
+    it('refuses a path over the limit at startup, before uWS aborts on it', async () => {
+        process.env['APP_UNIX_PATH'] = `/tmp/${'x'.repeat(200)}.sock`
+        try {
+            const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+            expect(() => {
+                validateRuntimeConfig()
+            }).toThrow(/Invalid app configuration: APP_UNIX_PATH is 210 bytes/)
+        } finally {
+            delete process.env['APP_UNIX_PATH']
+        }
+    })
+})
