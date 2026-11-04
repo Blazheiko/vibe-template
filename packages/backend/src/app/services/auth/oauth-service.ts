@@ -46,6 +46,13 @@ type JsonObject = Record<string, unknown>
 // every use reads the fields it needs defensively.
 async function fetchJson<T>(url: string, headers?: Record<string, string>): Promise<T> {
     const response = await fetch(url, headers !== undefined ? { headers } : undefined)
+    // feat-108: an error answer (expired token, rate limit, outage) is JSON too; read as a
+    // profile it gives an empty id. The callback turns the throw into a failed sign-in.
+    if (!response.ok) {
+        throw new Error(
+            `OAuth provider answered ${String(response.status)} for ${new URL(url).host}`,
+        )
+    }
 
     const data = await (response as unknown as { json(): Promise<unknown> }).json()
     return data as T
@@ -205,7 +212,8 @@ async function fetchGitHubUserInfo(accessToken: string): Promise<OAuthUserInfo> 
 
     // The public `email` of /user is not guaranteed to be verified, so the address
     // always comes from /user/emails: the primary one, and only when verified.
-    const emails = await fetchJson<JsonObject[]>('https://api.github.com/user/emails', headers)
+    const answer = await fetchJson<unknown>('https://api.github.com/user/emails', headers)
+    const emails = Array.isArray(answer) ? (answer as JsonObject[]) : []
     const primary = emails.find((e) => e['primary'] === true && e['verified'] === true)
     const email = typeof primary?.['email'] === 'string' ? primary['email'] : ''
 
@@ -359,6 +367,13 @@ export const oauthService = {
             { provider, email: maskEmailForLogs(userInfo.email) },
             'oauth provider user info received',
         )
+
+        // feat-108: an account is found by (provider, provider_user_id); an empty id would be one
+        // shared account for every profile the provider failed to describe.
+        if (userInfo.id === '') {
+            logger.warn({ provider }, 'oauth provider returned no user id')
+            return Result.err(badRequest('Could not retrieve account id from provider'))
+        }
 
         if (userInfo.email === '') {
             logger.warn({ provider }, 'oauth provider returned empty email')

@@ -72,3 +72,34 @@ describe('renderBrandedEmail', () => {
         )
     })
 })
+
+// feat-108 (R05): every field is text; markup from outside data stays text.
+describe('renderBrandedEmail escapes every field', () => {
+    const payload = '"><a href="https://evil.example">Secure your account</a><script>x()</script>'
+
+    it.each(['preheader', 'eyebrow', 'title', 'intro', 'footer'] as const)(
+        'escapes %s',
+        (field) => {
+            const html = renderBrandedEmail({ ...base, [field]: payload }).html
+
+            expect(html).not.toContain('<a href="https://evil.example">')
+            expect(html).not.toContain('<script>')
+            expect(html).toContain(escapeHtml(payload))
+        },
+    )
+
+    it('escapes the button label', () => {
+        const html = renderBrandedEmail({
+            ...base,
+            action: { kind: 'button', label: payload, url: 'https://app.example.com/x' },
+        }).html
+
+        expect(html).not.toContain('<script>')
+        expect(html).toContain(escapeHtml(payload))
+    })
+
+    it('keeps the plain-text body as text', () => {
+        const mail = renderBrandedEmail({ ...base, textLines: [payload] })
+        expect(mail.text.endsWith(payload)).toBe(true)
+    })
+})

@@ -53,15 +53,19 @@ export interface BrandedEmail {
 
 /**
  * The transactional mail every auth flow sends (password reset, e-mail verification, e-mail
- * linking): one layout, the words and the action vary. `preheader`, `eyebrow`, `title`, `intro`,
- * the button label and `footer` are the caller's own fixed words and go in as they are; the name
- * and the address come from outside and are escaped here.
+ * linking): one layout, the words and the action vary. Every field is text and is escaped here,
+ * the caller's own words too: a caller that puts outside data into one of them (the OAuth link
+ * mail quotes the provider's profile name in `intro`) cannot turn it into markup (feat-108).
  */
 export function renderBrandedEmail(mail: BrandedEmail): RenderedEmail {
     const trimmedName = mail.name.trim()
     const safeName = trimmedName === '' ? '' : `, ${trimmedName}`
     const escapedGreeting = trimmedName === '' ? '' : `, ${escapeHtml(trimmedName)}`
     const escapedUrl = escapeHtml(mail.action.url)
+    const eyebrow = escapeHtml(mail.eyebrow)
+    const title = escapeHtml(mail.title)
+    const intro = escapeHtml(mail.intro)
+    const footer = escapeHtml(mail.footer)
 
     const text = [`Hello${safeName}.`, '', ...mail.textLines].join('\n')
 
@@ -69,7 +73,7 @@ export function renderBrandedEmail(mail: BrandedEmail): RenderedEmail {
         mail.preheader === undefined
             ? ''
             : `    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-      ${mail.preheader}
+      ${escapeHtml(mail.preheader)}
     </div>
 `
 
@@ -82,7 +86,7 @@ export function renderBrandedEmail(mail: BrandedEmail): RenderedEmail {
                               href="${escapedUrl}"
                               style="display:inline-block;padding:17px 28px;font-size:17px;font-weight:700;line-height:1;color:#ffffff;text-decoration:none;border-radius:16px;background:${EMAIL_BRAND.accent};"
                             >
-                              ${mail.action.label}
+                              ${escapeHtml(mail.action.label)}
                             </a>
                           </td>
                         </tr>
@@ -130,10 +134,10 @@ ${preheader}    <table role="presentation" width="100%" cellspacing="0" cellpadd
                   <tr>
                     <td style="padding:40px 40px 24px;background:linear-gradient(180deg, rgba(168,98,122,0.16) 0%, rgba(168,98,122,0.05) 100%);border-bottom:1px solid ${EMAIL_BRAND.border};">
                       <div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${EMAIL_BRAND.accent};margin-bottom:14px;">
-                        ${mail.eyebrow}
+                        ${eyebrow}
                       </div>
                       <h1 style="margin:0;font-size:34px;line-height:1.12;font-weight:800;color:${EMAIL_BRAND.textPrimary};">
-                        ${mail.title}
+                        ${title}
                       </h1>
                     </td>
                   </tr>
@@ -143,10 +147,10 @@ ${preheader}    <table role="presentation" width="100%" cellspacing="0" cellpadd
                         Hello${escapedGreeting}.
                       </p>
                       <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:${EMAIL_BRAND.textSecondary};">
-                        ${mail.intro}
+                        ${intro}
                       </p>
 ${action}                      <div style="padding-top:20px;border-top:1px solid ${EMAIL_BRAND.border};font-size:14px;line-height:1.7;color:${EMAIL_BRAND.textSecondary};">
-                        ${mail.footer}
+                        ${footer}
                       </div>
                     </td>
                   </tr>
