@@ -108,11 +108,20 @@ registerWsAppHooks({
 ### Що відстежується
 
 - **Транспорт** (`ws-handlers.ts`): `Set<MyWebSocket>` усіх відкритих сокетів — лише для `closeAllWs` при зупинці.
-- **Реєстр** (`ws-connection-registry.ts`): `Map<userId, { ip, userAgent, appType, connections: Map<uuid, ws> }>`. Один користувач може мати кілька з'єднань (вкладки, PWA); `appType` стає `pwa`, якщо хоча б одне з'єднання PWA. `registerConnection` повертає `true` для першого з'єднання, `unregisterConnection` — `true` для останнього. Є також `isUserOnline`, `findOnlineUsers`, `forEachConnection`, `getConnection`, `getOnlineUsers`, `getOnlineUserMeta`.
+- **Реєстр** (`ws-connection-registry.ts`): `Map<userId, { ip, userAgent, appType, connections: Map<uuid, { ws, ip, userAgent, appType }> }>`. Кожне з'єднання зберігає власні `ip`, `userAgent` і `appType`, тож зведення (`appType`, `getOnlineUserMeta`) ніколи не читають `ws.getUserData()` збереженого сокета: на закритому сокеті uWS кидає `Invalid access of closed uWS.WebSocket` (feat-107). Один користувач може мати кілька з'єднань (вкладки, PWA); `appType` стає `pwa`, якщо хоча б одне з'єднання PWA. `registerConnection` повертає `true` для першого з'єднання, `unregisterConnection` — `true` для останнього. Є також `isUserOnline`, `findOnlineUsers`, `forEachConnection`, `getConnection`, `getOnlineUsers`, `getOnlineUserMeta`.
 - **Канали**: використовується pub/sub uWS (`ws.subscribe` / `server.publish`). У коді є один канал — `admin` ([admin-ws-channel-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/admin-ws-channel-service.ts)); підписатись може лише з'єднання з `role === 'admin'`, лічильник підписників зберігається в пам'яті. Роль з'єднання читається з БД один раз, при відкритті, тому відкликання адмін-доступу на відкритому з'єднанні описано в [Відкликання admin-доступу](#відкликання-admin-доступу).
 - **Історія онлайну в БД**: `userOnlineService.trackConnected/trackDisconnected` викликаються з координатора без `await` (помилки лише логуються).
 
 У `handleDisconnected` з'єднання видаляється з реєстру **синхронно до будь-якого `await`**, щоб broadcast-цикли не звертались до вже закритого uWS-сокета.
+
+Сокет мертвий з моменту, коли uWS викликає `close`-хендлер: після цього будь-яке звернення до нього кидає помилку. Окремого heartbeat для виявлення немає: напівмертве з'єднання закриває `idleTimeout`, і тоді теж спрацьовує `close`. Тому `onClose` (feat-107) до першого `await`:
+
+1. читає `userData` і ставить `userData.closed = true`;
+2. прибирає сокет з `wsStorage`;
+3. запускає `onDisconnected`, синхронна частина якого знімає з'єднання з реєстру;
+4. лише потім чекає Redis (`onRevokeToken`) і завершення `onDisconnected`.
+
+`handleConnected` після `await findRole(...)` перевіряє `userData.closed`. Сокет, закритий поки читалася роль, у реєстр не потрапляє: його `close` уже відпрацював і більше не викличеться.
 
 ::: warning `app/state/user-storage.ts`
 [user-storage.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/state/user-storage.ts) (`getUserByToken`/`setUserByToken`/`deleteToken` на `Map`) у поточному коді ніде не імпортується. Реальний стан з'єднань — у `ws-connection-registry.ts`.
@@ -246,7 +255,7 @@ Presence публікується лише якщо в каналі `admin` є �
 
 ## Heartbeat, таймаути, клієнт
 
-Опції uWS у `configureWebsockets` ([server.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts)): `compression: 0` (вимкнено), `idleTimeout: 120` с, `maxPayloadLength: 1 MB`, `maxBackpressure: 64 KB`. Протокольний ping/pong uWS не використовується явно: клієнт надсилає текст `ping`, сервер відповідає `pong`, що скидає idle-таймер. `pong` надсилається **першим і без жодної Redis-команди**: heartbeat підтверджує транспорт, а не Redis. Продовження TTL токена виконується після `pong` і не очікується; якщо Redis недоступний, воно мовчки пропускається, тож повільний або недоступний Redis не закриває з'єднання через pong-таймаут клієнта.
+Опції uWS у `configureWebsockets` ([server.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts)): `compression: 0` (вимкнено), `idleTimeout: 120` с, `maxPayloadLength: 1 MB`, `maxBackpressure: 64 KB`. Якщо `ws.send` у `sendJson` повертає `2` (повідомлення відкинуто, бо буфер понад `maxBackpressure`), сервер пише `warn` `WebSocket message dropped by backpressure, closing the connection` і закриває з'єднання кодом `1013`: клієнт інакше чекав би відповіді, якої не буде, а так перепідключається (feat-107). `0` (повідомлення лише в буфері) і `1` (надіслано) з'єднання не закривають. Протокольний ping/pong uWS не використовується явно: клієнт надсилає текст `ping`, сервер відповідає `pong`, що скидає idle-таймер. `pong` надсилається **першим і без жодної Redis-команди**: heartbeat підтверджує транспорт, а не Redis. Продовження TTL токена виконується після `pong` і не очікується; якщо Redis недоступний, воно мовчки пропускається, тож повільний або недоступний Redis не закриває з'єднання через pong-таймаут клієнта.
 
 Клієнт фронтенду — singleton-композабл [useWebSocketConnection.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useWebSocketConnection.ts) на `useWebSocket` з `@vueuse/core`:
 

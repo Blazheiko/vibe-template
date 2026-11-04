@@ -1,10 +1,19 @@
 import type { MyWebSocket } from '#vendor/types/types.js'
 
+// feat-107: each connection keeps its own ip, user agent and app type, so summaries never read
+// ws.getUserData() from a stored socket (it throws once the socket has closed).
+interface StoredConnection {
+    ws: MyWebSocket
+    ip: string
+    userAgent: string
+    appType: 'web' | 'pwa'
+}
+
 interface UserConnections {
     ip: string
     userAgent: string
     appType: 'web' | 'pwa'
-    connections: Map<string, MyWebSocket>
+    connections: Map<string, StoredConnection>
 }
 
 type UserStorage = Map<string, UserConnections>
@@ -17,9 +26,9 @@ export interface ConnectionMeta {
     appType: 'web' | 'pwa'
 }
 
-function summarizeAppType(connections: Iterable<MyWebSocket>): 'web' | 'pwa' {
-    for (const ws of connections) {
-        if (ws.getUserData().appType === 'pwa') {
+function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa' {
+    for (const connection of connections) {
+        if (connection.appType === 'pwa') {
             return 'pwa'
         }
     }
@@ -37,9 +46,15 @@ const registerConnection = (
     ws: MyWebSocket,
     meta: ConnectionMeta,
 ): boolean => {
+    const stored: StoredConnection = {
+        ws,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        appType: meta.appType,
+    }
     const existing = userStorage.get(userId)
     if (existing !== undefined) {
-        existing.connections.set(uuid, ws)
+        existing.connections.set(uuid, stored)
         existing.userAgent = meta.userAgent
         existing.ip = meta.ip
         existing.appType = summarizeAppType(existing.connections.values())
@@ -49,7 +64,7 @@ const registerConnection = (
         ip: meta.ip,
         userAgent: meta.userAgent,
         appType: meta.appType,
-        connections: new Map([[uuid, ws]]),
+        connections: new Map([[uuid, stored]]),
     })
     return true
 }
@@ -84,13 +99,13 @@ const findOnlineUsers = (userIds: string[]): string[] => {
 const forEachConnection = (userId: string, fn: (ws: MyWebSocket, uuid: string) => void): void => {
     const user = userStorage.get(userId)
     if (user === undefined) return
-    for (const [uuid, ws] of user.connections) {
-        fn(ws, uuid)
+    for (const [uuid, connection] of user.connections) {
+        fn(connection.ws, uuid)
     }
 }
 
 const getConnection = (userId: string, uuid: string): MyWebSocket | undefined =>
-    userStorage.get(userId)?.connections.get(uuid)
+    userStorage.get(userId)?.connections.get(uuid)?.ws
 
 const getOnlineUsers = (): {
     userId: string
@@ -130,15 +145,12 @@ const getOnlineUserMeta = (
         userAgent: user.userAgent,
         appType: user.appType,
         connectionsCount: user.connections.size,
-        connections: Array.from(user.connections.entries()).map(([uuid, ws]) => {
-            const userData = ws.getUserData()
-            return {
-                uuid,
-                ip: userData.ip,
-                userAgent: userData.userAgent,
-                appType: userData.appType,
-            }
-        }),
+        connections: Array.from(user.connections.entries()).map(([uuid, connection]) => ({
+            uuid,
+            ip: connection.ip,
+            userAgent: connection.userAgent,
+            appType: connection.appType,
+        })),
     }
 }
 
@@ -146,8 +158,8 @@ const getOnlineUserMeta = (
 const listConnections = (): { userId: string; uuid: string; ws: MyWebSocket }[] => {
     const all: { userId: string; uuid: string; ws: MyWebSocket }[] = []
     for (const [userId, user] of userStorage) {
-        for (const [uuid, ws] of user.connections) {
-            all.push({ userId, uuid, ws })
+        for (const [uuid, connection] of user.connections) {
+            all.push({ userId, uuid, ws: connection.ws })
         }
     }
     return all
