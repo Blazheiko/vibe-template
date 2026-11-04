@@ -1071,8 +1071,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-108-mail-escaping-oauth-fetch",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #359 (merge 38a22a4; start #358). renderBrandedEmail escapes every HTML field (preheader, eyebrow, title, intro, button label, footer, name, URL); oauth fetchJson throws on non-2xx (callback: Failed to exchange authorization code), an empty or non-string/number profile id is refused before any lookup, a non-array GitHub /user/emails reads as no verified address. Evidence: typecheck, lint, format clean; pnpm test backend 2258, frontend 400, api-playground 62; test:pg with Redis locally 23 files/210 passed, nothing skipped; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; oauth-pre-hijack.pg.test.ts: provider 500 creates nothing and no (facebook, '') row, two id-less profiles both refused, a markup profile name only escaped in the mailed HTML; mutation: every new case fails on main except the plain-text guard. Details were in progress.md on fix/feat-108-mail-escaping-oauth-fetch (removed from main by this PR)."
         }
     ]
 }
