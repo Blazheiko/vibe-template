@@ -12,6 +12,7 @@ const userRepositoryMock = {
     findById: vi.fn(),
     update: vi.fn(),
     updateIfSessionToken: vi.fn(),
+    replaceAvatarIfSessionToken: vi.fn(),
 }
 
 const SESSION_TOKEN = 'presented-token'
@@ -55,11 +56,14 @@ describe('avatarService', () => {
             sessionToken: SESSION_TOKEN,
         })
         uploadToS3Mock.mockResolvedValue(undefined)
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue({
-            id: 7n,
-            name: 'Alice',
-            email: 'alice@example.com',
-            avatar: 'avatars/7/avatar.webp',
+        userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+            user: {
+                id: 7n,
+                name: 'Alice',
+                email: 'alice@example.com',
+                avatar: 'avatars/7/avatar.webp',
+            },
+            previousAvatar: null,
         })
 
         const { avatarService } = await loadAvatarService()
@@ -96,9 +100,12 @@ describe('avatarService', () => {
         it('stores a PNG publicly under a .png key, ignoring the client file name', async () => {
             userRepositoryMock.findById.mockResolvedValue(user)
             uploadToS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue({
-                ...user,
-                avatar: 'avatars/7/x.png',
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+                user: {
+                    ...user,
+                    avatar: 'avatars/7/x.png',
+                },
+                previousAvatar: null,
             })
 
             const { avatarService } = await loadAvatarService()
@@ -149,9 +156,12 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue({ ...user, avatar: 'avatars/7/old.webp' })
             uploadToS3Mock.mockResolvedValue(undefined)
             deleteFromS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue({
-                ...user,
-                avatar: 'avatars/7/new.webp',
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+                user: {
+                    ...user,
+                    avatar: 'avatars/7/new.webp',
+                },
+                previousAvatar: 'avatars/7/old.webp',
             })
 
             const { avatarService } = await loadAvatarService()
@@ -179,11 +189,14 @@ describe('avatarService', () => {
         })
         uploadToS3Mock.mockResolvedValue(undefined)
         deleteFromS3Mock.mockRejectedValue(new Error('S3 delete failed'))
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue({
-            id: 7n,
-            name: 'Alice',
-            email: 'alice@example.com',
-            avatar: 'avatars/7/new.webp',
+        userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+            user: {
+                id: 7n,
+                name: 'Alice',
+                email: 'alice@example.com',
+                avatar: 'avatars/7/new.webp',
+            },
+            previousAvatar: 'avatars/7/old.webp',
         })
 
         const { avatarService } = await loadAvatarService()
@@ -247,7 +260,7 @@ describe('avatarService', () => {
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
             expect(uploadToS3Mock).not.toHaveBeenCalled()
-            expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+            expect(userRepositoryMock.replaceAvatarIfSessionToken).not.toHaveBeenCalled()
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
             expect(deleteFromS3Mock).not.toHaveBeenCalled()
         })
@@ -256,7 +269,7 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
             uploadToS3Mock.mockResolvedValue(undefined)
             deleteFromS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue(undefined)
 
             const { avatarService } = await loadAvatarService()
             const result = await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
@@ -265,10 +278,10 @@ describe('avatarService', () => {
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
             const newKey = uploadToS3Mock.mock.calls[0]?.[0] as string
             expect(newKey).toMatch(/^avatars\/7\/[0-9a-f-]{36}\.webp$/)
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+            expect(userRepositoryMock.replaceAvatarIfSessionToken).toHaveBeenCalledWith(
                 7n,
                 SESSION_TOKEN,
-                { avatar: newKey },
+                newKey,
             )
             expect(deleteFromS3Mock).toHaveBeenCalledTimes(1)
             expect(deleteFromS3Mock).toHaveBeenCalledWith(newKey)
@@ -279,9 +292,12 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
             uploadToS3Mock.mockResolvedValue(undefined)
             deleteFromS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue({
-                ...owner,
-                avatar: 'avatars/7/new.webp',
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+                user: {
+                    ...owner,
+                    avatar: 'avatars/7/new.webp',
+                },
+                previousAvatar: 'avatars/7/old.webp',
             })
 
             const { avatarService } = await loadAvatarService()
@@ -290,7 +306,7 @@ describe('avatarService', () => {
             expect(Result.isOk(result)).toBe(true)
             expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/old.webp')
             expect(
-                userRepositoryMock.updateIfSessionToken.mock.invocationCallOrder[0],
+                userRepositoryMock.replaceAvatarIfSessionToken.mock.invocationCallOrder[0],
             ).toBeLessThan(deleteFromS3Mock.mock.invocationCallOrder[0] ?? 0)
         })
 
@@ -302,24 +318,24 @@ describe('avatarService', () => {
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
-            expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+            expect(userRepositoryMock.replaceAvatarIfSessionToken).not.toHaveBeenCalled()
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
             expect(deleteFromS3Mock).not.toHaveBeenCalled()
         })
 
         it('deleteAvatar keeps the object when the conditional write loses', async () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue(undefined)
 
             const { avatarService } = await loadAvatarService()
             const result = await avatarService.deleteAvatar(7n, 'stale-token')
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+            expect(userRepositoryMock.replaceAvatarIfSessionToken).toHaveBeenCalledWith(
                 7n,
                 'stale-token',
-                { avatar: null },
+                null,
             )
             expect(deleteFromS3Mock).not.toHaveBeenCalled()
         })
@@ -327,21 +343,58 @@ describe('avatarService', () => {
         it('deleteAvatar clears the row, then deletes the old object', async () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
             deleteFromS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue({ ...owner, avatar: null })
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+                user: { ...owner, avatar: null },
+                previousAvatar: 'avatars/7/old.webp',
+            })
 
             const { avatarService } = await loadAvatarService()
             const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
 
             expect(Result.isOk(result)).toBe(true)
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+            expect(userRepositoryMock.replaceAvatarIfSessionToken).toHaveBeenCalledWith(
                 7n,
                 SESSION_TOKEN,
-                { avatar: null },
+                null,
             )
             expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/old.webp')
             expect(
-                userRepositoryMock.updateIfSessionToken.mock.invocationCallOrder[0],
+                userRepositoryMock.replaceAvatarIfSessionToken.mock.invocationCallOrder[0],
             ).toBeLessThan(deleteFromS3Mock.mock.invocationCallOrder[0] ?? 0)
+        })
+
+        // feat-116: the object deleted is the one the row held when the key was swapped, not the
+        // one read before the upload: a concurrent change in between has set another one.
+        it('uploadAvatar deletes the key the swap replaced, not the one read before', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            uploadToS3Mock.mockResolvedValue(undefined)
+            deleteFromS3Mock.mockResolvedValue(undefined)
+            userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+                user: { ...owner, avatar: 'avatars/7/new.webp' },
+                previousAvatar: 'avatars/7/concurrent.webp',
+            })
+
+            const { avatarService } = await loadAvatarService()
+            await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
+
+            expect(deleteFromS3Mock).toHaveBeenCalledTimes(1)
+            expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/concurrent.webp')
+        })
+
+        it('uploadAvatar takes back the new object when the swap throws', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            uploadToS3Mock.mockResolvedValue(undefined)
+            deleteFromS3Mock.mockResolvedValue(undefined)
+            userRepositoryMock.replaceAvatarIfSessionToken.mockRejectedValue(new Error('db down'))
+
+            const { avatarService } = await loadAvatarService()
+            await expect(avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)).rejects.toThrow(
+                'db down',
+            )
+
+            const newKey = uploadToS3Mock.mock.calls[0]?.[0] as string
+            expect(deleteFromS3Mock).toHaveBeenCalledTimes(1)
+            expect(deleteFromS3Mock).toHaveBeenCalledWith(newKey)
         })
     })
 })

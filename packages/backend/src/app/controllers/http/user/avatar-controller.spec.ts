@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PNG_BYTES } from '../../../../test-support/image-fixtures.js'
 
-const userRepositoryMock = { findById: vi.fn(), update: vi.fn(), updateIfSessionToken: vi.fn() }
+const userRepositoryMock = {
+    findById: vi.fn(),
+    update: vi.fn(),
+    updateIfSessionToken: vi.fn(),
+    replaceAvatarIfSessionToken: vi.fn(),
+}
 const uploadToS3Mock = vi.fn()
 
 vi.mock('#app/repositories/index.js', () => ({ userRepository: userRepositoryMock }))
@@ -50,7 +55,7 @@ describe('AvatarController.uploadAvatar when storage fails', () => {
 
         await expect(AvatarController.uploadAvatar(context)).rejects.toBe(s3Error)
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
-        expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
+        expect(userRepositoryMock.replaceAvatarIfSessionToken).not.toHaveBeenCalled()
     })
 })
 
@@ -63,7 +68,7 @@ describe('AvatarController passes the presented session token', () => {
             avatar: null,
             sessionToken: 'rotated-token',
         })
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+        userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue(undefined)
         const context = createContext()
 
         const uploaded = await AvatarController.uploadAvatar(context)
@@ -73,9 +78,11 @@ describe('AvatarController passes the presented session token', () => {
 
         context.responseData.status = 200
         const deleted = await AvatarController.deleteAvatar(context)
-        expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, 'token-7', {
-            avatar: null,
-        })
+        expect(userRepositoryMock.replaceAvatarIfSessionToken).toHaveBeenCalledWith(
+            7n,
+            'token-7',
+            null,
+        )
         expect(context.responseData.status).toBe(401)
         expect(deleted).toMatchObject({ reason: 'session_revoked' })
     })

@@ -98,19 +98,29 @@ export const avatarService = {
         // Public like KB screenshots: the frontend loads avatars from CDN_URL (decision R1).
         await uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true })
 
-        // The row first, the old object after: a refused update (session revoked meanwhile)
-        // must leave the current avatar in place and take back the new upload.
-        const updated = await userRepository.updateIfSessionToken(userId, presentedSessionToken, {
-            avatar: s3Key,
-        })
-        if (updated === undefined) {
+        // feat-116: the row first, the old object after, and the old key is the one the row held
+        // when it was swapped (not `user.avatar` read above): of two concurrent changes each
+        // deletes what the other set, so no object is left behind. A refused or failed swap
+        // (session revoked meanwhile) leaves the current avatar and takes back the new upload.
+        let replaced: Awaited<ReturnType<typeof userRepository.replaceAvatarIfSessionToken>>
+        try {
+            replaced = await userRepository.replaceAvatarIfSessionToken(
+                userId,
+                presentedSessionToken,
+                s3Key,
+            )
+        } catch (err: unknown) {
+            await deleteAvatarObject(s3Key)
+            throw err
+        }
+        if (replaced === undefined) {
             await deleteAvatarObject(s3Key)
             return Result.err(sessionRevoked())
         }
 
-        if (user.avatar !== null) await deleteAvatarObject(user.avatar)
+        if (replaced.previousAvatar !== null) await deleteAvatarObject(replaced.previousAvatar)
 
-        return Result.ok({ user: serializeUser(updated) })
+        return Result.ok({ user: serializeUser(replaced.user) })
     },
 
     async deleteAvatar(
@@ -125,15 +135,17 @@ export const avatarService = {
             return Result.err(sessionRevoked())
         }
 
-        const updated = await userRepository.updateIfSessionToken(userId, presentedSessionToken, {
-            avatar: null,
-        })
-        if (updated === undefined) {
+        const replaced = await userRepository.replaceAvatarIfSessionToken(
+            userId,
+            presentedSessionToken,
+            null,
+        )
+        if (replaced === undefined) {
             return Result.err(sessionRevoked())
         }
 
-        if (user.avatar !== null) await deleteAvatarObject(user.avatar)
+        if (replaced.previousAvatar !== null) await deleteAvatarObject(replaced.previousAvatar)
 
-        return Result.ok({ user: serializeUser(updated) })
+        return Result.ok({ user: serializeUser(replaced.user) })
     },
 }

@@ -58,7 +58,13 @@ Presigned PUT і multipart-upload з браузера напряму в баке
 
 Тип перевіряється **за вмістом**: [`detectImageType`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/storage/detect-image-type.ts) читає сигнатуру файлу (PNG `89 50 4E 47 0D 0A 1A 0A`, JPEG `FF D8 FF`, WebP `RIFF…WEBP`). Файл приймається, лише коли виявлений тип дозволений **і** збігається з заявленим у multipart `Content-Type`; інакше `400 bad_request` («Invalid file type»). GIF, SVG та інші формати не розпізнаються й відхиляються.
 
-Після успішного завантаження сервіс видаляє попередній об'єкт (best-effort: помилка лише пишеться в лог як `warn`) і записує новий відносний ключ у БД.
+Заміна аватара і скриншота KB іде в одному порядку ([avatar-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/avatar-service.ts), [knowledge-base-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-service.ts)):
+
+1. Новий об'єкт завантажується під новим випадковим ключем. Якщо S3 відмовив, рядок і старий об'єкт лишаються як були.
+2. Рядок блокується (`SELECT … FOR UPDATE` у транзакції), у нього записується новий ключ, і репозиторій повертає **ключ, який був у рядку в цю мить** (`replaceAvatarIfSessionToken`, `replaceScreenshot`). Для аватара це відбувається лише поки сесія ще поточна.
+3. Видаляється саме цей попередній ключ (best-effort: помилка лише пишеться в лог як `warn`).
+
+Якщо крок 2 впав або нічого не змінив (сесію відкликано, статтю видалено), щойно завантажений об'єкт видаляється. Попередній ключ береться з рядка під замком, а не з читання до завантаження. Тому з двох паралельних замін кожна видаляє те, що записала інша, і в сховищі лишається рівно той об'єкт, на який вказує рядок. Видалення аватара чи скриншота, а також видалення статті (`DELETE … RETURNING screenshot_key`), так само видаляють ключ, отриманий з того самого запиту: завантаження, що проскочило між читанням і видаленням, не лишає осиротілого об'єкта. Зміна скриншота не змінює `content_version` статті, тож не скасовує її індексацію ([AI → Версія тексту](/backend/ai)).
 
 ```mermaid
 sequenceDiagram
@@ -72,10 +78,15 @@ sequenceDiagram
     API->>S: файл (UploadedFile)
     S->>S: перевірка розміру та MIME
     S->>DB: знайти користувача / статтю
-    S->>S3: PutObject(prefix/uploads/key)
-    S->>S3: DeleteObject(старий ключ), best-effort
-    S->>DB: зберегти відносний ключ
-    S-->>B: 200 { status: ok, ... }
+    S->>S3: PutObject(новий ключ)
+    S->>DB: FOR UPDATE, новий ключ, повернути попередній
+    alt рядок оновлено
+        S->>S3: DeleteObject(попередній ключ), best-effort
+        S-->>B: 200 { status: ok, ... }
+    else збій або сесію відкликано / статтю видалено
+        S->>S3: DeleteObject(новий ключ)
+        S-->>B: помилка
+    end
 ```
 
 ## Як файли віддаються

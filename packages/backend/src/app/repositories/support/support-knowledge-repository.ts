@@ -124,22 +124,45 @@ export const supportKnowledgeRepository = {
         return updated
     },
 
-    async delete(id: bigint): Promise<void> {
-        await db.delete(supportKnowledgeBase).where(eq(supportKnowledgeBase.id, id))
+    /**
+     * Deletes the article and returns its screenshot key from the same statement, so a screenshot
+     * set meanwhile is the one deleted from S3 (feat-116). Undefined when there was no article.
+     */
+    async delete(id: bigint): Promise<{ screenshotKey: string | null } | undefined> {
+        const [deleted] = await db
+            .delete(supportKnowledgeBase)
+            .where(eq(supportKnowledgeBase.id, id))
+            .returning({ screenshotKey: supportKnowledgeBase.screenshotKey })
+        return deleted
     },
 
-    async setScreenshot(id: bigint, key: string, mime: string): Promise<void> {
-        await db
-            .update(supportKnowledgeBase)
-            .set({ screenshotKey: key, screenshotMime: mime, updatedAt: new Date() })
-            .where(eq(supportKnowledgeBase.id, id))
-    },
-
-    async clearScreenshot(id: bigint): Promise<void> {
-        await db
-            .update(supportKnowledgeBase)
-            .set({ screenshotKey: null, screenshotMime: null, updatedAt: new Date() })
-            .where(eq(supportKnowledgeBase.id, id))
+    /**
+     * Sets the screenshot (or clears it with null) and returns the key it replaced, read from the
+     * row locked in the same transaction (feat-116): of two concurrent changes each gets the key
+     * the other set, so every replaced object is deleted exactly once. Undefined when the article
+     * is gone. The content version stays: a screenshot is not part of the indexed text.
+     */
+    async replaceScreenshot(
+        id: bigint,
+        screenshot: { key: string; mime: string } | null,
+    ): Promise<{ previousKey: string | null } | undefined> {
+        return db.transaction(async (tx) => {
+            const [current] = await tx
+                .select({ screenshotKey: supportKnowledgeBase.screenshotKey })
+                .from(supportKnowledgeBase)
+                .where(eq(supportKnowledgeBase.id, id))
+                .for('update')
+            if (current === undefined) return undefined
+            await tx
+                .update(supportKnowledgeBase)
+                .set({
+                    screenshotKey: screenshot?.key ?? null,
+                    screenshotMime: screenshot?.mime ?? null,
+                    updatedAt: new Date(),
+                })
+                .where(eq(supportKnowledgeBase.id, id))
+            return { previousKey: current.screenshotKey }
+        })
     },
 
     /**
