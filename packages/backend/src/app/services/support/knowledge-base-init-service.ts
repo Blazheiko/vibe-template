@@ -182,10 +182,14 @@ export function createKnowledgeBaseInitService({
                         isActive: true,
                     })
                     ensureHeld(lock)
-                    await supportEmbeddingService.indexArticle(created)
+                    // feat-119 (F3): the lease is checked again right before the vector write,
+                    // after the provider wait, and its loss cancels that wait.
+                    await supportEmbeddingService.indexArticle(created, { signal: lock.lost })
                     status.createdArticles += 1
                 } catch (err) {
                     // A lost lock stops the run: this file was not written, so it is not counted.
+                    // The provider may wrap the abort in its own error: the signal decides.
+                    if (lock.lost.aborted) throw lock.lost.reason
                     if (err instanceof KnowledgeBaseInitLockLostError) throw err
                     status.failedFiles += 1
                     logger.error({ err, filename }, 'Knowledge base init: failed to import article')

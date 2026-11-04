@@ -41,7 +41,7 @@ const createContext = (query: { code?: string; state?: string }, storedState = '
         },
         session: {
             sessionInfo: { id: 's1', data: { oauthState: storedState } },
-            updateSessionData: vi.fn(),
+            updateSessionData: vi.fn(() => Promise.resolve({ id: 's1', data: {} })),
         },
         auth: {},
         headers,
@@ -127,25 +127,52 @@ describe('OAuthController.callback', () => {
         )
     })
 
-    // feat-095 (code review): the cleanup ran outside the catch; a failed update turned the
-    // browser navigation into a JSON 5xx page.
-    it.each([
-        ['success', Result.ok({ redirectUrl: '/?oauth=success' }), '/?oauth=success'],
-        ['failure', Result.err({ _tag: 'BadRequest', message: 'x' }), '/?error=oauth_failed'],
-    ])('still redirects after a %s when the state cleanup fails', async (_, outcome, location) => {
-        handleCallback.mockResolvedValue(outcome)
+    const consumeMock = (context: unknown): ReturnType<typeof vi.fn> =>
+        (context as { session: { updateSessionData: ReturnType<typeof vi.fn> } }).session
+            .updateSessionData
+
+    // feat-119 (F2): the state is consumed before anything is done on its behalf.
+    it('consumes the state before the sign-in', async () => {
+        handleCallback.mockResolvedValue(Result.ok({ redirectUrl: '/?oauth=success' }))
         const context = createContext({ code: 'c', state: 'state-1' })
-        ;(
-            context.session as unknown as { updateSessionData: ReturnType<typeof vi.fn> }
-        ).updateSessionData.mockRejectedValue(new Error('Command timed out'))
 
         await OAuthController.callback(context)
 
+        const consume = consumeMock(context)
+        expect(consume).toHaveBeenCalledWith({
+            oauthState: undefined,
+            oauthCodeVerifier: undefined,
+        })
+        expect(consume.mock.invocationCallOrder[0]).toBeLessThan(
+            handleCallback.mock.invocationCallOrder[0] ?? 0,
+        )
+    })
+
+    it('a session deleted after it was read (logout in another tab): no sign-in, error redirect', async () => {
+        const context = createContext({ code: 'c', state: 'state-1' })
+        consumeMock(context).mockResolvedValue(null)
+
+        const response = await OAuthController.callback(context)
+
+        expect(handleCallback).not.toHaveBeenCalled()
         expect(context.responseData.status).toBe(302)
-        expect(context.headers.get('Location')).toBe(location)
-        expect(context.logger.warn).toHaveBeenCalledWith(
+        expect(context.headers.get('Location')).toContain('/?error=oauth_failed')
+        expect(response).toMatchObject({ code: 'unauthorized', reason: 'session_revoked' })
+    })
+
+    // feat-095: a failed session write must not turn the browser navigation into a JSON 5xx page.
+    it('a state that cannot be consumed (Redis down): no sign-in, still a redirect', async () => {
+        const context = createContext({ code: 'c', state: 'state-1' })
+        consumeMock(context).mockRejectedValue(new Error('Command timed out'))
+
+        await OAuthController.callback(context)
+
+        expect(handleCallback).not.toHaveBeenCalled()
+        expect(context.responseData.status).toBe(302)
+        expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
+        expect(context.logger.error).toHaveBeenCalledWith(
             expect.objectContaining({ err: expect.any(Error) }),
-            'OAuth state cleanup failed',
+            'OAuth state could not be consumed',
         )
     })
 

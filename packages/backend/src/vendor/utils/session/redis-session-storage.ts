@@ -5,6 +5,7 @@ import logger from '#vendor/utils/logger.js'
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import redisConfig from '#config/redis.js'
 import { storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
+import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 
 /**
  * Sanitizes Redis keys for protection against injections
@@ -106,12 +107,25 @@ export const getSession = async (
 
     if (sessionJson === null) return null
 
+    let session: SessionInfo
     try {
-        return JSON.parse(sessionJson) as SessionInfo
+        session = JSON.parse(sessionJson) as SessionInfo
     } catch (e) {
         logger.error({ err: e }, 'Failed to parse session JSON:')
+        return null
     }
-    return null
+    // feat-119 (F1): past SESSION_MAX_AGE_DAYS a record is gone for every reader (HTTP and each
+    // WebSocket message), and deleted, so the sliding TTL cannot keep it.
+    if (isPastMaxAge(session.createdAt)) {
+        // Memory cleanup: the record is refused either way, so a failed delete is only logged.
+        try {
+            await withRedis(() => redis.del(redisKey))
+        } catch (err: unknown) {
+            logger.warn({ err }, 'Could not delete a session past its maximum age')
+        }
+        return null
+    }
+    return session
 }
 
 // feat-111: an update writes back only over the very record it read, in one Lua script. A key

@@ -134,6 +134,23 @@ export default {
             return redirectToError(context, badRequest('Missing OAuth parameters'))
         }
 
+        // feat-119 (F2): the state and verifier are single-use and are consumed BEFORE anything
+        // happens on their behalf (accounts, mail, the login). The write goes over the stored
+        // record only (compare-and-set): a session a logout deleted after this request read it is
+        // not brought back, the callback stops here, and no new signed-in session is created.
+        let consumed: Awaited<ReturnType<typeof session.updateSessionData>>
+        try {
+            consumed = await session.updateSessionData({
+                oauthState: undefined,
+                oauthCodeVerifier: undefined,
+            })
+        } catch (err: unknown) {
+            return redirectToError(context, internal(err, 'OAuth state could not be consumed'))
+        }
+        if (consumed === null) {
+            return redirectToError(context, sessionRevoked())
+        }
+
         let result: Awaited<ReturnType<typeof oauthService.handleCallback>>
         try {
             result = await oauthService.handleCallback(
@@ -149,19 +166,6 @@ export default {
             // ADR 0004: an infrastructure failure throws, but this is a browser navigation:
             // it still ends in the error redirect (redirectToError logs it with the cause).
             result = Result.err(internal(err, 'OAuth sign-in failed'))
-        }
-
-        // The state and verifier are single-use. A failed cleanup must not turn the callback
-        // into a JSON 5xx page: it is logged and the outcome above still redirects. A left
-        // state is harmless: a successful login replaced the session, and the provider's
-        // code cannot be used twice.
-        try {
-            await session.updateSessionData({
-                oauthState: undefined,
-                oauthCodeVerifier: undefined,
-            })
-        } catch (err: unknown) {
-            logger.warn({ err }, 'OAuth state cleanup failed')
         }
 
         if (Result.isError(result)) {

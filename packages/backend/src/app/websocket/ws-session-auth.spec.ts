@@ -26,7 +26,12 @@ const { wsSessionAuth } = await import('./ws-session-auth.js')
 const { generateWsToken } = await import('#app/services/auth/generate-ws-token-service.js')
 
 const TOKEN_DATA = JSON.stringify({ sessionId: 's1', userId: '1', userToken: 'u1' })
-const SESSION_DATA = JSON.stringify({ id: 's1', data: { userId: '1' } })
+const DAY_MS = 24 * 60 * 60_000
+const SESSION_DATA = JSON.stringify({
+    id: 's1',
+    data: { userId: '1' },
+    createdAt: new Date().toISOString(),
+})
 
 beforeEach(() => {
     vi.clearAllMocks()
@@ -43,6 +48,21 @@ describe('verifyUpgradeToken', () => {
             userId: '1',
             userToken: 'u1',
         })
+    })
+
+    // feat-119 (F1): the same absolute lifetime as an HTTP request (SESSION_MAX_AGE_DAYS = 30).
+    it('missing for a session past its maximum age, and its record is deleted', async () => {
+        const old = JSON.stringify({
+            id: 's1',
+            data: { userId: '1' },
+            createdAt: new Date(Date.now() - 31 * DAY_MS).toISOString(),
+        })
+        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(old)
+
+        await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({ kind: 'missing' })
+
+        expect(checkSessionToken).not.toHaveBeenCalled()
+        expect(redis.del).toHaveBeenCalledWith('session:u1:s1')
     })
 
     // ADR 0002: the Redis records are intact, but users.sessionToken was rotated.
