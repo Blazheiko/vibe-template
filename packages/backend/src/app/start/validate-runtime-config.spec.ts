@@ -279,7 +279,7 @@ describe('Redis main client configuration', () => {
     })
 
     // feat-111: the prefix is part of every key and of the logout-all SCAN pattern.
-    it.each(['app.prod:', 'with space', 'x'.repeat(17), 'star*'])(
+    it.each(['app.prod:', 'with space', 'x'.repeat(33), 'star*'])(
         'rejects REDIS_PREFIX=%s at startup',
         async (value) => {
             process.env['REDIS_PREFIX'] = value
@@ -287,14 +287,14 @@ describe('Redis main client configuration', () => {
                 const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
                 expect(() => {
                     validateRuntimeConfig()
-                }).toThrow('Invalid Redis configuration: REDIS_PREFIX must be 1-16 characters')
+                }).toThrow('Invalid Redis configuration: REDIS_PREFIX must be 1-32 characters')
             } finally {
                 delete process.env['REDIS_PREFIX']
             }
         },
     )
 
-    it.each(['uwebsocket:', 'app_1-prod:'])('accepts REDIS_PREFIX=%s', async (value) => {
+    it.each(['uwebsocket:', 'app_1-prod:', 'e2e-live-1793790813000:'])('accepts REDIS_PREFIX=%s', async (value) => {
         process.env['REDIS_PREFIX'] = value
         try {
             const { default: redisConfig } = await import('#config/redis.js')

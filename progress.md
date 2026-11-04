@@ -19,7 +19,7 @@ Implemented; PR open.
 - `oauth-controller.ts` redirect: a `null` from `updateSessionData` (session vanished) → `401 session_revoked`, with no redirect to the provider.
 - Config:
     - `SESSION_MAX_AGE_DAYS` (int 1..3650, default 30);
-    - `REDIS_PREFIX` validated (`^[A-Za-z0-9:_-]{1,16}$`) into `configError`.
+    - `REDIS_PREFIX` validated (`^[A-Za-z0-9:_-]{1,32}$`) into `configError`.
 - Docs: `documentation/backend/auth.md`, `configuration.md`, `.env.example`.
 
 ## Files Modified
