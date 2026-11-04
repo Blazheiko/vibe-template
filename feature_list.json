@@ -1111,8 +1111,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-112-server-lifecycle",
             "dependencies": ["feat-107"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #370 (merge c315fd6; start #369). stopServer closes the listen socket first; closeAllWs ends every socket with 4201 before revoking the tokens together (failures logged); initServer rejects on a false listen token and startup exits 1 with the reason; validateRuntimeConfig refuses an APP_UNIX_PATH over sun_path (103 bytes macOS, 107 Linux) because uWS aborts natively on it (SIGTRAP, exit 133, no log - the silent exit of the R07 manual run); the static cache route catches and answers 500; static 304 uses endWithoutBody. Evidence: typecheck, lint, format clean; pnpm test backend 2305, frontend 400, api-playground 62; test:pg with Redis 24/219, test:redis 10/102; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; server-lifecycle.spec.ts and the shutdown case in ws-registry-lifecycle.pg.test.ts on real uWS; mutation: new cases fail on main; manual: built backend with a 210-byte unix path -> exit 1 with the reason, a missing dir -> exit 1 'Failed to listen on unix socket', TCP + SIGTERM -> exit 0 and the next connection refused. Details were in progress.md on fix/feat-112-server-lifecycle (removed from main by this PR)."
         }
     ]
 }
