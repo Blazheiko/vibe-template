@@ -522,24 +522,37 @@ RETURNING *`.
     - успіх → `completed`, `tokens_estimated = false`.
 - `documentation/backend/ai.md`, `database.md`.
 
+## Повторне рев'ю 2026-11-04 (db24659..2e0450a)
+
+Вердикт рев'ю реалізації: REQUEST CHANGES, п'ять дефектів. Усі підтверджено в коді; виправлення — одна фіча feat-119.
+
+| #   | Пріоритет | Дефект                                                                                                                                      | Зачеплено                                                        |
+| --- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| F1  | high      | Абсолютний строк сесії (R09) перевіряє лише HTTP `restore`; WS upgrade і кожне WS-повідомлення приймають старшу за `SESSION_MAX_AGE_DAYS`   | `ws-session-auth.ts`, `session-handler.ts`                       |
+| F2  | high      | OAuth callback виконує вхід за `state`, прочитаним до logout в іншій вкладці; очищення `state` — після побічних ефектів, `null` ігнорується | `oauth-controller.ts` (`callback`)                               |
+| F3  | medium    | Імпорт KB (R11c) записує вектор після втрати lease: перевірка до `indexArticle`, а запис — після очікування OpenAI                          | `knowledge-base-init-service.ts`, `support-embedding-service.ts` |
+| F4  | medium    | Аудит embedding (R12b) завершується `completed` до перевірки `data`; порожня відповідь — помилка, але рядок `completed`                     | `openai-embedding-adapter.ts`                                    |
+| F5  | medium    | `reindexAll` повертає кількість рядків, а не збережених векторів (R11b)                                                                     | `support-embedding-service.ts`                                   |
+
 ## Стан
 
-| Фіча | id       | PR   | Стан |
-| ---- | -------- | ---- | ---- |
-| R01  | feat-102 | #345 | done |
-| R02  | feat-103 | #347 | done |
-| R03  | feat-104 | #349 | done |
-| R06a | feat-106 | #353 | done |
-| R11a | feat-105 | #351 | done |
-| R04  | feat-107 | #356 | done |
-| R05  | feat-108 | #359 | done |
-| R06b | feat-109 | #362 | done |
-| R07  | feat-110 | #364 | done |
-| R09  | feat-111 | #367 | done |
-| R08  | feat-112 | #370 | done |
-| R10  | feat-113 | #373 | done |
-| R11b | feat-114 | #376 | done |
-| R11c | feat-115 | #379 | done |
-| R11d | feat-116 | #382 | done |
-| R12a | feat-117 | #385 | done |
-| R12b | feat-118 | #388 | done |
+| Фіча  | id       | PR   | Стан        |
+| ----- | -------- | ---- | ----------- |
+| R01   | feat-102 | #345 | done        |
+| R02   | feat-103 | #347 | done        |
+| R03   | feat-104 | #349 | done        |
+| R06a  | feat-106 | #353 | done        |
+| R11a  | feat-105 | #351 | done        |
+| R04   | feat-107 | #356 | done        |
+| R05   | feat-108 | #359 | done        |
+| R06b  | feat-109 | #362 | done        |
+| R07   | feat-110 | #364 | done        |
+| R09   | feat-111 | #367 | done        |
+| R08   | feat-112 | #370 | done        |
+| R10   | feat-113 | #373 | done        |
+| R11b  | feat-114 | #376 | done        |
+| R11c  | feat-115 | #379 | done        |
+| R11d  | feat-116 | #382 | done        |
+| R12a  | feat-117 | #385 | done        |
+| R12b  | feat-118 | #388 | done        |
+| F1–F5 | feat-119 |      | in_progress |
