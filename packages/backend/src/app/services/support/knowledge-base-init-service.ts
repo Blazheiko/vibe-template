@@ -123,11 +123,7 @@ async function runInit(): Promise<void> {
                     category: inferCategory(filename),
                     isActive: true,
                 })
-                await supportEmbeddingService.indexArticle(
-                    created.id,
-                    created.title,
-                    created.content,
-                )
+                await supportEmbeddingService.indexArticle(created)
                 status.createdArticles += 1
             } catch (err) {
                 status.failedFiles += 1

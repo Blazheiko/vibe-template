@@ -47,9 +47,9 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
         near = await insertArticle('near')
         far = await insertArticle('far')
         inactive = await insertArticle('inactive', false)
-        await supportKnowledgeRepository.setEmbedding(near, unit(0))
-        await supportKnowledgeRepository.setEmbedding(far, unit(1))
-        await supportKnowledgeRepository.setEmbedding(inactive, unit(0))
+        await supportKnowledgeRepository.setEmbedding(near, unit(0), 1)
+        await supportKnowledgeRepository.setEmbedding(far, unit(1), 1)
+        await supportKnowledgeRepository.setEmbedding(inactive, unit(0), 1)
     })
 
     afterAll(async () => {

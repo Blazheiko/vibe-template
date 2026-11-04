@@ -377,6 +377,9 @@ export const supportKnowledgeBase = pgTable(
         embedding: vector1536('embedding'),
         screenshotKey: varchar('screenshot_key', { length: 500 }),
         screenshotMime: varchar('screenshot_mime', { length: 50 }),
+        // feat-114 (R11b): the version of title + content. The UPDATE that changes the text bumps
+        // it and clears the embedding; a vector is stored only for the version it was made from.
+        contentVersion: integer('content_version').notNull().default(1),
         isActive: boolean('is_active').notNull().default(true),
         createdAt: timestamp('created_at').notNull().defaultNow(),
         updatedAt: timestamp('updated_at')

@@ -1,0 +1,1 @@
+ALTER TABLE "support_knowledge_base" ADD COLUMN "content_version" integer DEFAULT 1 NOT NULL;

@@ -166,9 +166,7 @@ describe('knowledgeBaseService', () => {
 
         expect(Result.isOk(result)).toBe(true)
         expect(supportEmbeddingServiceMock.indexArticle).toHaveBeenCalledWith(
-            5n,
-            'New Article',
-            'Body',
+            expect.objectContaining({ id: 5n, title: 'New Article', content: 'Body' }),
         )
         if (Result.isOk(result)) {
             expect(result.value.item).toMatchObject({

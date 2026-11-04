@@ -1,0 +1,47 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "a6296ac9-cf60-4746-8a93-302f5cbcf0ae",
+  "prevIds": [
+    "bed65f1f-336a-4bb0-8e35-0329732cf678"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "support_knowledge_base",
+        "content_version"
+      ],
+      "writes": [
+        "s|col|public.support_knowledge_base.content_version",
+        "n|col|public.support_knowledge_base.content_version",
+        "e|col|public.support_knowledge_base.content_version"
+      ],
+      "reads": [
+        "n|tbl|public.support_knowledge_base",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "support_knowledge_base",
+        "name": "content_version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "1",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

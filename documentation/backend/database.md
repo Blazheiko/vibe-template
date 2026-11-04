@@ -110,7 +110,7 @@ PostgreSQL має містити розширення [pgvector](https://github.
 
 Support AI відповідає на питання користувачів на основі бази знань (RAG: спершу знайти релевантні статті, потім передати їх у LLM як контекст). Шукати статті за ключовими словами погано: користувач формулює питання іншими словами, ніж автор статті. Тому пошук іде за змістом через embeddings, і для цього потрібна векторна арифметика в БД:
 
-1. **Зберігання.** Кожна стаття в `support_knowledge_base` має колонку `embedding vector(1536)` ([`schema.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts), `customType` `vector1536`). У ній лежить вектор, який OpenAI embeddings (`text-embedding-3-small`, 1536 вимірів) повертає для тексту `title + content`.
+1. **Зберігання.** Кожна стаття в `support_knowledge_base` має колонку `embedding vector(1536)` ([`schema.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts), `customType` `vector1536`). У ній лежить вектор, який OpenAI embeddings (`text-embedding-3-small`, 1536 вимірів) повертає для тексту `title + content`. Вектор записується лише для тієї версії тексту (`content_version`), з якої його зроблено ([AI → Версія тексту](/backend/ai)).
 2. **Пошук.** Питання користувача перекладається англійською, перетворюється на вектор тим самим способом, і БД шукає найближчі статті за косинусною відстанню, оператором `<=>` з pgvector ([`searchByEmbedding`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/support/support-knowledge-repository.ts)):
 
     ```sql
@@ -127,11 +127,11 @@ Support AI відповідає на питання користувачів н�
 
 ### Де це видно в коді
 
-| Місце                                                                                                                                                                   | Що робить                                                                  |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [`create-database.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db/create-database.ts)                                                 | `CREATE EXTENSION IF NOT EXISTS vector` у цільовій БД                      |
-| [`20261017193054_init/migration.sql`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations/20261017193054_init/migration.sql)   | колонка `"embedding" vector(1536)`; саме розширення міграція не створює    |
-| [`support-knowledge-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/support/support-knowledge-repository.ts) | `setEmbedding` (`::vector`), `clearEmbedding`, `searchByEmbedding` (`<=>`) |
+| Місце                                                                                                                                                                   | Що робить                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| [`create-database.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db/create-database.ts)                                                 | `CREATE EXTENSION IF NOT EXISTS vector` у цільовій БД                                                           |
+| [`20261017193054_init/migration.sql`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations/20261017193054_init/migration.sql)   | колонка `"embedding" vector(1536)`; саме розширення міграція не створює                                         |
+| [`support-knowledge-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/support/support-knowledge-repository.ts) | `setEmbedding` (`::vector`, лише за поточного `content_version`), `clearEmbedding`, `searchByEmbedding` (`<=>`) |
 
 ### Що буде без розширення
 
