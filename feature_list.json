@@ -1143,6 +1143,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #379 (merge 94d58e7; start #378). The owner-token lease of the support in-flight lock moved unchanged to services/shared/redis-lease.ts (acquireLease; support-inflight-lock is a wrapper); knowledgeBaseInitService (createKnowledgeBaseInitService) sets running before the first await and restores the previous state on every early exit, takes the lease support:kb-init (TTL 30 s, renew 10 s, max 1 h) before the not-empty check, checks it before every create/indexArticle, ends a lost lease as failed (lock lost) without counting the unwritten file, and releases in finally (no-op after a loss). Evidence: typecheck, lint, format clean; pnpm test backend 2338, frontend 400, api-playground 62; test:pg with Redis 26/228, test:redis 11/107; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; knowledge-base-init.redis.test.ts on real Redis: double start -> one import, two instances -> one lock and the refused one idle, NOT_EMPTY restores state and frees the key, lost lease -> the late holder leaves the new TTL alone and stops writing while the new holder imports all, late release keeps the other key; knowledge-base-init-service.spec.ts: second call during acquire refused, Redis error / no embeddings restore idle; mutation: main service fails all 5 Redis cases, no lease check fails the lost-lease case; manual: built backend starts, init without a session 401, SIGTERM exit 0 (a full /init by hand needs an admin session, an OpenAI key and an empty KB). Details were in progress.md on fix/feat-115-kb-init-single-run (removed from main by this PR)."
+        },
+        {
+            "id": "feat-116",
+            "name": "Storage Object Replacement",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R11d: uploadScreenshot deletes the old KB screenshot before the new one is uploaded, so a failed upload leaves the article pointing at a deleted object; the avatar and the screenshot read the previous key before the update, so two concurrent replacements (or a replacement racing a removal) both delete the same old object and leave the other new one orphaned in S3. Both now upload the new object, swap the key in a row-locked UPDATE that returns the previous key, then delete that previous key; a failed or refused swap deletes the new object; removals and article deletion take the key from the same statement; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-116-storage-object-replacement",
+            "dependencies": ["feat-114"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
