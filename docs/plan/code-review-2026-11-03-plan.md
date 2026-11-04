@@ -533,7 +533,7 @@ RETURNING *`.
 | R11a | feat-105 | #351 | done        |
 | R04  | feat-107 | #356 | done        |
 | R05  | feat-108 | #359 | done        |
-| R06b |          |      | not-started |
+| R06b | feat-109 |      | in_progress |
 | R07  |          |      | not-started |
 | R09  |          |      | not-started |
 | R08  |          |      | not-started |

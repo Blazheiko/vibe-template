@@ -1073,6 +1073,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #359 (merge 38a22a4; start #358). renderBrandedEmail escapes every HTML field (preheader, eyebrow, title, intro, button label, footer, name, URL); oauth fetchJson throws on non-2xx (callback: Failed to exchange authorization code), an empty or non-string/number profile id is refused before any lookup, a non-array GitHub /user/emails reads as no verified address. Evidence: typecheck, lint, format clean; pnpm test backend 2258, frontend 400, api-playground 62; test:pg with Redis locally 23 files/210 passed, nothing skipped; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; oauth-pre-hijack.pg.test.ts: provider 500 creates nothing and no (facebook, '') row, two id-less profiles both refused, a markup profile name only escaped in the mailed HTML; mutation: every new case fails on main except the plain-text guard. Details were in progress.md on fix/feat-108-mail-escaping-oauth-fetch (removed from main by this PR)."
+        },
+        {
+            "id": "feat-109",
+            "name": "Reauth Throttle and Pending Tokens",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R06b: the current-password re-check of link-email/link-phone runs before any per-user throttle, so a stolen session can brute-force the password across IPs; a per-user policy is spent before validatePassword and reset on success. Pending password-reset links survive change-password and logout-all; they are retired in the same transaction as the credential rotation (changePasswordIfCurrent and the logout-all rotation take an executor), and a failure retiring them rolls the rotation back; tests on PostgreSQL and Redis; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-109-reauth-throttle-pending-tokens",
+            "dependencies": ["feat-106"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
