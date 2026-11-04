@@ -1123,6 +1123,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #373 (merge 15660be; start #372). The main pg pool has statement_timeout = DB_QUERY_TIMEOUT_MS (default 10000, 100-600000, config/database-pool.ts, checked by validateRuntimeConfig) and query_timeout 500 ms later; GET /ready pings PostgreSQL over its own max:1 pool (database/readiness-probe.ts, application_name readiness-probe) with connect/statement/query timeouts = READINESS_CHECK_TIMEOUT_MS and one probe in flight (the next rejects with ProbeInFlightError), closed on shutdown; a saturated main pool answers 200 within the deadline; an invalid SENTRY_TRACES_SAMPLE_RATE is a config error. Evidence: typecheck, lint, format clean; pnpm test backend 2333, frontend 400, api-playground 62; test:pg with Redis 25/223, test:redis 10/102; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; readiness-probe.pg.test.ts: saturated main pool -> ready < 500 ms, pg_sleep probe -> parallel pings rejected at once with one connection and nothing left active, recovery on the same probe, a silent TCP server -> two pings reject within the deadline, main pool cancels pg_sleep(5) with 57014 and stays usable; mutation: main versions and a removed in-flight guard fail the new cases; manual: built backend with SENTRY_TRACES_SAMPLE_RATE=abc or DB_QUERY_TIMEOUT_MS=50 -> exit 1 with the reason, normal start /api/ready 200 with one readiness-probe connection, SIGTERM exit 0. Details were in progress.md on fix/feat-113-infra-config-guards (removed from main by this PR)."
+        },
+        {
+            "id": "feat-114",
+            "name": "KB Embedding Consistency",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R11b: an article update starts re-indexing in the background and setEmbedding writes whatever vector finishes last, so an older indexing that ends after a newer one leaves the embedding of the previous text; the stale vector also stays searchable until re-indexing ends, and a failed re-index leaves it for good. updated_at cannot be the version (new Date(), and screenshot changes move it). A content_version column (migration) is bumped with embedding = NULL in the UPDATE that changes title/content; indexing carries the version it read and setEmbedding writes only while content_version still matches (create, update, reindexArticle, reindexAll, KB init); screenshots do not change the version; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-114-kb-embedding-consistency",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
