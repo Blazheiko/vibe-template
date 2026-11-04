@@ -53,6 +53,8 @@ const sendLinkVerificationEmailMock = vi.fn()
 const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 
 vi.mock('#app/repositories/index.js', () => ({
+    // feat-109: change-password and logout-all retire the pending reset links.
+    passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
@@ -208,6 +210,26 @@ const ROWS: readonly Row[] = [
         consumed: [['confirm_phone_ip', '203.0.113.9']],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
     },
+    // feat-109: the current password is re-checked from the per-user budget of change-password,
+    // spent before validatePassword.
+    {
+        method: 'startPhoneLink · password',
+        call: (s) =>
+            s.startPhoneLink(
+                7n,
+                { phone: PHONE, currentPassword: 'secret' },
+                { ...IP, sessionId: 's', presentedSessionToken: TOKEN },
+            ),
+        consumed: [['change_password_user', '7']],
+        blocked: badRequest('Too many password attempts. Please try again later.'),
+    },
+    {
+        method: 'startEmailLink · password',
+        call: (s) =>
+            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
+        consumed: [['change_password_user', '7']],
+        blocked: badRequest('Too many password attempts. Please try again later.'),
+    },
     {
         method: 'startPhoneLink · ip',
         call: (s) =>
@@ -220,7 +242,10 @@ const ROWS: readonly Row[] = [
                     presentedSessionToken: TOKEN,
                 },
             ),
-        consumed: [['link_phone_ip', '203.0.113.9']],
+        consumed: [
+            ['change_password_user', '7'],
+            ['link_phone_ip', '203.0.113.9'],
+        ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
     },
     {
@@ -236,6 +261,7 @@ const ROWS: readonly Row[] = [
                 },
             ),
         consumed: [
+            ['change_password_user', '7'],
             ['link_phone_ip', '203.0.113.9'],
             ['sms_send_phone', PHONE],
         ],
@@ -260,7 +286,10 @@ const ROWS: readonly Row[] = [
         method: 'startEmailLink · target',
         call: (s) =>
             s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
-        consumed: [['link_email_target', 'new@example.com']],
+        consumed: [
+            ['change_password_user', '7'],
+            ['link_email_target', 'new@example.com'],
+        ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
     },
     {
@@ -268,6 +297,7 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
         consumed: [
+            ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
         ],
@@ -278,6 +308,7 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
         consumed: [
+            ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
             ['link_email_user_cooldown', '7'],

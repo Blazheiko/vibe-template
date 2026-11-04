@@ -36,6 +36,9 @@ const resetAuthThrottleMock = vi.fn()
 const sendVerificationEmailAfterRegistrationMock = vi.fn()
 
 vi.mock('#app/repositories/index.js', () => ({
+    // feat-109: change-password and logout-all retire the pending reset links.
+    passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
+    withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
     userRepository: userRepositoryMock,
 }))
 
@@ -384,6 +387,7 @@ describe('authService legacy regressions', () => {
             null,
             'previous-session-token',
             { password: 'new-password-hash', sessionToken: expect.any(String) },
+            expect.anything(),
         )
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {

@@ -81,6 +81,9 @@ const moduleLogger = vi.hoisted(() => {
 vi.mock('#vendor/utils/logger.js', () => ({ default: moduleLogger }))
 
 vi.mock('#app/repositories/index.js', () => ({
+    // feat-109: change-password and logout-all retire the pending reset links.
+    passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
+    withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
     userRepository: userRepositoryMock,
 }))
 
@@ -492,8 +495,14 @@ describe('authService', () => {
         )
 
         expect(Result.isOk(result)).toBe(true)
+        // feat-109: the first counter is the per-user password budget, then the link counters.
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
             1,
+            expect.objectContaining({ scope: 'change_password_user' }),
+            '9',
+        )
+        expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
+            2,
             expect.objectContaining({
                 scope: 'link_email_target',
                 limit: 3,
@@ -502,7 +511,7 @@ describe('authService', () => {
             'phone-only@example.com',
         )
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
-            2,
+            3,
             expect.objectContaining({
                 scope: 'link_email_user',
                 limit: 3,
@@ -511,7 +520,7 @@ describe('authService', () => {
             '9',
         )
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
-            3,
+            4,
             expect.objectContaining({
                 scope: 'link_email_user_cooldown',
                 limit: 1,
@@ -534,7 +543,10 @@ describe('authService', () => {
             sessionToken: PRESENTED_TOKEN,
         })
         validatePasswordMock.mockResolvedValue(true)
-        consumeAuthThrottleMock.mockResolvedValueOnce({ allowed: false, count: 4 })
+        // feat-109: the password budget passes first; the target counter is the one spent.
+        consumeAuthThrottleMock
+            .mockResolvedValueOnce({ allowed: true, count: 1 })
+            .mockResolvedValueOnce({ allowed: false, count: 4 })
 
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
@@ -886,6 +898,7 @@ describe('authService', () => {
                 7n,
                 PRESENTED_TOKEN,
                 { sessionToken: expect.stringMatching(/^[\w-]{21}$/) },
+                expect.anything(),
             )
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         })
@@ -988,6 +1001,7 @@ describe('authService', () => {
                 7n,
                 PRESENTED_TOKEN,
                 { sessionToken: expect.any(String) },
+                expect.anything(),
             )
             expect(userRepositoryMock.findSessionToken).toHaveBeenCalledWith(7n)
             expect(authMock.logoutAll).not.toHaveBeenCalled()
@@ -1108,6 +1122,7 @@ describe('authService', () => {
                 'stored-hash',
                 'previous-session-token',
                 { password: 'new-hash', sessionToken: expect.stringMatching(/^[\w-]{21}$/) },
+                expect.anything(),
             )
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
             expect(Result.isOk(result)).toBe(true)

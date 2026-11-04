@@ -63,6 +63,8 @@ const generateWsTokenMock = vi.fn()
 const issueMock = vi.fn()
 
 vi.mock('#app/repositories/index.js', () => ({
+    // feat-109: change-password and logout-all retire the pending reset links.
+    passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: challengeRepositoryMock,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
@@ -614,7 +616,11 @@ const ROWS: readonly Row[] = [
         call: startLink,
         error: badRequest('Current password is incorrect'),
         after: () => {
-            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+            // feat-109: only the per-user password budget is spent, never the link counters.
+            expect(consumeAuthThrottleMock.mock.calls.map((call) => call[0].scope)).toEqual([
+                'change_password_user',
+            ])
+            expect(resetAuthThrottleMock).not.toHaveBeenCalled()
         },
     },
     {
@@ -843,7 +849,11 @@ const ROWS: readonly Row[] = [
         call: startEmail,
         error: badRequest('Email is already linked to this account'),
         after: () => {
-            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+            // feat-109: the password budget is spent and, the password being right, reset.
+            expect(consumeAuthThrottleMock.mock.calls.map((call) => call[0].scope)).toEqual([
+                'change_password_user',
+            ])
+            expect(resetAuthThrottleMock).toHaveBeenCalledTimes(1)
         },
     },
     {
@@ -946,9 +956,12 @@ const ROWS: readonly Row[] = [
         call: (s) => s.logoutAll(authMock as never, sessionMock as never),
         error: SESSION_REVOKED,
         after: () => {
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
-                sessionToken: 'rotated-token',
-            })
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                TOKEN,
+                { sessionToken: 'rotated-token' },
+                expect.anything(),
+            )
             expect(authMock.logoutAll).not.toHaveBeenCalled()
             expect(securityNotice).not.toHaveBeenCalled()
         },
@@ -975,9 +988,12 @@ const ROWS: readonly Row[] = [
         },
         call: (s) => s.logoutAll(authMock as never, sessionMock as never),
         after: () => {
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
-                sessionToken: 'rotated-token',
-            })
+            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
+                7n,
+                TOKEN,
+                { sessionToken: 'rotated-token' },
+                expect.anything(),
+            )
             expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
         },
     },
@@ -1089,6 +1105,7 @@ const ROWS: readonly Row[] = [
                 'stored-hash',
                 TOKEN,
                 { password: 'new-hash', sessionToken: 'rotated-token' },
+                expect.anything(),
             )
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
             expect(resetAuthThrottleMock).not.toHaveBeenCalled()
@@ -1127,6 +1144,7 @@ const ROWS: readonly Row[] = [
                 null,
                 TOKEN,
                 { password: 'new-hash', sessionToken: 'rotated-token' },
+                expect.anything(),
             )
         },
     },
