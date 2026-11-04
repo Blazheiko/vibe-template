@@ -58,6 +58,11 @@ export default Object.freeze({
     anonAge: readAnonAge(),
     /** Deadline of the users.session_token lookup, in ms (SESSION_TOKEN_CHECK_TIMEOUT_MS, default 2000). */
     tokenCheckTimeoutMs: readTokenCheckTimeoutMs(),
+    /**
+     * feat-111: the absolute lifetime of a stored session, from its createdAt, in days
+     * (SESSION_MAX_AGE_DAYS, default 30). The 24 h TTL slides with every request; this does not.
+     */
+    maxAgeDays: reader.int('SESSION_MAX_AGE_DAYS', 30, { min: 1, max: 3650 }),
 
     /**
      * Configuration for session cookie and the cookie store

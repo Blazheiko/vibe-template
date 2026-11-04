@@ -75,6 +75,22 @@ const createSessionInfo = async (data: SessionData): Promise<SessionInfo> => {
     return session
 }
 
+const MAX_CLOCK_SKEW_MS = 5 * 60_000
+const DAY_MS = 24 * 60 * 60_000
+
+/**
+ * feat-111: a stored session lives at most SESSION_MAX_AGE_DAYS from its createdAt, however often
+ * it is used (the TTL slides with every request). A createdAt that does not parse, or lies in the
+ * future beyond the clock skew, cannot prove the age and ends the session too.
+ */
+export const isPastMaxAge = (createdAt: unknown, now = Date.now()): boolean => {
+    if (typeof createdAt !== 'string') return true
+    const created = Date.parse(createdAt)
+    if (Number.isNaN(created)) return true
+    if (created - now > MAX_CLOCK_SKEW_MS) return true
+    return now - created >= sessionConfig.maxAgeDays * DAY_MS
+}
+
 // Memory cleanup only: the revocation itself is the rotated sessionToken, so a Redis
 // failure here is logged, not raised.
 const dropRevokedSession = async (sessionId: string, userToken: string): Promise<void> => {
@@ -172,6 +188,11 @@ export class RequestSession {
             presentedId = incoming.sessionId
             presentedUserToken = incoming.userToken
             info = await getSession(incoming.sessionId, incoming.userToken)
+            if (info !== null && isPastMaxAge(info.createdAt)) {
+                // Too old: ended like a revoked one, without asking the database.
+                await dropRevokedSession(incoming.sessionId, incoming.userToken)
+                info = null
+            }
             if (info === null) {
                 // The record expired or was deleted: the cookie names nothing. The new
                 // anonymous session must not inherit its user token as storage namespace.
@@ -194,6 +215,25 @@ export class RequestSession {
             }
         }
 
+        // A stored session without a valid CSRF token gets one. feat-111: the update never
+        // recreates a record; when it is gone (a logout in another tab got there first) the
+        // loaded info is dropped and the request goes on as a new anonymous session.
+        if (info !== null && !cookieHeld && !isValidCsrfToken(info.data.csrfToken)) {
+            const repairToken =
+                presentedUserToken ??
+                (typeof info.data.userToken === 'string' ? info.data.userToken : undefined)
+            const updated = await updateSessionData(
+                info.id,
+                { csrfToken: generateCsrfToken() },
+                repairToken ?? ANON_TOKEN,
+            )
+            info = updated
+            if (updated === null) {
+                presentedId = undefined
+                presentedUserToken = undefined
+            }
+        }
+
         const startsNew = info === null
         if (info === null) {
             info = newAnonSessionInfo()
@@ -203,14 +243,6 @@ export class RequestSession {
         const userToken =
             presentedUserToken ??
             (typeof info.data.userToken === 'string' ? info.data.userToken : undefined)
-        if (!cookieHeld && !isValidCsrfToken(info.data.csrfToken)) {
-            const updated = await updateSessionData(
-                info.id,
-                { csrfToken: generateCsrfToken() },
-                userToken ?? ANON_TOKEN,
-            )
-            if (updated !== null) info = updated
-        }
 
         // Only a signed-in session presents a user token worth comparing with
         // users.session_token; an anonymous one presents none.
