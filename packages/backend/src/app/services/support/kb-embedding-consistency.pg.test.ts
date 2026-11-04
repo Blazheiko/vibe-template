@@ -188,7 +188,8 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
 
         // reindexAll read version 1 and finishes after the update moved to version 2.
         embedding.batches[0]?.resolve([unit(5)])
-        await all
+        // feat-119 (F5): the stale vector was refused, so this run indexed nothing.
+        expect(await all).toBe(0)
         expect(await storedVector(article.id)).toBeNull()
 
         embedding.single[0]?.resolve(unit(6))

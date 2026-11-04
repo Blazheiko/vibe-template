@@ -46,6 +46,7 @@ const kb = vi.hoisted(() => ({
     // When set, indexArticle waits for the test to let it go.
     hold: false,
     held: [] as (() => void)[],
+    signals: [] as (AbortSignal | undefined)[],
 }))
 vi.mock('#app/repositories/index.js', () => ({
     supportKnowledgeRepository: {
@@ -64,14 +65,16 @@ vi.mock('#app/repositories/index.js', () => ({
 }))
 vi.mock('#app/services/support/support-embedding-service.js', () => ({
     supportEmbeddingService: {
-        indexArticle: () =>
-            kb.hold
+        indexArticle: (_article: unknown, options?: { signal?: AbortSignal }) => {
+            kb.signals.push(options?.signal)
+            return kb.hold
                 ? new Promise<boolean>((resolve) => {
                       kb.held.push(() => {
                           resolve(true)
                       })
                   })
-                : Promise.resolve(true),
+                : Promise.resolve(true)
+        },
     },
 }))
 vi.mock('#app/services/ai/adapters/openai-embedding-adapter.js', () => ({
@@ -130,6 +133,7 @@ afterEach(async () => {
     kb.created.length = 0
     kb.hold = false
     for (const release of kb.held.splice(0)) release()
+    kb.signals.length = 0
     if (hasRedis) await admin.del(KB_INIT_LOCK_KEY)
 })
 
@@ -205,6 +209,9 @@ describe.skipIf(!hasRedis)('knowledge-base init runs once (feat-115)', () => {
         // move the new holder's TTL.
         await sleep(250)
         expect(await admin.pttl(KB_INIT_LOCK_KEY)).toBeGreaterThan(30_000)
+        // feat-119 (F3): the indexing in flight got the lease's signal, now aborted, so its
+        // provider wait is cancelled and its vector write refused.
+        expect(kb.signals[0]?.aborted).toBe(true)
 
         // Let both imports go on.
         kb.hold = false

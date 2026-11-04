@@ -32,12 +32,22 @@ export const supportEmbeddingService = {
      *
      * @returns whether the vector was stored; false when not configured or the text has changed since
      */
-    async indexArticle(article: {
-        id: bigint
-        title: string
-        content: string
-        contentVersion: number
-    }): Promise<boolean> {
+    async indexArticle(
+        article: {
+            id: bigint
+            title: string
+            content: string
+            contentVersion: number
+        },
+        options: {
+            /**
+             * Stops the indexing (feat-119, F3): it cancels the provider call, and is checked again
+             * right before the vector is written, so a holder that lost its lease during the
+             * provider wait writes nothing.
+             */
+            signal?: AbortSignal
+        } = {},
+    ): Promise<boolean> {
         if (!openaiEmbeddingAdapter.isConfigured()) {
             logger.warn('OpenAI Embedding not configured, skipping indexing')
             return false
@@ -45,8 +55,10 @@ export const supportEmbeddingService = {
         const text = `${article.title}\n\n${article.content}`
         // Indexing is a system call: no user to attribute it to.
         const vector = await openaiEmbeddingAdapter.embed(text, {
+            ...(options.signal !== undefined ? { signal: options.signal } : {}),
             onComplete: llmUsageService.textUsageRecorder('SUPPORT_EMBEDDING', null),
         })
+        options.signal?.throwIfAborted()
         return storeVector(article, vector)
     },
 
@@ -62,6 +74,7 @@ export const supportEmbeddingService = {
         // In batches of SUPPORT_EMBEDDING_BATCH_SIZE (code-issues item 54): one huge
         // request could exceed the provider's input limits.
         const batchSize = supportConfig.embeddingBatchSize
+        let stored = 0
         for (let start = 0; start < allRows.length; start += batchSize) {
             const batch = allRows.slice(start, start + batchSize)
             const vectors = await openaiEmbeddingAdapter.embedBatch(
@@ -72,11 +85,13 @@ export const supportEmbeddingService = {
                 const article = batch[i]
                 const vector = vectors[i]
                 if (article === undefined || vector === undefined) continue
-                await storeVector(article, vector)
+                if (await storeVector(article, vector)) stored += 1
             }
         }
 
-        return allRows.length
+        // feat-119 (F5): the vectors written, not the rows read: an article edited meanwhile is
+        // indexed by the indexing of its edit, not by this run.
+        return stored
     },
 
     async search(

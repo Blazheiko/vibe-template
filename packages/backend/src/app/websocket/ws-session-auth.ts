@@ -5,6 +5,7 @@ import type { SessionInfo, SessionData } from '#vendor/types/types.js'
 import type { UpgradeTokenResult } from '#vendor/utils/network/ws-handlers.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
+import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 
 const WS_TOKEN_TTL = 120
 
@@ -58,6 +59,20 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
         }
 
         const sessionInfo = JSON.parse(sessionData) as SessionInfo
+        // feat-119 (F1): the same lifetime as an HTTP request: a session past
+        // SESSION_MAX_AGE_DAYS opens no WebSocket, and its record is deleted.
+        if (isPastMaxAge(sessionInfo.createdAt)) {
+            logger.warn(
+                { sessionId, userToken: maskTokenForLogs(userToken) },
+                'verifyUpgradeToken: session past its maximum age',
+            )
+            try {
+                await withRedis(() => redis.del(sessionKey))
+            } catch (err: unknown) {
+                logger.warn({ err }, 'verifyUpgradeToken: could not delete an expired session')
+            }
+            return MISSING
+        }
         const data: SessionData = sessionInfo.data
         if ('userId' in data && data.userId === userId) {
             // ADR 0002: a rotated sessionToken revokes the session even though its

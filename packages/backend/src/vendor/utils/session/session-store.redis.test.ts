@@ -12,7 +12,10 @@ import {
 //   logout deleted meanwhile is not brought back, and concurrent updates both land;
 // - RequestSession.restore treats a record that vanished during its CSRF repair as no session;
 // - the OAuth redirect stops with 401 when its session vanished, instead of a state never stored;
-// - a stored session older than SESSION_MAX_AGE_DAYS is ended at restore.
+// - a stored session older than SESSION_MAX_AGE_DAYS is ended at restore, and (feat-119, F1) for
+//   every WebSocket message too;
+// - (feat-119, F2) an OAuth callback whose session a logout deleted after it was read signs nobody
+//   in.
 // The users table is a Map here, as in logout-all.redis.test.ts.
 
 const { PREFIX } = vi.hoisted(() => {
@@ -36,9 +39,17 @@ vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
 
 const security = vi.hoisted(() => vi.fn())
 const oauthUrl = vi.hoisted(() => vi.fn())
+const oauthCallback = vi.hoisted(() => vi.fn())
 vi.mock('#app/services/auth/oauth-service.js', async (importActual) => {
     const actual = await importActual<{ oauthService: object }>()
-    return { ...actual, oauthService: { ...actual.oauthService, getAuthorizationUrl: oauthUrl } }
+    return {
+        ...actual,
+        oauthService: {
+            ...actual.oauthService,
+            getAuthorizationUrl: oauthUrl,
+            handleCallback: oauthCallback,
+        },
+    }
 })
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security, supportReply: vi.fn() },
@@ -280,5 +291,74 @@ describe.skipIf(!hasRedis)('RequestSession with a vanishing or too old record (f
 
         expect(await authenticates('bad-age')).toBe(false)
         expect(await recordOf('bad-age')).toBeNull()
+    })
+})
+
+describe.skipIf(!hasRedis)(
+    'the same session lifetime for WebSocket messages (feat-119, F1)',
+    () => {
+        const DAY_MS = 24 * 3600 * 1000
+
+        it('a message of a session past SESSION_MAX_AGE_DAYS is refused, and the record deleted', async () => {
+            const { wsSessionHandler } = await import('./session-handler.js')
+            await save('ws-old', { createdAt: new Date(Date.now() - 31 * DAY_MS).toISOString() })
+
+            expect(await wsSessionHandler('ws-old', USER_TOKEN)).toEqual({ kind: 'missing' })
+            // Gone: a later message cannot slide its TTL either.
+            expect(await recordOf('ws-old')).toBeNull()
+        })
+
+        it('a message of a younger session is accepted and keeps the record', async () => {
+            const { wsSessionHandler } = await import('./session-handler.js')
+            await save('ws-young', { createdAt: new Date(Date.now() - 29 * DAY_MS).toISOString() })
+
+            expect((await wsSessionHandler('ws-young', USER_TOKEN)).kind).toBe('ok')
+            expect(await recordOf('ws-young')).not.toBeNull()
+        })
+    },
+)
+
+describe.skipIf(!hasRedis)('OAuth callback after a logout in another tab (feat-119, F2)', () => {
+    it('state read, then logout: no sign-in, no new signed-in session', async () => {
+        await save('cb', { data: { oauthState: 'state-1', oauthCodeVerifier: 'verifier' } })
+        const { default: OAuthController } =
+            await import('#app/controllers/http/auth/oauth-controller.js')
+        const request = createRequest('cb')
+        request.context.httpData.params = { provider: 'google' }
+        request.context.httpData.query = { code: 'code-1', state: 'state-1' } as never
+        expect(await executeMiddlewares(['session_web'], request.context)).toBe(true)
+        // The barrier: this request has read the state; the logout lands now.
+        await admin.del(`session:${USER_TOKEN}:cb`)
+
+        const payload = await OAuthController.callback(request.context as never)
+
+        expect(oauthCallback).not.toHaveBeenCalled()
+        expect(request.responseData.status).toBe(302)
+        expect(payload).toMatchObject({ code: 'unauthorized', reason: 'session_revoked' })
+        // Nothing was signed in: the deleted record stays deleted and no other appeared.
+        expect(await recordOf('cb')).toBeNull()
+        expect(await admin.keys(`session:${USER_TOKEN}:*`)).toEqual([])
+    })
+
+    it('with the session intact, the state is consumed before the sign-in runs', async () => {
+        await save('cb-ok', { data: { oauthState: 'state-1', oauthCodeVerifier: 'verifier' } })
+        const { Result } = await import('better-result')
+        let stateDuringSignIn: unknown = 'not called'
+        oauthCallback.mockImplementation(async () => {
+            stateDuringSignIn = (await recordOf('cb-ok'))?.data['oauthState']
+            return Result.ok({ redirectUrl: '/?oauth=success' })
+        })
+        const { default: OAuthController } =
+            await import('#app/controllers/http/auth/oauth-controller.js')
+        const request = createRequest('cb-ok')
+        request.context.httpData.params = { provider: 'google' }
+        request.context.httpData.query = { code: 'code-1', state: 'state-1' } as never
+        expect(await executeMiddlewares(['session_web'], request.context)).toBe(true)
+
+        await OAuthController.callback(request.context as never)
+
+        expect(oauthCallback).toHaveBeenCalledTimes(1)
+        expect(stateDuringSignIn).toBeUndefined()
+        expect(request.responseData.status).toBe(302)
     })
 })

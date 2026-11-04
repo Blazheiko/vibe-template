@@ -212,7 +212,12 @@ describe('adapters report usage, known or not', () => {
 
     // feat-118: without reported usage the row gets an estimate of every text, marked as such.
     it('embeddings without usage report an estimate, marked as estimated', async () => {
-        embeddingsCreate.mockResolvedValue({ data: [{ index: 0, embedding: [1] }] })
+        embeddingsCreate.mockResolvedValue({
+            data: [
+                { index: 0, embedding: [1] },
+                { index: 1, embedding: [2] },
+            ],
+        })
         const onComplete = vi.fn()
         const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
         await openaiEmbeddingAdapter.embedBatch(['abc', 'de'], { onComplete })
@@ -297,4 +302,38 @@ describe('adapters report usage, known or not', () => {
             completionTokens: 0,
         })
     })
+
+    // feat-119 (F4): reading the vectors is part of the audited call.
+    it.each([
+        ['an empty response to embed', () => openaiEmbed('question'), []],
+        ['fewer vectors than texts', () => openaiBatch(['a', 'b']), [{ index: 0, embedding: [1] }]],
+    ])('%s is one failed row with the reported usage', async (_label, call, data) => {
+        embeddingsCreate.mockResolvedValue({ data, usage: { prompt_tokens: 6, total_tokens: 6 } })
+        const onComplete = vi.fn()
+        onCompleteHolder.current = onComplete
+
+        await expect(call()).rejects.toThrow('OpenAI Embedding')
+
+        expect(onComplete).toHaveBeenCalledTimes(1)
+        expect(onComplete.mock.calls[0]?.[0]).toEqual({
+            promptTokens: 6,
+            completionTokens: null,
+            totalTokens: 6,
+        })
+        expect(onComplete.mock.calls[0]?.[3]).toEqual({ status: 'failed', tokensEstimated: false })
+    })
 })
+
+const onCompleteHolder: { current: ((...args: never[]) => void) | undefined } = {
+    current: undefined,
+}
+const openaiEmbed = async (text: string): Promise<unknown> => {
+    const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
+    return openaiEmbeddingAdapter.embed(text, { onComplete: onCompleteHolder.current as never })
+}
+const openaiBatch = async (texts: string[]): Promise<unknown> => {
+    const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
+    return openaiEmbeddingAdapter.embedBatch(texts, {
+        onComplete: onCompleteHolder.current as never,
+    })
+}

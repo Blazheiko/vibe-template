@@ -69,4 +69,39 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
             }),
         ).toBe(false)
     })
+
+    // feat-119 (F3): a lease lost during the provider wait stops the write.
+    it('writes nothing when the signal aborts during the provider wait', async () => {
+        const controller = new AbortController()
+        embed.mockImplementationOnce(() => {
+            controller.abort(new Error('lock lost'))
+            return Promise.resolve([0.2])
+        })
+
+        await expect(
+            supportEmbeddingService.indexArticle(
+                { id: 7n, title: 'T', content: 'C', contentVersion: 1 },
+                { signal: controller.signal },
+            ),
+        ).rejects.toThrow('lock lost')
+
+        expect(repository.setEmbedding).not.toHaveBeenCalled()
+        expect(embed).toHaveBeenCalledWith(
+            'T\n\nC',
+            expect.objectContaining({ signal: controller.signal }),
+        )
+    })
+
+    // feat-119 (F5): the count is of the vectors written.
+    it('reindexAll counts only the vectors stored', async () => {
+        repository.findActiveAll.mockResolvedValue(
+            [1, 2, 3].map((i) => ({ id: BigInt(i), title: 't', content: 'c', contentVersion: 1 })),
+        )
+        repository.setEmbedding
+            .mockResolvedValueOnce(true)
+            .mockResolvedValueOnce(false)
+            .mockResolvedValueOnce(true)
+
+        expect(await supportEmbeddingService.reindexAll()).toBe(2)
+    })
 })
