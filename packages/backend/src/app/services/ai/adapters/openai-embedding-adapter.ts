@@ -29,6 +29,7 @@ async function audited<T extends { usage?: { prompt_tokens?: number; total_token
     input: string,
     estimateFrom: string,
     onComplete: TextUsageCompleteHandler | undefined,
+    callerSignal: AbortSignal | undefined,
 ): Promise<R> {
     const audit =
         onComplete === undefined ? null : auditCall(onComplete, cfg.model, input, estimateFrom)
@@ -46,7 +47,7 @@ async function audited<T extends { usage?: { prompt_tokens?: number; total_token
         audit?.settle('completed', null)
         return result
     } catch (err: unknown) {
-        audit?.settle(statusOfError(err), null)
+        audit?.settle(statusOfError(err, callerSignal), null)
         throw err
     }
 }
@@ -73,6 +74,7 @@ export const openaiEmbeddingAdapter = {
             text,
             text,
             options.onComplete,
+            options.signal,
         )
     },
 
@@ -101,6 +103,7 @@ export const openaiEmbeddingAdapter = {
             `[batch: ${String(texts.length)} texts, ${String(totalChars)} chars]`,
             texts.join(''),
             options.onComplete,
+            options.signal,
         )
     },
 }

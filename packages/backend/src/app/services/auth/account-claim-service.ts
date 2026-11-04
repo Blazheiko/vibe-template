@@ -7,17 +7,13 @@ import {
     oauthLinkVerificationRepository,
     passwordResetRepository,
     pushSubscriptionRepository,
-    smsAuthChallengeRepository,
     userRepository,
     type UserRow,
 } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
-import {
-    LINK_PHONE_FLOW,
-    normalizeEmail,
-    RESET_PHONE_FLOW,
-} from '#app/services/auth/auth-normalize.js'
+import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
+import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
 
 // feat-097: an account whose address was never verified may have been created by somebody
 // who does not own that mailbox. The first proof of owning the mailbox (an authoritative
@@ -37,19 +33,8 @@ export function addressMatches(user: UserRow, provenEmail: string): boolean {
     return user.email !== null && normalizeEmail(user.email) === normalizeEmail(provenEmail)
 }
 
-/** Retires the pending SMS challenges of a phone, in `executor`'s transaction when given. */
-export async function invalidatePendingPhoneChallenges(
-    phone: string,
-    executor?: DbTransaction,
-): Promise<void> {
-    // One after the other: inside a transaction both statements share one connection.
-    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(
-        phone,
-        RESET_PHONE_FLOW,
-        executor,
-    )
-    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, LINK_PHONE_FLOW, executor)
-}
+// Moved to phone-challenges.ts (feat-121) so auth-service can use it without this module.
+export { invalidatePendingPhoneChallenges }
 
 // ADR 0002: the rotated sessionToken is the revocation; deleting the old records is memory
 // cleanup. A failure is logged and must not fail an operation that has been committed.

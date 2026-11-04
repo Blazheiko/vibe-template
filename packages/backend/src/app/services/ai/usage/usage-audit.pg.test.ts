@@ -178,6 +178,36 @@ describe.skipIf(!hasPg)('LLM usage audit (feat-118)', async () => {
         expect((await rowsOf(timedOut))[0]?.status).toBe('failed')
     })
 
+    // feat-121 (M2): a lost support lock cancels the call with its own reason, and fetch rejects
+    // with that reason as it is: the caller's signal, not the error's name, makes it aborted.
+    it('a lock lost mid-call (custom abort reason) is aborted, not failed', async () => {
+        const model = newModel()
+        const lock = new AbortController()
+        const lockLost = Object.assign(new Error('The support lock was lost'), {
+            name: 'SupportLockLostError',
+        })
+        const adapter = withUsageAudit({
+            isConfigured: () => true,
+            model: 'unused',
+            async *streamText() {
+                yield 'partial'
+                lock.abort(lockLost)
+                throw lockLost
+            },
+        })
+
+        const run = async (): Promise<void> => {
+            for await (const token of adapter.streamText(
+                { ...opts(model), signal: lock.signal },
+                llmUsageService.textUsageRecorder('SUPPORT_CHAT', null),
+            ))
+                expect(token).toBe('partial')
+        }
+        await expect(run()).rejects.toThrow('The support lock was lost')
+
+        expect((await rowsOf(model))[0]?.status).toBe('aborted')
+    })
+
     it('a completion and a late report on the same call: exactly one row', async () => {
         const model = newModel()
         const recorder = llmUsageService.textUsageRecorder('SUPPORT_CHAT', null)

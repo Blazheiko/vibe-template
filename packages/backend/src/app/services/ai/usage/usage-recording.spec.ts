@@ -337,3 +337,38 @@ const openaiBatch = async (texts: string[]): Promise<unknown> => {
         onComplete: onCompleteHolder.current as never,
     })
 }
+
+// feat-121 (M2): an embedding cancelled by its caller with a custom reason is aborted.
+describe('embedding cancelled by the caller', () => {
+    it('is aborted whatever the reason is called', async () => {
+        const controller = new AbortController()
+        const reason = Object.assign(new Error('lock lost'), {
+            name: 'KnowledgeBaseInitLockLostError',
+        })
+        embeddingsCreate.mockImplementation(() => {
+            controller.abort(reason)
+            return Promise.reject(reason)
+        })
+        const onComplete = vi.fn()
+        const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
+
+        await expect(
+            openaiEmbeddingAdapter.embed('q', { onComplete, signal: controller.signal }),
+        ).rejects.toThrow('lock lost')
+
+        expect(onComplete.mock.calls[0]?.[3]).toEqual({ status: 'aborted', tokensEstimated: true })
+    })
+
+    it('a timeout, with the caller still waiting, stays failed', async () => {
+        const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' })
+        embeddingsCreate.mockRejectedValue(timeout)
+        const onComplete = vi.fn()
+        const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
+
+        await expect(
+            openaiEmbeddingAdapter.embed('q', { onComplete, signal: new AbortController().signal }),
+        ).rejects.toThrow('timed out')
+
+        expect(onComplete.mock.calls[0]?.[3]).toEqual({ status: 'failed', tokensEstimated: true })
+    })
+})

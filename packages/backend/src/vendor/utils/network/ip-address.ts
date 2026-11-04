@@ -12,10 +12,23 @@ export function normalizeIp(value: string): string | null {
     const withoutBrackets =
         trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed
     const lower = withoutBrackets.toLowerCase()
-    const mappedV4 = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower)
-    const normalized = mappedV4?.[1] ?? lower
+    const kind = isIP(lower)
+    if (kind === 0) return null
+    return kind === 6 ? (mappedIPv4(lower) ?? lower) : lower
+}
 
-    return isIP(normalized) === 0 ? null : normalized
+const MAPPED_V4_PREFIX = 0xffffn << 32n
+
+/**
+ * The IPv4 address of an IPv4-mapped IPv6 address (::ffff:0:0/96), whatever form it is written in:
+ * `::ffff:127.0.0.1`, `::ffff:7f00:1` or `0:0:0:0:0:ffff:7f00:1`. A dual-stack listener reports
+ * IPv4 clients in the hex forms (feat-121, M1); without this they all fell into one /64 key.
+ */
+function mappedIPv4(ip: string): string | null {
+    const value = parseIPv6ToBigInt(ip)
+    if (value >> 32n !== MAPPED_V4_PREFIX >> 32n) return null
+    const v4 = Number(value & 0xffffffffn)
+    return [v4 >>> 24, (v4 >>> 16) & 0xff, (v4 >>> 8) & 0xff, v4 & 0xff].join('.')
 }
 
 function parseIPv4ToBigInt(ip: string): bigint {

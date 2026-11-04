@@ -83,7 +83,8 @@ vi.mock('#app/repositories/index.js', async (importActual) => {
                 if (data.sessionToken !== undefined) {
                     fakeUsers.tokens.set(String(id), data.sessionToken)
                 }
-                return Promise.resolve({ id })
+                // A user row has a phone column; these users have none (feat-121 reads it).
+                return Promise.resolve({ id, phone: null })
             },
         },
     }
