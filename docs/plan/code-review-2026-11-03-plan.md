@@ -534,25 +534,33 @@ RETURNING *`.
 | F4  | medium    | Аудит embedding (R12b) завершується `completed` до перевірки `data`; порожня відповідь — помилка, але рядок `completed`                     | `openai-embedding-adapter.ts`                                    |
 | F5  | medium    | `reindexAll` повертає кількість рядків, а не збережених векторів (R11b)                                                                     | `support-embedding-service.ts`                                   |
 
+### Третє рев'ю 2026-11-04 (576323e)
+
+F1, F3–F5 закрито. F2: сценарій logout виправлено, але лишилася гонка споживання `state` (high, F6):
+`updateSessionData` у CAS-циклі перечитує запис і повторює зміну без перевірки очікуваного `state`.
+Два callback зі snapshot A обидва доходять до `handleCallback(A)`, а старий callback A видаляє новий
+`state` B. Виправлення — атомарне `consumeSessionData(expected)` (feat-120).
+
 ## Стан
 
-| Фіча  | id       | PR   | Стан |
-| ----- | -------- | ---- | ---- |
-| R01   | feat-102 | #345 | done |
-| R02   | feat-103 | #347 | done |
-| R03   | feat-104 | #349 | done |
-| R06a  | feat-106 | #353 | done |
-| R11a  | feat-105 | #351 | done |
-| R04   | feat-107 | #356 | done |
-| R05   | feat-108 | #359 | done |
-| R06b  | feat-109 | #362 | done |
-| R07   | feat-110 | #364 | done |
-| R09   | feat-111 | #367 | done |
-| R08   | feat-112 | #370 | done |
-| R10   | feat-113 | #373 | done |
-| R11b  | feat-114 | #376 | done |
-| R11c  | feat-115 | #379 | done |
-| R11d  | feat-116 | #382 | done |
-| R12a  | feat-117 | #385 | done |
-| R12b  | feat-118 | #388 | done |
-| F1–F5 | feat-119 | #391 | done |
+| Фіча  | id       | PR   | Стан        |
+| ----- | -------- | ---- | ----------- |
+| R01   | feat-102 | #345 | done        |
+| R02   | feat-103 | #347 | done        |
+| R03   | feat-104 | #349 | done        |
+| R06a  | feat-106 | #353 | done        |
+| R11a  | feat-105 | #351 | done        |
+| R04   | feat-107 | #356 | done        |
+| R05   | feat-108 | #359 | done        |
+| R06b  | feat-109 | #362 | done        |
+| R07   | feat-110 | #364 | done        |
+| R09   | feat-111 | #367 | done        |
+| R08   | feat-112 | #370 | done        |
+| R10   | feat-113 | #373 | done        |
+| R11b  | feat-114 | #376 | done        |
+| R11c  | feat-115 | #379 | done        |
+| R11d  | feat-116 | #382 | done        |
+| R12a  | feat-117 | #385 | done        |
+| R12b  | feat-118 | #388 | done        |
+| F1–F5 | feat-119 | #391 | done        |
+| F6    | feat-120 |      | in_progress |
