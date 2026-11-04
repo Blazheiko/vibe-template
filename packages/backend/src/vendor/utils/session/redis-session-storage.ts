@@ -202,6 +202,72 @@ const writeSessionUpdate = async (
     throw new SessionUpdateConflictError()
 }
 
+export type ConsumeSessionDataResult =
+    | { kind: 'consumed'; session: SessionInfo }
+    /** The record no longer holds the expected values: another request consumed or replaced them. */
+    | { kind: 'mismatch' }
+    | { kind: 'gone' }
+
+/**
+ * Removes `keys` from the session data only while every `expected` value is still the stored one,
+ * in one compare-and-set (feat-119, OAuth state). Unlike an update, a retry after a conflict
+ * checks the values again: of two requests consuming the same value one wins, and a value replaced
+ * meanwhile (a new OAuth start) is neither removed nor consumed.
+ */
+export const consumeSessionData = async (
+    sessionId: string | undefined,
+    userToken: string,
+    expected: Record<string, string>,
+    keys: readonly string[],
+): Promise<ConsumeSessionDataResult> => {
+    if (sessionId === undefined) return { kind: 'gone' }
+    const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
+
+    for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
+        const currentJson = await withRedis(() => redis.get(redisKey))
+        if (currentJson === null) return { kind: 'gone' }
+
+        let session: SessionInfo
+        try {
+            session = JSON.parse(currentJson) as SessionInfo
+        } catch (e) {
+            logger.error({ err: e }, 'Failed to parse session JSON:')
+            return { kind: 'gone' }
+        }
+        const holdsExpected = Object.entries(expected).every(
+            ([key, value]) => session.data[key] === value,
+        )
+        if (!holdsExpected) return { kind: 'mismatch' }
+
+        const data = Object.fromEntries(
+            Object.entries(session.data).filter(([key]) => !keys.includes(key)),
+        ) as SessionData
+        const updatedJson = serializeSession({
+            ...session,
+            data,
+            updatedAt: new Date().toISOString(),
+        })
+        const outcome = Number(
+            await withRedis(() =>
+                redis.eval(
+                    COMPARE_AND_SET_LUA,
+                    1,
+                    redisKey,
+                    currentJson,
+                    updatedJson,
+                    String(storedSessionTtl(userToken)),
+                ),
+            ),
+        )
+        if (outcome === -1) return { kind: 'gone' }
+        if (outcome === 1)
+            return { kind: 'consumed', session: JSON.parse(updatedJson) as SessionInfo }
+    }
+
+    logger.warn({ attempts: MAX_UPDATE_ATTEMPTS }, 'Session consume kept conflicting')
+    throw new SessionUpdateConflictError()
+}
+
 /** Merges into the session data; null when the record is gone (it is not recreated). */
 export const updateSessionData = async (
     sessionId: string | undefined,

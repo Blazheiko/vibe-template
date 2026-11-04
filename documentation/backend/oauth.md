@@ -34,7 +34,13 @@ sequenceDiagram
     API-->>B: 302 → OAUTH_FRONTEND_SUCCESS_URL
 ```
 
-Перш ніж щось зробити від імені callback, контролер **споживає** `oauthState` і `oauthCodeVerifier`: видаляє їх із сесії записом, який іде лише поверх збереженого запису (compare-and-set, feat-119). Якщо сесію тим часом видалив logout в іншій вкладці, запис нічого не відновлює, callback завершується редіректом на помилку (`session_revoked`), і `handleCallback` не викликається: ні акаунтів, ні листів, ні нової сесії. Якщо Redis не відповів, це теж редірект на помилку без входу. Вужче вікно лишається: logout, що прийшов уже після споживання `state`, але до входу, не скасовує вхід, який користувач щойно завершив у провайдера.
+Перш ніж щось зробити від імені callback, контролер **споживає** `oauthState` і `oauthCodeVerifier` однією атомарною операцією `consumeSessionData` ([`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts), feat-119/120). Вона видаляє їх лише тоді, коли в збереженому записі досі лежить **той самий** `state`, який прочитав цей запит (compare-and-set; після конфлікту перевірка повторюється на свіжому записі). Можливі три результати:
+
+- **сесії немає** (logout в іншій вкладці після читання) → редірект на помилку `session_revoked`, `handleCallback` не викликається: ні акаунтів, ні листів, ні нової сесії;
+- **`state` уже інший**: той самий `state` спожив інший callback (подвійний запит), або новий OAuth-старт записав свій → редірект на помилку `OAuth state was already used or replaced`; новий `state` лишається на місці;
+- **спожито** → далі йде лише цей callback.
+
+Якщо Redis не відповів, це теж редірект на помилку без входу. Вужче вікно лишається: logout, що прийшов уже після споживання `state`, але до входу, не скасовує вхід, який користувач щойно завершив у провайдера.
 
 Що відбувається в callback ([`oauthService.handleCallback`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/oauth-service.ts)):
 

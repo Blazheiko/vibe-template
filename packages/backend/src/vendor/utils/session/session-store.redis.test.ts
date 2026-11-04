@@ -362,3 +362,80 @@ describe.skipIf(!hasRedis)('OAuth callback after a logout in another tab (feat-1
         expect(request.responseData.status).toBe(302)
     })
 })
+
+describe.skipIf(!hasRedis)(
+    'OAuth state is consumed by one callback only (review of feat-119)',
+    () => {
+        const callbackRequest = (id: string, state: string) => {
+            const request = createRequest(id)
+            request.context.httpData.params = { provider: 'google' }
+            request.context.httpData.query = { code: 'code-1', state } as never
+            return request
+        }
+
+        it('two callbacks with the same state: exactly one goes on', async () => {
+            await save('twice', { data: { oauthState: 'A', oauthCodeVerifier: 'vA' } })
+            const { Result } = await import('better-result')
+            oauthCallback.mockResolvedValue(Result.ok({ redirectUrl: '/?oauth=success' }))
+            const { default: OAuthController } =
+                await import('#app/controllers/http/auth/oauth-controller.js')
+            const first = callbackRequest('twice', 'A')
+            const second = callbackRequest('twice', 'A')
+            // Both read the session (snapshot A) before either consumes it.
+            expect(await executeMiddlewares(['session_web'], first.context)).toBe(true)
+            expect(await executeMiddlewares(['session_web'], second.context)).toBe(true)
+
+            const payloads = await Promise.all([
+                OAuthController.callback(first.context as never),
+                OAuthController.callback(second.context as never),
+            ])
+
+            expect(oauthCallback).toHaveBeenCalledTimes(1)
+            expect(payloads.filter((payload) => payload.status === 'success')).toHaveLength(1)
+            expect(payloads).toContainEqual(
+                expect.objectContaining({ message: 'OAuth state was already used or replaced' }),
+            )
+            expect((await recordOf('twice'))?.data['oauthState']).toBeUndefined()
+        })
+
+        it('a late callback with state A after a new start wrote B: it stops and B stays', async () => {
+            await save('replaced', { data: { oauthState: 'A', oauthCodeVerifier: 'vA' } })
+            const { default: OAuthController } =
+                await import('#app/controllers/http/auth/oauth-controller.js')
+            const late = callbackRequest('replaced', 'A')
+            expect(await executeMiddlewares(['session_web'], late.context)).toBe(true)
+            // A new OAuth start in another tab, after the late callback read A.
+            await storage.updateSessionData(
+                'replaced',
+                { oauthState: 'B', oauthCodeVerifier: 'vB' },
+                USER_TOKEN,
+            )
+
+            const payload = await OAuthController.callback(late.context as never)
+
+            expect(oauthCallback).not.toHaveBeenCalled()
+            expect(payload).toMatchObject({ message: 'OAuth state was already used or replaced' })
+            expect((await recordOf('replaced'))?.data).toMatchObject({
+                oauthState: 'B',
+                oauthCodeVerifier: 'vB',
+            })
+        })
+
+        it('the store: of 10 concurrent consumers of one value exactly one wins', async () => {
+            await save('race', { data: { oauthState: 'A', oauthCodeVerifier: 'vA' } })
+
+            const results = await Promise.all(
+                Array.from({ length: 10 }, () =>
+                    storage.consumeSessionData('race', USER_TOKEN, { oauthState: 'A' }, [
+                        'oauthState',
+                        'oauthCodeVerifier',
+                    ]),
+                ),
+            )
+
+            expect(results.filter((result) => result.kind === 'consumed')).toHaveLength(1)
+            expect(results.filter((result) => result.kind === 'mismatch')).toHaveLength(9)
+            expect((await recordOf('race'))?.data).not.toHaveProperty('oauthState')
+        })
+    },
+)

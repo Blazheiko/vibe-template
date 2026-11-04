@@ -4,6 +4,7 @@ import {
     getSession,
     updateSessionData,
     changeSessionData,
+    consumeSessionData,
     destroySession,
 } from '#vendor/utils/session/redis-session-storage.js'
 import logger from '#vendor/utils/logger.js'
@@ -109,6 +110,8 @@ export const wsSessionHandler = async (
                 await updateSessionData(sessionInfo.id, newData, userToken),
             changeSessionData: async (newData: SessionData) =>
                 await changeSessionData(sessionInfo.id, newData, userToken),
+            consumeSessionData: async (expected, keys) =>
+                (await consumeSessionData(sessionInfo.id, userToken, expected, keys)).kind,
             destroySession: async (): Promise<void> => {
                 await destroySession(sessionInfo.id, userToken)
             },

@@ -115,6 +115,15 @@ export interface Session {
     sessionInfo: SessionInfo | null
     updateSessionData: (newData: SessionData) => Promise<SessionInfo | null>
     changeSessionData: (newData: SessionData) => Promise<SessionInfo | null>
+    /**
+     * Removes `keys` only while every `expected` value is still stored, atomically (feat-119): of
+     * two requests consuming the same single-use value one gets `consumed`, and a value replaced
+     * meanwhile gives `mismatch` and stays.
+     */
+    consumeSessionData: (
+        expected: Record<string, string>,
+        keys: readonly string[],
+    ) => Promise<'consumed' | 'mismatch' | 'gone'>
     /** Deletes the current session's record; it does not issue a new session. */
     destroySession: () => Promise<void>
     /** Run by the server after the handler, right before the response is sent. */
