@@ -541,26 +541,47 @@ F1, F3–F5 закрито. F2: сценарій logout виправлено, а
 Два callback зі snapshot A обидва доходять до `handleCallback(A)`, а старий callback A видаляє новий
 `state` B. Виправлення — атомарне `consumeSessionData(expected)` (feat-120).
 
+### Четверте рев'ю 2026-11-04 (db24659..9f5b701, feat-102…120)
+
+High-дефектів немає. Medium підтверджено в коді; решту розкладено на групи, що йдуть наступними етапами.
+
+| #   | Пріоритет | Знахідка                                                                                                                                                                                                                                                                       | Група |
+| --- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| M1  | medium    | R07: IPv4-mapped у повній hex-формі (`0:…:ffff:7f00:1`, dual-stack `listen('::')`) не нормалізується → усі IPv4 в одному `/64`                                                                                                                                                 | G1    |
+| M2  | medium    | R12b: втрата лока (`SupportLockLostError`, не `AbortError`) пишеться як `failed`, хоча документовано `aborted`                                                                                                                                                                 | G1    |
+| M3  | medium    | `AUTH_SMS_MAX_INVALID_ATTEMPTS=0` дозволено конфігом, але відхиляє будь-який код                                                                                                                                                                                               | G1    |
+| M4  | medium    | `changePassword` / `logoutAll` не відкликають phone-reset challenge (email-reset відкликає)                                                                                                                                                                                    | G1    |
+| L5  | low-med   | R09 AC: одиночний logout не зупиняє захищену операцію, що не пише в сесію (`link-email/start`); `SessionGoneError` не з'явився                                                                                                                                                 | G3    |
+| L6  | low-med   | R11c: lease може вважатися живим до самого протухання ключа (джитер тіку, `Date.now()` замість монотонного годинника)                                                                                                                                                          | G2    |
+| L7  | low-med   | R07: XFF-ланцюжок відкидає невалідні записи замість зупинки (`ip:port` від проксі → перемагає підроблений лівий)                                                                                                                                                               | G2    |
+| L8  | low-med   | R07: на unix-сокеті `TRUSTED_PROXY_CIDRS` діють лише з `TRUST_PROXY=true`; не задокументовано, без попередження                                                                                                                                                                | G2    |
+| L9  | low-med   | `ws.send` результат читається неправильно в broadcast (0 = буфер як «не надіслано» → дублікати; 2 = дроп ігнорується)                                                                                                                                                          | G4    |
+| L10 | low-med   | R10: `llm:purge-prompts` — небатчевий UPDATE через основний пул із 10 с `statement_timeout`                                                                                                                                                                                    | G5    |
+| Lx  | low       | F6: `state` споживається до `safeEqual`; push endpoint без нормалізації; KB-init після втрати lease; обходи scrubber (R01); R11d COMMIT-неоднозначність; R04 `sendJson` і «привид онлайн»; R06b 400 замість 429; `fetchJson` без таймауту; тести, що пройшли б без виправлення | G3–G5 |
+
+Групи: **G1** (feat-121) — M1–M4; **G2** — лок і мережа (L6–L8); **G3** — сесія й auth (L5, F6-low, R06b 429); **G4** — WebSocket (L9, R04-low); **G5** — операції й логи (L10, R01/R11c/R11d-low, push, `fetchJson`, слабкі тести).
+
 ## Стан
 
-| Фіча  | id       | PR   | Стан |
-| ----- | -------- | ---- | ---- |
-| R01   | feat-102 | #345 | done |
-| R02   | feat-103 | #347 | done |
-| R03   | feat-104 | #349 | done |
-| R06a  | feat-106 | #353 | done |
-| R11a  | feat-105 | #351 | done |
-| R04   | feat-107 | #356 | done |
-| R05   | feat-108 | #359 | done |
-| R06b  | feat-109 | #362 | done |
-| R07   | feat-110 | #364 | done |
-| R09   | feat-111 | #367 | done |
-| R08   | feat-112 | #370 | done |
-| R10   | feat-113 | #373 | done |
-| R11b  | feat-114 | #376 | done |
-| R11c  | feat-115 | #379 | done |
-| R11d  | feat-116 | #382 | done |
-| R12a  | feat-117 | #385 | done |
-| R12b  | feat-118 | #388 | done |
-| F1–F5 | feat-119 | #391 | done |
-| F6    | feat-120 | #394 | done |
+| Фіча       | id       | PR   | Стан        |
+| ---------- | -------- | ---- | ----------- |
+| R01        | feat-102 | #345 | done        |
+| R02        | feat-103 | #347 | done        |
+| R03        | feat-104 | #349 | done        |
+| R06a       | feat-106 | #353 | done        |
+| R11a       | feat-105 | #351 | done        |
+| R04        | feat-107 | #356 | done        |
+| R05        | feat-108 | #359 | done        |
+| R06b       | feat-109 | #362 | done        |
+| R07        | feat-110 | #364 | done        |
+| R09        | feat-111 | #367 | done        |
+| R08        | feat-112 | #370 | done        |
+| R10        | feat-113 | #373 | done        |
+| R11b       | feat-114 | #376 | done        |
+| R11c       | feat-115 | #379 | done        |
+| R11d       | feat-116 | #382 | done        |
+| R12a       | feat-117 | #385 | done        |
+| R12b       | feat-118 | #388 | done        |
+| F1–F5      | feat-119 | #391 | done        |
+| F6         | feat-120 | #394 | done        |
+| G1 (M1–M4) | feat-121 |      | in_progress |

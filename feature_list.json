@@ -1193,6 +1193,16 @@
             "dependencies": ["feat-119"],
             "status": "done",
             "evidence": "Merged #394 (merge 25a0d85; start #393). consumeSessionData(sessionId, userToken, expected, keys) in the session store removes the keys only while every expected value is still stored (compare-and-set, checked again on every retry) and returns consumed / mismatch / gone; Session.consumeSessionData is wired in RequestSession, the WS session and the default context; the OAuth callback consumes { oauthState: storedState } with the verifier before handleCallback: gone -> session_revoked, mismatch -> error redirect and a newer state stays, only consumed goes on; oauth.md. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2354, frontend 400, api-playground 62; test:pg with Redis 28/244, test:redis 11/114; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; real Redis: two callbacks with snapshot A -> handleCallback once, a late callback A after a new start wrote B -> no sign-in and B stays, 10 concurrent consumers -> exactly one wins; mutation: the reviewed controller from main fails both scenarios, no expected-value check fails both scenarios and the race. Details were in progress.md on fix/feat-120-oauth-state-consume (removed from main by this PR)."
+        },
+        {
+            "id": "feat-121",
+            "name": "Fourth Review Mediums",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fourth review 2026-11-04 (db24659..9f5b701), G1 = M1-M4: (M1) normalizeIp maps only ::ffff:a.b.c.d, so a dual-stack listener that reports IPv4 as 0:0:0:0:0:ffff:7f00:1 puts every IPv4 client into one /64 rate-limit key; (M2) a lost support lock cancels with SupportLockLostError, not AbortError, so the usage audit writes failed although the docs promise aborted; (M3) AUTH_SMS_MAX_INVALID_ATTEMPTS=0 is accepted and then refuses every code; (M4) change-password and logout-all retire the reset links but not the pending phone-reset challenges. Every IPv4-mapped form normalized to IPv4; a call whose caller signal aborted is aborted whatever the reason; min 1; invalidatePendingPhoneChallenges in both transactions; tests; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-121-fourth-review-mediums",
+            "dependencies": ["feat-120"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
