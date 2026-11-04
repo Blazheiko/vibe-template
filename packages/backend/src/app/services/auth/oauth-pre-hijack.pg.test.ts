@@ -5,6 +5,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import { appErrorMessage } from '../shared/errors.js'
 
 // feat-097: account pre-hijacking through OAuth, against a real PostgreSQL. The paths are
 // those of docs/plan/oauth-pre-hijack-plan.md («Шляхи атаки»): an attacker prepares an
@@ -21,7 +22,7 @@ const silent = vi.hoisted(() => {
     }
     return logger
 })
-const mail = vi.hoisted(() => ({ sent: [] as { to: string; text: string }[] }))
+const mail = vi.hoisted(() => ({ sent: [] as { to: string; text: string; html: string }[] }))
 const destroyed = vi.hoisted(() => ({ tokens: [] as string[] }))
 
 vi.mock('#logger', () => ({ default: silent }))
@@ -43,8 +44,8 @@ vi.mock('#app/services/notifications/email-service.js', async () => {
     const { Result: R } = await import('better-result')
     return {
         emailService: {
-            send: (message: { to: string; text: string }) => {
-                mail.sent.push({ to: message.to, text: message.text })
+            send: (message: { to: string; text: string; html: string }) => {
+                mail.sent.push({ to: message.to, text: message.text, html: message.html })
                 return Promise.resolve(R.ok({ id: 'mail' }))
             },
         },
@@ -162,7 +163,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                           email: profile.email,
                           name: profile.name ?? 'Facebook Person',
                       }
-                return Promise.resolve({ json: () => Promise.resolve(body) })
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
             }),
         )
     }
@@ -627,6 +628,79 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             expect(links[0]?.userId).toBe(created[0]?.id)
             expect(first.state.login?.userId).toBe(String(created[0]?.id))
             expect(second.state.login?.userId).toBe(String(created[0]?.id))
+        })
+    })
+
+    // feat-108 (R05): what the provider says is data, never markup or an account key.
+    describe('provider answers that are not a profile (feat-108)', () => {
+        const oauthRowsFor = async (providerUserId: string) =>
+            db.select().from(oauthAccounts).where(eq(oauthAccounts.providerUserId, providerUserId))
+
+        it('a provider error answer signs nobody in and stores nothing', async () => {
+            const email = address('provider-error')
+            vi.stubGlobal(
+                'fetch',
+                vi.fn(() =>
+                    Promise.resolve({
+                        ok: false,
+                        status: 500,
+                        json: () => Promise.resolve({ error: 'internal', email }),
+                    }),
+                ),
+            )
+            const { auth, state } = fakeAuth()
+
+            const result = await callback('facebook', auth)
+
+            expect(Result.isError(result)).toBe(true)
+            expect(state.login).toBeUndefined()
+            expect(await db.select().from(users).where(eq(users.email, email))).toHaveLength(0)
+            expect(await oauthRowsFor('')).toHaveLength(0)
+        })
+
+        it('two profiles without an id do not share one account', async () => {
+            for (const tag of ['first', 'second']) {
+                provider({ id: '', email: address(`no-id-${tag}`) })
+                const { auth, state } = fakeAuth()
+
+                const result = await callback('facebook', auth)
+
+                expect(Result.isError(result) && appErrorMessage(result.error)).toBe(
+                    'Could not retrieve account id from provider',
+                )
+                expect(state.login).toBeUndefined()
+            }
+            expect(await oauthRowsFor('')).toHaveLength(0)
+        })
+
+        it('mails the provider profile name as text, not markup', async () => {
+            const email = address('markup', 'company.test')
+            await insertUser({ email })
+            const name = '"><a href="https://evil.example">Secure your account</a>'
+            vi.stubGlobal(
+                'fetch',
+                vi.fn(() =>
+                    Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () =>
+                            Promise.resolve({
+                                id: `g-markup-${String(now)}`,
+                                email,
+                                name,
+                                verified_email: true,
+                            }),
+                    }),
+                ),
+            )
+            const { auth } = fakeAuth()
+
+            const result = await callback('google', auth)
+
+            expect(Result.isOk(result) && result.value.redirectUrl).toBe('/?oauth=link_pending')
+            const sent = mail.sent.find((m) => m.to === email)
+            expect(sent?.html).not.toContain('<a href="https://evil.example">')
+            expect(sent?.html).toContain('&lt;a href=&quot;https://evil.example&quot;&gt;')
         })
     })
 })

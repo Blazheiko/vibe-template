@@ -163,7 +163,11 @@ function stubFetch(responses: Record<string, unknown>): void {
         vi.fn((url: string) => {
             const key = Object.keys(responses).find((prefix) => url.startsWith(prefix))
             if (key === undefined) throw new Error(`unexpected fetch ${url}`)
-            return Promise.resolve({ json: vi.fn().mockResolvedValue(responses[key]) })
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: vi.fn().mockResolvedValue(responses[key]),
+            })
         }),
     )
 }
@@ -1238,6 +1242,8 @@ describe('oauthService.handleCallback', () => {
                 vi.fn((url: string, init?: RequestInit) => {
                     calls.push({ url, init })
                     return Promise.resolve({
+                        ok: true,
+                        status: 200,
                         json: vi.fn().mockResolvedValue({
                             id: 'fb-1',
                             email: 'user@example.com',
@@ -1670,5 +1676,80 @@ describe('configured providers', () => {
             'email',
             'read_user',
         ])
+    })
+})
+
+// feat-108 (R05): a provider error answer is not a profile.
+describe('oauthService.handleCallback provider answers (feat-108)', () => {
+    const errorAnswer = (status: number, body: unknown) => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(() =>
+                Promise.resolve({ ok: false, status, json: vi.fn().mockResolvedValue(body) }),
+            ),
+        )
+    }
+
+    it.each([401, 403, 429, 500, 503])(
+        'a %s from the profile API fails the sign-in and creates nothing',
+        async (status) => {
+            // An error body that reads like a profile without an id: before feat-108 it went on
+            // to the account lookup with providerUserId ''.
+            googleValidateAuthorizationCodeMock.mockResolvedValue(tokens('google-token'))
+            errorAnswer(status, {
+                error: { code: status, message: 'Request had invalid credentials' },
+                email: 'user@example.com',
+                verified_email: true,
+            })
+
+            const result = await callback('google')
+
+            expect(Result.isError(result) && result.error).toEqual({
+                _tag: 'BadRequest',
+                message: 'Failed to exchange authorization code',
+            })
+            expect(oauthAccountRepositoryMock.findByProviderAndProviderId).not.toHaveBeenCalled()
+            expect(userRepositoryMock.create).not.toHaveBeenCalled()
+            expect(oauthAccountRepositoryMock.create).not.toHaveBeenCalled()
+        },
+    )
+
+    it.each([
+        ['missing', {}],
+        ['empty', { id: '' }],
+        ['not a string or number', { id: { nested: 1 } }],
+    ])('a profile with a %s id is refused before any lookup', async (_label, id) => {
+        githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('github-access-token'))
+        const { id: _drop, ...rest } = GITHUB_USER
+        stubFetch({
+            'https://api.github.com/user/emails': [
+                { email: 'user@example.com', primary: true, verified: true },
+            ],
+            'https://api.github.com/user': { ...rest, ...id },
+        })
+
+        const result = await callback('github')
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            message: 'Could not retrieve account id from provider',
+        })
+        expect(oauthAccountRepositoryMock.findByProviderAndProviderId).not.toHaveBeenCalled()
+        expect(userRepositoryMock.create).not.toHaveBeenCalled()
+    })
+
+    it('an e-mail list that is not a list reads as no verified address', async () => {
+        githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('github-access-token'))
+        stubFetch({
+            'https://api.github.com/user/emails': { message: 'Not Found' },
+            'https://api.github.com/user': GITHUB_USER,
+        })
+
+        const result = await callback('github')
+
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            message: 'Could not retrieve email from provider',
+        })
     })
 })
