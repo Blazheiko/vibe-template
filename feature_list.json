@@ -1063,6 +1063,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #356 (merge 73b5f2b; start #355). onClose marks userData.closed, drops the socket from wsStorage and starts onDisconnected (synchronous unregister) before awaiting the Redis token revoke; handleConnected skips a socket closed during findRole; the registry stores ip/userAgent/appType per connection and never reads getUserData from stored sockets; a ws.send dropped over maxBackpressure (2) logs a warn and closes with 1013. Evidence: typecheck, lint, format clean; pnpm test backend 2242, frontend 400, api-playground 62; test:pg local 17 files/136 passed (5 skipped by condition), test:redis 9 files/91 passed; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; ws-registry-lifecycle.pg.test.ts on a real uWS server with Redis sessions and PostgreSQL: with the old socket's revoke held it is already out of the registry and a new socket for the same user registers and receives broadcastMessageToUser; mutation: every new case fails on main's handlers/coordinator/registry. Details were in progress.md on fix/feat-107-ws-registry-lifecycle (removed from main by this PR)."
+        },
+        {
+            "id": "feat-108",
+            "name": "Mail Escaping and OAuth Fetch",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R05: renderBrandedEmail inserts intro, title, eyebrow, preheader, the button label and footer unescaped while the OAuth link mail puts the provider profile name into intro; every text field is escaped; fetchJson in oauth-service ignores response.ok, so a provider error answer can become a user with an empty providerUserId that later users with the same error sign into; non-2xx answers throw and an empty or non-string id is refused for every provider; tests on PostgreSQL",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-108-mail-escaping-oauth-fetch",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
