@@ -24,6 +24,7 @@ const redis = vi.hoisted(() => ({
     del: vi.fn(),
     scan: vi.fn(),
     multi: vi.fn(),
+    eval: vi.fn(),
 }))
 // The real classification is covered in redis-health.spec.ts; here withRedis
 // only has to turn a failure into RedisUnavailableError like the real one.
@@ -60,20 +61,61 @@ describe('session operations go through withRedis', () => {
 })
 
 describe('updateSessionData', () => {
-    it('reads, then saves the merged session', async () => {
-        redis.getex.mockResolvedValue(JSON.stringify(SESSION))
-        redis.setex.mockResolvedValue('OK')
+    // feat-111: compare-and-set over the record read, never a plain SETEX.
+    it('writes the merged session only over the record it read', async () => {
+        const current = JSON.stringify(SESSION)
+        redis.get.mockResolvedValue(current)
+        redis.eval.mockResolvedValue(1)
 
         const updated = await storage.updateSessionData('s1', { csrfToken: 'next' }, USER_TOKEN)
 
-        expect(redis.getex.mock.invocationCallOrder[0]).toBeLessThan(
-            redis.setex.mock.invocationCallOrder[0] ?? 0,
-        )
         expect(updated?.data).toMatchObject({ userToken: USER_TOKEN, csrfToken: 'next' })
-        const saved = JSON.parse(String(redis.setex.mock.calls[0]?.[2])) as {
-            data: Record<string, unknown>
-        }
-        expect(saved.data['csrfToken']).toBe('next')
+        const [, keys, key, expected, written] = redis.eval.mock.calls[0] as unknown[]
+        expect(keys).toBe(1)
+        expect(key).toBe(`session:${USER_TOKEN}:s1`)
+        expect(expected).toBe(current)
+        expect(
+            (JSON.parse(String(written)) as { data: Record<string, unknown> }).data,
+        ).toMatchObject({ csrfToken: 'next' })
+        expect(redis.setex).not.toHaveBeenCalled()
+    })
+
+    it('answers null and writes nothing when the record is gone', async () => {
+        redis.get.mockResolvedValue(null)
+
+        expect(await storage.updateSessionData('s1', { csrfToken: 'next' }, USER_TOKEN)).toBeNull()
+        expect(redis.eval).not.toHaveBeenCalled()
+        expect(redis.setex).not.toHaveBeenCalled()
+    })
+
+    it('answers null when the record vanished between the read and the write', async () => {
+        redis.get.mockResolvedValue(JSON.stringify(SESSION))
+        redis.eval.mockResolvedValue(-1)
+
+        expect(await storage.updateSessionData('s1', { csrfToken: 'next' }, USER_TOKEN)).toBeNull()
+    })
+
+    it('applies the change again to a record another request changed meanwhile', async () => {
+        const first = JSON.stringify(SESSION)
+        const second = JSON.stringify({ ...SESSION, data: { ...SESSION.data, other: 'kept' } })
+        redis.get.mockResolvedValueOnce(first).mockResolvedValueOnce(second)
+        redis.eval.mockResolvedValueOnce(0).mockResolvedValueOnce(1)
+
+        const updated = await storage.updateSessionData('s1', { csrfToken: 'next' }, USER_TOKEN)
+
+        expect(redis.eval).toHaveBeenCalledTimes(2)
+        expect(redis.eval.mock.calls[1]?.[3]).toBe(second)
+        expect(updated?.data).toMatchObject({ other: 'kept', csrfToken: 'next' })
+    })
+
+    it('gives up after three conflicts', async () => {
+        redis.get.mockResolvedValue(JSON.stringify(SESSION))
+        redis.eval.mockResolvedValue(0)
+
+        await expect(
+            storage.updateSessionData('s1', { csrfToken: 'next' }, USER_TOKEN),
+        ).rejects.toBeInstanceOf(storage.SessionUpdateConflictError)
+        expect(redis.eval).toHaveBeenCalledTimes(3)
     })
 
     it('does not write when the read fails with RedisUnavailableError', async () => {

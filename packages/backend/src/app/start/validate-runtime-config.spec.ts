@@ -277,6 +277,52 @@ describe('Redis main client configuration', () => {
             validateRuntimeConfig()
         }).toThrow(`Invalid Redis configuration: ${name} must be an integer >= 1`)
     })
+
+    // feat-111: the prefix is part of every key and of the logout-all SCAN pattern.
+    it.each(['app.prod:', 'with space', 'x'.repeat(17), 'star*'])(
+        'rejects REDIS_PREFIX=%s at startup',
+        async (value) => {
+            process.env['REDIS_PREFIX'] = value
+            try {
+                const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+                expect(() => {
+                    validateRuntimeConfig()
+                }).toThrow('Invalid Redis configuration: REDIS_PREFIX must be 1-16 characters')
+            } finally {
+                delete process.env['REDIS_PREFIX']
+            }
+        },
+    )
+
+    it.each(['uwebsocket:', 'app_1-prod:'])('accepts REDIS_PREFIX=%s', async (value) => {
+        process.env['REDIS_PREFIX'] = value
+        try {
+            const { default: redisConfig } = await import('#config/redis.js')
+            expect(redisConfig.keyPrefix).toBe(value)
+            expect(redisConfig.configError).toBeNull()
+        } finally {
+            delete process.env['REDIS_PREFIX']
+        }
+    })
+})
+
+describe('SESSION_MAX_AGE_DAYS (feat-111)', () => {
+    afterEach(() => {
+        delete process.env['SESSION_MAX_AGE_DAYS']
+    })
+
+    it('defaults to 30 days', async () => {
+        const { default: sessionConfig } = await import('#config/session.js')
+        expect(sessionConfig.maxAgeDays).toBe(30)
+    })
+
+    it.each(['0', '-1', 'abc', '3651'])('rejects %s at startup', async (value) => {
+        process.env['SESSION_MAX_AGE_DAYS'] = value
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(/Invalid session configuration: SESSION_MAX_AGE_DAYS/)
+    })
 })
 
 describe('CSRF startup checks', () => {

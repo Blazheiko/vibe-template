@@ -18,7 +18,11 @@ export const sanitizeRedisKey = (key: string | undefined | null): string => {
         key.length > MAX_KEY_LENGTH ||
         !/^[a-zA-Z0-9:_*-]+$/.test(key)
     ) {
-        logger.error({ key }, `Invalid Redis key format`)
+        // feat-111: a session key holds the user token; only its shape is logged.
+        logger.error(
+            { keyLength: typeof key === 'string' ? key.length : 0 },
+            `Invalid Redis key format`,
+        )
         throw new Error(`Invalid Redis key format`)
     }
     return key
@@ -84,9 +88,7 @@ export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
         typeof sessionInfo.data.userToken === 'string' ? sessionInfo.data.userToken : 'anon_session'
     const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionInfo.id}`)
 
-    const json = JSON.stringify(sessionInfo, (_, v: unknown) =>
-        typeof v === 'bigint' ? v.toString() : v,
-    )
+    const json = serializeSession(sessionInfo)
     await withRedis(() => redis.setex(redisKey, storedSessionTtl(userToken), json))
 }
 
@@ -112,43 +114,94 @@ export const getSession = async (
     return null
 }
 
+// feat-111: an update writes back only over the very record it read, in one Lua script. A key
+// that is gone stays gone (an update cannot bring back a session a logout deleted), and a record
+// another request changed meanwhile is read again and the change applied to it (no lost update).
+const COMPARE_AND_SET_LUA = `
+local current = redis.call('GET', KEYS[1])
+if not current then
+  return -1
+end
+if current ~= ARGV[1] then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+return 1
+`
+const MAX_UPDATE_ATTEMPTS = 3
+
+export class SessionUpdateConflictError extends Error {
+    constructor() {
+        super('Session record kept changing during the update')
+        this.name = 'SessionUpdateConflictError'
+    }
+}
+
+const serializeSession = (sessionInfo: SessionInfo): string =>
+    JSON.stringify(sessionInfo, (_, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))
+
+const writeSessionUpdate = async (
+    sessionId: string | undefined,
+    userToken: string,
+    apply: (session: SessionInfo) => SessionData,
+): Promise<SessionInfo | null> => {
+    if (sessionId === undefined) return null
+    const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
+
+    for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
+        const currentJson = await withRedis(() => redis.get(redisKey))
+        if (currentJson === null) return null
+
+        let session: SessionInfo
+        try {
+            session = JSON.parse(currentJson) as SessionInfo
+        } catch (e) {
+            logger.error({ err: e }, 'Failed to parse session JSON:')
+            return null
+        }
+
+        const updatedSession: SessionInfo = {
+            ...session,
+            data: apply(session),
+            updatedAt: new Date().toISOString(),
+        }
+        // Normalized once, so the result handed back is what the record holds (undefined fields
+        // dropped, as before).
+        const updatedJson = serializeSession(updatedSession)
+        const outcome = Number(
+            await withRedis(() =>
+                redis.eval(
+                    COMPARE_AND_SET_LUA,
+                    1,
+                    redisKey,
+                    currentJson,
+                    updatedJson,
+                    String(storedSessionTtl(userToken)),
+                ),
+            ),
+        )
+        if (outcome === -1) return null
+        if (outcome === 1) return JSON.parse(updatedJson) as SessionInfo
+    }
+
+    logger.warn({ attempts: MAX_UPDATE_ATTEMPTS }, 'Session update kept conflicting')
+    throw new SessionUpdateConflictError()
+}
+
+/** Merges into the session data; null when the record is gone (it is not recreated). */
 export const updateSessionData = async (
     sessionId: string | undefined,
     newData: SessionData,
     userToken: string,
-): Promise<SessionInfo | null> => {
-    if (sessionId === undefined) return null
-    const session = await getSession(sessionId, userToken)
-    if (session === null) return null
+): Promise<SessionInfo | null> =>
+    await writeSessionUpdate(sessionId, userToken, (session) => ({ ...session.data, ...newData }))
 
-    const updatedSession: SessionInfo = {
-        ...session,
-        data: { ...session.data, ...newData },
-        updatedAt: new Date().toISOString(),
-    }
-
-    await saveSession(updatedSession)
-    return updatedSession
-}
-
+/** Replaces the session data; null when the record is gone (it is not recreated). */
 export const changeSessionData = async (
     sessionId: string | undefined,
     newData: SessionData,
     userToken: string,
-): Promise<SessionInfo | null> => {
-    if (sessionId === undefined) return null
-    const session = await getSession(sessionId, userToken)
-    if (session === null) return null
-
-    const updatedSession: SessionInfo = {
-        ...session,
-        data: newData,
-        updatedAt: new Date().toISOString(),
-    }
-
-    await saveSession(updatedSession)
-    return updatedSession
-}
+): Promise<SessionInfo | null> => await writeSessionUpdate(sessionId, userToken, () => newData)
 
 export const destroySession = async (
     sessionId: string | undefined,

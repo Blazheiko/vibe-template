@@ -18,6 +18,7 @@ import {
     appErrorMessage,
     badRequest,
     internal,
+    sessionRevoked,
     unauthorized,
     type AppError,
 } from '#app/services/shared/errors.js'
@@ -90,11 +91,16 @@ export default {
 
         context.logger.info({ url: result.value.url }, 'oauth generated URL')
 
-        // Store OAuth state and PKCE verifier in session.
-        await context.session.updateSessionData({
+        // Store OAuth state and PKCE verifier in session. feat-111: a session that vanished
+        // meanwhile (a logout in another tab) is not recreated; the sign-in stops here instead of
+        // sending the browser to the provider with a state the callback can never match.
+        const stored = await context.session.updateSessionData({
             oauthState: result.value.state,
             oauthCodeVerifier: result.value.codeVerifier,
         })
+        if (stored === null) {
+            return mapControllerError(context, sessionRevoked())
+        }
 
         context.responseData.status = 302
         context.responseData.setHeader('Location', result.value.url)
