@@ -1101,8 +1101,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-111-session-store-hardening",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #367 (merge b6bb446; start #366). updateSessionData/changeSessionData write with one Lua compare-and-set over the exact value read (missing key -> null, never recreated; changed value -> re-read and re-apply, 3 attempts, then SessionUpdateConflictError); RequestSession.restore treats a record vanished during the CSRF repair as no session and drops sessions past SESSION_MAX_AGE_DAYS (30) or with an unparsable/future createdAt; the OAuth redirect answers 401 session_revoked when its session vanished; REDIS_PREFIX validated (1-32 of [A-Za-z0-9:_-]; 16 was too strict for e2e-live's prefix, caught by CI) and invalid keys logged by length only. Evidence: typecheck, lint, format clean; pnpm test backend 2299, frontend 400, api-playground 62; test:pg with Redis 24/218, test:redis 10/102; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; session-store.redis.test.ts 9 cases on real Redis through session_web/auth_guard; mutation: 7 of 9 fail on main (2 guards). Details were in progress.md on fix/feat-111-session-store-hardening (removed from main by this PR)."
         }
     ]
 }
