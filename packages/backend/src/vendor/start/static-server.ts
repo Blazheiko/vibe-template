@@ -256,7 +256,8 @@ const handleHtmlRequest = (
         }
         setSecurityHeaders(res, [], 'document')
         if (notModified) {
-            res.end()
+            // feat-112: a 304 has no body, and no Content-Length: 0 either (res.end() writes one).
+            res.endWithoutBody()
             return
         }
         if (encoding !== null) {
@@ -378,7 +379,7 @@ const staticCacheHandler = async (
             res.writeHeader('ETag', entry.etag)
             if (hasEncodings) res.writeHeader('Vary', 'Accept-Encoding')
             setSecurityHeaders(res, [], cspKind)
-            res.end()
+            res.endWithoutBody()
         })
         return
     }

@@ -32,6 +32,7 @@ interface CapturedResponse {
     // Every writeHeader call in order, so a duplicated header is not silently overwritten.
     headers: { name: string; value: string }[]
     body: string | undefined
+    withoutBody?: boolean
 }
 
 const createRes = (captured: CapturedResponse) => ({
@@ -46,6 +47,9 @@ const createRes = (captured: CapturedResponse) => ({
     },
     end: (body?: string | Buffer): void => {
         captured.body = body === undefined ? undefined : body.toString()
+    },
+    endWithoutBody: (): void => {
+        captured.withoutBody = true
     },
 })
 
@@ -101,6 +105,8 @@ describe('staticCacheHandler HTML validators', () => {
 
         expect(response.status).toBe('304 Not Modified')
         expect(response.body).toBeUndefined()
+        // feat-112: without the Content-Length: 0 that res.end() writes.
+        expect(response.withoutBody).toBe(true)
     })
 
     it('does not validate a redeployed shell of identical byte length', async () => {
