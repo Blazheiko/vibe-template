@@ -294,16 +294,19 @@ describe('Redis main client configuration', () => {
         },
     )
 
-    it.each(['uwebsocket:', 'app_1-prod:', 'e2e-live-1793790813000:'])('accepts REDIS_PREFIX=%s', async (value) => {
-        process.env['REDIS_PREFIX'] = value
-        try {
-            const { default: redisConfig } = await import('#config/redis.js')
-            expect(redisConfig.keyPrefix).toBe(value)
-            expect(redisConfig.configError).toBeNull()
-        } finally {
-            delete process.env['REDIS_PREFIX']
-        }
-    })
+    it.each(['uwebsocket:', 'app_1-prod:', 'e2e-live-1793790813000:'])(
+        'accepts REDIS_PREFIX=%s',
+        async (value) => {
+            process.env['REDIS_PREFIX'] = value
+            try {
+                const { default: redisConfig } = await import('#config/redis.js')
+                expect(redisConfig.keyPrefix).toBe(value)
+                expect(redisConfig.configError).toBeNull()
+            } finally {
+                delete process.env['REDIS_PREFIX']
+            }
+        },
+    )
 })
 
 describe('SESSION_MAX_AGE_DAYS (feat-111)', () => {
