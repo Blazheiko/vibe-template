@@ -219,6 +219,32 @@ describe('getProxyWarning', () => {
         process.env['TRUSTED_PROXY_CIDRS'] = '10.0.0.0/8'
         expect(await load()).toBeNull()
     })
+
+    // feat-110: a unix socket has no peer address; only the explicit flag trusts the proxy.
+    it('warns in production for a unix socket without TRUST_UNIX_SOCKET_PROXY', async () => {
+        process.env['APP_IS_PRODUCTION'] = 'true'
+        process.env['APP_UNIX_PATH'] = '/tmp/app.sock'
+        process.env['TRUST_UNIX_SOCKET_PROXY'] = 'false'
+        try {
+            expect(await load()).toContain('TRUST_UNIX_SOCKET_PROXY')
+        } finally {
+            delete process.env['APP_UNIX_PATH']
+            delete process.env['TRUST_UNIX_SOCKET_PROXY']
+        }
+    })
+
+    it('is silent for a unix socket with TRUST_UNIX_SOCKET_PROXY, whatever TRUST_PROXY says', async () => {
+        process.env['APP_IS_PRODUCTION'] = 'true'
+        process.env['APP_UNIX_PATH'] = '/tmp/app.sock'
+        process.env['TRUST_UNIX_SOCKET_PROXY'] = 'true'
+        process.env['TRUST_PROXY'] = 'false'
+        try {
+            expect(await load()).toBeNull()
+        } finally {
+            delete process.env['APP_UNIX_PATH']
+            delete process.env['TRUST_UNIX_SOCKET_PROXY']
+        }
+    })
 })
 
 describe('Redis main client configuration', () => {

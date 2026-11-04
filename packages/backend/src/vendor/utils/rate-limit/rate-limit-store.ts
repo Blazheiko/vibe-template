@@ -1,4 +1,5 @@
 import logger from '#vendor/utils/logger.js'
+import { rateLimitKeyForIp } from '../network/ip-address.js'
 
 // In-memory, per-process, synchronous rate-limit store.
 //
@@ -212,8 +213,8 @@ export function createRateLimitStore(options: RateLimitStoreOptions = {}): RateL
 export const retryAfterSeconds = (retryAfterMs: number): number =>
     Math.max(1, Math.ceil(retryAfterMs / 1000))
 
-export const clientKey = (ip: string | null | undefined): string =>
-    ip !== null && ip !== undefined && ip !== '' ? ip : 'unknown'
+/** The client's budget key: IPv6 grouped by /64, see rateLimitKeyForIp (feat-110). */
+export const clientKey = (ip: string | null | undefined): string => rateLimitKeyForIp(ip)
 
 /** The process-wide store shared by the HTTP, upgrade and WS message limiters. */
 export const rateLimitStore = createRateLimitStore()

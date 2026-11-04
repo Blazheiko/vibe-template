@@ -23,6 +23,13 @@ import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 /** Per-IP limits are only as good as the client IP: warn when it is the proxy's. */
 export function getProxyWarning(): string | null {
     if (!appConfig.isProductionLike) return null
+    // feat-110: on a unix socket the peer has no address; only the explicit flag makes the proxy's
+    // headers the client IP.
+    if (appConfig.unixPath !== undefined) {
+        return networkConfig.trustUnixSocketProxy
+            ? null
+            : 'APP_UNIX_PATH without TRUST_UNIX_SOCKET_PROXY=true: every client is "unknown" and shares one rate-limit budget'
+    }
     if (!networkConfig.trustProxy) {
         return 'TRUST_PROXY=false: behind a reverse proxy every client shares the proxy IP and one rate-limit budget'
     }

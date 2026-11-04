@@ -18,5 +18,10 @@ function parseList(value: string | undefined): readonly string[] {
 export const networkConfig = Object.freeze({
     trustProxy: reader.bool('TRUST_PROXY', false),
     trustedProxyCidrs: parseList(env['TRUSTED_PROXY_CIDRS']),
+    /**
+     * With APP_UNIX_PATH: the unix socket belongs to the reverse proxy, so the client IP is read
+     * from its X-Forwarded-For / X-Real-IP (feat-110). Without it every client is `unknown`.
+     */
+    trustUnixSocketProxy: reader.bool('TRUST_UNIX_SOCKET_PROXY', false),
     configError: reader.error,
 })

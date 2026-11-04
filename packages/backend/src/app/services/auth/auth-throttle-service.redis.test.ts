@@ -82,4 +82,20 @@ describe.skipIf(!hasRedis)('consumeAuthThrottle against Redis', () => {
         expect(await client.exists('auth:throttle:reset:k')).toBe(0)
         expect((await consumeAuthThrottle(p, 'k')).allowed).toBe(true)
     })
+
+    // feat-110: a per-IP policy counts the client's IPv6 /64, whatever address of it is used.
+    it('addresses of one IPv6 /64 share a per-IP budget; another /64 does not', async () => {
+        const p = policy(2, 60_000, 'v6')
+        expect((await consumeAuthThrottle(p, '2001:db8:1:2::a')).allowed).toBe(true)
+        expect((await consumeAuthThrottle(p, '2001:DB8:1:2:0:0:0:b')).allowed).toBe(true)
+        expect((await consumeAuthThrottle(p, '2001:db8:1:2:ffff::1')).allowed).toBe(false)
+        expect((await consumeAuthThrottle(p, '2001:db8:1:3::a')).allowed).toBe(true)
+        expect(await client.exists('auth:throttle:v6:2001:db8:1:2::/64')).toBe(1)
+    })
+
+    it('a per-user policy keeps its key as it is', async () => {
+        const p: ThrottlePolicy = { ...policy(2, 60_000, 'user-key'), keyBy: 'user' }
+        await consumeAuthThrottle(p, '2001:db8:1:2::a')
+        expect(await client.exists('auth:throttle:user-key:2001:db8:1:2::a')).toBe(1)
+    })
 })
