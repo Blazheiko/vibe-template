@@ -1053,6 +1053,16 @@
             "dependencies": ["feat-103"],
             "status": "done",
             "evidence": "Merged #353 (merge 2161108; start #352). completePhonePasswordReset locks the user, re-checks email IS NULL and the phone on the locked row, and confirms the challenge, retires the phone challenges and email reset links and rotates the password + session_token in one withTransactionResult (rolls back on Result.err and on a throw); the code check and its spent try stay outside; the password is hashed before the lock. Evidence: typecheck, lint, format clean; pnpm test backend 2235, frontend 400, api-playground 62; test:pg local 17 files/136 passed (5 skipped by condition), CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; phone-reset-transaction.pg.test.ts 8 cases on real PostgreSQL (concurrent email link under the row lock refused before confirming; a throw or Result.err after the confirmation rolls it back and the code works again; a failure retiring reset links keeps password and token; reset links retired; two parallel completions reset once); mutation: 5 of 8 fail on main's service. Details were in progress.md on fix/feat-106-phone-reset-transaction (removed from main by this PR)."
+        },
+        {
+            "id": "feat-107",
+            "name": "WS Registry Lifecycle",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R04: onClose awaits the Redis token revoke before the socket leaves the connection registry, and handleConnected registers a socket after awaiting the role without checking that it closed meanwhile, so a closed uWS socket stays in the registry (broadcasts and summarizeAppType then throw on it); the closed flag and the registry removal happen synchronously at the start of onClose, handleConnected skips a closed socket, the registry keeps appType instead of reading getUserData from stored sockets, and a dropped ws.send (backpressure) is logged and closes the socket; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-107-ws-registry-lifecycle",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
