@@ -75,6 +75,17 @@ export interface IUserRepository {
         executor?: DbExecutor,
     ): Promise<UserRow | undefined>
     /**
+     * Sets the avatar key (or null) while users.session_token is still `expectedSessionToken`,
+     * and returns the key it replaced, read from the row locked in the same transaction
+     * (feat-116): of two concurrent changes each gets the key the other set, so every object
+     * replaced is deleted exactly once. Undefined when the user is gone or the token was rotated.
+     */
+    replaceAvatarIfSessionToken(
+        id: bigint,
+        expectedSessionToken: string,
+        avatar: string | null,
+    ): Promise<{ user: UserRow; previousAvatar: string | null } | undefined>
+    /**
      * The current roles of these users by id; a user that no longer exists is absent.
      * Bounded like findSessionToken: it rejects once SESSION_TOKEN_CHECK_TIMEOUT_MS has
      * passed, and the statement is cancelled on the server.
@@ -265,6 +276,23 @@ export const userRepository: IUserRepository = {
             .where(and(eq(users.id, id), eq(users.sessionToken, expectedSessionToken)))
             .returning()
         return row
+    },
+
+    async replaceAvatarIfSessionToken(id, expectedSessionToken, avatar) {
+        return db.transaction(async (tx) => {
+            const [current] = await tx
+                .select({ avatar: users.avatar })
+                .from(users)
+                .where(and(eq(users.id, id), eq(users.sessionToken, expectedSessionToken)))
+                .for('update')
+            if (current === undefined) return undefined
+            const [row] = await tx
+                .update(users)
+                .set({ avatar, updatedAt: new Date() })
+                .where(eq(users.id, id))
+                .returning()
+            return row === undefined ? undefined : { user: row, previousAvatar: current.avatar }
+        })
     },
 
     // On the session-check pool, which cancels a stuck query: the WS admin re-check runs

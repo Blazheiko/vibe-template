@@ -168,20 +168,17 @@ export const knowledgeBaseService = {
     },
 
     async delete(id: bigint): Promise<AppResult<void>> {
-        const existingResult = await requireArticle(id)
-        if (Result.isError(existingResult)) {
-            return Result.err(existingResult.error)
+        // The key comes from the DELETE itself: a screenshot set meanwhile is the one removed.
+        const deleted = await supportKnowledgeRepository.delete(id)
+        if (deleted === undefined) {
+            return Result.err(notFound('Article', 'Article not found'))
         }
-        const existing = existingResult.value
-
-        if (existing.screenshotKey !== null) {
+        if (deleted.screenshotKey !== null) {
             await deleteScreenshotQuietly(
-                existing.screenshotKey,
+                deleted.screenshotKey,
                 'Failed to delete KB screenshot from S3',
             )
         }
-
-        await supportKnowledgeRepository.delete(id)
 
         return Result.ok(undefined)
     },
@@ -207,24 +204,40 @@ export const knowledgeBaseService = {
         }
         const existing = existingResult.value
 
-        if (existing.screenshotKey !== null) {
-            await deleteScreenshotQuietly(
-                existing.screenshotKey,
-                'Failed to delete old KB screenshot',
-            )
-        }
-
+        // feat-116: upload the new object, swap the key in the row (which returns the key it
+        // replaced), then delete that one. A failed upload leaves the article and its screenshot
+        // as they were; a failed or refused swap takes the new object back.
         const s3Key = `knowledge-base/${String(id)}/${randomUUID()}.${IMAGE_EXTENSIONS[imageType]}`
         // Screenshots are public help content: the browser loads them from CDN_URL, the
         // only media origin allowed by the CSP img-src.
         await uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true })
-        await supportKnowledgeRepository.setScreenshot(id, s3Key, imageType)
+
+        let replaced: { previousKey: string | null } | undefined
+        try {
+            replaced = await supportKnowledgeRepository.replaceScreenshot(id, {
+                key: s3Key,
+                mime: imageType,
+            })
+        } catch (err: unknown) {
+            await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
+            throw err
+        }
+        if (replaced === undefined) {
+            await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
+            return Result.err(notFound('Article', 'Article not found'))
+        }
+        if (replaced.previousKey !== null) {
+            await deleteScreenshotQuietly(
+                replaced.previousKey,
+                'Failed to delete old KB screenshot',
+            )
+        }
 
         return Result.ok({
             item: rowToData({
                 ...existing,
                 screenshotKey: s3Key,
-                screenshotMime: file.type,
+                screenshotMime: imageType,
                 updatedAt: new Date(),
                 embeddingIndexed: existing.embeddingIndexed,
             }),
@@ -238,14 +251,18 @@ export const knowledgeBaseService = {
         }
         const existing = existingResult.value
 
-        if (existing.screenshotKey !== null) {
+        // The key to delete is the one the row held when it was cleared (feat-116), not the one
+        // read above: an upload in between would otherwise leave its object behind.
+        const replaced = await supportKnowledgeRepository.replaceScreenshot(id, null)
+        if (replaced === undefined) {
+            return Result.err(notFound('Article', 'Article not found'))
+        }
+        if (replaced.previousKey !== null) {
             await deleteScreenshotQuietly(
-                existing.screenshotKey,
+                replaced.previousKey,
                 'Failed to delete KB screenshot from S3',
             )
         }
-
-        await supportKnowledgeRepository.clearScreenshot(id)
 
         return Result.ok({
             item: rowToData({

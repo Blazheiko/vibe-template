@@ -161,7 +161,10 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
 
         const reindex = knowledgeBaseService.reindexArticle(article.id)
         await until(() => embedding.single.length === 1)
-        await supportKnowledgeRepository.setScreenshot(article.id, 'kb/x.png', 'image/png')
+        await supportKnowledgeRepository.replaceScreenshot(article.id, {
+            key: 'kb/x.png',
+            mime: 'image/png',
+        })
         embedding.single[0]?.resolve(unit(4))
 
         const result = await reindex

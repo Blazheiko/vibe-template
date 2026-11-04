@@ -10,8 +10,7 @@ const supportKnowledgeRepositoryMock = {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-    setScreenshot: vi.fn(),
-    clearScreenshot: vi.fn(),
+    replaceScreenshot: vi.fn(),
     setEmbedding: vi.fn(),
     clearEmbedding: vi.fn(),
 }
@@ -189,7 +188,7 @@ describe('knowledgeBaseService', () => {
             createdAt: new Date('2026-05-08T10:00:00.000Z'),
             updatedAt: new Date('2026-05-08T10:00:00.000Z'),
         })
-        supportKnowledgeRepositoryMock.setScreenshot.mockResolvedValue(undefined)
+        supportKnowledgeRepositoryMock.replaceScreenshot.mockResolvedValue({ previousKey: null })
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
         const result = await knowledgeBaseService.uploadScreenshot(11n, {
@@ -206,10 +205,13 @@ describe('knowledgeBaseService', () => {
             'image/png',
             { publicRead: true },
         )
-        expect(supportKnowledgeRepositoryMock.setScreenshot).toHaveBeenCalledWith(
-            11n,
-            expect.stringContaining('knowledge-base/11/'),
-            'image/png',
+        expect(supportKnowledgeRepositoryMock.replaceScreenshot).toHaveBeenCalledWith(11n, {
+            key: expect.stringContaining('knowledge-base/11/'),
+            mime: 'image/png',
+        })
+        // Upload first, then the row: a failed upload leaves the article as it was (feat-116).
+        expect(uploadToS3Mock.mock.invocationCallOrder[0]).toBeLessThan(
+            supportKnowledgeRepositoryMock.replaceScreenshot.mock.invocationCallOrder[0] ?? 0,
         )
         if (Result.isOk(result)) {
             expect(result.value.item).toMatchObject({
