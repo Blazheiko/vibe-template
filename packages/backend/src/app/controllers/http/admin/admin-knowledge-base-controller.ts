@@ -140,8 +140,8 @@ export default {
             const error = mapControllerError(
                 context,
                 result.errorCode === 'ALREADY_RUNNING'
-                    ? conflict(result.message ?? 'Knowledge base initialization failed')
-                    : badRequest(result.message ?? 'Knowledge base initialization failed'),
+                    ? conflict(result.message)
+                    : badRequest(result.message),
             )
             return {
                 ...error,
