@@ -1181,8 +1181,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-119-review-follow-up",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #391 (merge 554dcc4; start #390). Follow-up review F1-F5 fixed: (F1) one age check session-age.ts applied by getSession (HTTP and every WS message) and the WS upgrade, which refuse and delete a session past SESSION_MAX_AGE_DAYS; (F2) the OAuth callback consumes oauthState/oauthCodeVerifier by compare-and-set before handleCallback, a session deleted after it was read -> session_revoked redirect and no sign-in, a Redis failure -> redirect without sign-in; (F3) indexArticle takes the lease signal, which cancels the provider wait and is checked right before the vector write; (F4) reading the embedding response is inside the audited call, an empty or short response -> one failed row; (F5) reindexAll counts stored vectors. Evidence: typecheck, lint, format clean; pnpm test backend 2353, frontend 400, api-playground 62; test:pg with Redis 28/244, test:redis 11/111; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; new real-Redis cases (31-day WS message refused and deleted, OAuth callback with a logout barrier signs nobody in and leaves no session), spec/PG cases for F3-F5; mutation per fix reverted to main: F1 5, F2 5, F3+F5 5, F4 2 cases fail; manual: built backend /api/ready 200, OAuth callback without stored state 302 to the error page. Details were in progress.md on fix/feat-119-review-follow-up (removed from main by this PR)."
         }
     ]
 }
