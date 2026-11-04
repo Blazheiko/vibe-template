@@ -249,6 +249,25 @@ const ROWS: readonly Row[] = [
         blocked: badRequest(TOO_MANY_VERIFICATIONS),
     },
     {
+        method: 'startPhoneLink · user',
+        call: (s) =>
+            s.startPhoneLink(
+                7n,
+                { phone: PHONE, currentPassword: 'secret' },
+                {
+                    ...IP,
+                    sessionId: 's',
+                    presentedSessionToken: TOKEN,
+                },
+            ),
+        consumed: [
+            ['change_password_user', '7'],
+            ['link_phone_ip', '203.0.113.9'],
+            ['link_phone_user', '7'],
+        ],
+        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+    },
+    {
         method: 'startPhoneLink · phone',
         call: (s) =>
             s.startPhoneLink(
@@ -263,6 +282,7 @@ const ROWS: readonly Row[] = [
         consumed: [
             ['change_password_user', '7'],
             ['link_phone_ip', '203.0.113.9'],
+            ['link_phone_user', '7'],
             ['sms_send_phone', PHONE],
         ],
         blocked: badRequest(TOO_MANY_VERIFICATIONS),

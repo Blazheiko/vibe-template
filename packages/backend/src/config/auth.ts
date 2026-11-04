@@ -39,6 +39,13 @@ export const authConfig = {
         { min: 0 },
     ),
     emailLinkCooldownSeconds: reader.int('AUTH_EMAIL_LINK_COOLDOWN_SECONDS', 60, { min: 0 }),
+    // feat-117 (D4): linking a phone tells the user whether the number is taken; this bounds how
+    // many numbers one account can try, whatever IPs it uses.
+    phoneLinkMaxAttemptsPerUserPerHour: reader.int(
+        'AUTH_PHONE_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR',
+        3,
+        { min: 0 },
+    ),
     smsProvider: process.env['AUTH_SMS_PROVIDER'] ?? 'unsupported',
     allowFakeSmsProvider: reader.bool('AUTH_SMS_PROVIDER_ALLOW_FAKE', false),
     fakeSmsCode: rawFakeSmsCode ?? '123456',

@@ -83,6 +83,12 @@ export const throttlePolicies = {
         HOUR_MS,
     ),
     linkPhoneIp: fixedWindow('link_phone_ip', 'ip', authConfig.smsMaxSendsPerIpPerHour, HOUR_MS),
+    linkPhoneUser: fixedWindow(
+        'link_phone_user',
+        'user',
+        authConfig.phoneLinkMaxAttemptsPerUserPerHour,
+        HOUR_MS,
+    ),
     confirmLinkPhoneIp: fixedWindow(
         'confirm_link_phone_ip',
         'ip',
