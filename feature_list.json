@@ -1161,8 +1161,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-117-link-flow-enumeration",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #385 (merge b5284c9; start #384 records D4 accepted 2026-11-04). The already-linked answers stay (link-email, link-phone start/confirm, OAuth first-address resend), documented in auth.md as decision D4: only an authenticated user who re-entered the password sees them, under per-target and per-user limits spent before the check. The phone link had no per-user limit: AUTH_PHONE_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR (default 3, 0 refused at startup) and policy linkPhoneUser (after linkPhoneIp, before smsSendPhone) add one, so an account checks at most 3 emails and 3 numbers an hour; security.md, configuration.md, .env.example. Evidence: typecheck, lint, format clean; pnpm test backend 2344, frontend 400, api-playground 62; test:pg with Redis 27/236, test:redis 11/107; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; throttle contract: startPhoneLink consumes change_password_user, link_phone_ip, link_phone_user, sms_send_phone in order, a spent link_phone_user stops everything after it, Redis outage fails closed; mutation: without the throttle 5 contract cases fail; manual: built backend exits 1 for =0 and =abc with the reason, link-phone/start without a session 401. Details were in progress.md on fix/feat-117-link-flow-enumeration (removed from main by this PR)."
         }
     ]
 }
