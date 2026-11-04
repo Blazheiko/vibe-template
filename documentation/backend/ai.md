@@ -73,13 +73,19 @@
 
 ## Support AI і база знань
 
-Статті лежать у `support_knowledge_base`: `title`, `content`, `category`, `is_active`, скріншот і колонка `embedding vector(1536)`, яку описує `customType` у [`schema.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts). Навіщо потрібне розширення pgvector і як його встановити, див. [База даних → pgvector](/backend/database#pgvector). Розмірність колонки — `EMBEDDING_COLUMN_DIMENSIONS = 1536` ([`embedding-dimensions.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/embedding-dimensions.ts)); `OPENAI_EMBEDDING_DIMENSIONS` з іншим значенням зупиняє старт: інша розмірність потребує міграції колонки й переіндексації.
+Статті лежать у `support_knowledge_base`: `title`, `content`, `category`, `is_active`, скріншот, `content_version` і колонка `embedding vector(1536)`, яку описує `customType` у [`schema.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts). Навіщо потрібне розширення pgvector і як його встановити, див. [База даних → pgvector](/backend/database#pgvector). Розмірність колонки — `EMBEDDING_COLUMN_DIMENSIONS = 1536` ([`embedding-dimensions.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/embedding-dimensions.ts)); `OPENAI_EMBEDDING_DIMENSIONS` з іншим значенням зупиняє старт: інша розмірність потребує міграції колонки й переіндексації.
 
 **Індексація** відбувається в [`support-embedding-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-embedding-service.ts). Текст `${title}\n\n${content}` відправляється в OpenAI embeddings, а результат записує `setEmbedding()` сирим SQL `::vector`. Індексацію запускають:
 
 - [`knowledge-base-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-service.ts) після створення статті та після зміни `title`/`content`, у фоні (`void ... .catch(log)`);
 - адмінські `POST /admin/knowledge-base/:id/reindex` і `POST /admin/knowledge-base/reindex-all`. Другий маршрут надсилає активні статті пачками по `SUPPORT_EMBEDDING_BATCH_SIZE` (за замовчуванням 50);
 - `POST /admin/knowledge-base/init` імпортує статті з файлів ([`knowledge-base-init-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-init-service.ts)).
+
+**Версія тексту.** Індексація йде у фоні, тож дві швидкі правки статті запускають дві індексації, і раніша може завершитися пізніше. Щоб у статті не лишився вектор старого тексту, текст має версію `content_version` ([`support-knowledge-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/support/support-knowledge-repository.ts)):
+
+- `UPDATE`, що змінює `title` або `content`, у тому ж запиті збільшує `content_version` і скидає `embedding` у `NULL`. Стаття не знаходиться пошуком зі старим вектором навіть тоді, коли переіндексація впала, а `embeddingIndexed` у відповіді — `false`, доки нова індексація не завершиться. Зміна `category`, `is_active` чи скріншота версію і вектор не чіпає.
+- Кожна індексація (створення, правка, `reindex`, `reindex-all`, `init`) бере версію разом із текстом, а `setEmbedding(id, vector, version)` пише лише за `content_version = version`. Індексація тексту, який устиг змінитися, нічого не записує (лог `info`), а `POST /admin/knowledge-base/:id/reindex` тоді відповідає `indexed: 0`.
+- `updated_at` версією бути не може: його задає `new Date()` (дві правки можуть отримати однакове значення), і його змінює скріншот.
 
 Якщо ключ OpenAI не задано, індексація пропускається з попередженням, а пошук повертає порожній список. `clearEmbedding()` скидає вектор і оновлює `updatedAt` одним `UPDATE`.
 

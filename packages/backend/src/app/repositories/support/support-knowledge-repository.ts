@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { supportKnowledgeBase } from '#database/schema.js'
-import { eq, sql, count } from 'drizzle-orm'
+import { and, eq, sql, count } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 
 export type KbRow = InferSelectModel<typeof supportKnowledgeBase>
@@ -30,6 +30,7 @@ const kbArticleSelect = {
     category: supportKnowledgeBase.category,
     screenshotKey: supportKnowledgeBase.screenshotKey,
     screenshotMime: supportKnowledgeBase.screenshotMime,
+    contentVersion: supportKnowledgeBase.contentVersion,
     isActive: supportKnowledgeBase.isActive,
     createdAt: supportKnowledgeBase.createdAt,
     updatedAt: supportKnowledgeBase.updatedAt,
@@ -103,9 +104,21 @@ export const supportKnowledgeRepository = {
             isActive?: boolean
         },
     ): Promise<KbRow | undefined> {
+        // feat-114 (R11b): a new text is a new version, and the vector of the old text is not
+        // searchable from this statement on (not after the re-index, which may never finish).
+        const textChanged = data.title !== undefined || data.content !== undefined
         const [updated] = await db
             .update(supportKnowledgeBase)
-            .set({ ...data, updatedAt: new Date() })
+            .set({
+                ...data,
+                ...(textChanged
+                    ? {
+                          contentVersion: sql`${supportKnowledgeBase.contentVersion} + 1`,
+                          embedding: null,
+                      }
+                    : {}),
+                updatedAt: new Date(),
+            })
             .where(eq(supportKnowledgeBase.id, id))
             .returning()
         return updated
@@ -129,11 +142,25 @@ export const supportKnowledgeRepository = {
             .where(eq(supportKnowledgeBase.id, id))
     },
 
-    async setEmbedding(id: bigint, vector: number[]): Promise<void> {
-        await db
+    /**
+     * Stores the vector made from the text of `contentVersion`, only while the article still has
+     * that version (feat-114): an indexing that read an older text and finishes last writes
+     * nothing. A screenshot change does not move the version.
+     *
+     * @returns whether the vector was stored
+     */
+    async setEmbedding(id: bigint, vector: number[], contentVersion: number): Promise<boolean> {
+        const stored = await db
             .update(supportKnowledgeBase)
             .set({ embedding: toVectorLiteral(vector) })
-            .where(eq(supportKnowledgeBase.id, id))
+            .where(
+                and(
+                    eq(supportKnowledgeBase.id, id),
+                    eq(supportKnowledgeBase.contentVersion, contentVersion),
+                ),
+            )
+            .returning({ id: supportKnowledgeBase.id })
+        return stored.length > 0
     },
 
     // One statement, so the vector and updatedAt change together or not at all.

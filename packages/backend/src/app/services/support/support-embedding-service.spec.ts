@@ -7,7 +7,7 @@ vi.mock('#app/services/ai/adapters/openai-embedding-adapter.js', () => ({
 }))
 const repository = {
     findActiveAll: vi.fn(),
-    setEmbedding: vi.fn(() => Promise.resolve()),
+    setEmbedding: vi.fn(() => Promise.resolve(true)),
     searchByEmbedding: vi.fn(() => Promise.resolve([])),
 }
 vi.mock('#app/repositories/index.js', () => ({ supportKnowledgeRepository: repository }))
@@ -32,6 +32,7 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
                 id: BigInt(i + 1),
                 title: 't',
                 content: 'c',
+                contentVersion: i + 2,
             })),
         )
 
@@ -40,11 +41,32 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
         expect(count).toBe(120)
         expect(embedBatch.mock.calls.map((call) => call[0].length)).toEqual([50, 50, 20])
         expect(repository.setEmbedding).toHaveBeenCalledTimes(120)
-        expect(repository.setEmbedding).toHaveBeenLastCalledWith(120n, [0.1])
+        expect(repository.setEmbedding).toHaveBeenLastCalledWith(120n, [0.1], 121)
     })
 
     it('searches with the configured maximum distance', async () => {
         await supportEmbeddingService.search('question', 5)
         expect(repository.searchByEmbedding).toHaveBeenCalledWith([0.2], 5, 0.6)
+    })
+
+    it('stores the vector with the version of the text it was made from (feat-114)', async () => {
+        const article = { id: 7n, title: 'T', content: 'C', contentVersion: 3 }
+
+        expect(await supportEmbeddingService.indexArticle(article)).toBe(true)
+        expect(embed).toHaveBeenCalledWith('T\n\nC', expect.anything())
+        expect(repository.setEmbedding).toHaveBeenCalledWith(7n, [0.2], 3)
+    })
+
+    it('reports a vector of a text that changed meanwhile as not stored (feat-114)', async () => {
+        repository.setEmbedding.mockResolvedValueOnce(false)
+
+        expect(
+            await supportEmbeddingService.indexArticle({
+                id: 7n,
+                title: 'T',
+                content: 'C',
+                contentVersion: 3,
+            }),
+        ).toBe(false)
     })
 })

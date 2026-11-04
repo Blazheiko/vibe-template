@@ -122,14 +122,9 @@ export const knowledgeBaseService = {
     }): Promise<AppResult<{ item: KbItemData }>> {
         const created = await supportKnowledgeRepository.create(data)
 
-        void supportEmbeddingService
-            .indexArticle(created.id, created.title, created.content)
-            .catch((err: unknown) => {
-                logger.error(
-                    { err, articleId: String(created.id) },
-                    'Failed to index new KB article',
-                )
-            })
+        void supportEmbeddingService.indexArticle(created).catch((err: unknown) => {
+            logger.error({ err, articleId: String(created.id) }, 'Failed to index new KB article')
+        })
         return Result.ok({
             item: rowToData({
                 ...created,
@@ -151,7 +146,6 @@ export const knowledgeBaseService = {
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
         }
-        const existing = existingResult.value
 
         const updated = await supportKnowledgeRepository.update(id, data)
 
@@ -160,16 +154,15 @@ export const knowledgeBaseService = {
         }
 
         if (data.title !== undefined || data.content !== undefined) {
-            void supportEmbeddingService
-                .indexArticle(updated.id, updated.title, updated.content)
-                .catch((err: unknown) => {
-                    logger.error({ err, articleId: String(id) }, 'Failed to re-index KB article')
-                })
+            void supportEmbeddingService.indexArticle(updated).catch((err: unknown) => {
+                logger.error({ err, articleId: String(id) }, 'Failed to re-index KB article')
+            })
         }
         return Result.ok({
             item: rowToData({
                 ...updated,
-                embeddingIndexed: existing.embeddingIndexed,
+                // A text change cleared the vector in the same UPDATE (feat-114).
+                embeddingIndexed: updated.embedding !== null,
             }),
         })
     },
@@ -299,9 +292,10 @@ export const knowledgeBaseService = {
             return Result.err(notFound('Article', 'Article not found'))
         }
 
-        await supportEmbeddingService.indexArticle(row.id, row.title, row.content)
+        const stored = await supportEmbeddingService.indexArticle(row)
 
-        return Result.ok({ indexed: 1 })
+        // The article changed while it was indexed: the indexing of that change stores its vector.
+        return Result.ok({ indexed: stored ? 1 : 0 })
     },
 
     async reindexAll(): Promise<AppResult<{ indexed: number }>> {

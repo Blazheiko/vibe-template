@@ -6,18 +6,48 @@ import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
 
+// The version read with the text goes with its vector: a newer text in the meantime wins.
+async function storeVector(
+    article: { id: bigint; contentVersion: number },
+    vector: number[],
+): Promise<boolean> {
+    const stored = await supportKnowledgeRepository.setEmbedding(
+        article.id,
+        vector,
+        article.contentVersion,
+    )
+    if (!stored) {
+        logger.info(
+            { articleId: String(article.id), contentVersion: article.contentVersion },
+            'KB article changed while it was indexed: the vector of the old text is dropped',
+        )
+    }
+    return stored
+}
+
 export const supportEmbeddingService = {
-    async indexArticle(articleId: bigint, title: string, content: string): Promise<void> {
+    /**
+     * Embeds the text of one version of an article and stores the vector if the article still has
+     * that version (feat-114).
+     *
+     * @returns whether the vector was stored; false when not configured or the text has changed since
+     */
+    async indexArticle(article: {
+        id: bigint
+        title: string
+        content: string
+        contentVersion: number
+    }): Promise<boolean> {
         if (!openaiEmbeddingAdapter.isConfigured()) {
             logger.warn('OpenAI Embedding not configured, skipping indexing')
-            return
+            return false
         }
-        const text = `${title}\n\n${content}`
+        const text = `${article.title}\n\n${article.content}`
         // Indexing is a system call: no user to attribute it to.
         const vector = await openaiEmbeddingAdapter.embed(text, {
             onComplete: llmUsageService.textUsageRecorder('SUPPORT_EMBEDDING', null),
         })
-        await supportKnowledgeRepository.setEmbedding(articleId, vector)
+        return storeVector(article, vector)
     },
 
     async reindexAll(): Promise<number> {
@@ -42,7 +72,7 @@ export const supportEmbeddingService = {
                 const article = batch[i]
                 const vector = vectors[i]
                 if (article === undefined || vector === undefined) continue
-                await supportKnowledgeRepository.setEmbedding(article.id, vector)
+                await storeVector(article, vector)
             }
         }
 
