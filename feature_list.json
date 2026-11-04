@@ -1133,6 +1133,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #376 (merge 0d467d4; start #375). Migration 20261104143331_kb_content_version adds support_knowledge_base.content_version integer NOT NULL DEFAULT 1; the UPDATE that changes title/content bumps it and sets embedding = NULL (category, isActive, screenshots keep both); setEmbedding(id, vector, version) writes only while content_version = version and returns whether it stored; indexArticle/reindexAll/reindexArticle/KB init carry the version they read; reindexArticle answers indexed 0 when the text changed meanwhile. Evidence: typecheck, lint, format clean; pnpm test backend 2335, frontend 400, api-playground 62; test:pg with Redis 26/228, test:redis 10/102; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; kb-embedding-consistency.pg.test.ts with held embedding calls: same updated_at under a fixed clock -> the older indexing ending last stores nothing, a screenshot change mid-indexing still stores, reindexAll racing an update stores no stale vector, a failed re-index leaves the article unindexed, a metadata update keeps version and vector; mutation: without the version condition the same-clock and reindexAll cases fail, without embedding = NULL the failed re-index case fails; manual: db:migrate on a throwaway database gives the column (integer, default 1, NOT NULL), built backend /api/ready 200, SIGTERM exit 0 (the local dev database journal was already out of sync and was left untouched). Details were in progress.md on fix/feat-114-kb-embedding-consistency (removed from main by this PR)."
+        },
+        {
+            "id": "feat-115",
+            "name": "KB Init Single Run",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R11c: knowledgeBaseInitService.start() sets running only after two awaits, so two quick calls in one process both import, and the in-memory state does not stop a second instance at all (duplicate articles, double embedding cost). running is set synchronously and undone on an early exit; a Redis lease lock with an owner token (SET NX PX, Lua renew/release conditional on the token, the lease logic shared with the support in-flight lock) admits one instance; a lost lease aborts the import before its next write with status failed: lock lost, and a late release is a no-op; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-115-kb-init-single-run",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
