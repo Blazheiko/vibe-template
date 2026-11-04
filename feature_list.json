@@ -1191,8 +1191,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-120-oauth-state-consume",
             "dependencies": ["feat-119"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #394 (merge 25a0d85; start #393). consumeSessionData(sessionId, userToken, expected, keys) in the session store removes the keys only while every expected value is still stored (compare-and-set, checked again on every retry) and returns consumed / mismatch / gone; Session.consumeSessionData is wired in RequestSession, the WS session and the default context; the OAuth callback consumes { oauthState: storedState } with the verifier before handleCallback: gone -> session_revoked, mismatch -> error redirect and a newer state stays, only consumed goes on; oauth.md. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2354, frontend 400, api-playground 62; test:pg with Redis 28/244, test:redis 11/114; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; real Redis: two callbacks with snapshot A -> handleCallback once, a late callback A after a new start wrote B -> no sign-in and B stays, 10 concurrent consumers -> exactly one wins; mutation: the reviewed controller from main fails both scenarios, no expected-value check fails both scenarios and the race. Details were in progress.md on fix/feat-120-oauth-state-consume (removed from main by this PR)."
         }
     ]
 }
