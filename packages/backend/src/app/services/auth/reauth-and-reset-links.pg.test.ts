@@ -60,7 +60,8 @@ const PASSWORD = 'current-password-123'
 describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)', async () => {
     const { db, pool } = await import('#database/db.js')
     const { sessionCheckPool } = await import('#database/session-check-db.js')
-    const { passwordResetTokens, users } = await import('#database/schema.js')
+    const { passwordResetTokens, smsAuthChallenges, users } = await import('#database/schema.js')
+    const { RESET_PHONE_FLOW } = await import('#app/services/auth/auth-normalize.js')
     const { passwordResetRepository } = await import('#app/repositories/index.js')
     const { authService } = await import('#app/services/auth/auth-service.js')
 
@@ -263,5 +264,73 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         expect(result.isErr()).toBe(true)
         expect((await userRow(user.id)).sessionToken).toBe(user.sessionToken)
         expect(await linkUsedAt(link.id)).toBeNull()
+    })
+
+    // feat-121 (M4): change-password and logout-all end a phone reset asked for before them, as
+    // an email reset does.
+    const insertUserWithPhone = async () => {
+        const user = await insertUser()
+        counter += 1
+        const phone = `+3805${String(Date.now()).slice(-6)}${String(counter).padStart(2, '0')}`
+        await db.update(users).set({ phone }).where(eq(users.id, user.id))
+        return { ...user, phone }
+    }
+
+    const insertPhoneReset = async (phone: string) => {
+        const [row] = await db
+            .insert(smsAuthChallenges)
+            .values({
+                flow: RESET_PHONE_FLOW,
+                phone,
+                codeHash: 'hash',
+                resendAvailableAt: new Date(),
+                expiresAt: new Date(Date.now() + 10 * 60_000),
+            })
+            .returning()
+        if (row === undefined) throw new Error('challenge not inserted')
+        return row
+    }
+
+    const challengeInvalidatedAt = async (id: string) => {
+        const [row] = await db
+            .select({ invalidatedAt: smsAuthChallenges.invalidatedAt })
+            .from(smsAuthChallenges)
+            .where(eq(smsAuthChallenges.id, id))
+        return row?.invalidatedAt ?? null
+    }
+
+    it('change-password retires the pending phone-reset challenge', async () => {
+        const user = await insertUserWithPhone()
+        const challenge = await insertPhoneReset(user.phone)
+
+        const change = await authService.changePassword(
+            user.id,
+            { currentPassword: PASSWORD, newPassword: 'another-password-456' },
+            user.sessionToken,
+        )
+
+        expect(change.isOk()).toBe(true)
+        expect(await challengeInvalidatedAt(challenge.id)).not.toBeNull()
+        await db.delete(smsAuthChallenges).where(eq(smsAuthChallenges.id, challenge.id))
+    })
+
+    it('logout-all retires the pending phone-reset challenge', async () => {
+        const user = await insertUserWithPhone()
+        const challenge = await insertPhoneReset(user.phone)
+
+        expect((await logoutAll(user)).isOk()).toBe(true)
+
+        expect(await challengeInvalidatedAt(challenge.id)).not.toBeNull()
+        await db.delete(smsAuthChallenges).where(eq(smsAuthChallenges.id, challenge.id))
+    })
+
+    it('a revoked session retires no phone challenge either', async () => {
+        const user = await insertUserWithPhone()
+        const challenge = await insertPhoneReset(user.phone)
+
+        expect((await logoutAll({ id: user.id, sessionToken: 'stale-token' })).isErr()).toBe(true)
+
+        expect(await challengeInvalidatedAt(challenge.id)).toBeNull()
+        await db.delete(smsAuthChallenges).where(eq(smsAuthChallenges.id, challenge.id))
     })
 })

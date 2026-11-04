@@ -615,3 +615,20 @@ describe('database and Sentry settings at startup (feat-113)', () => {
         }).not.toThrow()
     })
 })
+
+describe('SMS code attempts (feat-121, M3)', () => {
+    it('refuses AUTH_SMS_MAX_INVALID_ATTEMPTS=0: no code, the right one included, could pass', async () => {
+        process.env['AUTH_SMS_MAX_INVALID_ATTEMPTS'] = '0'
+        const { authConfig } = await import('#config/auth.js')
+        expect(authConfig.configError).toContain(
+            'AUTH_SMS_MAX_INVALID_ATTEMPTS must be an integer >= 1, got "0"',
+        )
+    })
+
+    it('accepts 1', async () => {
+        process.env['AUTH_SMS_MAX_INVALID_ATTEMPTS'] = '1'
+        const { authConfig } = await import('#config/auth.js')
+        expect(authConfig.smsMaxInvalidAttempts).toBe(1)
+        expect(authConfig.configError).toBeNull()
+    })
+})

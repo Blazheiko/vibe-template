@@ -38,6 +38,7 @@ const sendVerificationEmailAfterRegistrationMock = vi.fn()
 vi.mock('#app/repositories/index.js', () => ({
     // feat-109: change-password and logout-all retire the pending reset links.
     passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
+    smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn().mockResolvedValue(0) },
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
     userRepository: userRepositoryMock,
 }))

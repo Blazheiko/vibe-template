@@ -29,6 +29,7 @@ import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceEmailLinkThrottles, enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
 import {
     confirmChallenge,
     findPendingChallenge,
@@ -1047,6 +1048,11 @@ export const authService = {
                                   BigInt(userId),
                                   tx,
                               )
+                              // feat-121 (M4): the SMS challenges of the phone too, as an email
+                              // reset does: a phone reset started before cannot finish after.
+                              if (done.phone !== null && done.phone !== '') {
+                                  await invalidatePendingPhoneChallenges(done.phone, tx)
+                              }
                           }
                           return done
                       })
@@ -1150,6 +1156,11 @@ export const authService = {
             )
             if (changed !== undefined) {
                 await passwordResetRepository.invalidatePendingByUserId(userId, tx)
+                // feat-121 (M4): and the pending SMS challenges of the phone, as an email reset
+                // does: a phone reset started before the change cannot set the password after it.
+                if (changed.phone !== null && changed.phone !== '') {
+                    await invalidatePendingPhoneChallenges(changed.phone, tx)
+                }
             }
             return changed
         })

@@ -21,9 +21,18 @@ import logger from '#logger'
 //   real; without it the tokens are an estimate (prompt and streamed text, characters / 2) and the
 //   row says so.
 
-/** `aborted` when the caller cancelled; a timeout or any other error is `failed`. */
-export const statusOfError = (error: unknown): TextCallStatus =>
-    aiAbortKind(error) === 'aborted' ? 'aborted' : 'failed'
+/**
+ * `aborted` when the caller cancelled; a timeout or any other error is `failed`.
+ *
+ * feat-121 (M2): the caller's signal decides, not the error's name. A lost support lock cancels
+ * with its own reason (SupportLockLostError), and fetch rejects with that reason as it is, so the
+ * name says nothing; the timeout lives on the adapter's own signal (aiRequestSignal), not on the
+ * caller's, and stays `failed`.
+ */
+export const statusOfError = (error: unknown, callerSignal?: AbortSignal): TextCallStatus => {
+    if (callerSignal?.aborted === true) return 'aborted'
+    return aiAbortKind(error) === 'aborted' ? 'aborted' : 'failed'
+}
 
 export interface CallAudit {
     /** Usage the provider reported so far; the last report wins. */
@@ -95,7 +104,7 @@ async function* auditedStream(
         }
     } catch (err: unknown) {
         ended = true
-        audit.settle(statusOfError(err), outputChars)
+        audit.settle(statusOfError(err, opts.signal), outputChars)
         throw err
     } finally {
         if (!ended) {
