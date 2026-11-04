@@ -672,6 +672,17 @@ export const authService = {
             return Result.err(ipThrottle.error)
         }
 
+        // feat-117 (D4): the answer below says whether the number is taken. Per account as well
+        // as per IP and per number, so one account cannot sweep numbers from many addresses.
+        const userThrottle = await enforceThrottle(
+            throttlePolicies.linkPhoneUser,
+            String(userId),
+            badRequest('Too many verification attempts. Please try again later.'),
+        )
+        if (Result.isError(userThrottle)) {
+            return Result.err(userThrottle.error)
+        }
+
         const phoneThrottle = await enforceThrottle(
             throttlePolicies.smsSendPhone,
             phone,

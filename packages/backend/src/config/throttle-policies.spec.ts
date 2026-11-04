@@ -50,6 +50,7 @@ describe('throttlePolicies registry', () => {
             reset_phone_ip: [10, HOUR, 'ip'],
             confirm_reset_phone_ip: [20, HOUR, 'ip'],
             link_phone_ip: [10, HOUR, 'ip'],
+            link_phone_user: [3, HOUR, 'user'],
             confirm_link_phone_ip: [20, HOUR, 'ip'],
             link_email_target: [3, HOUR, 'email'],
             link_email_user: [3, HOUR, 'user'],
