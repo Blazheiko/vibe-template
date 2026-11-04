@@ -121,7 +121,7 @@ macOS, Docker Desktop, `docker build --no-cache`:
 
 - **Змінні**: повний перелік наведено на сторінці [Конфігурація](/backend/configuration), про production-like режим (`APP_IS_PRODUCTION` або `APP_ENV`/`NODE_ENV` зі значенням `production`/`prod`) див. [Production-like режим](/backend/configuration#production-like-режим). Образ задає `NODE_ENV=production` і `APP_ENV=production`: `secure` у cookie і конфіг CSP (`config/csp.ts`, зокрема `wss:` у `getWsUrl()`) читають саме `APP_ENV`. Для staging-оточення перевизначте `APP_ENV` при запуску.
 - **TLS і проксі**: сервер слухає HTTP (`server.listen(host, port)` у [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts)), тож TLS завершується на реверс-проксі. За проксі потрібні `TRUST_PROXY=true` і `TRUSTED_PROXY_CIDRS`, див. [Trust proxy](/backend/security#trust-proxy-і-визначення-ip).
-- **Unix socket**: якщо `APP_UNIX_PATH` задано й не порожнє, сервер викликає `listen_unix` замість TCP, і `HOST`/`PORT` тоді ігноруються. Порожнє `APP_UNIX_PATH=` (як у `.env.example`) означає TCP на `HOST:PORT`.
+- **Unix socket**: якщо `APP_UNIX_PATH` задано й не порожнє, сервер викликає `listen_unix` замість TCP, і `HOST`/`PORT` тоді ігноруються. Порожнє `APP_UNIX_PATH=` (як у `.env.example`) означає TCP на `HOST:PORT`. За nginx на unix-сокеті задайте `TRUST_UNIX_SOCKET_PROXY=true`: адреси піра на сокеті немає, тож без прапорця всі клієнти — `unknown` зі спільним бюджетом лімітів, а з ним IP береться з `X-Forwarded-For` / `X-Real-IP`, які ставить nginx.
 - **Graceful shutdown**: [`index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/index.ts) обробляє `SIGINT`, `SIGHUP`, `SIGTERM` і `uncaughtException`. `stopGracefully` закриває WebSocket-з'єднання та listen socket, робить `flush` Sentry (2 с), закриває пул PostgreSQL і Redis, а потім викликає `process.exit(0)`. У контейнері PID 1 — Node (`CMD` у exec-формі), тож `docker stop` закінчується через `stopGracefully` з кодом 0.
 - **Sentry**: бекенд читає `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` тощо під час виконання ([`config/sentry.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/sentry.ts)). Фронтенду потрібні `VITE_SENTRY_*` як `--build-arg` під час збірки.
 
@@ -205,7 +205,7 @@ Workflow для збірки, тестів або деплою самого за
 - [ ] Healthcheck відповідає вашим `PORT` / `API_PATH_PREFIX`.
 - [ ] `CSRF_ALLOWED_ORIGINS` з origin фронтенду: образ задає `APP_ENV=production`, і без цієї змінної сервер не стартує ([CSRF](/backend/security#csrf)).
 - [ ] `APP_ENV=production`, `APP_KEY` і решта пунктів із [чекліста безпеки](/backend/security#чекліст-для-production).
-- [ ] TLS на проксі, `TRUST_PROXY` і `TRUSTED_PROXY_CIDRS` налаштовано.
+- [ ] TLS на проксі, `TRUST_PROXY` і `TRUSTED_PROXY_CIDRS` налаштовано (на unix-сокеті — `TRUST_UNIX_SOCKET_PROXY=true`).
 - [ ] Визначено, хто віддає фронтенд: `SERVE_STATIC=true` або окремий хостинг/CDN.
 - [ ] `VITE_SENTRY_*` передано як build-args, `SENTRY_*` — як runtime env.
 - [ ] CORS бакета ([`corsS3.xml`](https://github.com/Blazheiko/vibe-template/blob/main/corsS3.xml)) обмежено вашим доменом.
