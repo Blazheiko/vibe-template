@@ -1,9 +1,11 @@
-import { db } from '#database/db.js'
-import { sql } from 'drizzle-orm'
+import readinessProbe from '#database/readiness-probe.js'
 
 export const healthRepository = {
-    /** Throws when PostgreSQL does not answer. */
+    /**
+     * Throws when PostgreSQL does not answer within the readiness deadline, or while the previous
+     * probe is still running (feat-113: its own connection, one probe at a time).
+     */
     async pingDatabase(): Promise<void> {
-        await db.execute(sql`SELECT 1`)
+        await readinessProbe.ping()
     },
 }

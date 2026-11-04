@@ -586,3 +586,32 @@ describe('APP_UNIX_PATH length (feat-112)', () => {
         }
     })
 })
+
+describe('database and Sentry settings at startup (feat-113)', () => {
+    it('refuses an invalid SENTRY_TRACES_SAMPLE_RATE instead of warning and tracing nothing', async () => {
+        process.env['SENTRY_TRACES_SAMPLE_RATE'] = '1.5'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(
+            'Invalid Sentry configuration: SENTRY_TRACES_SAMPLE_RATE must be a number from 0 to 1, got "1.5"',
+        )
+    })
+
+    it('refuses an invalid DB_QUERY_TIMEOUT_MS', async () => {
+        process.env['DB_QUERY_TIMEOUT_MS'] = '10s'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow('Invalid database configuration: DB_QUERY_TIMEOUT_MS must be an integer')
+    })
+
+    it('starts with a valid sample rate and query timeout', async () => {
+        process.env['SENTRY_TRACES_SAMPLE_RATE'] = '0.2'
+        process.env['DB_QUERY_TIMEOUT_MS'] = '5000'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).not.toThrow()
+    })
+})
