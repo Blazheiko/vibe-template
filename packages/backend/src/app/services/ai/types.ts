@@ -20,10 +20,24 @@ export const UNKNOWN_USAGE: TokenUsage = Object.freeze({
     totalTokens: null,
 })
 
+/** How a started provider call ended (feat-118, llm_text_usage.status). */
+export type TextCallStatus = 'completed' | 'aborted' | 'failed'
+
+/**
+ * The end of a call, given with its usage. Absent means `completed` with the provider's usage.
+ * `tokensEstimated`: the provider reported no usage, so `usage` is an estimate (feat-118); the
+ * status and the origin of the tokens are independent.
+ */
+export interface TextCallEnd {
+    status: TextCallStatus
+    tokensEstimated: boolean
+}
+
 export type TextUsageCompleteHandler = (
     usage: TokenUsage,
     model: string,
     finalPrompt: string,
+    end?: TextCallEnd,
 ) => void
 
 export interface TextStreamOptions {
@@ -43,6 +57,13 @@ export interface TextStreamOptions {
      * with AI_REQUEST_TIMEOUT_MS via aiRequestSignal.
      */
     signal?: AbortSignal
+    /**
+     * Called as soon as the provider reports usage, also part of it before the call ends (the
+     * first round of a tool call). The usage audit (feat-118) keeps it, so a call cut off
+     * afterwards is recorded with real tokens. Adapters that learn usage only at the end may
+     * leave it to `onComplete`.
+     */
+    onUsageReported?: (usage: TokenUsage) => void
 }
 
 export interface ITextAdapter {

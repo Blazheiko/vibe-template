@@ -44,6 +44,12 @@ export const llmTextFeatureEnum = pgEnum('llm_text_feature', [
     'SUPPORT_EMBEDDING',
 ])
 export const userAppTypeEnum = pgEnum('user_app_type', ['web', 'pwa'])
+// feat-118: how a started provider call ended (ADR 0003, «Аудит викликів»).
+export const llmTextUsageStatusEnum = pgEnum('llm_text_usage_status', [
+    'completed',
+    'aborted',
+    'failed',
+])
 
 const vector1536 = customType<{ data: string | null; driverData: string | null }>({
     dataType() {
@@ -354,10 +360,16 @@ export const llmTextUsage = pgTable(
         // before they existed whose text has not been purged yet.
         promptSha256: varchar('prompt_sha256', { length: 64 }),
         promptChars: integer('prompt_chars'),
-        // NULL = the provider did not report usage; 0 is a real zero.
+        // NULL = unknown; 0 is a real zero. Since feat-118 a call without reported usage gets an
+        // estimate with tokens_estimated = true; NULL stays for rows written before.
         promptTokens: integer('prompt_tokens'),
         completionTokens: integer('completion_tokens'),
         totalTokens: integer('total_tokens'),
+        // feat-118: every started call has a row, however it ended. The status and the origin of
+        // the tokens are independent: an aborted call can have real tokens (reported before the
+        // abort), and a completed one an estimate (the provider reported nothing).
+        status: llmTextUsageStatusEnum('status').notNull().default('completed'),
+        tokensEstimated: boolean('tokens_estimated').notNull().default(false),
         createdAt: timestamp('created_at').notNull().defaultNow(),
     },
     (table) => [

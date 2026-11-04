@@ -95,11 +95,14 @@ describe('llmUsageService.recordText: what is kept of the prompt', () => {
 
     it('gives the same hash to the same prompt, and another to another', () => {
         usageConfig.storePrompts = false
-        const recorder = llmUsageService.textUsageRecorder('PROMPT_TEST', null)
+        // One recorder per call (feat-118: a recorder writes one row).
+        const record = (prompt: string): void => {
+            llmUsageService.textUsageRecorder('PROMPT_TEST', null)(usage, 'm', prompt)
+        }
 
-        recorder(usage, 'm', 'one')
-        recorder(usage, 'm', 'one')
-        recorder(usage, 'm', 'two')
+        record('one')
+        record('one')
+        record('two')
 
         const hashes = insertText.mock.calls.map(
             (call) => (call[0] as Record<string, unknown>)['promptSha256'],
@@ -203,19 +206,95 @@ describe('adapters report usage, known or not', () => {
             { promptTokens: 6, completionTokens: null, totalTokens: 6 },
             'emb-test',
             'question',
+            { status: 'completed', tokensEstimated: false },
         )
     })
 
-    it('embeddings without usage report NULL', async () => {
+    // feat-118: without reported usage the row gets an estimate of every text, marked as such.
+    it('embeddings without usage report an estimate, marked as estimated', async () => {
         embeddingsCreate.mockResolvedValue({ data: [{ index: 0, embedding: [1] }] })
         const onComplete = vi.fn()
         const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
-        await openaiEmbeddingAdapter.embedBatch(['a', 'b'], { onComplete })
+        await openaiEmbeddingAdapter.embedBatch(['abc', 'de'], { onComplete })
 
+        expect(onComplete).toHaveBeenCalledTimes(1)
         expect(onComplete.mock.calls[0]?.[0]).toEqual({
-            promptTokens: null,
+            promptTokens: 3,
             completionTokens: null,
-            totalTokens: null,
+            totalTokens: 3,
+        })
+        expect(onComplete.mock.calls[0]?.[3]).toEqual({
+            status: 'completed',
+            tokensEstimated: true,
+        })
+    })
+
+    it('a failed embedding request is reported once as failed, with an estimate', async () => {
+        embeddingsCreate.mockRejectedValue(new Error('provider down'))
+        const onComplete = vi.fn()
+        const { openaiEmbeddingAdapter } = await import('../adapters/openai-embedding-adapter.js')
+
+        await expect(openaiEmbeddingAdapter.embed('question', { onComplete })).rejects.toThrow(
+            'provider down',
+        )
+
+        expect(onComplete).toHaveBeenCalledTimes(1)
+        expect(onComplete.mock.calls[0]?.[3]).toEqual({ status: 'failed', tokensEstimated: true })
+        expect(onComplete.mock.calls[0]?.[0]).toMatchObject({ promptTokens: 4, totalTokens: 4 })
+    })
+
+    // feat-118: the audited adapter writes one row however the call ends.
+    it('mistral cut off on its last chunk is one aborted row with the reported tokens', async () => {
+        mistralStream.mockResolvedValue(
+            (async function* () {
+                yield { data: { choices: [{ delta: { content: 'he' } }] } }
+                yield {
+                    data: {
+                        choices: [{ delta: { content: 'llo' } }],
+                        usage: { promptTokens: 5, completionTokens: 2, totalTokens: 7 },
+                    },
+                }
+            })(),
+        )
+        const { mistralaiTextAdapter } = await import('../adapters/mistralai-text-adapter.js')
+        const { withUsageAudit } = await import('./usage-audit.js')
+        const audited = withUsageAudit(mistralaiTextAdapter)
+
+        for await (const chunk of audited.streamText(
+            { systemPrompt: 's', userPrompt: 'u' },
+            llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n),
+        )) {
+            if (chunk === 'llo') break
+        }
+
+        expect(insertText).toHaveBeenCalledTimes(1)
+        expect(insertText.mock.calls[0]?.[0]).toMatchObject({
+            status: 'aborted',
+            tokensEstimated: false,
+            totalTokens: 7,
+            model: 'mistral-test',
+        })
+    })
+
+    it('a mistral request that fails is one failed row with an estimate', async () => {
+        mistralStream.mockRejectedValue(new Error('provider down'))
+        const { mistralaiTextAdapter } = await import('../adapters/mistralai-text-adapter.js')
+        const { withUsageAudit } = await import('./usage-audit.js')
+
+        const consume = async (): Promise<void> => {
+            for await (const chunk of withUsageAudit(mistralaiTextAdapter).streamText(
+                { systemPrompt: 's', userPrompt: 'u' },
+                llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n),
+            ))
+                expect(chunk).toBeDefined()
+        }
+        await expect(consume()).rejects.toThrow('provider down')
+
+        expect(insertText).toHaveBeenCalledTimes(1)
+        expect(insertText.mock.calls[0]?.[0]).toMatchObject({
+            status: 'failed',
+            tokensEstimated: true,
+            completionTokens: 0,
         })
     })
 })

@@ -1,8 +1,9 @@
 import { type } from '@arktype/type'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
-// One llm_text_usage row. Token counts are null when the provider did not report
-// usage; userId is null for system calls (knowledge-base indexing).
+// One llm_text_usage row: every started call, however it ended (feat-118). Token counts are an
+// estimate when tokensEstimated is true, and null only on rows written before feat-118 without
+// reported usage; userId is null for system calls (knowledge-base indexing).
 export const TextUsageRowSchema = type({
     id: 'string',
     userId: 'string | null',
@@ -16,6 +17,8 @@ export const TextUsageRowSchema = type({
     promptTokens: 'number | null',
     completionTokens: 'number | null',
     totalTokens: 'number | null',
+    status: "'completed' | 'aborted' | 'failed'",
+    tokensEstimated: 'boolean',
     createdAt: 'string',
 })
 export type TextUsageRow = typeof TextUsageRowSchema.infer
@@ -39,10 +42,14 @@ export const TextUsageStatRowSchema = type({
     model: 'string',
     feature: 'string',
     totalCalls: 'number',
-    /** Sum over calls with known usage. */
+    /** Sum of the tokens the provider reported. */
     totalTokens: 'number',
-    /** Calls the provider reported no usage for. */
+    /** Sum of the estimated tokens of calls without reported usage. */
+    estimatedTokens: 'number',
+    /** Calls the provider reported no usage for (estimated, or null on older rows). */
     callsWithoutUsage: 'number',
+    abortedCalls: 'number',
+    failedCalls: 'number',
 })
 export type TextUsageStatRow = typeof TextUsageStatRowSchema.infer
 

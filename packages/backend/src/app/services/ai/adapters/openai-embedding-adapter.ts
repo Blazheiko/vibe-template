@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import aiConfig from '#config/ai.js'
 import { aiRequestSignal } from '#app/services/ai/ai-request-signal.js'
 import type { TextUsageCompleteHandler } from '#app/services/ai/types.js'
+import { auditCall, statusOfError } from '#app/services/ai/usage/usage-audit.js'
 
 const cfg = aiConfig.openaiEmbedding
 
@@ -18,26 +19,33 @@ export interface EmbedOptions {
     onComplete?: TextUsageCompleteHandler
 }
 
-// Embeddings have no completion tokens; missing usage is recorded as NULL.
-function reportUsage(
-    usage: { prompt_tokens?: number; total_tokens?: number } | undefined,
+// Embeddings have no completion tokens. feat-118: the request is audited however it ends; without
+// reported usage the prompt tokens are an estimate (characters / 2) and the row says so.
+async function audited<T extends { usage?: { prompt_tokens?: number; total_tokens?: number } }>(
+    request: () => Promise<T>,
     input: string,
+    estimateFrom: string,
     onComplete: TextUsageCompleteHandler | undefined,
-): void {
-    if (onComplete === undefined) return
+): Promise<T> {
+    const audit =
+        onComplete === undefined ? null : auditCall(onComplete, cfg.model, input, estimateFrom)
+    let response: T
     try {
-        onComplete(
-            {
-                promptTokens: usage?.prompt_tokens ?? null,
-                completionTokens: null,
-                totalTokens: usage?.total_tokens ?? null,
-            },
-            cfg.model,
-            input,
-        )
-    } catch {
-        // usage tracking must not break the call
+        response = await request()
+    } catch (err: unknown) {
+        audit?.settle(statusOfError(err), null)
+        throw err
     }
+    const usage = response.usage
+    if (usage?.total_tokens !== undefined || usage?.prompt_tokens !== undefined) {
+        audit?.keep({
+            promptTokens: usage.prompt_tokens ?? null,
+            completionTokens: null,
+            totalTokens: usage.total_tokens ?? usage.prompt_tokens ?? null,
+        })
+    }
+    audit?.settle('completed', null)
+    return response
 }
 
 export const openaiEmbeddingAdapter = {
@@ -46,11 +54,16 @@ export const openaiEmbeddingAdapter = {
     },
 
     async embed(text: string, options: EmbedOptions = {}): Promise<number[]> {
-        const response = await getClient().embeddings.create(
-            { model: cfg.model, input: text, dimensions: cfg.dimensions },
-            { signal: aiRequestSignal(options.signal) },
+        const response = await audited(
+            () =>
+                getClient().embeddings.create(
+                    { model: cfg.model, input: text, dimensions: cfg.dimensions },
+                    { signal: aiRequestSignal(options.signal) },
+                ),
+            text,
+            text,
+            options.onComplete,
         )
-        reportUsage(response.usage, text, options.onComplete)
 
         const data = response.data[0]
         if (data === undefined) {
@@ -62,15 +75,17 @@ export const openaiEmbeddingAdapter = {
     async embedBatch(texts: string[], options: EmbedOptions = {}): Promise<number[][]> {
         if (texts.length === 0) return []
 
-        const response = await getClient().embeddings.create(
-            { model: cfg.model, input: texts, dimensions: cfg.dimensions },
-            { signal: aiRequestSignal(options.signal) },
-        )
-        // final_prompt gets a summary, not up to SUPPORT_EMBEDDING_BATCH_SIZE full articles.
+        // final_prompt gets a summary, not up to SUPPORT_EMBEDDING_BATCH_SIZE full articles; an
+        // estimate counts every text.
         const totalChars = texts.reduce((sum, text) => sum + text.length, 0)
-        reportUsage(
-            response.usage,
+        const response = await audited(
+            () =>
+                getClient().embeddings.create(
+                    { model: cfg.model, input: texts, dimensions: cfg.dimensions },
+                    { signal: aiRequestSignal(options.signal) },
+                ),
             `[batch: ${String(texts.length)} texts, ${String(totalChars)} chars]`,
+            texts.join(''),
             options.onComplete,
         )
 

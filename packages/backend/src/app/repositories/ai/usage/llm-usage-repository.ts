@@ -12,10 +12,15 @@ export interface TextStatRow {
     model: string
     feature: string
     totalCalls: number
-    /** Sum over calls with known usage; NULL tokens are not counted as 0. */
+    /** Sum of the tokens the provider reported; NULL tokens are not counted as 0. */
     totalTokens: number
-    /** Calls the provider reported no usage for. */
+    /** Sum of the estimated tokens of calls the provider reported no usage for (feat-118). */
+    estimatedTokens: number
+    /** Calls without reported usage: estimated (feat-118) or NULL (rows written before). */
     callsWithoutUsage: number
+    /** Calls cut off by the caller, and calls that failed or timed out (feat-118). */
+    abortedCalls: number
+    failedCalls: number
 }
 
 export interface TextFilter {
@@ -98,8 +103,15 @@ export const llmUsageRepository: ILlmUsageRepository = {
                 feature: llmTextUsage.feature,
                 totalCalls: sql<number>`count(*)::int`,
                 // bigint: the sum per model × feature can pass 2^31 tokens.
-                totalTokens: sql<string | null>`sum(${llmTextUsage.totalTokens})::bigint`,
-                callsWithoutUsage: sql<number>`count(*) filter (where ${llmTextUsage.totalTokens} is null)::int`,
+                totalTokens: sql<
+                    string | null
+                >`sum(${llmTextUsage.totalTokens}) filter (where not ${llmTextUsage.tokensEstimated})::bigint`,
+                estimatedTokens: sql<
+                    string | null
+                >`sum(${llmTextUsage.totalTokens}) filter (where ${llmTextUsage.tokensEstimated})::bigint`,
+                callsWithoutUsage: sql<number>`count(*) filter (where ${llmTextUsage.tokensEstimated} or ${llmTextUsage.totalTokens} is null)::int`,
+                abortedCalls: sql<number>`count(*) filter (where ${llmTextUsage.status} = 'aborted')::int`,
+                failedCalls: sql<number>`count(*) filter (where ${llmTextUsage.status} = 'failed')::int`,
             })
             .from(llmTextUsage)
             .groupBy(llmTextUsage.model, llmTextUsage.feature)
@@ -109,7 +121,10 @@ export const llmUsageRepository: ILlmUsageRepository = {
             feature: r.feature,
             totalCalls: r.totalCalls,
             totalTokens: r.totalTokens === null ? 0 : Number(r.totalTokens),
+            estimatedTokens: r.estimatedTokens === null ? 0 : Number(r.estimatedTokens),
             callsWithoutUsage: r.callsWithoutUsage,
+            abortedCalls: r.abortedCalls,
+            failedCalls: r.failedCalls,
         }))
     },
 }

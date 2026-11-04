@@ -3,16 +3,23 @@ import { openaiTextAdapter } from '#app/services/ai/adapters/openai-text-adapter
 import { xaiTextAdapter } from '#app/services/ai/adapters/xai-text-adapter.js'
 import { mistralaiTextAdapter } from '#app/services/ai/adapters/mistralai-text-adapter.js'
 import type { ITextAdapter } from '#app/services/ai/types.js'
+import { withUsageAudit } from '#app/services/ai/usage/usage-audit.js'
+
+// feat-118: every adapter handed out is audited, so a call that fails or is cut off is in the
+// usage log too.
+const openai = withUsageAudit(openaiTextAdapter)
+const xai = withUsageAudit(xaiTextAdapter)
+const mistral = withUsageAudit(mistralaiTextAdapter)
 
 function createTextAdapter(): ITextAdapter {
     if (aiConfig.drivers.text === 'openai') {
-        return openaiTextAdapter
+        return openai
     }
     if (aiConfig.drivers.text === 'xai') {
-        return xaiTextAdapter
+        return xai
     }
     // 'mistral' — validated at start (validateRuntimeConfig), no silent fallback.
-    return mistralaiTextAdapter
+    return mistral
 }
 
 export const textAdapter: ITextAdapter = createTextAdapter()
@@ -32,13 +39,13 @@ export function getTextAdapterForModel(model: string | null | undefined): ITextA
     }
     const lower = model.toLowerCase()
     if (lower.includes('grok')) {
-        return xaiTextAdapter
+        return xai
     }
     if (lower.includes('mistral')) {
-        return mistralaiTextAdapter
+        return mistral
     }
     if (lower.includes('gpt') || lower.includes('openai')) {
-        return openaiTextAdapter
+        return openai
     }
     return textAdapter
 }

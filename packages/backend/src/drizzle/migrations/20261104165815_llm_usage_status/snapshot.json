@@ -1,0 +1,112 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "49eb9a20-ccbf-462f-a398-60e523132870",
+  "prevIds": [
+    "a6296ac9-cf60-4746-8a93-302f5cbcf0ae"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_enum",
+      "statementTarget": [
+        "enum",
+        "public",
+        "llm_text_usage_status"
+      ],
+      "writes": [
+        "s|enum|public.llm_text_usage_status",
+        "n|enum|public.llm_text_usage_status",
+        "e|enum|public.llm_text_usage_status",
+        "n|type|public.llm_text_usage_status"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "llm_text_usage",
+        "status"
+      ],
+      "writes": [
+        "s|col|public.llm_text_usage.status",
+        "n|col|public.llm_text_usage.status",
+        "e|col|public.llm_text_usage.status"
+      ],
+      "reads": [
+        "n|tbl|public.llm_text_usage",
+        "n|sch|public",
+        "n|enum|public.llm_text_usage_status"
+      ]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "llm_text_usage",
+        "tokens_estimated"
+      ],
+      "writes": [
+        "s|col|public.llm_text_usage.tokens_estimated",
+        "n|col|public.llm_text_usage.tokens_estimated",
+        "e|col|public.llm_text_usage.tokens_estimated"
+      ],
+      "reads": [
+        "n|tbl|public.llm_text_usage",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "llm_text_usage_status",
+        "values": [
+          "completed",
+          "aborted",
+          "failed"
+        ],
+        "entityType": "enums"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "llm_text_usage",
+        "name": "status",
+        "type": "llm_text_usage_status",
+        "typeSchema": "public",
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'completed'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "llm_text_usage",
+        "name": "tokens_estimated",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

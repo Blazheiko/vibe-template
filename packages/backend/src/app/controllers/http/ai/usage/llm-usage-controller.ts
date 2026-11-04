@@ -48,6 +48,8 @@ export default {
             promptTokens: r.promptTokens,
             completionTokens: r.completionTokens,
             totalTokens: r.totalTokens,
+            status: r.status,
+            tokensEstimated: r.tokensEstimated,
             createdAt: r.createdAt.toISOString(),
         }))
 

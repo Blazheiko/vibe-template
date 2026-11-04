@@ -93,7 +93,11 @@ describe.skipIf(!hasPg)('llm_text_usage on PostgreSQL', async () => {
             feature: 'SUPPORT_CHAT',
             totalCalls: 3,
             totalTokens: 15,
+            // feat-118: these rows have reported usage or NULL (no estimate), and all completed.
+            estimatedTokens: 0,
             callsWithoutUsage: 1,
+            abortedCalls: 0,
+            failedCalls: 0,
         })
         expect(embedding).toMatchObject({ totalCalls: 1, totalTokens: 7, callsWithoutUsage: 0 })
     })
