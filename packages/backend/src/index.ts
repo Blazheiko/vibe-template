@@ -15,6 +15,7 @@ import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
 import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
+import readinessProbe from '#database/readiness-probe.js'
 import redis, { redisHealth } from '#database/redis.js'
 import rateLimitRedis, { connectRateLimitRedis } from '#database/redis-rate-limit.js'
 
@@ -98,6 +99,7 @@ const stopGracefully = async (type: string): Promise<void> => {
         await Promise.allSettled([
             pool.end(),
             sessionCheckPool.end(),
+            readinessProbe.end(),
             redis.quit(),
             rateLimitRedis.quit(),
         ])

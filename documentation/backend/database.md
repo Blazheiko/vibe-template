@@ -49,6 +49,8 @@ const pool = new pg.Pool({
     ...connectionOptions, // host, port, ..., ssl: toPgSsl(PGSQL_SSL)
     max: 10,
     connectionTimeoutMillis: 2000,
+    statement_timeout: databasePoolConfig.queryTimeoutMs, // DB_QUERY_TIMEOUT_MS, 10000
+    query_timeout: databasePoolConfig.queryTimeoutMs + QUERY_TIMEOUT_GRACE_MS, // + 500
 })
 
 const db = drizzle({
@@ -58,9 +60,11 @@ const db = drizzle({
 })
 ```
 
-**Шифрування з'єднання (`PGSQL_SSL`).** Параметри підключення спільні для головного пулу, пулу перевірки сесії, `drizzle-kit`, `db:create` і `db:seed` ([`pool-options.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/pool-options.ts)), тож значення діє скрізь одразу. `false` (за замовчуванням) — без TLS; `true` — TLS із перевіркою сертифіката сервера; `require` — TLS без перевірки сертифіката (шифрування без автентичності сервера, як `sslmode=require` у libpq). Будь-яке інше значення — помилка старту, а не мовчазний відкат на незашифроване з'єднання. У production-like середовищі з `PGSQL_SSL=false` на старті логується попередження (керована БД без TLS — ризик; для БД у довіреній приватній мережі це свідомий вибір).
+**Таймаут запитів.** Кожен запит основного пулу обмежений `DB_QUERY_TIMEOUT_MS` (за замовчуванням 10 с): сервер скасовує його (`statement_timeout`, SQLSTATE `57014`) і зʼєднання лишається робочим; якщо сервер не відповідає взагалі, через 500 мс спрацьовує `query_timeout` драйвера і `pg-pool` знищує зʼєднання. Без цього запит, що завис, тримав би зʼєднання пулу назавжди. Перевірка сесії і `GET /ready` ходять через власні зʼєднання з коротшими дедлайнами ([`session-check-db.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/session-check-db.ts), [`readiness-probe.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/readiness-probe.ts)).
 
-**Часовий пояс.** Колонки дат оголошені як `timestamp` без часового поясу, і Drizzle трактує їх як UTC. Щоб значення, які ставить сама БД (`defaultNow()`, `now()`), теж були в UTC, `connectionOptions` задає `options: '-c TimeZone=UTC'` для головного пулу й пулу перевірки сесії; `db:seed` передає той самий параметр. Від поясу сервера PostgreSQL це не залежить.
+**Шифрування з'єднання (`PGSQL_SSL`).** Параметри підключення спільні для головного пулу, пулу перевірки сесії, зʼєднання `/ready`, `drizzle-kit`, `db:create` і `db:seed` ([`pool-options.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/pool-options.ts)), тож значення діє скрізь одразу. `false` (за замовчуванням) — без TLS; `true` — TLS із перевіркою сертифіката сервера; `require` — TLS без перевірки сертифіката (шифрування без автентичності сервера, як `sslmode=require` у libpq). Будь-яке інше значення — помилка старту, а не мовчазний відкат на незашифроване з'єднання. У production-like середовищі з `PGSQL_SSL=false` на старті логується попередження (керована БД без TLS — ризик; для БД у довіреній приватній мережі це свідомий вибір).
+
+**Часовий пояс.** Колонки дат оголошені як `timestamp` без часового поясу, і Drizzle трактує їх як UTC. Щоб значення, які ставить сама БД (`defaultNow()`, `now()`), теж були в UTC, `connectionOptions` задає `options: '-c TimeZone=UTC'` для головного пулу, пулу перевірки сесії і зʼєднання `/ready`; `db:seed` передає той самий параметр. Від поясу сервера PostgreSQL це не залежить.
 
 **SQL-логування** Drizzle друкує кожен запит разом із параметрами, тобто з email, ідентифікаторами та всім, що передано параметром. Тому воно вимкнене в production-like середовищі ([`sql-logging.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/sql-logging.ts): `APP_IS_PRODUCTION=true` або `APP_ENV=prod`/`production`) і вмикається в решті.
 

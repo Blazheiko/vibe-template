@@ -5,6 +5,7 @@ import responseValidationConfig from '#config/response-validation.js'
 import healthConfig from '#config/health.js'
 import appConfig from '#config/app.js'
 import databaseConfig from '#config/database.js'
+import databasePoolConfig from '#config/database-pool.js'
 import { authConfig } from '#config/auth.js'
 import mailConfig from '#config/mail.js'
 import corsConfig from '#config/cors.js'
@@ -67,6 +68,7 @@ export function validateRuntimeConfig(): void {
         ['auth', authConfig.configError],
         ['mail', mailConfig.configError],
         ['CORS', corsConfig.configError],
+        ['database', databasePoolConfig.configError],
         ['network', networkConfig.configError],
         ['push', pushConfig.configError],
         ['Sentry', sentryConfig.configError],
