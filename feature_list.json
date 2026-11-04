@@ -1163,6 +1163,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #385 (merge b5284c9; start #384 records D4 accepted 2026-11-04). The already-linked answers stay (link-email, link-phone start/confirm, OAuth first-address resend), documented in auth.md as decision D4: only an authenticated user who re-entered the password sees them, under per-target and per-user limits spent before the check. The phone link had no per-user limit: AUTH_PHONE_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR (default 3, 0 refused at startup) and policy linkPhoneUser (after linkPhoneIp, before smsSendPhone) add one, so an account checks at most 3 emails and 3 numbers an hour; security.md, configuration.md, .env.example. Evidence: typecheck, lint, format clean; pnpm test backend 2344, frontend 400, api-playground 62; test:pg with Redis 27/236, test:redis 11/107; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; throttle contract: startPhoneLink consumes change_password_user, link_phone_ip, link_phone_user, sms_send_phone in order, a spent link_phone_user stops everything after it, Redis outage fails closed; mutation: without the throttle 5 contract cases fail; manual: built backend exits 1 for =0 and =abc with the reason, link-phone/start without a session 401. Details were in progress.md on fix/feat-117-link-flow-enumeration (removed from main by this PR)."
+        },
+        {
+            "id": "feat-118",
+            "name": "LLM Usage Audit for Aborted Calls",
+            "description": "docs/plan/code-review-2026-11-03-plan.md R12b: the text and embedding adapters write the llm_text_usage row only from onComplete after success, so a call that failed, timed out or was cut off after the budget began it leaves no audit row, and the table cannot tell how a call ended or whether its tokens are real. Migration: status enum (completed / aborted / failed, default completed) and tokens_estimated boolean; every started adapter call reports exactly once (a settled recorder), with the provider usage when it was reported (even before an abort) or an estimate marked tokens_estimated; statistics split real and estimated tokens; ADR 0003 addendum; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-118-llm-usage-audit",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
