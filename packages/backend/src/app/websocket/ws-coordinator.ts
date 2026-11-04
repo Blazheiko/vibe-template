@@ -19,6 +19,9 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     const connectedAt = new Date()
 
     const role = await userRoleService.findRole(BigInt(userId))
+    // feat-107: the socket may have closed while the role was read. A closed socket must not
+    // enter the registry; its close handler has already run and will not take it out again.
+    if (userData.closed === true) return
     if (role !== undefined) {
         userData.role = role
     }

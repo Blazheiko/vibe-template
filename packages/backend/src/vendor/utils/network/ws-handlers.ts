@@ -101,9 +101,19 @@ const sendJson = (ws: MyWebSocket, data: WsResponseData): void => {
         return
     }
     try {
+        let result = 1
         ws.cork(() => {
-            ws.send(makeJson(data))
+            result = ws.send(makeJson(data))
         })
+        // 2: uWS dropped the message, the socket is over maxBackpressure (feat-107). The client
+        // would wait for a reply that never comes; closing lets it reconnect.
+        if (result === 2) {
+            logger.warn(
+                { event: data.event, bufferedAmount: ws.getBufferedAmount() },
+                'WebSocket message dropped by backpressure, closing the connection',
+            )
+            ws.end(1013, 'Backpressure')
+        }
     } catch (e) {
         logger.error({ err: e }, 'Error in sendJson:')
         try {
@@ -382,30 +392,46 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
     abortConnection(ws)
     logger.info({ code }, 'onClose code')
     logger.info({ message }, 'onClose message')
+
+    // feat-107: uWS invalidates the socket once this handler returns, and every access after an
+    // await throws. Everything that needs the socket happens before the first await: read its
+    // data, mark it closed, drop it from wsStorage, and start onDisconnected, whose synchronous
+    // part takes it out of the connection registry. Only then the Redis round trip.
+    let userData: UserConnection
     try {
-        const userData = ws.getUserData()
-
-        const token = userData.token
-        if (token !== '') {
-            try {
-                await getAppHooks().onRevokeToken(token)
-            } catch (e) {
-                logger.error({ err: e }, 'Error in onRevokeToken hook')
-            }
-        }
-
-        wsStorage.delete(ws)
-
-        const { userId, sessionId } = userData
-        if (userId !== undefined && sessionId !== undefined) {
-            try {
-                await getAppHooks().onDisconnected(ws, userData, code)
-            } catch (e) {
-                logger.error({ err: e }, 'Error in onDisconnected hook')
-            }
-        }
+        userData = ws.getUserData()
+        userData.closed = true
     } catch (e) {
         logger.error({ err: e }, 'Error onClose')
+        return
+    }
+    wsStorage.delete(ws)
+
+    const { userId, sessionId } = userData
+    let disconnected: Promise<void> | undefined
+    if (userId !== undefined && sessionId !== undefined) {
+        try {
+            disconnected = getAppHooks().onDisconnected(ws, userData, code)
+        } catch (e) {
+            logger.error({ err: e }, 'Error in onDisconnected hook')
+        }
+    }
+
+    const token = userData.token
+    if (token !== '') {
+        try {
+            await getAppHooks().onRevokeToken(token)
+        } catch (e) {
+            logger.error({ err: e }, 'Error in onRevokeToken hook')
+        }
+    }
+
+    if (disconnected !== undefined) {
+        try {
+            await disconnected
+        } catch (e) {
+            logger.error({ err: e }, 'Error in onDisconnected hook')
+        }
     }
 }
 

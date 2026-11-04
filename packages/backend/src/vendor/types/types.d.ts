@@ -25,6 +25,11 @@ export interface UserConnection extends Record<string, unknown> {
     userId: string | undefined
     userToken: string | undefined
     timeStart: number
+    /**
+     * Set synchronously when uWS runs the close handler: from then on the socket is dead and
+     * every access to it throws. Work that awaited before touching the socket checks it (feat-107).
+     */
+    closed?: boolean
 }
 
 export interface MyWebSocket extends WebSocket<UserConnection> {
