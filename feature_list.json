@@ -1091,8 +1091,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-110-client-ip-keys",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #364 (merge aad3bea; start #363). rateLimitKeyForIp (vendor/utils/network/ip-address.ts): IPv4 and IPv4-mapped IPv6 as the address, IPv6 as its canonical /64; used by clientKey (HTTP L1, per-route, WS upgrade/messages) and keyBy 'ip' auth throttles; logs keep the full address. With a real APP_UNIX_PATH listener and TRUST_UNIX_SOCKET_PROXY=true the client comes from X-Forwarded-For (right to left, TRUSTED_PROXY_CIDRS skipped), then X-Real-IP; startup warns for a unix socket without the flag. Evidence: typecheck, lint, format clean; pnpm test backend 2284, frontend 400, api-playground 62; test:pg with Redis 24/218, test:redis 9/93; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; mutation: new cases fail on main except 2 guards; manual: built backend on /tmp/vt-r07.sock, curl --unix-socket to forgot-password (3/min): one IPv4 x4 -> 200 200 200 429, another IPv4 200, four addresses of one /64 -> 200 200 200 429, another /64 200. Details were in progress.md on fix/feat-110-client-ip-keys (removed from main by this PR)."
         }
     ]
 }
