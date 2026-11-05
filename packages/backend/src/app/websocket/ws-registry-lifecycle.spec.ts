@@ -19,11 +19,12 @@ vi.mock('#app/services/user/user-role-service.js', () => ({
         ),
     },
 }))
+const online = vi.hoisted(() => ({
+    trackConnected: vi.fn(() => Promise.resolve()),
+    trackDisconnected: vi.fn(() => Promise.resolve()),
+}))
 vi.mock('#app/services/communication/user-online-service.js', () => ({
-    userOnlineService: {
-        trackConnected: vi.fn(() => Promise.resolve()),
-        trackDisconnected: vi.fn(() => Promise.resolve()),
-    },
+    userOnlineService: online,
 }))
 const onUserConnected = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 vi.mock('#app/services/communication/ws-presence-service.js', () => ({
@@ -140,5 +141,61 @@ describe('connection registry lifecycle (feat-107)', () => {
             wsConnectionRegistry.unregisterConnection('9103', first.userData.uuid),
         ).not.toThrow()
         expect(wsConnectionRegistry.getOnlineUserMeta('9103')?.appType).toBe('web')
+    })
+})
+
+// feat-124: the user_online row of a connection is completed only after it was written.
+describe('user_online rows (feat-124)', () => {
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+    it('a disconnect before the connect INSERT committed waits for it', async () => {
+        const order: string[] = []
+        let commit: () => void = () => undefined
+        online.trackConnected.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    commit = () => {
+                        order.push('inserted')
+                        resolve()
+                    }
+                }),
+        )
+        online.trackDisconnected.mockImplementationOnce(() => {
+            order.push('completed')
+            return Promise.resolve()
+        })
+        const conn = connection('901')
+        await connect(conn)
+
+        await conn.close()
+        await settle()
+        expect(online.trackDisconnected).not.toHaveBeenCalled()
+
+        commit()
+        await settle()
+        expect(order).toEqual(['inserted', 'completed'])
+    })
+
+    it('a connection whose row was never written completes none', async () => {
+        online.trackConnected.mockImplementationOnce(() => Promise.reject(new Error('db down')))
+        const conn = connection('902')
+        await connect(conn)
+
+        await conn.close()
+        await settle()
+
+        expect(online.trackDisconnected).not.toHaveBeenCalled()
+    })
+
+    it('a socket closed while its role was read writes neither row', async () => {
+        const conn = connection('903')
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        await conn.close()
+        resolveRole('user')
+        await connected
+        await settle()
+
+        expect(online.trackConnected).not.toHaveBeenCalled()
+        expect(online.trackDisconnected).not.toHaveBeenCalled()
     })
 })

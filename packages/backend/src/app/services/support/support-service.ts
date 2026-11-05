@@ -5,6 +5,7 @@ import { aiAbortKind } from '#app/services/ai/ai-request-signal.js'
 import supportConfig from '#config/support.js'
 import { isAppLocaleCode } from 'shared/enums'
 import { supportQueryTranslationService } from '#app/services/support/support-query-translation-service.js'
+import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { broadcastService } from '#app/services/communication/broadcast-service.js'
 import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
 import { promptService } from '#app/services/ai/prompt-service.js'
@@ -54,15 +55,14 @@ function broadcastToConnection(
     targetUuid: string | undefined,
     ...message: BroadcastMessage
 ): void {
-    if (targetUuid !== undefined) {
-        const sent = broadcastService.broadcastMessageToUserConnection(
-            userIdStr,
-            targetUuid,
-            ...message,
-        )
-        if (sent === 0) {
-            broadcastService.broadcastMessageToUser(userIdStr, ...message)
-        }
+    // feat-124 (L9): to every tab only when the asking connection is gone (closed, reconnected).
+    // A connection that is still there but slow keeps its stream; one that dropped an event was
+    // closed by the broadcast, and the other tabs never had the earlier tokens either.
+    if (
+        targetUuid !== undefined &&
+        wsConnectionRegistry.getConnection(userIdStr, targetUuid) !== undefined
+    ) {
+        broadcastService.broadcastMessageToUserConnection(userIdStr, targetUuid, ...message)
     } else {
         broadcastService.broadcastMessageToUser(userIdStr, ...message)
     }

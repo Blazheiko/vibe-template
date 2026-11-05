@@ -6,6 +6,11 @@ import { wsPresenceService } from '#app/services/communication/ws-presence-servi
 import { userRoleService } from '#app/services/user/user-role-service.js'
 import logger from '#vendor/utils/logger.js'
 
+// feat-124: the user_online row of each open connection, by socket uuid. The connect INSERT is not
+// awaited; a disconnect that came first would UPDATE nothing and leave the row open for ever, so
+// the disconnect waits for it. A connection whose row was never written writes no disconnect.
+const onlineRows = new Map<string, Promise<boolean>>()
+
 /**
  * Guards below narrow `userId`/`sessionId` from `string | undefined`
  * (as declared in `UserConnection`) to `string`. The transport layer
@@ -31,7 +36,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         userAgent: userData.userAgent,
         appType: userData.appType,
     })
-    userOnlineService
+    const rowWritten = userOnlineService
         .trackConnected({
             userId: BigInt(userId),
             sessionId,
@@ -43,12 +48,17 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             connectedAt,
             isFirstConnection,
         })
-        .catch((error: unknown) => {
-            logger.error(
-                { err: error, userId, socketUuid: userData.uuid },
-                'user_online: failed to track connect',
-            )
-        })
+        .then(
+            () => true,
+            (error: unknown) => {
+                logger.error(
+                    { err: error, userId, socketUuid: userData.uuid },
+                    'user_online: failed to track connect',
+                )
+                return false
+            },
+        )
+    onlineRows.set(userData.uuid, rowWritten)
 
     if (isFirstConnection) {
         await wsPresenceService.onUserConnected({
@@ -80,13 +90,19 @@ const handleDisconnected = async (
 
     adminWsChannelService.handleConnectionClosed(_ws)
 
-    userOnlineService
-        .trackDisconnected({
-            socketUuid: userData.uuid,
-            disconnectedAt,
-            closeCode: code,
-            connectionDurationMs: Math.max(0, Date.now() - userData.timeStart),
-            isLastConnection,
+    const rowWritten = onlineRows.get(userData.uuid)
+    onlineRows.delete(userData.uuid)
+    const connectionDurationMs = Math.max(0, Date.now() - userData.timeStart)
+    void (rowWritten ?? Promise.resolve(false))
+        .then(async (written) => {
+            if (!written) return
+            await userOnlineService.trackDisconnected({
+                socketUuid: userData.uuid,
+                disconnectedAt,
+                closeCode: code,
+                connectionDurationMs,
+                isLastConnection,
+            })
         })
         .catch((error: unknown) => {
             logger.error(
@@ -110,3 +126,6 @@ export const websocketCoordinator = {
     handleConnected,
     handleDisconnected,
 }
+
+/** For tests: the user_online rows still tracked. */
+export const __onlineRowsForTests = onlineRows

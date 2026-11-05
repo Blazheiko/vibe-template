@@ -95,9 +95,15 @@ const wsStorage: Set<MyWebSocket> = new Set<MyWebSocket>()
 // Helpers
 // ---------------------------------------------------------------------------
 
-const sendJson = (ws: MyWebSocket, data: WsResponseData): void => {
+const sendJson = (ws: MyWebSocket, data: WsResponseData, userData?: UserConnection): void => {
     if (typeof ws.cork !== 'function') {
         logger.warn('Attempted to send message to closed or invalid WebSocket')
+        return
+    }
+    // feat-124: the client went away while the handler worked (an AI answer, a slow query).
+    // Nobody to answer, and touching the dead socket would throw twice (send, then close).
+    if (userData?.closed === true) {
+        logger.debug({ event: data.event }, 'WebSocket closed before the reply, nothing sent')
         return
     }
     try {
@@ -251,7 +257,7 @@ const onMessage = async (
         parsedMessage = JSON.parse(jsonMessage)
     } catch {
         // A client error like a malformed HTTP body: warn, no message text, no Sentry.
-        sendWsError(ws, '', 0, classifyAndLog(new MalformedBodyError('json')))
+        sendWsError(ws, '', 0, classifyAndLog(new MalformedBodyError('json')), userData)
         return
     }
 
@@ -267,13 +273,13 @@ const onMessage = async (
                 undefined,
                 validatedMessage.issues,
             )
-            sendWsError(ws, event, timestamp, classifyAndLog(error))
+            sendWsError(ws, event, timestamp, classifyAndLog(error), userData)
             return
         }
         const message = validatedMessage.value
 
         if (!refreshed) {
-            sendJson(ws, serviceUnavailableMessage(message.event))
+            sendJson(ws, serviceUnavailableMessage(message.event), userData)
             return
         }
 
@@ -284,7 +290,7 @@ const onMessage = async (
                 : ({ kind: 'missing' } as const)
 
         if (sessionResult.kind === 'unavailable') {
-            sendJson(ws, serviceUnavailableMessage(message.event))
+            sendJson(ws, serviceUnavailableMessage(message.event), userData)
         } else if (sessionResult.kind === 'missing') {
             closeExpiredSession(ws)
         } else {
@@ -296,10 +302,10 @@ const onMessage = async (
                 sessionResult.session,
                 wsRoutesByUrl,
             )
-            sendJson(ws, result)
+            sendJson(ws, result, userData)
         }
     } catch (err: unknown) {
-        sendWsError(ws, event, timestamp, classifyAndLog(err))
+        sendWsError(ws, event, timestamp, classifyAndLog(err), userData)
     }
 }
 
@@ -325,19 +331,24 @@ const sendWsError = (
     event: string,
     timestamp: number,
     classified: ClassifiedError,
+    userData?: UserConnection,
 ): void => {
     const { code, message, details } = classifiedErrorBody(classified)
-    sendJson(ws, {
-        status: 'error',
-        error: createWsErrorEnvelope(
-            code,
-            message,
-            details !== undefined ? { details } : undefined,
-        ),
-        event,
-        timestamp,
-        data: null,
-    })
+    sendJson(
+        ws,
+        {
+            status: 'error',
+            error: createWsErrorEnvelope(
+                code,
+                message,
+                details !== undefined ? { details } : undefined,
+            ),
+            event,
+            timestamp,
+            data: null,
+        },
+        userData,
+    )
 }
 
 const onOpen = (ws: MyWebSocket): void => {

@@ -15,6 +15,7 @@ import {
     type BroadcastMessage,
 } from 'shared/schemas'
 import type { WsChannel } from 'shared/guards'
+import type { MyWebSocket } from '#vendor/types/types.js'
 
 // Every event is checked against its schema in shared/schemas/ws/broadcast-events.ts once,
 // before serialization and before the loop over connections
@@ -34,6 +35,23 @@ export interface BroadcastService {
         ...message: BroadcastMessage
     ): number
     broadcastMessageToChannel(channel: WsChannel, ...message: BroadcastMessage): boolean
+}
+
+// uWS ws.send: 1 sent, 0 buffered under backpressure (it still goes out), 2 dropped because the
+// socket is over maxBackpressure. feat-124 (L9): 0 is delivered, so a slow tab is not taken for a
+// missing one; a dropped event leaves the client out of step, so the connection is ended with 1013
+// (as sendJson does for replies) and the client reconnects and resyncs.
+const SEND_DROPPED = 2
+
+const deliver = (connection: MyWebSocket, message: string, userId: string): boolean => {
+    const result = connection.send(message)
+    if (result !== SEND_DROPPED) return true
+    logger.warn(
+        { userId, bufferedAmount: connection.getBufferedAmount() },
+        'Broadcast dropped by backpressure, closing the connection',
+    )
+    connection.end(1013, 'Backpressure')
+    return false
 }
 
 export const createBroadcastService = (options: ResponseCheckOptions): BroadcastService => {
@@ -62,8 +80,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             let counter = 0
             wsConnectionRegistry.forEachConnection(userId, (userConnection) => {
                 try {
-                    const result = userConnection.send(message)
-                    if (result === 1) counter++
+                    if (deliver(userConnection, message, userId)) counter++
                 } catch (error) {
                     logger.warn({ err: error }, `Error sending message to user ${userId}`)
                 }
@@ -83,8 +100,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             wsConnectionRegistry.forEachConnection(userId, (userConnection, uuid) => {
                 if (uuid === excludeUuid) return
                 try {
-                    const result = userConnection.send(message)
-                    if (result === 1) counter++
+                    if (deliver(userConnection, message, userId)) counter++
                 } catch (error) {
                     logger.warn({ err: error }, `Error sending message to user ${userId}`)
                 }
@@ -108,8 +124,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             const message = serialize(event, payload)
             if (message === null) return 0
             try {
-                const result = connection.send(message)
-                return result === 1 ? 1 : 0
+                return deliver(connection, message, userId) ? 1 : 0
             } catch (error) {
                 logger.warn(
                     { err: error },

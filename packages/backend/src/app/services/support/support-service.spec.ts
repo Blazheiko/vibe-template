@@ -76,6 +76,13 @@ vi.mock('#app/services/support/support-query-translation-service.js', () => ({
 vi.mock('#app/services/communication/broadcast-service.js', () => ({
     broadcastService: broadcastServiceMock,
 }))
+// feat-124: the stream goes to the asking connection while it is registered.
+const registryMock = vi.hoisted(() => ({
+    getConnection: vi.fn<() => object | undefined>(() => ({})),
+}))
+vi.mock('#app/websocket/ws-connection-registry.js', () => ({
+    wsConnectionRegistry: registryMock,
+}))
 
 vi.mock('#app/services/ai/usage/llm-usage-service.js', () => ({
     llmUsageService: llmUsageServiceMock,
@@ -907,6 +914,37 @@ describe('supportService', () => {
                 'support_chat_complete',
             ])
             expect(admission.release).toHaveBeenCalledTimes(1)
+        })
+
+        // feat-124 (L9): a slow tab keeps its stream; only a gone one hands it to every tab.
+        it.each([
+            ['still registered (a buffered send included)', 'connection', {}],
+            ['gone (closed or reconnected)', 'every tab', undefined],
+        ])('the asking connection %s: tokens go to %s', async (_label, target, registered) => {
+            registryMock.getConnection.mockReturnValue(registered)
+            supportRepositoryMock.addChatMessage.mockResolvedValue(undefined)
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([])
+            supportQueryTranslationServiceMock.translateToEnglish.mockResolvedValue('hello')
+            supportEmbeddingServiceMock.search.mockResolvedValue([])
+            supportLlmServiceMock.chatStream.mockImplementation(async function* () {
+                yield 'a'
+            })
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(admissionOf([]), 7n, 'hello', 'conn-1')
+
+            const toConnection = broadcastServiceMock.broadcastMessageToUserConnection.mock.calls
+            const toAll = broadcastServiceMock.broadcastMessageToUser.mock.calls
+            const tokens = (calls: unknown[][]) =>
+                calls.filter((call) => call.includes('support_chat_token')).length
+            if (target === 'connection') {
+                expect(tokens(toConnection)).toBe(1)
+                expect(tokens(toAll)).toBe(0)
+            } else {
+                expect(tokens(toConnection)).toBe(0)
+                expect(tokens(toAll)).toBe(1)
+            }
+            registryMock.getConnection.mockReturnValue({})
         })
 
         it('chat failure: the release, then support_chat_error with a code', async () => {
