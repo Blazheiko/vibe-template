@@ -249,6 +249,37 @@ describe('handleUpgrade while Redis is unavailable', () => {
         expect(res.calls).not.toContain('upgrade')
     })
 
+    // An unexpected throw in the upgrade (a bug, a hook that throws) used to reject the promise
+    // uWS does not await: with no unhandledRejection listener (index.ts) that stops the process.
+    it('an unexpected error answers 500 and resolves instead of rejecting', async () => {
+        onUpgrade.mockRejectedValue(new TypeError('boom'))
+        const res = createRes()
+
+        await expect(
+            handlers.handleUpgrade(res as never, req as never, {}),
+        ).resolves.toBeUndefined()
+
+        expect(res.calls).toEqual(['cork', '500 Internal Server Error', 'end'])
+        expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ err: expect.any(TypeError) }),
+            'WebSocket upgrade failed',
+        )
+    })
+
+    it('an unexpected error after the client aborted writes nothing', async () => {
+        const res = createRes()
+        onUpgrade.mockImplementation(() => {
+            res.abort()
+            return Promise.reject(new TypeError('boom'))
+        })
+
+        await expect(
+            handlers.handleUpgrade(res as never, req as never, {}),
+        ).resolves.toBeUndefined()
+
+        expect(res.calls).toEqual([])
+    })
+
     it('a live session upgrades', async () => {
         onUpgrade.mockResolvedValue({ kind: 'ok', sessionId: 's1', userId: '1', userToken: 'u1' })
         const res = createRes()

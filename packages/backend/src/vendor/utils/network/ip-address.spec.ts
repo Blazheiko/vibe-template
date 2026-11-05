@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isIpInCidr, rateLimitKeyForIp } from './ip-address.js'
+import { isIpInCidr, normalizeIp, parseIp, rateLimitKeyForIp } from './ip-address.js'
 
 describe('rateLimitKeyForIp (feat-110)', () => {
     it('groups every spelling of every address of one IPv6 /64 into one key', () => {
@@ -74,4 +74,59 @@ describe('isIpInCidr with an IPv4-mapped CIDR (feat-130)', () => {
     ])('%s in %s → %s', (ip, cidr, expected) => {
         expect(isIpInCidr(ip, cidr)).toBe(expected)
     })
+})
+
+// A forged X-Forwarded-For entry with an IPv6 zone id (`::%1`) made normalizeIp throw
+// (`NaN cannot be converted to a BigInt`); getIP runs it on every entry of the chain, outside any
+// try, so one unauthenticated request stopped the process. The zone id names a local interface:
+// it is dropped, and the parsing never throws.
+describe('IPv6 zone ids and unparsable input never throw', () => {
+    it.each([
+        ['::%1', '::'],
+        ['fe80::%eth0', 'fe80::'],
+        ['1::%a', '1::'],
+        ['fe80::1%eth0', 'fe80::1'],
+        ['[fe80::1%25eth0]', 'fe80::1'],
+        ['::ffff:1.2.3.4%x', '1.2.3.4'],
+        ['0:0:0:0:0:ffff:7f00:1%lo', '127.0.0.1'],
+        ['1.2.3.4%x', null],
+        ['%', null],
+        ['::%', null],
+    ])('normalizeIp(%j) → %j', (value, expected) => {
+        expect(normalizeIp(value)).toBe(expected)
+    })
+
+    const hostile = [
+        '::%1',
+        'fe80::%eth0',
+        '1::%a',
+        '::ffff:1.2.3.4%x',
+        '%',
+        '::%',
+        ':::',
+        '1::2::3',
+        '::ffff:999.1.1.1',
+        'gggg::1',
+        '[::1',
+        '::1]',
+        '[]',
+        ' ',
+        '\u0000',
+        '::ffff:%1',
+        '1:2:3:4:5:6:7:8:9',
+        '12345::',
+        '::1.2.3',
+        '::ffff:1.2.3.4.5',
+        'fe80::1%',
+    ]
+    it.each(hostile)(
+        '%j: normalizeIp, parseIp, rateLimitKeyForIp, isIpInCidr do not throw',
+        (value) => {
+            expect(() => normalizeIp(value)).not.toThrow()
+            expect(() => parseIp(value)).not.toThrow()
+            expect(() => rateLimitKeyForIp(value)).not.toThrow()
+            expect(() => isIpInCidr(value, '10.0.0.0/8')).not.toThrow()
+            expect(() => isIpInCidr('10.0.0.1', `${value}/8`)).not.toThrow()
+        },
+    )
 })

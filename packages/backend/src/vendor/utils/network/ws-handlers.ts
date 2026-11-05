@@ -470,6 +470,9 @@ const rejectUpgrade = (
     })
 }
 
+// uWS calls the upgrade handler and drops its promise: a rejection would be unhandled, and with no
+// unhandledRejection listener (index.ts) it stops the process. Any unexpected error is therefore
+// logged and answered 500 here (while the client is still there), never rethrown.
 const handleUpgrade = async (
     res: HttpResponse,
     req: HttpRequest,
@@ -484,6 +487,28 @@ const handleUpgrade = async (
         aborted = true
     })
 
+    try {
+        await upgradeConnection(res, req, context, isAborted)
+    } catch (err: unknown) {
+        logger.error({ err }, 'WebSocket upgrade failed')
+        if (isAborted()) return
+        try {
+            res.cork(() => {
+                res.writeStatus('500 Internal Server Error').end()
+            })
+        } catch (writeErr: unknown) {
+            // The response was already written or the socket is gone: nothing more to send.
+            logger.warn({ err: writeErr }, 'WebSocket upgrade failure could not be answered')
+        }
+    }
+}
+
+const upgradeConnection = async (
+    res: HttpResponse,
+    req: HttpRequest,
+    context: us_socket_context_t,
+    isAborted: () => boolean,
+): Promise<void> => {
     const secWebsocketKey = req.getHeader('sec-websocket-key')
     const secWebsocketProtocol = req.getHeader('sec-websocket-protocol')
     const secWebsocketExtensions = req.getHeader('sec-websocket-extensions')
@@ -499,7 +524,7 @@ const handleUpgrade = async (
 
     // Level 2 (cluster-wide, Redis), still before the token check and the session lookup.
     const sharedLimit = await checkUpgradeRateLimitShared(ip)
-    if (aborted) return
+    if (isAborted()) return
     if (sharedLimit.kind !== 'allowed') {
         rejectUpgrade(res, sharedLimit)
         return
