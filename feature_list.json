@@ -1331,6 +1331,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-134-auth-lows",
             "dependencies": ["feat-133"],
+            "status": "done",
+            "evidence": "Merged #436 (merge 4d92b6c; start #435). L1: change-password takes the required session-still-stored guard and checks it before the password write. L2: openChallenge runs in one transaction under pg_advisory_xact_lock on the phone and flow and re-checks the resend cooldown; of two parallel starts the second answers the 429 cooldown. L3: every spent auth throttle answers 429 rate_limited (registration, verification, linking, reset, OAuth mail resend). Evidence: typecheck, lint, format clean; pnpm test backend 2510, frontend 400, api-playground 62; local test:pg 173; CI build/e2e/e2e-live/quality/test-pg/test-redis green (e2e-live first caught the old 400 expectation of the registration counter, updated with testing.md); docs build+verify; mutation: no change-password check fails a contract case, no lock/re-check fails sms-start-race.pg (3/3), throttle contracts pin 429. Details were in progress.md on fix/feat-134-auth-lows (removed from main by this PR)."
+        },
+        {
+            "id": "feat-135",
+            "name": "Sixth Review Lease, S3 and KB Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, sixth review I2: (L4) the lease is told lost one renewal interval before the key can expire (KB 10 s, support 5 s), less than the longest database write (connect wait + DB_QUERY_TIMEOUT_MS + 500 ms), so a write started just before the loss can land under the next holder (a double KB import, a reply saved next to the next answer); (L5) isServerRejection takes Node errno codes (EPIPE, EPERM) for a SQLSTATE, so a storage swap can delete the new object although its COMMIT may have gone through; (L9) when the re-read after an unanswered KB INSERT fails too, the status shows a generic error without the reindex-all hint. The leases are told lost the longest write before expiry; a server rejection needs a SQLSTATE and a severity; the KB status keeps the hint; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-135-lease-s3-kb",
+            "dependencies": ["feat-134"],
             "status": "in_progress",
             "evidence": ""
         }

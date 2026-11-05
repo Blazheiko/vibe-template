@@ -642,4 +642,5 @@ High-дефектів немає. Medium підтверджено в коді; �
 | P1 (IPv6 zone id crash)  | feat-131 | #427 | done        |
 | P2 (proxy CIDR prefix)   | feat-132 | #430 | done        |
 | P3 (onConnected failure) | feat-133 | #433 | done        |
-| I1 (auth lows)           | feat-134 | —    | in_progress |
+| I1 (auth lows)           | feat-134 | #436 | done        |
+| I2 (lease, S3, KB)       | feat-135 | —    | in_progress |

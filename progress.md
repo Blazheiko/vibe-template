@@ -2,7 +2,7 @@
 
 ## State
 
-Done on branch `fix/feat-135-lease-s3-kb`. Waiting for CI on the feature PR.
+Done on branch `fix/feat-135-lease-s3-kb`; start PR #438. Waiting for CI on the feature PR.
 
 ## Changes
 
