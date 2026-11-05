@@ -97,18 +97,21 @@ function sanitizeRecord(record: Record<string, unknown>): void {
 
 // Nested values too: drops sensitive keys at every level, the params of anything that looks like a
 // query (`query` string + `params`), and the params a query-error message quotes.
+// feat-126: a COPY. The objects come from the caller (setExtra, captureException's `extra`, a
+// context); deleting their keys here changed the caller's data under its feet. Errors inside are
+// replaced by their scrubbed copies (toSafeError) as well.
 function sanitizeDeep(value: unknown, depth = 0): unknown {
     if (typeof value === 'string') return redactQueryText(value)
     if (value === null || typeof value !== 'object' || depth >= MAX_SANITIZE_DEPTH) return value
+    if (value instanceof Error) return toSafeError(value)
 
     if (Array.isArray(value)) {
-        for (let index = 0; index < value.length; index += 1) {
-            value[index] = sanitizeDeep(value[index], depth + 1)
-        }
-        return value
+        return value.map((item: unknown) => sanitizeDeep(item, depth + 1))
     }
+    const proto = Object.getPrototypeOf(value) as unknown
+    if (proto !== Object.prototype && proto !== null) return value
 
-    const record = value as Record<string, unknown>
+    const record: Record<string, unknown> = { ...(value as Record<string, unknown>) }
     sanitizeRecord(record)
     if (typeof record['query'] === 'string' && 'params' in record) {
         Reflect.deleteProperty(record, 'params')
@@ -179,11 +182,11 @@ function sanitizeEvent(event: Event, hint?: EventHint): Event {
     }
 
     if (event.extra !== undefined) {
-        sanitizeDeep(event.extra)
+        event.extra = sanitizeDeep(event.extra) as NonNullable<Event['extra']>
     }
 
     if (event.contexts !== undefined) {
-        sanitizeDeep(event.contexts)
+        event.contexts = sanitizeDeep(event.contexts) as NonNullable<Event['contexts']>
     }
 
     if (typeof event.message === 'string') {
@@ -198,7 +201,7 @@ function sanitizeEvent(event: Event, hint?: EventHint): Event {
                 breadcrumb.message = redactQueryText(breadcrumb.message)
             }
             if (breadcrumb.data !== undefined) {
-                sanitizeDeep(breadcrumb.data)
+                breadcrumb.data = sanitizeDeep(breadcrumb.data) as typeof breadcrumb.data
             }
         }
     }

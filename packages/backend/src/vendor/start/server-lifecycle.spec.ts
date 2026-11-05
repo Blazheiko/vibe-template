@@ -69,6 +69,20 @@ vi.mock('#vendor/start/static-server.js', async (importOriginal) => {
     }
 })
 
+// feat-126: closeAllWs held open, so the test sees what is true WHILE the sockets close.
+const wsClose = vi.hoisted(() => ({ release: (): void => undefined, started: false }))
+vi.mock('#vendor/utils/network/ws-handlers.js', async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>()
+    return {
+        ...actual,
+        closeAllWs: () =>
+            new Promise<void>((resolve) => {
+                wsClose.started = true
+                wsClose.release = resolve
+            }),
+    }
+})
+
 const server = await import('./server.js')
 const ROUTES = {
     httpRoutes: [],
@@ -78,7 +92,9 @@ const ROUTES = {
 } as never
 
 afterAll(async () => {
-    await server.stopServer('test')
+    const stopping = server.stopServer('test')
+    wsClose.release()
+    await stopping
 })
 
 describe('server lifecycle (feat-112)', () => {
@@ -110,8 +126,13 @@ describe('server lifecycle (feat-112)', () => {
         )
     })
 
-    it('stops accepting connections when it stops', async () => {
-        await server.stopServer('test')
+    // feat-126: before, this case passed whatever the order (both steps had run by the check).
+    // Now the check runs while the WebSockets are still closing.
+    it('stops accepting connections before it closes the WebSockets', async () => {
+        const stopping = server.stopServer('test')
+        await vi.waitFor(() => {
+            expect(wsClose.started).toBe(true)
+        })
 
         // A new TCP connection, not fetch: its keep-alive pool would reuse an open one.
         const refused = await new Promise<string>((resolve) => {
@@ -125,5 +146,7 @@ describe('server lifecycle (feat-112)', () => {
             })
         })
         expect(refused).toBe('ECONNREFUSED')
+        wsClose.release()
+        await stopping
     })
 })

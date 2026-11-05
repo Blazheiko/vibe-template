@@ -20,13 +20,19 @@
 
 Помилка запиту може нести дані користувача. Повідомлення помилки `pg` може цитувати значення (`invalid input syntax for type bigint: "…"`), а `detail` — рядок або ключ; pino вбудовує повідомлення `cause` у запис. Клієнт drizzle з `paramsInErrors: true` ще й кладе параметри запиту (хеш пароля, `session_token`, email) у `message` і `stack` `DrizzleQueryError` та зберігає `query` / `params` як поля; `db` застосунку цю опцію не вмикає, захист діє на випадок, якщо її ввімкнуть. Тому логер і Sentry отримують не саму помилку, а її копію з [scrub-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/errors/scrub-error.ts) (`toSafeError`):
 
-- **Помилка БД** (`DrizzleQueryError` або `pg` `DatabaseError`) зберігає лише `code`, `constraint`, `table`, `column`, `schema`, `routine`, `severity`. Повідомлення фіксоване: `Failed query (params redacted)` або `Database error (code=23505 constraint=users_email_unique)`. `stack` перебудовується з цього повідомлення і кадрів (`at …`).
+- **Помилка БД** (`DrizzleQueryError` або `pg` `DatabaseError`) зберігає лише `code`, `constraint`, `table`, `column`, `schema`, `routine`, `severity`. Повідомлення фіксоване: `Failed query (params redacted)` або `Database error (code=23505 constraint=users_email_unique)`. `stack` перебудовується з цього повідомлення і кадрів (`at …`). Кадри беруться лише **після** справжнього заголовка помилки, тож рядок повідомлення, що має вигляд кадру (`    at …`, процитований БД), до стеку не потрапляє (feat-126).
 - **Будь-яка помилка** втрачає поля `query`, `params`, `detail`, `where`, `internalQuery`, `hint`.
-- `cause`, `AggregateError.errors` і помилки в полях обробляються так само, рекурсивно (цикли зберігаються, глибина обмежена). `cause`, що не є помилкою, відкидається.
+- `cause`, `AggregateError.errors` і помилки в полях обробляються так само, рекурсивно (цикли зберігаються, глибина обмежена), зокрема помилки всередині звичайних об'єктів і масивів у полях (`details: { failures: [err] }`, feat-126). `cause`, що не є помилкою, відкидається.
 - Копія має той самий прототип, тому `err.type` (ім'я класу, напр. `RedisUnavailableError`) не змінюється.
 - Оригінальна помилка не змінюється: її далі читає [db-errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/db-errors.ts).
 
-Захищені лише ключі `err` і `error` (а також помилка першим аргументом, `logger.error(err)`). Помилка, вкладена глибше в об'єкт логу, або текст помилки, вставлений у `msg`, пишуться як є.
+Ключі `err` і `error` (і помилка першим аргументом, `logger.error(err)`) очищають серіалізатори. Помилку деінде в записі (`logger.error({ context: { failure: err } }, …)`, масив збоїв) очищає і серіалізує `formatters.log` ([`toSafeValue`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/errors/scrub-error.ts), feat-126), не змінюючи об'єктів того, хто логує. Текст помилки, вставлений у `msg` вручну, пишеться як є.
+
+Те саме діє поза логером:
+
+- `console.error` у `index.ts` (збій старту, зупинки) друкує безпечну копію.
+- Sentry очищає `extra`, `contexts` і дані breadcrumb **на копії**: об'єкти, які передав той, хто викликав, не змінюються, а помилки в них замінюються безпечними копіями.
+- Статус `knowledge-base/init-status` показує для помилки БД лише безпечне повідомлення.
 
 ### Логер запиту
 

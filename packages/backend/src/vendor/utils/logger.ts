@@ -3,7 +3,7 @@ import { pino, destination, multistream, stdSerializers } from 'pino'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import appConfig from '#config/app.js'
 import loggingConfig from '#config/logging.js'
-import { toSafeError } from '#vendor/utils/errors/scrub-error.js'
+import { toSafeError, toSafeValue } from '#vendor/utils/errors/scrub-error.js'
 
 type BackendLogger = ReturnType<typeof pino>
 
@@ -34,6 +34,21 @@ const ERROR_LEVEL = 50
 // hashes, session tokens, emails) into stdout or, through sentryStream, into Sentry.
 const serializeError = (value: unknown): unknown =>
     value instanceof Error ? stdSerializers.err(toSafeError(value)) : value
+// Nested errors are already safe copies here; pino would print an Error inside an object as `{}`.
+function serializeNestedErrors(record: Record<string, unknown>): Record<string, unknown> {
+    const visit = (value: unknown, depth: number): unknown => {
+        if (value instanceof Error) return stdSerializers.err(value)
+        if (depth > 6 || value === null || typeof value !== 'object') return value
+        if (Array.isArray(value)) return value.map((item) => visit(item, depth + 1))
+        const proto = Object.getPrototypeOf(value) as unknown
+        if (proto !== Object.prototype && proto !== null) return value
+        const out: Record<string, unknown> = {}
+        for (const [key, item] of Object.entries(value)) out[key] = visit(item, depth + 1)
+        return out
+    }
+    return visit(record, 0) as Record<string, unknown>
+}
+
 const isProduction = appConfig.env === 'prod' || appConfig.env === 'production'
 const buildPretty = isProduction ? null : (await import('pino-pretty')).build
 
@@ -126,6 +141,13 @@ function createLogger(): BackendLogger {
                 bigint: (value: bigint): string => value.toString(),
                 err: serializeError,
                 error: serializeError,
+            },
+            // feat-126: the serializers above cover `err` and `error` only; an error anywhere else
+            // in the record (`{ context: { cause } }`, an array of failures) is scrubbed and
+            // serialized here, without touching the caller's objects.
+            formatters: {
+                log: (record: Record<string, unknown>): Record<string, unknown> =>
+                    serializeNestedErrors(toSafeValue(record)),
             },
         }
 

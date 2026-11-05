@@ -1,3 +1,8 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+import pg from 'pg'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 // feat-115: start() marks the run before its first await, and every early exit (including a
@@ -10,8 +15,12 @@ const isConfigured = vi.fn(() => true)
 vi.mock('#app/services/ai/adapters/openai-embedding-adapter.js', () => ({
     openaiEmbeddingAdapter: { isConfigured },
 }))
+const createMany = vi.hoisted(() => vi.fn())
 vi.mock('#app/repositories/index.js', () => ({
-    supportKnowledgeRepository: { findAll: vi.fn(() => Promise.resolve({ rows: [], total: 0 })) },
+    supportKnowledgeRepository: {
+        findAll: vi.fn(() => Promise.resolve({ rows: [], total: 0 })),
+        createMany,
+    },
 }))
 vi.mock('#app/services/support/support-embedding-service.js', () => ({
     supportEmbeddingService: { indexArticle: vi.fn() },
@@ -60,5 +69,37 @@ describe('knowledgeBaseInitService.start (feat-115)', () => {
         expect(await service.start()).toMatchObject({ errorCode: 'EMBEDDINGS_NOT_CONFIGURED' })
         expect(service.getStatus().state).toBe('idle')
         expect(acquireLease).not.toHaveBeenCalled()
+    })
+})
+
+// feat-126: the init status is served by the admin API; a database error shows its safe message.
+describe('knowledgeBaseInitService status after a database failure (feat-126)', () => {
+    it('names the database error without the text PostgreSQL quoted', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'kb-status-'))
+        await writeFile(join(dir, 'a-account.txt'), 'Title\n\nBody\n')
+        const failure = new pg.DatabaseError('value too long for "secret-title"', 0, 'error')
+        failure.code = '22001'
+        failure.severity = 'ERROR'
+        failure.routine = 'varchar'
+        failure.detail = 'Key (title)=(secret-title) is too long.'
+        createMany.mockRejectedValue(failure)
+        acquireLease.mockResolvedValue({
+            lost: new AbortController().signal,
+            release: () => Promise.resolve(true),
+        })
+        const service = createKnowledgeBaseInitService({
+            resolveSourceDir: () => Promise.resolve(dir),
+            delayMs: 0,
+        })
+
+        expect((await service.start()).ok).toBe(true)
+        await service.running
+
+        expect(service.getStatus()).toMatchObject({
+            state: 'failed',
+            message: 'Database error (code=22001)',
+        })
+        expect(JSON.stringify(service.getStatus())).not.toContain('secret-title')
+        await rm(dir, { recursive: true, force: true })
     })
 })

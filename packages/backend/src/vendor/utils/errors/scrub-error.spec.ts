@@ -7,6 +7,7 @@ import {
     databaseMessageReplacements,
     redactQueryText,
     toSafeError,
+    toSafeValue,
 } from '#vendor/utils/errors/scrub-error.js'
 
 const SECRETS = ['secret-hash', 'tok-123', 'a@b.c', 'Key (email)']
@@ -171,5 +172,47 @@ describe('redactQueryText', () => {
             'wrapped: Failed query (params redacted)',
         )
         expect(redactQueryText('plain text')).toBe('plain text')
+    })
+})
+
+// feat-126: the bypasses the fourth review found.
+describe('scrubbing everywhere an error can hide (feat-126)', () => {
+    it('keeps no message line that looks like a frame in the rebuilt stack', () => {
+        const err = new pg.DatabaseError(
+            'syntax error\n    at row (email)=(a@b.c) secret-hash',
+            0,
+            'error',
+        )
+        err.code = '42601'
+        err.severity = 'ERROR'
+        err.routine = 'scanner_yyerror'
+
+        const safe = toSafeError(err)
+
+        expect(safe.stack).not.toContain('secret-hash')
+        expect(safe.stack).not.toContain('a@b.c')
+        // The real frames stay.
+        expect(safe.stack).toMatch(/\n\s+at .*scrub-error\.spec/)
+    })
+
+    it('scrubs an error kept in a plain object field of another error', () => {
+        const outer = Object.assign(new Error('save failed'), {
+            details: { attempt: 2, failures: [queryError()] },
+        })
+
+        expect(dump(toSafeError(outer))).not.toMatch(/secret-hash|tok-123/)
+        const nested = toSafeValue({ context: { cause: queryError() } })
+        expect(dump(nested.context.cause)).not.toMatch(/secret-hash|tok-123/)
+    })
+
+    it('does not change the value it was given', () => {
+        const original = queryError()
+        const record = { context: { cause: original }, list: [original] }
+
+        toSafeValue(record)
+
+        expect(record.context.cause).toBe(original)
+        expect(record.list[0]).toBe(original)
+        expect(original.message).toContain('secret-hash')
     })
 })
