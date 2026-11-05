@@ -1223,6 +1223,16 @@
             "dependencies": ["feat-122"],
             "status": "done",
             "evidence": "Merged #403 (merge e17f736; start #402). L5: Session.isStored() (EXISTS on the record; cookie-held -> false) is asked right before the mail, SMS or confirmation of link-email/start, link-phone start/confirm and the OAuth first-address resend, which answer 401 session_revoked when a logout in another tab deleted the record (a Result per ADR 0004 instead of the planned SessionGoneError); F6-low: the OAuth callback compares the state with safeEqual before consuming it; R06b: a spent password re-check / change-password budget answers 429, the shared change_password_user budget kept on purpose instead of a reauthUser policy (documented). Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2375, frontend 400, api-playground 62; test:pg with Redis 28/251, test:redis 11/115 (a first full run under load average ~75 had 4 timing failures in untouched suites; each passed alone and the full suites passed again); CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; mutation: no guard 3, no state comparison 1, 400 back 2 cases fail. Details were in progress.md on fix/feat-123-session-auth-gaps (removed from main by this PR)."
+        },
+        {
+            "id": "feat-124",
+            "name": "WebSocket Send and Presence",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fourth review G4: (L9) the broadcast counts only uWS send result 1 as delivered, so a message buffered under backpressure (0) looks undelivered and the support stream falls back to every tab (duplicated tokens), while a dropped message (2) is ignored; R04 lows: sendJson does not look at userData.closed, so every abandoned AI request logs two errors; the admin online list can keep a ghost (an upsert built after a slow snapshot arrives after the remove); a user_online row can stay open (the disconnect UPDATE runs before the connect INSERT). 0 and 1 count as sent, 2 ends the connection with 1013 as sendJson does; the support stream falls back to every tab only when its connection is gone; sendJson skips a closed socket; the upsert only while the user is still connected; the disconnect waits for the connect row; tests; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-124-ws-send-presence",
+            "dependencies": ["feat-123"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
