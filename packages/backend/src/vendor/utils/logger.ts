@@ -44,14 +44,19 @@ const scrubRecord = (record: Record<string, unknown>): Record<string, unknown> =
 // safe copy first, so a query error's params never reach the message.
 function scrubLogArgs(args: unknown[]): unknown[] {
     const [first, ...rest] = args
-    if (first instanceof Error) return [toSafeError(first), ...rest]
-    if (typeof first !== 'object' || first === null) return args
+    // feat-137 (L11): the format arguments after the message (`'%s', err`, `'%o', { err }`) are
+    // interpolated into `msg` raw; every error in them is replaced by its safe copy too.
+    const safeRest = rest.map((arg) => toSafeValue(arg))
+    if (first instanceof Error) return [toSafeError(first), ...safeRest]
+    if (typeof first !== 'object' || first === null) return [first, ...safeRest]
     const record = first as Record<string, unknown>
-    if (!(record['err'] instanceof Error) && !(record['error'] instanceof Error)) return args
+    if (!(record['err'] instanceof Error) && !(record['error'] instanceof Error)) {
+        return [first, ...safeRest]
+    }
     const copy = { ...record }
     if (copy['err'] instanceof Error) copy['err'] = toSafeError(copy['err'])
     if (copy['error'] instanceof Error) copy['error'] = toSafeError(copy['error'])
-    return [copy, ...rest]
+    return [copy, ...safeRest]
 }
 
 const isProduction = appConfig.env === 'prod' || appConfig.env === 'production'
@@ -166,13 +171,35 @@ function createLogger(): BackendLogger {
                       colorize: true,
                   })
 
-        return pino(
+        const root: BackendLogger = pino(
             baseConfig,
             multistream([
                 { level: 'trace', stream: mainStream },
                 { level: 'error', stream: sentryStream },
             ]),
         )
+        // feat-137 (L11): the bindings of a child logger (`logger.child({ lastError })`) are
+        // written into every record of that child, past formatters.log, and pino resets
+        // formatters.bindings for children. They are scrubbed here instead; every child inherits
+        // this `child` from the root through its prototype, grandchildren included.
+        type ChildFn = (
+            this: unknown,
+            bindings: Record<string, unknown>,
+            options?: unknown,
+        ) => unknown
+        const pinoChild = (Object.getPrototypeOf(root) as { child: ChildFn }).child
+        Object.defineProperty(root, 'child', {
+            value: function scrubbedChild(
+                this: unknown,
+                bindings: Record<string, unknown>,
+                options?: unknown,
+            ): unknown {
+                return pinoChild.call(this, scrubRecord(bindings), options)
+            },
+            writable: true,
+            configurable: true,
+        })
+        return root
     } catch (error) {
         console.error('CRITICAL ERROR: Failed to initialize logger:', error)
         console.error('Application cannot continue without proper logging.')

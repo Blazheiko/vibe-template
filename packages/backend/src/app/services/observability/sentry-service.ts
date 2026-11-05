@@ -113,12 +113,31 @@ const isOpaque = (value: object): boolean =>
 function sanitizeDeep(value: unknown, depth = 0): unknown {
     if (typeof value === 'string') return redactQueryText(value)
     if (value === null || typeof value !== 'object' || depth >= MAX_SANITIZE_DEPTH) return value
-    if (value instanceof Error) return toSafeError(value)
+    if (value instanceof Error) {
+        // feat-137 (L11): the safe copy keeps the error's own fields; sensitive ones go, and the
+        // rest are sanitized like any value. The copy is ours, the caller's error is untouched.
+        const safe = toSafeError(value) as Error & Record<string, unknown>
+        for (const key of Object.keys(safe)) {
+            if (SENSITIVE_KEY_RE.test(key)) Reflect.deleteProperty(safe, key)
+            else safe[key] = sanitizeDeep(safe[key], depth + 1)
+        }
+        return safe
+    }
 
     if (Array.isArray(value)) {
         return value.map((item: unknown) => sanitizeDeep(item, depth + 1))
     }
     if (isOpaque(value)) return value
+    // feat-137 (L10): Sentry serializes a value with toJSON (URL, Decimal, a Luxon date) as what
+    // toJSON returns; its own fields are often none, so read that way it was sent as `{}`.
+    const toJSON = (value as { toJSON?: unknown }).toJSON
+    if (typeof toJSON === 'function') {
+        try {
+            return sanitizeDeep((toJSON as () => unknown).call(value), depth + 1)
+        } catch {
+            return '[toJSON failed]'
+        }
+    }
 
     // feat-127: a class instance too. The processor runs before Sentry normalizes the event into
     // plain data, so an instance passed through unsanitized kept its password/token fields; it is

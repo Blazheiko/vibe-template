@@ -281,6 +281,44 @@ describe('sentryService', () => {
         expect(instance.password).toBe('hunter2')
     })
 
+    // feat-137 (sixth review L10, L11): a class with toJSON and no own fields (URL, Decimal) became
+    // `{}`; an Error's own sensitive fields stayed.
+    it("sends a toJSON value as what toJSON returns, and drops an error's sensitive own fields", async () => {
+        process.env['SENTRY_DSN'] = 'https://example.com/1'
+        process.env['SENTRY_ENABLED'] = 'true'
+        const { sentryService } = await loadSentryService()
+        sentryService.init()
+        const eventProcessor = addEventProcessorMock.mock.calls[0]?.[0] as
+            ((event: Record<string, unknown>) => Record<string, unknown> | null) | undefined
+        if (eventProcessor === undefined) throw new Error('event processor was not configured')
+
+        class Decimal {
+            readonly #value: string
+            constructor(value: string) {
+                this.#value = value
+            }
+            toJSON(): string {
+                return this.#value
+            }
+        }
+        const failure = Object.assign(new Error('boom'), { password: 'hunter2', step: 'save' })
+
+        const sanitized = eventProcessor({
+            extra: {
+                url: new URL('https://app.test/path?x=1'),
+                amount: new Decimal('12.50'),
+                failure,
+            },
+        }) as { extra?: Record<string, unknown> }
+
+        expect(sanitized.extra?.['url']).toBe('https://app.test/path?x=1')
+        expect(sanitized.extra?.['amount']).toBe('12.50')
+        const safe = sanitized.extra?.['failure'] as Record<string, unknown>
+        expect(safe['password']).toBeUndefined()
+        expect(safe['step']).toBe('save')
+        expect(failure.password).toBe('hunter2')
+    })
+
     it('normalizes internal app errors before capturing them', async () => {
         process.env['SENTRY_DSN'] = 'https://example.com/1'
         process.env['SENTRY_ENABLED'] = 'true'

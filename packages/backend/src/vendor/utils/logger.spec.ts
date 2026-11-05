@@ -282,6 +282,36 @@ describe('logger error scrubbing', () => {
     })
 
     // feat-127 (N1): a plain object with a message is data, not an error.
+    // feat-137 (sixth review L11): the edges of the scrubber.
+    it('scrubs a query error inside a class instance of the record', async () => {
+        const err = await failedQuery()
+        class Job {
+            constructor(public failure: Error) {}
+        }
+        const lines = await captureLines((logger) => {
+            logger.error({ job: new Job(err), sentryCapture: true }, 'job failed')
+        })
+        for (const secret of SECRETS) expect(lines.join('')).not.toContain(secret)
+    })
+
+    it('scrubs an error in the bindings of a child logger', async () => {
+        const err = await failedQuery()
+        const lines = await captureLines((logger) => {
+            logger.child({ lastError: err }).error({ sentryCapture: true }, 'child failed')
+        })
+        expect(lines).toHaveLength(1)
+        for (const secret of SECRETS) expect(lines.join('')).not.toContain(secret)
+    })
+
+    it('scrubs an error given as a format argument', async () => {
+        const err = await failedQuery()
+        const lines = await captureLines((logger) => {
+            logger.error({ sentryCapture: true }, 'failed: %s %o', err, { inner: err })
+        })
+        expect(lines).toHaveLength(1)
+        for (const secret of SECRETS) expect(lines.join('')).not.toContain(secret)
+    })
+
     it('keeps the fields of plain objects that have a message', async () => {
         const lines = await captureLines((logger) => {
             logger.error(
