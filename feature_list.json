@@ -1351,8 +1351,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-136-ai-usage-purge",
             "dependencies": ["feat-135"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #442 (merge 2367dad; start #441). L6: a usage object without token counts is no usage in the Mistral and the OpenAI adapters (it was 0 real tokens). L7: the first round of a tool call is reported as partial (UsageReportDetails); the audit records it as tokens_estimated with an estimate never below that part and the budget keeps its reservation; without the second round usage the call usage is unknown. L8: llm:purge-prompts refuses --days with --all or when prompts are not kept, and stops on a database or AI config error. Evidence: typecheck, lint, format clean; pnpm test backend 2517, frontend 400, api-playground 62; local test:pg 173; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: main adapters, usage-audit and purge args make 7 new cases fail. Details were in progress.md on fix/feat-136-ai-usage-purge (removed from main by this PR)."
         }
     ]
 }
