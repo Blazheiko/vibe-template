@@ -333,4 +333,51 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         expect(await challengeInvalidatedAt(challenge.id)).toBeNull()
         await db.delete(smsAuthChallenges).where(eq(smsAuthChallenges.id, challenge.id))
     })
+
+    // feat-123 (L5): a single logout in another tab deletes the record without rotating the token;
+    // the link flows ask right before their mail / SMS.
+    it('link-email/start with a session deleted meanwhile: 401, no mail, no verification', async () => {
+        const user = await insertUser(false)
+        const { emailVerificationService } =
+            await import('#app/services/auth/email-verification-service.js')
+        const sendLink = vi.spyOn(emailVerificationService, 'sendLinkVerificationEmail')
+
+        const result = await authService.startEmailLink(
+            user.id,
+            { email: `gone-${run}@example.test`, currentPassword: PASSWORD },
+            user.sessionToken,
+            () => Promise.resolve(false),
+        )
+
+        expect(result.isErr() && result.error).toMatchObject({
+            _tag: 'Unauthorized',
+            reason: 'session_revoked',
+        })
+        expect(sendLink).not.toHaveBeenCalled()
+    })
+
+    it('the guard is asked after the password check, right before the mail', async () => {
+        const user = await insertUser(false)
+        const guard = vi.fn(() => Promise.resolve(true))
+
+        const result = await authService.startEmailLink(
+            user.id,
+            { email: `kept-${run}@example.test`, currentPassword: PASSWORD },
+            user.sessionToken,
+            guard,
+        )
+
+        expect(result.isOk()).toBe(true)
+        expect(guard).toHaveBeenCalledTimes(1)
+    })
+
+    // feat-123: a spent password budget is 429.
+    it('the 11th password re-check answers 429', async () => {
+        const user = await insertUser(false)
+        for (let attempt = 0; attempt < 10; attempt += 1) await startLink(user, 'wrong-password')
+
+        const result = await startLink(user, PASSWORD)
+
+        expect(result.isErr() && result.error).toMatchObject({ _tag: 'RateLimited' })
+    })
 })

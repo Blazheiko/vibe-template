@@ -161,6 +161,18 @@ describe('OAuthController.callback', () => {
         expect(response).toMatchObject({ code: 'unauthorized', reason: 'session_revoked' })
     })
 
+    // feat-123: a made-up state from another site's navigation does not use up the real one.
+    it('a state that does not match is refused before anything is consumed', async () => {
+        const context = createContext({ code: 'c', state: 'forged' })
+
+        const response = await OAuthController.callback(context)
+
+        expect(consumeMock(context)).not.toHaveBeenCalled()
+        expect(handleCallback).not.toHaveBeenCalled()
+        expect(context.headers.get('Location')).toBe('/?error=oauth_failed')
+        expect(response).toMatchObject({ code: 'bad_request', message: 'OAuth state mismatch' })
+    })
+
     // Review of feat-119: a state another callback consumed, or a new OAuth start replaced, is not
     // this callback's to use.
     it('a state already consumed or replaced: no sign-in, error redirect', async () => {
@@ -335,7 +347,7 @@ describe('OAuthController.resendEmailLink', () => {
 
         const response = await OAuthController.resendEmailLink(context)
 
-        expect(resendFirstEmailLink).toHaveBeenCalledWith(7n, 'presented')
+        expect(resendFirstEmailLink).toHaveBeenCalledWith(7n, 'presented', expect.any(Function))
         expect(response).toEqual({ status: 'success', message: 'Verification email sent' })
     })
 
