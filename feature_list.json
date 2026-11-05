@@ -1271,8 +1271,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-128-ws-support-stream",
             "dependencies": ["feat-127"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #418 (merge 5f5c8ea; start #417). N3: deliver knows the event; a support_chat_token dropped by backpressure is logged at debug and keeps the connection (support_chat_complete carries the whole reply), so the run saves and completes; any other dropped event, the final complete included, still ends the connection with 1013. closeExpiredSession skips a socket that closed during the session lookup. The user_online disconnect UPDATE runs once the connect INSERT settled, whatever it answered; a connection closed before tracking writes nothing. Evidence: typecheck, lint, format clean; pnpm test backend 2409, frontend 400, api-playground 62; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: main versions of broadcast-service, ws-handlers, ws-coordinator make the 3 new tests fail, all 32 pass with the fix. Details were in progress.md on fix/feat-128-ws-support-stream (removed from main by this PR)."
         }
     ]
 }
