@@ -178,3 +178,28 @@ describe('a reply after the socket closed (feat-124)', () => {
         expect(logger.error).not.toHaveBeenCalled()
     })
 })
+
+// feat-128: the session lookup is awaited too; a session that vanished while the socket closed
+// must not make the 4001 path touch the dead socket (an unknown error in the log).
+describe('an expired session after the socket closed (feat-128)', () => {
+    it('is not answered and logs no error', async () => {
+        const ws = createWs()
+        wsSessionHandler.mockImplementation(() => {
+            void handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
+            ws.kill()
+            releaseRevoke()
+            return Promise.resolve({ kind: 'missing' })
+        })
+
+        await handlers.onMessage(
+            ws as never,
+            message(JSON.stringify({ event: 'main:ping', payload: {}, timestamp: Date.now() })),
+            false,
+            {},
+        )
+
+        expect(ws.send).not.toHaveBeenCalled()
+        expect(ws.end).not.toHaveBeenCalled()
+        expect(logger.error).not.toHaveBeenCalled()
+    })
+})

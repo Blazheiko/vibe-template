@@ -56,8 +56,8 @@ function broadcastToConnection(
     ...message: BroadcastMessage
 ): void {
     // feat-124 (L9): to every tab only when the asking connection is gone (closed, reconnected).
-    // A connection that is still there but slow keeps its stream; one that dropped an event was
-    // closed by the broadcast, and the other tabs never had the earlier tokens either.
+    // A connection that is still there but slow keeps its stream: a dropped token leaves it open
+    // (feat-128, support_chat_complete carries the whole reply), a dropped final event closes it.
     if (
         targetUuid !== undefined &&
         wsConnectionRegistry.getConnection(userIdStr, targetUuid) !== undefined
