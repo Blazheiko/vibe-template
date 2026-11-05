@@ -5,7 +5,12 @@ import { fileURLToPath } from 'node:url'
 import { openaiEmbeddingAdapter } from '#app/services/ai/adapters/openai-embedding-adapter.js'
 import { supportKnowledgeRepository } from '#app/repositories/index.js'
 import { supportEmbeddingService } from '#app/services/support/support-embedding-service.js'
-import { acquireLease, type HeldLease, type Lease } from '#app/services/shared/redis-lease.js'
+import {
+    acquireLease,
+    leaseForDatabaseWrites,
+    type HeldLease,
+    type Lease,
+} from '#app/services/shared/redis-lease.js'
 import logger from '#logger'
 import { toSafeError } from '#vendor/utils/errors/scrub-error.js'
 
@@ -15,7 +20,13 @@ const INIT_DELAY_MS = 100
 // for this process; the Redis lease (redis-lease.ts) admits one instance. A run that cannot renew
 // it stops before its next write, so two instances never both write articles.
 export const KB_INIT_LOCK_KEY = 'support:kb-init'
-const KB_INIT_LEASE: Lease = { ttlMs: 30_000, renewEveryMs: 10_000, maxLifetimeMs: 60 * 60_000 }
+// feat-135: told lost the longest database write before the key can expire, so an article insert
+// or a vector write started just before the loss cannot land under the next holder.
+const KB_INIT_LEASE: Lease = leaseForDatabaseWrites({
+    ttlMs: 30_000,
+    renewEveryMs: 10_000,
+    maxLifetimeMs: 60 * 60_000,
+})
 
 export class KnowledgeBaseInitLockLostError extends Error {
     override readonly name = 'KnowledgeBaseInitLockLostError'
@@ -198,14 +209,23 @@ export function createKnowledgeBaseInitService({
                 // the INSERT may have committed. The base then holds the articles without vectors
                 // and refuses every later init (NOT_EMPTY), so the status says what is there.
                 if (isServerRejection(err)) throw err
+                // feat-135 (L9): the re-read can fail too (the database still away); the count is
+                // then unknown, and the status still says what to check and what to run.
                 const stored = await supportKnowledgeRepository
                     .findAll({ limit: 1, offset: 0 })
                     .then(
-                        (page) => page.total,
-                        () => 0,
+                        (page): number | null => page.total,
+                        () => null,
                     )
                 if (stored === 0) throw err
                 logger.error({ err, stored }, 'Knowledge base init: the insert got no answer')
+                if (stored === null) {
+                    finish(
+                        'failed',
+                        'The article insert got no answer from the database, and the articles could not be counted. Check the knowledge base: if articles are there, run reindex-all for their vectors.',
+                    )
+                    return
+                }
                 status.createdArticles = stored
                 finish(
                     'failed',
