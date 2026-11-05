@@ -2,7 +2,7 @@
 
 ## State
 
-Done on branch `fix/feat-137-observability`. Waiting for CI on the feature PR.
+Done on branch `fix/feat-137-observability`; start PR #444. Waiting for CI on the feature PR.
 
 ## Changes
 
