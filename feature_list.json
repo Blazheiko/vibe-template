@@ -1321,8 +1321,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-133-ws-connected-failure",
             "dependencies": ["feat-132"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #433 (merge 66a4dd6; start #432). A failed onConnected hook (a database error in findRole, before registerConnection) closes the socket with 1011 Server error unless it already closed, so the client reconnects and registers; before, the error was only logged and the socket stayed open outside the registry (no broadcasts, pushes as if offline). Evidence: typecheck, lint, format clean; pnpm test backend 2508, frontend 400, api-playground 62; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; reproduced before the fix with a throwaway test on the real onOpen, coordinator and registry; mutation: main ws-handlers.ts makes the 1011 case fail. Details were in progress.md on fix/feat-133-ws-connected-failure (removed from main by this PR)."
         }
     ]
 }
