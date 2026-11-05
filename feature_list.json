@@ -1213,6 +1213,16 @@
             "dependencies": ["feat-121"],
             "status": "done",
             "evidence": "Merged #400 (merge 3dc748c; start #399). L6: the Redis lease (KB init, support in-flight lock) runs on performance.now() and is lost on a timer of its own at extendedAt + ttlMs - renewEveryMs, re-armed after every renewal and measured from its start, with the maximum lifetime as a timeout; L7: X-Forwarded-For entries with a port are read and the walk stops at an unreadable entry (fallback X-Real-IP, then the remote address); L8: TRUSTED_PROXY_CIDRS skip proxies on the unix-socket chain under TRUST_UNIX_SOCKET_PROXY regardless of TRUST_PROXY. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2373, frontend 400, api-playground 62; test:pg with Redis 28/248, test:redis 11/114; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; lease spec (TTL 3.5 s, renew 1 s: lost at 2.5 s where main sees it at the 3 s tick; deadline from the renewal start; nothing after release), get-ip spec (port forms, stop at unreadable, CDN hop on the unix socket with TRUST_PROXY=false); mutation: main lease fails the deadline case, main get-ip fails 4 cases. Details were in progress.md on fix/feat-122-lease-and-proxy-chain (removed from main by this PR)."
+        },
+        {
+            "id": "feat-123",
+            "name": "Session and Auth Gaps",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fourth review G3: (L5) a single logout deletes only the Redis record, so a protected operation that does not write to the session (link-email/start, link-phone, the OAuth first-address resend) still mails or texts after a logout in another tab, against the R09 acceptance criterion; (F6-low) the OAuth callback consumes the state before comparing it, so another site navigating to the callback with a made-up state ends the user sign-in in progress; (R06b) a spent password re-check budget answers 400, the criterion says 429. Session.isStored() asked right before the irreversible step (mail, SMS, link) with 401 when the record is gone; the state compared with safeEqual before it is consumed; the budget answers 429; the shared change-password budget (instead of a separate reauthUser policy) kept and recorded; tests; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-123-session-auth-gaps",
+            "dependencies": ["feat-122"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
