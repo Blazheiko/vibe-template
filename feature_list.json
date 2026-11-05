@@ -1301,8 +1301,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-131-ip-zone-id",
             "dependencies": ["feat-130"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #427 (merge 241ff86; start #426). normalizeIp drops an IPv6 zone id (an empty one or one on IPv4 is not an address) and never throws: ::%1, fe80::%eth0, 1::%a threw RangeError and ::ffff:1.2.3.4%x read as 1.2.3.0 (IPv4-mapped check of feat-121). handleUpgrade logs any unexpected error (WebSocket upgrade failed) and answers 500 while the client is there instead of rejecting a promise uWS drops. Evidence: typecheck, lint, format clean; pnpm test backend 2476, frontend 400, api-playground 62; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; reproduced with tsx before the fix; mutation: main ip-address.ts 13 cases, main ws-handlers.ts 2 cases fail. Details were in progress.md on fix/feat-131-ip-zone-id (removed from main by this PR)."
         }
     ]
 }
