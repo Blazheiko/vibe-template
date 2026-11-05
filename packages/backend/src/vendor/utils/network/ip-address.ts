@@ -112,7 +112,11 @@ export function isIpInCidr(ip: string, cidr: string): boolean {
     }
 
     const maxBits = parsedIp.family === 4 ? 32 : 128
-    const prefix = Number(prefixRaw)
+    const writtenPrefix = Number(prefixRaw)
+    // feat-130: an IPv4-mapped network (`::ffff:a00:0/104`) parses as IPv4 (feat-121), and its
+    // prefix counts the 96 bits of the mapping too. Shorter than /96 is not an IPv4 network.
+    const mappedNetwork = parsedNetwork.family === 4 && network.includes(':')
+    const prefix = mappedNetwork ? writtenPrefix - 96 : writtenPrefix
     if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxBits) {
         return false
     }

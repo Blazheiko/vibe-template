@@ -136,3 +136,26 @@ describe('support in-flight lease', () => {
         expect(lock?.lost.aborted).toBe(false)
     })
 })
+
+// feat-130 (fifth review): a renewal sent before release() answers after it; it used to re-arm the
+// deadline, and the released lease later reported a false "lost".
+describe('a released lease', () => {
+    it('is never reported lost by a renewal that answers after the release', async () => {
+        let answerRenewal: (value: number) => void = () => undefined
+        redisMock.eval.mockImplementationOnce(
+            () =>
+                new Promise<number>((resolve) => {
+                    answerRenewal = resolve
+                }),
+        )
+        const lock = await acquire()
+        await vi.advanceTimersByTimeAsync(1_000) // the renewal is sent and waits
+
+        redisMock.eval.mockResolvedValue(1) // RELEASE_LUA
+        await lock?.release()
+        answerRenewal(1)
+        await vi.advanceTimersByTimeAsync(60_000)
+
+        expect(lock?.lost.aborted).toBe(false)
+    })
+})

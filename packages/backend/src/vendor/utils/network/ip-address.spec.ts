@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { rateLimitKeyForIp } from './ip-address.js'
+import { isIpInCidr, rateLimitKeyForIp } from './ip-address.js'
 
 describe('rateLimitKeyForIp (feat-110)', () => {
     it('groups every spelling of every address of one IPv6 /64 into one key', () => {
@@ -56,5 +56,22 @@ describe('IPv4-mapped addresses in every form (feat-121)', () => {
     it('an address next to the mapped range stays IPv6', () => {
         expect(rateLimitKeyForIp('::fffe:7f00:1')).toBe('0:0:0:0::/64')
         expect(rateLimitKeyForIp('64:ff9b::7f00:1')).toBe('64:ff9b:0:0::/64')
+    })
+})
+
+// feat-130 (fifth review): a CIDR written in IPv4-mapped form is the IPv4 network with the
+// prefix less 96; it used to match nothing once mapped addresses became IPv4 (feat-121).
+describe('isIpInCidr with an IPv4-mapped CIDR (feat-130)', () => {
+    it.each([
+        ['10.0.0.1', '::ffff:a00:0/104', true],
+        ['0000:0000:0000:0000:0000:ffff:0a00:0001', '::ffff:a00:0/104', true],
+        ['10.0.0.1', '::ffff:10.0.0.0/104', true],
+        ['11.0.0.1', '::ffff:10.0.0.0/104', false],
+        ['10.0.0.1', '::ffff:10.0.0.1/128', true],
+        ['10.0.0.1', '::ffff:0:0/96', true],
+        // Shorter than /96 reaches past the mapped range: not an IPv4 network.
+        ['10.0.0.1', '::ffff:0:0/80', false],
+    ])('%s in %s → %s', (ip, cidr, expected) => {
+        expect(isIpInCidr(ip, cidr)).toBe(expected)
     })
 })

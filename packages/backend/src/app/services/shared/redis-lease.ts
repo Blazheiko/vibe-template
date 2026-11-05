@@ -64,6 +64,8 @@ export async function acquireLease(
 
     const lostController = new AbortController()
     let renewing = false
+    // feat-130: set by release(); a renewal that answers later must not re-arm the deadline.
+    let released = false
     let deadline: ReturnType<typeof setTimeout> | undefined
 
     const stopTimers = (): void => {
@@ -101,7 +103,7 @@ export async function acquireLease(
             const renewed = await withRedis(() =>
                 redis.eval(RENEW_LUA, 1, key, token, String(lease.ttlMs)),
             )
-            if (lostController.signal.aborted) return
+            if (lostController.signal.aborted || released) return
             if (renewed === 1) armDeadline(sentAt)
             else markLost('the key is gone or belongs to another holder')
         } catch {
@@ -124,6 +126,7 @@ export async function acquireLease(
     return {
         lost: lostController.signal,
         release: async (): Promise<boolean> => {
+            released = true
             stopTimers()
             return (await withRedis(() => redis.eval(RELEASE_LUA, 1, key, token))) === 1
         },

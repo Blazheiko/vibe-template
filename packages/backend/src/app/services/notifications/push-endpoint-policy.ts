@@ -41,11 +41,23 @@ export function isAllowedPushEndpoint(
     return hostAllowed(host, allowed)
 }
 
+// RFC 3986 §6.2.2: an escaped unreserved character is that character, and the hex of an escape
+// is upper case. Anything else (a reserved character, a character outside ASCII) stays escaped.
+const UNRESERVED = /^[A-Za-z0-9\-._~]$/
+function normalizePercentEncoding(component: string): string {
+    return component.replace(/%([0-9A-Fa-f]{2})/g, (_escape, hex: string) => {
+        const char = String.fromCharCode(Number.parseInt(hex, 16))
+        return UNRESERVED.test(char) ? char : `%${hex.toUpperCase()}`
+    })
+}
+
 /**
  * The form an endpoint is stored and looked up in (feat-125): host lowercased and without the
- * trailing dot, the default port dropped, path and query as they are. `https://FCM.GOOGLEAPIS.COM./x`
- * and `https://fcm.googleapis.com/x` reach the same push service and are one endpoint, so the
- * "belongs to another user" check sees them as one. null for an endpoint that is not allowed.
+ * trailing dot, the default port dropped. feat-130: path and query percent-encoding normalized
+ * (`%41` is `A`, `%3d` is `%3D`), so two spellings of one endpoint are one, and the "belongs to
+ * another user" check sees them as one. A different query (`?x=1` added) stays a different
+ * endpoint: WNS carries its token in the query, so the query cannot be dropped. null for an
+ * endpoint that is not allowed.
  */
 export function canonicalPushEndpoint(
     endpoint: string,
@@ -53,5 +65,7 @@ export function canonicalPushEndpoint(
 ): string | null {
     if (!isAllowedPushEndpoint(endpoint, allowed)) return null
     const url = new URL(endpoint)
-    return `https://${normalizeHost(url.hostname)}${url.pathname}${url.search}`
+    const path = normalizePercentEncoding(url.pathname)
+    const query = normalizePercentEncoding(url.search)
+    return `https://${normalizeHost(url.hostname)}${path}${query}`
 }

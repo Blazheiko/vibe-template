@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { llmTextUsage } from '#database/schema.js'
-import { eq, sql, desc, and, gte, inArray, lte } from 'drizzle-orm'
+import { eq, sql, desc, and, asc, gt, gte, lte } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 
 export type LlmTextUsageRow = InferSelectModel<typeof llmTextUsage>
@@ -79,37 +79,49 @@ export const llmUsageRepository: ILlmUsageRepository = {
             sql`${llmTextUsage.finalPrompt} <> ''`,
             olderThan === null ? undefined : lte(llmTextUsage.createdAt, olderThan),
         )
-        if (dryRun) {
-            const [row] = await db
-                .select({ count: sql<number>`count(*)::int` })
-                .from(llmTextUsage)
-                .where(withText)
-            return { matched: row?.count ?? 0 }
-        }
-        // The hash and the length of what is removed are filled in first when the row has none
-        // (a row written before they existed); sha256 of the UTF-8 bytes and char_length
-        // agree with what the application computes.
-        // feat-125 (L10): in batches. One UPDATE over a large table would outlast the main pool's
-        // statement_timeout (DB_QUERY_TIMEOUT_MS) every time; each batch is a short statement, and
-        // a purged row no longer matches, so the loop ends when a batch finds nothing.
+        // feat-125 (L10): in batches of short statements. feat-130: a batch is one page of the
+        // table by id (`id > last ORDER BY id LIMIT n`, the primary key), and the purge (or the
+        // dry-run count) runs within that page only. Looking for the next n matching rows instead
+        // scanned from the start past every purged row, and a table with nothing left to purge was
+        // one full scan; either could outlast statement_timeout (DB_QUERY_TIMEOUT_MS).
         let matched = 0
+        let last: bigint | null = null
         for (;;) {
-            const batch = db
+            const page: { id: bigint }[] = await db
                 .select({ id: llmTextUsage.id })
                 .from(llmTextUsage)
-                .where(withText)
+                .where(last === null ? undefined : gt(llmTextUsage.id, last))
+                .orderBy(asc(llmTextUsage.id))
                 .limit(batchSize)
-            const purged = await db
-                .update(llmTextUsage)
-                .set({
-                    promptSha256: sql`coalesce(${llmTextUsage.promptSha256}, encode(sha256(convert_to(${llmTextUsage.finalPrompt}, 'UTF8')), 'hex'))`,
-                    promptChars: sql`coalesce(${llmTextUsage.promptChars}, char_length(${llmTextUsage.finalPrompt}))`,
-                    finalPrompt: '',
-                })
-                .where(inArray(llmTextUsage.id, batch))
-                .returning({ id: llmTextUsage.id })
-            matched += purged.length
-            if (purged.length < batchSize) return { matched }
+            const first = page[0]?.id
+            const end: bigint | undefined = page[page.length - 1]?.id
+            if (first === undefined || end === undefined) return { matched }
+            const inPage = and(withText, gte(llmTextUsage.id, first), lte(llmTextUsage.id, end))
+
+            if (dryRun) {
+                const [row] = await db
+                    .select({ count: sql<number>`count(*)::int` })
+                    .from(llmTextUsage)
+                    .where(inPage)
+                matched += row?.count ?? 0
+            } else {
+                // The hash and the length only where they are missing
+                // (a row written before they existed); sha256 of the UTF-8 bytes and char_length
+                // agree with what the application computes.
+                const purged = await db
+                    .update(llmTextUsage)
+                    .set({
+                        promptSha256: sql`coalesce(${llmTextUsage.promptSha256}, encode(sha256(convert_to(${llmTextUsage.finalPrompt}, 'UTF8')), 'hex'))`,
+                        promptChars: sql`coalesce(${llmTextUsage.promptChars}, char_length(${llmTextUsage.finalPrompt}))`,
+                        finalPrompt: '',
+                    })
+                    .where(inPage)
+                    .returning({ id: llmTextUsage.id })
+                matched += purged.length
+            }
+
+            last = end
+            if (page.length < batchSize) return { matched }
         }
     },
 
