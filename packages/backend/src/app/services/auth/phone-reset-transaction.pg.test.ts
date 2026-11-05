@@ -246,7 +246,10 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
         expect(link?.usedAt ?? null).not.toBeNull()
     })
 
-    it('two completions with the right code reset once', async () => {
+    // An older invariant kept here as a regression guard: the conditional confirmation (before
+    // R06a) already let only one completion through. What R06a adds, the single transaction, is
+    // checked by the rollback cases above (feat-126: the review found this one would pass without it).
+    it('two completions with the right code reset once (the conditional confirmation)', async () => {
         const { challenge } = await arrange()
 
         const results = await Promise.all([complete(challenge.id), complete(challenge.id)])

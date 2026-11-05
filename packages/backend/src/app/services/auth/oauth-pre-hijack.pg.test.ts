@@ -636,6 +636,8 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
         const oauthRowsFor = async (providerUserId: string) =>
             db.select().from(oauthAccounts).where(eq(oauthAccounts.providerUserId, providerUserId))
 
+        // feat-126: the error body reads like a full profile, id included, so only the status
+        // check stops it (before, an empty id stopped it and the test passed without that check).
         it('a provider error answer signs nobody in and stores nothing', async () => {
             const email = address('provider-error')
             vi.stubGlobal(
@@ -644,7 +646,13 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                     Promise.resolve({
                         ok: false,
                         status: 500,
-                        json: () => Promise.resolve({ error: 'internal', email }),
+                        json: () =>
+                            Promise.resolve({
+                                id: 'fb-error-profile',
+                                name: 'Error Body',
+                                email,
+                                error: 'internal',
+                            }),
                     }),
                 ),
             )
@@ -652,10 +660,12 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
 
             const result = await callback('facebook', auth)
 
-            expect(Result.isError(result)).toBe(true)
+            expect(Result.isError(result) && appErrorMessage(result.error)).toBe(
+                'Failed to exchange authorization code',
+            )
             expect(state.login).toBeUndefined()
             expect(await db.select().from(users).where(eq(users.email, email))).toHaveLength(0)
-            expect(await oauthRowsFor('')).toHaveLength(0)
+            expect(await oauthRowsFor('fb-error-profile')).toHaveLength(0)
         })
 
         it('two profiles without an id do not share one account', async () => {

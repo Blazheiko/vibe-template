@@ -225,6 +225,31 @@ describe('sentryService', () => {
         expect(sanitizedEvent.request?.['data']).toBeUndefined()
     })
 
+    // feat-126: the extra and contexts objects belong to the caller; scrubbing works on a copy.
+    it('scrubs the event without changing the objects the caller passed', async () => {
+        process.env['SENTRY_DSN'] = 'https://example.com/1'
+        process.env['SENTRY_ENABLED'] = 'true'
+        const { sentryService } = await loadSentryService()
+        sentryService.init()
+        const eventProcessor = addEventProcessorMock.mock.calls[0]?.[0] as
+            ((event: Record<string, unknown>) => Record<string, unknown> | null) | undefined
+        if (eventProcessor === undefined) throw new Error('event processor was not configured')
+
+        const callerExtra = { password: 'secret', nested: { apiToken: 'abc', keep: 1 } }
+        const callerContext = { sessionCookie: 'cookie', keep: true }
+
+        const sanitized = eventProcessor({
+            extra: callerExtra,
+            contexts: { app: callerContext },
+        }) as { extra?: unknown; contexts?: { app?: unknown } }
+
+        expect(sanitized.extra).toEqual({ nested: { keep: 1 } })
+        expect(sanitized.contexts?.app).toEqual({ keep: true })
+        // The caller's objects still hold what they held.
+        expect(callerExtra).toEqual({ password: 'secret', nested: { apiToken: 'abc', keep: 1 } })
+        expect(callerContext).toEqual({ sessionCookie: 'cookie', keep: true })
+    })
+
     it('normalizes internal app errors before capturing them', async () => {
         process.env['SENTRY_DSN'] = 'https://example.com/1'
         process.env['SENTRY_ENABLED'] = 'true'

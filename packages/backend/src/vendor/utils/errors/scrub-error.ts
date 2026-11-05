@@ -59,11 +59,17 @@ function safeDbMessage(err: ErrorLike): string {
 }
 
 // The frames only: the header (`Name: message`, several lines for a query error) is rebuilt from
-// the safe message.
+// the safe message. feat-126: the frames are taken AFTER the original header. A message line that
+// looks like a frame (`    at …` quoted from the database) is part of the header, not a frame.
 function rebuildStack(err: ErrorLike, name: string, message: string): string {
-    const frames = (typeof err.stack === 'string' ? err.stack : '')
-        .split('\n')
-        .filter((line) => /^\s+at /.test(line))
+    const stack = typeof err.stack === 'string' ? err.stack : ''
+    const originalMessage = typeof err.message === 'string' ? err.message : ''
+    const header = `${typeof err.name === 'string' ? err.name : name}: ${originalMessage}`
+    const body = stack.startsWith(header)
+        ? stack.slice(header.length)
+        : // A stack whose header was changed: skip as many lines as the message has.
+          stack.split('\n').slice(originalMessage.split('\n').length).join('\n')
+    const frames = body.split('\n').filter((line) => /^\s+at /.test(line))
     return [`${name}: ${message}`, ...frames].join('\n')
 }
 
@@ -102,8 +108,8 @@ function copy(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): Er
         if (typeof err.stack === 'string') define(safe, 'stack', err.stack)
         for (const key of Object.keys(err)) {
             if (BLOCKED_FIELDS.has(key) || key === 'cause' || key === 'errors') continue
-            const value = err[key]
-            safe[key] = isErrorLike(value) ? scrub(value, depth + 1, seen) : value
+            // feat-126: an error inside a plain value (`details: { err }`) is scrubbed too.
+            safe[key] = scrubNested(err[key], depth + 1, seen)
         }
     }
 
@@ -124,6 +130,43 @@ function copy(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): Er
     }
 
     return safe
+}
+
+const isPlainObject = (value: object): boolean => {
+    const proto = Object.getPrototypeOf(value) as unknown
+    return proto === Object.prototype || proto === null
+}
+
+// Errors anywhere in plain objects and arrays, copied (the caller's value is left alone); other
+// values (class instances, Buffers, dates) as they are.
+function scrubNested(value: unknown, depth: number, seen: WeakMap<object, unknown>): unknown {
+    if (value === null || typeof value !== 'object') return value
+    if (isErrorLike(value)) return scrub(value, depth, seen)
+    if (depth > MAX_DEPTH) return value
+    const known = seen.get(value)
+    if (known !== undefined) return known
+    if (Array.isArray(value)) {
+        const copied: unknown[] = []
+        seen.set(value, copied)
+        for (const item of value) copied.push(scrubNested(item, depth + 1, seen))
+        return copied
+    }
+    if (!isPlainObject(value)) return value
+    const copied: Record<string, unknown> = {}
+    seen.set(value, copied)
+    for (const [key, item] of Object.entries(value)) {
+        copied[key] = scrubNested(item, depth + 1, seen)
+    }
+    return copied
+}
+
+/**
+ * feat-126: `value` with every error in it (also inside plain objects and arrays) replaced by its
+ * safe copy; the caller's objects are not changed. For log records and Sentry data, where an
+ * error is not always under `err`.
+ */
+export function toSafeValue<T>(value: T): T {
+    return scrubNested(value, 0, new WeakMap()) as T
 }
 
 function scrub(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): ErrorLike {

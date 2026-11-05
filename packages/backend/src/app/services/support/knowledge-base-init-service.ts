@@ -6,6 +6,7 @@ import { supportKnowledgeRepository } from '#app/repositories/index.js'
 import { supportEmbeddingService } from '#app/services/support/support-embedding-service.js'
 import { acquireLease, type HeldLease, type Lease } from '#app/services/shared/redis-lease.js'
 import logger from '#logger'
+import { toSafeError } from '#vendor/utils/errors/scrub-error.js'
 
 const INIT_DELAY_MS = 100
 
@@ -237,9 +238,13 @@ export function createKnowledgeBaseInitService({
                 return
             }
             logger.error({ err }, 'Knowledge base init: unexpected failure')
+            // feat-126: the status goes to the admin API; a database error shows only its safe
+            // message (`Database error (code=…)`), not the text PostgreSQL quoted.
             finish(
                 'failed',
-                err instanceof Error ? err.message : 'Knowledge base initialization failed',
+                err instanceof Error
+                    ? toSafeError(err).message
+                    : 'Knowledge base initialization failed',
             )
         } finally {
             // After a lost lease the key may be another instance's: release is then a no-op.

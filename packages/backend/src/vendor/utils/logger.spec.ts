@@ -240,6 +240,21 @@ describe('logger error scrubbing', () => {
         expect(err.message).toContain('secret-hash')
     })
 
+    // feat-126: an error outside `err` / `error`.
+    it('scrubs and serializes an error nested in the record, without touching it', async () => {
+        const err = await failedQuery()
+        const context = { attempt: 2, failure: err }
+
+        const lines = await captureLines((logger) => {
+            logger.error({ context }, 'x')
+        })
+
+        const line = lines[0] ?? ''
+        for (const secret of SECRETS) expect(line).not.toContain(secret)
+        expect(line).toContain('Failed query (params redacted)')
+        expect(context.failure).toBe(err)
+    })
+
     it('hands Sentry the scrubbed error', async () => {
         const err = await failedQuery()
 

@@ -2,6 +2,7 @@ import 'dotenv/config'
 import './sentry-bootstrap.js'
 import process from 'node:process'
 import logger from '#vendor/utils/logger.js'
+import { toSafeError } from '#vendor/utils/errors/scrub-error.js'
 import { initServer, stopServer } from '#vendor/start/server.js'
 import configApp from '#config/app.js'
 import { createWsRoutesByUrl, routesHandler } from '#vendor/start/router.js'
@@ -65,7 +66,8 @@ const start = async (): Promise<void> => {
         process.on('uncaughtException', stopUncaughtException)
     } catch (err: unknown) {
         logger.error({ err }, 'Failed to start application')
-        console.error('Failed to start application:', err)
+        // feat-126: the same scrubbed copy the logger writes (no query params on stderr).
+        console.error('Failed to start application:', toSafeError(err))
         process.exit(1)
     }
 }
@@ -104,7 +106,7 @@ const stopGracefully = async (type: string): Promise<void> => {
             rateLimitRedis.quit(),
         ])
     } catch (error: unknown) {
-        console.error(error)
+        console.error(toSafeError(error))
     } finally {
         removeListeners()
         process.exit(0)
@@ -133,7 +135,7 @@ const handleUncaughtException = async (err: unknown, origin: unknown): Promise<v
         await stopHandler('uncaughtException')
         await sentryService.flush(2000)
     } catch (stopError: unknown) {
-        console.error(stopError)
+        console.error(toSafeError(stopError))
     } finally {
         removeListeners()
         process.exit(1)
@@ -150,6 +152,6 @@ start()
     })
     .catch((err: unknown) => {
         logger.error({ err: err as Error }, 'Unhandled error during startup')
-        console.error('Unhandled error during startup:', err)
+        console.error('Unhandled error during startup:', toSafeError(err))
         process.exit(1)
     })
