@@ -632,3 +632,18 @@ describe('SMS code attempts (feat-121, M3)', () => {
         expect(authConfig.configError).toBeNull()
     })
 })
+
+// feat-132 (P2): `10.0.0.0/` used to read as /0 and trust every client.
+describe('TRUSTED_PROXY_CIDRS entries (feat-132)', () => {
+    it.each(['10.0.0.0/', '10.0.0.0/.0', 'proxy.internal'])(
+        'rejects %j at startup',
+        async (entry) => {
+            process.env['TRUST_PROXY'] = 'true'
+            process.env['TRUSTED_PROXY_CIDRS'] = `127.0.0.1, ${entry}`
+            const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+            expect(() => {
+                validateRuntimeConfig()
+            }).toThrow(/Invalid network configuration: TRUSTED_PROXY_CIDRS/)
+        },
+    )
+})

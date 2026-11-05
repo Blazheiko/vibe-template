@@ -111,38 +111,60 @@ export function parseIp(ip: string): ParsedIp | null {
     return null
 }
 
-export function isIpInCidr(ip: string, cidr: string): boolean {
-    const [networkRaw, prefixRaw] = cidr.split('/')
-    const network = networkRaw ?? ''
-    if (prefixRaw === undefined) {
-        const normalizedIp = normalizeIp(ip)
-        const normalizedNetwork = normalizeIp(network)
-        return normalizedIp !== null && normalizedIp === normalizedNetwork
-    }
+interface ParsedCidr {
+    network: ParsedIp
+    /** Bits of `network.value` that must match. */
+    prefix: number
+}
 
-    const parsedIp = parseIp(ip)
-    const parsedNetwork = parseIp(network)
-    if (parsedIp === null || parsedNetwork === null) {
-        return false
-    }
-    if (parsedIp.family !== parsedNetwork.family) {
-        return false
-    }
+// feat-132 (P2): the prefix is 1-3 decimal digits and nothing else. It used to be read with
+// Number(), for which '', ' 0' and '.0' are 0: a TRUSTED_PROXY_CIDRS entry with a typo was /0
+// and trusted every address.
+const PREFIX_RE = /^\d{1,3}$/
 
-    const maxBits = parsedIp.family === 4 ? 32 : 128
+/** A CIDR (`10.0.0.0/8`, `2001:db8::/32`, `::ffff:a00:0/104`), or null when it is not one. */
+function parseCidr(cidr: string): ParsedCidr | null {
+    const parts = cidr.split('/')
+    if (parts.length !== 2) return null
+    const [networkRaw = '', prefixRaw = ''] = parts
+    if (!PREFIX_RE.test(prefixRaw)) return null
+    const network = parseIp(networkRaw)
+    if (network === null) return null
+
     const writtenPrefix = Number(prefixRaw)
     // feat-130: an IPv4-mapped network (`::ffff:a00:0/104`) parses as IPv4 (feat-121), and its
     // prefix counts the 96 bits of the mapping too. Shorter than /96 is not an IPv4 network.
-    const mappedNetwork = parsedNetwork.family === 4 && network.includes(':')
-    const prefix = mappedNetwork ? writtenPrefix - 96 : writtenPrefix
-    if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxBits) {
-        return false
+    const mapped = network.family === 4 && networkRaw.includes(':')
+    const prefix = mapped ? writtenPrefix - 96 : writtenPrefix
+    const maxBits = network.family === 4 ? 32 : 128
+    if (prefix < 0 || prefix > maxBits) return null
+    return { network, prefix }
+}
+
+/**
+ * Whether a TRUSTED_PROXY_CIDRS entry is an address or a CIDR (feat-132). An entry that is
+ * neither stops the start: matching nothing would silently trust no proxy, and the old lenient
+ * reading trusted every client.
+ */
+export function isValidCidrEntry(entry: string): boolean {
+    return entry.includes('/') ? parseCidr(entry) !== null : normalizeIp(entry) !== null
+}
+
+export function isIpInCidr(ip: string, cidr: string): boolean {
+    if (!cidr.includes('/')) {
+        const normalizedIp = normalizeIp(ip)
+        return normalizedIp !== null && normalizedIp === normalizeIp(cidr)
     }
 
+    const parsedCidr = parseCidr(cidr)
+    const parsedIp = parseIp(ip)
+    if (parsedCidr === null || parsedIp === null) return false
+    const { network, prefix } = parsedCidr
+    if (parsedIp.family !== network.family) return false
+
+    const maxBits = parsedIp.family === 4 ? 32 : 128
     const shift = BigInt(maxBits - prefix)
-    const ipNetwork = shift === 0n ? parsedIp.value : (parsedIp.value >> shift) << shift
-    const cidrNetwork = shift === 0n ? parsedNetwork.value : (parsedNetwork.value >> shift) << shift
-    return ipNetwork === cidrNetwork
+    return parsedIp.value >> shift === network.value >> shift
 }
 
 const IPV6_LIMIT_PREFIX_BITS = 64n
