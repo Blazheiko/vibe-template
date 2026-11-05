@@ -216,3 +216,60 @@ describe('scrubbing everywhere an error can hide (feat-126)', () => {
         expect(original.message).toContain('secret-hash')
     })
 })
+
+describe('only real errors are scrubbed in plain data (feat-127)', () => {
+    it('keeps a plain object with a message field as it is', () => {
+        const record = {
+            message: 'user-facing',
+            userId: 5,
+            payload: { message: 'hi', where: 'x' },
+            error: { code: 'E_VALIDATION', message: 'bad input', params: { field: 'email' } },
+        }
+
+        const safe = toSafeValue(record)
+
+        expect(safe).toStrictEqual({
+            message: 'user-facing',
+            userId: 5,
+            payload: { message: 'hi', where: 'x' },
+            error: { code: 'E_VALIDATION', message: 'bad input', params: { field: 'email' } },
+        })
+        // Nothing to replace: no copy at all.
+        expect(safe).toBe(record)
+    })
+
+    it('scrubs an error-shaped object that has a name, a message and a stack', () => {
+        const raw = queryError()
+        const shaped = { name: raw.name, message: raw.message, stack: raw.stack, query: raw.query }
+
+        expect(JSON.stringify(toSafeValue({ failure: shaped }))).not.toMatch(/secret-hash|tok-123/)
+    })
+
+    it('copies only the path to a replaced error and walks a shared reference once', () => {
+        const shared = { failure: queryError() }
+        const untouched = { a: 1 }
+        const record = { first: shared, second: shared, untouched }
+
+        const safe = toSafeValue(record, () => 'safe')
+
+        expect(safe).not.toBe(record)
+        expect(safe.first).toBe(safe.second)
+        expect(safe.first.failure).toBe('safe')
+        expect(safe.untouched).toBe(untouched)
+    })
+
+    it('cuts a cycle and a too-deep subtree instead of passing a raw error on', () => {
+        const cyclic: Record<string, unknown> = { failure: queryError() }
+        cyclic['self'] = cyclic
+        let deep: Record<string, unknown> = { failure: queryError() }
+        for (let i = 0; i < 40; i += 1) deep = { next: deep }
+
+        const safeCyclic = toSafeValue(cyclic)
+        const safeDeep = toSafeValue(deep)
+
+        expect(safeCyclic['self']).toBe('[Circular]')
+        expect(dump(safeCyclic['failure'] as Error)).not.toMatch(/secret-hash|tok-123/)
+        expect(JSON.stringify(safeDeep)).toContain('[Truncated]')
+        expect(JSON.stringify(safeDeep)).not.toMatch(/secret-hash|tok-123/)
+    })
+})

@@ -26,12 +26,19 @@
 - Копія має той самий прототип, тому `err.type` (ім'я класу, напр. `RedisUnavailableError`) не змінюється.
 - Оригінальна помилка не змінюється: її далі читає [db-errors.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/db-errors.ts).
 
-Ключі `err` і `error` (і помилка першим аргументом, `logger.error(err)`) очищають серіалізатори. Помилку деінде в записі (`logger.error({ context: { failure: err } }, …)`, масив збоїв) очищає і серіалізує `formatters.log` ([`toSafeValue`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/errors/scrub-error.ts), feat-126), не змінюючи об'єктів того, хто логує. Текст помилки, вставлений у `msg` вручну, пишеться як є.
+Ключі `err` і `error` (і помилка першим аргументом, `logger.error(err)`) очищають серіалізатори. Коли виклик не дає повідомлення, pino бере `msg` із самої помилки ще до серіалізаторів, тому хук `logMethod` заздалегідь замінює її безпечною копією (feat-127). Помилку деінде в записі (`logger.error({ context: { failure: err } }, …)`, масив збоїв) очищає і серіалізує `formatters.log` ([`toSafeValue`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/errors/scrub-error.ts), feat-126), не змінюючи об'єктів того, хто логує:
+
+- помилкою вважається лише `Error` або об'єкт із рядковими `name`, `message` і `stack`; звичайний об'єкт із полем `message` (`{ code, message }` відповіді, `payload: { message }`) логується як є (feat-127);
+- копіюється лише шлях до заміненої помилки, тож запис без помилок не копіюється; спільне посилання обробляється один раз;
+- цикл стає `[Circular]`, а піддерево глибше 32 рівнів — `[Truncated]`, щоб помилка під ними не потрапила в лог сирою;
+- екземпляри класів, `Buffer`, дати не обходяться.
+
+Текст помилки, вставлений у `msg` вручну, пишеться як є.
 
 Те саме діє поза логером:
 
 - `console.error` у `index.ts` (збій старту, зупинки) друкує безпечну копію.
-- Sentry очищає `extra`, `contexts` і дані breadcrumb **на копії**: об'єкти, які передав той, хто викликав, не змінюються, а помилки в них замінюються безпечними копіями.
+- Sentry очищає `extra`, `contexts` і дані breadcrumb **на копії**: об'єкти, які передав той, хто викликав, не змінюються, а помилки в них замінюються безпечними копіями. Екземпляр класу очищається як об'єкт власних полів, бо саме його Sentry і надсилає після нормалізації; дати, `Map`, `Set`, буфери лишаються як є (feat-127).
 - Статус `knowledge-base/init-status` показує для помилки БД лише безпечне повідомлення.
 
 ### Логер запиту

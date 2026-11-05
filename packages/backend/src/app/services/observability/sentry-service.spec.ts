@@ -250,6 +250,37 @@ describe('sentryService', () => {
         expect(callerContext).toEqual({ sessionCookie: 'cookie', keep: true })
     })
 
+    // feat-127 (N2): Sentry normalizes a class instance into its own fields after the processor.
+    it('drops sensitive fields of a class instance and keeps dates as they are', async () => {
+        process.env['SENTRY_DSN'] = 'https://example.com/1'
+        process.env['SENTRY_ENABLED'] = 'true'
+        const { sentryService } = await loadSentryService()
+        sentryService.init()
+        const eventProcessor = addEventProcessorMock.mock.calls[0]?.[0] as
+            ((event: Record<string, unknown>) => Record<string, unknown> | null) | undefined
+        if (eventProcessor === undefined) throw new Error('event processor was not configured')
+
+        class Credentials {
+            constructor(
+                public login: string,
+                public password: string,
+                public inner: { accessToken: string; keep: number },
+            ) {}
+        }
+        const at = new Date(0)
+        const instance = new Credentials('bob', 'hunter2', { accessToken: 'tok', keep: 1 })
+
+        const sanitized = eventProcessor({
+            extra: { instance, at },
+            contexts: { app: { instance } },
+        }) as { extra?: Record<string, unknown>; contexts?: { app?: Record<string, unknown> } }
+
+        expect(sanitized.extra?.['instance']).toEqual({ login: 'bob', inner: { keep: 1 } })
+        expect(sanitized.contexts?.app?.['instance']).toEqual({ login: 'bob', inner: { keep: 1 } })
+        expect(sanitized.extra?.['at']).toBe(at)
+        expect(instance.password).toBe('hunter2')
+    })
+
     it('normalizes internal app errors before capturing them', async () => {
         process.env['SENTRY_DSN'] = 'https://example.com/1'
         process.env['SENTRY_ENABLED'] = 'true'

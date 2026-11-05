@@ -82,14 +82,38 @@ function define(target: object, key: string, value: unknown): void {
     })
 }
 
-function copy(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): ErrorLike {
-    const known = seen.get(err)
+// feat-127: only a real error is scrubbed as one. `isErrorLike` (any object with a string message)
+// took `{ code, message }` of an AppError or a plain `payload: { message }` for an error and dropped
+// its fields. A cause or an `errors` item of an error is still scrubbed when it is merely error-like.
+const isError = (value: object): value is ErrorLike =>
+    value instanceof Error ||
+    (typeof (value as Error).name === 'string' &&
+        typeof (value as Error).message === 'string' &&
+        typeof (value as Error).stack === 'string')
+
+interface WalkContext {
+    /** Error → its safe copy; shared by the whole walk, so a shared error is copied once. */
+    errors: WeakMap<object, unknown>
+    /** Plain object or array → its result, so a shared reference is walked once. */
+    done: Map<object, unknown>
+    /** The objects on the current path: meeting one again is a cycle. */
+    active: Set<object>
+    /** Applied to the safe copy of every error met in plain data (the logger serializes it). */
+    mapError: (safe: ErrorLike) => unknown
+}
+
+const CIRCULAR = '[Circular]'
+const TRUNCATED = '[Truncated]'
+const MAX_VALUE_DEPTH = 32
+
+function copy(err: ErrorLike, depth: number, ctx: WalkContext): ErrorLike {
+    const known = ctx.errors.get(err)
     if (known !== undefined) return known as ErrorLike
 
     // Same prototype, so `instanceof` and `constructor.name` (pino's `type`) stay; no constructor runs.
     const proto = (Object.getPrototypeOf(err) as object | null) ?? Error.prototype
     const safe = Object.create(proto) as ErrorLike
-    seen.set(err, safe)
+    ctx.errors.set(err, safe)
 
     const name = typeof err.name === 'string' ? err.name : 'Error'
     if (Object.prototype.hasOwnProperty.call(err, 'name')) define(safe, 'name', name)
@@ -106,17 +130,24 @@ function copy(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): Er
     } else {
         define(safe, 'message', err.message)
         if (typeof err.stack === 'string') define(safe, 'stack', err.stack)
+        // feat-126: an error inside a plain value (`details: { err }`) is scrubbed too; it stays an
+        // error object here (its own walk, so the logger's mapping does not apply inside an error).
+        const fields: WalkContext = {
+            ...ctx,
+            done: new Map(),
+            active: new Set(),
+            mapError: (e) => e,
+        }
         for (const key of Object.keys(err)) {
             if (BLOCKED_FIELDS.has(key) || key === 'cause' || key === 'errors') continue
-            // feat-126: an error inside a plain value (`details: { err }`) is scrubbed too.
-            safe[key] = scrubNested(err[key], depth + 1, seen)
+            safe[key] = walk(err[key], depth + 1, fields)
         }
     }
 
     const cause = err.cause
     if (cause !== undefined) {
         // A non-error cause can be anything, including a query result: it is dropped.
-        if (isErrorLike(cause)) define(safe, 'cause', scrub(cause, depth + 1, seen))
+        if (isErrorLike(cause)) define(safe, 'cause', scrub(cause, depth + 1, ctx))
     }
 
     if (Array.isArray(err['errors'])) {
@@ -124,7 +155,7 @@ function copy(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): Er
             safe,
             'errors',
             (err['errors'] as unknown[]).map((inner) =>
-                isErrorLike(inner) ? scrub(inner, depth + 1, seen) : inner,
+                isErrorLike(inner) ? scrub(inner, depth + 1, ctx) : inner,
             ),
         )
     }
@@ -137,44 +168,77 @@ const isPlainObject = (value: object): boolean => {
     return proto === Object.prototype || proto === null
 }
 
-// Errors anywhere in plain objects and arrays, copied (the caller's value is left alone); other
-// values (class instances, Buffers, dates) as they are.
-function scrubNested(value: unknown, depth: number, seen: WeakMap<object, unknown>): unknown {
+// Errors anywhere in plain objects and arrays. Copy-on-write (feat-127): a value without an error,
+// a cycle or a cut is returned as it is, so most log records are not copied at all; the caller's
+// objects are never changed. A shared reference is walked once and gets one result. A cycle becomes
+// `[Circular]` and a subtree deeper than MAX_VALUE_DEPTH `[Truncated]`: an error below either
+// would otherwise reach the output raw. Class instances, Buffers and dates are left as they are.
+function walk(value: unknown, depth: number, ctx: WalkContext): unknown {
     if (value === null || typeof value !== 'object') return value
-    if (isErrorLike(value)) return scrub(value, depth, seen)
-    if (depth > MAX_DEPTH) return value
-    const known = seen.get(value)
-    if (known !== undefined) return known
-    if (Array.isArray(value)) {
-        const copied: unknown[] = []
-        seen.set(value, copied)
-        for (const item of value) copied.push(scrubNested(item, depth + 1, seen))
-        return copied
+    if (isError(value)) {
+        const known = ctx.done.get(value)
+        if (known !== undefined) return known
+        const mapped = ctx.mapError(scrub(value, 0, ctx))
+        ctx.done.set(value, mapped)
+        return mapped
     }
-    if (!isPlainObject(value)) return value
-    const copied: Record<string, unknown> = {}
-    seen.set(value, copied)
-    for (const [key, item] of Object.entries(value)) {
-        copied[key] = scrubNested(item, depth + 1, seen)
+    const array = Array.isArray(value)
+    if (!array && !isPlainObject(value)) return value
+    if (ctx.active.has(value)) return CIRCULAR
+    if (ctx.done.has(value)) return ctx.done.get(value)
+    if (depth > MAX_VALUE_DEPTH) return TRUNCATED
+
+    ctx.active.add(value)
+    let result: unknown = value
+    if (array) {
+        let copied: unknown[] | undefined
+        value.forEach((item: unknown, index) => {
+            const next = walk(item, depth + 1, ctx)
+            if (next !== item && copied === undefined) copied = value.slice(0, index)
+            copied?.push(next)
+        })
+        if (copied !== undefined) result = copied
+    } else {
+        const entries = Object.entries(value)
+        let copied: Record<string, unknown> | undefined
+        entries.forEach(([key, item], index) => {
+            const next = walk(item, depth + 1, ctx)
+            if (next !== item && copied === undefined) {
+                copied = Object.fromEntries(entries.slice(0, index))
+            }
+            if (copied !== undefined) copied[key] = next
+        })
+        if (copied !== undefined) result = copied
     }
-    return copied
+    ctx.active.delete(value)
+    ctx.done.set(value, result)
+    return result
 }
+
+const newContext = (mapError: (safe: ErrorLike) => unknown): WalkContext => ({
+    errors: new WeakMap(),
+    done: new Map(),
+    active: new Set(),
+    mapError,
+})
 
 /**
  * feat-126: `value` with every error in it (also inside plain objects and arrays) replaced by its
- * safe copy; the caller's objects are not changed. For log records and Sentry data, where an
- * error is not always under `err`.
+ * safe copy, passed through `mapError` when one is given; the caller's objects are not changed, and
+ * a value with nothing to replace is returned as it is. Only a real error counts: an `Error`, or an
+ * object with a string `name`, `message` and `stack` (feat-127). For log records and Sentry data,
+ * where an error is not always under `err`.
  */
-export function toSafeValue<T>(value: T): T {
-    return scrubNested(value, 0, new WeakMap()) as T
+export function toSafeValue<T>(value: T, mapError?: (safe: Error) => unknown): T {
+    return walk(value, 0, newContext(mapError ?? ((e): Error => e))) as T
 }
 
-function scrub(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): ErrorLike {
+function scrub(err: ErrorLike, depth: number, ctx: WalkContext): ErrorLike {
     if (depth > MAX_DEPTH) {
         const stub = new Error('cause chain truncated') as ErrorLike
         return stub
     }
-    return copy(err, depth, seen)
+    return copy(err, depth, ctx)
 }
 
 /**
@@ -185,7 +249,11 @@ function scrub(err: ErrorLike, depth: number, seen: WeakMap<object, unknown>): E
  */
 export function toSafeError<T>(value: T): T {
     if (!isErrorLike(value)) return value
-    return scrub(value, 0, new WeakMap()) as T
+    return scrub(
+        value,
+        0,
+        newContext((e) => e),
+    ) as T
 }
 
 /**

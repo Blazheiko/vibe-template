@@ -255,6 +255,49 @@ describe('logger error scrubbing', () => {
         expect(context.failure).toBe(err)
     })
 
+    // feat-127: pino takes msg from the error when the call gives none, before any serializer.
+    it.each([
+        [
+            'error alone',
+            (logger: Logger, err: Error): void => {
+                logger.error(err)
+            },
+        ],
+        [
+            '{ err } without a message',
+            (logger: Logger, err: Error): void => {
+                logger.error({ err })
+            },
+        ],
+    ])('keeps query params out of msg (%s)', async (_label, log) => {
+        const err = await failedQuery()
+
+        const lines = await captureLines((logger) => {
+            log(logger, err)
+        })
+
+        const record = JSON.parse(lines[0] ?? '{}') as { msg?: string }
+        expect(record.msg).toBe('Failed query (params redacted)')
+        for (const secret of SECRETS) expect(lines[0]).not.toContain(secret)
+    })
+
+    // feat-127 (N1): a plain object with a message is data, not an error.
+    it('keeps the fields of plain objects that have a message', async () => {
+        const lines = await captureLines((logger) => {
+            logger.error(
+                {
+                    response: { code: 'E_NOT_FOUND', message: 'User not found' },
+                    payload: { message: 'hi', where: 'x' },
+                },
+                'x',
+            )
+        })
+
+        const record = JSON.parse(lines[0] ?? '{}') as Record<string, unknown>
+        expect(record['response']).toStrictEqual({ code: 'E_NOT_FOUND', message: 'User not found' })
+        expect(record['payload']).toStrictEqual({ message: 'hi', where: 'x' })
+    })
+
     it('hands Sentry the scrubbed error', async () => {
         const err = await failedQuery()
 
