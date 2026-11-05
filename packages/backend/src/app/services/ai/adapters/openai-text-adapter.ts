@@ -44,9 +44,15 @@ const cfg = aiConfig.providers.openai
 function parseUsage(value: unknown): ReportedUsage | null {
     if (typeof value !== 'object' || value === null) return null
     const record = value as Record<string, unknown>
-    const promptTokens = typeof record['prompt_tokens'] === 'number' ? record['prompt_tokens'] : 0
-    const completionTokens =
-        typeof record['completion_tokens'] === 'number' ? record['completion_tokens'] : 0
+    // feat-136 (L6): a usage object without token counts is no usage, not 0 real tokens.
+    if (
+        typeof record['prompt_tokens'] !== 'number' ||
+        typeof record['completion_tokens'] !== 'number'
+    ) {
+        return null
+    }
+    const promptTokens = record['prompt_tokens']
+    const completionTokens = record['completion_tokens']
     const totalTokens =
         typeof record['total_tokens'] === 'number'
             ? record['total_tokens']
@@ -251,10 +257,12 @@ export const openaiTextAdapter: ITextAdapter = {
         const first = yield* streamChatCompletion(basePayload, signal)
         let fullText = first.text
         let usage = first.usage
+        const toolRound = opts.toolCallHandler !== undefined && first.toolCalls.length > 0
         // Known before the tool round-trip: a call cut off in the second round keeps it (feat-118).
-        if (usage !== null) opts.onUsageReported?.(usage)
+        // feat-136 (L7): with a tool round it is only part of the call.
+        if (usage !== null) opts.onUsageReported?.(usage, { partial: toolRound })
 
-        if (opts.toolCallHandler !== undefined && first.toolCalls.length > 0) {
+        if (opts.toolCallHandler !== undefined && toolRound) {
             logger.info(
                 { tools: first.toolCalls.map((call) => call.function.name) },
                 'OpenAI adapter: executing tool calls',
@@ -287,8 +295,10 @@ export const openaiTextAdapter: ITextAdapter = {
                 signal,
             )
             fullText += second.text
-            usage = mergeUsage(usage, second.usage)
-            if (usage !== null) opts.onUsageReported?.(usage)
+            // feat-136 (L7): without the second round's usage the call's usage is unknown; the
+            // first round stays what it was reported as (partial).
+            usage = second.usage === null ? null : mergeUsage(usage, second.usage)
+            if (usage !== null) opts.onUsageReported?.(usage, { partial: false })
         }
 
         if (usage === null) {

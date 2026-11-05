@@ -644,4 +644,5 @@ High-дефектів немає. Medium підтверджено в коді; �
 | P3 (onConnected failure) | feat-133 | #433 | done        |
 | I1 (auth lows)           | feat-134 | #436 | done        |
 | I2 (lease, S3, KB)       | feat-135 | #439 | done        |
-| I3 (AI usage, purge)     | feat-136 | —    | in_progress |
+| I3 (AI usage, purge)     | feat-136 | #442 | done        |
+| I4 (observability)       | feat-137 | —    | in_progress |

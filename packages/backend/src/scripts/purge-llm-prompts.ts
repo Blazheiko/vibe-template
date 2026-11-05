@@ -1,9 +1,10 @@
 import 'dotenv/config'
 
 import aiConfig from '../config/ai.js'
+import databasePoolConfig from '../config/database-pool.js'
 import { pool } from '../database/db.js'
 import { llmUsageService } from '../app/services/ai/usage/llm-usage-service.js'
-import { planPurge } from './purge-llm-prompts-args.js'
+import { planPurge, purgeConfigError } from './purge-llm-prompts-args.js'
 
 // Empties the stored prompt text of llm_text_usage (feat-065) and keeps its SHA-256 and length.
 //
@@ -13,6 +14,12 @@ import { planPurge } from './purge-llm-prompts-args.js'
 // With true it removes text older than AI_USAGE_PROMPT_RETENTION_DAYS (--days overrides).
 // --all removes it whatever the setting. Run it from cron / a scheduler for a retention.
 async function main(): Promise<void> {
+    const configError = purgeConfigError({
+        database: databasePoolConfig.configError,
+        ai: aiConfig.configError,
+    })
+    if (configError !== null) throw new Error(configError)
+
     const plan = planPurge(
         process.argv.slice(2),
         {

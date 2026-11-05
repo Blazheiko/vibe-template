@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { planPurge } from './purge-llm-prompts-args.js'
+import { planPurge, purgeConfigError } from './purge-llm-prompts-args.js'
 
 const NOW = new Date('2026-11-01T12:00:00.000Z')
 const DAY = 86_400_000
@@ -52,4 +52,30 @@ describe('planPurge', () => {
             expect(() => planPurge([arg], { storePrompts: true, retentionDays: 30 }, NOW)).toThrow()
         },
     )
+})
+
+// feat-136 (sixth review L8): with prompts not kept the purge removes all stored text; a --days
+// asked for was silently ignored, and an irreversible purge ran wider than the operator meant.
+describe('--days that cannot apply (feat-136)', () => {
+    it('is refused when prompts are not kept', () => {
+        expect(() =>
+            planPurge(['--days=7'], { storePrompts: false, retentionDays: 30 }, NOW),
+        ).toThrow(/--days/)
+    })
+
+    it('is refused together with --all', () => {
+        expect(() =>
+            planPurge(['--all', '--days=7'], { storePrompts: true, retentionDays: 30 }, NOW),
+        ).toThrow(/--days/)
+    })
+})
+
+describe('purgeConfigError (feat-136)', () => {
+    it('stops the purge on a database or AI configuration error', () => {
+        expect(purgeConfigError({ database: 'DB_QUERY_TIMEOUT_MS must be…', ai: null })).toMatch(
+            /database/,
+        )
+        expect(purgeConfigError({ database: null, ai: 'AI_USAGE_… is not a number' })).toMatch(/AI/)
+        expect(purgeConfigError({ database: null, ai: null })).toBeNull()
+    })
 })
