@@ -563,26 +563,27 @@ High-дефектів немає. Medium підтверджено в коді; �
 
 ## Стан
 
-| Фіча       | id       | PR   | Стан |
-| ---------- | -------- | ---- | ---- |
-| R01        | feat-102 | #345 | done |
-| R02        | feat-103 | #347 | done |
-| R03        | feat-104 | #349 | done |
-| R06a       | feat-106 | #353 | done |
-| R11a       | feat-105 | #351 | done |
-| R04        | feat-107 | #356 | done |
-| R05        | feat-108 | #359 | done |
-| R06b       | feat-109 | #362 | done |
-| R07        | feat-110 | #364 | done |
-| R09        | feat-111 | #367 | done |
-| R08        | feat-112 | #370 | done |
-| R10        | feat-113 | #373 | done |
-| R11b       | feat-114 | #376 | done |
-| R11c       | feat-115 | #379 | done |
-| R11d       | feat-116 | #382 | done |
-| R12a       | feat-117 | #385 | done |
-| R12b       | feat-118 | #388 | done |
-| F1–F5      | feat-119 | #391 | done |
-| F6         | feat-120 | #394 | done |
-| G1 (M1–M4) | feat-121 | #397 | done |
-| G2 (L6–L8) | feat-122 | #400 | done |
+| Фіча                  | id       | PR   | Стан        |
+| --------------------- | -------- | ---- | ----------- |
+| R01                   | feat-102 | #345 | done        |
+| R02                   | feat-103 | #347 | done        |
+| R03                   | feat-104 | #349 | done        |
+| R06a                  | feat-106 | #353 | done        |
+| R11a                  | feat-105 | #351 | done        |
+| R04                   | feat-107 | #356 | done        |
+| R05                   | feat-108 | #359 | done        |
+| R06b                  | feat-109 | #362 | done        |
+| R07                   | feat-110 | #364 | done        |
+| R09                   | feat-111 | #367 | done        |
+| R08                   | feat-112 | #370 | done        |
+| R10                   | feat-113 | #373 | done        |
+| R11b                  | feat-114 | #376 | done        |
+| R11c                  | feat-115 | #379 | done        |
+| R11d                  | feat-116 | #382 | done        |
+| R12a                  | feat-117 | #385 | done        |
+| R12b                  | feat-118 | #388 | done        |
+| F1–F5                 | feat-119 | #391 | done        |
+| F6                    | feat-120 | #394 | done        |
+| G1 (M1–M4)            | feat-121 | #397 | done        |
+| G2 (L6–L8)            | feat-122 | #400 | done        |
+| G3 (L5, F6-low, R06b) | feat-123 |      | in_progress |
