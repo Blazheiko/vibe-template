@@ -77,7 +77,9 @@ vi.mock('#app/services/communication/broadcast-service.js', () => ({
     broadcastService: broadcastServiceMock,
 }))
 // feat-124: the stream goes to the asking connection while it is registered.
-const registryMock = vi.hoisted(() => ({ getConnection: vi.fn(() => ({})) }))
+const registryMock = vi.hoisted(() => ({
+    getConnection: vi.fn<() => object | undefined>(() => ({})),
+}))
 vi.mock('#app/websocket/ws-connection-registry.js', () => ({
     wsConnectionRegistry: registryMock,
 }))
