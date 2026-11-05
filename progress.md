@@ -2,7 +2,7 @@
 
 ## State
 
-Done on branch `fix/feat-136-ai-usage-purge`. Waiting for CI on the feature PR.
+Done on branch `fix/feat-136-ai-usage-purge`; start PR #441. Waiting for CI on the feature PR.
 
 ## Changes
 
