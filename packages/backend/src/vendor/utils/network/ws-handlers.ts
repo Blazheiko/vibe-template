@@ -395,6 +395,20 @@ const onOpen = (ws: MyWebSocket): void => {
                 await getAppHooks().onConnected(ws, userData)
             } catch (e) {
                 logger.error({ err: e }, 'Error in onConnected hook')
+                // feat-133 (P3): the client already has connection_established, but the
+                // connection never entered the registry (a database error reading the role):
+                // no broadcasts reach it and pushes go out as if the user were offline. Closed
+                // with 1011, the client reconnects and registers. A socket that closed meanwhile
+                // is gone already and is not touched.
+                if (userData.closed === true) return
+                try {
+                    ws.end(1011, 'Server error')
+                } catch (closeError) {
+                    logger.error(
+                        { err: closeError },
+                        'Error closing a WebSocket after a failed onConnected',
+                    )
+                }
             }
         })()
     } catch (e) {

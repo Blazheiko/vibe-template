@@ -203,3 +203,37 @@ describe('an expired session after the socket closed (feat-128)', () => {
         expect(logger.error).not.toHaveBeenCalled()
     })
 })
+
+// feat-133 (P3): onConnected failed (a database error reading the role) after the client got
+// connection_established; the error was only logged, so the socket stayed open outside the
+// registry: no broadcasts, pushes as if offline, and the client never reconnected.
+describe('a failed onConnected hook (feat-133)', () => {
+    it('closes the socket with 1011, so the client reconnects', async () => {
+        const ws = createWs()
+        hooks.onConnected.mockRejectedValueOnce(new Error('connection terminated'))
+
+        handlers.onOpen(ws as never)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(ws.end).toHaveBeenCalledWith(1011, 'Server error')
+    })
+
+    it('touches nothing when the socket closed while the hook ran', async () => {
+        const ws = createWs()
+        hooks.onConnected.mockImplementationOnce(() => {
+            void handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
+            ws.kill()
+            releaseRevoke()
+            return Promise.reject(new Error('connection terminated'))
+        })
+
+        handlers.onOpen(ws as never)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+
+        expect(ws.end).not.toHaveBeenCalled()
+        expect(logger.error).not.toHaveBeenCalledWith(
+            expect.anything(),
+            'Error closing a WebSocket after a failed onConnected',
+        )
+    })
+})
