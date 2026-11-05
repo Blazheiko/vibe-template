@@ -168,3 +168,57 @@ describe('get-ip behind a proxy on a unix socket', () => {
         expect(getIp({ 'x-forwarded-for': '2001:db8:1:2::a' })).toBe('2001:db8:1:2::a')
     })
 })
+
+// feat-122 (L7): a proxy that appends ip:port, and an entry that cannot be read.
+describe('X-Forwarded-For entries (feat-122)', () => {
+    const tcp = async () => {
+        process.env['TRUST_PROXY'] = 'true'
+        process.env['TRUSTED_PROXY_CIDRS'] = '10.0.0.0/8'
+        const { default: getIp } = await import('./get-ip.js')
+        return (headers: Record<string, string>) =>
+            getIp(makeReq(headers) as never, makeRes('10.0.0.1') as never)
+    }
+
+    it.each([
+        ['IPv4 with a port', '1.2.3.4, 203.0.113.7:51234', '203.0.113.7'],
+        ['IPv6 in brackets with a port', '1.2.3.4, [2001:db8::7]:443', '2001:db8::7'],
+    ])('reads %s as the address: the real hop is not lost', async (_label, xff, client) => {
+        const getIp = await tcp()
+        expect(getIp({ 'x-forwarded-for': xff })).toBe(client)
+    })
+
+    it('stops at an entry it cannot read instead of letting a forged left entry win', async () => {
+        const getIp = await tcp()
+        // Before: "garbage" was dropped and the forged 1.2.3.4 became the client.
+        expect(getIp({ 'x-forwarded-for': '1.2.3.4, garbage' })).toBe('10.0.0.1')
+        expect(getIp({ 'x-forwarded-for': '1.2.3.4, garbage', 'x-real-ip': '203.0.113.9' })).toBe(
+            '203.0.113.9',
+        )
+    })
+
+    it('an unreadable entry left of the client does not matter', async () => {
+        const getIp = await tcp()
+        expect(getIp({ 'x-forwarded-for': 'garbage, 203.0.113.7, 10.0.0.2' })).toBe('203.0.113.7')
+    })
+})
+
+// feat-122 (L8): on the unix socket the explicit flag is the switch, and the CIDRs name the
+// proxies in front of the socket's proxy, whatever TRUST_PROXY says.
+describe('TRUSTED_PROXY_CIDRS on the unix socket (feat-122)', () => {
+    it('skips a trusted CDN hop with TRUST_PROXY=false too', async () => {
+        Object.assign(process.env, {
+            APP_UNIX_PATH: '/tmp/app.sock',
+            TRUST_UNIX_SOCKET_PROXY: 'true',
+            TRUST_PROXY: 'false',
+            TRUSTED_PROXY_CIDRS: '10.0.0.0/8',
+        })
+        const { default: getIp } = await import('./get-ip.js')
+
+        expect(
+            getIp(
+                makeReq({ 'x-forwarded-for': '1.2.3.4, 203.0.113.7, 10.0.0.2' }) as never,
+                makeRes('') as never,
+            ),
+        ).toBe('203.0.113.7')
+    })
+})
