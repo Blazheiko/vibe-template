@@ -51,6 +51,25 @@ type JsonObject = Record<string, unknown>
  */
 export const OAUTH_PROVIDER_TIMEOUT_MS = 10_000
 
+/**
+ * feat-130: arctic sends the code exchange with its own `fetch(request)`, which takes no signal.
+ * The exchange is held to the same deadline from outside: the callback stops waiting (and the
+ * sign-in fails); the request itself ends when undici gives up.
+ */
+async function withinProviderDeadline<T>(exchange: Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            reject(new DOMException('The OAuth code exchange timed out', 'TimeoutError'))
+        }, OAUTH_PROVIDER_TIMEOUT_MS)
+    })
+    try {
+        return await Promise.race([exchange, expired])
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
 async function fetchJson<T>(url: string, headers?: Record<string, string>): Promise<T> {
     const response = await fetch(url, {
         ...(headers !== undefined ? { headers } : {}),
@@ -348,22 +367,27 @@ export const oauthService = {
         try {
             if (provider === 'google') {
                 logger.info('provider google')
-                const tokens = await createGoogleClient().validateAuthorizationCode(
-                    code,
-                    codeVerifier ?? '',
+                const tokens = await withinProviderDeadline(
+                    createGoogleClient().validateAuthorizationCode(code, codeVerifier ?? ''),
                 )
                 userInfo = await fetchGoogleUserInfo(tokens.accessToken())
             } else if (provider === 'facebook') {
                 logger.info('provider facebook')
-                const tokens = await createFacebookClient().validateAuthorizationCode(code)
+                const tokens = await withinProviderDeadline(
+                    createFacebookClient().validateAuthorizationCode(code),
+                )
                 userInfo = await fetchFacebookUserInfo(tokens.accessToken())
             } else if (provider === 'github') {
                 logger.info('provider github')
-                const tokens = await createGitHubClient().validateAuthorizationCode(code)
+                const tokens = await withinProviderDeadline(
+                    createGitHubClient().validateAuthorizationCode(code),
+                )
                 userInfo = await fetchGitHubUserInfo(tokens.accessToken())
             } else {
                 logger.info('provider gitlab')
-                const tokens = await createGitLabClient().validateAuthorizationCode(code)
+                const tokens = await withinProviderDeadline(
+                    createGitLabClient().validateAuthorizationCode(code),
+                )
                 userInfo = await fetchGitLabUserInfo(tokens.accessToken())
             }
         } catch (err) {

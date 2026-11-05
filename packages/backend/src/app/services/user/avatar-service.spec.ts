@@ -381,20 +381,39 @@ describe('avatarService', () => {
             expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/concurrent.webp')
         })
 
-        it('uploadAvatar takes back the new object when the swap throws', async () => {
+        // feat-130: PostgreSQL answered with an error (a SQLSTATE): the swap rolled back.
+        it('uploadAvatar takes back the new object when the database rejects the swap', async () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
             uploadToS3Mock.mockResolvedValue(undefined)
             deleteFromS3Mock.mockResolvedValue(undefined)
-            userRepositoryMock.replaceAvatarIfSessionToken.mockRejectedValue(new Error('db down'))
+            userRepositoryMock.replaceAvatarIfSessionToken.mockRejectedValue(
+                Object.assign(new Error('could not serialize access'), { code: '40001' }),
+            )
 
             const { avatarService } = await loadAvatarService()
             await expect(avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)).rejects.toThrow(
-                'db down',
+                'could not serialize access',
             )
 
             const newKey = uploadToS3Mock.mock.calls[0]?.[0] as string
             expect(deleteFromS3Mock).toHaveBeenCalledTimes(1)
             expect(deleteFromS3Mock).toHaveBeenCalledWith(newKey)
+        })
+
+        // feat-130: no answer (a timeout, a dropped connection): the COMMIT may have gone through.
+        it('uploadAvatar keeps the new object when the swap failed without an answer', async () => {
+            userRepositoryMock.findById.mockResolvedValue(owner)
+            uploadToS3Mock.mockResolvedValue(undefined)
+            userRepositoryMock.replaceAvatarIfSessionToken.mockRejectedValue(
+                new Error('Query read timeout'),
+            )
+
+            const { avatarService } = await loadAvatarService()
+            await expect(avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)).rejects.toThrow(
+                'Query read timeout',
+            )
+
+            expect(deleteFromS3Mock).not.toHaveBeenCalled()
         })
     })
 })

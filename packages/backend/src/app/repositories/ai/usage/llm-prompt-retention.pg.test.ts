@@ -189,6 +189,44 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
             expect(again.matched).toBe(0)
         })
 
+        // feat-130 (fifth review): a batch used to look for the next n matching rows from the
+        // start of the table (and the dry run counted the whole table in one statement), so a
+        // large table, or one already purged, still outlasted statement_timeout. Every statement
+        // now covers one page of ids.
+        it('pages the table by id: every statement covers one page, dry run included', async () => {
+            for (let i = 0; i < 7; i += 1) await insert(`paged prompt ${String(i)}`, 40)
+            const statements: string[] = []
+            const query = pool.query.bind(pool)
+            const spy = vi.spyOn(pool, 'query').mockImplementation((...args: unknown[]) => {
+                const first = args[0]
+                const text = typeof first === 'string' ? first : (first as { text: string }).text
+                statements.push(text)
+                return (query as (...a: unknown[]) => unknown)(...args)
+            })
+
+            await llmUsageRepository.purgePromptText({
+                olderThan: null,
+                dryRun: true,
+                batchSize: 3,
+            })
+            const dryRun = statements.splice(0)
+            await llmUsageRepository.purgePromptText({
+                olderThan: null,
+                dryRun: false,
+                batchSize: 3,
+            })
+            const purge = statements.splice(0)
+            spy.mockRestore()
+
+            const counts = dryRun.filter((text) => /count\(\*\)/i.test(text))
+            expect(counts.length).toBeGreaterThanOrEqual(3)
+            const updates = purge.filter((text) => /^update/i.test(text))
+            expect(updates.length).toBeGreaterThanOrEqual(3)
+            for (const text of [...counts, ...updates]) {
+                expect(text).toMatch(/"id" >= \$\d+\)? and \(?"llm_text_usage"\."id" <= \$\d+/i)
+            }
+        })
+
         it('counts and changes nothing on a dry run', async () => {
             const id = await insert('text to keep for now', 40)
 

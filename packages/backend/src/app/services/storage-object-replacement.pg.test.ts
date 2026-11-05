@@ -54,6 +54,13 @@ const png = { filename: 'a.png', type: 'image/png', data: PNG_BYTES } as never
 const objectsUnder = (prefix: string): string[] =>
     [...s3.objects.keys()].filter((key) => key.startsWith(prefix)).sort()
 
+// feat-130: an error PostgreSQL answered (it carries a SQLSTATE): the transaction rolled back.
+const pgRejection = (): Error =>
+    Object.assign(new Error('could not serialize access due to concurrent update'), {
+        code: '40001',
+        severity: 'ERROR',
+    })
+
 describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
     const { db, pool } = await import('#database/db.js')
     const { sessionCheckPool } = await import('#database/session-check-db.js')
@@ -141,15 +148,18 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
             await expectKbConsistent(id)
         })
 
-        it('a database failure after the upload takes the new object back, the old stays', async () => {
+        // feat-130: PostgreSQL answered with an error (a SQLSTATE): the transaction rolled back.
+        it('a database rejection after the upload takes the new object back, the old stays', async () => {
             const id = await newArticle()
             await knowledgeBaseService.uploadScreenshot(id, png)
             const before = await screenshotKey(id)
             vi.spyOn(supportKnowledgeRepository, 'replaceScreenshot').mockRejectedValueOnce(
-                new Error('db down'),
+                pgRejection(),
             )
 
-            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow('db down')
+            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+                'could not serialize access',
+            )
 
             expect(await screenshotKey(id)).toBe(before)
             await expectKbConsistent(id)
@@ -176,6 +186,32 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
             // The row took the new key: its object is there, not deleted.
             const key = await screenshotKey(id)
             expect(key).not.toBeNull()
+            expect(objectsUnder(`knowledge-base/${String(id)}/`)).toContain(key)
+        })
+
+        // feat-130 (fifth review): the answer was lost and the COMMIT is not visible yet to another
+        // connection (synchronous replication, a stalled socket). A re-read saw the old key, the new
+        // object was deleted, and the COMMIT then landed on a row pointing at nothing.
+        it('a swap that failed without an answer from PostgreSQL keeps the new object', async () => {
+            const id = await newArticle()
+            await knowledgeBaseService.uploadScreenshot(id, png)
+            const swap = supportKnowledgeRepository.replaceScreenshot.bind(
+                supportKnowledgeRepository,
+            )
+            let lateCommit: () => Promise<unknown> = () => Promise.resolve()
+            vi.spyOn(supportKnowledgeRepository, 'replaceScreenshot').mockImplementationOnce(
+                (...args) => {
+                    lateCommit = () => swap(...args)
+                    return Promise.reject(new Error('Query read timeout'))
+                },
+            )
+
+            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+                'Query read timeout',
+            )
+            await lateCommit()
+
+            const key = await screenshotKey(id)
             expect(objectsUnder(`knowledge-base/${String(id)}/`)).toContain(key)
         })
 
@@ -263,17 +299,18 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
             expect(objectsUnder(`avatars/${String(user.id)}/`)).toHaveLength(1)
         })
 
-        it('a database failure after the upload takes the new object back, the old stays', async () => {
+        // feat-130: PostgreSQL answered with an error (a SQLSTATE): the transaction rolled back.
+        it('a database rejection after the upload takes the new object back, the old stays', async () => {
             const user = await newUser()
             await avatarService.uploadAvatar(user.id, png, user.sessionToken)
             const before = await avatarKey(user.id)
             vi.spyOn(userRepository, 'replaceAvatarIfSessionToken').mockRejectedValueOnce(
-                new Error('db down'),
+                pgRejection(),
             )
 
             await expect(
                 avatarService.uploadAvatar(user.id, png, user.sessionToken),
-            ).rejects.toThrow('db down')
+            ).rejects.toThrow('could not serialize access')
 
             expect(await avatarKey(user.id)).toBe(before)
             await expectAvatarConsistent(user.id)
@@ -296,6 +333,27 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
             const key = await avatarKey(user.id)
             expect(key).not.toBeNull()
+            expect(objectsUnder(`avatars/${String(user.id)}/`)).toContain(key)
+        })
+
+        it('a swap that failed without an answer from PostgreSQL keeps the new object', async () => {
+            const user = await newUser()
+            await avatarService.uploadAvatar(user.id, png, user.sessionToken)
+            const swap = userRepository.replaceAvatarIfSessionToken.bind(userRepository)
+            let lateCommit: () => Promise<unknown> = () => Promise.resolve()
+            vi.spyOn(userRepository, 'replaceAvatarIfSessionToken').mockImplementationOnce(
+                (...args) => {
+                    lateCommit = () => swap(...args)
+                    return Promise.reject(new Error('Query read timeout'))
+                },
+            )
+
+            await expect(
+                avatarService.uploadAvatar(user.id, png, user.sessionToken),
+            ).rejects.toThrow('Query read timeout')
+            await lateCommit()
+
+            const key = await avatarKey(user.id)
             expect(objectsUnder(`avatars/${String(user.id)}/`)).toContain(key)
         })
 

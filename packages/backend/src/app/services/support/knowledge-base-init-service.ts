@@ -1,3 +1,4 @@
+import { isServerRejection } from '#app/repositories/db-errors.js'
 import { access, readdir, readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -189,7 +190,29 @@ export function createKnowledgeBaseInitService({
             }
 
             ensureHeld(lock)
-            const created = await supportKnowledgeRepository.createMany(articles)
+            let created: Awaited<ReturnType<typeof supportKnowledgeRepository.createMany>>
+            try {
+                created = await supportKnowledgeRepository.createMany(articles)
+            } catch (err) {
+                // feat-130: without an answer from PostgreSQL (a timeout, a dropped connection)
+                // the INSERT may have committed. The base then holds the articles without vectors
+                // and refuses every later init (NOT_EMPTY), so the status says what is there.
+                if (isServerRejection(err)) throw err
+                const stored = await supportKnowledgeRepository
+                    .findAll({ limit: 1, offset: 0 })
+                    .then(
+                        (page) => page.total,
+                        () => 0,
+                    )
+                if (stored === 0) throw err
+                logger.error({ err, stored }, 'Knowledge base init: the insert got no answer')
+                status.createdArticles = stored
+                finish(
+                    'failed',
+                    `The article insert got no answer from the database, but ${String(stored)} article(s) are in the knowledge base. Run reindex-all for their vectors.`,
+                )
+                return
+            }
             status.createdArticles = created.length
 
             for (let index = 0; index < created.length; index++) {

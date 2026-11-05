@@ -1,3 +1,4 @@
+import { isServerRejection } from '#app/repositories/db-errors.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
 import { Result } from 'better-result'
@@ -110,19 +111,16 @@ export const avatarService = {
                 s3Key,
             )
         } catch (err: unknown) {
-            // feat-125: the swap may have committed although its answer was lost (a dropped
-            // connection on COMMIT). The new object goes only when the row surely does not point
-            // at it; when that cannot be told either, it stays (an orphan beats a broken avatar).
-            const current = await userRepository.findById(userId).then(
-                (row) => (row === undefined ? null : row.avatar),
-                () => s3Key,
-            )
-            if (current !== s3Key) {
+            // feat-130: the new object goes only when PostgreSQL answered with an error, i.e. the
+            // transaction rolled back. Without an answer (a timeout, a dropped connection) the
+            // COMMIT may have gone through and may not be visible to a re-read yet: the object
+            // stays (an orphan beats a broken avatar).
+            if (isServerRejection(err)) {
                 await deleteAvatarObject(s3Key)
             } else {
                 logger.warn(
                     { key: s3Key },
-                    'Avatar swap failed after the row took the new key; kept',
+                    'Avatar swap failed without an answer from the database; new object kept',
                 )
             }
             throw err

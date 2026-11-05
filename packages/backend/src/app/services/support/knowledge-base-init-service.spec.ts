@@ -16,11 +16,9 @@ vi.mock('#app/services/ai/adapters/openai-embedding-adapter.js', () => ({
     openaiEmbeddingAdapter: { isConfigured },
 }))
 const createMany = vi.hoisted(() => vi.fn())
+const findAll = vi.hoisted(() => vi.fn(() => Promise.resolve({ rows: [], total: 0 })))
 vi.mock('#app/repositories/index.js', () => ({
-    supportKnowledgeRepository: {
-        findAll: vi.fn(() => Promise.resolve({ rows: [], total: 0 })),
-        createMany,
-    },
+    supportKnowledgeRepository: { findAll, createMany },
 }))
 vi.mock('#app/services/support/support-embedding-service.js', () => ({
     supportEmbeddingService: { indexArticle: vi.fn() },
@@ -100,6 +98,35 @@ describe('knowledgeBaseInitService status after a database failure (feat-126)', 
             message: 'Database error (code=22001)',
         })
         expect(JSON.stringify(service.getStatus())).not.toContain('secret-title')
+        await rm(dir, { recursive: true, force: true })
+    })
+})
+
+// feat-130 (fifth review): the INSERT committed but its answer was lost. The status said failed
+// with createdArticles=0 while the base was complete (and every later start answered NOT_EMPTY).
+describe('knowledgeBaseInitService after an INSERT without an answer (feat-130)', () => {
+    it('reports the articles that are in the base and points to reindex-all', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'kb-status-'))
+        await writeFile(join(dir, 'a-account.txt'), 'Title\n\nBody\n')
+        await writeFile(join(dir, 'b-billing.txt'), 'Other\n\nBody\n')
+        createMany.mockRejectedValue(new Error('Query read timeout'))
+        findAll
+            .mockResolvedValueOnce({ rows: [], total: 0 }) // the NOT_EMPTY check
+            .mockResolvedValueOnce({ rows: [], total: 2 }) // after the INSERT error
+        acquireLease.mockResolvedValue({
+            lost: new AbortController().signal,
+            release: () => Promise.resolve(true),
+        })
+        const service = createKnowledgeBaseInitService({
+            resolveSourceDir: () => Promise.resolve(dir),
+            delayMs: 0,
+        })
+
+        expect((await service.start()).ok).toBe(true)
+        await service.running
+
+        expect(service.getStatus()).toMatchObject({ state: 'failed', createdArticles: 2 })
+        expect(service.getStatus().message).toContain('reindex-all')
         await rm(dir, { recursive: true, force: true })
     })
 })

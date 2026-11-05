@@ -53,11 +53,23 @@ function resolveClientIpFromChain(
     return null
 }
 
+// feat-130: uWS `getHeader` returns only the first line of a repeated header. A proxy that adds
+// its own X-Forwarded-For line instead of appending to the client's (HAProxy `option forwardfor`)
+// would leave the client's line, which it can forge, as the whole chain. Lines are joined in
+// order, as RFC 9110 §5.3 combines them.
+function forwardedFor(req: HttpRequest): string {
+    const lines: string[] = []
+    req.forEach((key, value) => {
+        if (key === 'x-forwarded-for') lines.push(value)
+    })
+    return lines.join(', ')
+}
+
 // feat-110: behind a reverse proxy on a unix socket the peer has no address. Only when the server
 // really listens on APP_UNIX_PATH and TRUST_UNIX_SOCKET_PROXY says the socket is the proxy's, the
 // client comes from the proxy's headers; an empty address by itself proves nothing.
 function fromUnixSocketProxy(req: HttpRequest): string {
-    const xForwardedFor = req.getHeader('x-forwarded-for')
+    const xForwardedFor = forwardedFor(req)
     if (xForwardedFor !== '') {
         const resolved = resolveClientIpFromChain(
             parseForwardedChain(xForwardedFor),
@@ -79,7 +91,7 @@ export default (req: HttpRequest, res: HttpResponse): string => {
         return remoteIp
     }
 
-    const xForwardedFor = req.getHeader('x-forwarded-for')
+    const xForwardedFor = forwardedFor(req)
     if (xForwardedFor !== '') {
         const resolvedFromForwarded = resolveClientIpFromChain([
             ...parseForwardedChain(xForwardedFor),

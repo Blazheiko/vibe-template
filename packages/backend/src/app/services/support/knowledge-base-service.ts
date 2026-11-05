@@ -1,3 +1,4 @@
+import { isServerRejection } from '#app/repositories/db-errors.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
 import appConfig from '#config/app.js'
@@ -219,19 +220,16 @@ export const knowledgeBaseService = {
                 mime: imageType,
             })
         } catch (err: unknown) {
-            // feat-125: the swap may have committed although its answer was lost (a dropped
-            // connection on COMMIT). The new object goes only when the row surely does not point
-            // at it; when that cannot be told either, it stays (an orphan beats a broken image).
-            const current = await supportKnowledgeRepository.findById(id).then(
-                (row) => (row === undefined ? null : row.screenshotKey),
-                () => s3Key,
-            )
-            if (current !== s3Key) {
+            // feat-130: the new object goes only when PostgreSQL answered with an error, i.e. the
+            // transaction rolled back. Without an answer (a timeout, a dropped connection) the
+            // COMMIT may have gone through and may not be visible to a re-read yet: the object
+            // stays (an orphan beats a broken image).
+            if (isServerRejection(err)) {
                 await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
             } else {
                 logger.warn(
                     { key: s3Key },
-                    'KB screenshot swap failed after the row took the new key; kept',
+                    'KB screenshot swap failed without an answer from the database; new object kept',
                 )
             }
             throw err

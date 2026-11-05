@@ -1743,6 +1743,38 @@ describe('oauthService.handleCallback provider answers (feat-108)', () => {
         expect(userRepositoryMock.create).not.toHaveBeenCalled()
     })
 
+    // feat-130 (fifth review): arctic's own fetch takes no signal, so the code exchange (the first
+    // provider call of every sign-in) is held to the same deadline from outside.
+    it.each(['google', 'facebook', 'github', 'gitlab'])(
+        '%s: a code exchange that never answers fails the sign-in at the deadline',
+        async (provider) => {
+            const never = new Promise<never>(() => undefined)
+            for (const mock of [
+                googleValidateAuthorizationCodeMock,
+                facebookValidateAuthorizationCodeMock,
+                githubValidateAuthorizationCodeMock,
+                gitlabValidateAuthorizationCodeMock,
+            ]) {
+                mock.mockReturnValue(never)
+            }
+            const { OAUTH_PROVIDER_TIMEOUT_MS } = await import('./oauth-service.js')
+            vi.useFakeTimers()
+            try {
+                const pending = callback(provider)
+                await vi.advanceTimersByTimeAsync(OAUTH_PROVIDER_TIMEOUT_MS)
+                const result = await pending
+
+                expect(Result.isError(result) && result.error).toEqual({
+                    _tag: 'BadRequest',
+                    message: 'Failed to exchange authorization code',
+                })
+                expect(userRepositoryMock.create).not.toHaveBeenCalled()
+            } finally {
+                vi.useRealTimers()
+            }
+        },
+    )
+
     it.each([
         ['missing', {}],
         ['empty', { id: '' }],

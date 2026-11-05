@@ -2,16 +2,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 interface MockRequest {
     getHeader: (name: string) => string
+    forEach: (cb: (key: string, value: string) => void) => void
 }
 
 interface MockResponse {
     getRemoteAddressAsText: () => ArrayBuffer
 }
 
-function makeReq(headers: Record<string, string>): MockRequest {
+// A header given as an array arrives as several lines; like uWS, getHeader returns the first.
+function makeReq(headers: Record<string, string | string[]>): MockRequest {
+    const lines = Object.entries(headers).flatMap(([key, value]) =>
+        (Array.isArray(value) ? value : [value]).map((line) => [key, line] as const),
+    )
     return {
         getHeader(name: string): string {
-            return headers[name.toLowerCase()] ?? ''
+            return lines.find(([key]) => key === name.toLowerCase())?.[1] ?? ''
+        },
+        forEach(cb: (key: string, value: string) => void): void {
+            for (const [key, value] of lines) cb(key, value)
         },
     }
 }
@@ -220,5 +228,36 @@ describe('TRUSTED_PROXY_CIDRS on the unix socket (feat-122)', () => {
                 makeRes('') as never,
             ),
         ).toBe('203.0.113.7')
+    })
+})
+
+// feat-130 (fifth review): uWS getHeader returns only the first line of a repeated header. A
+// proxy that adds its own X-Forwarded-For line (HAProxy `option forwardfor`) instead of
+// appending to the client's left the client's forged line as the whole chain.
+describe('X-Forwarded-For sent as several lines (feat-130)', () => {
+    it('reads every line in order, so the proxy line is the nearest hop', async () => {
+        process.env['TRUST_PROXY'] = 'true'
+        process.env['TRUSTED_PROXY_CIDRS'] = '10.0.0.0/8'
+        const { default: getIp } = await import('./get-ip.js')
+
+        const ip = getIp(
+            makeReq({ 'x-forwarded-for': ['6.6.6.6', '203.0.113.7'] }) as never,
+            makeRes('10.0.0.2') as never,
+        )
+
+        expect(ip).toBe('203.0.113.7')
+    })
+
+    it('does the same behind the unix socket proxy', async () => {
+        process.env['APP_UNIX_PATH'] = '/tmp/app.sock'
+        process.env['TRUST_UNIX_SOCKET_PROXY'] = 'true'
+        const { default: getIp } = await import('./get-ip.js')
+
+        const ip = getIp(
+            makeReq({ 'x-forwarded-for': ['6.6.6.6', '203.0.113.7'] }) as never,
+            makeRes('') as never,
+        )
+
+        expect(ip).toBe('203.0.113.7')
     })
 })
