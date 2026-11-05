@@ -1283,6 +1283,16 @@
             "dependencies": ["feat-128"],
             "status": "done",
             "evidence": "Merged #421 (merge e4ed003; start #420). The session-still-stored guard of link-email/start, link-phone start/confirm and the OAuth first-address resend is a required parameter (omitting it no longer compiles); resend-verification-email (queueVerificationEmail) and POST /push-subscriptions/test-push check session.isStored() before their side effect (401 session_revoked, nothing sent). auth-controller.session-guard.spec and oauth-controller.spec check that the request own session.isStored is handed over. The phone-reset two-completions PG test holds both completions after they read the pending challenge (bothReadBeforeEitherWrites on findById; lockById reached twice). Evidence: typecheck, lint, format clean; pnpm test backend 2417, frontend 400, api-playground 62; local test:pg 169 passed; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: stand-in wiring 3, test-push without check 1, queue without check 1, unconditional markConfirmed 1 case fail. Details were in progress.md on fix/feat-129-session-guard (removed from main by this PR)."
+        },
+        {
+            "id": "feat-130",
+            "name": "Operations Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fifth review H4, the last group: (1) llm:purge-prompts batches rescan the table from its start (no keyset; with --all every batch seq-scans past purged rows) and --dry-run counts in one statement on the main pool, so a large table still hits statement_timeout; (2) canonicalPushEndpoint keeps path and query as given, so %41 vs A or %4a vs %4A are different endpoints; (3) after a thrown avatar / KB screenshot swap the re-read runs on another connection and cannot see a COMMIT still in flight, so the new object can be deleted under a row that points at it; (4) the arctic authorization-code exchange has no timeout; (5) a lease released during a renewal re-arms its deadline and later reports a false lost; (6) a TRUSTED_PROXY_CIDRS entry in IPv4-mapped form (::ffff:a00:0/104) matches nothing; (7) the KB init status says failed with createdArticles=0 when the articles INSERT committed but its answer was lost; (8) uWS getHeader returns only the first X-Forwarded-For line, so a proxy that adds its own line lets the client choose its address. Keyset by id for the purge and its dry run; RFC 3986 percent-encoding normalization of path and query (a different query stays a different endpoint, documented); the new object is deleted only when PostgreSQL answered with an error (SQLSTATE: rolled back), otherwise kept as an orphan with a warning; the code exchange races a 10 s deadline; release marks the lease finished; IPv4-mapped CIDRs map to IPv4 with prefix - 96; the KB init re-reads the article count after an INSERT error without SQLSTATE; every X-Forwarded-For line is read, in order; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-130-operations-lows",
+            "dependencies": ["feat-129"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
