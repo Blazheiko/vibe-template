@@ -163,6 +163,18 @@ function copy(err: ErrorLike, depth: number, ctx: WalkContext): ErrorLike {
     return safe
 }
 
+const isWalkableInstance = (value: object): boolean =>
+    !(
+        value instanceof Date ||
+        value instanceof RegExp ||
+        value instanceof Map ||
+        value instanceof Set ||
+        value instanceof Promise ||
+        value instanceof ArrayBuffer ||
+        ArrayBuffer.isView(value) ||
+        typeof (value as { toJSON?: unknown }).toJSON === 'function'
+    )
+
 const isPlainObject = (value: object): boolean => {
     const proto = Object.getPrototypeOf(value) as unknown
     return proto === Object.prototype || proto === null
@@ -183,7 +195,11 @@ function walk(value: unknown, depth: number, ctx: WalkContext): unknown {
         return mapped
     }
     const array = Array.isArray(value)
-    if (!array && !isPlainObject(value)) return value
+    // feat-137 (L11): a class instance is walked as its own enumerable fields (what JSON.stringify
+    // writes), so an error inside it is scrubbed; values serialized by their own rules (dates,
+    // buffers, maps, a toJSON) are left as they are. Copy-on-write: without an error inside the
+    // instance itself is returned.
+    if (!array && !isPlainObject(value) && !isWalkableInstance(value)) return value
     if (ctx.active.has(value)) return CIRCULAR
     if (ctx.done.has(value)) return ctx.done.get(value)
     if (depth > MAX_VALUE_DEPTH) return TRUNCATED
