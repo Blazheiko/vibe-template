@@ -219,7 +219,21 @@ export const knowledgeBaseService = {
                 mime: imageType,
             })
         } catch (err: unknown) {
-            await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
+            // feat-125: the swap may have committed although its answer was lost (a dropped
+            // connection on COMMIT). The new object goes only when the row surely does not point
+            // at it; when that cannot be told either, it stays (an orphan beats a broken image).
+            const current = await supportKnowledgeRepository.findById(id).then(
+                (row) => (row === undefined ? null : row.screenshotKey),
+                () => s3Key,
+            )
+            if (current !== s3Key) {
+                await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
+            } else {
+                logger.warn(
+                    { key: s3Key },
+                    'KB screenshot swap failed after the row took the new key; kept',
+                )
+            }
             throw err
         }
         if (replaced === undefined) {

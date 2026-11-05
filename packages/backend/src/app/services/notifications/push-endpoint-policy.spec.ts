@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
+import { canonicalPushEndpoint, isAllowedPushEndpoint } from './push-endpoint-policy.js'
 
 // feat-104 (R03): the hosts are the defaults of config/push.ts.
 const ALLOWED = [
@@ -47,5 +47,24 @@ describe('isAllowedPushEndpoint', () => {
         expect(isAllowedPushEndpoint('https://bücher.example/x', ['xn--bcher-kva.example'])).toBe(
             true,
         )
+    })
+})
+
+// feat-125: the stored form of an endpoint.
+describe('canonicalPushEndpoint', () => {
+    it.each([
+        ['https://FCM.GOOGLEAPIS.COM./fcm/send/abc', 'https://fcm.googleapis.com/fcm/send/abc'],
+        ['https://fcm.googleapis.com:443/fcm/send/abc', 'https://fcm.googleapis.com/fcm/send/abc'],
+        [
+            'https://fcm.googleapis.com/fcm/send/AbC?x=1',
+            'https://fcm.googleapis.com/fcm/send/AbC?x=1',
+        ],
+    ])('%s is stored as %s', (endpoint, canonical) => {
+        expect(canonicalPushEndpoint(endpoint)).toBe(canonical)
+    })
+
+    it('is null for an endpoint that is not allowed', () => {
+        expect(canonicalPushEndpoint('https://evil.example/fcm/send/abc')).toBeNull()
+        expect(canonicalPushEndpoint('not a url')).toBeNull()
     })
 })

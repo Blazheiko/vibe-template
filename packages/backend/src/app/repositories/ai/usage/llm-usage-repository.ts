@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { llmTextUsage } from '#database/schema.js'
-import { eq, sql, desc, and, gte, lte } from 'drizzle-orm'
+import { eq, sql, desc, and, gte, inArray, lte } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 
 export type LlmTextUsageRow = InferSelectModel<typeof llmTextUsage>
@@ -38,8 +38,13 @@ export interface ILlmUsageRepository {
     purgePromptText(options: {
         olderThan: Date | null
         dryRun: boolean
+        /** Rows per statement; PURGE_BATCH_SIZE unless a test needs several batches. */
+        batchSize?: number
     }): Promise<{ matched: number }>
 }
+
+/** Rows emptied per statement by the prompt purge (feat-125). */
+export const PURGE_BATCH_SIZE = 1000
 
 function buildTextWhere(filter: TextFilter): SQL | undefined {
     const conditions: SQL[] = []
@@ -69,7 +74,7 @@ export const llmUsageRepository: ILlmUsageRepository = {
         return result[0]?.count ?? 0
     },
 
-    async purgePromptText({ olderThan, dryRun }) {
+    async purgePromptText({ olderThan, dryRun, batchSize = PURGE_BATCH_SIZE }) {
         const withText = and(
             sql`${llmTextUsage.finalPrompt} <> ''`,
             olderThan === null ? undefined : lte(llmTextUsage.createdAt, olderThan),
@@ -84,16 +89,28 @@ export const llmUsageRepository: ILlmUsageRepository = {
         // The hash and the length of what is removed are filled in first when the row has none
         // (a row written before they existed); sha256 of the UTF-8 bytes and char_length
         // agree with what the application computes.
-        const purged = await db
-            .update(llmTextUsage)
-            .set({
-                promptSha256: sql`coalesce(${llmTextUsage.promptSha256}, encode(sha256(convert_to(${llmTextUsage.finalPrompt}, 'UTF8')), 'hex'))`,
-                promptChars: sql`coalesce(${llmTextUsage.promptChars}, char_length(${llmTextUsage.finalPrompt}))`,
-                finalPrompt: '',
-            })
-            .where(withText)
-            .returning({ id: llmTextUsage.id })
-        return { matched: purged.length }
+        // feat-125 (L10): in batches. One UPDATE over a large table would outlast the main pool's
+        // statement_timeout (DB_QUERY_TIMEOUT_MS) every time; each batch is a short statement, and
+        // a purged row no longer matches, so the loop ends when a batch finds nothing.
+        let matched = 0
+        for (;;) {
+            const batch = db
+                .select({ id: llmTextUsage.id })
+                .from(llmTextUsage)
+                .where(withText)
+                .limit(batchSize)
+            const purged = await db
+                .update(llmTextUsage)
+                .set({
+                    promptSha256: sql`coalesce(${llmTextUsage.promptSha256}, encode(sha256(convert_to(${llmTextUsage.finalPrompt}, 'UTF8')), 'hex'))`,
+                    promptChars: sql`coalesce(${llmTextUsage.promptChars}, char_length(${llmTextUsage.finalPrompt}))`,
+                    finalPrompt: '',
+                })
+                .where(inArray(llmTextUsage.id, batch))
+                .returning({ id: llmTextUsage.id })
+            matched += purged.length
+            if (purged.length < batchSize) return { matched }
+        }
     },
 
     async getTextStats() {

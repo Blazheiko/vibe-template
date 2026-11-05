@@ -165,39 +165,55 @@ export function createKnowledgeBaseInitService({
             status.totalFiles = files.length
             setProgress()
 
-            for (let index = 0; index < files.length; index++) {
-                const filename = files[index]
-                if (filename === undefined) continue
-
+            // feat-125: read every file first, then insert every article in ONE statement, then
+            // index. A run that loses its lease (or fails) before the insert leaves nothing; after
+            // it the base is complete and only vectors may be missing, which reindex-all adds.
+            // Before, the articles went in one by one between the provider calls, and a run
+            // stopped halfway left a partial base that refused every later init (NOT_EMPTY).
+            const articles: { title: string; content: string; category: string | null }[] = []
+            for (const filename of files) {
                 status.currentFile = filename
-
                 try {
                     const raw = await readFile(join(knowledgeBaseDir, filename), 'utf8')
-                    const article = parseArticleFile(raw, filename)
-                    ensureHeld(lock)
-                    const created = await supportKnowledgeRepository.create({
-                        title: article.title,
-                        content: article.content,
+                    articles.push({
+                        ...parseArticleFile(raw, filename),
                         category: inferCategory(filename),
-                        isActive: true,
                     })
-                    ensureHeld(lock)
+                } catch (err) {
+                    status.failedFiles += 1
+                    status.processedFiles += 1
+                    setProgress()
+                    logger.error({ err, filename }, 'Knowledge base init: failed to read article')
+                }
+            }
+
+            ensureHeld(lock)
+            const created = await supportKnowledgeRepository.createMany(articles)
+            status.createdArticles = created.length
+
+            for (let index = 0; index < created.length; index++) {
+                const article = created[index]
+                if (article === undefined) continue
+                status.currentFile = article.title
+                ensureHeld(lock)
+                try {
                     // feat-119 (F3): the lease is checked again right before the vector write,
                     // after the provider wait, and its loss cancels that wait.
-                    await supportEmbeddingService.indexArticle(created, { signal: lock.lost })
-                    status.createdArticles += 1
+                    await supportEmbeddingService.indexArticle(article, { signal: lock.lost })
                 } catch (err) {
-                    // A lost lock stops the run: this file was not written, so it is not counted.
                     // The provider may wrap the abort in its own error: the signal decides.
                     if (lock.lost.aborted) throw lock.lost.reason
                     if (err instanceof KnowledgeBaseInitLockLostError) throw err
                     status.failedFiles += 1
-                    logger.error({ err, filename }, 'Knowledge base init: failed to import article')
+                    logger.error(
+                        { err, articleId: String(article.id) },
+                        'Knowledge base init: failed to index article',
+                    )
                 }
                 status.processedFiles += 1
                 setProgress()
 
-                if (index < files.length - 1) {
+                if (index < created.length - 1) {
                     await delay(delayMs)
                 }
             }
@@ -210,7 +226,14 @@ export function createKnowledgeBaseInitService({
         } catch (err) {
             if (err instanceof KnowledgeBaseInitLockLostError) {
                 logger.error({ err }, 'Knowledge base init: stopped, the lock was lost')
-                finish('failed', `Knowledge base initialization stopped: ${err.message}`)
+                const indexing =
+                    status.createdArticles > 0
+                        ? ` ${String(status.createdArticles)} article(s) imported; run reindex-all for the missing vectors.`
+                        : ''
+                finish(
+                    'failed',
+                    `Knowledge base initialization stopped: ${err.message}.${indexing}`,
+                )
                 return
             }
             logger.error({ err }, 'Knowledge base init: unexpected failure')

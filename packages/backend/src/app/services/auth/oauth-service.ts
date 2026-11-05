@@ -45,8 +45,17 @@ type JsonObject = Record<string, unknown>
 
 // The provider's JSON answer, typed by the caller: it is only as trustworthy as the provider, so
 // every use reads the fields it needs defensively.
+/**
+ * feat-125: a provider that hangs must not hold the callback (and its browser) until the HTTP
+ * client gives up (undici waits ~300 s for the headers). The request is cancelled after this.
+ */
+export const OAUTH_PROVIDER_TIMEOUT_MS = 10_000
+
 async function fetchJson<T>(url: string, headers?: Record<string, string>): Promise<T> {
-    const response = await fetch(url, headers !== undefined ? { headers } : undefined)
+    const response = await fetch(url, {
+        ...(headers !== undefined ? { headers } : {}),
+        signal: AbortSignal.timeout(OAUTH_PROVIDER_TIMEOUT_MS),
+    })
     // feat-108: an error answer (expired token, rate limit, outage) is JSON too; read as a
     // profile it gives an empty id. The callback turns the throw into a failed sign-in.
     if (!response.ok) {

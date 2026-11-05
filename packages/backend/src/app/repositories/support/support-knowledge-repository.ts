@@ -95,6 +95,20 @@ export const supportKnowledgeRepository = {
         return created
     },
 
+    /**
+     * Inserts every article in one statement (feat-125): the knowledge-base import is all or
+     * nothing, so a run that stops halfway leaves no partial base behind.
+     */
+    async createMany(
+        articles: readonly { title: string; content: string; category: string | null }[],
+    ): Promise<KbRow[]> {
+        if (articles.length === 0) return []
+        return db
+            .insert(supportKnowledgeBase)
+            .values(articles.map((article) => ({ ...article, isActive: true })))
+            .returning()
+    },
+
     async update(
         id: bigint,
         data: {

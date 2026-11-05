@@ -155,6 +155,30 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
             await expectKbConsistent(id)
         })
 
+        // feat-125: the COMMIT went through but its answer was lost.
+        it('a swap that committed but answered with an error keeps the new object', async () => {
+            const id = await newArticle()
+            await knowledgeBaseService.uploadScreenshot(id, png)
+            const swap = supportKnowledgeRepository.replaceScreenshot.bind(
+                supportKnowledgeRepository,
+            )
+            vi.spyOn(supportKnowledgeRepository, 'replaceScreenshot').mockImplementationOnce(
+                async (...args) => {
+                    await swap(...args)
+                    throw new Error('connection lost on COMMIT')
+                },
+            )
+
+            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+                'connection lost on COMMIT',
+            )
+
+            // The row took the new key: its object is there, not deleted.
+            const key = await screenshotKey(id)
+            expect(key).not.toBeNull()
+            expect(objectsUnder(`knowledge-base/${String(id)}/`)).toContain(key)
+        })
+
         it('a removal that read the old key before an upload finished leaves no orphan', async () => {
             const id = await newArticle()
             await knowledgeBaseService.uploadScreenshot(id, png)
@@ -253,6 +277,26 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
             expect(await avatarKey(user.id)).toBe(before)
             await expectAvatarConsistent(user.id)
+        })
+
+        it('a swap that committed but answered with an error keeps the new object', async () => {
+            const user = await newUser()
+            await avatarService.uploadAvatar(user.id, png, user.sessionToken)
+            const swap = userRepository.replaceAvatarIfSessionToken.bind(userRepository)
+            vi.spyOn(userRepository, 'replaceAvatarIfSessionToken').mockImplementationOnce(
+                async (...args) => {
+                    await swap(...args)
+                    throw new Error('connection lost on COMMIT')
+                },
+            )
+
+            await expect(
+                avatarService.uploadAvatar(user.id, png, user.sessionToken),
+            ).rejects.toThrow('connection lost on COMMIT')
+
+            const key = await avatarKey(user.id)
+            expect(key).not.toBeNull()
+            expect(objectsUnder(`avatars/${String(user.id)}/`)).toContain(key)
         })
 
         it('a removal that read the old key before an upload finished leaves no orphan', async () => {

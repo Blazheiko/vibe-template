@@ -1714,6 +1714,32 @@ describe('oauthService.handleCallback provider answers (feat-108)', () => {
         },
     )
 
+    // feat-125: a hanging provider is cut off instead of holding the callback.
+    it('gives the profile request a timeout, and a timed-out provider fails the sign-in', async () => {
+        googleValidateAuthorizationCodeMock.mockResolvedValue(tokens('google-token'))
+        const seen: (AbortSignal | null | undefined)[] = []
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((_url: string, init?: RequestInit) => {
+                seen.push(init?.signal)
+                return Promise.reject(
+                    Object.assign(new Error('The operation was aborted due to timeout'), {
+                        name: 'TimeoutError',
+                    }),
+                )
+            }),
+        )
+
+        const result = await callback('google')
+
+        expect(seen[0]).toBeInstanceOf(AbortSignal)
+        expect(Result.isError(result) && result.error).toEqual({
+            _tag: 'BadRequest',
+            message: 'Failed to exchange authorization code',
+        })
+        expect(userRepositoryMock.create).not.toHaveBeenCalled()
+    })
+
     it.each([
         ['missing', {}],
         ['empty', { id: '' }],

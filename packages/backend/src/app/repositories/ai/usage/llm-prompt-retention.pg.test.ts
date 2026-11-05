@@ -87,6 +87,25 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
     })
 
     describe('purging the text', () => {
+        // feat-125 (L10): in batches of short statements, every matching row reached.
+        it('purges in batches until nothing matches, and counts every row', async () => {
+            const ids: bigint[] = []
+            for (let i = 0; i < 7; i += 1) ids.push(await insert(`batched prompt ${String(i)}`, 40))
+            const update = vi.spyOn(db, 'update')
+
+            const result = await llmUsageRepository.purgePromptText({
+                olderThan: new Date(Date.now() - 30 * DAY),
+                dryRun: false,
+                batchSize: 3,
+            })
+
+            expect(result.matched).toBeGreaterThanOrEqual(7)
+            // At least 3 + 3 + 1: one statement per batch, none over the whole table.
+            expect(update.mock.calls.length).toBeGreaterThanOrEqual(3)
+            for (const id of ids) expect((await rowOf(id)).finalPrompt).toBe('')
+            update.mockRestore()
+        })
+
         it('blanks the text older than the cut-off and leaves the recent text', async () => {
             const old = await insert('old prompt with jane@example.com', 40)
             const recent = await insert('recent prompt', 1)
