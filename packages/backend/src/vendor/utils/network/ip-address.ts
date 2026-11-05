@@ -3,6 +3,15 @@ import { isIP } from 'node:net'
 // Parsing and comparing client addresses, shared by get-ip.ts (who the client is) and the rate
 // limiters (which budget the client spends).
 
+/**
+ * The canonical text of a client address, or null when `value` is not one. It runs on every entry
+ * of a forwarded chain, i.e. on text a client wrote, so it never throws: a throw here stopped the
+ * process (getIP runs synchronously in the uWS handlers, outside any try).
+ *
+ * An IPv6 zone id (`fe80::1%eth0`, `::%1`) names an interface of the machine that wrote it, not a
+ * part of the address: it is dropped. Before, `::%1` made the IPv4-mapped check throw
+ * (`NaN cannot be converted to a BigInt`) and `::ffff:1.2.3.4%x` read as 1.2.3.0.
+ */
 export function normalizeIp(value: string): string | null {
     const trimmed = value.trim()
     if (trimmed === '') {
@@ -12,9 +21,18 @@ export function normalizeIp(value: string): string | null {
     const withoutBrackets =
         trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed
     const lower = withoutBrackets.toLowerCase()
-    const kind = isIP(lower)
+    const zoneAt = lower.indexOf('%')
+    const address = zoneAt === -1 ? lower : lower.slice(0, zoneAt)
+    const kind = isIP(address)
     if (kind === 0) return null
-    return kind === 6 ? (mappedIPv4(lower) ?? lower) : lower
+    // A zone id belongs to IPv6 only (`1.2.3.4%x` is not an address) and is never empty.
+    if (zoneAt !== -1 && (kind !== 6 || zoneAt === lower.length - 1)) return null
+    if (kind === 4) return address
+    try {
+        return mappedIPv4(address) ?? address
+    } catch {
+        return null
+    }
 }
 
 const MAPPED_V4_PREFIX = 0xffffn << 32n

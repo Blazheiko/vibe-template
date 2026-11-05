@@ -261,3 +261,35 @@ describe('X-Forwarded-For sent as several lines (feat-130)', () => {
         expect(ip).toBe('203.0.113.7')
     })
 })
+
+// A forged left entry with an IPv6 zone id made getIP throw, and getIP runs outside any try in
+// the uWS handlers: one request stopped the process.
+describe('a forged X-Forwarded-For entry with an IPv6 zone id', () => {
+    it.each(['::%1', 'fe80::%eth0', '1::%a'])(
+        '%j does not throw, the client is found',
+        async (forged) => {
+            process.env['TRUST_PROXY'] = 'true'
+            process.env['TRUSTED_PROXY_CIDRS'] = '10.0.0.0/8'
+            const { default: getIp } = await import('./get-ip.js')
+
+            const read = (): string =>
+                getIp(
+                    makeReq({ 'x-forwarded-for': `${forged}, 203.0.113.7` }) as never,
+                    makeRes('10.0.0.2') as never,
+                )
+
+            expect(read).not.toThrow()
+            expect(read()).toBe('203.0.113.7')
+        },
+    )
+
+    it('behind the unix socket proxy too', async () => {
+        process.env['APP_UNIX_PATH'] = '/tmp/app.sock'
+        process.env['TRUST_UNIX_SOCKET_PROXY'] = 'true'
+        const { default: getIp } = await import('./get-ip.js')
+
+        expect(() =>
+            getIp(makeReq({ 'x-forwarded-for': '::%1' }) as never, makeRes('') as never),
+        ).not.toThrow()
+    })
+})
