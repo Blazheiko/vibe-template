@@ -110,7 +110,21 @@ export const avatarService = {
                 s3Key,
             )
         } catch (err: unknown) {
-            await deleteAvatarObject(s3Key)
+            // feat-125: the swap may have committed although its answer was lost (a dropped
+            // connection on COMMIT). The new object goes only when the row surely does not point
+            // at it; when that cannot be told either, it stays (an orphan beats a broken avatar).
+            const current = await userRepository.findById(userId).then(
+                (row) => (row === undefined ? null : row.avatar),
+                () => s3Key,
+            )
+            if (current !== s3Key) {
+                await deleteAvatarObject(s3Key)
+            } else {
+                logger.warn(
+                    { key: s3Key },
+                    'Avatar swap failed after the row took the new key; kept',
+                )
+            }
             throw err
         }
         if (replaced === undefined) {

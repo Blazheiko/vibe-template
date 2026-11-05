@@ -15,7 +15,7 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import pushConfig from '#config/push.js'
-import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
+import { canonicalPushEndpoint } from './push-endpoint-policy.js'
 import type { DbTransaction } from '#app/repositories/index.js'
 import { getPushSubscriptionStatistics } from '#app/services/statistics/push-subscription-statistics-service.js'
 import { withCurrentSession } from '#app/services/auth/session-guard.js'
@@ -186,14 +186,13 @@ async function upsertSubscription(
     tx: DbTransaction,
 ): Promise<AppResult<{ subscription: SerializedPushSubscription }>> {
     // feat-104: the server POSTs to this URL; only the allowed push services are stored.
-    if (!isAllowedPushEndpoint(payload.endpoint)) {
+    // feat-125: in its canonical form, so two spellings of one endpoint are one endpoint.
+    const endpoint = canonicalPushEndpoint(payload.endpoint)
+    if (endpoint === null) {
         return Result.err(badRequest('Push endpoint is not allowed', 'push_endpoint_not_allowed'))
     }
 
-    const existingSubscription = await pushSubscriptionRepository.findByEndpoint(
-        payload.endpoint,
-        tx,
-    )
+    const existingSubscription = await pushSubscriptionRepository.findByEndpoint(endpoint, tx)
 
     if (existingSubscription !== undefined) {
         // The endpoint is unique across users. Moving it to another account is
@@ -212,7 +211,7 @@ async function upsertSubscription(
         }
 
         const updated = await pushSubscriptionRepository.updateByEndpoint(
-            payload.endpoint,
+            endpoint,
             userId,
             {
                 p256dhKey: payload.p256dhKey,
@@ -244,7 +243,7 @@ async function upsertSubscription(
 
     const created = await pushSubscriptionRepository.create(
         {
-            endpoint: payload.endpoint,
+            endpoint: endpoint,
             p256dhKey: payload.p256dhKey,
             authKey: payload.authKey,
             userAgent: payload.userAgent ?? null,

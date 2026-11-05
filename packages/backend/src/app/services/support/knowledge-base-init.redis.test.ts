@@ -51,29 +51,37 @@ const kb = vi.hoisted(() => ({
 vi.mock('#app/repositories/index.js', () => ({
     supportKnowledgeRepository: {
         findAll: () => Promise.resolve({ rows: [], total: kb.articles }),
-        create: (data: { title: string; content: string }) => {
-            kb.articles += 1
-            kb.created.push(data.title)
-            return Promise.resolve({
-                id: BigInt(kb.articles),
-                title: data.title,
-                content: data.content,
-                contentVersion: 1,
-            })
-        },
+        // feat-125: every article in one statement.
+        createMany: (articles: { title: string; content: string }[]) =>
+            Promise.resolve(
+                articles.map((data) => {
+                    kb.articles += 1
+                    kb.created.push(data.title)
+                    return {
+                        id: BigInt(kb.articles),
+                        title: data.title,
+                        content: data.content,
+                        contentVersion: 1,
+                    }
+                }),
+            ),
     },
 }))
 vi.mock('#app/services/support/support-embedding-service.js', () => ({
     supportEmbeddingService: {
+        // Like the real one: the lease signal cancels the provider wait (feat-125, the review found
+        // the old mock ignored it).
         indexArticle: (_article: unknown, options?: { signal?: AbortSignal }) => {
             kb.signals.push(options?.signal)
-            return kb.hold
-                ? new Promise<boolean>((resolve) => {
-                      kb.held.push(() => {
-                          resolve(true)
-                      })
-                  })
-                : Promise.resolve(true)
+            if (!kb.hold) return Promise.resolve(true)
+            return new Promise<boolean>((resolve, reject) => {
+                kb.held.push(() => {
+                    resolve(true)
+                })
+                options?.signal?.addEventListener('abort', () => {
+                    reject(options.signal?.reason as Error)
+                })
+            })
         },
     },
 }))
@@ -190,46 +198,66 @@ describe.skipIf(!hasRedis)('knowledge-base init runs once (feat-115)', () => {
         expect(kb.created).toHaveLength(3)
     })
 
-    it('a lost lease: the late holder cannot renew or delete the new lock, and stops writing', async () => {
+    it('a lost lease: the late holder cannot renew or delete the new lock, and stops indexing', async () => {
         kb.hold = true
         const late = instance({ ttlMs: 400, renewEveryMs: 100, maxLifetimeMs: 60_000 })
         expect((await late.start()).ok).toBe(true)
         await until(() => kb.held.length === 1)
-        expect(kb.created).toHaveLength(1)
+        // feat-125: every article went in with one statement before the first provider call.
+        expect(kb.created).toHaveLength(3)
 
         // The lease expires (the process stalled past the TTL) and another instance takes it.
         await admin.del(KB_INIT_LOCK_KEY)
-        const next = instance()
-        kb.articles = 0
-        expect((await next.start()).ok).toBe(true)
-        const nextToken = await admin.get(KB_INIT_LOCK_KEY)
-        expect(nextToken).not.toBeNull()
+        await admin.set(KB_INIT_LOCK_KEY, 'other-instance', 'PX', 60_000)
 
         // The late holder's renewal finds another token: it learns it lost the lock and does not
-        // move the new holder's TTL.
-        await sleep(250)
-        expect(await admin.pttl(KB_INIT_LOCK_KEY)).toBeGreaterThan(30_000)
-        // feat-119 (F3): the indexing in flight got the lease's signal, now aborted, so its
-        // provider wait is cancelled and its vector write refused.
-        expect(kb.signals[0]?.aborted).toBe(true)
-
-        // Let both imports go on.
-        kb.hold = false
-        for (const release of kb.held.splice(0)) release()
+        // move the new holder's TTL; the indexing in flight is cancelled by the lease signal.
         await late.running
-        await next.running
-
-        // The article whose indexing was in flight when the lease was lost completes; the next
-        // file is not written.
+        expect(await admin.pttl(KB_INIT_LOCK_KEY)).toBeGreaterThan(30_000)
+        expect(kb.signals[0]?.aborted).toBe(true)
         expect(late.getStatus()).toMatchObject({
             state: 'failed',
-            createdArticles: 1,
-            processedFiles: 1,
+            createdArticles: 3,
+            processedFiles: 0,
         })
         expect(late.getStatus().message).toContain('lock lost')
-        // late wrote one article before; next imported all three; late wrote nothing after.
-        expect(kb.created).toHaveLength(4)
-        expect(next.getStatus()).toMatchObject({ state: 'completed', createdArticles: 3 })
+        expect(late.getStatus().message).toContain('reindex-all')
+
+        // The base is complete, not partial: a later init finds it not empty, and no article is
+        // imported twice.
+        await admin.del(KB_INIT_LOCK_KEY)
+        expect(await instance().start()).toMatchObject({ ok: false, errorCode: 'NOT_EMPTY' })
+        expect(kb.created).toHaveLength(3)
+    })
+
+    // feat-125: all or nothing. A lease lost before the insert leaves no article, so a later
+    // init is not refused as NOT_EMPTY.
+    it('a lease lost before the insert creates nothing, and a later init runs', async () => {
+        let readDir: () => void = () => undefined
+        const late = createKnowledgeBaseInitService({
+            lease: { ttlMs: 400, renewEveryMs: 100, maxLifetimeMs: 60_000 },
+            resolveSourceDir: () =>
+                new Promise<string>((resolve) => {
+                    readDir = () => {
+                        resolve(sourceDir)
+                    }
+                }),
+            delayMs: 0,
+        })
+        expect((await late.start()).ok).toBe(true)
+        await admin.set(KB_INIT_LOCK_KEY, 'other-instance', 'PX', 60_000)
+        await sleep(250)
+        readDir()
+        await late.running
+
+        expect(late.getStatus()).toMatchObject({ state: 'failed', createdArticles: 0 })
+        expect(kb.created).toHaveLength(0)
+
+        await admin.del(KB_INIT_LOCK_KEY)
+        const next = instance()
+        expect((await next.start()).ok).toBe(true)
+        await next.running
+        expect(kb.created).toHaveLength(3)
     })
 
     it('a late release does not delete the lock of the new holder', async () => {

@@ -381,6 +381,31 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             expect(result.status).toBe(409)
             expect((await rowOf(id))?.userId).toBe(ids.owner)
         })
+
+        // feat-125: another spelling of the same endpoint is the same endpoint.
+        it('answers 409 for the owner endpoint written in capitals with a trailing dot', async () => {
+            const id = await insertSubscription(ids.owner, 'respelled')
+            const row = await rowOf(id)
+            if (row === undefined) throw new Error('subscription missing')
+            const respelled = row.endpoint.replace(
+                'https://fcm.googleapis.com/',
+                'https://FCM.GOOGLEAPIS.COM./',
+            )
+            expect(respelled).not.toBe(row.endpoint)
+
+            const result = await call('POST', '', {
+                user: ids.other,
+                body: { endpoint: respelled, p256dhKey: 'wrong', authKey: 'wrong' },
+            })
+
+            expect(result.status).toBe(409)
+            expect((await rowOf(id))?.userId).toBe(ids.owner)
+            const stored = await db
+                .select({ id: pushSubscriptions.id })
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.endpoint, respelled))
+            expect(stored).toEqual([])
+        })
     })
 
     // feat-098: a request whose session was revoked (a claim rotated the token) after it

@@ -40,3 +40,18 @@ export function isAllowedPushEndpoint(
 
     return hostAllowed(host, allowed)
 }
+
+/**
+ * The form an endpoint is stored and looked up in (feat-125): host lowercased and without the
+ * trailing dot, the default port dropped, path and query as they are. `https://FCM.GOOGLEAPIS.COM./x`
+ * and `https://fcm.googleapis.com/x` reach the same push service and are one endpoint, so the
+ * "belongs to another user" check sees them as one. null for an endpoint that is not allowed.
+ */
+export function canonicalPushEndpoint(
+    endpoint: string,
+    allowed: readonly string[] = pushConfig.allowedEndpointHosts,
+): string | null {
+    if (!isAllowedPushEndpoint(endpoint, allowed)) return null
+    const url = new URL(endpoint)
+    return `https://${normalizeHost(url.hostname)}${url.pathname}${url.search}`
+}
