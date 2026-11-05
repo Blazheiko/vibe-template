@@ -11,13 +11,14 @@ import type { UserRow } from '#app/repositories/index.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { Result } from 'better-result'
 import {
+    type AppError,
+    type AppResult,
     badRequest,
     conflict,
     forbidden,
     notFound,
+    rateLimited,
     sessionRevoked,
-    type AppError,
-    type AppResult,
 } from '#app/services/shared/errors.js'
 import {
     addressMatches,
@@ -572,7 +573,7 @@ const emailChanged = (): AppError =>
 const alreadyLinked = (): AppError =>
     conflict('This sign-in method is already linked to an account', OAUTH_ALREADY_LINKED)
 const tooManyLinkMails = (): AppError =>
-    badRequest('Too many emails were sent. Please try again later.', TOO_MANY_ATTEMPTS)
+    rateLimited('Too many emails were sent. Please try again later.', { reason: TOO_MANY_ATTEMPTS })
 
 async function finishSignIn(
     auth: Auth,

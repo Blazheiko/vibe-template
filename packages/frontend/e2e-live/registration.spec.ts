@@ -67,6 +67,7 @@ test('the registration counter per address is real: the fourth try in an hour is
         ).toBe(200)
     }
     const fourth = await tab.post('/api/auth/register/email', body)
-    expect(fourth.status()).toBe(400)
+    // feat-134 (L3): a spent auth throttle answers 429 rate_limited, as every other limit.
+    expect(fourth.status()).toBe(429)
     expect(await fourth.text()).toContain('Too many registration attempts')
 })

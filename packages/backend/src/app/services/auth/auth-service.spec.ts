@@ -567,7 +567,7 @@ describe('authService', () => {
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
             expect(result.error).toEqual({
-                _tag: 'BadRequest',
+                _tag: 'RateLimited',
                 message: 'Too many verification attempts. Please try again later.',
             })
         }
@@ -601,7 +601,7 @@ describe('authService', () => {
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
             expect(result.error).toEqual({
-                _tag: 'BadRequest',
+                _tag: 'RateLimited',
                 message: 'Too many verification attempts. Please try again later.',
             })
         }
@@ -1082,6 +1082,7 @@ describe('authService', () => {
             7n,
             { currentPassword: 'old-secret', newPassword: 'new-secret' },
             PRESENTED_TOKEN,
+            sessionStillStored,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1116,6 +1117,7 @@ describe('authService', () => {
                 7n,
                 { currentPassword: 'old-secret', newPassword: 'new-secret' },
                 presented,
+                sessionStillStored,
             )
         }
 

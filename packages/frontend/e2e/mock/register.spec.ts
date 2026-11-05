@@ -120,9 +120,9 @@ test.describe('register by e-mail', () => {
         page,
         api,
     }) => {
-        await api.answer('auth/register/email', 400, {
+        await api.answer('auth/register/email', 429, {
             status: 'error',
-            code: 'bad_request',
+            code: 'rate_limited',
             message: 'Too many registration attempts. Please try again later.',
         })
         const modal = await openEmailForm(page)

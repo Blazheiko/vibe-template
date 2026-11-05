@@ -154,6 +154,7 @@ export default {
             userId,
             payload,
             context.auth.getPresentedUserToken(),
+            () => context.session.isStored(),
         )
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)

@@ -33,6 +33,7 @@ const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
     markInvalidatedIfPending: vi.fn(),
@@ -150,7 +151,6 @@ interface Row {
 const login = (identifier: string) => (service: Service) =>
     service.login({ identifier, password: 'secret' }, authMock as never, sessionMock as never, IP)
 const INVALID = { status: 401, code: 'unauthorized', message: 'Invalid email or password' }
-const badRequest = (message: string) => ({ status: 400, code: 'bad_request', message })
 // feat-123: a spent password budget is 429.
 const rateLimited = (message: string) => ({ status: 429, code: 'rate_limited', message })
 
@@ -171,7 +171,7 @@ const ROWS: readonly Row[] = [
                 IP,
             ),
         consumed: [['register_email_ip', '203.0.113.9']],
-        blocked: badRequest(TOO_MANY_REGISTRATIONS),
+        blocked: rateLimited(TOO_MANY_REGISTRATIONS),
     },
     {
         method: 'registerByEmail · identifier',
@@ -192,13 +192,13 @@ const ROWS: readonly Row[] = [
             ['register_email_ip', '203.0.113.9'],
             ['register_email_identifier', 'user@example.com'],
         ],
-        blocked: badRequest(TOO_MANY_REGISTRATIONS),
+        blocked: rateLimited(TOO_MANY_REGISTRATIONS),
     },
     {
         method: 'startPhoneRegistration · ip',
         call: (s) => s.startPhoneRegistration({ phone: PHONE }, { ...IP, sessionId: 's' }),
         consumed: [['register_phone_ip', '203.0.113.9']],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startPhoneRegistration · phone',
@@ -207,13 +207,13 @@ const ROWS: readonly Row[] = [
             ['register_phone_ip', '203.0.113.9'],
             ['sms_send_phone', PHONE],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'confirmPhoneRegistration · ip',
         call: (s) => s.confirmPhoneRegistration({ challengeId: 'c', code: '123456' }, IP),
         consumed: [['confirm_phone_ip', '203.0.113.9']],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     // feat-109: the current password is re-checked from the per-user budget of change-password,
     // spent before validatePassword.
@@ -262,7 +262,7 @@ const ROWS: readonly Row[] = [
             ['change_password_user', '7'],
             ['link_phone_ip', '203.0.113.9'],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startPhoneLink · user',
@@ -282,7 +282,7 @@ const ROWS: readonly Row[] = [
             ['link_phone_ip', '203.0.113.9'],
             ['link_phone_user', '7'],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startPhoneLink · phone',
@@ -303,7 +303,7 @@ const ROWS: readonly Row[] = [
             ['link_phone_user', '7'],
             ['sms_send_phone', PHONE],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'confirmPhoneLink · ip',
@@ -319,7 +319,7 @@ const ROWS: readonly Row[] = [
                 },
             ),
         consumed: [['confirm_link_phone_ip', '203.0.113.9']],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startEmailLink · target',
@@ -334,7 +334,7 @@ const ROWS: readonly Row[] = [
             ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startEmailLink · user',
@@ -350,7 +350,7 @@ const ROWS: readonly Row[] = [
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startEmailLink · cooldown',
@@ -367,7 +367,7 @@ const ROWS: readonly Row[] = [
             ['link_email_user', '7'],
             ['link_email_user_cooldown', '7'],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'login · ip',
@@ -396,7 +396,12 @@ const ROWS: readonly Row[] = [
     {
         method: 'changePassword · user',
         call: (s) =>
-            s.changePassword(7n, { currentPassword: 'old', newPassword: 'new-password' }, TOKEN),
+            s.changePassword(
+                7n,
+                { currentPassword: 'old', newPassword: 'new-password' },
+                TOKEN,
+                sessionStillStored,
+            ),
         consumed: [['change_password_user', '7']],
         blocked: rateLimited('Too many password change attempts. Please try again later.'),
     },

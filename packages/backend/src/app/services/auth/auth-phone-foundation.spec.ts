@@ -18,6 +18,7 @@ const userRepositoryMock = {
 const smsAuthChallengeRepositoryMock = {
     invalidatePendingForPhoneFlow: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     create: vi.fn(),
     markIssued: vi.fn(),
     findById: vi.fn(),
@@ -56,6 +57,7 @@ const issueVerificationCodeMock = vi.fn()
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
+    withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
 }))
 
 vi.mock('#app/transformers/index.js', () => ({
@@ -279,12 +281,14 @@ describe('authService phone foundation', () => {
         expect(Result.isOk(result)).toBe(true)
         expect(smsAuthChallengeRepositoryMock.create).toHaveBeenCalledWith(
             expect.not.objectContaining({ password: expect.anything() }),
+            expect.anything(),
         )
         expect(smsAuthChallengeRepositoryMock.create).toHaveBeenCalledWith(
             expect.objectContaining({
                 flow: 'register_phone',
                 phone: '+14155550123',
             }),
+            expect.anything(),
         )
         const invalidateCallOrder =
             smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow.mock.invocationCallOrder[0]

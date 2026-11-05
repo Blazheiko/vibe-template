@@ -34,6 +34,7 @@ const challengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
     markInvalidatedIfPending: vi.fn(),
@@ -814,6 +815,7 @@ const ROWS: readonly Row[] = [
                     flow: 'reset_phone',
                     metadata: expect.objectContaining({ userId: '7', sessionId: 'sess-1' }),
                 }),
+                expect.anything(),
             )
         },
     },
@@ -835,6 +837,7 @@ const ROWS: readonly Row[] = [
                 expect.objectContaining({
                     metadata: expect.objectContaining({ blind: true }),
                 }),
+                expect.anything(),
             )
         },
     },

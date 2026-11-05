@@ -1,5 +1,5 @@
 import { db } from '#database/db.js'
-import type { DbExecutor } from '../transaction.js'
+import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { smsAuthChallenges } from '#database/schema.js'
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
@@ -9,12 +9,19 @@ export type SmsAuthChallengeInsert = InferInsertModel<typeof smsAuthChallenges>
 export type SmsAuthChallengeFlow = SmsAuthChallengeInsert['flow']
 
 export interface SmsAuthChallengeRepository {
-    create(data: SmsAuthChallengeInsert): Promise<SmsAuthChallengeRow>
+    create(data: SmsAuthChallengeInsert, executor?: DbExecutor): Promise<SmsAuthChallengeRow>
     findById(id: string): Promise<SmsAuthChallengeRow | undefined>
     findLatestPendingForPhoneFlow(
         phone: string,
         flow: SmsAuthChallengeFlow,
+        executor?: DbExecutor,
     ): Promise<SmsAuthChallengeRow | undefined>
+    /**
+     * feat-134 (L2): a transaction-scoped advisory lock on this phone and flow. Two starts that
+     * both passed the cooldown check take it one at a time, and the second sees the first one's
+     * challenge.
+     */
+    lockPhoneFlow(phone: string, flow: SmsAuthChallengeFlow, tx: DbTransaction): Promise<void>
     invalidatePendingForPhoneFlow(
         phone: string,
         flow: SmsAuthChallengeFlow,
@@ -44,9 +51,9 @@ export interface SmsAuthChallengeRepository {
 }
 
 export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
-    async create(data) {
+    async create(data, executor = db) {
         const now = new Date()
-        const [created] = await db
+        const [created] = await executor
             .insert(smsAuthChallenges)
             .values({
                 ...data,
@@ -71,8 +78,8 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
             .then((rows) => rows.at(0))
     },
 
-    async findLatestPendingForPhoneFlow(phone, flow) {
-        return await db
+    async findLatestPendingForPhoneFlow(phone, flow, executor = db) {
+        return await executor
             .select()
             .from(smsAuthChallenges)
             .where(
@@ -86,6 +93,12 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
             .orderBy(sql`${smsAuthChallenges.createdAt} desc`)
             .limit(1)
             .then((rows) => rows.at(0))
+    },
+
+    async lockPhoneFlow(phone, flow, tx) {
+        await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtextextended(${`sms_auth_challenge:${flow}:${phone}`}, 0))`,
+        )
     },
 
     async invalidatePendingForPhoneFlow(phone, flow, executor = db) {

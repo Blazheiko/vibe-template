@@ -783,7 +783,7 @@ describe('verifyEmail · the owner of a registration link', () => {
         const result = await verify({ ...ANONYMOUS, password: 'guess' })
 
         expect(Result.isError(result) && result.error).toEqual({
-            _tag: 'BadRequest',
+            _tag: 'RateLimited',
             message: 'Too many verification attempts. Please try again later.',
         })
         expect(validatePasswordMock).not.toHaveBeenCalled()

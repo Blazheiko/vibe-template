@@ -10,6 +10,7 @@ const repo = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
     markConfirmed: vi.fn(),
@@ -19,7 +20,10 @@ const repo = {
 }
 const issueMock = vi.fn()
 
-vi.mock('#app/repositories/index.js', () => ({ smsAuthChallengeRepository: repo }))
+vi.mock('#app/repositories/index.js', () => ({
+    smsAuthChallengeRepository: repo,
+    withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
+}))
 vi.mock('#app/services/auth/sms-verification-provider.js', () => ({
     smsVerificationProvider: { issueVerificationCode: issueMock },
 }))
@@ -97,7 +101,11 @@ describe('openChallenge', () => {
         repo.create.mockResolvedValue(row())
         const { openChallenge } = await load()
         await openChallenge({ phone: PHONE, flow: 'link_phone', metadata: { a: 1 } })
-        expect(repo.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(PHONE, 'link_phone')
+        expect(repo.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
+            PHONE,
+            'link_phone',
+            expect.anything(),
+        )
         expect(repo.invalidatePendingForPhoneFlow.mock.invocationCallOrder[0]).toBeLessThan(
             repo.create.mock.invocationCallOrder[0]!,
         )
@@ -136,7 +144,10 @@ describe('openChallenge', () => {
             codeHash: 'blind',
             metadata: {},
         })
-        expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ codeHash: 'blind' }))
+        expect(repo.create).toHaveBeenCalledWith(
+            expect.objectContaining({ codeHash: 'blind' }),
+            expect.anything(),
+        )
     })
 
     it('rejects when the row cannot be stored', async () => {

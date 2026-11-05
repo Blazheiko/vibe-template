@@ -9,14 +9,15 @@ import { emailService } from '#app/services/notifications/email-service.js'
 import { Result } from 'better-result'
 import { validatePassword } from 'metautil'
 import {
+    type AppError,
+    appErrorMessage,
+    type AppResult,
     badRequest,
     conflict,
     forbidden,
     notFound,
+    rateLimited,
     sessionRevoked,
-    type AppError,
-    type AppResult,
-    appErrorMessage,
 } from '#app/services/shared/errors.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
@@ -101,7 +102,7 @@ async function checkOwnerPassword(
     const throttle = await enforceThrottle(
         throttlePolicies.verifyEmailPasswordUser,
         String(owner.id),
-        badRequest('Too many verification attempts. Please try again later.'),
+        rateLimited('Too many verification attempts. Please try again later.'),
     )
     if (Result.isError(throttle)) return Result.err(throttle.error)
 
@@ -194,7 +195,7 @@ export const emailVerificationService = {
         const throttle = await enforceThrottle(
             throttlePolicies.verifyEmailIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
@@ -352,7 +353,7 @@ export const emailVerificationService = {
         const throttle = await enforceThrottle(
             throttlePolicies.resendVerificationUser,
             String(userId),
-            badRequest('Too many verification emails requested. Please try again later.'),
+            rateLimited('Too many verification emails requested. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)

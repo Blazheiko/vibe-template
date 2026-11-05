@@ -49,12 +49,13 @@ import {
 import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-hash.js'
 import { Result } from 'better-result'
 import {
+    appErrorMessage,
+    type AppResult,
     badRequest,
     conflict,
     internalMessage,
     notFound,
-    type AppResult,
-    appErrorMessage,
+    rateLimited,
 } from '#app/services/shared/errors.js'
 import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
@@ -211,7 +212,7 @@ export const passwordResetService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.resetPhoneIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
@@ -220,7 +221,7 @@ export const passwordResetService = {
         const phoneThrottle = await enforceThrottle(
             throttlePolicies.smsSendPhone,
             normalizedPhone,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
@@ -301,12 +302,14 @@ export const passwordResetService = {
 
         // Nothing to send: the number is unknown or the account has an e-mail. The challenge is
         // stored all the same, with a code hash nobody can match, so the answer looks the same.
-        const created = await openChallenge({
+        const opened = await openChallenge({
             phone: normalizedPhone,
             flow: RESET_PHONE_FLOW,
             codeHash: createBlindVerificationCodeHash(),
             metadata,
         })
+        if (Result.isError(opened)) return Result.err(opened.error)
+        const created = opened.value
 
         return Result.ok({
             message: GENERIC_PHONE_RESET_MESSAGE,
@@ -325,7 +328,7 @@ export const passwordResetService = {
         const throttle = await enforceThrottle(
             throttlePolicies.resetPasswordIp,
             requestMeta.ipAddress,
-            badRequest('Too many password reset attempts. Please try again later.'),
+            rateLimited('Too many password reset attempts. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
@@ -431,7 +434,7 @@ export const passwordResetService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.confirmResetPhoneIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)

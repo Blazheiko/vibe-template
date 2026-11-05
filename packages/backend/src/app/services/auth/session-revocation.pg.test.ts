@@ -11,6 +11,9 @@ import {
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // ADR 0002 against a real PostgreSQL and a real Redis. Sessions live in Redis and are
 // revoked by rotating users.sessionToken in PostgreSQL; the real sessionHandler,
 // wsSessionHandler, verifyUpgradeToken and authService run unchanged. Not under test
@@ -189,6 +192,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 user.id,
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 ctxA.auth.getPresentedUserToken(),
+                sessionStillStored,
             )
             expect(Result.isOk(changed)).toBe(true)
             if (!Result.isOk(changed)) return
@@ -235,6 +239,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 user.id,
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 user.sessionToken,
+                sessionStillStored,
             )
             expect(Result.isOk(changed)).toBe(true)
             expect(await getSession(session.sessionId, user.sessionToken)).not.toBeNull()
@@ -255,6 +260,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 user.id,
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 user.sessionToken,
+                sessionStillStored,
             )
 
             // The change itself succeeded; the records are still in Redis ...
@@ -290,11 +296,13 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                     user.id,
                     { currentPassword: OLD_PASSWORD, newPassword: 'winner-one-111' },
                     user.sessionToken,
+                    sessionStillStored,
                 ),
                 authService.changePassword(
                     user.id,
                     { currentPassword: OLD_PASSWORD, newPassword: 'winner-two-222' },
                     user.sessionToken,
+                    sessionStillStored,
                 ),
             ])
 
@@ -341,6 +349,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 user.id,
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 context.auth.getPresentedUserToken(),
+                sessionStillStored,
             )
             if (!Result.isOk(changed)) throw new Error('password change failed')
             const renewed = await authService.renewSession(
@@ -395,6 +404,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 user.id,
                 { newPassword: 'attacker-secret-1' },
                 context.auth.getPresentedUserToken(),
+                sessionStillStored,
             )
 
             expect(Result.isError(result) && result.error).toMatchObject({
@@ -422,6 +432,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 user.id,
                 { currentPassword: OLD_PASSWORD, newPassword: 'attacker-secret-1' },
                 context.auth.getPresentedUserToken(),
+                sessionStillStored,
             )
 
             expect(Result.isError(result)).toBe(true)

@@ -168,6 +168,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             user.id,
             { currentPassword: PASSWORD, newPassword: 'another-password-456' },
             user.sessionToken,
+            sessionStillStored,
         )
 
         expect(message(change)).toBe('Too many password change attempts. Please try again later.')
@@ -198,6 +199,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             user.id,
             { currentPassword: PASSWORD, newPassword: 'another-password-456' },
             user.sessionToken,
+            sessionStillStored,
         )
 
         expect(change.isOk()).toBe(true)
@@ -216,6 +218,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
                 user.id,
                 { currentPassword: PASSWORD, newPassword: 'another-password-456' },
                 user.sessionToken,
+                sessionStillStored,
             ),
         ).rejects.toThrow('injected')
 
@@ -311,6 +314,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             user.id,
             { currentPassword: PASSWORD, newPassword: 'another-password-456' },
             user.sessionToken,
+            sessionStillStored,
         )
 
         expect(change.isOk()).toBe(true)

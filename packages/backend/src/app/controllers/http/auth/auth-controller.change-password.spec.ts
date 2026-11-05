@@ -115,6 +115,7 @@ describe('AuthController.changePassword', () => {
             7n,
             { currentPassword: 'old-password', newPassword: 'new-password' },
             'presented-token',
+            expect.any(Function),
         )
     })
 
