@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { isIpInCidr, normalizeIp, parseIp, rateLimitKeyForIp } from './ip-address.js'
+import {
+    isIpInCidr,
+    isValidCidrEntry,
+    normalizeIp,
+    parseIp,
+    rateLimitKeyForIp,
+} from './ip-address.js'
 
 describe('rateLimitKeyForIp (feat-110)', () => {
     it('groups every spelling of every address of one IPv6 /64 into one key', () => {
@@ -129,4 +135,40 @@ describe('IPv6 zone ids and unparsable input never throw', () => {
             expect(() => isIpInCidr('10.0.0.1', `${value}/8`)).not.toThrow()
         },
     )
+})
+
+// feat-132 (P2): the prefix was read with Number(), so '', ' 0' and '.0' were /0 and a
+// TRUSTED_PROXY_CIDRS entry with a typo trusted every address.
+describe('CIDR prefixes are read strictly (feat-132)', () => {
+    it.each([
+        '10.0.0.0/',
+        '10.0.0.0/ 0',
+        '10.0.0.0/.0',
+        '10.0.0.0/0x8',
+        '10.0.0.0/1e1',
+        '10.0.0.0/+8',
+        '10.0.0.0/8.0',
+        '10.0.0.0/33',
+        '10.0.0.0/8/9',
+        '::/',
+        '::/129',
+        '::ffff:a00:0/95',
+    ])('%j matches nothing and is not a valid entry', (cidr) => {
+        expect(isIpInCidr('203.0.113.7', cidr)).toBe(false)
+        expect(isIpInCidr('::1', cidr)).toBe(false)
+        expect(isValidCidrEntry(cidr)).toBe(false)
+    })
+
+    it.each([
+        ['10.0.0.0/8', true],
+        ['10.0.0.1', true],
+        ['0.0.0.0/0', true],
+        ['2001:db8::/32', true],
+        ['::ffff:a00:0/104', true],
+        ['[::1]', true],
+        ['not-an-ip', false],
+        ['10.0.0.0/08', true],
+    ])('isValidCidrEntry(%j) → %j', (entry, valid) => {
+        expect(isValidCidrEntry(entry)).toBe(valid)
+    })
 })
