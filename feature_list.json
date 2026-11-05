@@ -1251,8 +1251,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-126-logs-and-tests",
             "dependencies": ["feat-125"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #412 (merge 2aa1240; start #411). Scrubber: toSafeValue and pino formatters.log scrub errors nested anywhere in a log record (caller objects untouched), error fields scrub nested plain values, Sentry sanitizes extra/contexts/breadcrumb data on a copy, rebuildStack keeps only the frames after the real header, index.ts console.error prints toSafeError copies, the KB init status shows the safe database message. Tests: the close-order test checks a refused connection while closeAllWs is held open, auditCall settle-once has its own spec, the OAuth !ok PG case returns a full profile, the phone-reset two-completions case is named for the older invariant. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2398, frontend 400, api-playground 62; test:pg with Redis 28/255, test:redis 11/116; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; mutation: main scrub-error 7, main sentry 1, raw KB status 1, swapped close order fails, no settled guard 2, no !ok check 1 cases fail. Details were in progress.md on fix/feat-126-logs-and-tests (removed from main by this PR)."
         }
     ]
 }
