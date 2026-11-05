@@ -618,11 +618,19 @@ describe('supportService', () => {
             )
             // A short lease the live answer keeps renewing, and a ceiling on the whole answer
             // (three provider calls and the database) after which the lease is abandoned.
-            expect(acquireSupportLockMock).toHaveBeenCalledWith(7n, {
-                ttlMs: 30_000,
-                renewEveryMs: 5_000,
-                maxLifetimeMs: aiConfig.requestTimeoutMs * 3 + 60_000,
-            })
+            // feat-135: told lost the longest database write before the key can expire.
+            const { DATABASE_WRITE_BOUND_MS } = await import('#app/services/shared/redis-lease.js')
+            const lease = acquireSupportLockMock.mock.calls[0]?.[1] as {
+                ttlMs: number
+                renewEveryMs: number
+                maxLifetimeMs: number
+                stopBeforeExpiryMs: number
+            }
+            expect(acquireSupportLockMock).toHaveBeenCalledWith(7n, expect.anything())
+            expect(lease.renewEveryMs).toBe(5_000)
+            expect(lease.maxLifetimeMs).toBe(aiConfig.requestTimeoutMs * 3 + 60_000)
+            expect(lease.stopBeforeExpiryMs).toBeGreaterThan(DATABASE_WRITE_BOUND_MS)
+            expect(lease.ttlMs - lease.stopBeforeExpiryMs).toBeGreaterThanOrEqual(10_000)
         })
 
         it('uses the opening policy for the greeting', async () => {

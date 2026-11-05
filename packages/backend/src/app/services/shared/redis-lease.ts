@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 
 import redis, { withRedis } from '#database/redis.js'
+import databasePoolConfig, { statementBoundMs } from '#config/database-pool.js'
 
 // A Redis lock that is a lease with an owner (first used by the support in-flight lock, feat-115
 // shares it with the knowledge-base init).
@@ -36,6 +37,34 @@ export interface Lease {
     renewEveryMs: number
     /** After this the lease is abandoned (told lost, no more renewals): a stuck run must not hold the lock for ever. */
     maxLifetimeMs: number
+    /**
+     * feat-135: how long before the key can expire the holder is told `lost`; at least
+     * `renewEveryMs`. A holder that may have a database write in flight when it learns of the loss
+     * needs the longest write here (see `leaseForDatabaseWrites`), or that write can land after
+     * another holder has taken the lock.
+     */
+    stopBeforeExpiryMs?: number
+}
+
+/** feat-135: the longest one write on the main pool can take (connect wait + query timeout). */
+export const DATABASE_WRITE_BOUND_MS = statementBoundMs(databasePoolConfig)
+const WRITE_MARGIN_SLACK_MS = 1000
+
+/**
+ * feat-135 (sixth review L4): a lease whose holder writes to the database. It is told lost the
+ * longest write (plus a second) before the key can expire, and the TTL grows when needed so two
+ * renewals still fit before that moment.
+ */
+export function leaseForDatabaseWrites(lease: Lease): Lease {
+    const stopBeforeExpiryMs = Math.max(
+        lease.renewEveryMs,
+        DATABASE_WRITE_BOUND_MS + WRITE_MARGIN_SLACK_MS,
+    )
+    return {
+        ...lease,
+        stopBeforeExpiryMs,
+        ttlMs: Math.max(lease.ttlMs, stopBeforeExpiryMs + 2 * lease.renewEveryMs),
+    }
 }
 
 export interface HeldLease {
@@ -86,7 +115,8 @@ export async function acquireLease(
     // extendedAt + ttlMs.
     const armDeadline = (extendedAt: number): void => {
         clearTimeout(deadline)
-        const lostAt = extendedAt + lease.ttlMs - lease.renewEveryMs
+        const margin = Math.max(lease.renewEveryMs, lease.stopBeforeExpiryMs ?? 0)
+        const lostAt = extendedAt + lease.ttlMs - margin
         deadline = setTimeout(
             () => {
                 markLost('it could not be renewed')

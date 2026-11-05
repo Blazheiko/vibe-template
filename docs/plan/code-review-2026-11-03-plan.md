@@ -643,4 +643,5 @@ High-дефектів немає. Medium підтверджено в коді; �
 | P2 (proxy CIDR prefix)   | feat-132 | #430 | done        |
 | P3 (onConnected failure) | feat-133 | #433 | done        |
 | I1 (auth lows)           | feat-134 | #436 | done        |
-| I2 (lease, S3, KB)       | feat-135 | —    | in_progress |
+| I2 (lease, S3, KB)       | feat-135 | #439 | done        |
+| I3 (AI usage, purge)     | feat-136 | —    | in_progress |

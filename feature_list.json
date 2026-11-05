@@ -1341,6 +1341,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-135-lease-s3-kb",
             "dependencies": ["feat-134"],
+            "status": "done",
+            "evidence": "Merged #439 (merge 46c540c; start #438). L4: Lease.stopBeforeExpiryMs and leaseForDatabaseWrites (the longest write on the main pool: connect wait 2 s + DB_QUERY_TIMEOUT_MS + 500 ms, + 1 s; TTL grows so two renewals fit) for the KB init and support answer leases; pool constants moved to config/database-pool.ts. L5: isServerRejection needs a SQLSTATE and a severity, so Node errno codes (EPIPE, EPERM) do not count as a rollback. L9: the KB init status keeps the reindex-all hint when the re-read after an unanswered INSERT fails too. Evidence: typecheck, lint, format clean; pnpm test backend 2521, frontend 400, api-playground 62; local test:pg 173; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: main versions of redis-lease, db-errors and the KB init service make 6 new cases fail. Details were in progress.md on fix/feat-135-lease-s3-kb (removed from main by this PR)."
+        },
+        {
+            "id": "feat-136",
+            "name": "Sixth Review AI Usage and Purge Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, sixth review I3: (L6) a Mistral usage object without token counts (usage: {}) is recorded as 0 real tokens and settles the budget at 0 (the OpenAI parseUsage has the same defect); (L7) with a tool call the first round usage is taken as the whole call, and without the second round usage (or on an abort in it) the call is neither complete nor estimated; (L8) llm:purge-prompts ignores --days when AI_USAGE_STORE_PROMPTS=false and removes all prompt text, and does not check databasePoolConfig.configError. Usage without counts is no usage; first-round usage is partial (the audit estimates, never below it; the budget keeps its reservation); --days that cannot apply and a config error stop the purge; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-136-ai-usage-purge",
+            "dependencies": ["feat-135"],
             "status": "in_progress",
             "evidence": ""
         }

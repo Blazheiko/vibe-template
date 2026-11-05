@@ -387,7 +387,10 @@ describe('avatarService', () => {
             uploadToS3Mock.mockResolvedValue(undefined)
             deleteFromS3Mock.mockResolvedValue(undefined)
             userRepositoryMock.replaceAvatarIfSessionToken.mockRejectedValue(
-                Object.assign(new Error('could not serialize access'), { code: '40001' }),
+                Object.assign(new Error('could not serialize access'), {
+                    code: '40001',
+                    severity: 'ERROR',
+                }),
             )
 
             const { avatarService } = await loadAvatarService()

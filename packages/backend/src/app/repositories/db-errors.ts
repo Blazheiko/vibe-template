@@ -20,9 +20,15 @@ const SQLSTATE = /^[0-9A-Z]{5}$/
  * and may not even be visible to another connection yet.
  */
 export const isServerRejection = (err: unknown): boolean => {
+    // feat-135 (sixth review L5): a five-capital code alone is not enough, Node errno codes look
+    // the same (EPIPE, EPERM). An ErrorResponse from PostgreSQL always carries a severity too.
     const rejected = (value: unknown): boolean => {
         const code = codeOf(value)
-        return typeof code === 'string' && SQLSTATE.test(code)
+        const severity =
+            typeof value === 'object' && value !== null && 'severity' in value
+                ? value.severity
+                : undefined
+        return typeof code === 'string' && SQLSTATE.test(code) && typeof severity === 'string'
     }
     return rejected(err) || (err instanceof Error && rejected(err.cause))
 }
