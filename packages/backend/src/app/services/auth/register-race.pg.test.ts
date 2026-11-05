@@ -5,6 +5,9 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-100: two registrations with one email (or phone completions / phone links with one
 // number) both pass the lookup; the second write hits the unique index. It used to surface as
 // 500 internal_error. Now the loser gets the answer of a taken identifier and nothing after
@@ -258,6 +261,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                 }),
             )
             // Each account has its own challenge from its own session.
+
             const challenges = await Promise.all(
                 accounts.map((account) =>
                     insertChallenge({
@@ -283,6 +287,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                             ipAddress: '127.0.0.1',
                             sessionId: `link-session-${String(account.id)}`,
                             presentedSessionToken: account.sessionToken,
+                            sessionStored: sessionStillStored,
                         },
                     ),
                 ),

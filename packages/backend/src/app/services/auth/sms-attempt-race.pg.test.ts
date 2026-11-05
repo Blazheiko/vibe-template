@@ -5,6 +5,9 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 import type * as OtpHash from './otp-verification-hash.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-103: the budget of wrong SMS codes holds under concurrency. Every request reads the
 // challenge before any of them spends a try (the barrier below), so all of them hold the same
 // stale row with attempt_count 0; only the atomic consumeAttempt decides how many codes are
@@ -289,6 +292,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
                             ipAddress: '203.0.113.1',
                             sessionId: 'session-1',
                             presentedSessionToken: user.sessionToken,
+                            sessionStored: sessionStillStored,
                         },
                     ),
                 ),

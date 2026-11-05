@@ -10,6 +10,9 @@ import {
 } from '#app/services/shared/errors.js'
 import type { authService } from './auth-service.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-069 (G1): authService, state -> answer. Every row names a state of the repositories or
 // of the session and what the caller is told (status, code, message) and what has been done
 // by then (the writes and the side effects). H1-H5 move code between files and must not
@@ -223,24 +226,39 @@ const confirmLink =
         s.confirmPhoneLink(
             7n,
             { challengeId: 'ch-1', code },
-            { ...IP, sessionId, presentedSessionToken: TOKEN },
+            { ...IP, sessionId, presentedSessionToken: TOKEN, sessionStored: sessionStillStored },
         )
 // feat-096: the same calls as a session presenting `presented` (undefined: none at all).
 const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
     s.confirmPhoneLink(
         7n,
         { challengeId: 'ch-1', code: '123456' },
-        { ...IP, sessionId: 'sess-1', presentedSessionToken: presented },
+        {
+            ...IP,
+            sessionId: 'sess-1',
+            presentedSessionToken: presented,
+            sessionStored: sessionStillStored,
+        },
     )
 const startLinkAs = (presented: string | undefined) => (s: Service) =>
     s.startPhoneLink(
         7n,
         { phone: '+380501234567', currentPassword: 'secret' },
-        { ...IP, sessionId: 'sess-1', presentedSessionToken: presented },
+        {
+            ...IP,
+            sessionId: 'sess-1',
+            presentedSessionToken: presented,
+            sessionStored: sessionStillStored,
+        },
     )
 const startLink = startLinkAs(TOKEN)
 const startEmailAs = (presented: string | undefined) => (s: Service) =>
-    s.startEmailLink(7n, { email: 'new@example.com', currentPassword: 'secret' }, presented)
+    s.startEmailLink(
+        7n,
+        { email: 'new@example.com', currentPassword: 'secret' },
+        presented,
+        sessionStillStored,
+    )
 const startEmail = startEmailAs(TOKEN)
 const changeAs =
     (presented: string | undefined, payload: Record<string, unknown>) => (s: Service) =>
@@ -574,6 +592,7 @@ const ROWS: readonly Row[] = [
                     ...IP,
                     sessionId: null,
                     presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
                 },
             ),
         error: badRequest('Phone linking requires an active session'),
@@ -646,6 +665,7 @@ const ROWS: readonly Row[] = [
                     ...IP,
                     sessionId: 'sess-1',
                     presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
                 },
             ),
         error: badRequest('Phone number must be valid and in a supported format'),
@@ -1304,7 +1324,12 @@ describe('authService · success payloads', () => {
         const result = await authService.confirmPhoneLink(
             7n,
             { challengeId: 'ch-1', code: '123456' },
-            { ...IP, sessionId: 'sess-1', presentedSessionToken: TOKEN },
+            {
+                ...IP,
+                sessionId: 'sess-1',
+                presentedSessionToken: TOKEN,
+                sessionStored: sessionStillStored,
+            },
         )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',

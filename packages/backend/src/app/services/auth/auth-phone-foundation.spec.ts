@@ -2,6 +2,9 @@ import { Result } from 'better-result'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 const userRepositoryMock = {
     findByEmail: vi.fn(),
     findByPhone: vi.fn(),
@@ -666,6 +669,7 @@ describe('authService phone foundation', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
 
@@ -769,7 +773,12 @@ describe('authService phone foundation', () => {
                 phone: '+1 415 555 0123',
                 currentPassword: 'secret123',
             },
-            { ipAddress: '127.0.0.1', sessionId: null, presentedSessionToken: 'session-token' },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: null,
+                presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
+            },
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -832,6 +841,7 @@ describe('authService phone foundation', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
 
@@ -909,6 +919,7 @@ describe('authService phone foundation', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
 
@@ -954,6 +965,7 @@ describe('authService phone foundation', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
 
@@ -991,6 +1003,7 @@ describe('authService phone foundation', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
 
@@ -1043,6 +1056,7 @@ describe('authService phone foundation', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
 
@@ -1094,7 +1108,12 @@ describe('phone linking session guard (feat-096)', () => {
         return authService.confirmPhoneLink(
             7n,
             { challengeId: 'link-challenge-1', code: '123456' },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id', presentedSessionToken },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+                presentedSessionToken,
+                sessionStored: sessionStillStored,
+            },
         )
     }
 
@@ -1109,7 +1128,12 @@ describe('phone linking session guard (feat-096)', () => {
         const result = await authService.startPhoneLink(
             7n,
             { phone: '+1 415 555 0123', currentPassword: 'secret123' },
-            { ipAddress: '127.0.0.1', sessionId: 'session-id', presentedSessionToken: presented },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+                presentedSessionToken: presented,
+                sessionStored: sessionStillStored,
+            },
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1205,6 +1229,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
                     ipAddress: '127.0.0.1',
                     sessionId: 'session-id',
                     presentedSessionToken: 'session-token',
+                    sessionStored: sessionStillStored,
                 },
             ),
         ).rejects.toThrow()
@@ -1225,6 +1250,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
                     ipAddress: '127.0.0.1',
                     sessionId: 'session-id',
                     presentedSessionToken: 'session-token',
+                    sessionStored: sessionStillStored,
                 },
             ),
         ).rejects.toThrow()
@@ -1455,6 +1481,7 @@ describe('phone writes losing the race to the unique index', () => {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
+                sessionStored: sessionStillStored,
             },
         )
     }

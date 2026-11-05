@@ -2,6 +2,9 @@ import { Result } from 'better-result'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 const ORIGINAL_ENV = { ...process.env }
 
 const userRepositoryMock = {
@@ -493,6 +496,7 @@ describe('authService', () => {
                 currentPassword: 'secret123',
             },
             PRESENTED_TOKEN,
+            sessionStillStored,
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -557,6 +561,7 @@ describe('authService', () => {
                 currentPassword: 'secret123',
             },
             PRESENTED_TOKEN,
+            sessionStillStored,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -590,6 +595,7 @@ describe('authService', () => {
                 currentPassword: 'secret123',
             },
             PRESENTED_TOKEN,
+            sessionStillStored,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1267,6 +1273,7 @@ describe('startEmailLink session guard (feat-096)', () => {
             9n,
             { email: 'phone-only@example.com', currentPassword: 'secret123' },
             presented,
+            sessionStillStored,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1298,6 +1305,7 @@ describe('auth throttle fail-closed (email link)', () => {
                     currentPassword: 'secret123',
                 },
                 PRESENTED_TOKEN,
+                sessionStillStored,
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)

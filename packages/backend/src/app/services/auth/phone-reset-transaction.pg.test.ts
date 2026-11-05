@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { appErrorMessage } from '../shared/errors.js'
 
 // feat-106 (R06a): the phone password reset locks the user, re-checks the account on the locked
@@ -39,7 +40,8 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
     const { db, pool } = await import('#database/db.js')
     const { sessionCheckPool } = await import('#database/session-check-db.js')
     const { passwordResetTokens, smsAuthChallenges, users } = await import('#database/schema.js')
-    const { passwordResetRepository, userRepository } = await import('#app/repositories/index.js')
+    const { passwordResetRepository, smsAuthChallengeRepository, userRepository } =
+        await import('#app/repositories/index.js')
     const { passwordResetService } = await import('#app/services/auth/password-reset-service.js')
     const { hashOtpVerificationCode } = await import('#app/services/auth/otp-verification-hash.js')
     const { authConfig: readonlyAuthConfig } = await import('#config/auth.js')
@@ -246,17 +248,24 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
         expect(link?.usedAt ?? null).not.toBeNull()
     })
 
-    // An older invariant kept here as a regression guard: the conditional confirmation (before
-    // R06a) already let only one completion through. What R06a adds, the single transaction, is
-    // checked by the rollback cases above (feat-126: the review found this one would pass without it).
-    it('two completions with the right code reset once (the conditional confirmation)', async () => {
-        const { challenge } = await arrange()
+    // feat-129 (fifth review): without a barrier the two completions could run one after the
+    // other, and the second then stops at its own read of a confirmed challenge, so the test
+    // passed whatever markConfirmed did. The barrier holds both after they read the challenge
+    // as pending; the user lock (R06a) then lets them in one at a time, and only the conditional
+    // confirmation stops the second one: an unconditional markConfirmed resets twice.
+    it('two completions that both read the pending challenge reset once', async () => {
+        const { user, challenge } = await arrange()
+        bothReadBeforeEitherWrites(smsAuthChallengeRepository, 'findById')
+        const lockById = vi.spyOn(userRepository, 'lockById')
 
         const results = await Promise.all([complete(challenge.id), complete(challenge.id)])
 
+        // Both got past the read and reached the transaction: the race really happened.
+        expect(lockById).toHaveBeenCalledTimes(2)
         expect(results.filter((result) => result.isOk())).toHaveLength(1)
         const refused = results.find((result) => result.isErr())
         if (refused?.isErr() !== true) throw new Error('no refused completion')
         expect(appErrorMessage(refused.error)).toBe('Phone reset challenge is no longer valid')
+        expect((await userRow(user.id)).sessionToken).not.toBe(user.sessionToken)
     })
 })

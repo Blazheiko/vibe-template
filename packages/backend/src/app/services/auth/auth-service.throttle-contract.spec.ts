@@ -9,6 +9,9 @@ import {
 } from '#app/services/shared/errors.js'
 import type { authService } from './auth-service.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-069 (G1): the throttle steps of authService as a table, before they are folded into one
 // `enforceThrottle()` helper (H1). Per step: which counter is consumed (scope + key), in what
 // order, what the caller gets when the counter is spent ("blocked") and when Redis does not
@@ -220,7 +223,12 @@ const ROWS: readonly Row[] = [
             s.startPhoneLink(
                 7n,
                 { phone: PHONE, currentPassword: 'secret' },
-                { ...IP, sessionId: 's', presentedSessionToken: TOKEN },
+                {
+                    ...IP,
+                    sessionId: 's',
+                    presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
+                },
             ),
         consumed: [['change_password_user', '7']],
         blocked: rateLimited('Too many password attempts. Please try again later.'),
@@ -228,7 +236,12 @@ const ROWS: readonly Row[] = [
     {
         method: 'startEmailLink · password',
         call: (s) =>
-            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
+            s.startEmailLink(
+                7n,
+                { email: ' New@Example.com ', currentPassword: 'secret' },
+                TOKEN,
+                sessionStillStored,
+            ),
         consumed: [['change_password_user', '7']],
         blocked: rateLimited('Too many password attempts. Please try again later.'),
     },
@@ -242,6 +255,7 @@ const ROWS: readonly Row[] = [
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
                 },
             ),
         consumed: [
@@ -260,6 +274,7 @@ const ROWS: readonly Row[] = [
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
                 },
             ),
         consumed: [
@@ -279,6 +294,7 @@ const ROWS: readonly Row[] = [
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
                 },
             ),
         consumed: [
@@ -299,6 +315,7 @@ const ROWS: readonly Row[] = [
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
+                    sessionStored: sessionStillStored,
                 },
             ),
         consumed: [['confirm_link_phone_ip', '203.0.113.9']],
@@ -307,7 +324,12 @@ const ROWS: readonly Row[] = [
     {
         method: 'startEmailLink · target',
         call: (s) =>
-            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
+            s.startEmailLink(
+                7n,
+                { email: ' New@Example.com ', currentPassword: 'secret' },
+                TOKEN,
+                sessionStillStored,
+            ),
         consumed: [
             ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
@@ -317,7 +339,12 @@ const ROWS: readonly Row[] = [
     {
         method: 'startEmailLink · user',
         call: (s) =>
-            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
+            s.startEmailLink(
+                7n,
+                { email: ' New@Example.com ', currentPassword: 'secret' },
+                TOKEN,
+                sessionStillStored,
+            ),
         consumed: [
             ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
@@ -328,7 +355,12 @@ const ROWS: readonly Row[] = [
     {
         method: 'startEmailLink · cooldown',
         call: (s) =>
-            s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
+            s.startEmailLink(
+                7n,
+                { email: ' New@Example.com ', currentPassword: 'secret' },
+                TOKEN,
+                sessionStillStored,
+            ),
         consumed: [
             ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],

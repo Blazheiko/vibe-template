@@ -2,6 +2,9 @@ import { createHash } from 'node:crypto'
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 const userRepositoryMock = {
     findById: vi.fn(),
     findByEmail: vi.fn(),
@@ -1542,7 +1545,7 @@ describe('oauthService.confirmLink', () => {
 describe('oauthService.resendFirstEmailLink', () => {
     const resend = async (presented: string | undefined) => {
         const { oauthService } = await loadOauthService()
-        return oauthService.resendFirstEmailLink(7n, presented)
+        return oauthService.resendFirstEmailLink(7n, presented, sessionStillStored)
     }
 
     it.each([

@@ -8,6 +8,9 @@ import {
 } from '#app/services/shared/errors.js'
 import type { emailVerificationService } from './email-verification-service.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-069 (G1): emailVerificationService, state -> answer, before it is split (H2-H5). Every
 // row names a state of the repositories and what the caller is told or gets back, and the side
 // effects that must or must not have happened. The throttle steps are in
@@ -613,14 +616,14 @@ const ROWS: readonly Row[] = [
     {
         name: 'queueVerificationEmail · unknown user',
         arrange: () => userRepositoryMock.findById.mockResolvedValue(undefined),
-        call: (s) => s.queueVerificationEmail(7n),
+        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
         error: err(404, 'not_found', 'User not found'),
     },
     {
         name: 'queueVerificationEmail · already verified',
         arrange: () =>
             userRepositoryMock.findById.mockResolvedValue(user({ emailVerifiedAt: new Date() })),
-        call: (s) => s.queueVerificationEmail(7n),
+        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
         ok: { message: 'Email is already verified' },
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
@@ -635,10 +638,26 @@ const ROWS: readonly Row[] = [
             verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.queueVerificationEmail(7n),
+        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
         ok: { message: 'Verification email will be sent shortly' },
         after: () => {
             expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
+        },
+    },
+    {
+        // feat-129: a logout in another tab deleted the session record after the request was let in.
+        name: 'queueVerificationEmail · session record gone: 401, no mail',
+        arrange: () => {
+            userRepositoryMock.findById.mockResolvedValue(user())
+            userRepositoryMock.lockById.mockResolvedValue(user())
+            verificationRepositoryMock.create.mockResolvedValue({ id: 1n })
+            emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
+        },
+        call: (s) => s.queueVerificationEmail(7n, () => Promise.resolve(false)),
+        error: err(401, 'unauthorized', 'Session has been revoked'),
+        after: () => {
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+            expect(verificationRepositoryMock.create).not.toHaveBeenCalled()
         },
     },
 ]

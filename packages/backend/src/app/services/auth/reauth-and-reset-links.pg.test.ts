@@ -10,6 +10,9 @@ import {
 } from '../../../test-support/redis-test-client.js'
 import { appErrorMessage } from '../shared/errors.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-109 (R06b) on real PostgreSQL and Redis:
 // - the current-password re-check of link-email / link-phone spends the per-user budget of
 //   change-password before the check, so a stolen session cannot guess the password through it;
@@ -135,6 +138,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             user.id,
             { email: `new-${run}-${String(counter)}@example.test`, currentPassword },
             user.sessionToken,
+            sessionStillStored,
         )
 
     const message = (result: { isErr(): boolean; error?: unknown }): string | undefined =>
