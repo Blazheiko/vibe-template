@@ -154,7 +154,10 @@ const serviceUnavailableMessage = (event: string): WsResponseData => ({
     ),
 })
 
-const closeExpiredSession = (ws: MyWebSocket): void => {
+const closeExpiredSession = (ws: MyWebSocket, userData: UserConnection): void => {
+    // feat-128: the session lookup before this is awaited; a socket that closed meanwhile is
+    // gone already, and touching it would throw.
+    if (userData.closed === true) return
     ws.cork(() => {
         try {
             ws.send(makeJson(unAuthorizedMessage()))
@@ -292,7 +295,7 @@ const onMessage = async (
         if (sessionResult.kind === 'unavailable') {
             sendJson(ws, serviceUnavailableMessage(message.event), userData)
         } else if (sessionResult.kind === 'missing') {
-            closeExpiredSession(ws)
+            closeExpiredSession(ws, userData)
         } else {
             // The dispatcher always answers, an unknown route included (not_found).
             const result = await wsApiHandler(

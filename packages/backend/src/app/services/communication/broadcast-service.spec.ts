@@ -190,6 +190,10 @@ describe('undeclared keys follow the response mode (feat-049 §4.3)', () => {
 
 // feat-124 (L9): uWS send 1 = sent, 0 = buffered (still goes out), 2 = dropped.
 const ping = (): BroadcastMessage => ['support_chat_token', { token: 'hi' }]
+const complete = (): BroadcastMessage => [
+    'support_chat_complete',
+    { content: 'The whole reply', screenshots: [] },
+]
 
 describe('send results (feat-124)', () => {
     afterEach(() => {
@@ -211,8 +215,27 @@ describe('send results (feat-124)', () => {
         send.mockImplementationOnce(() => 2).mockImplementation(() => 1)
         const service = createBroadcastService({ mode: 'log' })
 
-        expect(service.broadcastMessageToUser('7', ...ping())).toBe(2)
+        expect(service.broadcastMessageToUser('7', ...complete())).toBe(2)
         expect(end).toHaveBeenCalledTimes(1)
+        expect(end).toHaveBeenCalledWith(1013, 'Backpressure')
+    })
+
+    // feat-128 (N3): a stream token is a preview; support_chat_complete carries the whole reply.
+    // Ending the connection on a dropped token aborted the run, and the paid reply was lost.
+    it('keeps a connection that dropped a stream token open, and does not count it', () => {
+        send.mockImplementation(() => 2)
+        const service = createBroadcastService({ mode: 'log' })
+
+        expect(service.broadcastMessageToUserConnection('7', 'a', ...ping())).toBe(0)
+        expect(service.broadcastMessageToUser('7', ...ping())).toBe(0)
+        expect(end).not.toHaveBeenCalled()
+    })
+
+    it('ends the connection when the final event of the stream is dropped', () => {
+        send.mockImplementation(() => 2)
+        const service = createBroadcastService({ mode: 'log' })
+
+        expect(service.broadcastMessageToUserConnection('7', 'a', ...complete())).toBe(0)
         expect(end).toHaveBeenCalledWith(1013, 'Backpressure')
     })
 })

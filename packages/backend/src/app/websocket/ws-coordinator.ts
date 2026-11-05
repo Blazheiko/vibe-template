@@ -6,10 +6,12 @@ import { wsPresenceService } from '#app/services/communication/ws-presence-servi
 import { userRoleService } from '#app/services/user/user-role-service.js'
 import logger from '#vendor/utils/logger.js'
 
-// feat-124: the user_online row of each open connection, by socket uuid. The connect INSERT is not
-// awaited; a disconnect that came first would UPDATE nothing and leave the row open for ever, so
-// the disconnect waits for it. A connection whose row was never written writes no disconnect.
-const onlineRows = new Map<string, Promise<boolean>>()
+// feat-124: the connect INSERT of each open connection's user_online row, by socket uuid. It is
+// not awaited; a disconnect that came first would UPDATE nothing and leave the row open for ever,
+// so the disconnect waits for it to settle. feat-128: a failed INSERT may still have committed
+// (a timeout or a reset connection after the COMMIT reached the server), so the disconnect UPDATE
+// runs whatever the INSERT answered; when there really is no row it finds none and only warns.
+const onlineRows = new Map<string, Promise<void>>()
 
 /**
  * Guards below narrow `userId`/`sessionId` from `string | undefined`
@@ -36,7 +38,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         userAgent: userData.userAgent,
         appType: userData.appType,
     })
-    const rowWritten = userOnlineService
+    const connectSettled = userOnlineService
         .trackConnected({
             userId: BigInt(userId),
             sessionId,
@@ -48,17 +50,13 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             connectedAt,
             isFirstConnection,
         })
-        .then(
-            () => true,
-            (error: unknown) => {
-                logger.error(
-                    { err: error, userId, socketUuid: userData.uuid },
-                    'user_online: failed to track connect',
-                )
-                return false
-            },
-        )
-    onlineRows.set(userData.uuid, rowWritten)
+        .catch((error: unknown) => {
+            logger.error(
+                { err: error, userId, socketUuid: userData.uuid },
+                'user_online: failed to track connect',
+            )
+        })
+    onlineRows.set(userData.uuid, connectSettled)
 
     if (isFirstConnection) {
         await wsPresenceService.onUserConnected({
@@ -90,26 +88,28 @@ const handleDisconnected = async (
 
     adminWsChannelService.handleConnectionClosed(_ws)
 
-    const rowWritten = onlineRows.get(userData.uuid)
+    const connectSettled = onlineRows.get(userData.uuid)
     onlineRows.delete(userData.uuid)
     const connectionDurationMs = Math.max(0, Date.now() - userData.timeStart)
-    void (rowWritten ?? Promise.resolve(false))
-        .then(async (written) => {
-            if (!written) return
-            await userOnlineService.trackDisconnected({
-                socketUuid: userData.uuid,
-                disconnectedAt,
-                closeCode: code,
-                connectionDurationMs,
-                isLastConnection,
+    // A connection that closed before its row was tracked (while its role was read) has none.
+    if (connectSettled !== undefined) {
+        void connectSettled
+            .then(async () => {
+                await userOnlineService.trackDisconnected({
+                    socketUuid: userData.uuid,
+                    disconnectedAt,
+                    closeCode: code,
+                    connectionDurationMs,
+                    isLastConnection,
+                })
             })
-        })
-        .catch((error: unknown) => {
-            logger.error(
-                { err: error, userId, socketUuid: userData.uuid },
-                'user_online: failed to track disconnect',
-            )
-        })
+            .catch((error: unknown) => {
+                logger.error(
+                    { err: error, userId, socketUuid: userData.uuid },
+                    'user_online: failed to track disconnect',
+                )
+            })
+    }
 
     if (isLastConnection) {
         await wsPresenceService.onUserDisconnected({

@@ -144,7 +144,7 @@ describe('connection registry lifecycle (feat-107)', () => {
     })
 })
 
-// feat-124: the user_online row of a connection is completed only after it was written.
+// feat-124: the user_online row of a connection is completed only after its INSERT settled.
 describe('user_online rows (feat-124)', () => {
     const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -176,15 +176,22 @@ describe('user_online rows (feat-124)', () => {
         expect(order).toEqual(['inserted', 'completed'])
     })
 
-    it('a connection whose row was never written completes none', async () => {
-        online.trackConnected.mockImplementationOnce(() => Promise.reject(new Error('db down')))
+    // feat-128: a failed INSERT may still have committed (a statement timeout or a reset
+    // connection after the COMMIT reached the server); skipping the UPDATE left that row open.
+    it('a connect INSERT that failed still gets the disconnect UPDATE', async () => {
+        online.trackConnected.mockImplementationOnce(() =>
+            Promise.reject(new Error('Connection terminated unexpectedly')),
+        )
         const conn = connection('902')
         await connect(conn)
 
         await conn.close()
         await settle()
 
-        expect(online.trackDisconnected).not.toHaveBeenCalled()
+        expect(online.trackDisconnected).toHaveBeenCalledTimes(1)
+        expect(online.trackDisconnected).toHaveBeenCalledWith(
+            expect.objectContaining({ socketUuid: conn.userData.uuid }),
+        )
     })
 
     it('a socket closed while its role was read writes neither row', async () => {

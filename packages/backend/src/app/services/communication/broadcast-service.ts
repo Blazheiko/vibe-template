@@ -43,11 +43,26 @@ export interface BroadcastService {
 // (as sendJson does for replies) and the client reconnects and resyncs.
 const SEND_DROPPED = 2
 
-const deliver = (connection: MyWebSocket, message: string, userId: string): boolean => {
+// feat-128 (N3): events a client can lose without falling out of step. A stream token is a
+// preview: support_chat_complete carries the whole reply, so a dropped token only leaves a gap in
+// the preview. Ending the connection there would abort the run (onClose cancels it) and lose the
+// reply already paid for; the final event, when dropped, still ends the connection.
+const PREVIEW_EVENTS: ReadonlySet<BroadcastEventName> = new Set(['support_chat_token'])
+
+const deliver = (
+    connection: MyWebSocket,
+    message: string,
+    userId: string,
+    event: BroadcastEventName,
+): boolean => {
     const result = connection.send(message)
     if (result !== SEND_DROPPED) return true
+    if (PREVIEW_EVENTS.has(event)) {
+        logger.debug({ userId, event }, 'Broadcast preview event dropped by backpressure')
+        return false
+    }
     logger.warn(
-        { userId, bufferedAmount: connection.getBufferedAmount() },
+        { userId, event, bufferedAmount: connection.getBufferedAmount() },
         'Broadcast dropped by backpressure, closing the connection',
     )
     connection.end(1013, 'Backpressure')
@@ -80,7 +95,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             let counter = 0
             wsConnectionRegistry.forEachConnection(userId, (userConnection) => {
                 try {
-                    if (deliver(userConnection, message, userId)) counter++
+                    if (deliver(userConnection, message, userId, event)) counter++
                 } catch (error) {
                     logger.warn({ err: error }, `Error sending message to user ${userId}`)
                 }
@@ -100,7 +115,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             wsConnectionRegistry.forEachConnection(userId, (userConnection, uuid) => {
                 if (uuid === excludeUuid) return
                 try {
-                    if (deliver(userConnection, message, userId)) counter++
+                    if (deliver(userConnection, message, userId, event)) counter++
                 } catch (error) {
                     logger.warn({ err: error }, `Error sending message to user ${userId}`)
                 }
@@ -124,7 +139,7 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             const message = serialize(event, payload)
             if (message === null) return 0
             try {
-                return deliver(connection, message, userId) ? 1 : 0
+                return deliver(connection, message, userId, event) ? 1 : 0
             } catch (error) {
                 logger.warn(
                     { err: error },
