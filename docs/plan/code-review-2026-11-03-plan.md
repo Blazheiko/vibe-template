@@ -561,32 +561,52 @@ High-дефектів немає. Medium підтверджено в коді; �
 
 Групи: **G1** (feat-121) — M1–M4; **G2** — лок і мережа (L6–L8); **G3** — сесія й auth (L5, F6-low, R06b 429); **G4** — WebSocket (L9, R04-low); **G5** — операції й логи (L10, R01/R11c/R11d-low, push, `fetchJson`, слабкі тести); розбито на **G5a** (feat-125: L10, KB-init, push endpoint, R11d COMMIT, `fetchJson`) і **G5b** (обходи scrubber R01, тести, що пройшли б без виправлень).
 
+### П'яте рев'ю 2026-11-05 (feat-121…126)
+
+17 з 26 знахідок четвертого рев'ю закрито повністю. Решта закрита частково, а виправлення внесли
+дві регресії (N1, N2). Medium підтверджено в коді.
+
+| #   | Пріоритет | Знахідка                                                                                                                                                                               | Група |
+| --- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| N1  | medium    | `formatters.log` вважає помилкою будь-який об'єкт із рядковим `message` і видаляє поля звичайних об'єктів логу (`{ code, message }` AppError)                                          | H1    |
+| N2  | medium    | Sentry `sanitizeDeep` пропускає екземпляри класів без очищення                                                                                                                         | H1    |
+| N3  | medium    | Дроп одного токена support-стріму (`send` → 2, `end(1013)`) губить відповідь, за яку вже заплачено                                                                                     | H2    |
+| L5  | low-med   | Guard `isStored` необов'язковий, підключення в контролерах не покрито тестами; resend-verification-email і test-push без guard                                                         | H3    |
+| Lx  | low       | Логер: подвійна глибока копія, без seen-map, помилки глибше ліміту сирі, `msg` із неочищеної помилки                                                                                   | H1    |
+| Lx  | low       | `closeExpiredSession` після `await` без перевірки `closed`; `user_online` після неоднозначного INSERT                                                                                  | H2    |
+| Lx  | low       | Тест «дві completion phone-reset» досі проходить без виправлення                                                                                                                       | H3    |
+| Lx  | low       | Purge без keyset і dry-run через основний пул; push endpoint path/query; R11d COMMIT; arctic без таймауту; lease `release`; CIDR `::ffff:…/104`; статус KB-init; XFF лише перший рядок | H4    |
+
+Групи: **H1** (feat-127) — логи й Sentry (N1, N2, low логера); **H2** — WebSocket і support-стрім (N3,
+`closeExpiredSession`, `user_online`); **H3** — сесія (L5, тест phone-reset); **H4** — операції (решта low).
+
 ## Стан
 
-| Фіча                  | id       | PR   | Стан |
-| --------------------- | -------- | ---- | ---- |
-| R01                   | feat-102 | #345 | done |
-| R02                   | feat-103 | #347 | done |
-| R03                   | feat-104 | #349 | done |
-| R06a                  | feat-106 | #353 | done |
-| R11a                  | feat-105 | #351 | done |
-| R04                   | feat-107 | #356 | done |
-| R05                   | feat-108 | #359 | done |
-| R06b                  | feat-109 | #362 | done |
-| R07                   | feat-110 | #364 | done |
-| R09                   | feat-111 | #367 | done |
-| R08                   | feat-112 | #370 | done |
-| R10                   | feat-113 | #373 | done |
-| R11b                  | feat-114 | #376 | done |
-| R11c                  | feat-115 | #379 | done |
-| R11d                  | feat-116 | #382 | done |
-| R12a                  | feat-117 | #385 | done |
-| R12b                  | feat-118 | #388 | done |
-| F1–F5                 | feat-119 | #391 | done |
-| F6                    | feat-120 | #394 | done |
-| G1 (M1–M4)            | feat-121 | #397 | done |
-| G2 (L6–L8)            | feat-122 | #400 | done |
-| G3 (L5, F6-low, R06b) | feat-123 | #403 | done |
-| G4 (L9, R04-low)      | feat-124 | #406 | done |
-| G5a (L10, ops)        | feat-125 | #409 | done |
-| G5b (logs, tests)     | feat-126 | #412 | done |
+| Фіча                  | id       | PR   | Стан        |
+| --------------------- | -------- | ---- | ----------- |
+| R01                   | feat-102 | #345 | done        |
+| R02                   | feat-103 | #347 | done        |
+| R03                   | feat-104 | #349 | done        |
+| R06a                  | feat-106 | #353 | done        |
+| R11a                  | feat-105 | #351 | done        |
+| R04                   | feat-107 | #356 | done        |
+| R05                   | feat-108 | #359 | done        |
+| R06b                  | feat-109 | #362 | done        |
+| R07                   | feat-110 | #364 | done        |
+| R09                   | feat-111 | #367 | done        |
+| R08                   | feat-112 | #370 | done        |
+| R10                   | feat-113 | #373 | done        |
+| R11b                  | feat-114 | #376 | done        |
+| R11c                  | feat-115 | #379 | done        |
+| R11d                  | feat-116 | #382 | done        |
+| R12a                  | feat-117 | #385 | done        |
+| R12b                  | feat-118 | #388 | done        |
+| F1–F5                 | feat-119 | #391 | done        |
+| F6                    | feat-120 | #394 | done        |
+| G1 (M1–M4)            | feat-121 | #397 | done        |
+| G2 (L6–L8)            | feat-122 | #400 | done        |
+| G3 (L5, F6-low, R06b) | feat-123 | #403 | done        |
+| G4 (L9, R04-low)      | feat-124 | #406 | done        |
+| G5a (L10, ops)        | feat-125 | #409 | done        |
+| G5b (logs, tests)     | feat-126 | #412 | done        |
+| H1 (N1, N2, logs)     | feat-127 | —    | in_progress |
