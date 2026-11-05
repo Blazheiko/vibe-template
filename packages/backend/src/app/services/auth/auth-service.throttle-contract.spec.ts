@@ -148,6 +148,8 @@ const login = (identifier: string) => (service: Service) =>
     service.login({ identifier, password: 'secret' }, authMock as never, sessionMock as never, IP)
 const INVALID = { status: 401, code: 'unauthorized', message: 'Invalid email or password' }
 const badRequest = (message: string) => ({ status: 400, code: 'bad_request', message })
+// feat-123: a spent password budget is 429.
+const rateLimited = (message: string) => ({ status: 429, code: 'rate_limited', message })
 
 const ROWS: readonly Row[] = [
     {
@@ -221,14 +223,14 @@ const ROWS: readonly Row[] = [
                 { ...IP, sessionId: 's', presentedSessionToken: TOKEN },
             ),
         consumed: [['change_password_user', '7']],
-        blocked: badRequest('Too many password attempts. Please try again later.'),
+        blocked: rateLimited('Too many password attempts. Please try again later.'),
     },
     {
         method: 'startEmailLink · password',
         call: (s) =>
             s.startEmailLink(7n, { email: ' New@Example.com ', currentPassword: 'secret' }, TOKEN),
         consumed: [['change_password_user', '7']],
-        blocked: badRequest('Too many password attempts. Please try again later.'),
+        blocked: rateLimited('Too many password attempts. Please try again later.'),
     },
     {
         method: 'startPhoneLink · ip',
@@ -364,7 +366,7 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.changePassword(7n, { currentPassword: 'old', newPassword: 'new-password' }, TOKEN),
         consumed: [['change_password_user', '7']],
-        blocked: badRequest('Too many password change attempts. Please try again later.'),
+        blocked: rateLimited('Too many password change attempts. Please try again later.'),
     },
 ]
 

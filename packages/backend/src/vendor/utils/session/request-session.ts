@@ -278,6 +278,7 @@ export class RequestSession {
         session.updateSessionData = this.updateData.bind(this)
         session.changeSessionData = this.changeData.bind(this)
         session.consumeSessionData = this.consumeData.bind(this)
+        session.isStored = this.isStored.bind(this)
         session.destroySession = this.destroy.bind(this)
         auth.getUserId = this.userId.bind(this)
         auth.getPresentedUserToken = this.getPresentedUserToken.bind(this)
@@ -315,6 +316,12 @@ export class RequestSession {
         const result = await consumeSessionData(this.info.id, this.storageToken, expected, keys)
         if (result.kind === 'consumed') this.setInfo(result.session)
         return result.kind
+    }
+
+    /** feat-123: whether this session's record still exists; a cookie-held one has none. */
+    private async isStored(): Promise<boolean> {
+        if (this.cookieHeld) return false
+        return sessionExists(this.info.id, this.storageToken)
     }
 
     private async destroy(): Promise<void> {

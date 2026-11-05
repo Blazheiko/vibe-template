@@ -677,6 +677,90 @@ describe('authService phone foundation', () => {
         })
     })
 
+    // feat-123 (L5): a logout in another tab deleted the record; asked right before the SMS.
+    it('sends no SMS when the session record is gone by then: 401', async () => {
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 7n,
+            email: 'user@example.com',
+            phone: null,
+            password: 'hashed-password',
+            sessionToken: 'session-token',
+        })
+        validatePasswordMock.mockResolvedValue(true)
+        consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+        userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
+        smsAuthChallengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(undefined)
+        smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow.mockResolvedValue(0)
+        smsAuthChallengeRepositoryMock.create.mockResolvedValue({
+            id: 'link-challenge-1',
+            flow: 'link_phone',
+            phone: '+14155550123',
+            codeHash: 'PENDING_SMS_CODE_HASH_PLACEHOLDER',
+            providerRequestId: null,
+            metadata: {
+                userId: '7',
+                ipAddress: '127.0.0.1',
+                provider: 'fake',
+                sessionId: 'session-id',
+            },
+            attemptCount: 0,
+            sendCount: 1,
+            resendAvailableAt: new Date('2099-05-15T10:01:00.000Z'),
+            expiresAt: new Date('2099-05-15T10:10:00.000Z'),
+            confirmedAt: null,
+            invalidatedAt: null,
+            createdAt: new Date('2026-05-15T10:00:00.000Z'),
+            updatedAt: new Date('2026-05-15T10:00:00.000Z'),
+        })
+        issueVerificationCodeMock.mockResolvedValue({
+            code: '123456',
+            providerRequestId: 'fake-link-1',
+        })
+        smsAuthChallengeRepositoryMock.markIssued.mockResolvedValue({
+            id: 'link-challenge-1',
+            flow: 'link_phone',
+            phone: '+14155550123',
+            codeHash: 'hashed-code',
+            providerRequestId: 'fake-link-1',
+            metadata: {
+                userId: '7',
+                ipAddress: '127.0.0.1',
+                provider: 'fake',
+                sessionId: 'session-id',
+            },
+            attemptCount: 0,
+            sendCount: 1,
+            resendAvailableAt: new Date('2099-05-15T10:01:00.000Z'),
+            expiresAt: new Date('2099-05-15T10:10:00.000Z'),
+            confirmedAt: null,
+            invalidatedAt: null,
+            createdAt: new Date('2026-05-15T10:00:00.000Z'),
+            updatedAt: new Date('2026-05-15T10:00:01.000Z'),
+        })
+
+        const { authService } = await loadAuthService()
+        const result = await authService.startPhoneLink(
+            7n,
+            {
+                phone: '+1 415 555 0123',
+                currentPassword: 'secret123',
+            },
+            {
+                ipAddress: '127.0.0.1',
+                sessionId: 'session-id',
+                presentedSessionToken: 'session-token',
+                sessionStored: () => Promise.resolve(false),
+            },
+        )
+
+        expect(Result.isError(result) && result.error).toMatchObject({
+            _tag: 'Unauthorized',
+            reason: 'session_revoked',
+        })
+        expect(issueVerificationCodeMock).not.toHaveBeenCalled()
+        expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
+    })
+
     it('requires an active session to start phone linking', async () => {
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(

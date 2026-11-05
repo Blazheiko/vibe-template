@@ -276,6 +276,7 @@ export default {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneLink'),
             presentedSessionToken: context.auth.getPresentedUserToken(),
+            sessionStored: () => context.session.isStored(),
         })
         return respond(context, result)
     },
@@ -293,6 +294,7 @@ export default {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
             presentedSessionToken: context.auth.getPresentedUserToken(),
+            sessionStored: () => context.session.isStored(),
         })
         return respond(context, result)
     },
@@ -310,6 +312,7 @@ export default {
             userId,
             payload,
             context.auth.getPresentedUserToken(),
+            () => context.session.isStored(),
         )
         return respond(context, result)
     },

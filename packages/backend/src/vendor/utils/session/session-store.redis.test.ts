@@ -440,3 +440,21 @@ describe.skipIf(!hasRedis)(
         })
     },
 )
+
+describe.skipIf(!hasRedis)(
+    'session.isStored for operations that do not write (feat-123, L5)',
+    () => {
+        it('is true while the record exists and false after a logout in another tab', async () => {
+            await save('stored')
+            const request = createRequest('stored')
+            expect(await executeMiddlewares(['session_web', 'auth_guard'], request.context)).toBe(
+                true,
+            )
+
+            expect(await request.context.session.isStored()).toBe(true)
+            // The logout in another tab: the record goes, users.session_token stays.
+            await admin.del(`session:${USER_TOKEN}:stored`)
+            expect(await request.context.session.isStored()).toBe(false)
+        })
+    },
+)

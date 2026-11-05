@@ -124,6 +124,13 @@ export interface Session {
         expected: Record<string, string>,
         keys: readonly string[],
     ) => Promise<'consumed' | 'mismatch' | 'gone'>
+    /**
+     * Whether the session's record is still stored (feat-123): a logout in another tab deletes
+     * it without rotating users.session_token, so an operation that does not write to the session
+     * asks right before its irreversible step (a mail, an SMS, a link). A cookie-held anonymous
+     * session has no record: false.
+     */
+    isStored: () => Promise<boolean>
     /** Deletes the current session's record; it does not issue a new session. */
     destroySession: () => Promise<void>
     /** Run by the server after the handler, right before the response is sent. */

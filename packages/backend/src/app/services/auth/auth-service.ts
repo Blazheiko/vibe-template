@@ -16,6 +16,7 @@ import {
     internalMessage,
     sessionRevoked,
     notFound,
+    rateLimited,
     unauthorized,
     type AppResult,
 } from '#app/services/shared/errors.js'
@@ -140,6 +141,22 @@ async function resetThrottleQuietly(
  * `presentedSessionToken` is `Auth.getPresentedUserToken()`: a session revoked after the
  * request was let in (a claim, a password change elsewhere) is refused here (feat-096).
  */
+/**
+ * feat-123 (L5): a logout in another tab deletes this session's record without rotating
+ * users.session_token. An operation that does not write to the session asks right before its
+ * irreversible step (a mail, an SMS, a link) whether the record is still there, and stops with 401.
+ */
+type SessionStillStored = () => Promise<boolean>
+
+async function requireSessionStored(
+    sessionStored: SessionStillStored | undefined,
+): Promise<AppResult<void>> {
+    if (sessionStored !== undefined && !(await sessionStored())) {
+        return Result.err(sessionRevoked())
+    }
+    return Result.ok(undefined)
+}
+
 async function requireCurrentPasswordReauth(
     userId: bigint,
     currentPassword: string,
@@ -163,7 +180,8 @@ async function requireCurrentPasswordReauth(
     const throttle = await enforceThrottle(
         throttlePolicies.changePasswordUser,
         String(userId),
-        badRequest('Too many password attempts. Please try again later.'),
+        // feat-123: 429, as the R06b acceptance criteria say: a spent budget is a rate limit.
+        rateLimited('Too many password attempts. Please try again later.'),
     )
     if (Result.isError(throttle)) {
         return Result.err(throttle.error)
@@ -625,6 +643,8 @@ export const authService = {
             ipAddress: string
             sessionId: string | null
             presentedSessionToken: string | undefined
+            /** feat-123: checked right before the irreversible step. */
+            sessionStored?: SessionStillStored
         },
     ): Promise<
         AppResult<{
@@ -709,6 +729,10 @@ export const authService = {
             provider: authConfig.smsProvider,
             sessionId: requestMeta.sessionId,
         }
+        const stillStored = await requireSessionStored(requestMeta.sessionStored)
+        if (Result.isError(stillStored)) {
+            return Result.err(stillStored.error)
+        }
         const issuedChallengeResult = await issueSmsChallenge({
             phone,
             flow: LINK_PHONE_FLOW,
@@ -734,6 +758,8 @@ export const authService = {
             ipAddress: string
             sessionId: string | null
             presentedSessionToken: string | undefined
+            /** feat-123: checked right before the irreversible step. */
+            sessionStored?: SessionStillStored
         },
     ): Promise<
         AppResult<{
@@ -809,6 +835,10 @@ export const authService = {
             return Result.err(conflict('Phone is already linked to another account'))
         }
 
+        const stillStored = await requireSessionStored(requestMeta.sessionStored)
+        if (Result.isError(stillStored)) {
+            return Result.err(stillStored.error)
+        }
         const confirmedResult = await confirmChallenge(challenge, {
             noLongerValid: 'Phone linking challenge is no longer valid',
         })
@@ -846,6 +876,7 @@ export const authService = {
         userId: bigint,
         payload: LinkEmailStartInput,
         presentedSessionToken: string | undefined,
+        sessionStored?: SessionStillStored,
     ): Promise<AppResult<{ status: 'success'; message: string }>> {
         const reauthResult = await requireCurrentPasswordReauth(
             userId,
@@ -877,6 +908,10 @@ export const authService = {
             return Result.err(conflict('Email is already linked to another account'))
         }
 
+        const stillStored = await requireSessionStored(sessionStored)
+        if (Result.isError(stillStored)) {
+            return Result.err(stillStored.error)
+        }
         const sendResult = await emailVerificationService.sendLinkVerificationEmail(
             userId,
             email,
@@ -1103,7 +1138,7 @@ export const authService = {
         const throttle = await enforceThrottle(
             throttlePolicies.changePasswordUser,
             String(userId),
-            badRequest('Too many password change attempts. Please try again later.'),
+            rateLimited('Too many password change attempts. Please try again later.'),
         )
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)

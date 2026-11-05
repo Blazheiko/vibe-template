@@ -25,6 +25,7 @@ import {
 import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 import type { OAuthCallbackQuery, OAuthLinkConfirmInput, OAuthRedirectQuery } from 'shared/schemas'
 import oauthConfig from '#config/oauth.js'
+import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import type {
     EmailLinkResendResponse,
     OAuthCallbackResponse,
@@ -134,6 +135,13 @@ export default {
             return redirectToError(context, badRequest('Missing OAuth parameters'))
         }
 
+        // feat-123: compared before it is consumed. A navigation another site makes to this
+        // callback with a made-up state must not use up the state of a sign-in the user is in the
+        // middle of (SameSite=Lax sends the cookie on such a navigation).
+        if (!safeEqual(storedState, receivedState)) {
+            return redirectToError(context, badRequest('OAuth state mismatch'))
+        }
+
         // feat-119 (F2): the state and verifier are single-use and are consumed BEFORE anything
         // happens on their behalf (accounts, mail, the login), and only while the session still
         // holds the state this request read. One compare-and-set decides:
@@ -206,6 +214,7 @@ export default {
         const result = await oauthService.resendFirstEmailLink(
             userId,
             context.auth.getPresentedUserToken(),
+            () => context.session.isStored(),
         )
         return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
