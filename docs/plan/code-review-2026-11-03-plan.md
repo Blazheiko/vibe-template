@@ -609,4 +609,5 @@ High-дефектів немає. Medium підтверджено в коді; �
 | G4 (L9, R04-low)      | feat-124 | #406 | done        |
 | G5a (L10, ops)        | feat-125 | #409 | done        |
 | G5b (logs, tests)     | feat-126 | #412 | done        |
-| H1 (N1, N2, logs)     | feat-127 | —    | in_progress |
+| H1 (N1, N2, logs)     | feat-127 | #415 | done        |
+| H2 (N3, WS lows)      | feat-128 | —    | in_progress |

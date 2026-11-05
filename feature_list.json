@@ -1261,6 +1261,16 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-127-scrub-regressions",
             "dependencies": ["feat-126"],
+            "status": "done",
+            "evidence": "Merged #415 (merge 45fd0ed; start #414). N1: plain data is walked with a strict error check (Error, or string name+message+stack), so { code, message } and payload: { message } keep their fields; one copy-on-write pass with a seen-map, cycles -> [Circular], subtrees deeper than 32 -> [Truncated], no second deep copy in the logger; hooks.logMethod gives pino a safe copy before it takes msg from logger.error(err) / logger.error({ err }). N2: Sentry sanitizeDeep sanitizes class instances as their own fields, dates/maps/sets/buffers kept. Evidence: typecheck, lint, prettier clean; pnpm test backend 2406, frontend 400, api-playground 62; test:pg 28/255, test:redis 11/116; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; manual: the reviewer's repro returns the object unchanged (main gave {\"userId\":5,\"payload\":{}}); mutation: main scrub-error 5, logger 2, sentry 1 cases fail. Details were in progress.md on fix/feat-127-scrub-regressions (removed from main by this PR)."
+        },
+        {
+            "id": "feat-128",
+            "name": "Support Stream and WebSocket Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fifth review H2: N3 (a support_chat_token dropped by backpressure makes deliver end the connection with 1013; onClose aborts the run and the aborted branch sets no outcome, so the reply the LLM already produced is neither saved nor sent), closeExpiredSession after the await in onMessage touches a socket that closed meanwhile (an unknown error log), and a user_online row stays open when the connect INSERT committed but its answer was lost (the disconnect UPDATE is skipped). Stream tokens are a preview (support_chat_complete carries the whole reply), so a dropped token no longer closes the connection and the run saves and completes; any other dropped event still ends it with 1013; closeExpiredSession skips a closed socket; the disconnect UPDATE runs once the connect INSERT settled, whatever its outcome; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-128-ws-support-stream",
+            "dependencies": ["feat-127"],
             "status": "in_progress",
             "evidence": ""
         }
