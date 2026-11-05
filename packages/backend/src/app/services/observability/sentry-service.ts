@@ -95,6 +95,16 @@ function sanitizeRecord(record: Record<string, unknown>): void {
     }
 }
 
+// Values Sentry serializes by their own rules (a date as a string, a buffer as bytes): kept as they are.
+const isOpaque = (value: object): boolean =>
+    value instanceof Date ||
+    value instanceof RegExp ||
+    value instanceof Map ||
+    value instanceof Set ||
+    value instanceof Promise ||
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value)
+
 // Nested values too: drops sensitive keys at every level, the params of anything that looks like a
 // query (`query` string + `params`), and the params a query-error message quotes.
 // feat-126: a COPY. The objects come from the caller (setExtra, captureException's `extra`, a
@@ -108,9 +118,11 @@ function sanitizeDeep(value: unknown, depth = 0): unknown {
     if (Array.isArray(value)) {
         return value.map((item: unknown) => sanitizeDeep(item, depth + 1))
     }
-    const proto = Object.getPrototypeOf(value) as unknown
-    if (proto !== Object.prototype && proto !== null) return value
+    if (isOpaque(value)) return value
 
+    // feat-127: a class instance too. The processor runs before Sentry normalizes the event into
+    // plain data, so an instance passed through unsanitized kept its password/token fields; it is
+    // sanitized as the plain object of its own enumerable fields, which is what Sentry sends.
     const record: Record<string, unknown> = { ...(value as Record<string, unknown>) }
     sanitizeRecord(record)
     if (typeof record['query'] === 'string' && 'params' in record) {
