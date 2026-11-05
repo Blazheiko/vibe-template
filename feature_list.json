@@ -1281,8 +1281,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-129-session-guard",
             "dependencies": ["feat-128"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #421 (merge e4ed003; start #420). The session-still-stored guard of link-email/start, link-phone start/confirm and the OAuth first-address resend is a required parameter (omitting it no longer compiles); resend-verification-email (queueVerificationEmail) and POST /push-subscriptions/test-push check session.isStored() before their side effect (401 session_revoked, nothing sent). auth-controller.session-guard.spec and oauth-controller.spec check that the request own session.isStored is handed over. The phone-reset two-completions PG test holds both completions after they read the pending challenge (bothReadBeforeEitherWrites on findById; lockById reached twice). Evidence: typecheck, lint, format clean; pnpm test backend 2417, frontend 400, api-playground 62; local test:pg 169 passed; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: stand-in wiring 3, test-push without check 1, queue without check 1, unconditional markConfirmed 1 case fail. Details were in progress.md on fix/feat-129-session-guard (removed from main by this PR)."
         }
     ]
 }
