@@ -1,32 +1,29 @@
-# feat-134 — Sixth Review Auth Lows (I1)
+# feat-135 — Lease, S3 and KB Lows (sixth review I2)
 
 ## State
 
-Done on branch `fix/feat-134-auth-lows`; start PR #435. Waiting for CI on the feature PR.
+Done on branch `fix/feat-135-lease-s3-kb`. Waiting for CI on the feature PR.
 
 ## Changes
 
-- **L1** `auth-service.ts` / `auth-controller.ts`: `changePassword` takes the required
-  session-still-stored guard and checks it right before the password write. After a logout in
-  another tab the change used to go through and `renewSession` signed the browser in again.
-- **L2** `sms-challenge.ts`, `sms-auth-challenge-repository.ts`: `openChallenge` runs in one
-  transaction under `pg_advisory_xact_lock(hashtextextended('sms_auth_challenge:<flow>:<phone>'))`,
-  checks the resend cooldown again on the fresh row, retires and creates. Of two starts that both
-  passed `findPendingChallenge`, the second now answers the 429 cooldown instead of leaving a second
-  live challenge. `openChallenge` returns `AppResult`; repository `create` / `findLatestPending…`
-  take an executor; new `lockPhoneFlow`.
-- **L3** every spent auth throttle (registration, code / link verification, linking, reset, OAuth
-  mail resend) answers `rateLimited` (429 `rate_limited`) instead of 400; the OAuth reason
-  `too_many_attempts` is kept.
-- Tests: contract case for the change-password guard; controller wiring for `changePassword`;
-  `sms-start-race.pg.test.ts` (barrier on the pending read); throttle contracts and specs on 429;
-  mock e2e register answer on 429.
-- Docs: `documentation/backend/auth.md`.
+- **L4** `redis-lease.ts`: `Lease.stopBeforeExpiryMs`; `lost` fires `max(renewEveryMs,
+stopBeforeExpiryMs)` before the key can expire. `leaseForDatabaseWrites` sets it to the longest
+  write on the main pool (`DATABASE_WRITE_BOUND_MS` = connect wait 2 s + `DB_QUERY_TIMEOUT_MS` +
+  500 ms grace) + 1 s, and grows the TTL so two renewals still fit. The KB init and the support
+  answer leases use it (with defaults: told lost 13.5 s before expiry instead of 10 s / 5 s). The
+  pool constants (`QUERY_TIMEOUT_GRACE_MS`, `POOL_CONNECTION_TIMEOUT_MS`, `statementBoundMs`) moved to
+  `config/database-pool.ts`, the one source for `db.ts` and the lease.
+- **L5** `db-errors.ts`: `isServerRejection` needs a SQLSTATE-shaped code **and** a string
+  `severity` (every PostgreSQL ErrorResponse has it); Node errno codes (`EPIPE`, `EPERM`) no
+  longer pass.
+- **L9** `knowledge-base-init-service.ts`: when the re-read after an unanswered INSERT fails too,
+  the status says the count is unknown and still points to reindex-all.
+- Docs: `ai.md`, `storage.md`.
 
 ## Evidence of Completion
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm format:check` clean
-- `pnpm test`: backend 2510, frontend 400, api-playground 62; docs build + verify
-- local test:pg (no Redis): 173 passed, 7 Redis files skipped
-- Mutation: without the change-password check 1 contract case fails; without the lock and the
-  re-check the race test fails (3/3 runs: two challenges opened); the throttle contracts pin 429.
+- `pnpm test`: backend 2521, frontend 400, api-playground 62; docs build + verify
+- local test:pg 173 passed (Redis files by CI)
+- Mutation: main `redis-lease.ts`, `db-errors.ts`, `knowledge-base-init-service.ts` → 6 new cases
+  fail (lease margin 2, Node errno / no severity 3, KB status 1).

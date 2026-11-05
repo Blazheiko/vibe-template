@@ -10,7 +10,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 // Redis in knowledge-base-init.redis.test.ts.
 
 const acquireLease = vi.fn()
-vi.mock('#app/services/shared/redis-lease.js', () => ({ acquireLease }))
+vi.mock('#app/services/shared/redis-lease.js', () => ({
+    acquireLease,
+    leaseForDatabaseWrites: <T>(lease: T): T => lease,
+}))
 const isConfigured = vi.fn(() => true)
 vi.mock('#app/services/ai/adapters/openai-embedding-adapter.js', () => ({
     openaiEmbeddingAdapter: { isConfigured },
@@ -126,6 +129,34 @@ describe('knowledgeBaseInitService after an INSERT without an answer (feat-130)'
         await service.running
 
         expect(service.getStatus()).toMatchObject({ state: 'failed', createdArticles: 2 })
+        expect(service.getStatus().message).toContain('reindex-all')
+        await rm(dir, { recursive: true, force: true })
+    })
+})
+
+// feat-135 (sixth review L9): the re-read after the unanswered INSERT failed too; the status then
+// showed a generic error, with no word that articles may be there and reindex-all may be needed.
+describe('knowledgeBaseInitService when the re-read after the INSERT fails too (feat-135)', () => {
+    it('says the count is unknown and still points to reindex-all', async () => {
+        const dir = await mkdtemp(join(tmpdir(), 'kb-status-'))
+        await writeFile(join(dir, 'a-account.txt'), 'Title\n\nBody\n')
+        createMany.mockRejectedValue(new Error('Query read timeout'))
+        findAll
+            .mockResolvedValueOnce({ rows: [], total: 0 }) // the NOT_EMPTY check
+            .mockRejectedValueOnce(new Error('Connection terminated'))
+        acquireLease.mockResolvedValue({
+            lost: new AbortController().signal,
+            release: () => Promise.resolve(true),
+        })
+        const service = createKnowledgeBaseInitService({
+            resolveSourceDir: () => Promise.resolve(dir),
+            delayMs: 0,
+        })
+
+        expect((await service.start()).ok).toBe(true)
+        await service.running
+
+        expect(service.getStatus().state).toBe('failed')
         expect(service.getStatus().message).toContain('reindex-all')
         await rm(dir, { recursive: true, force: true })
     })

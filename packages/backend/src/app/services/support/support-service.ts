@@ -1,3 +1,4 @@
+import { leaseForDatabaseWrites } from '#app/services/shared/redis-lease.js'
 import { supportRepository } from '#app/repositories/index.js'
 import { supportEmbeddingService } from '#app/services/support/support-embedding-service.js'
 import { supportLlmService } from '#app/services/support/support-llm-service.js'
@@ -101,11 +102,13 @@ function formatKnowledgeContext(
 // guess of how long an answer takes: the database waits of a run have no bound of their own.
 // A dead process stops renewing and frees the user within `ttlMs`. A run that is still going
 // after `maxLifetimeMs` (three provider calls plus a minute for the database) is abandoned.
-const SUPPORT_LEASE: SupportLease = {
+// feat-135: told lost the longest database write before the key can expire, so the reply saved
+// just before the loss (addChatMessage) cannot land next to the answer of the next holder.
+const SUPPORT_LEASE: SupportLease = leaseForDatabaseWrites({
     ttlMs: 30_000,
     renewEveryMs: 5_000,
     maxLifetimeMs: aiConfig.requestTimeoutMs * 3 + 60_000,
-}
+})
 const BUSY_RETRY_AFTER_SECONDS = 5
 
 // How much of the conversation the model is shown. The UI reads the history in pages; this

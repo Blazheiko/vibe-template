@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SupportLease } from './support-inflight-lock.js'
 
 // The lease when Redis stops answering: the holder must learn that it lost the lock BEFORE
 // the key can expire and a second answer start. Real-Redis behaviour is in
@@ -13,7 +14,7 @@ vi.mock('#database/redis.js', () => ({
 
 const lease = { ttlMs: 4_000, renewEveryMs: 1_000, maxLifetimeMs: 60_000 }
 
-async function acquire(with_: typeof lease = lease) {
+async function acquire(with_: SupportLease = lease) {
     const { acquireSupportLock } = await import('./support-inflight-lock.js')
     redisMock.set.mockResolvedValue('OK')
     return acquireSupportLock(1n, with_)
@@ -157,5 +158,36 @@ describe('a released lease', () => {
         await vi.advanceTimersByTimeAsync(60_000)
 
         expect(lock?.lost.aborted).toBe(false)
+    })
+})
+
+// feat-135 (sixth review L4): the lease was told lost only one renewal interval (5 s support,
+// 10 s KB) before the key could expire, while a database write started just before can run for
+// DB_QUERY_TIMEOUT_MS + the connect wait. `stopBeforeExpiryMs` widens that margin.
+describe('a lease that must outlast the longest write', () => {
+    it('is lost stopBeforeExpiryMs before the key can expire, not one renewal interval', async () => {
+        redisMock.eval.mockRejectedValue(new Error('Command timed out'))
+        const lock = await acquire({ ...lease, stopBeforeExpiryMs: 2_500 })
+
+        await vi.advanceTimersByTimeAsync(1_400)
+        expect(lock?.lost.aborted).toBe(false)
+        await vi.advanceTimersByTimeAsync(200)
+        // 4 s TTL - 2.5 s margin: lost 1.5 s after the last good extension (it was 3 s).
+        expect(lock?.lost.aborted).toBe(true)
+    })
+
+    it('leaseForDatabaseWrites keeps a margin of the longest write and room to renew', async () => {
+        const { leaseForDatabaseWrites, DATABASE_WRITE_BOUND_MS } =
+            await import('#app/services/shared/redis-lease.js')
+        const derived = leaseForDatabaseWrites({
+            ttlMs: 30_000,
+            renewEveryMs: 10_000,
+            maxLifetimeMs: 60_000,
+        })
+
+        expect(derived.stopBeforeExpiryMs).toBeGreaterThan(DATABASE_WRITE_BOUND_MS)
+        expect(derived.ttlMs - (derived.stopBeforeExpiryMs ?? 0)).toBeGreaterThanOrEqual(
+            2 * derived.renewEveryMs,
+        )
     })
 })
