@@ -1241,8 +1241,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-125-operations-gaps",
             "dependencies": ["feat-124"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #409 (merge 38d3c63; start #408 splits G5 into G5a/G5b). L10: purgePromptText empties in batches of 1000 short UPDATE statements; KB init reads every file, inserts every article with one statement (createMany) and then indexes, so a stopped run leaves nothing or a complete base (status names reindex-all); push endpoints stored and looked up in canonical form (canonicalPushEndpoint); a screenshot/avatar swap that threw keeps the new object when the row already points at it (or cannot be read); fetchJson to OAuth providers times out after 10 s. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2390, frontend 400, api-playground 62; test:pg with Redis 28/255, test:redis 11/116; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; mutation: purge 1, oauth 1, push 1, R11d 2, KB init 6 cases fail. Details were in progress.md on fix/feat-125-operations-gaps (removed from main by this PR)."
         }
     ]
 }
