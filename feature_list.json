@@ -1243,6 +1243,16 @@
             "dependencies": ["feat-124"],
             "status": "done",
             "evidence": "Merged #409 (merge 38d3c63; start #408 splits G5 into G5a/G5b). L10: purgePromptText empties in batches of 1000 short UPDATE statements; KB init reads every file, inserts every article with one statement (createMany) and then indexes, so a stopped run leaves nothing or a complete base (status names reindex-all); push endpoints stored and looked up in canonical form (canonicalPushEndpoint); a screenshot/avatar swap that threw keeps the new object when the row already points at it (or cannot be read); fetchJson to OAuth providers times out after 10 s. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2390, frontend 400, api-playground 62; test:pg with Redis 28/255, test:redis 11/116; CI test-pg/test-redis/quality/e2e/e2e-live/build green; docs build+verify; mutation: purge 1, oauth 1, push 1, R11d 2, KB init 6 cases fail. Details were in progress.md on fix/feat-125-operations-gaps (removed from main by this PR)."
+        },
+        {
+            "id": "feat-126",
+            "name": "Log Scrubbing and Test Gaps",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fourth review G5b, the last group: R01 scrubber bypasses (console.error in index.ts prints errors unscrubbed; an error inside a plain object of a log record or of another error field is not scrubbed; Sentry sanitizeDeep mutates the caller extra/contexts; rebuildStack keeps message lines that look like frames; the KB init status gives the admin API the raw pg text) and tests that pass without their fix (the listen socket close order, the auditCall settled guard, the phone-reset two-completions case, the OAuth provider !ok PG case). Every bypass closed with tests; the weak tests rewritten so they fail without their fix, or named for what they guard; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-126-logs-and-tests",
+            "dependencies": ["feat-125"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
