@@ -267,6 +267,7 @@ const createJsonContext = (options: {
     sessionId?: string | null
     userId?: string | null
     presentedToken?: string
+    stored?: boolean
 }) => {
     const userId = options.userId ?? null
     return {
@@ -277,6 +278,7 @@ const createJsonContext = (options: {
         session: {
             sessionInfo:
                 options.sessionId === null ? null : { id: options.sessionId ?? 's1', data: {} },
+            isStored: vi.fn(() => Promise.resolve(options.stored ?? true)),
         },
         auth: {
             check: () => userId !== null,
@@ -349,6 +351,21 @@ describe('OAuthController.resendEmailLink', () => {
 
         expect(resendFirstEmailLink).toHaveBeenCalledWith(7n, 'presented', expect.any(Function))
         expect(response).toEqual({ status: 'success', message: 'Verification email sent' })
+    })
+
+    // feat-129: the guard is the request's own session check, not a stand-in.
+    it('hands over the request session check as the guard', async () => {
+        resendFirstEmailLink.mockResolvedValue(Result.ok({ message: 'Verification email sent' }))
+        const context = createJsonContext({ userId: '7', presentedToken: 'p', stored: false })
+
+        await OAuthController.resendEmailLink(context)
+
+        const guard = resendFirstEmailLink.mock.calls[0]![2] as () => Promise<boolean>
+        await expect(guard()).resolves.toBe(false)
+        expect(
+            (context as unknown as { session: { isStored: ReturnType<typeof vi.fn> } }).session
+                .isStored,
+        ).toHaveBeenCalledOnce()
     })
 
     it('maps a service error', async () => {

@@ -14,8 +14,9 @@ const pushSubscriptionServiceMock = {
 vi.mock('#app/services/notifications/push-subscription-service.js', () => ({
     pushSubscriptionService: pushSubscriptionServiceMock,
 }))
+const pushNotificationSenderServiceMock = { isConfigured: vi.fn(), sendToUser: vi.fn() }
 vi.mock('#app/services/notifications/push-notification-sender-service.js', () => ({
-    pushNotificationSenderService: { isConfigured: vi.fn(), sendToUser: vi.fn() },
+    pushNotificationSenderService: pushNotificationSenderServiceMock,
 }))
 
 const { default: PushSubscriptionController } = await import('./push-subscription-controller.js')
@@ -57,5 +58,41 @@ describe('PushSubscriptionController :subscriptionId', () => {
         await PushSubscriptionController.getSubscription(context)
 
         expect(pushSubscriptionServiceMock.getSubscription).toHaveBeenCalledWith(7n, 5n)
+    })
+})
+
+// feat-129: a logout in another tab deletes the session record after auth_guard let the request in.
+describe('PushSubscriptionController.testPush', () => {
+    const testPushContext = (stored: boolean) => {
+        const isStored = vi.fn(() => Promise.resolve(stored))
+        const context = {
+            ...(contextWithParam('') as object),
+            httpData: { params: {}, payload: {} },
+            session: { isStored },
+        } as unknown as Parameters<typeof PushSubscriptionController.testPush>[0]
+        return { context, isStored }
+    }
+
+    it('answers 401 and pushes nothing when the session record is gone', async () => {
+        pushNotificationSenderServiceMock.isConfigured.mockReturnValue(true)
+        const { context, isStored } = testPushContext(false)
+
+        const response = await PushSubscriptionController.testPush(context)
+
+        expect(isStored).toHaveBeenCalledOnce()
+        expect(context.responseData.status).toBe(401)
+        expect(response).toMatchObject({ status: 'error', code: 'unauthorized' })
+        expect(pushNotificationSenderServiceMock.sendToUser).not.toHaveBeenCalled()
+    })
+
+    it('pushes while the session record is there', async () => {
+        pushNotificationSenderServiceMock.isConfigured.mockReturnValue(true)
+        pushNotificationSenderServiceMock.sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
+        const { context } = testPushContext(true)
+
+        const response = await PushSubscriptionController.testPush(context)
+
+        expect(pushNotificationSenderServiceMock.sendToUser).toHaveBeenCalledOnce()
+        expect(response).toMatchObject({ status: 'success', sent: 1, failed: 0 })
     })
 })

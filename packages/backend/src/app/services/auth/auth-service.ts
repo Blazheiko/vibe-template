@@ -148,10 +148,8 @@ async function resetThrottleQuietly(
  */
 type SessionStillStored = () => Promise<boolean>
 
-async function requireSessionStored(
-    sessionStored: SessionStillStored | undefined,
-): Promise<AppResult<void>> {
-    if (sessionStored !== undefined && !(await sessionStored())) {
+async function requireSessionStored(sessionStored: SessionStillStored): Promise<AppResult<void>> {
+    if (!(await sessionStored())) {
         return Result.err(sessionRevoked())
     }
     return Result.ok(undefined)
@@ -644,7 +642,7 @@ export const authService = {
             sessionId: string | null
             presentedSessionToken: string | undefined
             /** feat-123: checked right before the irreversible step. */
-            sessionStored?: SessionStillStored
+            sessionStored: SessionStillStored
         },
     ): Promise<
         AppResult<{
@@ -759,7 +757,7 @@ export const authService = {
             sessionId: string | null
             presentedSessionToken: string | undefined
             /** feat-123: checked right before the irreversible step. */
-            sessionStored?: SessionStillStored
+            sessionStored: SessionStillStored
         },
     ): Promise<
         AppResult<{
@@ -876,7 +874,7 @@ export const authService = {
         userId: bigint,
         payload: LinkEmailStartInput,
         presentedSessionToken: string | undefined,
-        sessionStored?: SessionStillStored,
+        sessionStored: SessionStillStored,
     ): Promise<AppResult<{ status: 'success'; message: string }>> {
         const reauthResult = await requireCurrentPasswordReauth(
             userId,

@@ -1,6 +1,9 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 const userRepositoryMock = {
     findById: vi.fn(),
     findByEmail: vi.fn(),
@@ -153,7 +156,7 @@ describe('emailVerificationService', () => {
         })
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.queueVerificationEmail(7n)
+        const result = await emailVerificationService.queueVerificationEmail(7n, sessionStillStored)
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -617,10 +620,12 @@ describe('verification throttles', () => {
         arrange()
         const { emailVerificationService } = await loadEmailVerificationService()
         // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
-        const refused = await emailVerificationService.queueVerificationEmail(7n).then(
-            (result) => Result.isError(result),
-            () => true,
-        )
+        const refused = await emailVerificationService
+            .queueVerificationEmail(7n, sessionStillStored)
+            .then(
+                (result) => Result.isError(result),
+                () => true,
+            )
         expect(refused).toBe(true)
         expect(userRepositoryMock.findById).not.toHaveBeenCalled()
         expect(emailVerificationRepositoryMock.create).not.toHaveBeenCalled()

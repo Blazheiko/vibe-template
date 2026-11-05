@@ -503,7 +503,7 @@ export const oauthService = {
         userId: bigint,
         presentedSessionToken: string | undefined,
         /** feat-123: checked right before the mail (a logout in another tab deletes the record). */
-        sessionStored?: () => Promise<boolean>,
+        sessionStored: () => Promise<boolean>,
     ): Promise<AppResult<{ message: string }>> {
         const accounts = await oauthAccountRepository.findByUserId(userId)
         const providerEmail = accounts
@@ -518,7 +518,7 @@ export const oauthService = {
         if (await userRepository.emailExistsForOtherUser(email, userId)) {
             return Result.err(conflict('Email is already linked to another account'))
         }
-        if (sessionStored !== undefined && !(await sessionStored())) {
+        if (!(await sessionStored())) {
             return Result.err(sessionRevoked())
         }
         return await emailVerificationService.sendLinkVerificationEmail(

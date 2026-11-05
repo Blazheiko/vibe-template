@@ -7,6 +7,7 @@ import { pushNotificationSenderService } from '#app/services/notifications/push-
 import {
     internalMessage,
     notFound,
+    sessionRevoked,
     unauthorized,
     type AppError,
 } from '#app/services/shared/errors.js'
@@ -206,6 +207,12 @@ export default {
         const payload = getTypedPayload(context)
         const title = payload.title ?? 'Test Push'
         const body = payload.body ?? 'This is a test push notification'
+
+        // feat-129: a logout in another tab deletes this session's record after the request was
+        // let in; nothing is pushed on its behalf then.
+        if (!(await context.session.isStored())) {
+            return mapControllerError(context, sessionRevoked())
+        }
 
         const result = await pushNotificationSenderService.sendToUser(userId, {
             title,

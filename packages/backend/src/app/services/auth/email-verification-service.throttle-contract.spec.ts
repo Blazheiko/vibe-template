@@ -9,6 +9,9 @@ import {
 } from '#app/services/shared/errors.js'
 import type { emailVerificationService } from './email-verification-service.js'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 // feat-069 (G1): the throttle steps of emailVerificationService as a table, before they are
 // folded into `enforceThrottle()` (H1). Same reading as auth-service.throttle-contract.spec.ts.
 
@@ -84,7 +87,7 @@ const ROWS: readonly Row[] = [
     },
     {
         method: 'queueVerificationEmail · user',
-        call: (s) => s.queueVerificationEmail(7n),
+        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
         consumed: [['resend_verification_user', '7']],
         blocked: {
             status: 400,

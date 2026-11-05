@@ -341,7 +341,14 @@ export const emailVerificationService = {
         return Result.ok({ message: 'Email confirmed successfully' })
     },
 
-    async queueVerificationEmail(userId: bigint): Promise<AppResult<{ message: string }>> {
+    async queueVerificationEmail(
+        userId: bigint,
+        /**
+         * feat-129: checked right before the mail is queued; a logout in another tab deletes this
+         * session's record without rotating users.session_token.
+         */
+        sessionStored: () => Promise<boolean>,
+    ): Promise<AppResult<{ message: string }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.resendVerificationUser,
             String(userId),
@@ -358,6 +365,10 @@ export const emailVerificationService = {
 
         if (user.emailVerifiedAt !== null) {
             return Result.ok({ message: 'Email is already verified' })
+        }
+
+        if (!(await sessionStored())) {
+            return Result.err(sessionRevoked())
         }
 
         void this.sendVerificationEmailInBackground(userId, 'manual resend')

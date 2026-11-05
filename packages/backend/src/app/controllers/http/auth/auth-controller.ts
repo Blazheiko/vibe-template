@@ -259,7 +259,9 @@ export default {
             return mapControllerError(context, unauthorized())
         }
 
-        const result = await emailVerificationService.queueVerificationEmail(userId)
+        const result = await emailVerificationService.queueVerificationEmail(userId, () =>
+            context.session.isStored(),
+        )
         return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 
