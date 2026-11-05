@@ -1331,8 +1331,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-134-auth-lows",
             "dependencies": ["feat-133"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #436 (merge 4d92b6c; start #435). L1: change-password takes the required session-still-stored guard and checks it before the password write. L2: openChallenge runs in one transaction under pg_advisory_xact_lock on the phone and flow and re-checks the resend cooldown; of two parallel starts the second answers the 429 cooldown. L3: every spent auth throttle answers 429 rate_limited (registration, verification, linking, reset, OAuth mail resend). Evidence: typecheck, lint, format clean; pnpm test backend 2510, frontend 400, api-playground 62; local test:pg 173; CI build/e2e/e2e-live/quality/test-pg/test-redis green (e2e-live first caught the old 400 expectation of the registration counter, updated with testing.md); docs build+verify; mutation: no change-password check fails a contract case, no lock/re-check fails sms-start-race.pg (3/3), throttle contracts pin 429. Details were in progress.md on fix/feat-134-auth-lows (removed from main by this PR)."
         }
     ]
 }
