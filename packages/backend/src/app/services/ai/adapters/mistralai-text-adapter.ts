@@ -55,10 +55,15 @@ export const mistralaiTextAdapter: ITextAdapter = {
             // Usage is provided in the last chunk. Kept before that chunk's text is handed on, so
             // a consumer that stops on it still leaves real tokens (feat-118).
             const usage = event.data.usage
-            if (usage !== undefined) {
-                promptTokens = usage.promptTokens ?? 0
-                completionTokens = usage.completionTokens ?? 0
-                totalTokens = usage.totalTokens ?? 0
+            // feat-136 (L6): a usage object without token counts is no usage, not 0 real tokens.
+            if (
+                usage !== undefined &&
+                typeof usage.promptTokens === 'number' &&
+                typeof usage.completionTokens === 'number'
+            ) {
+                promptTokens = usage.promptTokens
+                completionTokens = usage.completionTokens
+                totalTokens = usage.totalTokens ?? promptTokens + completionTokens
                 hasUsage = true
                 opts.onUsageReported?.({ promptTokens, completionTokens, totalTokens })
             }

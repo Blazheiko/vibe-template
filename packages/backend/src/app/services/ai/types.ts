@@ -63,7 +63,16 @@ export interface TextStreamOptions {
      * afterwards is recorded with real tokens. Adapters that learn usage only at the end may
      * leave it to `onComplete`.
      */
-    onUsageReported?: (usage: TokenUsage) => void
+    onUsageReported?: (usage: TokenUsage, details?: UsageReportDetails) => void
+}
+
+/**
+ * feat-136 (L7): `partial` marks usage that covers only part of the call (the first round of a
+ * tool call). It is real, but the call used more: the audit records the call as estimated, and the
+ * daily budget keeps its reservation instead of settling on the part.
+ */
+export interface UsageReportDetails {
+    partial: boolean
 }
 
 export interface ITextAdapter {
