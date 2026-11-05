@@ -1261,8 +1261,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-127-scrub-regressions",
             "dependencies": ["feat-126"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #415 (merge 45fd0ed; start #414). N1: plain data is walked with a strict error check (Error, or string name+message+stack), so { code, message } and payload: { message } keep their fields; one copy-on-write pass with a seen-map, cycles -> [Circular], subtrees deeper than 32 -> [Truncated], no second deep copy in the logger; hooks.logMethod gives pino a safe copy before it takes msg from logger.error(err) / logger.error({ err }). N2: Sentry sanitizeDeep sanitizes class instances as their own fields, dates/maps/sets/buffers kept. Evidence: typecheck, lint, prettier clean; pnpm test backend 2406, frontend 400, api-playground 62; test:pg 28/255, test:redis 11/116; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; manual: the reviewer's repro returns the object unchanged (main gave {\"userId\":5,\"payload\":{}}); mutation: main scrub-error 5, logger 2, sentry 1 cases fail. Details were in progress.md on fix/feat-127-scrub-regressions (removed from main by this PR)."
         }
     ]
 }
