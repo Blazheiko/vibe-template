@@ -6,6 +6,7 @@ import type {
     TextStreamOptions,
     TextUsageCompleteHandler,
     TokenUsage,
+    UsageReportDetails,
 } from '#app/services/ai/types.js'
 import { estimatedUsage, hasReportedUsage } from '#app/services/ai/usage/token-estimate.js'
 import logger from '#logger'
@@ -35,10 +36,24 @@ export const statusOfError = (error: unknown, callerSignal?: AbortSignal): TextC
 }
 
 export interface CallAudit {
-    /** Usage the provider reported so far; the last report wins. */
-    keep(usage: TokenUsage): void
+    /**
+     * Usage the provider reported so far; the last report wins. `partial` usage (feat-136, L7) is
+     * real but covers only part of the call: the call is then recorded as estimated.
+     */
+    keep(usage: TokenUsage, details?: UsageReportDetails): void
     /** Writes the call's one report; a second call does nothing. */
     settle(status: TextCallStatus, outputChars: number | null): void
+}
+
+/** feat-136: the larger of each count, so an estimate never falls below what was reported. */
+function atLeast(reported: TokenUsage, estimate: TokenUsage): TokenUsage {
+    const max = (a: number | null, b: number | null): number | null =>
+        a === null ? b : b === null ? a : Math.max(a, b)
+    return {
+        promptTokens: max(reported.promptTokens, estimate.promptTokens),
+        completionTokens: max(reported.completionTokens, estimate.completionTokens),
+        totalTokens: max(reported.totalTokens, estimate.totalTokens),
+    }
 }
 
 export function auditCall(
@@ -48,16 +63,21 @@ export function auditCall(
     estimateFrom: string = finalPrompt,
 ): CallAudit {
     let reported: TokenUsage | null = null
+    let partial = false
     let settled = false
     return {
-        keep(usage): void {
-            if (hasReportedUsage(usage)) reported = usage
+        keep(usage, details): void {
+            if (!hasReportedUsage(usage)) return
+            reported = usage
+            partial = details?.partial === true
         },
         settle(status, outputChars): void {
             if (settled) return
             settled = true
-            const tokensEstimated = reported === null
-            const usage = reported ?? estimatedUsage(estimateFrom, outputChars)
+            const estimate = estimatedUsage(estimateFrom, outputChars)
+            const tokensEstimated = reported === null || partial
+            const usage =
+                reported === null ? estimate : partial ? atLeast(reported, estimate) : reported
             try {
                 onComplete(usage, model, finalPrompt, { status, tokensEstimated })
             } catch (err: unknown) {
@@ -81,9 +101,11 @@ async function* auditedStream(
     const inner = adapter.streamText(
         {
             ...opts,
-            onUsageReported: (usage) => {
-                audit.keep(usage)
-                opts.onUsageReported?.(usage)
+            onUsageReported: (usage, details) => {
+                audit.keep(usage, details)
+                // The budget settles on real usage of the whole call only; a part keeps the
+                // reservation (feat-136).
+                if (details?.partial !== true) opts.onUsageReported?.(usage, details)
             },
         },
         (usage) => {
