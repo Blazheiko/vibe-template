@@ -1,6 +1,9 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// feat-129: the session-still-stored guard is required; these cases keep the session.
+const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+
 const userRepositoryMock = {
     findByEmail: vi.fn(),
     findById: vi.fn(),
@@ -348,6 +351,7 @@ describe('authService legacy regressions', () => {
             7n,
             { newPassword: 'new-password-123' },
             'previous-session-token',
+            sessionStillStored,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -379,6 +383,7 @@ describe('authService legacy regressions', () => {
             9n,
             { newPassword: 'new-password-123' },
             'previous-session-token',
+            sessionStillStored,
         )
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password-123')
@@ -440,6 +445,7 @@ describe('change password throttle', () => {
                 7n,
                 { currentPassword: 'guess', newPassword: 'new-password-123' },
                 'previous-session-token',
+                sessionStillStored,
             )
             .then(
                 (result) => Result.isError(result),
@@ -472,6 +478,7 @@ describe('change password throttle', () => {
             7n,
             { currentPassword: 'secret123', newPassword: 'new-password-123' },
             'previous-session-token',
+            sessionStillStored,
         )
         expect(Result.isOk(result)).toBe(true)
         expect(resetAuthThrottleMock).toHaveBeenCalledWith(

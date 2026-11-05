@@ -22,6 +22,7 @@ const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
     markInvalidatedIfPending: vi.fn(),

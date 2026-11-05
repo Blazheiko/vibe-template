@@ -320,7 +320,7 @@ async function unsetCredential(
 }
 
 const THROTTLED = {
-    _tag: 'BadRequest',
+    _tag: 'RateLimited',
     message: 'Too many emails were sent. Please try again later.',
     reason: 'too_many_attempts',
 }

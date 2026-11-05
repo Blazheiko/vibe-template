@@ -6,17 +6,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // record is still there. These cases pin the wiring: the guard each controller hands over is the
 // request's own `session.isStored`, not a stand-in that always says yes.
 
-const { startPhoneLink, confirmPhoneLink, startEmailLink, queueVerificationEmail } = vi.hoisted(
-    () => ({
+const { startPhoneLink, confirmPhoneLink, startEmailLink, queueVerificationEmail, changePassword } =
+    vi.hoisted(() => ({
         startPhoneLink: vi.fn(),
         confirmPhoneLink: vi.fn(),
         startEmailLink: vi.fn(),
         queueVerificationEmail: vi.fn(),
-    }),
-)
+        changePassword: vi.fn(),
+    }))
 
 vi.mock('#app/services/auth/auth-service.js', () => ({
-    authService: { startPhoneLink, confirmPhoneLink, startEmailLink },
+    authService: {
+        startPhoneLink,
+        confirmPhoneLink,
+        startEmailLink,
+        changePassword,
+        renewSession: vi.fn(() => Promise.resolve(Result.err('not renewed'))),
+    },
 }))
 vi.mock('#app/services/auth/email-verification-service.js', () => ({
     emailVerificationService: { queueVerificationEmail },
@@ -71,6 +77,13 @@ const cases: {
         name: 'startEmailLink',
         service: startEmailLink,
         run: (context) => AuthController.startEmailLink(context),
+        guardOf: (call) => call[3] as Guard,
+    },
+    {
+        // feat-134 (L1): the change itself, before renewSession signs the browser in again.
+        name: 'changePassword',
+        service: changePassword,
+        run: (context) => AuthController.changePassword(context),
         guardOf: (call) => call[3] as Guard,
     },
     {

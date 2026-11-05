@@ -347,7 +347,7 @@ async function registerEmailFlow(
     const ipThrottle = await enforceThrottle(
         throttlePolicies.registerEmailIp,
         requestMeta.ipAddress,
-        badRequest('Too many registration attempts. Please try again later.'),
+        rateLimited('Too many registration attempts. Please try again later.'),
     )
     if (Result.isError(ipThrottle)) {
         return Result.err(ipThrottle.error)
@@ -356,7 +356,7 @@ async function registerEmailFlow(
     const emailThrottle = await enforceThrottle(
         throttlePolicies.registerEmailIdentifier,
         email,
-        badRequest('Too many registration attempts. Please try again later.'),
+        rateLimited('Too many registration attempts. Please try again later.'),
     )
     if (Result.isError(emailThrottle)) {
         return Result.err(emailThrottle.error)
@@ -453,7 +453,7 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.registerPhoneIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
@@ -462,7 +462,7 @@ export const authService = {
         const phoneThrottle = await enforceThrottle(
             throttlePolicies.smsSendPhone,
             phone,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
@@ -527,7 +527,7 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.confirmPhoneIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
@@ -685,7 +685,7 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.linkPhoneIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
@@ -696,7 +696,7 @@ export const authService = {
         const userThrottle = await enforceThrottle(
             throttlePolicies.linkPhoneUser,
             String(userId),
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(userThrottle)) {
             return Result.err(userThrottle.error)
@@ -705,7 +705,7 @@ export const authService = {
         const phoneThrottle = await enforceThrottle(
             throttlePolicies.smsSendPhone,
             phone,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(phoneThrottle)) {
             return Result.err(phoneThrottle.error)
@@ -774,7 +774,7 @@ export const authService = {
         const ipThrottle = await enforceThrottle(
             throttlePolicies.confirmLinkPhoneIp,
             requestMeta.ipAddress,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
@@ -895,7 +895,7 @@ export const authService = {
         const throttled = await enforceEmailLinkThrottles(
             email,
             userId,
-            badRequest('Too many verification attempts. Please try again later.'),
+            rateLimited('Too many verification attempts. Please try again later.'),
         )
         if (Result.isError(throttled)) {
             return Result.err(throttled.error)
@@ -1131,6 +1131,12 @@ export const authService = {
         userId: bigint,
         payload: ChangePasswordInput,
         presentedSessionToken: string | undefined,
+        /**
+         * feat-134 (L1): checked right before the password is written. A logout in another tab
+         * deletes this session's record without rotating users.session_token; the change would
+         * go through and the controller's renewSession sign the browser in again.
+         */
+        sessionStored: SessionStillStored,
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
         const throttle = await enforceThrottle(
@@ -1168,6 +1174,11 @@ export const authService = {
         }
 
         const newPasswordHash = await hashPassword(payload.newPassword)
+
+        const stillStored = await requireSessionStored(sessionStored)
+        if (Result.isError(stillStored)) {
+            return Result.err(stillStored.error)
+        }
 
         // ADR 0002: the new password and the rotated sessionToken are one conditional
         // UPDATE. Every other session of the user stops working with it, whether or not

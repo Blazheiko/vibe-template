@@ -1,6 +1,10 @@
 import { Result } from 'better-result'
 import { authConfig } from '#config/auth.js'
-import { smsAuthChallengeRepository, type SmsAuthChallengeRow } from '#app/repositories/index.js'
+import {
+    smsAuthChallengeRepository,
+    withTransaction,
+    type SmsAuthChallengeRow,
+} from '#app/repositories/index.js'
 import type { DbExecutor } from '#app/repositories/transaction.js'
 import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import { badRequest, type AppResult } from '#app/services/shared/errors.js'
@@ -37,24 +41,48 @@ export async function findPendingChallenge(
  * the caller's choosing (the placeholder until a code is sent; a hash nobody can match for a
  * "blind" challenge that hides whether the number is known). Expiry and the earliest resend come
  * from the configuration.
+ *
+ * feat-134 (L2): one transaction under an advisory lock on the phone and flow, with the cooldown
+ * checked again inside it. Two starts that both passed `findPendingChallenge` used to both retire
+ * and create, and could leave two live challenges (two SMS, a double budget of tries); now the
+ * second waits for the first, sees its challenge and answers the resend cooldown.
  */
 export async function openChallenge(options: {
     phone: string
     flow: SmsVerificationFlow
     codeHash?: string
     metadata: Metadata
-}): Promise<SmsAuthChallengeRow> {
-    await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(options.phone, options.flow)
+}): Promise<AppResult<SmsAuthChallengeRow>> {
+    return await withTransaction(async (tx) => {
+        await smsAuthChallengeRepository.lockPhoneFlow(options.phone, options.flow, tx)
+        const pending = await smsAuthChallengeRepository.findLatestPendingForPhoneFlow(
+            options.phone,
+            options.flow,
+            tx,
+        )
+        if (pending !== undefined && pending.resendAvailableAt.getTime() > Date.now()) {
+            return Result.err(buildResendCooldownError(pending.resendAvailableAt))
+        }
+        await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(
+            options.phone,
+            options.flow,
+            tx,
+        )
 
-    const now = Date.now()
-    return await smsAuthChallengeRepository.create({
-        flow: options.flow,
-        phone: options.phone,
-        codeHash: options.codeHash ?? PENDING_SMS_CODE_HASH_PLACEHOLDER,
-        expiresAt: new Date(now + authConfig.smsChallengeTtlSeconds * 1000),
-        resendAvailableAt: new Date(now + authConfig.smsResendCooldownSeconds * 1000),
-        providerRequestId: null,
-        metadata: options.metadata,
+        const now = Date.now()
+        const created = await smsAuthChallengeRepository.create(
+            {
+                flow: options.flow,
+                phone: options.phone,
+                codeHash: options.codeHash ?? PENDING_SMS_CODE_HASH_PLACEHOLDER,
+                expiresAt: new Date(now + authConfig.smsChallengeTtlSeconds * 1000),
+                resendAvailableAt: new Date(now + authConfig.smsResendCooldownSeconds * 1000),
+                providerRequestId: null,
+                metadata: options.metadata,
+            },
+            tx,
+        )
+        return Result.ok(created)
     })
 }
 
@@ -108,8 +136,9 @@ export async function issueSmsChallenge(options: {
         flow: options.flow,
         metadata: options.metadata,
     })
+    if (Result.isError(opened)) return Result.err(opened.error)
 
-    return await deliverChallenge(opened, {
+    return await deliverChallenge(opened.value, {
         phone: options.phone,
         flow: options.flow,
         metadata: options.metadata,

@@ -34,6 +34,7 @@ const challengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
     markInvalidatedIfPending: vi.fn(),
@@ -262,7 +263,7 @@ const startEmailAs = (presented: string | undefined) => (s: Service) =>
 const startEmail = startEmailAs(TOKEN)
 const changeAs =
     (presented: string | undefined, payload: Record<string, unknown>) => (s: Service) =>
-        s.changePassword(7n, payload as never, presented)
+        s.changePassword(7n, payload as never, presented, sessionStillStored)
 const change = (payload: Record<string, unknown>) => changeAs(TOKEN, payload)
 
 const account = (over: Record<string, unknown> = {}) => ({
@@ -360,6 +361,7 @@ const ROWS: readonly Row[] = [
         after: () => {
             expect(challengeRepositoryMock.create).toHaveBeenCalledWith(
                 expect.objectContaining({ flow: 'register_phone', phone: '+380501234567' }),
+                expect.anything(),
             )
             expect(loggerMock.info).toHaveBeenCalledWith(
                 expect.objectContaining({ event: 'phone_auth_collision_detected' }),
@@ -375,11 +377,13 @@ const ROWS: readonly Row[] = [
             expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
                 '+380501234567',
                 'register_phone',
+                expect.anything(),
             )
             expect(challengeRepositoryMock.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     metadata: expect.objectContaining({ sessionId: 's', ipAddress: '203.0.113.9' }),
                 }),
+                expect.anything(),
             )
             expect(loggerMock.info).not.toHaveBeenCalled()
         },
@@ -424,6 +428,7 @@ const ROWS: readonly Row[] = [
                     flow: 'link_phone',
                     metadata: expect.objectContaining({ userId: '7', sessionId: 'sess-1' }),
                 }),
+                expect.anything(),
             )
         },
     },
@@ -1089,6 +1094,26 @@ const ROWS: readonly Row[] = [
         },
     },
     {
+        // feat-134 (L1): a logout in another tab deleted the session record; the change must not
+        // go through (the controller's renewSession would sign the browser in again).
+        name: 'changePassword · session record gone: 401, nothing written',
+        arrange: () => {
+            userRepositoryMock.findById.mockResolvedValue(account())
+            validatePasswordMock.mockResolvedValue(true)
+        },
+        call: (s) =>
+            s.changePassword(
+                7n,
+                { currentPassword: 'old', newPassword: 'new-password' },
+                TOKEN,
+                () => Promise.resolve(false),
+            ),
+        error: SESSION_REVOKED,
+        after: () => {
+            expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
+        },
+    },
+    {
         name: 'changePassword · somebody else changed it first',
         arrange: () => {
             // The re-read after the lost write finds the other change's password.
@@ -1290,6 +1315,7 @@ describe('authService · success payloads', () => {
             7n,
             { currentPassword: 'old', newPassword: 'new-password' },
             TOKEN,
+            sessionStillStored,
         )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',

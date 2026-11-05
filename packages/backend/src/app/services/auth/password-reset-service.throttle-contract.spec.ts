@@ -32,6 +32,7 @@ const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
     markInvalidatedIfPending: vi.fn(),
@@ -116,14 +117,14 @@ interface Row {
     consumed: readonly (readonly [string, string])[]
     blocked: { status: number; code: string; message: string }
 }
-const badRequest = (message: string) => ({ status: 400, code: 'bad_request', message })
+const rateLimited = (message: string) => ({ status: 429, code: 'rate_limited', message })
 
 const ROWS: readonly Row[] = [
     {
         method: 'startPhonePasswordReset · ip',
         call: (s) => s.startPhonePasswordReset(PHONE, undefined, { ...IP, sessionId: 's' }),
         consumed: [['reset_phone_ip', '203.0.113.9']],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'startPhonePasswordReset · phone',
@@ -132,20 +133,20 @@ const ROWS: readonly Row[] = [
             ['reset_phone_ip', '203.0.113.9'],
             ['sms_send_phone', PHONE],
         ],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
         method: 'resetPassword · ip',
         call: (s) => s.resetPassword('tok', 'new-password', 'new-password', IP),
         consumed: [['reset_password_ip', '203.0.113.9']],
-        blocked: badRequest('Too many password reset attempts. Please try again later.'),
+        blocked: rateLimited('Too many password reset attempts. Please try again later.'),
     },
     {
         method: 'completePhonePasswordReset · ip',
         call: (s) =>
             s.completePhonePasswordReset('c', '123456', 'new-password', 'new-password', IP),
         consumed: [['confirm_reset_phone_ip', '203.0.113.9']],
-        blocked: badRequest(TOO_MANY_VERIFICATIONS),
+        blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
 ]
 

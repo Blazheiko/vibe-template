@@ -80,8 +80,8 @@ const ROWS: readonly Row[] = [
         call: (s) => s.verifyEmail('token', IP, ANONYMOUS),
         consumed: [['verify_email_ip', '203.0.113.9']],
         blocked: {
-            status: 400,
-            code: 'bad_request',
+            status: 429,
+            code: 'rate_limited',
             message: 'Too many verification attempts. Please try again later.',
         },
     },
@@ -90,8 +90,8 @@ const ROWS: readonly Row[] = [
         call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
         consumed: [['resend_verification_user', '7']],
         blocked: {
-            status: 400,
-            code: 'bad_request',
+            status: 429,
+            code: 'rate_limited',
             message: 'Too many verification emails requested. Please try again later.',
         },
     },
@@ -218,8 +218,8 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
             expect(describeError(result.error)).toEqual({
-                status: 400,
-                code: 'bad_request',
+                status: 429,
+                code: 'rate_limited',
                 message: 'Too many verification attempts. Please try again later.',
             })
         }
