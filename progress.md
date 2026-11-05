@@ -2,7 +2,7 @@
 
 ## State
 
-Done on branch `fix/feat-133-ws-connected-failure`. Waiting for CI on the feature PR.
+Done on branch `fix/feat-133-ws-connected-failure`; start PR #432. Waiting for CI on the feature PR.
 
 ## Changes
 
