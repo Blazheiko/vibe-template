@@ -1291,8 +1291,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-130-operations-lows",
             "dependencies": ["feat-129"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #424 (merge c15abdb; start #423). (1) llm:purge-prompts pages the table by id and the UPDATE or dry-run count covers one page; (2) canonicalPushEndpoint normalizes path and query percent-encoding (RFC 3986 6.2.2), a different query stays a different endpoint (documented); (3) a thrown avatar / KB screenshot swap deletes the new object only when PostgreSQL answered with an error (isServerRejection: SQLSTATE), otherwise keeps it with a warning; (4) the arctic code exchange races OAUTH_PROVIDER_TIMEOUT_MS; (5) release() marks the lease released, a late renewal no longer reports lost; (6) IPv4-mapped CIDRs map to IPv4 with prefix - 96; (7) the KB init re-reads the article count after an INSERT error without SQLSTATE and reports it with a pointer to reindex-all; (8) every X-Forwarded-For line is read in order. Evidence: typecheck, lint, format clean; pnpm test backend 2439, frontend 400, api-playground 62; local test:pg 171 passed; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation (main version of each source file): lease 1, CIDR 5, XFF 2, push endpoint 6, KB init 1, avatar 1, OAuth 4, purge PG 1, S3 swap PG 2 cases fail. Details were in progress.md on fix/feat-130-operations-lows (removed from main by this PR)."
         }
     ]
 }
