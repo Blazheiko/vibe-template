@@ -153,3 +153,28 @@ describe('sendJson backpressure (feat-107)', () => {
         }
     })
 })
+
+// feat-124: the client went away while the handler was working (an AI answer).
+describe('a reply after the socket closed (feat-124)', () => {
+    it('is not sent and logs no error', async () => {
+        const ws = createWs()
+        wsApiHandler.mockImplementation(() => {
+            // The close handler runs while the handler awaits.
+            void handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
+            ws.kill()
+            releaseRevoke()
+            return Promise.resolve({ event: 'main:ping', status: 'success', data: {} })
+        })
+        wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
+
+        await handlers.onMessage(
+            ws as never,
+            message(JSON.stringify({ event: 'main:ping', payload: {}, timestamp: Date.now() })),
+            false,
+            {},
+        )
+
+        expect(ws.send).not.toHaveBeenCalled()
+        expect(logger.error).not.toHaveBeenCalled()
+    })
+})

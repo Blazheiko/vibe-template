@@ -16,6 +16,7 @@ const broadcastToChannel = vi.fn((..._args: unknown[]) => true)
 vi.mock('#vendor/start/server.js', () => ({ broadcastToChannel }))
 
 const send = vi.fn((_message: string) => 1)
+const end = vi.fn()
 const connections = ['a', 'b', 'c']
 vi.mock('#app/websocket/ws-connection-registry.js', () => ({
     wsConnectionRegistry: {
@@ -23,10 +24,11 @@ vi.mock('#app/websocket/ws-connection-registry.js', () => ({
             _userId: string,
             fn: (ws: { send: typeof send }, uuid: string) => void,
         ) => {
-            for (const uuid of connections) fn({ send }, uuid)
+            for (const uuid of connections)
+                fn({ send, end, getBufferedAmount: () => 0 } as never, uuid)
         },
         getConnection: (_userId: string, uuid: string) =>
-            connections.includes(uuid) ? { send } : undefined,
+            connections.includes(uuid) ? { send, end, getBufferedAmount: () => 0 } : undefined,
     },
 }))
 
@@ -183,5 +185,34 @@ describe('undeclared keys follow the response mode (feat-049 §4.3)', () => {
             }),
             expect.any(String),
         )
+    })
+})
+
+// feat-124 (L9): uWS send 1 = sent, 0 = buffered (still goes out), 2 = dropped.
+const ping = (): BroadcastMessage => ['support_chat_token', { token: 'hi' }]
+
+describe('send results (feat-124)', () => {
+    afterEach(() => {
+        send.mockReset()
+        send.mockImplementation(() => 1)
+        end.mockClear()
+    })
+
+    it('counts a buffered message as delivered', () => {
+        send.mockImplementation(() => 0)
+        const service = createBroadcastService({ mode: 'log' })
+
+        expect(service.broadcastMessageToUserConnection('7', 'a', ...ping())).toBe(1)
+        expect(service.broadcastMessageToUser('7', ...ping())).toBe(3)
+        expect(end).not.toHaveBeenCalled()
+    })
+
+    it('ends a connection that dropped the event, and does not count it', () => {
+        send.mockImplementationOnce(() => 2).mockImplementation(() => 1)
+        const service = createBroadcastService({ mode: 'log' })
+
+        expect(service.broadcastMessageToUser('7', ...ping())).toBe(2)
+        expect(end).toHaveBeenCalledTimes(1)
+        expect(end).toHaveBeenCalledWith(1013, 'Backpressure')
     })
 })
