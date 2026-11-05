@@ -1233,6 +1233,16 @@
             "dependencies": ["feat-123"],
             "status": "done",
             "evidence": "Merged #406 (merge c73f3b9; start #405). L9: broadcast deliver() counts uWS send 0 (buffered) and 1 as delivered and ends a connection that dropped the event (2) with 1013, and the support stream falls back to every tab only when the asking connection is gone; sendJson sends nothing once userData.closed is set; admin_user_online_upsert only while the user is still in the registry after the snapshot; a disconnect completes its user_online row only after the connect INSERT, and none when the row was never written. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2385, frontend 400, api-playground 62; test:pg with Redis 28/251, test:redis 11/115; CI test-pg/test-redis/quality/e2e/e2e-live/build green (the first run failed typecheck: eslint --fix had dropped a needed cast in the support spec after the local typecheck, fixed by typing the mock); docs build+verify; mutation per file from main: broadcast 2, support 1, ws-handlers 1, coordinator 3, presence 1 cases fail. Details were in progress.md on fix/feat-124-ws-send-presence (removed from main by this PR)."
+        },
+        {
+            "id": "feat-125",
+            "name": "Operations Gaps",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, fourth review G5a: (L10) llm:purge-prompts runs one UPDATE over the whole table on the main pool with its 10 s statement_timeout, so a large table always fails with 57014; (R11c-low) a KB import that loses its lease leaves a partial knowledge base that answers NOT_EMPTY for ever, and createdArticles undercounts; (R03-low) a push endpoint is stored as given, so https://FCM.GOOGLEAPIS.COM./... passes the owned-by-another-user check as a different endpoint; (R11d-low) a COMMIT that reached the server but whose answer was lost makes the catch delete the new object the row already points at; fetchJson to OAuth providers has no timeout. The purge in batches of bounded statements; the import inserts every article in one statement and then indexes them; the endpoint stored in its canonical form; the catch keeps an object the row points at; a timeout on provider requests; tests; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-125-operations-gaps",
+            "dependencies": ["feat-124"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
