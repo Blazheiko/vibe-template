@@ -10,6 +10,9 @@ import {
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
 
+/** feat-138: the longest one push request may take before it is abandoned and logged as failed. */
+export const PUSH_SEND_TIMEOUT_MS = 10_000
+
 export interface PushNotificationPayload {
     title: string
     body: string
@@ -163,6 +166,9 @@ export const pushNotificationSenderService = {
                         },
                     },
                     pushPayload,
+                    // feat-138 (L13): a push service that hangs must not hold the send (and the
+                    // loop over the user's subscriptions). No proxy or agent (feat-104).
+                    { timeout: PUSH_SEND_TIMEOUT_MS },
                 )
                 logs.push({
                     ...base,

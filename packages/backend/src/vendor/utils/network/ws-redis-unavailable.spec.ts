@@ -288,4 +288,27 @@ describe('handleUpgrade while Redis is unavailable', () => {
 
         expect(res.calls).toEqual(['cork', 'upgrade'])
     })
+
+    // feat-138 (sixth review L12): an upgrade still waiting on its token check when the server
+    // began shutting down upgraded after closeAllWs, opening a socket nobody closes or revokes.
+    it('an upgrade that finishes after shutdown began answers 503 instead of upgrading', async () => {
+        const res = createRes()
+        let finishCheck: (value: unknown) => void = () => undefined
+        onUpgrade.mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    finishCheck = resolve
+                }),
+        )
+
+        const upgrading = handlers.handleUpgrade(res as never, req as never, {})
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        await handlers.closeAllWs()
+        finishCheck({ kind: 'ok', sessionId: 's1', userId: '1', userToken: 'u1' })
+        await upgrading
+
+        expect(res.calls).not.toContain('upgrade')
+        expect(res.calls).toContain('503 Service Unavailable')
+        handlers.__acceptUpgradesForTests()
+    })
 })

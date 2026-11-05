@@ -215,12 +215,15 @@ describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
         )
     })
 
-    it('passes no transport options (no proxy, no agent) to web-push', async () => {
+    // feat-138 (sixth review L13): a timeout, and still no proxy or agent (feat-104).
+    it('passes only a timeout to web-push: no proxy, no agent', async () => {
         pushSubscriptionRepository.findByUserId.mockResolvedValue([subscription(1)])
+        const { PUSH_SEND_TIMEOUT_MS } = await import('./push-notification-sender-service.js')
 
         await pushNotificationSenderService.sendToUser(7n, { title: 't', body: 'b' })
 
-        expect(sendNotification.mock.calls[0]).toHaveLength(2)
+        expect(sendNotification.mock.calls[0]?.[2]).toEqual({ timeout: PUSH_SEND_TIMEOUT_MS })
+        expect(PUSH_SEND_TIMEOUT_MS).toBeGreaterThan(0)
     })
 
     it('records a redirect answer as a failed send, without following it', async () => {

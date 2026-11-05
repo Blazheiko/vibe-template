@@ -189,7 +189,18 @@ const normalizeAppTypeProtocol = (rawAppType: string): 'web' | 'pwa' => {
 
 // feat-112: every socket gets 4201 first, whatever Redis does; the token revokes then run
 // together and a failing one is only logged. (onClose revokes too; a DEL is idempotent.)
+// feat-138 (sixth review L12): cleared by closeAllWs. An upgrade still waiting on its token check
+// when the shutdown began would otherwise open a socket after every socket was closed and every
+// token revoked; it is answered 503 instead.
+let acceptingUpgrades = true
+
+/** Test hook: a module-level flag outlives one test's shutdown. */
+const __acceptUpgradesForTests = (): void => {
+    acceptingUpgrades = true
+}
+
 const closeAllWs = async (): Promise<void> => {
+    acceptingUpgrades = false
     const hooks = getAppHooks()
     const tokens: string[] = []
     for (const ws of [...wsStorage]) {
@@ -587,6 +598,13 @@ const upgradeConnection = async (
         return
     }
 
+    if (!acceptingUpgrades) {
+        res.cork(() => {
+            res.writeStatus('503 Service Unavailable').end('Server is shutting down')
+        })
+        return
+    }
+
     const dataAccess = tokenResult
     res.cork(() => {
         const userData: UserData = {
@@ -606,4 +624,4 @@ const upgradeConnection = async (
     })
 }
 
-export { onMessage, onOpen, onClose, handleUpgrade, closeAllWs }
+export { onMessage, onOpen, onClose, handleUpgrade, closeAllWs, __acceptUpgradesForTests }

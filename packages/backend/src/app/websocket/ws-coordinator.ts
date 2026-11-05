@@ -13,6 +13,33 @@ import logger from '#vendor/utils/logger.js'
 // runs whatever the INSERT answered; when there really is no row it finds none and only warns.
 const onlineRows = new Map<string, Promise<void>>()
 
+// feat-138 (sixth review L12): the disconnect UPDATEs still running. The shutdown closes every
+// socket (closeAllWs) and then ends the pool; it drains these first, or pool.end() cuts them and
+// the rows stay open.
+const pendingDisconnects = new Set<Promise<void>>()
+
+/**
+ * Waits for the user_online disconnects still running, at most `timeoutMs`. True when all of
+ * them settled, false at the deadline (the shutdown goes on; those rows stay open).
+ */
+const drainDisconnects = async (timeoutMs: number): Promise<boolean> => {
+    if (pendingDisconnects.size === 0) return true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<false>((resolve) => {
+        timer = setTimeout(() => {
+            resolve(false)
+        }, timeoutMs)
+    })
+    try {
+        return await Promise.race([
+            Promise.allSettled([...pendingDisconnects]).then(() => true as const),
+            deadline,
+        ])
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
 /**
  * Guards below narrow `userId`/`sessionId` from `string | undefined`
  * (as declared in `UserConnection`) to `string`. The transport layer
@@ -93,7 +120,7 @@ const handleDisconnected = async (
     const connectionDurationMs = Math.max(0, Date.now() - userData.timeStart)
     // A connection that closed before its row was tracked (while its role was read) has none.
     if (connectSettled !== undefined) {
-        void connectSettled
+        const disconnect: Promise<void> = connectSettled
             .then(async () => {
                 await userOnlineService.trackDisconnected({
                     socketUuid: userData.uuid,
@@ -109,6 +136,10 @@ const handleDisconnected = async (
                     'user_online: failed to track disconnect',
                 )
             })
+        pendingDisconnects.add(disconnect)
+        void disconnect.finally(() => {
+            pendingDisconnects.delete(disconnect)
+        })
     }
 
     if (isLastConnection) {
@@ -125,6 +156,7 @@ const handleDisconnected = async (
 export const websocketCoordinator = {
     handleConnected,
     handleDisconnected,
+    drainDisconnects,
 }
 
 /** For tests: the user_online rows still tracked. */
