@@ -4,27 +4,48 @@ import type { HttpRequest, HttpResponse } from '#vendor/start/server.js'
 import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 import { isIpInCidr, normalizeIp } from './ip-address.js'
 
+// TRUSTED_PROXY_CIDRS: the hops of the chain that are our proxies. On TCP they count only with
+// TRUST_PROXY=true; on the unix socket (feat-122, L8) TRUST_UNIX_SOCKET_PROXY is the switch, and
+// the CIDRs name the proxies in front of the socket's proxy (a CDN, a load balancer).
+function inTrustedCidrs(ip: string): boolean {
+    return networkConfig.trustedProxyCidrs.some((cidr) => isIpInCidr(ip, cidr))
+}
+
 function isTrustedProxy(ip: string): boolean {
-    return (
-        networkConfig.trustProxy &&
-        networkConfig.trustedProxyCidrs.some((cidr) => isIpInCidr(ip, cidr))
-    )
+    return networkConfig.trustProxy && inTrustedCidrs(ip)
 }
 
-function parseForwardedChain(xForwardedFor: string, remoteIp: string): string[] {
-    const forwardedIps = xForwardedFor
-        .split(',')
-        .map((entry) => normalizeIp(entry))
-        .filter((entry): entry is string => entry !== null)
-
-    return [...forwardedIps, remoteIp]
+/**
+ * One X-Forwarded-For entry: an address, also with the port some proxies append (`1.2.3.4:5678`,
+ * `[2001:db8::1]:443`). null for anything else.
+ */
+function parseForwardedEntry(entry: string): string | null {
+    const trimmed = entry.trim()
+    const v4WithPort = /^(\d+\.\d+\.\d+\.\d+):\d{1,5}$/.exec(trimmed)
+    if (v4WithPort?.[1] !== undefined) return normalizeIp(v4WithPort[1])
+    const v6WithPort = /^\[([^\]]+)\]:\d{1,5}$/.exec(trimmed)
+    if (v6WithPort?.[1] !== undefined) return normalizeIp(v6WithPort[1])
+    return normalizeIp(trimmed)
 }
 
-function resolveClientIpFromChain(chain: readonly string[]): string | null {
+/** The chain, left to right; an entry that is not an address stays as null. */
+function parseForwardedChain(xForwardedFor: string): (string | null)[] {
+    return xForwardedFor.split(',').map(parseForwardedEntry)
+}
+
+/**
+ * The client: the rightmost hop that is not a trusted proxy. feat-122 (L7): the walk stops at an
+ * entry it cannot read. Everything left of it was written by whoever sent that entry, so it proves
+ * nothing; skipping it would let a forged leftmost entry win. null then, and the caller falls back.
+ */
+function resolveClientIpFromChain(
+    chain: readonly (string | null)[],
+    trusted: (ip: string) => boolean = isTrustedProxy,
+): string | null {
     for (let index = chain.length - 1; index >= 0; index -= 1) {
         const candidate = chain[index]
-        if (candidate === undefined) continue
-        if (!isTrustedProxy(candidate)) {
+        if (candidate === undefined || candidate === null) return null
+        if (!trusted(candidate)) {
             return candidate
         }
     }
@@ -38,11 +59,10 @@ function resolveClientIpFromChain(chain: readonly string[]): string | null {
 function fromUnixSocketProxy(req: HttpRequest): string {
     const xForwardedFor = req.getHeader('x-forwarded-for')
     if (xForwardedFor !== '') {
-        const forwarded = xForwardedFor
-            .split(',')
-            .map((entry) => normalizeIp(entry))
-            .filter((entry): entry is string => entry !== null)
-        const resolved = resolveClientIpFromChain(forwarded)
+        const resolved = resolveClientIpFromChain(
+            parseForwardedChain(xForwardedFor),
+            inTrustedCidrs,
+        )
         if (resolved !== null) return resolved
     }
     return normalizeIp(req.getHeader('x-real-ip')) ?? 'unknown'
@@ -61,9 +81,10 @@ export default (req: HttpRequest, res: HttpResponse): string => {
 
     const xForwardedFor = req.getHeader('x-forwarded-for')
     if (xForwardedFor !== '') {
-        const resolvedFromForwarded = resolveClientIpFromChain(
-            parseForwardedChain(xForwardedFor, remoteIp),
-        )
+        const resolvedFromForwarded = resolveClientIpFromChain([
+            ...parseForwardedChain(xForwardedFor),
+            remoteIp,
+        ])
         if (resolvedFromForwarded !== null) {
             return resolvedFromForwarded
         }
@@ -81,4 +102,5 @@ export const __testables__ = {
     normalizeIp,
     isIpInCidr,
     resolveClientIpFromChain,
+    parseForwardedChain,
 }

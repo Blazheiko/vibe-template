@@ -56,57 +56,75 @@ export async function acquireLease(
     lostError: (reason: string) => Error,
 ): Promise<HeldLease | null> {
     const token = nanoid()
-    const startedAt = Date.now()
+    // feat-122 (L6): a monotonic clock; a wall-clock step must not stretch or shorten the lease.
+    const now = (): number => performance.now()
+    const startedAt = now()
     const reply = await withRedis(() => redis.set(key, token, 'PX', lease.ttlMs, 'NX'))
     if (reply !== 'OK') return null
 
     const lostController = new AbortController()
-    // The last moment the key is known to have been extended: measured from the start of the
-    // renewal call, because the server applies it at some point after that.
-    let extendedAt = startedAt
     let renewing = false
+    let deadline: ReturnType<typeof setTimeout> | undefined
+
+    const stopTimers = (): void => {
+        clearInterval(timer)
+        clearTimeout(deadline)
+        clearTimeout(lifetime)
+    }
 
     const markLost = (reason: string): void => {
-        clearInterval(timer)
+        stopTimers()
         if (!lostController.signal.aborted) lostController.abort(lostError(reason))
+    }
+
+    // feat-122 (L6): the lease is lost one renewal interval before the key can expire, on a timer
+    // of its own. A check on the renewal tick alone could land just short of that moment and the
+    // next one only when the key was already gone. The key was extended at some point after
+    // `extendedAt` (the start of the call that extended it), so it lives at least until
+    // extendedAt + ttlMs.
+    const armDeadline = (extendedAt: number): void => {
+        clearTimeout(deadline)
+        const lostAt = extendedAt + lease.ttlMs - lease.renewEveryMs
+        deadline = setTimeout(
+            () => {
+                markLost('it could not be renewed')
+            },
+            Math.max(0, lostAt - now()),
+        )
+        deadline.unref()
     }
 
     const renew = async (): Promise<void> => {
         renewing = true
-        const sentAt = Date.now()
+        const sentAt = now()
         try {
             const renewed = await withRedis(() =>
                 redis.eval(RENEW_LUA, 1, key, token, String(lease.ttlMs)),
             )
-            if (renewed === 1) extendedAt = sentAt
+            if (lostController.signal.aborted) return
+            if (renewed === 1) armDeadline(sentAt)
             else markLost('the key is gone or belongs to another holder')
         } catch {
-            // Redis did not answer: tried again on the next tick; the deadline check decides.
+            // Redis did not answer: tried again on the next tick; the deadline decides.
         } finally {
             renewing = false
         }
     }
 
     const timer = setInterval(() => {
-        const now = Date.now()
-        if (now - startedAt >= lease.maxLifetimeMs) {
-            markLost('the maximum lifetime was reached')
-            return
-        }
-        // Declared lost one renewal interval before the key could expire, so the holder has
-        // stopped before anyone else can take the lock.
-        if (now - extendedAt >= lease.ttlMs - lease.renewEveryMs) {
-            markLost('it could not be renewed')
-            return
-        }
         if (!renewing) void renew()
     }, lease.renewEveryMs)
     timer.unref()
+    const lifetime = setTimeout(() => {
+        markLost('the maximum lifetime was reached')
+    }, lease.maxLifetimeMs)
+    lifetime.unref()
+    armDeadline(startedAt)
 
     return {
         lost: lostController.signal,
         release: async (): Promise<boolean> => {
-            clearInterval(timer)
+            stopTimers()
             return (await withRedis(() => redis.eval(RELEASE_LUA, 1, key, token))) === 1
         },
     }
