@@ -1231,8 +1231,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-124-ws-send-presence",
             "dependencies": ["feat-123"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #406 (merge c73f3b9; start #405). L9: broadcast deliver() counts uWS send 0 (buffered) and 1 as delivered and ends a connection that dropped the event (2) with 1013, and the support stream falls back to every tab only when the asking connection is gone; sendJson sends nothing once userData.closed is set; admin_user_online_upsert only while the user is still in the registry after the snapshot; a disconnect completes its user_online row only after the connect INSERT, and none when the row was never written. Evidence: typecheck, lint, format, git diff --check clean; pnpm test backend 2385, frontend 400, api-playground 62; test:pg with Redis 28/251, test:redis 11/115; CI test-pg/test-redis/quality/e2e/e2e-live/build green (the first run failed typecheck: eslint --fix had dropped a needed cast in the support spec after the local typecheck, fixed by typing the mock); docs build+verify; mutation per file from main: broadcast 2, support 1, ws-handlers 1, coordinator 3, presence 1 cases fail. Details were in progress.md on fix/feat-124-ws-send-presence (removed from main by this PR)."
         }
     ]
 }
