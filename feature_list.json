@@ -1323,6 +1323,16 @@
             "dependencies": ["feat-132"],
             "status": "done",
             "evidence": "Merged #433 (merge 66a4dd6; start #432). A failed onConnected hook (a database error in findRole, before registerConnection) closes the socket with 1011 Server error unless it already closed, so the client reconnects and registers; before, the error was only logged and the socket stayed open outside the registry (no broadcasts, pushes as if offline). Evidence: typecheck, lint, format clean; pnpm test backend 2508, frontend 400, api-playground 62; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; reproduced before the fix with a throwaway test on the real onOpen, coordinator and registry; mutation: main ws-handlers.ts makes the 1011 case fail. Details were in progress.md on fix/feat-133-ws-connected-failure (removed from main by this PR)."
+        },
+        {
+            "id": "feat-134",
+            "name": "Sixth Review Auth Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, sixth review I1: (L1) change-password has no session-still-stored guard, so after a logout in another tab a request in flight changes the password and renewSession signs the browser in again; (L2) two parallel SMS starts for one phone both pass the cooldown check and leave two live challenges (two SMS, double attempt budget); (L3) spent auth throttles (registration, verify, link, reset, OAuth resend) answer 400, only the re-auth answers 429. The change-password guard runs before the password write; opening a challenge serializes per phone and flow so one start wins; every spent auth throttle answers 429 rate_limited; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-134-auth-lows",
+            "dependencies": ["feat-133"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
