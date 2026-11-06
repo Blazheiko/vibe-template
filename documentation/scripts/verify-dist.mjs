@@ -48,6 +48,7 @@ const KEY_PAGES = [
     { page: 'backend/configuration.md', h1: 'Конфігурація' },
     { page: 'backend/routing.md', h1: 'Маршрутизація' },
     { page: 'backend/middlewares.md', h1: 'Middleware' },
+    { page: 'backend/web-and-api-routes.md', h1: 'Веб-маршрути і публічний API' },
     { page: 'backend/database.md', h1: 'База даних' },
     { page: 'backend/auth.md', h1: 'Автентифікація' },
     { page: 'backend/oauth.md', h1: 'Вхід через соцмережі' },
