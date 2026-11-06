@@ -1373,6 +1373,16 @@
             "dependencies": ["feat-137"],
             "status": "done",
             "evidence": "Merged #447 (merge 8370a29; start #446). L12: closeAllWs clears acceptingUpgrades, so an upgrade that finishes its token check after it answers 503 instead of opening a socket; ws-coordinator.drainDisconnects waits for the running user_online disconnect UPDATEs and index.ts drains them (3 s) before pool.end(). L13: webpush.sendNotification gets a 10 s timeout (still no proxy or agent). L14: the readiness probe splits its budget between the connection and the query (probeTimeouts), so one probe ends within READINESS_CHECK_TIMEOUT_MS. Evidence: typecheck, lint, format clean; pnpm test backend 2535, frontend 400, api-playground 62; local test:pg 173; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: main ws-handlers, ws-coordinator, push sender and readiness-probe make 8 new cases fail. Details were in progress.md on fix/feat-138-lifecycle-timeouts (removed from main by this PR)."
+        },
+        {
+            "id": "feat-139",
+            "name": "Seventh Review Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, seventh review J1: (Q1) the logger scrubber treats any object with toJSON as opaque and pino then calls toJSON, so a pg error it returns is logged raw; (Q2) Sentry sanitizeDeep returns the raw value at the depth limit, so toJSON returning this sends its secrets; (Q3) a URL in Sentry data is now sent whole, query secrets included; (Q4) the web-push timeout is a socket idle timeout, not a deadline; (Q5) documentation/backend/oauth.md still gives 400 for an exhausted OAuth resend. The logger scrubs what toJSON returns; the depth limit gives a marker; URL query values are redacted; push sends get a total deadline; docs; tests that fail without the fix",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-139-seventh-review-lows",
+            "dependencies": ["feat-138"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
