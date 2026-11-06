@@ -140,7 +140,7 @@ Support AI відповідає на питання користувачів н�
 
 ### Як отримати PostgreSQL з pgvector
 
-- **Docker (локально):** образ `pgvector/pgvector`, наприклад `pgvector/pgvector:pg16` (команда є в розділі [Початок роботи](/guide/getting-started#postgresql-і-redis-через-docker)). Звичайний образ `postgres` розширення не містить.
+- **Docker (локально):** образ `pgvector/pgvector`, наприклад `pgvector/pgvector:pg16` (його запускає `pnpm services:up`, див. [Сервіси через Docker Compose](/guide/getting-started#сервіси-через-docker-compose)). Звичайний образ `postgres` розширення не містить.
 - **Встановлений PostgreSQL:** пакет pgvector для своєї версії PostgreSQL, наприклад `brew install pgvector` (Homebrew) або `postgresql-16-pgvector` (apt, репозиторій PGDG). Інші способи описано в [README pgvector](https://github.com/pgvector/pgvector#installation).
 - **Керовані сервіси:** більшість хмарних PostgreSQL підтримують pgvector, але розширення треба дозволити або увімкнути за документацією провайдера.
 

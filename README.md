@@ -111,6 +111,19 @@ enable them.
 > (or install pgvector for your PostgreSQL). Details:
 > [Database → pgvector](https://blazheiko.github.io/vibe-template/backend/database#pgvector).
 
+All of these except Sentry and the AI providers run locally from
+[`docker-compose.yml`](docker-compose.yml): PostgreSQL with pgvector, Redis,
+SeaweedFS (S3) and Mailpit (SMTP). With `packages/backend/.env` in place:
+
+```bash
+pnpm services:up     # start and wait until every service is healthy
+pnpm services:down   # stop, keep the data
+```
+
+Credentials and ports are read from `packages/backend/.env`, so the containers and
+the backend always agree. Details:
+[Getting started](https://blazheiko.github.io/vibe-template/guide/getting-started).
+
 ### Feature prerequisites
 
 Which optional service / env each feature needs:
