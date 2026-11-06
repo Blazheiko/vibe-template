@@ -112,6 +112,10 @@ const config = withMermaid(
                             { text: 'Перевірка відповідей', link: '/backend/response-validation' },
                             { text: 'Маршрутизація', link: '/backend/routing' },
                             { text: 'Middleware', link: '/backend/middlewares' },
+                            {
+                                text: 'Веб-маршрути і публічний API',
+                                link: '/backend/web-and-api-routes',
+                            },
                             { text: 'База даних', link: '/backend/database' },
                             { text: 'Автентифікація', link: '/backend/auth' },
                             { text: 'Вхід через соцмережі', link: '/backend/oauth' },

@@ -133,7 +133,7 @@ if (Result.isError(throttle)) return Result.err(throttle.error)
 
 ## CSRF
 
-Пояснення для початківців — [CSRF простими словами](/guide/csrf).
+Пояснення для початківців — [CSRF простими словами](/guide/csrf). Яким маршрутам потрібен `csrf_guard`, а яким ні — [Веб-маршрути і публічний API](/backend/web-and-api-routes).
 
 Використовується модель synchronizer token ([`config/csrf.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/csrf.ts), [`csrf-guard.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/middlewares/csrf-guard.ts), [`csrf-token.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/csrf-token.ts)):
 

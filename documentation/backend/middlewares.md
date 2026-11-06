@@ -29,6 +29,10 @@ Middleware задаються списком назв на групі маршр
 
 `session_web` має стояти першим: решта читає сесію, яку він піднімає. Повний список middleware і як додати свій — нижче.
 
+::: tip Веб-маршрут чи публічний API
+`session_web` і `csrf_guard` потрібні маршрутам, які викликає наш фронтенд у браузері. Маршрути для зовнішніх клієнтів (інший сервер, мобільний застосунок) кладіть в окрему групу без них. Чому і як: [Веб-маршрути і публічний API](/backend/web-and-api-routes).
+:::
+
 ## Kernel middleware
 
 Усі middleware реєструються за іменем у [`src/app/middlewares/kernel.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/middlewares/kernel.ts). Там дві мапи, по одній на транспорт: `httpMiddlewares` (тип `Middleware`, контекст `HttpContext`) і `wsMiddlewares` (`Middleware<WsContext>`). Так кожен middleware отримує той контекст, для якого написаний. Якщо WS-маршрут назве HTTP-middleware або навпаки, це помилка `No middleware <name>`, як і для невідомого імені.
