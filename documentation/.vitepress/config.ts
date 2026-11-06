@@ -73,9 +73,14 @@ const config = withMermaid(
                             { text: '1. Вступ', link: '/guide/introduction' },
                             { text: '2. Швидкий старт', link: '/guide/getting-started' },
                             { text: '3. Як влаштований бекенд', link: '/guide/how-backend-works' },
-                            { text: '4. Перший маршрут', link: '/guide/first-endpoint' },
-                            { text: '5. Як додати фічу', link: '/backend/adding-a-feature' },
-                            { text: '6. Свій проєкт на шаблоні', link: '/guide/your-project' },
+                            { text: '4. Від запиту до контролера', link: '/guide/http-request' },
+                            {
+                                text: '5. Від контролера до відповіді',
+                                link: '/guide/http-response',
+                            },
+                            { text: '6. Перший маршрут', link: '/guide/first-endpoint' },
+                            { text: '7. Як додати фічу', link: '/backend/adding-a-feature' },
+                            { text: '8. Свій проєкт на шаблоні', link: '/guide/your-project' },
                         ],
                     },
                     {
