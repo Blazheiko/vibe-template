@@ -23,10 +23,14 @@ pgvector потрібен для пошуку в базі знань Support AI,
 git clone https://github.com/Blazheiko/vibe-template.git
 cd vibe-template
 nvm use          # бере версію з .nvmrc
-pnpm install
+make setup       # перевірка Node/pnpm/Docker, pnpm install, .env з .env.example, збірка shared
 ```
 
+`make setup` — перший крок через [Makefile](/reference/make), єдину точку входу для команд розробника; `make` без аргументів показує всі цілі. Кожна ціль викликає pnpm-скрипт, тому без `make` працює звичайний `pnpm install`. На Windows використовуйте WSL2: [Команди make → Windows](/reference/make#windows).
+
 ## 2. Файл `.env` для backend
+
+`make setup` уже створив файл з `.env.example` (окремо: `make env`; наявний `.env` не перезаписується). Без `make`:
 
 ```bash
 cp packages/backend/.env.example packages/backend/.env
@@ -83,8 +87,8 @@ SERVE_STATIC=false
 | mailpit  | `axllent/mailpit`        | `SMTP_PORT` (1025), `MAILPIT_UI_PORT` (8025) | перехоплює всі листи, веб-інтерфейс `http://localhost:8025` |
 
 ```bash
-pnpm services:up     # docker compose --env-file packages/backend/.env up -d --wait
-pnpm services:down   # зупинити (і застосунок, якщо він запущений), дані лишаються у volumes
+make services-up     # pnpm services:up: docker compose --env-file packages/backend/.env up -d --wait
+make services-down   # зупинити (і застосунок, якщо він запущений), дані лишаються у volumes
 docker compose down -v   # зупинити й видалити дані
 ```
 
@@ -125,21 +129,21 @@ SMTP_FROM_EMAIL=noreply@example.com
 Щоб подивитися на застосунок без Node.js на хості або перевірити саме production-збірку, його можна запустити в compose разом із сервісами. Це той самий образ, що й для production ([`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile)): backend віддає зібраний frontend (`SERVE_STATIC=true`), тому все працює з одного origin `http://localhost:3000`. Hot reload тут немає: після змін у коді образ треба зібрати знову. Для щоденної розробки лишається `pnpm dev`.
 
 ```bash
-pnpm app:build   # scripts/docker-build.sh: локальний образ vibe-template:local
-pnpm app:up      # сервіси + migrate + app, чекає, доки app стане healthy
-pnpm app:seed    # за бажанням: довідкові дані й demo-акаунти з SEED_* у .env
-pnpm app:logs    # лог застосунку
-pnpm services:down
+make app-build   # scripts/docker-build.sh: локальний образ vibe-template:local
+make app-up      # сервіси + migrate + app, чекає, доки app стане healthy
+make app-seed    # за бажанням: довідкові дані й demo-акаунти з SEED_* у .env
+make app-logs    # лог застосунку
+make services-down
 ```
 
-Застосунок і міграції описано в compose під профілем `app`, тому `pnpm services:up` їх не запускає.
+Застосунок і міграції описано в compose під профілем `app`, тому `make services-up` їх не запускає.
 
 | Сервіс    | Що робить                                                                                                                                   |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `migrate` | одноразово виконує `pnpm db:create:prod && pnpm db:migrate` і завершується                                                                  |
 | `app`     | `node dist/index.js` на `127.0.0.1:APP_PORT` (3000); стартує після успішного `migrate`. `up --wait` чекає його `HEALTHCHECK` (`/api/ready`) |
 
-[`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) збирає образ з тегом `APP_IMAGE` (за замовчуванням `vibe-template:local`) і позначає його git-ревізією. Frontend збирається без Sentry і без `VITE_BASE_URL`, тобто з API на тому ж origin. Додаткові аргументи передаються в `docker build`, наприклад `pnpm app:build --no-cache`. Compose образ не збирає і не завантажує (`pull_policy: never`): без `pnpm app:build` `app:up` завершиться помилкою `No such image: vibe-template:local`.
+[`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) збирає образ з тегом `APP_IMAGE` (за замовчуванням `vibe-template:local`) і позначає його git-ревізією. Frontend збирається без Sentry і без `VITE_BASE_URL`, тобто з API на тому ж origin. Додаткові аргументи передаються в `docker build`, наприклад `make app-build ARGS=--no-cache`. Compose образ не збирає і не завантажує (`pull_policy: never`): без `make app-build` `app:up` завершиться помилкою `No such image: vibe-template:local`.
 
 **Змінні.** Контейнери отримують увесь `packages/backend/.env` (`APP_KEY`, ключі AI й OAuth, VAPID, ліміти), але compose перекриває ті значення, які всередині мережі compose мусять бути іншими:
 
@@ -160,13 +164,13 @@ pnpm services:down
 
 Перевірено (2026-11-06, Docker Desktop на macOS):
 
-- після `pnpm app:up` усі контейнери `healthy`, `migrate` завершився з кодом 0;
+- після `make app-up` усі контейнери `healthy`, `migrate` завершився з кодом 0;
 - `/api/ready` повертає `ok`, `/` віддає SPA з CSP, у якій є origin застосунку й `CDN_URL`;
 - вхід demo-користувача через CSRF; з `CSRF_ENFORCE=true` чужий origin отримує `403 origin_mismatch`;
 - аватар завантажується в SeaweedFS і читається браузером з `CDN_URL`;
 - лист скидання пароля з посиланням на `http://localhost:<APP_PORT>` з'являється в Mailpit;
 - WebSocket за `ws://localhost:<APP_PORT>/api/websocket` відкривається;
-- `pnpm services:up` запускає лише чотири сервіси, `pnpm services:down` зупиняє й застосунок.
+- `make services-up` запускає лише чотири сервіси, `make services-down` зупиняє й застосунок.
 
 ### Що потрібно зараз, а що можна налаштувати пізніше
 
@@ -188,12 +192,12 @@ pnpm services:down
 
 ## 3. База даних
 
-Команди запускаються з workspace backend:
+Команди запускаються з кореня; кожна викликає скрипт workspace backend (`pnpm --filter backend db:*`):
 
 ```bash
-pnpm --filter backend db:create    # створює БД і розширення vector
-pnpm --filter backend db:migrate   # drizzle-kit migrate
-pnpm --filter backend db:seed      # початкові промпти; з --demo ще й demo-акаунти
+make db-create    # створює БД і розширення vector
+make db-migrate   # drizzle-kit migrate
+make db-seed      # початкові промпти; з ARGS=--demo ще й demo-акаунти
 ```
 
 Очікуваний вивід:
@@ -208,7 +212,7 @@ Extension "vector" ensured in database "vibe_template".
 `db:create` можна запускати повторно: для наявної БД він виводить `Database "vibe_template" already exists.`
 
 ::: info Seed
-`db:seed` вставляє початкові AI-промпти й безпечний для повторного запуску. Щоб отримати адміна для локальної роботи, задайте `SEED_ADMIN_EMAIL` і `SEED_ADMIN_PASSWORD` у `.env` (опційно `SEED_USER_*`) і виконайте `pnpm --filter backend db:seed --demo`. Запускайте seed до `pnpm dev`, бо промпти кешуються на старті. Деталі: [База даних → Seed](/backend/database#seed).
+`db:seed` вставляє початкові AI-промпти й безпечний для повторного запуску. Щоб отримати адміна для локальної роботи, задайте `SEED_ADMIN_EMAIL` і `SEED_ADMIN_PASSWORD` у `.env` (опційно `SEED_USER_*`) і виконайте `make db-seed ARGS=--demo`. Запускайте seed до `make dev`, бо промпти кешуються на старті. Деталі: [База даних → Seed](/backend/database#seed).
 :::
 
 Детальніше про схему та міграції: [База даних](/backend/database).
@@ -216,10 +220,10 @@ Extension "vector" ensured in database "vibe_template".
 ## 4. Запуск
 
 ```bash
-pnpm dev
+make dev
 ```
 
-Скрипт збирає `shared` і `backend`, а потім паралельно запускає dev-сервери backend і frontend ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Після старту:
+Ціль викликає `pnpm dev`: скрипт збирає `shared` і `backend`, а потім паралельно запускає dev-сервери backend і frontend ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Після старту:
 
 | Сервіс                     | URL                                                                     | Джерело                                                                                                  |
 | -------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -228,7 +232,7 @@ pnpm dev
 
 У лозі backend має з'явитися рядок `Listening http://0.0.0.0:3000`, а у Vite рядок `Local: http://localhost:5173/`.
 
-Пакети можна запускати й окремо: `pnpm dev:backend` / `pnpm dev:frontend` (див. [Скрипти](/reference/scripts)).
+Пакети можна запускати й окремо: `make dev-backend` / `make dev-frontend` (див. [Команди make](/reference/make)).
 
 ## 5. Перевірка health
 
