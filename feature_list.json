@@ -1393,6 +1393,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged #454 (merge 8b273e7; start #453). Root docker-compose.yml: postgres (pgvector/pgvector:pg16), redis (redis:7-alpine, requirepass only with REDIS_PASSWORD), s3 (chrislusf/seaweedfs:4.50 mini, bucket on start, anonymous reads only under S3_BUCKET/S3_PREFIX/), mailpit (axllent/mailpit:v1.31.1); healthchecks, ports on 127.0.0.1, credentials and ports from packages/backend/.env; pnpm services:up / services:down. Evidence: typecheck, lint, format clean; docs build+verify; CI quality/e2e/e2e-live/build green; manual: all four healthy, backend db:create/migrate/seed --demo, /api/ready ok, login through CSRF, avatar upload and public read via CDN_URL 200, anonymous list and reads outside the prefix 403, wrong secret rejected, forgot-password mail in Mailpit. Details were in progress.md on feat/feat-140-docker-compose (removed from main by this PR)."
+        },
+        {
+            "id": "feat-141",
+            "name": "Web Routes vs Public API Docs",
+            "description": "Document the two kinds of HTTP routes: web routes that serve the SPA (a group with session_web + csrf_guard, cookie session, CSRF token, same-site only) and public API routes for other clients (own group without session_web/csrf_guard, no cookies, credentials in a header, CORS, rate limits). What each middleware gives and costs, why a public route must not sit in a web group (group middlewares cannot be dropped), what breaks when a route is put in the wrong place, checklists and examples. A test pins the documented behaviour",
+            "owner": "Blazheiko",
+            "branch": "docs/feat-141-web-vs-api-routes",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
