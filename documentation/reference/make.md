@@ -6,7 +6,7 @@
 
 ## Як це влаштовано
 
-- **Makefile тільки делегує.** Кожна ціль викликає pnpm-скрипт або файл зі [`scripts/`](https://github.com/Blazheiko/vibe-template/tree/main/scripts). Логіки в самому Makefile немає, тому `pnpm <script>` працює так само, наприклад на Windows без `make`. Повний перелік скриптів: [Скрипти](/reference/scripts).
+- **Makefile тільки делегує.** Кожна ціль викликає pnpm-скрипт або файл зі [`scripts/`](https://github.com/Blazheiko/vibe-template/tree/main/scripts). Логіки в самому Makefile немає, тому `pnpm <script>` працює так само. Повний перелік скриптів: [Скрипти](/reference/scripts).
 - **Опис обов'язковий.** Ціль потрапляє в `make help`, якщо її рядок закінчується на `## опис`; рядок `##@ Назва` відкриває групу.
 - **Перевірка шару.** [`scripts/verify-makefile.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/verify-makefile.mjs) (`make verify-makefile`, входить у `make check`) падає, якщо в цілі немає опису, ціль відсутня в `.PHONY`, рецепт викликає pnpm-скрипт, якого немає в потрібному `package.json`, або файл зі `scripts/`, якого не існує.
 - **GNU Make 3.81.** Саме ця версія стоїть на macOS, тому Makefile не використовує `.ONESHELL` і grouped targets. Рецепти відступаються табами, це зафіксовано в [`.editorconfig`](https://github.com/Blazheiko/vibe-template/blob/main/.editorconfig).
@@ -95,6 +95,18 @@
 | `docs-verify`  | `docs:verify`  | перевірка збірки: посилання, якорі, ключові сторінки |
 | `build`        | `build`        | збірка всіх пакетів                                  |
 | `clean`        | `clean`        | видаляє артефакти збірки й `node_modules`            |
+
+## Windows
+
+Makefile і частина pnpm-скриптів розраховані на Unix-оболонку (`sh`, `awk`, `cp`, `rm -rf`, `VAR=value команда`, запуск `./scripts/*.sh`), тому в cmd і PowerShell вони не працюють.
+
+| Середовище                   | Статус                | Примітка                                                                                                                                              |
+| ---------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WSL2** (наприклад, Ubuntu) | рекомендовано         | працює як Linux; Docker Desktop підключається до WSL2. Тримайте репозиторій у файловій системі WSL (`~/…`), а не в `/mnt/c/…`: так швидше             |
+| Git Bash + `make`            | не перевіряється в CI | `sh`, `awk` і `cp` входять у Git for Windows; `make` ставиться окремо (`winget install GnuWin32.Make`, `choco install make` або `scoop install make`) |
+| cmd / PowerShell             | не підтримується      | цілі зі shell-синтаксисом (`help`, `doctor`, `env`) і частина pnpm-скриптів (`clean`, `prod:local`, `app:build`) падають                              |
+
+CI запускається тільки на Linux, тому підтримувані середовища — Linux, macOS і WSL2.
 
 ## Як додати команду
 

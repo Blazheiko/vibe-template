@@ -20,6 +20,8 @@ Done, waiting for review. Start PR: #465.
 - `.editorconfig`: tabs for `Makefile` only (Prettier owns everything else).
 - Docs: README, AGENTS.md, new `documentation/reference/make.md` (sidebar + `KEY_PAGES`),
   `guide/getting-started.md`, `guide/workflow.md`, `reference/scripts.md`.
+- Windows section (`reference/make.md#windows`, README): WSL2 recommended, Git Bash + `make`
+  possible, cmd/PowerShell not supported (the Makefile and several pnpm scripts need a Unix shell).
 
 ## Evidence of Completion
 

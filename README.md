@@ -201,8 +201,13 @@ make dev
 ```
 
 `make` with no target lists every command. The Makefile is the single entry point:
-each target only calls a pnpm script, so `pnpm <script>` keeps working too (for
-example on Windows without `make`).
+each target only calls a pnpm script, so `pnpm <script>` keeps working too.
+
+**Windows:** the Makefile and several pnpm scripts need a Unix shell (`sh`, `awk`,
+`rm -rf`, `./scripts/*.sh`), so they do not run in cmd or PowerShell. Use WSL2
+(recommended; CI covers Linux only) or Git Bash with `make` installed
+(`winget install GnuWin32.Make`). Details:
+[Make commands → Windows](https://blazheiko.github.io/vibe-template/reference/make#windows).
 
 ### Minimal `.env` for local development
 

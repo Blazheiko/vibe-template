@@ -26,7 +26,7 @@ nvm use          # бере версію з .nvmrc
 make setup       # перевірка Node/pnpm/Docker, pnpm install, .env з .env.example, збірка shared
 ```
 
-`make setup` — перший крок через [Makefile](/reference/make), єдину точку входу для команд розробника; `make` без аргументів показує всі цілі. Кожна ціль викликає pnpm-скрипт, тому без `make` (наприклад, на Windows) працює звичайний `pnpm install`.
+`make setup` — перший крок через [Makefile](/reference/make), єдину точку входу для команд розробника; `make` без аргументів показує всі цілі. Кожна ціль викликає pnpm-скрипт, тому без `make` працює звичайний `pnpm install`. На Windows використовуйте WSL2: [Команди make → Windows](/reference/make#windows).
 
 ## 2. Файл `.env` для backend
 
