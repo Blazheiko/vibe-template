@@ -351,7 +351,21 @@ describe('CSRF startup checks', () => {
         process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
         process.env['CSRF_ENFORCE'] = 'false'
         expect(await run()).toContain(
-            'CSRF_ENFORCE=false: CSRF violations are only logged, not rejected',
+            'CSRF_ENFORCE=false: CSRF protection is off, violations are only logged, not rejected',
+        )
+    })
+
+    it('warns at a local start too when CSRF checks are switched off', async () => {
+        process.env['APP_ENV'] = 'local'
+        process.env['APP_IS_PRODUCTION'] = 'false'
+        process.env['CSRF_ENFORCE'] = 'false'
+        process.env['CSRF_STRICT_ORIGIN'] = 'false'
+        const warnings = await run()
+        expect(warnings).toContain(
+            'CSRF_ENFORCE=false: CSRF protection is off, violations are only logged, not rejected',
+        )
+        expect(warnings).toContain(
+            'CSRF_STRICT_ORIGIN=false: unsafe requests without Origin and Referer are not rejected',
         )
     })
 
