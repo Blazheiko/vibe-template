@@ -2,6 +2,24 @@
 
 `packages/frontend` — односторінковий застосунок (SPA) на Vue 3 + Vite, який у production віддає сам бекенд. Ця сторінка — огляд. Деталі окремих підсистем описані на сторінках бекенду, і тут на них лише посилання.
 
+::: tip Потрібен інший фреймворк?
+Якщо вам потрібен фронтенд на React, Svelte, Angular, мобільний клієнт чи інша технологія, переписувати шаблон не треба. Достатньо дати агенту завдання створити поряд, у `packages/`, аналог `packages/frontend` на потрібному фреймворку. Це реально з двох причин:
+
+- **Контракт API не прив'язаний до Vue.** Пакет [`shared`](/shared/) містить лише arktype-схеми, типи й enum-и. Новий фронтенд імпортує їх так само, як і поточний, і `pnpm typecheck` перевіряє його проти того самого контракту, що й бекенд.
+- **Є готовий зразок.** Агент бере `packages/frontend` як еталон: HTTP-клієнт з cookie-сесією і CSRF-токеном ([HTTP-клієнт, сесія і CSRF](#http-клієнт-сесія-і-csrf)), WebSocket, push, PWA, i18n, guard-и роутера. Йому не треба вгадувати протокол бекенду.
+
+Приклад завдання для агента:
+
+```text
+Створи packages/frontend-react: аналог packages/frontend на React + Vite.
+Типи й схеми API бери тільки з пакета shared. Повтори HTTP-клієнт (сесія в cookie,
+CSRF-токен), WebSocket і сторінки входу та профілю. Додай scripts typecheck, lint, test,
+build, щоб їх підхопили pnpm -r typecheck і pnpm -r test.
+```
+
+Новий пакет потрапляє у workspace автоматично (`packages/*` у `pnpm-workspace.yaml`), а `pnpm typecheck`, `pnpm lint` і `pnpm test` перевіряють його разом з рештою. Окремо треба оновити місця, де назву `frontend` вказано явно: `pnpm dev` у кореневому `package.json`, копіювання збірки в `packages/backend/public` у `Dockerfile` і `scripts/prod-local.sh`, а також e2e-кроки в CI.
+:::
+
 ## Стек
 
 Залежності взято з [`packages/frontend/package.json`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json):

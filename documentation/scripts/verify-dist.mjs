@@ -36,6 +36,8 @@ const KEY_PAGES = [
     { page: 'guide/introduction.md', h1: 'Вступ' },
     { page: 'guide/getting-started.md', h1: 'Швидкий старт' },
     { page: 'guide/how-backend-works.md', h1: 'Як влаштований бекенд' },
+    { page: 'guide/http-request.md', h1: 'Від HTTP-запиту до контролера' },
+    { page: 'guide/http-response.md', h1: 'Від контролера до HTTP-відповіді' },
     { page: 'guide/first-endpoint.md', h1: 'Перший маршрут' },
     { page: 'guide/your-project.md', h1: 'Свій проєкт на шаблоні' },
     { page: 'guide/project-structure.md', h1: 'Структура проєкту' },
@@ -81,7 +83,7 @@ const KEY_PAGES = [
 const HOME = {
     page: 'index.md',
     name: 'vibe-template',
-    tagline: 'Документація з фокусом на бекенд',
+    tagline: 'розробки застосунків з AI-агентами',
 }
 
 /**
