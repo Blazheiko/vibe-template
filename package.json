@@ -20,6 +20,8 @@
         "docs:preview": "pnpm --filter documentation docs:preview",
         "docs:verify": "pnpm --filter documentation docs:verify",
         "push:vapid": "pnpm --filter backend push:vapid",
+        "services:up": "docker compose --env-file packages/backend/.env up -d --wait",
+        "services:down": "docker compose --env-file packages/backend/.env down",
         "start": "pnpm --filter backend start",
         "prod:local": "./scripts/prod-local.sh",
         "lint": "eslint . && pnpm -r --if-present lint:check",

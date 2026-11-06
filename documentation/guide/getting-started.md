@@ -13,19 +13,9 @@
 
 Структуру репозиторію описано в розділі [Структура проєкту](/guide/project-structure).
 
-### PostgreSQL і Redis через Docker
+PostgreSQL і Redis не обов'язково встановлювати: з Docker їх (а також S3 і пошту) запускає одна команда, див. [Сервіси через Docker Compose](#сервіси-через-docker-compose) у кроці 2.
 
-pgvector потрібен для пошуку в базі знань Support AI, і тип `vector` є в самій схемі, тому розширення обов'язкове навіть без AI. Звичайний образ `postgres` його не містить, і `db:create` на ньому впаде. Використовуйте образ `pgvector/pgvector`. Пояснення та інші способи встановлення: [База даних → pgvector](/backend/database#pgvector).
-
-```bash
-docker run -d --name vibe-pg \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=<your-pg-password> \
-  -p 5432:5432 pgvector/pgvector:pg16
-
-docker run -d --name vibe-redis \
-  -p 6379:6379 redis:7 redis-server --requirepass <your-redis-password>
-```
+pgvector потрібен для пошуку в базі знань Support AI, і тип `vector` є в самій схемі, тому розширення обов'язкове навіть без AI. Звичайний образ `postgres` його не містить, і `db:create` на ньому впаде. Якщо ставите PostgreSQL самі, візьміть образ `pgvector/pgvector` або встановіть розширення: [База даних → pgvector](/backend/database#pgvector).
 
 ## 1. Клонування та встановлення залежностей
 
@@ -80,6 +70,55 @@ SERVE_STATIC=false
 - **`APP_KEY`** потрібен для хешування OTP, коли ввімкнено phone-auth (мінімум 32 символи, див. [validate-runtime-config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/validate-runtime-config.ts)). Із `AUTH_PHONE_ENABLED=false` сервер стартує і без нього, але краще задати його одразу.
 
 Повний перелік змінних з defaults наведено на сторінці [Конфігурація](/backend/configuration).
+
+### Сервіси через Docker Compose
+
+[docker-compose.yml](https://github.com/Blazheiko/vibe-template/blob/main/docker-compose.yml) у корені запускає все, з чим говорить backend локально. Сам backend і frontend працюють на хості через `pnpm dev`.
+
+| Сервіс   | Образ                    | Порт на `127.0.0.1`                          | Для чого                                                    |
+| -------- | ------------------------ | -------------------------------------------- | ----------------------------------------------------------- |
+| postgres | `pgvector/pgvector:pg16` | `PGSQL_PORT` (5432)                          | база даних з pgvector                                       |
+| redis    | `redis:7-alpine`         | `REDIS_PORT` (6379)                          | сесії, WebSocket, throttling                                |
+| s3       | `chrislusf/seaweedfs`    | `S3_HOST_PORT` (8333)                        | S3-сумісне сховище: аватари, скриншоти бази знань           |
+| mailpit  | `axllent/mailpit`        | `SMTP_PORT` (1025), `MAILPIT_UI_PORT` (8025) | перехоплює всі листи, веб-інтерфейс `http://localhost:8025` |
+
+```bash
+pnpm services:up     # docker compose --env-file packages/backend/.env up -d --wait
+pnpm services:down   # зупинити, дані лишаються у volumes
+docker compose down -v   # зупинити й видалити дані
+```
+
+Compose читає облікові дані й порти з `packages/backend/.env`, тобто з тих самих `PGSQL_*`, `REDIS_*` і `S3_*`, що й backend, тому обидві сторони завжди збігаються. Незадані значення беруть defaults з `.env.example`: `postgres`/`postgres`, Redis без пароля. Якщо задано `REDIS_PASSWORD`, Redis стартує з `requirepass`. `services:up` чекає, доки всі контейнери стануть `healthy`. Порти відкрито лише на `127.0.0.1`: це облікові дані для розробки, а не для спільної мережі.
+
+PostgreSQL і Redis працюють без додаткових змінних. Щоб увімкнути завантаження файлів і пошту, додайте в `.env`:
+
+```dotenv
+# S3 (SeaweedFS): бакет створюється на старті, ключі — будь-які ваші
+S3_ACCESS_KEY_ID=devaccesskey
+S3_SECRET_ACCESS_KEY=devsecretkey
+S3_BUCKET=vibe-template
+S3_ENDPOINT=http://127.0.0.1:8333
+S3_REGION=us-east-1
+CDN_URL=http://127.0.0.1:8333/vibe-template
+
+# пошта йде в Mailpit
+SMTP_ENABLED=true
+SMTP_HOST=127.0.0.1
+SMTP_PORT=1025
+SMTP_REQUIRE_TLS=false
+SMTP_IGNORE_TLS=true
+SMTP_FROM_EMAIL=noreply@example.com
+```
+
+Анонімне читання в сховищі відкрито лише під `S3_BUCKET/S3_PREFIX/` (за замовчуванням `app/`), бо браузер завантажує аватари й скриншоти напряму з `CDN_URL`. Решта бакета й перелік об'єктів потребують ключа. Як backend працює зі сховищем: [Сховище файлів](/backend/storage).
+
+::: tip Порт уже зайнятий
+Якщо на хості вже працюють PostgreSQL чи Redis, задайте в `.env` інші `PGSQL_PORT` / `REDIS_PORT` (наприклад `5433`): compose відкриє контейнер на цьому порту, і backend підключиться туди ж.
+:::
+
+::: warning Лише для розробки
+Цей compose не призначений для production: облікові дані за замовчуванням відомі всім, а SeaweedFS працює в одно-процесному режимі `mini`. Розгортання описано на сторінці [Розгортання](/backend/deployment).
+:::
 
 ### Що потрібно зараз, а що можна налаштувати пізніше
 
