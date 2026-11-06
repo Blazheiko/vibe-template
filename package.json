@@ -24,6 +24,7 @@
         "services:down": "docker compose --env-file packages/backend/.env --profile app down",
         "app:build": "./scripts/docker-build.sh",
         "app:up": "docker compose --env-file packages/backend/.env --profile app up -d --wait",
+        "app:down": "docker compose --env-file packages/backend/.env --profile app rm --stop --force app migrate",
         "app:seed": "docker compose --env-file packages/backend/.env --profile app run --rm --no-deps migrate pnpm db:seed:prod --demo",
         "app:logs": "docker compose --env-file packages/backend/.env --profile app logs -f app",
         "start": "pnpm --filter backend start",

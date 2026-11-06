@@ -4,6 +4,10 @@
 
 `make` без аргументів (або `make help`) виводить усі цілі з описами, згрупованими за розділами.
 
+::: tip Без make
+`make` не обов'язковий. Кожна ціль лише викликає pnpm-скрипт, тож усе, зокрема запуск застосунку, можна зробити через `pnpm` напряму: `make dev` — це `pnpm dev`, `make db-migrate` — `pnpm --filter backend db:migrate`, `make app-up` — `pnpm app:up`. Відповідний скрипт для кожної цілі вказано в таблицях нижче, а `make -n <ціль>` друкує команду без запуску. Повний перелік: [Скрипти](/reference/scripts).
+:::
+
 ## Як це влаштовано
 
 - **Makefile тільки делегує.** Кожна ціль викликає pnpm-скрипт або файл зі [`scripts/`](https://github.com/Blazheiko/vibe-template/tree/main/scripts). Логіки в самому Makefile немає, тому `pnpm <script>` працює так само. Повний перелік скриптів: [Скрипти](/reference/scripts).
@@ -19,18 +23,18 @@
 | `ARGS` | додаткові аргументи, які передаються скрипту без змін | `make db-seed ARGS=--demo`        |
 | `PNPM` | інша команда замість `pnpm`, якщо потрібно            | `make check PNPM="corepack pnpm"` |
 
-`ARGS` підтримують цілі, яким це має сенс: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `db-generate`, `db-seed`, `app-build`. Наприклад, `make test-e2e ARGS="--project=chromium"` або `make app-build ARGS=--no-cache`.
+`ARGS` підтримують цілі, яким це має сенс: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `services-up`, `db-generate`, `db-seed`, `app-build`. Наприклад, `make test-e2e ARGS="--project=chromium"` або `make app-build ARGS=--no-cache`.
 
 ## Старт
 
-| Ціль           | Що робить                                                                                                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setup`        | перший запуск: `doctor`, `install`, `env`, `build-shared`                                                                                                                                                     |
-| `init`         | старт сесії: `install`, `build-shared`, `check`, `build`. Саме це запускає `./init.sh`                                                                                                                        |
-| `doctor`       | [`scripts/doctor.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/doctor.sh): Node `^` версії з `.nvmrc` і pnpm `>=9` обов'язкові (інакше код 1); відсутній Docker або `.env` — попередження |
-| `install`      | `pnpm install`                                                                                                                                                                                                |
-| `env`          | копіює `packages/backend/.env.example` у `packages/backend/.env`, тільки якщо `.env` ще немає                                                                                                                 |
-| `build-shared` | `pnpm build:shared`: typecheck і тести backend/frontend імпортують зібраний `shared`                                                                                                                          |
+| Ціль           | Що робить                                                                                                                                                                                                                                 |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setup`        | перший запуск: `doctor`, `install`, `env`, `build-shared`                                                                                                                                                                                 |
+| `init`         | старт сесії: `install`, `build-shared`, `check`, `build`. Саме це запускає `./init.sh`                                                                                                                                                    |
+| `doctor`       | [`scripts/doctor.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/doctor.sh): Node `^` версії з `.nvmrc` і pnpm `>=9` обов'язкові (інакше код 1); відсутній Docker, `.env` або зайнятий порт — попередження (див. нижче) |
+| `install`      | `pnpm install`                                                                                                                                                                                                                            |
+| `env`          | копіює `packages/backend/.env.example` у `packages/backend/.env`, тільки якщо `.env` ще немає                                                                                                                                             |
+| `build-shared` | `pnpm build:shared`: typecheck і тести backend/frontend імпортують зібраний `shared`                                                                                                                                                      |
 
 Після `make env` відкрийте `packages/backend/.env` і перевірте значення: що потрібно для першого запуску, описано в [Швидкому старті](/guide/getting-started#_2-фаил-env-для-backend).
 
@@ -69,21 +73,36 @@
 
 ## Сервіси, база даних і Docker
 
-| Ціль            | pnpm-скрипт           | Що робить                                                                |
-| --------------- | --------------------- | ------------------------------------------------------------------------ |
-| `services-up`   | `services:up`         | PostgreSQL, Redis, S3 і Mailpit з `docker-compose.yml`, чекає на healthy |
-| `services-down` | `services:down`       | зупиняє сервіси й застосунок, дані лишаються у volumes                   |
-| `db-create`     | `backend db:create`   | створює БД і розширення `vector`                                         |
-| `db-migrate`    | `backend db:migrate`  | застосовує міграції Drizzle                                              |
-| `db-generate`   | `backend db:generate` | генерує міграцію зі схеми                                                |
-| `db-seed`       | `backend db:seed`     | початкові дані; `ARGS=--demo` додає demo-акаунти                         |
-| `db-studio`     | `backend db:studio`   | Drizzle Studio                                                           |
-| `app-build`     | `app:build`           | збирає образ `vibe-template:local`                                       |
-| `app-up`        | `app:up`              | сервіси, міграції й застосунок у compose                                 |
-| `app-seed`      | `app:seed`            | seed з demo-акаунтами в compose                                          |
-| `app-logs`      | `app:logs`            | лог застосунку                                                           |
+| Ціль            | pnpm-скрипт           | Що робить                                                                                                          |
+| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `services-up`   | `services:up`         | PostgreSQL, Redis, S3 і Mailpit з `docker-compose.yml`, чекає на healthy; `ARGS="redis s3 mailpit"` — лише вказані |
+| `services-down` | `services:down`       | зупиняє сервіси й застосунок, дані лишаються у volumes                                                             |
+| `db-create`     | `backend db:create`   | створює БД і розширення `vector`                                                                                   |
+| `db-migrate`    | `backend db:migrate`  | застосовує міграції Drizzle                                                                                        |
+| `db-generate`   | `backend db:generate` | генерує міграцію зі схеми                                                                                          |
+| `db-seed`       | `backend db:seed`     | початкові дані; `ARGS=--demo` додає demo-акаунти                                                                   |
+| `db-studio`     | `backend db:studio`   | Drizzle Studio                                                                                                     |
+| `app-build`     | `app:build`           | збирає образ `vibe-template:local`                                                                                 |
+| `app-up`        | `app:up`              | сервіси, міграції й застосунок у compose                                                                           |
+| `app-down`      | `app:down`            | зупиняє й видаляє лише контейнери `app` і `migrate`, сервіси працюють далі                                         |
+| `app-seed`      | `app:seed`            | seed з demo-акаунтами в compose                                                                                    |
+| `app-logs`      | `app:logs`            | лог застосунку                                                                                                     |
 
-Ланцюжок для чистої машини: `make setup`, правка `.env`, `make services-up db-create db-migrate`, `make dev`. Цілі в одному виклику `make` виконуються по черзі зліва направо.
+Ланцюжок для чистої машини: `make setup`, правка `.env`, `make services-up db-create db-migrate`, `make dev`. Цілі в одному виклику `make` виконуються по черзі зліва направо. Те саме через pnpm: `pnpm install`, `pnpm build:shared`, `pnpm services:up`, `pnpm --filter backend db:create`, `pnpm --filter backend db:migrate`, `pnpm dev`.
+
+Після перевірки production-образу (`make app-up`) поверніться до розробки так: `make app-down`, потім `make dev`. Контейнер застосунку займає той самий порт 3000, що й `make dev`, а сервіси після `app-down` лишаються запущеними.
+
+### Зайняті порти і свій PostgreSQL
+
+`make doctor` перевіряє (через `lsof`) порти зі `.env`, які потрібні стеку й dev-серверам: `PGSQL_PORT` (5432), `REDIS_PORT` (6379), `S3_HOST_PORT` (8333), `SMTP_PORT` (1025), `MAILPIT_UI_PORT` (8025), `PORT` (3000) і 5173. Порт, який тримає Docker, вважається нормою: сервіс, швидше за все, уже запущено. Якщо порт зайняв інший процес, `doctor` попереджає й називає його, наприклад `port 5432 is taken by postgres (PID 1618)`.
+
+Якщо PostgreSQL з pgvector уже встановлено локально (наприклад, через Homebrew), можна працювати з ним і запускати в Docker лише решту:
+
+```bash
+make services-up ARGS="redis s3 mailpit"   # pnpm services:up redis s3 mailpit
+```
+
+Інші варіанти: зупинити локальний сервер або задати в `.env` інший `PGSQL_PORT` (наприклад, `5433`) — тоді контейнер слухатиме його, а backend підключатиметься до нової порожньої бази (`make db-create db-migrate`).
 
 ## Документація і збірка
 

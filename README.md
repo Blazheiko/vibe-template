@@ -120,6 +120,10 @@ make services-up     # start and wait until every service is healthy
 make services-down   # stop, keep the data
 ```
 
+PostgreSQL with pgvector already installed locally? Keep it and start the rest:
+`make services-up ARGS="redis s3 mailpit"`. `make doctor` warns when a port the
+stack needs is taken and names the process.
+
 Credentials and ports are read from `packages/backend/.env`, so the containers and
 the backend always agree.
 
@@ -130,6 +134,7 @@ image built locally (the backend serves the built SPA on `http://localhost:3000`
 make app-build   # scripts/docker-build.sh → vibe-template:local
 make app-up      # services + one-shot migrate + app, waits until healthy
 make app-seed    # optional: reference data and demo accounts (SEED_* in .env)
+make app-down    # stop only the app, services keep running (back to make dev)
 ```
 
 Details:
@@ -200,8 +205,22 @@ make services-up db-create db-migrate
 make dev
 ```
 
-`make` with no target lists every command. The Makefile is the single entry point:
-each target only calls a pnpm script, so `pnpm <script>` keeps working too.
+`make` with no target lists every command. The Makefile is the single entry point,
+but it is optional: each target only calls a pnpm script, so the app can be set up
+and run with pnpm alone:
+
+```bash
+pnpm install
+cp packages/backend/.env.example packages/backend/.env   # then edit it
+pnpm build:shared
+pnpm services:up
+pnpm --filter backend db:create
+pnpm --filter backend db:migrate
+pnpm dev
+```
+
+The pnpm script behind each target is in [Common commands](#common-commands);
+`make -n <target>` prints the command without running it.
 
 **Windows:** the Makefile and several pnpm scripts need a Unix shell (`sh`, `awk`,
 `rm -rf`, `./scripts/*.sh`), so they do not run in cmd or PowerShell. Use WSL2
@@ -284,7 +303,7 @@ calls the pnpm script in the last column, which you can also run directly.
 | Command                                  | Description                                                                       | pnpm script                        |
 | ---------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------- |
 | `make setup`                             | Check tools (`make doctor`), install deps, create `.env` if missing, build shared | —                                  |
-| `make doctor`                            | Check Node, pnpm, Docker and `packages/backend/.env`                              | `scripts/doctor.sh`                |
+| `make doctor`                            | Check Node, pnpm, Docker, `packages/backend/.env` and busy ports                  | `scripts/doctor.sh`                |
 | `make dev`                               | Build `shared` + `backend`, then run backend and frontend dev servers in parallel | `dev`                              |
 | `make dev-backend` / `make dev-frontend` | Run a single package in dev mode                                                  | `dev:backend` / `dev:frontend`     |
 | `make check`                             | Build shared, verify the Makefile, format check, typecheck, lint, tests (CI)      | —                                  |
@@ -293,7 +312,8 @@ calls the pnpm script in the last column, which you can also run directly.
 | `make format` / `make format-check`      | Write / check Prettier formatting                                                 | `format` / `format:check`          |
 | `make test [PKG=backend]`                | Run all package test suites, or one package                                       | `test`                             |
 | `make test-e2e`                          | Frontend Playwright e2e                                                           | `frontend test:e2e`                |
-| `make services-up` / `services-down`     | Start / stop the Docker Compose services                                          | `services:up` / `services:down`    |
+| `make services-up` / `services-down`     | Start / stop the Docker Compose services (`ARGS="redis s3 mailpit"`: a subset)    | `services:up` / `services:down`    |
+| `make app-up` / `make app-down`          | Run the production image with the services / stop only the app                    | `app:up` / `app:down`              |
 | `make db-create` / `make db-migrate`     | Create the database / apply migrations                                            | `backend db:create` / `db:migrate` |
 | `make db-seed [ARGS=--demo]`             | Seed reference data (and demo accounts)                                           | `backend db:seed`                  |
 | `make build` / `make build-shared`       | Build every package / only `shared`                                               | `build` / `build:shared`           |
