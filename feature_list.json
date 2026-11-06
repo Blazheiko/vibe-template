@@ -1421,8 +1421,8 @@
             "owner": "Blazheiko",
             "branch": "feat/feat-143-csrf-opt-out-warnings",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #462 (merge commit 5b4bca5), started in #461. config/csrf.ts warns about CSRF_ENFORCE=false and CSRF_STRICT_ORIGIN=false in every environment (defaults stay true, blank = true). Tests in csrf.spec.ts and validate-runtime-config.spec.ts; mutation check (production-only condition) fails 2 of them. pnpm typecheck/lint/format:check clean, backend tests 2562 passed, docs build/verify passed. Manual 2026-11-06: local start with both flags false logs both warnings; with defaults no CSRF warning."
         }
     ]
 }
