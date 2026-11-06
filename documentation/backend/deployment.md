@@ -40,6 +40,8 @@ location / {
 
 `pnpm prod:local` ([`scripts/prod-local.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/prod-local.sh)) збирає `shared`, frontend (з `VITE_BASE_URL=http://localhost:<PORT>`, без Sentry) і backend, копіює `frontend/dist` у `backend/public`, як `Dockerfile`, і стартує бекенд з `SERVE_STATIC=true`. Потрібні PostgreSQL і Redis з `packages/backend/.env`. Оскільки це plain http, скрипт задає `APP_ENV=local` і `APP_IS_PRODUCTION=false` (інакше `getWsUrl()` видав би `wss://`, а `upgrade-insecure-requests` зламав би всі запити). `PROD_LOCAL_SKIP_BUILD=true` пропускає збірку.
 
+Той самий образ, що йде в production, можна запустити локально в [docker-compose.yml](https://github.com/Blazheiko/vibe-template/blob/main/docker-compose.yml) разом з PostgreSQL, Redis, S3 і Mailpit: `pnpm app:build` збирає `vibe-template:local` ([`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh)), `pnpm app:up` запускає one-shot сервіс `migrate` (`db:create:prod`, `db:migrate`) і після нього `app`. Це і є схема з `depends_on: condition: service_completed_successfully` нижче. Подробиці й перелік змінних, які compose перекриває: [Швидкий старт](/guide/getting-started#увесь-застосунок-у-docker-compose).
+
 ## Dockerfile
 
 ```mermaid
