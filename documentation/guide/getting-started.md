@@ -73,7 +73,7 @@ SERVE_STATIC=false
 
 ### Сервіси через Docker Compose
 
-[docker-compose.yml](https://github.com/Blazheiko/vibe-template/blob/main/docker-compose.yml) у корені запускає все, з чим говорить backend локально. Сам backend і frontend працюють на хості через `pnpm dev`.
+[docker-compose.yml](https://github.com/Blazheiko/vibe-template/blob/main/docker-compose.yml) у корені запускає все, з чим говорить backend локально. Сам backend і frontend при цьому працюють на хості через `pnpm dev`. Як запустити в контейнерах і застосунок, описано нижче: [Увесь застосунок у Docker Compose](#увесь-застосунок-у-docker-compose).
 
 | Сервіс   | Образ                    | Порт на `127.0.0.1`                          | Для чого                                                    |
 | -------- | ------------------------ | -------------------------------------------- | ----------------------------------------------------------- |
@@ -84,7 +84,7 @@ SERVE_STATIC=false
 
 ```bash
 pnpm services:up     # docker compose --env-file packages/backend/.env up -d --wait
-pnpm services:down   # зупинити, дані лишаються у volumes
+pnpm services:down   # зупинити (і застосунок, якщо він запущений), дані лишаються у volumes
 docker compose down -v   # зупинити й видалити дані
 ```
 
@@ -119,6 +119,54 @@ SMTP_FROM_EMAIL=noreply@example.com
 ::: warning Лише для розробки
 Цей compose не призначений для production: облікові дані за замовчуванням відомі всім, а SeaweedFS працює в одно-процесному режимі `mini`. Розгортання описано на сторінці [Розгортання](/backend/deployment).
 :::
+
+### Увесь застосунок у Docker Compose
+
+Щоб подивитися на застосунок без Node.js на хості або перевірити саме production-збірку, його можна запустити в compose разом із сервісами. Це той самий образ, що й для production ([`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile)): backend віддає зібраний frontend (`SERVE_STATIC=true`), тому все працює з одного origin `http://localhost:3000`. Hot reload тут немає: після змін у коді образ треба зібрати знову. Для щоденної розробки лишається `pnpm dev`.
+
+```bash
+pnpm app:build   # scripts/docker-build.sh: локальний образ vibe-template:local
+pnpm app:up      # сервіси + migrate + app, чекає, доки app стане healthy
+pnpm app:seed    # за бажанням: довідкові дані й demo-акаунти з SEED_* у .env
+pnpm app:logs    # лог застосунку
+pnpm services:down
+```
+
+Застосунок і міграції описано в compose під профілем `app`, тому `pnpm services:up` їх не запускає.
+
+| Сервіс    | Що робить                                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrate` | одноразово виконує `pnpm db:create:prod && pnpm db:migrate` і завершується                                                                  |
+| `app`     | `node dist/index.js` на `127.0.0.1:APP_PORT` (3000); стартує після успішного `migrate`. `up --wait` чекає його `HEALTHCHECK` (`/api/ready`) |
+
+[`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) збирає образ з тегом `APP_IMAGE` (за замовчуванням `vibe-template:local`) і позначає його git-ревізією. Frontend збирається без Sentry і без `VITE_BASE_URL`, тобто з API на тому ж origin. Додаткові аргументи передаються в `docker build`, наприклад `pnpm app:build --no-cache`. Compose образ не збирає і не завантажує (`pull_policy: never`): без `pnpm app:build` `app:up` завершиться помилкою `No such image: vibe-template:local`.
+
+**Змінні.** Контейнери отримують увесь `packages/backend/.env` (`APP_KEY`, ключі AI й OAuth, VAPID, ліміти), але compose перекриває ті значення, які всередині мережі compose мусять бути іншими:
+
+| Що                    | Значення в контейнері                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| адреса застосунку     | `APP_URL`, `FRONTEND_URL`, `LANDING_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                         |
+| режим                 | `APP_ENV=local`, `APP_IS_PRODUCTION=false`, `SERVE_STATIC=true`, `DOC_PAGE=false`                                           |
+| PostgreSQL, Redis     | `PGSQL_HOST=postgres`, `PGSQL_PORT=5432`, `REDIS_HOST=redis`, `REDIS_PORT=6379`                                             |
+| S3                    | `S3_ENDPOINT=http://s3:8333`, ключі й бакет — ті самі, що в сервісу `s3`; `CDN_URL=http://localhost:S3_HOST_PORT/S3_BUCKET` |
+| пошта                 | Mailpit: `SMTP_ENABLED=true`, `SMTP_HOST=mailpit`, `SMTP_PORT=1025`, без TLS                                                |
+| origin для CSRF і CSP | `CSRF_ALLOWED_ORIGINS`, `CSP_API_ORIGIN`, `CSP_WS_ORIGIN` порожні, тож беруться з `APP_URL` і `DOMAIN`                      |
+
+`APP_ENV=local` потрібен з тієї ж причини, що й у `pnpm prod:local`: це plain http. З `production` cookie сесії мали б прапор `Secure`, WebSocket отримав би `wss://`, а CSP додала б `upgrade-insecure-requests`. Решта, зокрема `CSRF_ENFORCE` і `CSRF_STRICT_ORIGIN`, береться з вашого `.env` без змін.
+
+::: tip Порт 3000 уже зайнятий
+`pnpm dev` теж слухає порт 3000. Зупиніть його або задайте в `.env` інший `APP_PORT`, наприклад `APP_PORT=3001`: тоді застосунок буде на `http://localhost:3001`, і всі адреси в таблиці вище підлаштуються під цей порт.
+:::
+
+Перевірено (2026-11-06, Docker Desktop на macOS):
+
+- після `pnpm app:up` усі контейнери `healthy`, `migrate` завершився з кодом 0;
+- `/api/ready` повертає `ok`, `/` віддає SPA з CSP, у якій є origin застосунку й `CDN_URL`;
+- вхід demo-користувача через CSRF; з `CSRF_ENFORCE=true` чужий origin отримує `403 origin_mismatch`;
+- аватар завантажується в SeaweedFS і читається браузером з `CDN_URL`;
+- лист скидання пароля з посиланням на `http://localhost:<APP_PORT>` з'являється в Mailpit;
+- WebSocket за `ws://localhost:<APP_PORT>/api/websocket` відкривається;
+- `pnpm services:up` запускає лише чотири сервіси, `pnpm services:down` зупиняє й застосунок.
 
 ### Що потрібно зараз, а що можна налаштувати пізніше
 
@@ -296,7 +344,7 @@ CSRF=$(curl -s -c cookies.txt -b cookies.txt $B/main/init | sed -E 's/.*"csrfTok
 
 # 1. вхід: сервер ставить cookie сесії
 curl -s -c cookies.txt -b cookies.txt -H "$O" -H 'content-type: application/json' -H "x-csrf-token: $CSRF" \
-  -d '{"email":"user@example.com","password":"<user-password>","token":""}' $B/auth/login
+  -d '{"identifier":"user@example.com","password":"<user-password>","token":""}' $B/auth/login
 
 # 2. хто я: cookie йде автоматично
 curl -s -b cookies.txt $B/main/init
@@ -309,7 +357,7 @@ curl -s -b cookies.txt -c cookies.txt -X POST -H "$O" -H "x-csrf-token: $CSRF" $
 curl -s -o /dev/null -w '%{http_code}\n' -b cookies.txt $B/main/init
 ```
 
-Поле `token` у тілі входу обов'язкове за схемою [`login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts); фронтенд передає порожній рядок. Без нього сервер відповість `422 validation_failed`.
+Тіло входу описує схема [`login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts): `identifier` — email або телефон, `token` необов'язковий (фронтенд передає порожній рядок). Невідомі поля схема відхиляє: зі старим полем `email` замість `identifier` сервер відповість `422 validation_failed`.
 
 ## Усунення проблем
 
