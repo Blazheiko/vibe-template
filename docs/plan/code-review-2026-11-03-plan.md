@@ -645,4 +645,5 @@ High-дефектів немає. Medium підтверджено в коді; �
 | I1 (auth lows)           | feat-134 | #436 | done        |
 | I2 (lease, S3, KB)       | feat-135 | #439 | done        |
 | I3 (AI usage, purge)     | feat-136 | #442 | done        |
-| I4 (observability)       | feat-137 | —    | in_progress |
+| I4 (observability)       | feat-137 | #445 | done        |
+| I5 (lifecycle, timeouts) | feat-138 | —    | in_progress |
