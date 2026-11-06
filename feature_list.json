@@ -1431,8 +1431,8 @@
             "owner": "Blazheiko",
             "branch": "feat/feat-144-makefile",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #466 (merge commit 7d1b88f), started in #465. Root Makefile with 42 self-documented targets delegating to pnpm scripts and scripts/*; make check (build shared, verify-makefile, format:check, typecheck, lint, test) runs in the CI quality job; init.sh wraps make init; scripts/verify-makefile.mjs and scripts/doctor.sh; Windows section (WSL2 recommended). make check exit 0 locally and in CI (backend 2562 tests, frontend 400), ./init.sh exit 0, docs build/verify passed; verify-makefile mutation check catches 4 error kinds. Manual 2026-11-06: make help, make -n expansions, make env, make doctor (exit 1 with fake pnpm 8)."
         }
     ]
 }
