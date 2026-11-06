@@ -2,6 +2,8 @@
 
 Повний перелік pnpm-скриптів монорепозиторію. Кореневі скрипти запускаються з кореня (`pnpm <script>`), скрипти пакетів — через фільтр: `pnpm --filter <package> <script>`. Описи складено за фактичним вмістом `scripts` у кожному `package.json`.
 
+Щоденні операції зручніше запускати через `make`: [Команди make](/reference/make) — єдина точка входу, кожна ціль якої викликає один зі скриптів нижче.
+
 ## Корінь
 
 Джерело: [package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json).

@@ -58,6 +58,14 @@ Generated output such as `dist/`, `node_modules/`, Playwright reports, and cover
 
 ## Build, Test, and Development Commands
 
+The root `Makefile` is the single entry point: `make` (or `make help`) lists every target. Targets only delegate to pnpm scripts or `scripts/*`; put new logic into a pnpm script or a script file, then add a target with a `## description` (enforced by `make verify-makefile`, part of `make check`). Keep it GNU Make 3.81 compatible (macOS default).
+
+- `make setup`: first run: `make doctor` (Node/pnpm/Docker/.env), install, create `packages/backend/.env` if missing, build `shared`.
+- `make check`: build `shared`, verify the Makefile, `format:check`, `typecheck`, `lint`, `test`: exactly what the CI `quality` job runs. `./init.sh` wraps `make init` (install + check + build).
+- `make test PKG=backend`, `make db-seed ARGS=--demo`: `PKG` picks a package, `ARGS` is passed to the underlying script.
+
+The pnpm scripts below remain the implementation and can be run directly:
+
 - `pnpm install`: install workspace dependencies. Requires Node `^24.22.2` (Node 24 LTS; see `.nvmrc`) and pnpm `>=9`.
 - `pnpm dev`: build `shared`, build `backend`, then run backend and frontend dev servers in parallel.
 - `pnpm dev:frontend` / `pnpm dev:backend`: run one package locally.

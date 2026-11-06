@@ -1,0 +1,6 @@
+# Code style is owned by Prettier (.prettierrc.json). This file only covers what Prettier
+# does not format: Make recipes must be indented with tabs.
+root = true
+
+[Makefile]
+indent_style = tab

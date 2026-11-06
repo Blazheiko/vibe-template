@@ -33,16 +33,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # typecheck and the backend/frontend tests import the built shared package.
-      - run: pnpm --filter shared build
-
-      - run: pnpm format:check
-
-      - run: pnpm typecheck
-
-      - run: pnpm lint
-
-      - run: pnpm test
+      # The same checks as a local `make check`: build shared (typecheck and the
+      # backend/frontend tests import it), verify the Makefile, format, typecheck, lint, test.
+      - run: make check
 
       - name: Coverage
         run: |

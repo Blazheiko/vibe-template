@@ -148,6 +148,7 @@ const config = withMermaid(
                     {
                         text: 'Довідник',
                         items: [
+                            { text: 'Команди make', link: '/reference/make' },
                             { text: 'Скрипти', link: '/reference/scripts' },
                             { text: 'Toolchain', link: '/reference/toolchain' },
                             { text: 'Глосарій', link: '/reference/glossary' },

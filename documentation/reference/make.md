@@ -1,0 +1,104 @@
+# Команди make
+
+[`Makefile`](https://github.com/Blazheiko/vibe-template/blob/main/Makefile) у корені репозиторію — єдина точка входу для операцій розробника. Не треба пам'ятати, яка команда живе в кореневому `package.json`, яка в пакеті (`pnpm --filter backend …`), а яка в `docker compose`: усе запускається як `make <ціль>` з кореня.
+
+`make` без аргументів (або `make help`) виводить усі цілі з описами, згрупованими за розділами.
+
+## Як це влаштовано
+
+- **Makefile тільки делегує.** Кожна ціль викликає pnpm-скрипт або файл зі [`scripts/`](https://github.com/Blazheiko/vibe-template/tree/main/scripts). Логіки в самому Makefile немає, тому `pnpm <script>` працює так само, наприклад на Windows без `make`. Повний перелік скриптів: [Скрипти](/reference/scripts).
+- **Опис обов'язковий.** Ціль потрапляє в `make help`, якщо її рядок закінчується на `## опис`; рядок `##@ Назва` відкриває групу.
+- **Перевірка шару.** [`scripts/verify-makefile.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/verify-makefile.mjs) (`make verify-makefile`, входить у `make check`) падає, якщо в цілі немає опису, ціль відсутня в `.PHONY`, рецепт викликає pnpm-скрипт, якого немає в потрібному `package.json`, або файл зі `scripts/`, якого не існує.
+- **GNU Make 3.81.** Саме ця версія стоїть на macOS, тому Makefile не використовує `.ONESHELL` і grouped targets. Рецепти відступаються табами, це зафіксовано в [`.editorconfig`](https://github.com/Blazheiko/vibe-template/blob/main/.editorconfig).
+
+## Параметри
+
+| Змінна | Для чого                                              | Приклад                           |
+| ------ | ----------------------------------------------------- | --------------------------------- |
+| `PKG`  | `make test` для одного пакета (`pnpm --filter <PKG>`) | `make test PKG=backend`           |
+| `ARGS` | додаткові аргументи, які передаються скрипту без змін | `make db-seed ARGS=--demo`        |
+| `PNPM` | інша команда замість `pnpm`, якщо потрібно            | `make check PNPM="corepack pnpm"` |
+
+`ARGS` підтримують цілі, яким це має сенс: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `db-generate`, `db-seed`, `app-build`. Наприклад, `make test-e2e ARGS="--project=chromium"` або `make app-build ARGS=--no-cache`.
+
+## Старт
+
+| Ціль           | Що робить                                                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setup`        | перший запуск: `doctor`, `install`, `env`, `build-shared`                                                                                                                                                     |
+| `init`         | старт сесії: `install`, `build-shared`, `check`, `build`. Саме це запускає `./init.sh`                                                                                                                        |
+| `doctor`       | [`scripts/doctor.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/doctor.sh): Node `^` версії з `.nvmrc` і pnpm `>=9` обов'язкові (інакше код 1); відсутній Docker або `.env` — попередження |
+| `install`      | `pnpm install`                                                                                                                                                                                                |
+| `env`          | копіює `packages/backend/.env.example` у `packages/backend/.env`, тільки якщо `.env` ще немає                                                                                                                 |
+| `build-shared` | `pnpm build:shared`: typecheck і тести backend/frontend імпортують зібраний `shared`                                                                                                                          |
+
+Після `make env` відкрийте `packages/backend/.env` і перевірте значення: що потрібно для першого запуску, описано в [Швидкому старті](/guide/getting-started#_2-фаил-env-для-backend).
+
+## Розробка
+
+| Ціль             | pnpm-скрипт       | Що робить                                                            |
+| ---------------- | ----------------- | -------------------------------------------------------------------- |
+| `dev`            | `dev`             | збирає `shared` і `backend`, запускає dev-сервери backend і frontend |
+| `dev-backend`    | `dev:backend`     | тільки backend                                                       |
+| `dev-frontend`   | `dev:frontend`    | тільки frontend                                                      |
+| `dev-playground` | `dev:manual_test` | backend і API Playground                                             |
+| `prod-local`     | `prod:local`      | production-подібний запуск: backend віддає зібраний SPA              |
+| `start`          | `start`           | запуск зібраного backend                                             |
+
+## Якість
+
+`make check` — те саме, що крок перевірки в job `quality` у [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml): CI після `pnpm install --frozen-lockfile` викликає саме `make check`. Тому зелений `make check` локально означає зелений `quality` у CI (покриття CI рахує окремим кроком).
+
+| Ціль                      | Що робить                                                                                                              |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `check`                   | по черзі `build-shared`, `verify-makefile`, `format-check`, `typecheck`, `lint`, `test`; зупиняється на першій помилці |
+| `verify-makefile`         | перевіряє сам Makefile (див. вище)                                                                                     |
+| `typecheck`               | `pnpm typecheck`                                                                                                       |
+| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                          |
+| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                    |
+
+## Тести
+
+| Ціль         | pnpm-скрипт                          | Примітка                                |
+| ------------ | ------------------------------------ | --------------------------------------- |
+| `test`       | `test` (або `--filter <PKG> test`)   | unit-тести всіх пакетів чи одного       |
+| `test-e2e`   | `--filter frontend test:e2e`         | Playwright                              |
+| `test-pg`    | `--filter backend test:pg`           | потрібен PostgreSQL: `make services-up` |
+| `test-redis` | `--filter backend test:redis`        | потрібен Redis: `make services-up`      |
+| `coverage`   | `test:coverage` у backend і frontend | як крок Coverage у CI                   |
+
+## Сервіси, база даних і Docker
+
+| Ціль            | pnpm-скрипт           | Що робить                                                                |
+| --------------- | --------------------- | ------------------------------------------------------------------------ |
+| `services-up`   | `services:up`         | PostgreSQL, Redis, S3 і Mailpit з `docker-compose.yml`, чекає на healthy |
+| `services-down` | `services:down`       | зупиняє сервіси й застосунок, дані лишаються у volumes                   |
+| `db-create`     | `backend db:create`   | створює БД і розширення `vector`                                         |
+| `db-migrate`    | `backend db:migrate`  | застосовує міграції Drizzle                                              |
+| `db-generate`   | `backend db:generate` | генерує міграцію зі схеми                                                |
+| `db-seed`       | `backend db:seed`     | початкові дані; `ARGS=--demo` додає demo-акаунти                         |
+| `db-studio`     | `backend db:studio`   | Drizzle Studio                                                           |
+| `app-build`     | `app:build`           | збирає образ `vibe-template:local`                                       |
+| `app-up`        | `app:up`              | сервіси, міграції й застосунок у compose                                 |
+| `app-seed`      | `app:seed`            | seed з demo-акаунтами в compose                                          |
+| `app-logs`      | `app:logs`            | лог застосунку                                                           |
+
+Ланцюжок для чистої машини: `make setup`, правка `.env`, `make services-up db-create db-migrate`, `make dev`. Цілі в одному виклику `make` виконуються по черзі зліва направо.
+
+## Документація і збірка
+
+| Ціль           | pnpm-скрипт    | Що робить                                            |
+| -------------- | -------------- | ---------------------------------------------------- |
+| `docs-dev`     | `docs:dev`     | dev-сервер VitePress                                 |
+| `docs-build`   | `docs:build`   | збірка сайту                                         |
+| `docs-preview` | `docs:preview` | перегляд зібраного сайту                             |
+| `docs-verify`  | `docs:verify`  | перевірка збірки: посилання, якорі, ключові сторінки |
+| `build`        | `build`        | збірка всіх пакетів                                  |
+| `clean`        | `clean`        | видаляє артефакти збірки й `node_modules`            |
+
+## Як додати команду
+
+1. Логіку покладіть у pnpm-скрипт потрібного `package.json` або у файл у `scripts/`.
+2. Додайте ціль у відповідну групу Makefile з описом `## …` і впишіть її в `.PHONY`.
+3. Запустіть `make verify-makefile` і перевірте, що ціль видно в `make help`.
+4. Додайте рядок у таблицю на цій сторінці.

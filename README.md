@@ -116,8 +116,8 @@ All of these except Sentry and the AI providers run locally from
 SeaweedFS (S3) and Mailpit (SMTP). With `packages/backend/.env` in place:
 
 ```bash
-pnpm services:up     # start and wait until every service is healthy
-pnpm services:down   # stop, keep the data
+make services-up     # start and wait until every service is healthy
+make services-down   # stop, keep the data
 ```
 
 Credentials and ports are read from `packages/backend/.env`, so the containers and
@@ -127,9 +127,9 @@ The application itself can run in the same compose stack, from the production
 image built locally (the backend serves the built SPA on `http://localhost:3000`):
 
 ```bash
-pnpm app:build   # scripts/docker-build.sh → vibe-template:local
-pnpm app:up      # services + one-shot migrate + app, waits until healthy
-pnpm app:seed    # optional: reference data and demo accounts (SEED_* in .env)
+make app-build   # scripts/docker-build.sh → vibe-template:local
+make app-up      # services + one-shot migrate + app, waits until healthy
+make app-seed    # optional: reference data and demo accounts (SEED_* in .env)
 ```
 
 Details:
@@ -190,16 +190,19 @@ flowchart LR
 ## Getting started
 
 ```bash
-# 1. Install all workspace dependencies
-pnpm install
-
-# 2. Configure the backend environment
-cp packages/backend/.env.example packages/backend/.env
+# 1. Check Node/pnpm/Docker, install dependencies, create packages/backend/.env
+#    from .env.example (if missing) and build shared
+make setup
 # then edit packages/backend/.env (PGSQL_*, APP_KEY, S3_*, etc.)
 
-# 3. Build shared, then run backend + frontend dev servers in parallel
-pnpm dev
+# 2. Services, database, then backend + frontend dev servers in parallel
+make services-up db-create db-migrate
+make dev
 ```
+
+`make` with no target lists every command. The Makefile is the single entry point:
+each target only calls a pnpm script, so `pnpm <script>` keeps working too (for
+example on Windows without `make`).
 
 ### Minimal `.env` for local development
 
@@ -234,17 +237,16 @@ opt-in — enable it when you start using the corresponding feature.
 A typical human-friendly loop:
 
 ```bash
-pnpm install
-pnpm build:shared   # shared contracts must be built before backend/frontend
-pnpm dev            # run backend + frontend together
+make install
+make build-shared   # shared contracts must be built before backend/frontend
+make dev            # run backend + frontend together
 
-pnpm typecheck
-pnpm lint
-pnpm test
+make check          # format, typecheck, lint, tests: the same as the CI quality job
+make test PKG=backend
 ```
 
 Code style is defined by the root `.prettierrc.json` (4 spaces, single quotes, no
-semicolons, width 100); `pnpm format:check` must pass. The one-off mass formatting
+semicolons, width 100); `make format-check` must pass. The one-off mass formatting
 commit is listed in `.git-blame-ignore-revs`, so `git blame` skips it after:
 
 ```bash
@@ -252,7 +254,8 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
 Before opening a PR, run the full verification chain with `./init.sh`
-(`install → typecheck → lint → test → build`) to confirm a clean checkout:
+(a wrapper over `make init`: `install → build shared → check → build`) to confirm a
+clean checkout:
 
 ```bash
 ./init.sh
@@ -260,32 +263,44 @@ Before opening a PR, run the full verification chain with `./init.sh`
 
 ### Local ports
 
-| Service        | Default URL                                             |
-| -------------- | ------------------------------------------------------- |
-| Backend        | http://localhost:3000                                   |
-| Frontend       | http://localhost:5173                                   |
-| API playground | http://localhost:5174                                   |
-| Drizzle Studio | launched via `pnpm db:studio` (from `packages/backend`) |
+| Service        | Default URL                   |
+| -------------- | ----------------------------- |
+| Backend        | http://localhost:3000         |
+| Frontend       | http://localhost:5173         |
+| API playground | http://localhost:5174         |
+| Drizzle Studio | launched via `make db-studio` |
 
-## Common scripts
+## Common commands
 
-Run from the repository root:
+Run from the repository root. [`Makefile`](Makefile) is the single entry point;
+`make` (or `make help`) prints every target with a description. Each target only
+calls the pnpm script in the last column, which you can also run directly.
 
-| Command                                  | Description                                                                           |
-| ---------------------------------------- | ------------------------------------------------------------------------------------- |
-| `pnpm dev`                               | Build `shared` + `backend`, then run backend and frontend dev servers in parallel     |
-| `pnpm dev:backend` / `pnpm dev:frontend` | Run a single package in dev mode                                                      |
-| `pnpm build`                             | Build every package recursively                                                       |
-| `pnpm build:shared`                      | Build only the `shared` package                                                       |
-| `pnpm start`                             | Start the built backend (`node dist/index.js`)                                        |
-| `pnpm typecheck`                         | TypeScript checks across all packages                                                 |
-| `pnpm lint` / `pnpm lint:fix`            | Lint (and auto-fix) the whole repo with ESLint                                        |
-| `pnpm format` / `pnpm format:check`      | Write / check Prettier formatting                                                     |
-| `pnpm test`                              | Run all package test suites                                                           |
-| `pnpm clean`                             | Clean build artifacts and `node_modules`                                              |
-| `pnpm docs:dev` / `pnpm docs:preview`    | Run the VitePress documentation site in dev mode / preview the built site             |
-| `pnpm docs:build` / `pnpm docs:verify`   | Build the documentation site / check the build (links, anchors, key pages)            |
-| `pnpm prod:local`                        | Production-like local run: the backend serves the built SPA (`scripts/prod-local.sh`) |
+| Command                                  | Description                                                                       | pnpm script                        |
+| ---------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------- |
+| `make setup`                             | Check tools (`make doctor`), install deps, create `.env` if missing, build shared | —                                  |
+| `make doctor`                            | Check Node, pnpm, Docker and `packages/backend/.env`                              | `scripts/doctor.sh`                |
+| `make dev`                               | Build `shared` + `backend`, then run backend and frontend dev servers in parallel | `dev`                              |
+| `make dev-backend` / `make dev-frontend` | Run a single package in dev mode                                                  | `dev:backend` / `dev:frontend`     |
+| `make check`                             | Build shared, verify the Makefile, format check, typecheck, lint, tests (CI)      | —                                  |
+| `make typecheck`                         | TypeScript checks across all packages                                             | `typecheck`                        |
+| `make lint` / `make lint-fix`            | Lint (and auto-fix) the whole repo with ESLint                                    | `lint` / `lint:fix`                |
+| `make format` / `make format-check`      | Write / check Prettier formatting                                                 | `format` / `format:check`          |
+| `make test [PKG=backend]`                | Run all package test suites, or one package                                       | `test`                             |
+| `make test-e2e`                          | Frontend Playwright e2e                                                           | `frontend test:e2e`                |
+| `make services-up` / `services-down`     | Start / stop the Docker Compose services                                          | `services:up` / `services:down`    |
+| `make db-create` / `make db-migrate`     | Create the database / apply migrations                                            | `backend db:create` / `db:migrate` |
+| `make db-seed [ARGS=--demo]`             | Seed reference data (and demo accounts)                                           | `backend db:seed`                  |
+| `make build` / `make build-shared`       | Build every package / only `shared`                                               | `build` / `build:shared`           |
+| `make start`                             | Start the built backend (`node dist/index.js`)                                    | `start`                            |
+| `make clean`                             | Clean build artifacts and `node_modules`                                          | `clean`                            |
+| `make docs-dev` / `make docs-preview`    | Run the VitePress documentation site in dev mode / preview the built site         | `docs:dev` / `docs:preview`        |
+| `make docs-build` / `make docs-verify`   | Build the documentation site / check the build (links, anchors, key pages)        | `docs:build` / `docs:verify`       |
+| `make prod-local`                        | Production-like local run: the backend serves the built SPA                       | `prod:local`                       |
+
+The full list, including `test-pg`, `test-redis`, `coverage`, `db-generate`,
+`db-studio` and the `app-*` targets, is in `make help` and in
+[Make commands](https://blazheiko.github.io/vibe-template/reference/make).
 
 Frontend e2e tests use Playwright:
 

@@ -69,6 +69,7 @@ const KEY_PAGES = [
     { page: 'backend/web-push-notification.md', h1: 'Web Push сповіщення' },
     { page: 'backend/ai.md', h1: 'AI-інтеграції' },
     { page: 'backend/adding-a-feature.md', h1: 'Як додати фічу в бекенд' },
+    { page: 'reference/make.md', h1: 'Команди make' },
     { page: 'reference/scripts.md', h1: 'Скрипти' },
     { page: 'guide/workflow.md', h1: 'Процес роботи' },
     { page: 'reference/toolchain.md', h1: 'Toolchain' },
