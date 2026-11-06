@@ -63,6 +63,7 @@ The root `Makefile` is the single entry point: `make` (or `make help`) lists eve
 - `make setup`: first run: `make doctor` (Node/pnpm/Docker/.env), install, create `packages/backend/.env` if missing, build `shared`.
 - `make check`: build `shared`, verify the Makefile, `format:check`, `typecheck`, `lint`, `test`: exactly what the CI `quality` job runs. `./init.sh` wraps `make init` (install + check + build).
 - `make test PKG=backend`, `make db-seed ARGS=--demo`: `PKG` picks a package, `ARGS` is passed to the underlying script.
+- `make services-up ARGS="redis s3 mailpit"` starts a subset (e.g. next to a local PostgreSQL); `make app-down` stops only the app container. `make` is optional for humans: every target has a pnpm equivalent (`make -n <target>`).
 
 The pnpm scripts below remain the implementation and can be run directly:
 

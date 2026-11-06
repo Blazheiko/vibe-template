@@ -26,7 +26,11 @@ nvm use          # бере версію з .nvmrc
 make setup       # перевірка Node/pnpm/Docker, pnpm install, .env з .env.example, збірка shared
 ```
 
-`make setup` — перший крок через [Makefile](/reference/make), єдину точку входу для команд розробника; `make` без аргументів показує всі цілі. Кожна ціль викликає pnpm-скрипт, тому без `make` працює звичайний `pnpm install`. На Windows використовуйте WSL2: [Команди make → Windows](/reference/make#windows).
+`make setup` — перший крок через [Makefile](/reference/make), єдину точку входу для команд розробника; `make` без аргументів показує всі цілі.
+
+::: tip Альтернатива: pnpm без make
+`make` не обов'язковий. Кожна ціль лише викликає pnpm-скрипт, тому весь цей гайд можна пройти через `pnpm`: `pnpm install` замість `make setup`, `pnpm services:up` замість `make services-up`, `pnpm --filter backend db:migrate` замість `make db-migrate`, `pnpm dev` замість `make dev`, `pnpm app:up` / `pnpm app:down` для застосунку в Docker. Відповідність усіх цілей і скриптів — у [Команди make](/reference/make); `make -n <ціль>` друкує команду без запуску.
+::: На Windows використовуйте WSL2: [Команди make → Windows](/reference/make#windows).
 
 ## 2. Файл `.env` для backend
 
@@ -94,6 +98,8 @@ docker compose down -v   # зупинити й видалити дані
 
 Compose читає облікові дані й порти з `packages/backend/.env`, тобто з тих самих `PGSQL_*`, `REDIS_*` і `S3_*`, що й backend, тому обидві сторони завжди збігаються. Незадані значення беруть defaults з `.env.example`: `postgres`/`postgres`, Redis без пароля. Якщо задано `REDIS_PASSWORD`, Redis стартує з `requirepass`. `services:up` чекає, доки всі контейнери стануть `healthy`. Порти відкрито лише на `127.0.0.1`: це облікові дані для розробки, а не для спільної мережі.
 
+Якщо порт уже зайнятий (наприклад, локальним PostgreSQL з Homebrew), `services-up` впаде з `bind: address already in use`. `make doctor` заздалегідь показує, який процес тримає порт. Локальний PostgreSQL з pgvector можна використовувати замість контейнера: `make services-up ARGS="redis s3 mailpit"` (`pnpm services:up redis s3 mailpit`). Деталі: [Команди make → Зайняті порти](/reference/make#заиняті-порти-і-свіи-postgresql).
+
 PostgreSQL і Redis працюють без додаткових змінних. Щоб увімкнути завантаження файлів і пошту, додайте в `.env`:
 
 ```dotenv
@@ -133,7 +139,8 @@ make app-build   # scripts/docker-build.sh: локальний образ vibe-t
 make app-up      # сервіси + migrate + app, чекає, доки app стане healthy
 make app-seed    # за бажанням: довідкові дані й demo-акаунти з SEED_* у .env
 make app-logs    # лог застосунку
-make services-down
+make app-down    # зупинити лише застосунок, сервіси працюють далі (назад до make dev)
+make services-down   # зупинити все
 ```
 
 Застосунок і міграції описано в compose під профілем `app`, тому `make services-up` їх не запускає.
@@ -159,7 +166,7 @@ make services-down
 `APP_ENV=local` потрібен з тієї ж причини, що й у `pnpm prod:local`: це plain http. З `production` cookie сесії мали б прапор `Secure`, WebSocket отримав би `wss://`, а CSP додала б `upgrade-insecure-requests`. Решта, зокрема `CSRF_ENFORCE` і `CSRF_STRICT_ORIGIN`, береться з вашого `.env` без змін.
 
 ::: tip Порт 3000 уже зайнятий
-`pnpm dev` теж слухає порт 3000. Зупиніть його або задайте в `.env` інший `APP_PORT`, наприклад `APP_PORT=3001`: тоді застосунок буде на `http://localhost:3001`, і всі адреси в таблиці вище підлаштуються під цей порт.
+`make dev` теж слухає порт 3000. Щоб повернутися до розробки, виконайте `make app-down`: він прибирає контейнери `app` і `migrate`, а сервіси лишає. Щоб запускати обидва одночасно, зупиніть `make dev` або задайте в `.env` інший `APP_PORT`, наприклад `APP_PORT=3001`: тоді застосунок буде на `http://localhost:3001`, і всі адреси в таблиці вище підлаштуються під цей порт.
 :::
 
 Перевірено (2026-11-06, Docker Desktop на macOS):

@@ -1,7 +1,7 @@
 # Single entry point for developer operations.
 #
 # Every target only delegates to a pnpm script or a script in scripts/; the logic lives
-# there. `make` with no target prints the list below. Extra arguments go through ARGS,
+# there, so each target has a pnpm equivalent (see the docs: Make commands). `make` with no target prints the list below. Extra arguments go through ARGS,
 # for example: make db-seed ARGS=--demo, make test-e2e ARGS="--project=chromium".
 # One package: make test PKG=backend.
 #
@@ -24,7 +24,7 @@ ENV_FILE := packages/backend/.env
 	test test-e2e test-pg test-redis coverage \
 	services-up services-down \
 	db-create db-migrate db-generate db-seed db-studio \
-	app-build app-up app-seed app-logs \
+	app-build app-up app-down app-seed app-logs \
 	docs-dev docs-build docs-preview docs-verify \
 	build clean
 
@@ -120,8 +120,8 @@ coverage: ## Backend and frontend tests with coverage, as in CI
 
 ##@ Services (Docker Compose)
 
-services-up: ## Start PostgreSQL, Redis, S3 and Mailpit, wait until healthy
-	$(PNPM) services:up
+services-up: ## Start PostgreSQL, Redis, S3 and Mailpit (ARGS="redis s3 mailpit" for a subset)
+	$(PNPM) services:up $(ARGS)
 
 services-down: ## Stop services and the app, keep the data
 	$(PNPM) services:down
@@ -150,6 +150,9 @@ app-build: ## Build the vibe-template:local image
 
 app-up: ## Services, migrations and the app, wait until healthy
 	$(PNPM) app:up
+
+app-down: ## Stop and remove only the app containers, keep services running
+	$(PNPM) app:down
 
 app-seed: ## Seed the app database with demo accounts
 	$(PNPM) app:seed
