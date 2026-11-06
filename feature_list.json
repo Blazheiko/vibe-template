@@ -1413,6 +1413,16 @@
             "dependencies": ["feat-140"],
             "status": "in_progress",
             "evidence": ""
+        },
+        {
+            "id": "feat-143",
+            "name": "Visible CSRF Opt-Out",
+            "description": "CSRF protection is on by default (CSRF_ENFORCE and CSRF_STRICT_ORIGIN default to true); turning it off must be a visible, deliberate choice. The startup warning for CSRF_ENFORCE=false is given in every environment, not only production-like ones, and CSRF_STRICT_ORIGIN=false gets its own warning. Docs state the defaults and that false is an explicit opt-out",
+            "owner": "Blazheiko",
+            "branch": "feat/feat-143-csrf-opt-out-warnings",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
