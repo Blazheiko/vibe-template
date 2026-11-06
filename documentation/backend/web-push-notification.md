@@ -116,7 +116,7 @@ Endpoint зберігається й шукається в **канонічні�
 
 1. Якщо `skipIfOnline` і користувач має активне WebSocket-з'єднання (`wsConnectionRegistry.isUserOnline`) — push пропускається (див. [WebSocket](/backend/websocket)).
 2. Береться список активних підписок; якщо в підписки непорожній `notificationTypes` і він не містить `notificationType` — її пропускають.
-3. Для кожної підписки викликається `webpush.sendNotification` з JSON:
+3. Для кожної підписки викликається `webpush.sendNotification` з таймаутом 10 с (`PUSH_SEND_TIMEOUT_MS`, feat-138: push-сервіс, що завис, не тримає відправку, і запис стає `network_error`) і JSON:
 
 ```json
 {

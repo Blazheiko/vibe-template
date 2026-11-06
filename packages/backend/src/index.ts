@@ -15,6 +15,7 @@ import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
 import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
+import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
 import readinessProbe from '#database/readiness-probe.js'
 import redis, { redisHealth } from '#database/redis.js'
@@ -86,6 +87,8 @@ const stopHandler = async (type: string): Promise<void> => {
     await stopServer(type)
 }
 
+const SHUTDOWN_DRAIN_MS = 3000
+
 const stopGracefully = async (type: string): Promise<void> => {
     if (isStopping) {
         logger.warn({ type }, 'Shutdown already in progress')
@@ -95,6 +98,11 @@ const stopGracefully = async (type: string): Promise<void> => {
     isStopping = true
     try {
         await stopHandler(type)
+        // feat-138 (sixth review L12): the sockets closeAllWs ended start their user_online
+        // disconnect UPDATEs; they finish before the pool ends (bounded), or their rows stay open.
+        await new Promise((resolve) => setImmediate(resolve))
+        const drained = await websocketCoordinator.drainDisconnects(SHUTDOWN_DRAIN_MS)
+        if (!drained) logger.warn('Shutdown: some user_online disconnects did not finish in time')
         await sentryService.flush(2000)
         // Before quit: the closing connection is not an incident.
         redisHealth.stop()

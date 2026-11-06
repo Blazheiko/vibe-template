@@ -39,19 +39,31 @@ export interface ReadinessProbe {
     end(): Promise<void>
 }
 
+/**
+ * feat-138 (sixth review L14): the probe's whole budget, split between waiting for the connection
+ * and the query, so one probe ends within `timeoutMs`. Each part used to get all of it, and the
+ * worst probe took about twice as long; /ready, which refuses a probe while one is in flight,
+ * recovered that much later. Each part gets at least 1 ms.
+ */
+export const probeTimeouts = (timeoutMs: number): { connectMs: number; queryMs: number } => {
+    const connectMs = Math.max(1, Math.floor(timeoutMs / 2))
+    return { connectMs, queryMs: Math.max(1, timeoutMs - connectMs) }
+}
+
 export const createReadinessProbe = ({
     connection,
     timeoutMs,
     statement = (): string => 'SELECT 1',
     applicationName = READINESS_PROBE_APPLICATION_NAME,
 }: ReadinessProbeOptions): ReadinessProbe => {
+    const { connectMs, queryMs } = probeTimeouts(timeoutMs)
     const pool = new pg.Pool({
         ...connection,
         max: 1,
         application_name: applicationName,
-        connectionTimeoutMillis: timeoutMs,
-        statement_timeout: timeoutMs,
-        query_timeout: timeoutMs,
+        connectionTimeoutMillis: connectMs,
+        statement_timeout: queryMs,
+        query_timeout: queryMs,
     })
     // An idle connection dropped by the server emits 'error'; unhandled it would stop the process.
     pool.on('error', (err) => {

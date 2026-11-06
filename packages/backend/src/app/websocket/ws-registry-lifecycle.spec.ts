@@ -206,3 +206,44 @@ describe('user_online rows (feat-124)', () => {
         expect(online.trackDisconnected).not.toHaveBeenCalled()
     })
 })
+
+// feat-138 (sixth review L12): the disconnect UPDATEs that closeAllWs starts were not awaited, so
+// pool.end() could cut them and leave user_online rows open.
+describe('draining the user_online disconnects at shutdown (feat-138)', () => {
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+
+    it('waits for a disconnect UPDATE still running', async () => {
+        let finish: () => void = () => undefined
+        online.trackDisconnected.mockImplementationOnce(
+            () =>
+                new Promise<void>((resolve) => {
+                    finish = resolve
+                }),
+        )
+        const conn = connection('904')
+        await connect(conn)
+        await conn.close()
+        await settle()
+
+        let drained = false
+        const draining = websocketCoordinator.drainDisconnects(1_000).then(() => {
+            drained = true
+        })
+        await settle()
+        expect(drained).toBe(false)
+
+        finish()
+        await draining
+        expect(drained).toBe(true)
+    })
+
+    it('gives up at its deadline', async () => {
+        online.trackDisconnected.mockImplementationOnce(() => new Promise<void>(() => undefined))
+        const conn = connection('905')
+        await connect(conn)
+        await conn.close()
+        await settle()
+
+        await expect(websocketCoordinator.drainDisconnects(20)).resolves.toBe(false)
+    })
+})
