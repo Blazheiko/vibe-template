@@ -312,6 +312,54 @@ describe('logger error scrubbing', () => {
         for (const secret of SECRETS) expect(lines.join('')).not.toContain(secret)
     })
 
+    // feat-139 (seventh review Q1): pino writes what toJSON returns, so that is what gets scrubbed.
+    it('scrubs an error that a toJSON returns or holds', async () => {
+        const err = await failedQuery()
+        class Wrapped {
+            toJSON(): unknown {
+                return { reason: err }
+            }
+        }
+        class Bare {
+            toJSON(): unknown {
+                return err
+            }
+        }
+        class Self {
+            failure = err
+            toJSON(): unknown {
+                return this
+            }
+        }
+        const lines = await captureLines((logger) => {
+            logger.error({ a: new Wrapped(), b: new Bare(), c: new Self() }, 'x')
+        })
+        expect(lines).toHaveLength(1)
+        for (const secret of SECRETS) expect(lines.join('')).not.toContain(secret)
+    })
+
+    it('keeps values with a toJSON that holds no error, and survives a throwing one', async () => {
+        class Broken {
+            toJSON(): unknown {
+                throw new Error('boom')
+            }
+        }
+        const lines = await captureLines((logger) => {
+            logger.error(
+                {
+                    at: new Date('2026-11-06T00:00:00.000Z'),
+                    url: new URL('https://app.test/a?b=1'),
+                    broken: new Broken(),
+                },
+                'x',
+            )
+        })
+        const record = JSON.parse(lines[0] ?? '{}') as Record<string, unknown>
+        expect(record['at']).toBe('2026-11-06T00:00:00.000Z')
+        expect(record['url']).toBe('https://app.test/a?b=1')
+        expect(record['broken']).toBe('[toJSON failed]')
+    })
+
     it('keeps the fields of plain objects that have a message', async () => {
         const lines = await captureLines((logger) => {
             logger.error(

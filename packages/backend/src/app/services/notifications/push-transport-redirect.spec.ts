@@ -10,10 +10,14 @@ import { join } from 'node:path'
 import webpush from 'web-push'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { sendPush } from './push-transport.js'
+
 // feat-104 (R03): the endpoint is checked before the request, so a push service that answers with
-// a redirect must not move the request somewhere else. web-push sends with https.request, which
-// does not follow redirects, and treats any status outside 2xx as an error. This pins that on the
-// real transport: a local TLS server answers 302 to an internal address that counts its hits.
+// a redirect must not move the request somewhere else. The transport (feat-139: our own
+// https.request over web-push's request details) does not follow redirects and treats any status
+// outside 2xx as an error. This pins that on the real transport: a local TLS server answers 302 to
+// an internal address that counts its hits. feat-139 (Q4): a server that trickles its answer is
+// cut by the deadline over the whole request, which an idle timeout never does.
 // Needs the openssl CLI for a throwaway certificate; skipped without it.
 
 function hasOpenssl(): boolean {
@@ -47,6 +51,10 @@ describe.skipIf(!hasOpenssl())('web-push transport and redirects', () => {
     let target: Server
     let targetHits = 0
     let redirectingPort = 0
+    let accepting: Server
+    let acceptingPort = 0
+    let trickling: Server
+    let tricklingPort = 0
 
     beforeAll(async () => {
         dir = mkdtempSync(join(tmpdir(), 'push-redirect-'))
@@ -88,40 +96,70 @@ describe.skipIf(!hasOpenssl())('web-push transport and redirects', () => {
             res.end()
         })
         redirectingPort = await listen(redirecting)
+
+        accepting = createHttpsServer({ cert, key }, (req, res) => {
+            req.resume()
+            res.writeHead(201).end()
+        })
+        acceptingPort = await listen(accepting)
+
+        // One byte every 50 ms, never done: no idle gap for a socket timeout to fire on.
+        trickling = createHttpsServer({ cert, key }, (req, res) => {
+            req.resume()
+            res.writeHead(201)
+            const timer = setInterval(() => res.write('.'), 50)
+            res.on('close', () => {
+                clearInterval(timer)
+            })
+        })
+        tricklingPort = await listen(trickling)
     })
 
     afterAll(async () => {
+        trickling.closeAllConnections()
         await close(redirecting)
         await close(target)
+        await close(accepting)
+        await close(trickling)
         rmSync(dir, { recursive: true, force: true })
     })
 
-    it('fails on a 302 and never requests the redirect target', async () => {
+    const subscriptionTo = (port: number): webpush.PushSubscription => {
         const ecdh = createECDH('prime256v1')
         ecdh.generateKeys()
-        const vapid = webpush.generateVAPIDKeys()
-
-        const send = webpush.sendNotification(
-            {
-                endpoint: `https://localhost:${String(redirectingPort)}/push/abc`,
-                keys: {
-                    p256dh: ecdh.getPublicKey().toString('base64url'),
-                    auth: randomBytes(16).toString('base64url'),
-                },
+        return {
+            endpoint: `https://localhost:${String(port)}/push/abc`,
+            keys: {
+                p256dh: ecdh.getPublicKey().toString('base64url'),
+                auth: randomBytes(16).toString('base64url'),
             },
-            'hello',
-            {
-                vapidDetails: {
-                    subject: 'mailto:test@example.test',
-                    publicKey: vapid.publicKey,
-                    privateKey: vapid.privateKey,
-                },
-                // Trusts the throwaway certificate only; the app itself passes no agent.
-                agent: new Agent({ ca: cert }),
+        }
+    }
+    const vapid = webpush.generateVAPIDKeys()
+    const send = (port: number, deadlineMs = 5000): ReturnType<typeof sendPush> =>
+        sendPush(subscriptionTo(port), 'hello', {
+            deadlineMs,
+            vapidDetails: {
+                subject: 'mailto:test@example.test',
+                publicKey: vapid.publicKey,
+                privateKey: vapid.privateKey,
             },
-        )
+            // Trusts the throwaway certificate only; the app itself passes no agent.
+            agent: new Agent({ ca: cert }),
+        })
 
-        await expect(send).rejects.toMatchObject({ statusCode: 302 })
+    it('fails on a 302 and never requests the redirect target', async () => {
+        await expect(send(redirectingPort)).rejects.toMatchObject({ statusCode: 302 })
         expect(targetHits).toBe(0)
+    })
+
+    it('resolves with the status of a 2xx answer', async () => {
+        await expect(send(acceptingPort)).resolves.toEqual({ statusCode: 201 })
+    })
+
+    it('cuts an answer that trickles past the deadline', async () => {
+        const started = performance.now()
+        await expect(send(tricklingPort, 300)).rejects.toMatchObject({ name: 'TimeoutError' })
+        expect(performance.now() - started).toBeLessThan(2000)
     })
 })

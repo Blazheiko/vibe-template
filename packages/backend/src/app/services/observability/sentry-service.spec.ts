@@ -311,12 +311,61 @@ describe('sentryService', () => {
             },
         }) as { extra?: Record<string, unknown> }
 
-        expect(sanitized.extra?.['url']).toBe('https://app.test/path?x=1')
+        expect(sanitized.extra?.['url']).toBe('https://app.test/path?x=%5BFiltered%5D')
         expect(sanitized.extra?.['amount']).toBe('12.50')
         const safe = sanitized.extra?.['failure'] as Record<string, unknown>
         expect(safe['password']).toBeUndefined()
         expect(safe['step']).toBe('save')
         expect(failure.password).toBe('hunter2')
+    })
+
+    // feat-139 (seventh review Q2, Q3): a URL keeps no secret of its query, fragment or userinfo;
+    // a value past the depth limit is cut, not sent as it is.
+    it('redacts a URL and cuts a value past the depth limit', async () => {
+        process.env['SENTRY_DSN'] = 'https://example.com/1'
+        process.env['SENTRY_ENABLED'] = 'true'
+        const { sentryService } = await loadSentryService()
+        sentryService.init()
+        const eventProcessor = addEventProcessorMock.mock.calls[0]?.[0] as
+            ((event: Record<string, unknown>) => Record<string, unknown> | null) | undefined
+        if (eventProcessor === undefined) throw new Error('event processor was not configured')
+
+        class SelfRef {
+            password = 'PWSELF'
+            toJSON(): unknown {
+                return this
+            }
+        }
+        let deep: Record<string, unknown> = { password: 'PWDEEP', token: 'TKDEEP' }
+        for (let i = 0; i < 20; i++) deep = { next: deep }
+
+        const sanitized = eventProcessor({
+            extra: {
+                link: new URL(
+                    'https://u:pw@app.test/reset?token=RESETSECRET&code=OAUTHCODE#frag=HASH',
+                ),
+                self: new SelfRef(),
+                deep,
+            },
+        })
+        const sent = JSON.stringify(sanitized)
+        for (const secret of [
+            'RESETSECRET',
+            'OAUTHCODE',
+            'HASH',
+            'pw@',
+            'PWSELF',
+            'PWDEEP',
+            'TKDEEP',
+        ]) {
+            expect(sent).not.toContain(secret)
+        }
+        const extra = (sanitized as { extra: Record<string, unknown> }).extra
+        expect(extra['link']).toBe(
+            'https://%5BFiltered%5D:%5BFiltered%5D@app.test/reset?token=%5BFiltered%5D&code=%5BFiltered%5D#[Filtered]',
+        )
+        expect(extra['self']).toEqual({})
+        expect(sent).toContain('[Truncated]')
     })
 
     it('normalizes internal app errors before capturing them', async () => {

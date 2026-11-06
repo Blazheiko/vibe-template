@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendNotification = vi.fn()
 vi.mock('web-push', () => ({
-    default: { setVapidDetails: vi.fn(), sendNotification },
+    default: { setVapidDetails: vi.fn() },
 }))
+vi.mock('./push-transport.js', () => ({ sendPush: sendNotification }))
 vi.mock('#config/push.js', () => ({
     default: {
         vapidPublicKey: 'pub',
@@ -215,14 +216,14 @@ describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
         )
     })
 
-    // feat-138 (sixth review L13): a timeout, and still no proxy or agent (feat-104).
-    it('passes only a timeout to web-push: no proxy, no agent', async () => {
+    // feat-138 (sixth review L13), feat-139 (Q4): a deadline, and still no proxy or agent (feat-104).
+    it('passes only a deadline to the transport: no proxy, no agent', async () => {
         pushSubscriptionRepository.findByUserId.mockResolvedValue([subscription(1)])
         const { PUSH_SEND_TIMEOUT_MS } = await import('./push-notification-sender-service.js')
 
         await pushNotificationSenderService.sendToUser(7n, { title: 't', body: 'b' })
 
-        expect(sendNotification.mock.calls[0]?.[2]).toEqual({ timeout: PUSH_SEND_TIMEOUT_MS })
+        expect(sendNotification.mock.calls[0]?.[2]).toEqual({ deadlineMs: PUSH_SEND_TIMEOUT_MS })
         expect(PUSH_SEND_TIMEOUT_MS).toBeGreaterThan(0)
     })
 

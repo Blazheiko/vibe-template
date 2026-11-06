@@ -87,6 +87,21 @@ function truncateUtf8(value: string, maxBytes: number): string {
     return buffer.subarray(0, maxBytes).toString('utf8')
 }
 
+const TRUNCATED = '[Truncated]'
+const FILTERED = '[Filtered]'
+
+// feat-139 (Q3): a URL is sent as its string (feat-137), and a query or a fragment often carries a
+// token (a reset link, an OAuth code), whatever its key is called. Values and credentials go; the
+// keys stay, so the event still says which parameters there were.
+function redactUrl(url: URL): string {
+    const safe = new URL(url.href)
+    if (safe.username !== '') safe.username = FILTERED
+    if (safe.password !== '') safe.password = FILTERED
+    for (const key of new Set(safe.searchParams.keys())) safe.searchParams.set(key, FILTERED)
+    if (safe.hash !== '') safe.hash = FILTERED
+    return safe.href
+}
+
 function sanitizeRecord(record: Record<string, unknown>): void {
     for (const key of Object.keys(record)) {
         if (SENSITIVE_KEY_RE.test(key)) {
@@ -112,7 +127,9 @@ const isOpaque = (value: object): boolean =>
 // replaced by their scrubbed copies (toSafeError) as well.
 function sanitizeDeep(value: unknown, depth = 0): unknown {
     if (typeof value === 'string') return redactQueryText(value)
-    if (value === null || typeof value !== 'object' || depth >= MAX_SANITIZE_DEPTH) return value
+    if (value === null || typeof value !== 'object') return value
+    // feat-139 (Q2): past the limit nothing below is sanitized, so nothing below is sent either.
+    if (depth >= MAX_SANITIZE_DEPTH) return TRUNCATED
     if (value instanceof Error) {
         // feat-137 (L11): the safe copy keeps the error's own fields; sensitive ones go, and the
         // rest are sanitized like any value. The copy is ours, the caller's error is untouched.
@@ -128,15 +145,19 @@ function sanitizeDeep(value: unknown, depth = 0): unknown {
         return value.map((item: unknown) => sanitizeDeep(item, depth + 1))
     }
     if (isOpaque(value)) return value
+    if (value instanceof URL) return redactUrl(value)
     // feat-137 (L10): Sentry serializes a value with toJSON (URL, Decimal, a Luxon date) as what
     // toJSON returns; its own fields are often none, so read that way it was sent as `{}`.
     const toJSON = (value as { toJSON?: unknown }).toJSON
     if (typeof toJSON === 'function') {
+        let json: unknown
         try {
-            return sanitizeDeep((toJSON as () => unknown).call(value), depth + 1)
+            json = (toJSON as () => unknown).call(value)
         } catch {
             return '[toJSON failed]'
         }
+        // feat-139 (Q2): a toJSON that returns its own object is read as its fields below.
+        if (json !== value) return sanitizeDeep(json, depth + 1)
     }
 
     // feat-127: a class instance too. The processor runs before Sentry normalizes the event into
