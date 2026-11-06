@@ -1441,8 +1441,8 @@
             "owner": "Blazheiko",
             "branch": "feat/feat-145-makefile-services",
             "dependencies": ["feat-144"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #469 (merge commit 4a7238a), started in #468. make app-down (pnpm app:down: compose rm --stop --force app migrate), make services-up ARGS=\"redis s3 mailpit\" for a subset, make doctor port checks (Docker-held ok, other holders warn with the process). Docs: README, AGENTS.md, getting-started, reference/make.md and scripts.md state that every make target has a pnpm equivalent. make check exit 0 locally and in CI, docs build/verify passed. Manual 2026-11-06: subset start runs only redis/s3/mailpit; app-up then app-down leaves the four services healthy and port 3000 free; doctor warns about a node listener on 5173."
         }
     ]
 }
