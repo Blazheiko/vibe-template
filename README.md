@@ -387,7 +387,8 @@ Before deploying, make sure you have:
       (and set `TRUSTED_PROXY_CIDRS` accordingly)
 - [ ] Disabled the fake SMS provider (`AUTH_SMS_PROVIDER_ALLOW_FAKE=false`)
 - [ ] Configured `CORS_ALLOWED_ORIGINS` for your real frontend origin(s)
-- [ ] Enabled `CSRF_ENFORCE=true` — after first validating in report-only mode
+- [ ] Kept `CSRF_ENFORCE` and `CSRF_STRICT_ORIGIN` at their default `true` (no CSRF
+      warning in the startup log); `false` only as a deliberate, temporary rollout step
 - [ ] Reviewed the CSP in `config/csp.ts` (add your CDN/S3 + API origins) and
       enabled the header in the static server — roll out with `reportOnly: true`
 

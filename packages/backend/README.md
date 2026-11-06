@@ -240,9 +240,9 @@ The token never leaves the session over HTML. The SPA shell is served as a plain
 
 Relevant environment variables:
 
-- `CSRF_ENFORCE` — defaults to `true`: violations get `403 csrf_invalid`. `false` is report-only (failures are logged, requests pass) — a diagnostic and rollback switch; a production-like start warns about it. Read at startup, so a change needs a restart.
+- `CSRF_ENFORCE` — defaults to `true`: violations get `403 csrf_invalid`. `false` is report-only (failures are logged, requests pass) — a diagnostic and rollback switch; every start warns about it, in any environment. Read at startup, so a change needs a restart.
 - `CSRF_ALLOWED_ORIGINS` — comma-separated exact origins (no path, no trailing slash) for the Origin/Referer check, for example `https://app.example.com,https://admin.example.com`. Required in production-like environments: the server refuses to start without it. Elsewhere an empty list falls back to the origins of `APP_URL` and `FRONTEND_URL`.
-- `CSRF_STRICT_ORIGIN` — defaults to `true`: unsafe requests without both `Origin` and `Referer` are rejected. Browsers always send `Origin` on fetch POST/PUT/PATCH/DELETE; set `false` only for tested legacy clients.
+- `CSRF_STRICT_ORIGIN` — defaults to `true`: unsafe requests without both `Origin` and `Referer` are rejected. Browsers always send `Origin` on fetch POST/PUT/PATCH/DELETE; set `false` only for tested legacy clients (every start warns about it).
 
 Rollout recommendation:
 

@@ -92,8 +92,17 @@ export function buildCsrfConfig(
         )
     }
 
-    if (context.isProductionLike && !enforce) {
-        warnings.push('CSRF_ENFORCE=false: CSRF violations are only logged, not rejected')
+    // Protection is on by default; turning it off is an explicit choice, so it is never silent,
+    // in any environment.
+    if (!enforce) {
+        warnings.push(
+            'CSRF_ENFORCE=false: CSRF protection is off, violations are only logged, not rejected',
+        )
+    }
+    if (!strictOrigin) {
+        warnings.push(
+            'CSRF_STRICT_ORIGIN=false: unsafe requests without Origin and Referer are not rejected',
+        )
     }
 
     return {

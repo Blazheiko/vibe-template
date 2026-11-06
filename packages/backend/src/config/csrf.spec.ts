@@ -24,20 +24,54 @@ describe('buildCsrfConfig', () => {
         expect(config.warnings).toEqual([])
     })
 
+    it('enforces by default outside production too, without a warning', () => {
+        const config = buildCsrfConfig({ CSRF_ALLOWED_ORIGINS: 'http://localhost:5173' }, dev)
+        expect(config.enforce).toBe(true)
+        expect(config.strictOrigin).toBe(true)
+        expect(config.warnings).toEqual([])
+    })
+
+    it.each([[''], ['  '], ['yes'], ['1']])(
+        'never turns protection off from a non-false value %j',
+        (value) => {
+            const config = buildCsrfConfig(
+                {
+                    CSRF_ENFORCE: value,
+                    CSRF_STRICT_ORIGIN: value,
+                    CSRF_ALLOWED_ORIGINS: 'https://app.test',
+                },
+                prod,
+            )
+            expect(config.enforce || config.configError !== null).toBe(true)
+            expect(config.strictOrigin || config.configError !== null).toBe(true)
+        },
+    )
+
     it('keeps an explicit false', () => {
         const config = buildCsrfConfig({ CSRF_ENFORCE: 'false', CSRF_STRICT_ORIGIN: 'false' }, dev)
         expect(config.enforce).toBe(false)
         expect(config.strictOrigin).toBe(false)
     })
 
-    it('warns when production-like runs report-only', () => {
-        const config = buildCsrfConfig(
+    it.each([
+        ['development', dev],
+        ['production-like', prod],
+    ])('warns about each switched-off check in %s', (_name, context) => {
+        const enforceOff = buildCsrfConfig(
             { CSRF_ENFORCE: 'false', CSRF_ALLOWED_ORIGINS: 'https://app.test' },
-            prod,
+            context,
         )
-        expect(config.configError).toBeNull()
-        expect(config.warnings).toEqual([
-            'CSRF_ENFORCE=false: CSRF violations are only logged, not rejected',
+        expect(enforceOff.configError).toBeNull()
+        expect(enforceOff.warnings).toEqual([
+            'CSRF_ENFORCE=false: CSRF protection is off, violations are only logged, not rejected',
+        ])
+
+        const strictOff = buildCsrfConfig(
+            { CSRF_STRICT_ORIGIN: 'false', CSRF_ALLOWED_ORIGINS: 'https://app.test' },
+            context,
+        )
+        expect(strictOff.warnings).toEqual([
+            'CSRF_STRICT_ORIGIN=false: unsafe requests without Origin and Referer are not rejected',
         ])
     })
 
