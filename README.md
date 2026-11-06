@@ -121,7 +121,18 @@ pnpm services:down   # stop, keep the data
 ```
 
 Credentials and ports are read from `packages/backend/.env`, so the containers and
-the backend always agree. Details:
+the backend always agree.
+
+The application itself can run in the same compose stack, from the production
+image built locally (the backend serves the built SPA on `http://localhost:3000`):
+
+```bash
+pnpm app:build   # scripts/docker-build.sh → vibe-template:local
+pnpm app:up      # services + one-shot migrate + app, waits until healthy
+pnpm app:seed    # optional: reference data and demo accounts (SEED_* in .env)
+```
+
+Details:
 [Getting started](https://blazheiko.github.io/vibe-template/guide/getting-started).
 
 ### Feature prerequisites

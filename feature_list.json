@@ -1405,6 +1405,16 @@
             "evidence": "Merged in #457 (merge commit 366252f), started in #456. New page documentation/backend/web-and-api-routes.md (sidebar + KEY_PAGES), cross-links from middlewares, routing, security and guide/csrf. web-and-api-routes.spec.ts (11 tests) pins the documented behaviour; mutation check: removing csrf_guard from the main group fails the spec. pnpm typecheck/lint/format:check clean, backend tests 2555 passed, pnpm docs:build && pnpm docs:verify passed."
         },
         {
+            "id": "feat-142",
+            "name": "App in Docker Compose",
+            "description": "Run the application itself in docker-compose.yml next to the infrastructure services: an app service (profile app) from a locally built image of the production Dockerfile, with the backend serving the built SPA, wired to postgres/redis/s3/mailpit over the compose network, plus a one-shot migrate service (db:create + db:migrate) it waits for. A script builds the local image (pnpm app:build), with app:up/app:down scripts. Infra-only `pnpm services:up` keeps working unchanged. Documentation in getting-started and deployment",
+            "owner": "Blazheiko",
+            "branch": "feat/feat-142-app-in-compose",
+            "dependencies": ["feat-140"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
             "id": "feat-143",
             "name": "Visible CSRF Opt-Out",
             "description": "CSRF protection is on by default (CSRF_ENFORCE and CSRF_STRICT_ORIGIN default to true); turning it off must be a visible, deliberate choice. The startup warning for CSRF_ENFORCE=false is given in every environment, not only production-like ones, and CSRF_STRICT_ORIGIN=false gets its own warning. Docs state the defaults and that false is an explicit opt-out",
