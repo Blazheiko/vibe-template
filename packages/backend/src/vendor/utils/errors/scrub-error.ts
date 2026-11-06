@@ -171,9 +171,15 @@ const isWalkableInstance = (value: object): boolean =>
         value instanceof Set ||
         value instanceof Promise ||
         value instanceof ArrayBuffer ||
-        ArrayBuffer.isView(value) ||
-        typeof (value as { toJSON?: unknown }).toJSON === 'function'
+        ArrayBuffer.isView(value)
     )
+
+const toJSONOf = (value: object): (() => unknown) | undefined => {
+    const toJSON = (value as { toJSON?: unknown }).toJSON
+    return typeof toJSON === 'function' ? (toJSON as () => unknown) : undefined
+}
+
+const TOJSON_FAILED = '[toJSON failed]'
 
 const isPlainObject = (value: object): boolean => {
     const proto = Object.getPrototypeOf(value) as unknown
@@ -197,7 +203,7 @@ function walk(value: unknown, depth: number, ctx: WalkContext): unknown {
     const array = Array.isArray(value)
     // feat-137 (L11): a class instance is walked as its own enumerable fields (what JSON.stringify
     // writes), so an error inside it is scrubbed; values serialized by their own rules (dates,
-    // buffers, maps, a toJSON) are left as they are. Copy-on-write: without an error inside the
+    // buffers, maps) are left as they are. Copy-on-write: without an error inside the
     // instance itself is returned.
     if (!array && !isPlainObject(value) && !isWalkableInstance(value)) return value
     if (ctx.active.has(value)) return CIRCULAR
@@ -206,7 +212,22 @@ function walk(value: unknown, depth: number, ctx: WalkContext): unknown {
 
     ctx.active.add(value)
     let result: unknown = value
-    if (array) {
+    // feat-139 (Q1): JSON.stringify writes what toJSON returns, not the fields, so that is what is
+    // scrubbed. A toJSON that returns its own object is read as fields below; one that throws
+    // would break the whole line and becomes a marker. Nothing to replace: the value stays as is.
+    const toJSON = array ? undefined : toJSONOf(value)
+    let json: unknown = value
+    if (toJSON !== undefined) {
+        try {
+            json = toJSON.call(value)
+        } catch {
+            json = TOJSON_FAILED
+        }
+    }
+    if (json !== value) {
+        const next = walk(json, depth + 1, ctx)
+        if (next !== json || json === TOJSON_FAILED) result = next
+    } else if (array) {
         let copied: unknown[] | undefined
         value.forEach((item: unknown, index) => {
             const next = walk(item, depth + 1, ctx)

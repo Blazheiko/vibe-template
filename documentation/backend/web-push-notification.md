@@ -116,7 +116,7 @@ Endpoint зберігається й шукається в **канонічні�
 
 1. Якщо `skipIfOnline` і користувач має активне WebSocket-з'єднання (`wsConnectionRegistry.isUserOnline`) — push пропускається (див. [WebSocket](/backend/websocket)).
 2. Береться список активних підписок; якщо в підписки непорожній `notificationTypes` і він не містить `notificationType` — її пропускають.
-3. Для кожної підписки викликається `webpush.sendNotification` з таймаутом 10 с (`PUSH_SEND_TIMEOUT_MS`, feat-138: push-сервіс, що завис, не тримає відправку, і запис стає `network_error`) і JSON:
+3. Для кожної підписки запит іде з дедлайном 10 с на весь обмін, від з'єднання до останнього байта відповіді (`PUSH_SEND_TIMEOUT_MS`; feat-138, feat-139: push-сервіс, що завис або віддає відповідь по байту, не тримає відправку, і запис стає `network_error`). Запит будує web-push (`generateRequestDetails`: заголовки VAPID, зашифроване тіло), а надсилає [`push-transport.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-transport.ts): власний таймаут web-push — лише таймаут простою сокета. Редиректи, як і раніше, не виконуються. Тіло запиту — JSON:
 
 ```json
 {

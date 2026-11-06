@@ -9,6 +9,7 @@ import {
 } from '#app/repositories/index.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
+import { sendPush } from './push-transport.js'
 
 /** feat-138: the longest one push request may take before it is abandoned and logged as failed. */
 export const PUSH_SEND_TIMEOUT_MS = 10_000
@@ -157,7 +158,7 @@ export const pushNotificationSenderService = {
                 messageData: payload.data ?? null,
             }
             try {
-                const response = await webpush.sendNotification(
+                const response = await sendPush(
                     {
                         endpoint: subscription.endpoint,
                         keys: {
@@ -166,9 +167,10 @@ export const pushNotificationSenderService = {
                         },
                     },
                     pushPayload,
-                    // feat-138 (L13): a push service that hangs must not hold the send (and the
-                    // loop over the user's subscriptions). No proxy or agent (feat-104).
-                    { timeout: PUSH_SEND_TIMEOUT_MS },
+                    // feat-138 (L13), feat-139 (Q4): a push service that hangs or trickles must not
+                    // hold the send (and the loop over the user's subscriptions): one deadline over
+                    // the whole request. No proxy or agent (feat-104).
+                    { deadlineMs: PUSH_SEND_TIMEOUT_MS },
                 )
                 logs.push({
                     ...base,
