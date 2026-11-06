@@ -1381,8 +1381,8 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-139-seventh-review-lows",
             "dependencies": ["feat-138"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged #450 (merge de6f8ec; start #449). Q1: the logger scrubber walks what toJSON returns (an error it returns or holds is replaced by its safe copy; toJSON returning this is walked as fields; a throwing toJSON becomes [toJSON failed]). Q2: Sentry sanitizeDeep cuts a value past the depth limit to [Truncated] instead of sending it raw. Q3: a URL in Sentry data is sent with query values, fragment and userinfo as [Filtered]. Q4: push-transport.ts sends web-push's request details with https.request under one AbortSignal deadline over the whole exchange (no redirects, proxy or agent). Q5: oauth.md resend gives 429. Evidence: typecheck, lint, format clean; pnpm test backend 2544, frontend 400, api-playground 62; docs build+verify; CI build/e2e/e2e-live/quality/test-pg/test-redis green (e2e rerun after a cancelled playwright install-deps step); real local TLS server: 302 not followed, 201 ok, trickling answer cut at the deadline; mutation: old scrubber/Sentry make 4 new cases fail, old sender 8. Details were in progress.md on fix/feat-139-seventh-review-lows (removed from main by this PR)."
         }
     ]
 }
