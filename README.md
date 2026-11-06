@@ -2,7 +2,7 @@
 
 [![Docs](https://github.com/Blazheiko/vibe-template/actions/workflows/docs.yml/badge.svg)](https://github.com/Blazheiko/vibe-template/actions/workflows/docs.yml)
 
-📖 **Documentation:** <https://blazheiko.github.io/vibe-template/> (Ukrainian, backend-focused;
+📖 **Documentation:** <https://blazheiko.github.io/vibe-template/> (Ukrainian, English at <https://blazheiko.github.io/vibe-template/en/>; backend-focused;
 source in [`documentation/`](documentation/), run locally with `pnpm docs:dev`).
 
 A full-stack TypeScript monorepo template: a Vue 3 frontend, a high-performance

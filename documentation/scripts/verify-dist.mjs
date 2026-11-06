@@ -81,12 +81,72 @@ const KEY_PAGES = [
     { page: 'playground/index.md', h1: 'API Playground' },
 ]
 
-/** Home page (layout: home) checks (T2.3a). */
-const HOME = {
-    page: 'index.md',
-    name: 'vibe-template',
-    tagline: 'розробки застосунків з AI-агентами',
-}
+/**
+ * English key pages (`en/` locale). Same files as KEY_PAGES, so the list is keyed by the page
+ * path without the locale prefix; `h1` is the expected English title.
+ */
+const EN_KEY_PAGES = [
+    { page: 'en/guide/introduction.md', h1: 'Introduction' },
+    { page: 'en/guide/getting-started.md', h1: 'Quick start' },
+    { page: 'en/guide/how-backend-works.md', h1: 'How the backend works' },
+    { page: 'en/guide/http-request.md', h1: 'From HTTP request to controller' },
+    { page: 'en/guide/http-response.md', h1: 'From controller to HTTP response' },
+    { page: 'en/guide/first-endpoint.md', h1: 'First route' },
+    { page: 'en/guide/your-project.md', h1: 'Your project on the template' },
+    { page: 'en/guide/project-structure.md', h1: 'Project structure' },
+    { page: 'en/guide/csrf.md', h1: 'CSRF in plain words' },
+    { page: 'en/backend/index.md', h1: 'Backend overview' },
+    { page: 'en/backend/architecture.md', h1: 'Backend architecture' },
+    { page: 'en/backend/request-lifecycle.md', h1: 'Request lifecycle' },
+    { page: 'en/backend/configuration.md', h1: 'Configuration' },
+    { page: 'en/backend/routing.md', h1: 'Routing' },
+    { page: 'en/backend/middlewares.md', h1: 'Middleware' },
+    { page: 'en/backend/web-and-api-routes.md', h1: 'Web routes and public API' },
+    { page: 'en/backend/database.md', h1: 'Database' },
+    { page: 'en/backend/auth.md', h1: 'Authentication' },
+    { page: 'en/backend/oauth.md', h1: 'Social login' },
+    { page: 'en/backend/security.md', h1: 'Security' },
+    { page: 'en/backend/websocket.md', h1: 'WebSocket' },
+    { page: 'en/backend/controllers.md', h1: 'Controllers' },
+    { page: 'en/backend/services.md', h1: 'Services' },
+    { page: 'en/backend/repositories.md', h1: 'Repositories' },
+    { page: 'en/backend/transformers.md', h1: 'Transformers' },
+    { page: 'en/backend/validation.md', h1: 'Validation' },
+    { page: 'en/backend/response-validation.md', h1: 'Response validation' },
+    { page: 'en/backend/deployment.md', h1: 'Deployment' },
+    { page: 'en/backend/observability.md', h1: 'Observability' },
+    { page: 'en/backend/testing.md', h1: 'Testing' },
+    { page: 'en/backend/caching-etag.md', h1: 'Caching and ETag' },
+    { page: 'en/backend/storage.md', h1: 'File storage (S3)' },
+    { page: 'en/backend/mail.md', h1: 'Mail' },
+    { page: 'en/backend/web-push-notification.md', h1: 'Web Push notifications' },
+    { page: 'en/backend/ai.md', h1: 'AI integrations' },
+    { page: 'en/backend/adding-a-feature.md', h1: 'How to add a feature to the backend' },
+    { page: 'en/reference/make.md', h1: 'make commands' },
+    { page: 'en/reference/scripts.md', h1: 'Scripts' },
+    { page: 'en/guide/workflow.md', h1: 'Workflow' },
+    { page: 'en/reference/toolchain.md', h1: 'Toolchain' },
+    { page: 'en/reference/glossary.md', h1: 'Glossary' },
+    { page: 'en/reference/roles-capabilities.md', h1: 'Roles and capabilities' },
+    { page: 'en/reference/author.md', h1: 'About the author' },
+    { page: 'en/shared/index.md', h1: 'The shared package' },
+    { page: 'en/frontend/index.md', h1: 'Frontend' },
+    { page: 'en/playground/index.md', h1: 'API Playground' },
+]
+
+/** Home page (layout: home) checks (T2.3a), one per locale. */
+const HOMES = [
+    {
+        page: 'index.md',
+        name: 'vibe-template',
+        tagline: 'розробки застосунків з AI-агентами',
+    },
+    {
+        page: 'en/index.md',
+        name: 'vibe-template',
+        tagline: 'development of applications with AI agents',
+    },
+]
 
 /**
  * Explicit include markers, keyed by include path as written in the directive.
@@ -196,7 +256,7 @@ function checkSources() {
 
 // T2.3: key article pages exist, have the expected h1 and enough text.
 function checkKeyPages() {
-    for (const { page, h1 } of KEY_PAGES) {
+    for (const { page, h1 } of [...KEY_PAGES, ...EN_KEY_PAGES]) {
         const article = articleOf(markdownToDist(page, BASE).html, page)
         if (article === null) continue
         const firstH1 = article.querySelector('h1')
@@ -212,6 +272,10 @@ function checkKeyPages() {
 
 // T2.3a: home page hero (no .vp-doc on layout: home).
 function checkHome() {
+    for (const home of HOMES) checkHomePage(home)
+}
+
+function checkHomePage(HOME) {
     const where = HOME.page
     const root = loadHtml(markdownToDist(HOME.page, BASE).html)
     if (root === null) return fail(where, 'missing in dist')
@@ -224,6 +288,27 @@ function checkHome() {
     const actions = hero.querySelectorAll('.actions a')
     if (actions.length === 0) fail(where, 'hero has no action links')
     // Action hrefs are validated by checkUrls like every other link.
+}
+
+// i18n: every Ukrainian page has an English twin under en/ and vice versa, and each
+// English page is a key page with its own expected h1.
+function checkTranslations() {
+    const mdFiles = walk(ROOT, (name) => name.endsWith('.md')).map((abs) =>
+        path.relative(ROOT, abs).split(path.sep).join('/'),
+    )
+    const uk = new Set(mdFiles.filter((f) => !f.startsWith('en/')))
+    const en = new Set(mdFiles.filter((f) => f.startsWith('en/')).map((f) => f.slice(3)))
+    for (const f of uk) if (!en.has(f)) fail(f, 'no English translation at en/' + f)
+    for (const f of en) if (!uk.has(f)) fail('en/' + f, 'English page has no Ukrainian original')
+
+    const expected = new Set(KEY_PAGES.map((k) => k.page))
+    const covered = new Set(EN_KEY_PAGES.map((k) => k.page))
+    for (const page of expected) {
+        if (!covered.has('en/' + page)) fail('en/' + page, 'missing in EN_KEY_PAGES')
+    }
+    for (const page of covered) {
+        if (!expected.has(page.slice(3))) fail(page, 'EN_KEY_PAGES entry has no KEY_PAGES twin')
+    }
 }
 
 // T2.4: every src/href/srcset in every page.
@@ -297,6 +382,7 @@ if (!existsSync(DIST)) {
 }
 
 checkSources()
+checkTranslations()
 checkKeyPages()
 checkHome()
 checkUrls()

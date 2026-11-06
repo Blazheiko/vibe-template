@@ -37,8 +37,9 @@ A feature is `done` only when all of the following are recorded in `progress.md`
 The VitePress site in `documentation/` is published to GitHub Pages (https://blazheiko.github.io/vibe-template/) from `main` by `.github/workflows/docs.yml`.
 
 - A change to public backend behaviour (a route, an env variable, a middleware, a migration or the DB schema) must update the matching page in `documentation/backend/` in the same PR.
+- The site is bilingual: Ukrainian is the root locale (`documentation/<path>.md`), English lives in `documentation/en/<path>.md` with the same file layout. Change both in the same PR; internal links in `en/` pages carry the `/en` prefix. `docs:verify` fails when a page has no twin.
 - Write pages from the code and link sources on GitHub. Mark unimplemented things with `::: warning План`. Use placeholders for secrets.
-- Add every new page to the sidebar in `documentation/.vitepress/config.ts` and to `KEY_PAGES` in `documentation/scripts/verify-dist.mjs`.
+- Add every new page to the sidebar of both locales in `documentation/.vitepress/config.ts` and to `KEY_PAGES` and `EN_KEY_PAGES` in `documentation/scripts/verify-dist.mjs`.
 - When a page uses `<!--@include-->`, the source path must be covered by `paths` in `docs.yml`.
 - Before merging, run `pnpm docs:build && pnpm docs:verify`.
 
