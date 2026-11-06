@@ -1443,6 +1443,16 @@
             "dependencies": ["feat-144"],
             "status": "done",
             "evidence": "Merged in #469 (merge commit 4a7238a), started in #468. make app-down (pnpm app:down: compose rm --stop --force app migrate), make services-up ARGS=\"redis s3 mailpit\" for a subset, make doctor port checks (Docker-held ok, other holders warn with the process). Docs: README, AGENTS.md, getting-started, reference/make.md and scripts.md state that every make target has a pnpm equivalent. make check exit 0 locally and in CI, docs build/verify passed. Manual 2026-11-06: subset start runs only redis/s3/mailpit; app-up then app-down leaves the four services healthy and port 3000 free; doctor warns about a node listener on 5173."
+        },
+        {
+            "id": "feat-146",
+            "name": "English Documentation",
+            "description": "The VitePress documentation site is bilingual. Ukrainian stays the root locale (URLs unchanged); the English translation of all 47 pages lives in documentation/en/ with the same layout and is served at /en/. Two locales with their own nav, sidebar, footer, search labels and a language switcher. docs:verify requires an English twin for every page and checks English h1 titles (EN_KEY_PAGES) and the English home hero. AGENTS.md states that both languages change in the same PR",
+            "owner": "Blazheiko",
+            "branch": "feat/docs-english",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #471 (merge commit f07a04c). 47 pages in documentation/en/, i18n in .vitepress/config.ts, parity and h1 checks in scripts/verify-dist.mjs. pnpm docs:build && pnpm docs:verify, format:check, lint, typecheck and documentation tests passed. Heading, code-fence and table-line counts match the Ukrainian originals; 29 cross-page anchors were remapped to the English headings. Not verified: translation wording was not proofread, language switcher not checked in a browser. Entry added after the merge, so there was no separate start PR."
         }
     ]
 }
