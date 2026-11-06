@@ -606,44 +606,61 @@ High-дефектів немає. Medium підтверджено в коді; �
 Групи: **I1** (feat-134) — auth; **I2** (feat-135) — lease, S3, KB; **I3** (feat-136) — облік AI і purge;
 **I4** (feat-137) — observability; **I5** (feat-138) — lifecycle і таймаути.
 
+### Сьоме рев'ю 2026-11-06 (feat-131…138)
+
+15 з 17 знахідок шостого рев'ю закрито повністю, L11 і L13 — частково; виправлення L10 внесло дві
+регресії. Усе low, підтверджено в коді (Q1 — запуском).
+
+| #   | Знахідка                                                                                                                                     | Група |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| Q1  | L11: `scrub-error.ts` вважає непрозорим будь-який об'єкт із `toJSON`; pino викликає `toJSON`, і pg-помилка з його результату йде в лог сирою | J1    |
+| Q2  | L10: `sanitizeDeep` на межі глибини повертає сире значення; `toJSON(){ return this }` доходить до межі й відправляє `password`               | J1    |
+| Q3  | L10: `URL` у Sentry тепер іде повністю, разом із секретами в query (`?token=…`)                                                              | J1    |
+| Q4  | L13: `timeout` web-push — таймаут простою сокета, не дедлайн; push-сервіс, що віддає по байту, тримає відправку необмежено                   | J1    |
+| Q5  | `documentation/backend/oauth.md`: `resend` досі `400 too_many_attempts`, а не `429 rate_limited` з `reason: too_many_attempts`               | J1    |
+
+Група **J1** (feat-139). Не беремо (прийнято як є): текст 429 у `ForgotPasswordFlow.vue`, 500 мс на
+підключення probe, вузьке вікно між `isStored()` і `renewSession`, слабкі тести probe/drain.
+
 ## Стан
 
-| Фіча                     | id       | PR   | Стан |
-| ------------------------ | -------- | ---- | ---- |
-| R01                      | feat-102 | #345 | done |
-| R02                      | feat-103 | #347 | done |
-| R03                      | feat-104 | #349 | done |
-| R06a                     | feat-106 | #353 | done |
-| R11a                     | feat-105 | #351 | done |
-| R04                      | feat-107 | #356 | done |
-| R05                      | feat-108 | #359 | done |
-| R06b                     | feat-109 | #362 | done |
-| R07                      | feat-110 | #364 | done |
-| R09                      | feat-111 | #367 | done |
-| R08                      | feat-112 | #370 | done |
-| R10                      | feat-113 | #373 | done |
-| R11b                     | feat-114 | #376 | done |
-| R11c                     | feat-115 | #379 | done |
-| R11d                     | feat-116 | #382 | done |
-| R12a                     | feat-117 | #385 | done |
-| R12b                     | feat-118 | #388 | done |
-| F1–F5                    | feat-119 | #391 | done |
-| F6                       | feat-120 | #394 | done |
-| G1 (M1–M4)               | feat-121 | #397 | done |
-| G2 (L6–L8)               | feat-122 | #400 | done |
-| G3 (L5, F6-low, R06b)    | feat-123 | #403 | done |
-| G4 (L9, R04-low)         | feat-124 | #406 | done |
-| G5a (L10, ops)           | feat-125 | #409 | done |
-| G5b (logs, tests)        | feat-126 | #412 | done |
-| H1 (N1, N2, logs)        | feat-127 | #415 | done |
-| H2 (N3, WS lows)         | feat-128 | #418 | done |
-| H3 (L5, race test)       | feat-129 | #421 | done |
-| H4 (ops lows)            | feat-130 | #424 | done |
-| P1 (IPv6 zone id crash)  | feat-131 | #427 | done |
-| P2 (proxy CIDR prefix)   | feat-132 | #430 | done |
-| P3 (onConnected failure) | feat-133 | #433 | done |
-| I1 (auth lows)           | feat-134 | #436 | done |
-| I2 (lease, S3, KB)       | feat-135 | #439 | done |
-| I3 (AI usage, purge)     | feat-136 | #442 | done |
-| I4 (observability)       | feat-137 | #445 | done |
-| I5 (lifecycle, timeouts) | feat-138 | #447 | done |
+| Фіча                     | id       | PR   | Стан        |
+| ------------------------ | -------- | ---- | ----------- |
+| R01                      | feat-102 | #345 | done        |
+| R02                      | feat-103 | #347 | done        |
+| R03                      | feat-104 | #349 | done        |
+| R06a                     | feat-106 | #353 | done        |
+| R11a                     | feat-105 | #351 | done        |
+| R04                      | feat-107 | #356 | done        |
+| R05                      | feat-108 | #359 | done        |
+| R06b                     | feat-109 | #362 | done        |
+| R07                      | feat-110 | #364 | done        |
+| R09                      | feat-111 | #367 | done        |
+| R08                      | feat-112 | #370 | done        |
+| R10                      | feat-113 | #373 | done        |
+| R11b                     | feat-114 | #376 | done        |
+| R11c                     | feat-115 | #379 | done        |
+| R11d                     | feat-116 | #382 | done        |
+| R12a                     | feat-117 | #385 | done        |
+| R12b                     | feat-118 | #388 | done        |
+| F1–F5                    | feat-119 | #391 | done        |
+| F6                       | feat-120 | #394 | done        |
+| G1 (M1–M4)               | feat-121 | #397 | done        |
+| G2 (L6–L8)               | feat-122 | #400 | done        |
+| G3 (L5, F6-low, R06b)    | feat-123 | #403 | done        |
+| G4 (L9, R04-low)         | feat-124 | #406 | done        |
+| G5a (L10, ops)           | feat-125 | #409 | done        |
+| G5b (logs, tests)        | feat-126 | #412 | done        |
+| H1 (N1, N2, logs)        | feat-127 | #415 | done        |
+| H2 (N3, WS lows)         | feat-128 | #418 | done        |
+| H3 (L5, race test)       | feat-129 | #421 | done        |
+| H4 (ops lows)            | feat-130 | #424 | done        |
+| P1 (IPv6 zone id crash)  | feat-131 | #427 | done        |
+| P2 (proxy CIDR prefix)   | feat-132 | #430 | done        |
+| P3 (onConnected failure) | feat-133 | #433 | done        |
+| I1 (auth lows)           | feat-134 | #436 | done        |
+| I2 (lease, S3, KB)       | feat-135 | #439 | done        |
+| I3 (AI usage, purge)     | feat-136 | #442 | done        |
+| I4 (observability)       | feat-137 | #445 | done        |
+| I5 (lifecycle, timeouts) | feat-138 | #447 | done        |
+| J1 (seventh review lows) | feat-139 | —    | in_progress |
