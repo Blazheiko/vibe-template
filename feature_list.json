@@ -1411,8 +1411,8 @@
             "owner": "Blazheiko",
             "branch": "feat/feat-142-app-in-compose",
             "dependencies": ["feat-140"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #460 (merge commit b4d2a61), started in #459. docker-compose.yml: migrate (db:create:prod + db:migrate) and app services under profile app, image vibe-template:local; scripts/docker-build.sh (pnpm app:build), app:up/app:seed/app:logs, services:down stops the app too. pnpm typecheck/lint/format:check clean, pnpm test passed (backend 2555, frontend 400, api-playground 62), docs build/verify passed. Manual 2026-11-06: full stack healthy, migrate exit 0, seed, /api/ready ok, SPA with CSP, login through CSRF (foreign origin 403 origin_mismatch with CSRF_ENFORCE=true), avatar upload and public read from CDN_URL, reset mail in Mailpit, WebSocket connects, missing image fails with No such image."
         }
     ]
 }
