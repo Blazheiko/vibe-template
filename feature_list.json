@@ -1423,6 +1423,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged in #462 (merge commit 5b4bca5), started in #461. config/csrf.ts warns about CSRF_ENFORCE=false and CSRF_STRICT_ORIGIN=false in every environment (defaults stay true, blank = true). Tests in csrf.spec.ts and validate-runtime-config.spec.ts; mutation check (production-only condition) fails 2 of them. pnpm typecheck/lint/format:check clean, backend tests 2562 passed, docs build/verify passed. Manual 2026-11-06: local start with both flags false logs both warnings; with defaults no CSRF warning."
+        },
+        {
+            "id": "feat-144",
+            "name": "Makefile Developer Entry Point",
+            "description": "A root Makefile is the single entry point for developer operations: setup, doctor, dev, check (the same steps as the CI verify job), tests, services, database, Docker app and docs. It only delegates to pnpm scripts and docker compose, works with GNU Make 3.81, and make with no target prints self-documented help. init.sh stays as a thin wrapper, the CI quality job runs make check, and README, AGENTS.md and the docs site describe the make targets",
+            "owner": "Blazheiko",
+            "branch": "feat/feat-144-makefile",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
