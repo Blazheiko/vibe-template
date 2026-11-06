@@ -1351,6 +1351,26 @@
             "owner": "Blazheiko",
             "branch": "fix/feat-136-ai-usage-purge",
             "dependencies": ["feat-135"],
+            "status": "done",
+            "evidence": "Merged #442 (merge 2367dad; start #441). L6: a usage object without token counts is no usage in the Mistral and the OpenAI adapters (it was 0 real tokens). L7: the first round of a tool call is reported as partial (UsageReportDetails); the audit records it as tokens_estimated with an estimate never below that part and the budget keeps its reservation; without the second round usage the call usage is unknown. L8: llm:purge-prompts refuses --days with --all or when prompts are not kept, and stops on a database or AI config error. Evidence: typecheck, lint, format clean; pnpm test backend 2517, frontend 400, api-playground 62; local test:pg 173; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: main adapters, usage-audit and purge args make 7 new cases fail. Details were in progress.md on fix/feat-136-ai-usage-purge (removed from main by this PR)."
+        },
+        {
+            "id": "feat-137",
+            "name": "Sixth Review Observability Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, sixth review I4: (L10) Sentry sanitizeDeep sends a class with toJSON and no own fields (URL, Decimal) as {} (regression of feat-127 N2); (L11) edges of the scrubber: the own sensitive fields of an Error in extra are kept, a query error inside a class instance of a log record is not scrubbed, the bindings of child() are not scrubbed, and format arguments (%s, err) reach msg raw. A toJSON value is sanitized as what toJSON returns; the safe copy of an error drops sensitive own fields; the logger walks class instances, scrubs child bindings and format arguments; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-137-observability",
+            "dependencies": ["feat-136"],
+            "status": "done",
+            "evidence": "Merged #445 (merge 801c9b0; start #444). L10: Sentry sanitizes a toJSON value (URL, Decimal) as what toJSON returns instead of {}. L11: the safe copy of an Error in Sentry extra/contexts drops its sensitive own fields; the logger walks class instances (copy-on-write) so a query error inside one is scrubbed, scrubs child() bindings (the root child is wrapped, children inherit it) and replaces errors among format arguments before pino interpolates them. Evidence: typecheck, lint, format clean; pnpm test backend 2525, frontend 400, api-playground 62; CI build/e2e/e2e-live/quality/test-pg/test-redis green; docs build+verify; mutation: main logger, scrub-error and sentry-service make 4 new cases fail. Details were in progress.md on fix/feat-137-observability (removed from main by this PR)."
+        },
+        {
+            "id": "feat-138",
+            "name": "Sixth Review Lifecycle and Timeout Lows",
+            "description": "docs/plan/code-review-2026-11-03-plan.md, sixth review I5, the last group: (L12) during shutdown an upgrade still waiting on its token check opens a socket after closeAllWs, and the user_online disconnect UPDATEs are not awaited before pool.end(); (L13) webpush.sendNotification has no timeout; (L14) the readiness probe gives the connection and the query the whole READINESS_CHECK_TIMEOUT_MS each, so the worst probe takes about twice that. After closeAllWs an upgrade answers 503; the shutdown drains the disconnects (bounded) before ending the pool; webpush gets a 10 s timeout; the probe budget is split between the connection and the query; tests that fail without the fix; docs",
+            "owner": "Blazheiko",
+            "branch": "fix/feat-138-lifecycle-timeouts",
+            "dependencies": ["feat-137"],
             "status": "in_progress",
             "evidence": ""
         }
