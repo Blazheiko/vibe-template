@@ -88,6 +88,16 @@ The template consists of three packages in one repository (pnpm workspace):
 Start with the [Introduction](/en/guide/introduction), then the [Quick start](/en/guide/getting-started) — a local launch in 10 minutes. Then read [How the backend works](/en/guide/how-backend-works): it explains in simple words what happens to a request and why each layer exists.
 :::
 
+## How the developer's role changes
+
+The template moves control from the code to the **contracts**. The agent writes the implementation and immediately gets feedback from the framework: whether the contracts are broken, whether the layers are in place, whether the tests pass. So you do not need to read every line of generated code. It is enough to control three things:
+
+1. **What comes into the backend.** The request schemas in `shared` define what data each route accepts.
+2. **What the backend returns.** A route's `ResponseSchema` validates every response and rejects extra fields.
+3. **The database schema.** The Drizzle schema and migrations define the data structure that everything else depends on.
+
+The correctness of business logic is verified by **tests**, not by reviewing every line: if a behavior is described by a test and the test is green, the implementation can change without your involvement.
+
 ## Why the template suits agent-based development
 
 **Thesis.** An agent works best where a mistake is visible immediately and unambiguously. A human notices a mismatch from experience, while an agent only notices it from what the compiler, the linter and the tests return. So the stricter the automatic checks, the fewer agent mistakes reach the human. The template is built exactly that way: most typical agent mistakes here turn into a red `pnpm typecheck`, `pnpm lint` or `pnpm test`, and the agent fixes them in the same loop.
@@ -104,7 +114,7 @@ Start with the [Introduction](/en/guide/introduction), then the [Quick start](/e
 8. **The working rules are written for the agent.** [`AGENTS.md`](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md) describes the session start order, the Definition of Done and the documentation rules. `feature_list.json` records who works on which feature, and `progress.md` and `session-handoff.md` on the feature branch carry the state between sessions. The agent starts a new session from files, not from the memory of the previous conversation. More in [Workflow](/en/guide/workflow).
 
 ::: warning What types do not guarantee
-The checks catch errors of form: wrong types, forgotten usage sites, broken layers. They do not verify that the business logic is correct. For that you need behavior tests and human review.
+The checks catch errors of form: wrong types, forgotten usage sites, broken layers. They do not verify that the business logic is correct. For that you need behavior tests. A test checks only the cases it describes, so those cases (not the implementation) are what deserve your attention.
 :::
 
 ## Why this template
