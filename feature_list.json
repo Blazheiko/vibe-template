@@ -1481,8 +1481,8 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-message-budget",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #481 (merge commit 66653b6). RED before the fix (budget mocked to 20): the session check ran 30 times instead of 20, the Redis token refresh ran for every malformed message and every ping (70 instead of 60), and the events constructor / __proto__ / toString / hasOwnProperty / valueOf answered internal_error. ping and malformed JSON never reached the PostgreSQL check before the fix either, as the report's revision 2 says. After the fix: ws-message-budget.spec.ts 10 passed, ws-error-envelope.spec.ts 11 passed, config/websocket.spec.ts; pnpm format:check, typecheck, lint, test (backend 2592, frontend 413, playground 62); backend test:redis 116 passed; frontend test:e2e:live 8 passed on a fresh build; docs:build && docs:verify. The window is fixed, not sliding. Not verified: the hypothesis that a flood starves the session-check pool (503 for other users) was not load-tested; the defaults 120 / 8 / 60 are by decision Д2, not measured."
         },
         {
             "id": "feat-150",
@@ -1491,7 +1491,7 @@
             "owner": "Blazheiko",
             "branch": "feat/log-privacy-support-push-mail",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
