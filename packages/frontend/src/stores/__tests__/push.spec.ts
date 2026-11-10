@@ -25,15 +25,17 @@ function stubBrowser(options: {
         requestPermission,
     })
     vi.stubGlobal('PushManager', {})
+    const registration = {
+        pushManager: {
+            getSubscription: vi.fn().mockResolvedValue(options.existing ?? null),
+            subscribe,
+        },
+    }
     Object.defineProperty(navigator, 'serviceWorker', {
         configurable: true,
         value: {
-            ready: Promise.resolve({
-                pushManager: {
-                    getSubscription: vi.fn().mockResolvedValue(options.existing ?? null),
-                    subscribe,
-                },
-            }),
+            ready: Promise.resolve(registration),
+            getRegistration: vi.fn().mockResolvedValue(registration),
         },
     })
     return { subscribe, requestPermission }
@@ -80,14 +82,58 @@ describe('push store: permission', () => {
 })
 
 describe('push store: subscribing', () => {
-    it('takes the subscription the browser already has, without asking the server for a key', async () => {
+    // feat-148 (review 2026-11-10, M9): the server sends the notifications, so a subscription
+    // the browser already has counts only once the server has it for this account.
+    it('sends the subscription the browser already has to the server before reporting it enabled', async () => {
         const existing = subscription('https://push.example/1')
         stubBrowser({ existing })
+        let enabledWhenPosted: boolean | undefined
         const { usePushStore } = await import('../push')
         const store = usePushStore()
+        api.createSubscription.mockImplementation(() => {
+            enabledWhenPosted = store.isSubscribedToPush
+            return Promise.resolve({ data: { subscription: { id: 'sub-1' } }, error: null })
+        })
+
         expect(await store.subscribeToPush()).toBe(existing)
-        expect(store.isSubscribedToPush).toBe(true)
+
         expect(api.getVapidPublicKey).not.toHaveBeenCalled()
+        expect(api.createSubscription).toHaveBeenCalledWith(
+            expect.objectContaining({ endpoint: 'https://push.example/1' }),
+        )
+        expect(enabledWhenPosted).toBe(false)
+        expect(store.isSubscribedToPush).toBe(true)
+        expect(store.pushSubscriptionId).toBe('sub-1')
+    })
+
+    it('is not enabled when the server refuses the subscription, and a retry posts it again', async () => {
+        const created = subscription('https://push.example/2')
+        const { subscribe } = stubBrowser({ created })
+        api.getVapidPublicKey.mockResolvedValue({ data: { vapidPublicKey: VAPID } })
+        api.createSubscription.mockResolvedValueOnce({
+            data: null,
+            error: { message: 'Too many requests' },
+        })
+        const { usePushStore } = await import('../push')
+        const store = usePushStore()
+
+        expect(await store.subscribeToPush()).toBeNull()
+        expect(store.isSubscribedToPush).toBe(false)
+        expect(store.pushSubscription).toBeNull()
+
+        // The browser now has the subscription the first attempt created.
+        stubBrowser({ existing: created })
+        api.createSubscription.mockResolvedValueOnce({
+            data: { subscription: { id: 'sub-2' } },
+            error: null,
+        })
+
+        expect(await store.subscribeToPush()).toBe(created)
+
+        expect(subscribe).toHaveBeenCalledTimes(1)
+        expect(api.createSubscription).toHaveBeenCalledTimes(2)
+        expect(store.isSubscribedToPush).toBe(true)
+        expect(store.pushSubscriptionId).toBe('sub-2')
     })
 
     it('subscribes with the server key, sends the device to the server and keeps the id it answers with', async () => {
@@ -140,11 +186,14 @@ describe('push store: unsubscribing and resetting', () => {
         const unsubscribe = vi.fn().mockResolvedValue(true)
         const existing = subscription('https://push.example/1', unsubscribe)
         stubBrowser({ existing })
+        api.createSubscription.mockResolvedValue({
+            data: { subscription: { id: 'sub-7' } },
+            error: null,
+        })
         api.deleteSubscription.mockResolvedValue({ data: {}, error: null })
         const { usePushStore } = await import('../push')
         const store = usePushStore()
         await store.subscribeToPush()
-        store.pushSubscriptionId = 'sub-7'
 
         expect(await store.unsubscribeFromPush()).toBe(true)
 
@@ -157,10 +206,14 @@ describe('push store: unsubscribing and resetting', () => {
 
     it('resetPushSubscriptionState forgets everything about the subscription (a sign-out)', async () => {
         stubBrowser({ existing: subscription('https://push.example/1') })
+        api.createSubscription.mockResolvedValue({
+            data: { subscription: { id: 'sub-7' } },
+            error: null,
+        })
         const { usePushStore } = await import('../push')
         const store = usePushStore()
         await store.subscribeToPush()
-        store.pushSubscriptionId = 'sub-7'
+        expect(store.isSubscribedToPush).toBe(true)
 
         store.resetPushSubscriptionState()
 
@@ -193,8 +246,12 @@ describe('push store: what the server already knows', () => {
         expect(store.pushSubscription?.endpoint).toBe(current.endpoint)
     })
 
-    it('knows the account is subscribed (somewhere) even when this browser is not the one', async () => {
-        stubBrowser({ existing: subscription('https://push.example/9') })
+    // feat-148: "enabled" is about this browser. A subscription that is not a record of the
+    // signed-in account was left here by another account: it is removed, so that account's
+    // notifications stop arriving in this browser.
+    it('removes a subscription another account left in this browser and reports push disabled', async () => {
+        const unsubscribe = vi.fn().mockResolvedValue(true)
+        stubBrowser({ existing: subscription('https://push.example/9', unsubscribe) })
         api.getSubscriptions.mockResolvedValue({
             data: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
             error: null,
@@ -204,8 +261,59 @@ describe('push store: what the server already knows', () => {
 
         await store.ensurePushSubscriptionsLoaded()
 
-        expect(store.isSubscribedToPush).toBe(true)
+        expect(unsubscribe).toHaveBeenCalledTimes(1)
+        expect(store.isSubscribedToPush).toBe(false)
         expect(store.pushSubscription).toBeNull()
+        expect(store.pushSubscriptionId).toBeNull()
+    })
+
+    it('reports push disabled in a browser with no subscription, whatever other devices have', async () => {
+        stubBrowser({})
+        api.getSubscriptions.mockResolvedValue({
+            data: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
+            error: null,
+        })
+        const { usePushStore } = await import('../push')
+        const store = usePushStore()
+
+        await store.ensurePushSubscriptionsLoaded()
+
+        expect(store.isSubscribedToPush).toBe(false)
+    })
+
+    it('keeps a deactivated subscription of this account in the browser, disabled', async () => {
+        const unsubscribe = vi.fn().mockResolvedValue(true)
+        stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+        api.getSubscriptions.mockResolvedValue({
+            data: [{ id: 'b', isActive: false, endpoint: 'https://push.example/1' }],
+            error: null,
+        })
+        const { usePushStore } = await import('../push')
+        const store = usePushStore()
+
+        await store.ensurePushSubscriptionsLoaded()
+
+        expect(unsubscribe).not.toHaveBeenCalled()
+        expect(store.isSubscribedToPush).toBe(false)
+        expect(store.pushSubscriptionId).toBe('b')
+    })
+
+    it('matches the endpoint in the spelling the server stores', async () => {
+        const unsubscribe = vi.fn().mockResolvedValue(true)
+        stubBrowser({
+            existing: subscription('https://PUSH.example/send/a%2fb', unsubscribe),
+        })
+        api.getSubscriptions.mockResolvedValue({
+            data: [{ id: 'b', isActive: true, endpoint: 'https://push.example/send/a%2Fb' }],
+            error: null,
+        })
+        const { usePushStore } = await import('../push')
+        const store = usePushStore()
+
+        await store.ensurePushSubscriptionsLoaded()
+
+        expect(unsubscribe).not.toHaveBeenCalled()
+        expect(store.isSubscribedToPush).toBe(true)
     })
 
     it('loads once within its window, and again after a reset', async () => {
@@ -221,5 +329,89 @@ describe('push store: what the server already knows', () => {
         store.resetPushSubscriptionState()
         await store.ensurePushSubscriptionsLoaded()
         expect(api.getSubscriptions).toHaveBeenCalledTimes(2)
+    })
+})
+
+// feat-148: a sign-out releases this browser's subscription.
+describe('push store: releasing the subscription at sign-out', () => {
+    it('removes the record on the server, then the subscription in the browser', async () => {
+        const order: string[] = []
+        const unsubscribe = vi.fn().mockImplementation(() => {
+            order.push('unsubscribe')
+            return Promise.resolve(true)
+        })
+        stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+        api.getSubscriptions.mockResolvedValue({
+            data: {
+                subscriptions: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
+            },
+            error: null,
+        })
+        api.deleteSubscription.mockImplementation(() => {
+            order.push('delete')
+            return Promise.resolve({ data: {}, error: null })
+        })
+        const { usePushStore } = await import('../push')
+        const store = usePushStore()
+
+        await store.releaseBrowserSubscription()
+
+        expect(api.deleteSubscription).toHaveBeenCalledWith('b')
+        expect(order).toEqual(['delete', 'unsubscribe'])
+    })
+
+    it('does nothing in a browser with no subscription', async () => {
+        stubBrowser({})
+        const { usePushStore } = await import('../push')
+
+        await usePushStore().releaseBrowserSubscription()
+
+        expect(api.getSubscriptions).not.toHaveBeenCalled()
+        expect(api.deleteSubscription).not.toHaveBeenCalled()
+    })
+
+    it('still removes the subscription in the browser when the server cannot be reached', async () => {
+        const unsubscribe = vi.fn().mockResolvedValue(true)
+        stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+        api.getSubscriptions.mockRejectedValue(new Error('offline'))
+        const { usePushStore } = await import('../push')
+
+        await expect(usePushStore().releaseBrowserSubscription()).resolves.toBeUndefined()
+
+        expect(unsubscribe).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not fail the sign-out when the browser cannot unsubscribe', async () => {
+        const unsubscribe = vi.fn().mockRejectedValue(new Error('push service down'))
+        stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+        api.getSubscriptions.mockResolvedValue({ data: { subscriptions: [] }, error: null })
+        const { usePushStore } = await import('../push')
+
+        await expect(usePushStore().releaseBrowserSubscription()).resolves.toBeUndefined()
+    })
+
+    it('gives up after three seconds: a slow push service does not hold the sign-out', async () => {
+        vi.useFakeTimers()
+        try {
+            const unsubscribe = vi.fn().mockReturnValue(new Promise(() => undefined))
+            stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+            api.getSubscriptions.mockResolvedValue({ data: { subscriptions: [] }, error: null })
+            const { usePushStore } = await import('../push')
+            let released = false
+
+            const release = usePushStore()
+                .releaseBrowserSubscription()
+                .then(() => {
+                    released = true
+                })
+            await vi.advanceTimersByTimeAsync(2999)
+            expect(released).toBe(false)
+            await vi.advanceTimersByTimeAsync(1)
+            await release
+
+            expect(released).toBe(true)
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })

@@ -3,6 +3,7 @@
 import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
 import { safeRedirectTarget } from '@/utils/safe-redirect'
 import { useI18n } from 'vue-i18n'
+import { usePushStore } from '@/stores/push'
 import { useStateStore } from '@/stores/state'
 import { useUserStore } from '@/stores/user'
 import { useRouter, useRoute } from 'vue-router'
@@ -21,6 +22,7 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const pushStore = usePushStore()
 // CSRF recovery checks a refreshed session against the user the UI shows.
 setCurrentUserIdProvider(() => userStore.user?.id ?? null)
 const isLoading = ref(true)
@@ -177,6 +179,9 @@ const initializeApp = async () => {
             }
 
             websocketOpen(data.wsUrl, data.wsToken)
+            // A subscription another account left in this browser is removed here, not only
+            // when the account page is opened (feat-148).
+            void pushStore.ensurePushSubscriptionsLoaded()
         }
     } catch (error) {
         console.error('Error in initialization:', error)
