@@ -133,6 +133,18 @@ export const useSupportStore = defineStore('support', () => {
         streamingContent.value = ''
     }
 
+    /**
+     * The answer in progress will not be finished here: the connection dropped (the server
+     * aborts the stream and sends no closing event), or the page was left (its listeners are
+     * gone). The partial text goes, and the conversation is read again on the next load: what
+     * the server stored is the truth (feat-152).
+     */
+    function abandonStreaming(): void {
+        streamingContent.value = ''
+        isStreaming.value = false
+        historyResource.markStale()
+    }
+
     /** Adds the message optimistically; the returned id takes it back (`removeMessage`). */
     function addUserMessage(text: string): string {
         const id = nextLocalId()
@@ -192,6 +204,7 @@ export const useSupportStore = defineStore('support', () => {
         clearHistory,
         appendToken,
         completeStreaming,
+        abandonStreaming,
         addUserMessage,
         removeMessage,
         setLoading,

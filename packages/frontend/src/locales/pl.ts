@@ -185,6 +185,7 @@ const pl: typeof en = {
         loadEarlier: 'Pokaż wcześniejsze wiadomości',
         loadingEarlier: 'Ładowanie...',
         inputPlaceholder: 'Wpisz wiadomość...',
+        connectionLost: 'Połączenie zostało utracone. Rozmowa odświeży się po jego przywróceniu.',
     },
 
     account: {

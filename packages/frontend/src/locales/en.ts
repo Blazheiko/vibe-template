@@ -178,6 +178,7 @@ export default {
         loadEarlier: 'Show earlier messages',
         loadingEarlier: 'Loading...',
         inputPlaceholder: 'Type your message...',
+        connectionLost: 'The connection was lost. The conversation will refresh when it is back.',
     },
 
     account: {

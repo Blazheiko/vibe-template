@@ -180,6 +180,7 @@ const uk: typeof en = {
         loadEarlier: 'Показати попередні повідомлення',
         loadingEarlier: 'Завантаження...',
         inputPlaceholder: 'Введіть повідомлення...',
+        connectionLost: "З'єднання втрачено. Розмова оновиться, коли воно відновиться.",
     },
 
     account: {
