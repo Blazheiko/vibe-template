@@ -168,6 +168,11 @@ Endpoint зберігається й шукається в **канонічні�
 ## Фронтенд
 
 - Підписка — у [`stores/push.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/stores/push.ts) (опис пристрою для сервера — у [`utils/push-device.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/push-device.ts)): перевіряє `registration.pushManager.getSubscription()`, отримує VAPID-ключ з `/api/push-subscriptions/vapid-public-key`, викликає `pushManager.subscribe({ applicationServerKey })` і відправляє дані на `POST /api/push-subscriptions`.
+- Підписка браузера переживає вихід і зміну акаунта, а сервер надсилає тому, кому належить запис, тому стор тримає їх узгодженими:
+    - «увімкнено» означає, що підписка **цього браузера** є активним записом поточного акаунта; підписки на інших пристроях на перемикач не впливають;
+    - увімкнення завжди надсилає підписку на сервер (також коли браузер її вже має), і стан «увімкнено» настає лише після відповіді сервера; якщо сервер відмовив, повторна спроба надсилає ту саму підписку ще раз;
+    - вихід (`useSessionLifecycle.logout`) до запиту виходу видаляє запис на сервері й знімає підписку в браузері — best-effort і не довше 3 секунд, помилка вихід не блокує;
+    - після входу (`initializeApp` в `App.vue` і сторінка акаунта) підписка браузера, якої немає серед підписок поточного акаунта, знімається: її лишив інший акаунт, і його сповіщення більше не приходять у цей браузер. Новий користувач вмикає push сам, його запис не переноситься мовчки.
 - [`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) у обробнику `push` парсить JSON, зливає `payload.notification` з дефолтами і викликає `showNotification`; `notificationclick` закриває нотифікацію і відкриває `data.url`. Адреса приходить із payload, тому [`notification-target.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/notification-target.ts) приймає лише адресу того ж origin (інакше — `/`): чужий хост, порт чи схема, `//host`, `/\host`, `javascript:` відкидаються. Уже відкрите вікно знаходиться за збігом origin і `pathname`, а не за підрядком в URL, тож `/support/archive` не береться за `/support`.
 
 ```mermaid
