@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Главный компонент приложения
 import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
+import { takePostSignInTarget } from '@/utils/post-sign-in-target'
 import { safeRedirectTarget } from '@/utils/safe-redirect'
 import { useI18n } from 'vue-i18n'
 import { usePushStore } from '@/stores/push'
@@ -170,7 +171,8 @@ const initializeApp = async () => {
 
             if (routePath === '/' || routePath === '/login' || routePath === '/register') {
                 // Only a path inside the application: the link that carries it is not trusted.
-                const intended = safeRedirectTarget(route.query.redirect)
+                // From the link, or kept in the tab across an OAuth round trip (feat-154).
+                const intended = safeRedirectTarget(route.query.redirect) ?? takePostSignInTarget()
                 if (intended !== null) {
                     void router.push(intended)
                 } else {
