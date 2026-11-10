@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { pushNotificationLogs } from '#database/schema.js'
-import { count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import type { InferInsertModel } from 'drizzle-orm'
 
 import type { PushSubscriptionLogSummary } from './push-subscription-repository.js'
@@ -21,9 +21,16 @@ export type PushSubscriptionLogSummaryRow = PushSubscriptionLogSummary & {
 
 export interface IPushNotificationLogRepository {
     insertMany(rows: PushNotificationLogInsert[]): Promise<void>
-    countsBySubscription(subscriptionId: bigint, since: Date): Promise<PushNotificationLogCounts>
+    // Both reads take the owner too: a subscription keeps its id when it moves to another
+    // account, and the log rows of the previous owner stay theirs.
+    countsBySubscription(
+        subscriptionId: bigint,
+        userId: bigint,
+        since: Date,
+    ): Promise<PushNotificationLogCounts>
     latestBySubscriptionIds(
         subscriptionIds: bigint[],
+        userId: bigint,
         limit: number,
     ): Promise<PushSubscriptionLogSummaryRow[]>
 }
@@ -34,7 +41,7 @@ export const pushNotificationLogRepository: IPushNotificationLogRepository = {
         await db.insert(pushNotificationLogs).values(rows)
     },
 
-    async countsBySubscription(subscriptionId, since) {
+    async countsBySubscription(subscriptionId, userId, since) {
         const [row] = await db
             .select({
                 total: count(),
@@ -46,12 +53,17 @@ export const pushNotificationLogRepository: IPushNotificationLogRepository = {
                 since: count(sql`case when ${gte(pushNotificationLogs.sentAt, since)} then 1 end`),
             })
             .from(pushNotificationLogs)
-            .where(eq(pushNotificationLogs.subscriptionId, subscriptionId))
+            .where(
+                and(
+                    eq(pushNotificationLogs.subscriptionId, subscriptionId),
+                    eq(pushNotificationLogs.userId, userId),
+                ),
+            )
         return row ?? { total: 0, sent: 0, failed: 0, pending: 0, since: 0 }
     },
 
     // The newest `limit` logs of every subscription in one query.
-    async latestBySubscriptionIds(subscriptionIds, limit) {
+    async latestBySubscriptionIds(subscriptionIds, userId, limit) {
         if (subscriptionIds.length === 0) return []
         const ranked = db
             .select({
@@ -65,7 +77,12 @@ export const pushNotificationLogRepository: IPushNotificationLogRepository = {
                 ),
             })
             .from(pushNotificationLogs)
-            .where(inArray(pushNotificationLogs.subscriptionId, subscriptionIds))
+            .where(
+                and(
+                    inArray(pushNotificationLogs.subscriptionId, subscriptionIds),
+                    eq(pushNotificationLogs.userId, userId),
+                ),
+            )
             .as('ranked')
         return await db
             .select({
