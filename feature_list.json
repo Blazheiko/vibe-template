@@ -1491,8 +1491,8 @@
             "owner": "Blazheiko",
             "branch": "feat/log-privacy-support-push-mail",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #483 (merge commit acdf351). RED before the fix: 5 new tests failed, one or two per finding (the support message text and an error-level entry for a client abort in the translation log; the WebPushError with the endpoint and the push service's answer; full recipient addresses in 'Email sent'; the authorization URL with the state in the OAuth redirect log). After the fix: the four specs 54 passed; pnpm format:check, typecheck, lint, test (backend 2597, frontend 413, playground 62); docs:build && docs:verify. A push failure no longer carries an err object, so it does not reach Sentry with the full error; the text stays in push_notifications_log.error_message. Not verified against a running server. Seen during the feature and unrelated to it: upload-limits.transport.spec.ts failed once in a full run (one of 20 parallel 50 MiB uploads answered 400 instead of 413) and passed 8 of 8 times alone."
         },
         {
             "id": "feat-151",
@@ -1501,7 +1501,7 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-client-close-handling",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
