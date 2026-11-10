@@ -1521,8 +1521,8 @@
             "owner": "Blazheiko",
             "branch": "feat/docker-api-prefix-build-arg",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #489 (merge commit e0aa5b2). RED (manual, Docker): the Dockerfile of main built with --build-arg VITE_API_PATH_PREFIX=v1 produced a SPA for api (build-meta.json {apiPathPrefix: api}). After the fix: API_PATH_PREFIX=v1 scripts/docker-build.sh produced a SPA for v1; the same image started with API_PATH_PREFIX=v1 answers the SPA's GET /v1/main/init with 401 application/json and logs no mismatch, started with API_PATH_PREFIX=api it answers that path with the SPA shell (200 text/html) and logs the error 'built for another API prefix' with builtFor v1 / served api. static-build-meta.spec.ts 8 passed; make check (backend 2605, frontend 432, playground 62); docs:build && docs:verify. docker-compose.yml unchanged: its app service has no build section, the build script passes the prefix. Not verified: the SPA of the image in a browser; VITE_BASE_URL and VITE_AUTH_PHONE_ENABLED as build args."
         },
         {
             "id": "feat-154",
@@ -1531,7 +1531,7 @@
             "owner": "Blazheiko",
             "branch": "feat/sign-in-redirect",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
