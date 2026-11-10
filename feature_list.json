@@ -1453,6 +1453,256 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged in #471 (merge commit f07a04c). 47 pages in documentation/en/, i18n in .vitepress/config.ts, parity and h1 checks in scripts/verify-dist.mjs. pnpm docs:build && pnpm docs:verify, format:check, lint, typecheck and documentation tests passed. Heading, code-fence and table-line counts match the Ukrainian originals; 29 cross-page anchors were remapped to the English headings. Not verified: translation wording was not proofread, language switcher not checked in a browser. Entry added after the merge, so there was no separate start PR."
+        },
+        {
+            "id": "feat-147",
+            "name": "Push Log Isolation",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V01: M2: push notification log and statistics queries filter by subscription_id only, so after a subscription moves to another account the new owner reads the previous owner's log. Filter by the log's user_id in every read path. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/push-log-isolation",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-148",
+            "name": "Push Subscription Account Sync",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V02: M9: the frontend reports push as enabled when the browser already has a subscription without posting it to the server, and logout leaves the subscription in place. Sync the browser subscription with the signed-in account, remove it on logout and on sign-in of another account. Needs owner decision Д1. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/push-subscription-account-sync",
+            "dependencies": ["feat-147"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-149",
+            "name": "WS Message Budget",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V03: M1: a valid WebSocket message, including one with an unknown event, runs the session check (Redis + PostgreSQL) before any rate limit; ping and invalid messages are not limited either. Add a per-connection message budget and a cap on concurrent handlers before the session check; build the WS route map without a prototype. Needs owner decision Д2. Redis suite",
+            "owner": "Blazheiko",
+            "branch": "feat/ws-message-budget",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-150",
+            "name": "Log Privacy: Support, Push, Mail",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V04: M3 and three lows: the support query translation logs the full user message on failure, the push sender logs the WebPushError with the endpoint, the mail service logs full recipient addresses, the OAuth redirect logs the URL with the state. Remove or mask these values",
+            "owner": "Blazheiko",
+            "branch": "feat/log-privacy-support-push-mail",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-151",
+            "name": "WS Client Close Handling",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V05: M8: the frontend treats a socket it closed on purpose (logout, replaced socket) as a lost connection, schedules a reconnect with a revoked token and rejects requests pending on the new socket. Distinguish deliberate close from connection loss. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/ws-client-close-handling",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-152",
+            "name": "Support Chat Stream Recovery",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V06: M11: the support chat \"answer in progress\" state is cleared only by the completion events, so a dropped socket or leaving the page leaves the input disabled and a frozen partial answer. Reset the state on socket close and on leaving, reload history after reconnect. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/support-chat-stream-recovery",
+            "dependencies": ["feat-151"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-153",
+            "name": "Docker API Prefix Build Arg",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V07: M6: the Dockerfile declares build args only for VITE_SENTRY_*, so the SPA in the image always uses the api prefix and breaks when the container runs with another API_PATH_PREFIX. Add the build arg, pass it from compose, report a prefix mismatch at startup",
+            "owner": "Blazheiko",
+            "branch": "feat/docker-api-prefix-build-arg",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-154",
+            "name": "Sign-in Redirect",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V08: M10: the redirect query written by the router guard is dropped after a form or OAuth sign-in, the user always lands on /account (AC-AUTH-001). Read the safe redirect target when completing sign-in. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/sign-in-redirect",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-155",
+            "name": "Online History Pagination",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V09: M4: the online history service asks for limit + 1 rows while the repository clamps to 100, so with limit=100 the next page is never detected; /admin/users has no cursor past the first 100 rows. PG suite, e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/online-history-pagination",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-156",
+            "name": "Push Subscription Input Bounds",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V10: M5: push subscription request schemas have unbounded strings against varchar columns (500 instead of 422) and accept a client-supplied ipAddress. Add length bounds, drop ipAddress from the request and store the server-side address. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/push-subscription-input-bounds",
+            "dependencies": ["feat-147"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-157",
+            "name": "Strict Registration Session Oracle",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V11: Low raised to medium: in strict registration the caller's session is destroyed only when the address was free, so the generic answer still reveals whether the email is registered. Same session action in every generic-answer branch. Needs owner decision Д4. Redis suite",
+            "owner": "Blazheiko",
+            "branch": "feat/strict-registration-session-oracle",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-158",
+            "name": "Playground Error Reporting",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V12: M7 and one low: the API playground parses the response body only for 422 and shows WebSocket errors and timeouts as a 200 success. Show the server error body and status for HTTP and WS",
+            "owner": "Blazheiko",
+            "branch": "feat/playground-error-reporting",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-159",
+            "name": "Backend Core Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V13: Lows: a bare IPv6 address in TRUSTED_PROXY_CIDRS never matches the peer, the fallback 404 carries no CORS headers, Access-Control-Expose-Headers is space-separated, a concurrent /ready request gets 503 on a healthy database. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/backend-core-lows",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-160",
+            "name": "Support and Auth Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V14: Lows: reindexAll aborts on one failed batch, the support context filter drops earlier identical user messages, knowledge base findAll pages without ORDER BY, budget is charged for provider calls that never started, screenshots of deactivated articles are served, a repeated phone reset start spends the SMS budget without sending. Needs owner decisions Д3 and Д5. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/support-and-auth-lows",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-161",
+            "name": "Schema Bounds Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V15: Lows: no bounds on prompt maxTokens / temperature / model and on knowledge base title / category / content, an OAuth provider name longer than 100 characters breaks sign-up, unbounded BigInt ids from the path and query give 500. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/schema-bounds-lows",
+            "dependencies": ["feat-156"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-162",
+            "name": "Frontend Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V16: Lows: every 401 redirects to /login, the service worker caches the HTML shell under the full URL with one-time tokens, the precache list drifted from public/, the admin knowledge base list hides errors, Sentry breadcrumb messages are turned into URLs. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/frontend-lows",
+            "dependencies": ["feat-151"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-163",
+            "name": "Dead Code Cleanup",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V17: Remove dead code found by the review in the backend (unused script, unrouted controller methods, unread schema fields, unused column) and the frontend (unused stores, utils, components, API wrappers, events) after re-checking usages on a fresh main",
+            "owner": "Blazheiko",
+            "branch": "chore/dead-code-cleanup",
+            "dependencies": ["feat-148", "feat-162"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-164",
+            "name": "Modal Accessibility",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V18: Lows: the auth, admin user detail and avatar editor modals have no dialog role, focus handling or Escape, and two icon-only buttons have no accessible name. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/modal-accessibility",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-165",
+            "name": "Playground Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V19: Lows in the API playground: the load-test average is below the minimum for parallel threads, limits are HTML attributes only with no stop, an empty token throws on connect, Test Connection does nothing through the proxy, request and response bodies are logged to the console",
+            "owner": "Blazheiko",
+            "branch": "feat/playground-lows",
+            "dependencies": ["feat-158"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-166",
+            "name": "Docs Home Page Accuracy",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V20: Review notes on PR #473: the home page statement about ResponseSchema is wrong for the log mode and differs between locales, contradicts how-backend-works and adding-a-feature, omits route access control and the optional validator, and says the implementation can change without the reader's involvement",
+            "owner": "Blazheiko",
+            "branch": "docs/home-page-accuracy",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-167",
+            "name": "Route Contracts Design",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C0: Fix the five design decisions for shared route contracts before the pilot: package boundary (no schemas in the browser bundle, proven on the production module graph), input vs output schema type, the full call shape on top of the current transport, server policies outside the contract, URL building; multipart boundary. Needs owner decision Д6",
+            "owner": "Blazheiko",
+            "branch": "docs/route-contracts-design",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-168",
+            "name": "Route Contracts Pilot",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C1: Pilot of shared route contracts: contract scaffold in shared, defineRoute with a contract, a typed frontend client on top of base-api, three migrated routes (push-subscriptions group, one query route, auth/login) and an ESLint rule against new direct baseApi.http calls. PG suite, e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/route-contracts-pilot",
+            "dependencies": ["feat-167", "feat-148", "feat-156"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-169",
+            "name": "Route Contracts Migration",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4: Move the remaining route groups to shared route contracts, group by group, shrinking the ESLint exception list. Starts only after the pilot decision C1.R; split into per-group features at start",
+            "owner": "Blazheiko",
+            "branch": "feat/route-contracts-migration",
+            "dependencies": ["feat-168"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-170",
+            "name": "Route Contracts Lock",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C5b: Remove the ESLint exception list for direct baseApi.http calls and add a backend test that every route is declared through a contract and routes with a body have a request schema",
+            "owner": "Blazheiko",
+            "branch": "feat/route-contracts-lock",
+            "dependencies": ["feat-169"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-171",
+            "name": "WebSocket Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C6: Separate design for WebSocket contracts: requests, responses, broadcast events and message correlation, with its own estimate and task list",
+            "owner": "Blazheiko",
+            "branch": "docs/websocket-contracts-design",
+            "dependencies": ["feat-170"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
