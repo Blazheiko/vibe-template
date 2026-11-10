@@ -47,7 +47,9 @@ export default async (
         if (nameRoute === undefined) {
             throw new Error('Invalid event')
         }
-        const route = wsRoutesByUrl[nameRoute]
+        // Own properties only: a map built as a plain object would answer `constructor` with
+        // Object itself (feat-149).
+        const route = Object.hasOwn(wsRoutesByUrl, nameRoute) ? wsRoutesByUrl[nameRoute] : undefined
         if (route !== undefined) {
             routePath = route.url
             // Check rate limit before processing

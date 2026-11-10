@@ -4,6 +4,7 @@ import type { BaseType } from '@arktype/type'
 import type { InferPayload, Validator } from '#vendor/contracts/validator.js'
 import type { BodyKind } from '../utils/network/http-request-handlers.js'
 import type { ResponseCheck } from '../utils/validation/validate-response.js'
+import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
 
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
@@ -30,6 +31,8 @@ export interface UserConnection extends Record<string, unknown> {
      * every access to it throws. Work that awaited before touching the socket checks it (feat-107).
      */
     closed?: boolean
+    /** feat-149: what the connection sent this minute; created with its first message. */
+    messageBudget?: WsMessageBudgetState
 }
 
 export interface MyWebSocket extends WebSocket<UserConnection> {

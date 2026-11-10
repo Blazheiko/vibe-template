@@ -181,10 +181,25 @@ The response starts with `data: null`: if a middleware stopped the request and w
 | invalid message shape or payload       | `validation_failed` (`details.kind: "validation"`), `event` and `timestamp` from the request if they are a string and a number |
 | route not found                        | `not_found` ("Route not found")                                                                                                |
 | limit exceeded                         | `rate_limited` (`reason: rate_limit_exceeded`)                                                                                 |
+| connection budget exceeded             | `rate_limited` with the request's `event` (empty when the message is not JSON); close `4029` when it goes on                   |
 | `RedisUnavailableError` in the handler | `service_unavailable`                                                                                                          |
 | other exception in the handler         | `internal_error`                                                                                                               |
 | session gone (already open connection) | `service:error` `unauthorized` + close `4001`                                                                                  |
 | Redis unavailable                      | `service_unavailable`, the connection is not closed                                                                            |
+
+### Connection message budget
+
+The route limit is checked in the dispatcher, that is after the message has already cost a Redis command (extending the token TTL) and, for a valid message, a session read with a PostgreSQL query; for an unknown event it is not checked at all. So the first thing `onMessage` does is check the connection's budget ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). The budget state lives in the connection's `userData`: no Redis, in process memory, gone with the socket.
+
+| What is counted                                   | Limit                                       | Over the limit                                                                |
+| ------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
+| text messages other than `ping`, per minute       | `WS_MESSAGES_PER_MINUTE` (120 by default)   | a `rate_limited` reply; the token is not extended, the session is not checked |
+| handlers of one connection that have not finished | `WS_MAX_CONCURRENT_HANDLERS` (8 by default) | the same, until one of the handlers ends                                      |
+| `ping` per minute                                 | 60 (the client sends one every 10 s)        | `pong` is sent, the token is not extended                                     |
+
+The connection is closed with code `4029` when more messages were refused within one minute than the budget itself (that is, more than twice the budget was sent), or when the budget is exceeded for the third minute in a row. The code is in the `4000–4099` range, so the client does not reconnect. `ping` and invalid JSON never reach the session check.
+
+The WS route map has no prototype, and the dispatcher looks up own properties only: the event `constructor` or `toString` is `not_found`, not a route.
 
 Exceptions in the dispatcher and `onMessage` are classified by the same [`classifyError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/errors/classify-error.ts) as the HTTP `handleError` (see [Error handling](/en/backend/request-lifecycle#error-handling-handleerror)): the same `code`, `message`, `details` and log levels. Business errors returned by a controller still go into `data` (feat-048).
 
@@ -270,7 +285,7 @@ The decision is made by the pure function [`resolveWebSocketCloseAction`](https:
 
 - code `4001` → `unauthorized()`: a new `mainApi.updateWsToken()` and `websocketOpen(wsUrl, wsToken)`; if HTTP also says "not authenticated" — the `unauthorized` event on the event bus and a close; other errors — retry after 5 s;
 - `1006` when the connection never opened (the server rejected the upgrade with `401` or is unavailable) → also `unauthorized()`: the first time immediately, subsequent ones in a row after 5 s, so that an unavailable WS endpoint with a working HTTP does not cause a fast loop of token refreshes;
-- codes `4000–4099` (except `4001`) → no reconnect;
+- codes `4000–4099` (except `4001`) → no reconnect; `4029` belongs here (the connection went over its [message budget](#connection-message-budget));
 - other codes (including `4201` on server shutdown) → `open()` after 5 s. Since the token on the server has already been revoked, such a retry will most likely get `4001` and take the token refresh branch.
 
 ::: tip Non-standard `API_PATH_PREFIX`

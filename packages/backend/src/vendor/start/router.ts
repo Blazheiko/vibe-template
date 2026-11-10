@@ -129,7 +129,9 @@ const parseGroups = (
 // Convert flat routes into the full-url lookup used by the WS dispatcher.
 // WS dispatch is exact-match only; `:param` route matching is not supported.
 const createWsRoutesByUrl = (routes: NormalizedRouteItem[]): WsRoutes => {
-    const routesByUrl: WsRoutes = {}
+    // No prototype: the dispatcher looks a route up by a name the client sends, and
+    // `constructor` or `toString` must not be found (feat-149).
+    const routesByUrl = Object.create(null) as WsRoutes
     routes.forEach((route) => {
         if (routesByUrl[route.url] !== undefined) {
             logger.warn({ url: route.url }, 'Duplicate WS route URL')
