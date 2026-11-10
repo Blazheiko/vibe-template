@@ -166,24 +166,26 @@
 
 ### V04 Log Privacy: Support, Push, Mail (M3)
 
-- [ ] **V04.S** Шаблон S.
-- [ ] **V04.T** Шаблон T: по тесту на кожне з чотирьох місць (чотири незалежні знахідки).
+Виконано 2026-11-10: `feat-150`, PR #483. Усі чотири знахідки відтворено тестами.
+
+- [x] **V04.S** Шаблон S.
+- [x] **V04.T** Шаблон T: по тесту на кожне з чотирьох місць (чотири незалежні знахідки).
       **Очікує:** запис логу не містить відповідно тексту звернення / endpoint підписки / повної
       адреси отримувача / OAuth `state`.
       **До виправлення:** кожен із чотирьох записів містить відповідне значення.
-- [ ] **V04.1** `services/support/support-query-translation-service.ts:63`: без `originalQuery`;
+- [x] **V04.1** `services/support/support-query-translation-service.ts:63`: без `originalQuery`;
       обрив клієнтом логувати не як error.
       **AC:** тест зелений; abort не створює error-запису.
-- [ ] **V04.2** `services/notifications/push-notification-sender-service.ts:194`: `statusCode` і
+- [x] **V04.2** `services/notifications/push-notification-sender-service.ts:194`: `statusCode` і
       нормалізована причина замість `WebPushError`.
       **AC:** тест зелений.
-- [ ] **V04.3** `services/notifications/email-service.ts:214-222`: адреси через
+- [x] **V04.3** `services/notifications/email-service.ts:214-222`: адреси через
       `maskEmailForLogs` або кількість.
       **AC:** тест зелений.
-- [ ] **V04.4** `controllers/http/auth/oauth-controller.ts:93`: без URL зі `state`.
+- [x] **V04.4** `controllers/http/auth/oauth-controller.ts:93`: без URL зі `state`.
       **AC:** тест зелений.
-- [ ] **V04.D** Шаблон D: `documentation/backend/oauth.md`, сторінка логування.
-- [ ] **V04.E** Шаблон E. **V04.X** Шаблон X.
+- [x] **V04.D** Шаблон D: `documentation/backend/oauth.md`, сторінка логування.
+- [x] **V04.E** Шаблон E. **V04.X** Шаблон X.
 
 ## Хвиля 3 — підтверджені функціональні дефекти
 
