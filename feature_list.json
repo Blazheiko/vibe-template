@@ -1511,8 +1511,8 @@
             "owner": "Blazheiko",
             "branch": "feat/support-chat-stream-recovery",
             "dependencies": ["feat-151"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #487 (merge commit 3a2bfb8). RED before the fix: 3 of 6 tests of views/__tests__/SupportView.spec.ts failed (the textarea stayed disabled after the socket dropped; the history was not reloaded when the connection came back; store.isStreaming stayed true after the page was left). After the fix: SupportView.spec.ts 6 passed; pnpm format:check, typecheck, lint, test (frontend 432, backend 2597, playground 62); frontend test:e2e 87 passed; docs:build && docs:verify. Not verified in a browser: the live e2e runs without an AI provider, so there is no real stream to cut; the behaviour is covered by the component test on the real store."
         },
         {
             "id": "feat-153",
@@ -1521,7 +1521,7 @@
             "owner": "Blazheiko",
             "branch": "feat/docker-api-prefix-build-arg",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
