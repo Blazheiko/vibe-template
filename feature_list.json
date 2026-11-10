@@ -1461,8 +1461,8 @@
             "owner": "Blazheiko",
             "branch": "feat/push-log-isolation",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #477 (merge commit b3ec890). RED before the fix: 3 of 4 new tests in push-data.pg.test.ts failed (the subscription list returned the previous owner's 3 log titles instead of 1, the statistics counted 3 sends instead of 1); the third read path, getLogsBySubscriptionId, was already owner-scoped and got a regression test. After the fix: PG suite of the push group 39 passed, none skipped, locally (pgvector/pgvector:pg16) and in the test-pg job; pnpm format:check, typecheck, lint, test (backend 2562, frontend 400), docs:build && docs:verify. Not verified in a browser: the scenario A -> logout -> B is feat-148."
         },
         {
             "id": "feat-148",
@@ -1471,7 +1471,7 @@
             "owner": "Blazheiko",
             "branch": "feat/push-subscription-account-sync",
             "dependencies": ["feat-147"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
