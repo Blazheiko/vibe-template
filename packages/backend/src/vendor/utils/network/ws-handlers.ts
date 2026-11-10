@@ -24,6 +24,17 @@ import checkUpgradeRateLimit, {
 } from '#vendor/utils/rate-limit/upgrade-rate-limit.js'
 import { makeJson } from '#vendor/utils/helpers/json-handlers.js'
 import configApp from '#config/app.js'
+import configWebsocket from '#config/websocket.js'
+import {
+    WS_CLOSE_MESSAGE_FLOOD,
+    admitWsMessage,
+    admitWsPing,
+    createWsMessageBudget,
+    releaseWsHandler,
+    secondsToNextWindow,
+    type WsMessageBudgetState,
+} from '#vendor/utils/rate-limit/ws-message-budget.js'
+import { createWsRateLimitErrorResponse } from '#vendor/utils/rate-limit/ws-rate-limit.js'
 import type { Validator } from '#vendor/contracts/validator.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
@@ -236,6 +247,52 @@ const refreshToken = async (token: string): Promise<boolean> => {
     return true
 }
 
+const messageBudgetOf = (userData: UserConnection, now: number): WsMessageBudgetState => {
+    userData.messageBudget ??= createWsMessageBudget(now)
+    return userData.messageBudget
+}
+
+// feat-149: a connection that keeps flooding. 4029 is in the range the client does not
+// reconnect on. A socket that closed meanwhile is gone already.
+const closeFloodingConnection = (ws: MyWebSocket, userData: UserConnection): void => {
+    if (userData.closed === true) return
+    logger.warn(
+        { userId: userData.userId, messages: userData.messageBudget?.messages },
+        'WebSocket closed: message budget exceeded repeatedly',
+    )
+    try {
+        ws.end(WS_CLOSE_MESSAGE_FLOOD, 'Too many messages')
+    } catch (e) {
+        logger.error({ err: e }, 'Error closing a flooding WebSocket')
+    }
+}
+
+// A message over the budget is answered with the request's event when it can be read, so the
+// client rejects the matching promise at once; nothing else runs for it: no Redis, no session.
+const refuseOverBudget = (
+    ws: MyWebSocket,
+    jsonMessage: string,
+    userData: UserConnection,
+    budget: WsMessageBudgetState,
+    now: number,
+): void => {
+    let event = ''
+    try {
+        event = requestIdentity(JSON.parse(jsonMessage)).event
+    } catch {
+        // Not JSON: answered without an event, like a malformed message.
+    }
+    sendJson(
+        ws,
+        createWsRateLimitErrorResponse(
+            'Too many messages',
+            secondsToNextWindow(budget, now),
+            event,
+        ),
+        userData,
+    )
+}
+
 const onMessage = async (
     ws: MyWebSocket,
     wsMessage: ArrayBuffer,
@@ -250,6 +307,8 @@ const onMessage = async (
     const userData = ws.getUserData()
 
     const token = userData.token
+    const now = Date.now()
+    const budget = messageBudgetOf(userData, now)
 
     // Heartbeat confirms the transport, not Redis: pong first, with no Redis
     // command before it; the token refresh for ping runs after and is not awaited.
@@ -259,10 +318,42 @@ const onMessage = async (
         } catch (e) {
             logger.error({ err: e }, 'Error ws send pong')
         }
-        if (token !== '') void refreshToken(token)
+        // The pong is free; the refresh is a Redis command and has a budget of its own.
+        const pingAdmission = admitWsPing(budget, configWebsocket, now)
+        if (pingAdmission === 'close') {
+            closeFloodingConnection(ws, userData)
+        } else if (pingAdmission === 'allow' && token !== '') {
+            void refreshToken(token)
+        }
         return
     }
 
+    // First, from memory: everything below costs a Redis command, and a valid message a
+    // session read with a PostgreSQL query (feat-149).
+    const admission = admitWsMessage(budget, configWebsocket, now)
+    if (admission === 'close') {
+        closeFloodingConnection(ws, userData)
+        return
+    }
+    if (admission === 'refuse') {
+        refuseOverBudget(ws, jsonMessage, userData, budget, now)
+        return
+    }
+
+    try {
+        await handleAdmittedMessage(ws, jsonMessage, userData, token, wsRoutesByUrl)
+    } finally {
+        releaseWsHandler(budget)
+    }
+}
+
+const handleAdmittedMessage = async (
+    ws: MyWebSocket,
+    jsonMessage: string,
+    userData: UserConnection,
+    token: string,
+    wsRoutesByUrl: Readonly<WsRoutes>,
+): Promise<void> => {
     // false: Redis is unavailable (already reported by redis-health, no log here).
     const refreshed = token === '' ? true : await refreshToken(token)
 

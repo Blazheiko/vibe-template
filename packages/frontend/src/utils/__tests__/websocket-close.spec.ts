@@ -43,4 +43,9 @@ describe('resolveWebSocketCloseAction', () => {
         expect(resolveWebSocketCloseAction(4000, true, 0)).toEqual({ kind: 'stop' })
         expect(resolveWebSocketCloseAction(4099, false, 0)).toEqual({ kind: 'stop' })
     })
+
+    // feat-149: the backend closes a connection that keeps going over its message budget.
+    it('does not reconnect after 4029 (message budget exceeded)', () => {
+        expect(resolveWebSocketCloseAction(4029, true, 0)).toEqual({ kind: 'stop' })
+    })
 })

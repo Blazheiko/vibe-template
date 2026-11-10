@@ -54,6 +54,21 @@ describe('ws-api-dispatcher transport errors (feat-048)', () => {
         })
     })
 
+    // feat-149: the route map is looked up by a name the client sends; members of
+    // Object.prototype are not routes.
+    it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf'])(
+        'answers not_found for %s, without an error log',
+        async (event) => {
+            const result = await dispatch(event, null)
+            expect(result).toMatchObject({
+                status: 'error',
+                data: null,
+                error: { code: 'not_found' },
+            })
+            expect(logger.error).not.toHaveBeenCalled()
+        },
+    )
+
     it('validation_failed has data null', async () => {
         const route = defineWsRoute({
             url: 'typing',
