@@ -56,7 +56,7 @@ flowchart LR
 1. The `ubuntu:24.04` image. Node.js 24 is installed from NodeSource, pnpm `9.15.0` is enabled via corepack.
 2. First only `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` and the `package.json` files of the three packages are copied, then `pnpm install --frozen-lockfile` runs. This way the dependency layer is cached.
 3. `COPY . .` copies the project without what [`.dockerignore`](https://github.com/Blazheiko/vibe-template/blob/main/.dockerignore) excludes: `.git`, `node_modules`, `dist`, `coverage`, test reports, the VitePress cache and all `.env`/`.env.*` except `.env.example`. So local secrets end up neither in the build context nor in the builder stage layers, and the local `packages/frontend/.env` is not baked into the frontend bundle — Vite sees only `VITE_SENTRY_*` from the build arguments.
-4. The `VITE_SENTRY_*` build arguments (DSN, ENABLED, ENVIRONMENT, RELEASE, sample rates) become `ENV`, because Vite bakes them into the bundle at build time.
+4. The `VITE_API_PATH_PREFIX`, `VITE_BASE_URL`, `VITE_AUTH_PHONE_ENABLED` and `VITE_SENTRY_*` build arguments (DSN, ENABLED, ENVIRONMENT, RELEASE, sample rates) become `ENV`, because Vite bakes them into the bundle at build time.
 5. `shared`, `frontend` and `backend` are built, after which `frontend/dist` is copied into `backend/public`.
 
 **The `production` stage**
@@ -91,6 +91,17 @@ docker run -d -p 3000:3000 --env-file ./production.env vibe-template
 ::: warning Startup change (feat-019)
 Before feat-019 the container ran `db:create:prod` and `db:migrate` itself on every start. Now these are separate one-shot runs: if you skip them, the new version starts on the old schema. In Kubernetes this is an init container or a `Job` before rollout, in Compose a separate service with `restart: "no"` that the application depends on (`depends_on: condition: service_completed_successfully`).
 :::
+
+**A different `API_PATH_PREFIX`: the prefix has to be set at build time too.** The API prefix is compiled into the SPA at build time (`VITE_API_PATH_PREFIX`), while the server reads its own (`API_PATH_PREFIX`) at startup. An image built without the build-arg contains a SPA with the `api` prefix; started with `API_PATH_PREFIX=v1`, the SPA's calls do not reach the API (a `GET` gets `index.html`, anything else `404`). So the prefix is passed twice:
+
+```sh
+docker build -t vibe-template --build-arg VITE_API_PATH_PREFIX=v1 .
+docker run -d -e API_PATH_PREFIX=v1 --env-file ./production.env vibe-template
+```
+
+The same goes for `VITE_BASE_URL` (an API on another origin) and `VITE_AUTH_PHONE_ENABLED`: the [Dockerfile](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) takes them as build-args. The local `pnpm app:build` ([docker-build.sh](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh)) takes the prefix from `API_PATH_PREFIX` in `packages/backend/.env` (or from the environment variable), that is from the same file the container reads at startup.
+
+The frontend build puts a `build-meta.json` file next to `index.html` with the prefix the SPA was built for. At startup with `SERVE_STATIC=true` the server compares it with `API_PATH_PREFIX` ([static-build-meta.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-build-meta.ts)) and, on a mismatch, logs an error with the fields `builtFor` and `served`; the server still starts. When the file is missing (static files from another source), the check says nothing.
 
 **Healthcheck with a different `PORT` or `API_PATH_PREFIX`.** The built-in check knows only `PORT` and the `api` prefix. For a different prefix, override it at startup, otherwise the container becomes `unhealthy`:
 
@@ -210,4 +221,5 @@ There is no workflow for building, testing or deploying the application itself. 
 - [ ] TLS on the proxy, `TRUST_PROXY` and `TRUSTED_PROXY_CIDRS` configured (on a unix socket — `TRUST_UNIX_SOCKET_PROXY=true`).
 - [ ] It is decided who serves the frontend: `SERVE_STATIC=true` or separate hosting/CDN.
 - [ ] `VITE_SENTRY_*` passed as build-args, `SENTRY_*` as runtime env.
+- [ ] If `API_PATH_PREFIX` is not `api`: the image was built with `--build-arg VITE_API_PATH_PREFIX=<the same prefix>`, and the startup log has no error about a SPA built for another prefix.
 - [ ] The bucket CORS ([`corsS3.xml`](https://github.com/Blazheiko/vibe-template/blob/main/corsS3.xml)) is restricted to your domain.
