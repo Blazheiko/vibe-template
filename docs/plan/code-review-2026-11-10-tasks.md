@@ -64,22 +64,24 @@
 
 ### V01 Push Log Isolation (M2) · PG
 
-- [ ] **V01.S** Шаблон S.
-- [ ] **V01.T** Шаблон T: PG-тест на одному fixture — A має підписку з рядками журналу, підписка
+Виконано 2026-11-10: `feat-147`, PR #477. M2 відтворено тестом.
+
+- [x] **V01.S** Шаблон S.
+- [x] **V01.T** Шаблон T: PG-тест на одному fixture — A має підписку з рядками журналу, підписка
       переходить до B (той самий endpoint і ключі); три канали читання.
       **Очікує:** `GET /push-subscriptions/` для B не містить заголовків A в `notificationLogs`;
       `/:id/statistics` рахує лише надсилання B; `/:id/logs` не повертає рядків A.
       **До виправлення:** перші два канали віддають дані A; третій очікувано вже зелений.
-- [ ] **V01.1** `repositories/notifications/push-notification-log-repository.ts`:
+- [x] **V01.1** `repositories/notifications/push-notification-log-repository.ts`:
       `latestBySubscriptionIds` і `countsBySubscription` приймають `userId` і фільтрують за
       `push_notification_logs.user_id`.
       **AC:** типи репозиторію вимагають `userId`; викликів без нього немає (typecheck).
-- [ ] **V01.2** → V01.1. Викликачі: `findByUserIdWithLogs`, `getPushSubscriptionStatistics`
+- [x] **V01.2** → V01.1. Викликачі: `findByUserIdWithLogs`, `getPushSubscriptionStatistics`
       передають власника.
       **AC:** V01.T зелений для всіх трьох каналів.
-- [ ] **V01.3** Тест: журнали A не видаляються — після зворотного переходу підписки A бачить свої.
+- [x] **V01.3** Тест: журнали A не видаляються — після зворотного переходу підписки A бачить свої.
       **AC:** тест зелений.
-- [ ] **V01.E** Шаблон E (PG). **V01.X** Шаблон X.
+- [x] **V01.E** Шаблон E (PG). **V01.X** Шаблон X.
 
 ### V02 Push Subscription Account Sync (M9) · e2e · → V01, Д1
 
