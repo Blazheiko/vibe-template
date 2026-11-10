@@ -56,7 +56,7 @@ flowchart LR
 1. Образ `ubuntu:24.04`. Node.js 24 ставиться з NodeSource, pnpm `9.15.0` вмикається через corepack.
 2. Спочатку копіюються лише `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` і `package.json` трьох пакетів, далі виконується `pnpm install --frozen-lockfile`. Так шар із залежностями кешується.
 3. `COPY . .` копіює проєкт без того, що виключає [`.dockerignore`](https://github.com/Blazheiko/vibe-template/blob/main/.dockerignore): `.git`, `node_modules`, `dist`, `coverage`, звіти тестів, кеш VitePress і всі `.env`/`.env.*`, крім `.env.example`. Тому локальні секрети не потрапляють ні в build context, ні в шари builder-етапу, а локальний `packages/frontend/.env` не вшивається у фронтенд-бандл — Vite бачить лише `VITE_SENTRY_*` з build-аргументів.
-4. Build-аргументи `VITE_SENTRY_*` (DSN, ENABLED, ENVIRONMENT, RELEASE, sample rates) стають `ENV`, бо Vite вшиває їх у бандл під час збірки.
+4. Build-аргументи `VITE_API_PATH_PREFIX`, `VITE_BASE_URL`, `VITE_AUTH_PHONE_ENABLED` і `VITE_SENTRY_*` (DSN, ENABLED, ENVIRONMENT, RELEASE, sample rates) стають `ENV`, бо Vite вшиває їх у бандл під час збірки.
 5. Збираються `shared`, `frontend` і `backend`, після цього `frontend/dist` копіюється в `backend/public`.
 
 **Етап `production`**
@@ -91,6 +91,17 @@ docker run -d -p 3000:3000 --env-file ./production.env vibe-template
 ::: warning Зміна запуску (feat-019)
 До feat-019 контейнер сам виконував `db:create:prod` і `db:migrate` на кожному старті. Тепер це окремі one-shot запуски: якщо їх пропустити, нова версія стартує на старій схемі. У Kubernetes це init-контейнер або `Job` перед rollout, у Compose — окремий сервіс з `restart: "no"`, від якого залежить застосунок (`depends_on: condition: service_completed_successfully`).
 :::
+
+**Інший `API_PATH_PREFIX`: префікс треба задати і при збірці.** Префікс API вшивається в SPA під час збірки (`VITE_API_PATH_PREFIX`), а сервер читає свій (`API_PATH_PREFIX`) під час запуску. Образ, зібраний без build-arg, містить SPA з префіксом `api`; якщо запустити його з `API_PATH_PREFIX=v1`, виклики SPA не дійдуть до API (`GET` отримає `index.html`, решта — `404`). Тому префікс передається двічі:
+
+```sh
+docker build -t vibe-template --build-arg VITE_API_PATH_PREFIX=v1 .
+docker run -d -e API_PATH_PREFIX=v1 --env-file ./production.env vibe-template
+```
+
+Те саме стосується `VITE_BASE_URL` (API на іншому origin) і `VITE_AUTH_PHONE_ENABLED`: [Dockerfile](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) приймає їх як build-args. Локальний `pnpm app:build` ([docker-build.sh](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh)) бере префікс із `API_PATH_PREFIX` у `packages/backend/.env` (або зі змінної оточення), тобто з того самого файлу, який контейнер читає при запуску.
+
+Збірка фронтенду кладе поруч з `index.html` файл `build-meta.json` з префіксом, для якого зібрано SPA. На старті з `SERVE_STATIC=true` сервер порівнює його з `API_PATH_PREFIX` ([static-build-meta.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-build-meta.ts)) і при розбіжності пише в лог помилку з полями `builtFor` і `served`; сервер при цьому стартує. Якщо файла немає (статика з іншого джерела), перевірка нічого не каже.
 
 **Healthcheck з іншим `PORT` або `API_PATH_PREFIX`.** Вбудована перевірка знає лише `PORT` і префікс `api`. Для іншого префікса перевизначте її при запуску, інакше контейнер стане `unhealthy`:
 
@@ -210,4 +221,5 @@ Workflow для збірки, тестів або деплою самого за
 - [ ] TLS на проксі, `TRUST_PROXY` і `TRUSTED_PROXY_CIDRS` налаштовано (на unix-сокеті — `TRUST_UNIX_SOCKET_PROXY=true`).
 - [ ] Визначено, хто віддає фронтенд: `SERVE_STATIC=true` або окремий хостинг/CDN.
 - [ ] `VITE_SENTRY_*` передано як build-args, `SENTRY_*` — як runtime env.
+- [ ] Якщо `API_PATH_PREFIX` не `api`: образ зібрано з `--build-arg VITE_API_PATH_PREFIX=<той самий префікс>`, у лозі старту немає помилки про інший префікс SPA.
 - [ ] CORS бакета ([`corsS3.xml`](https://github.com/Blazheiko/vibe-template/blob/main/corsS3.xml)) обмежено вашим доменом.

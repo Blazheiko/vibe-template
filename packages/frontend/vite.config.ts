@@ -4,6 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+import { buildMeta } from './vite.build-meta'
 import { stripConsoleLogs } from './vite.console'
 
 // Dev proxy for the backend's API_PATH_PREFIX, not a hard-coded /api (code-issues item 73).
@@ -24,6 +25,7 @@ export default defineConfig({
             },
         }),
         vueDevTools(),
+        buildMeta(),
     ],
     esbuild: stripConsoleLogs,
     build: {

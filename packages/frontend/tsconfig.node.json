@@ -4,6 +4,7 @@
         "vite.config.*",
         "vite.sw.config.ts",
         "vite.console.ts",
+        "vite.build-meta.ts",
         "vitest.config.*",
         "cypress.config.*",
         "nightwatch.conf.*",
