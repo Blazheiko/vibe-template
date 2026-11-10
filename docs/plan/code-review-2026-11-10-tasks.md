@@ -232,24 +232,27 @@
 
 ### V07 Docker API Prefix Build Arg (M6)
 
-- [ ] **V07.S** Шаблон S.
-- [ ] **V07.T** Шаблон T (ручний, з кроками й виводом у `progress.md`): зібрати образ із
+Виконано 2026-11-10: `feat-153`, PR #489. M6 відтворено збіркою образу. V07.2: у `docker-compose.yml`
+немає секції `build`, тому префікс передає `scripts/docker-build.sh` з того самого `.env`.
+
+- [x] **V07.S** Шаблон S.
+- [x] **V07.T** Шаблон T (ручний, з кроками й виводом у `progress.md`): зібрати образ із
       префіксом `v1` і запустити з `API_PATH_PREFIX=v1`.
       **Очікує:** SPA з образу звертається до `/v1/…` і отримує відповіді.
       **До виправлення:** `--build-arg VITE_API_PATH_PREFIX=v1` ігнорується, SPA звертається до
       `/api/…` і отримує 404.
-- [ ] **V07.1** `Dockerfile`: `ARG` / `ENV` для `VITE_API_PATH_PREFIX` (і `VITE_API_BASE_URL`,
+- [x] **V07.1** `Dockerfile`: `ARG` / `ENV` для `VITE_API_PATH_PREFIX` (і `VITE_API_BASE_URL`,
       якщо фронтенд його читає).
       **AC:** образ із `--build-arg VITE_API_PATH_PREFIX=v1` містить SPA з префіксом `v1`.
-- [ ] **V07.2** `docker-compose.yml` / скрипт `app:up`: build-arg з того самого значення, що
+- [x] **V07.2** `docker-compose.yml` / скрипт `app:up`: build-arg з того самого значення, що
       `API_PATH_PREFIX`.
       **AC:** `docker compose config` показує однакове значення в build і runtime.
-- [ ] **V07.3** Запобіжник на старті: розбіжність префікса зібраної SPA і `API_PATH_PREFIX` видно
+- [x] **V07.3** Запобіжник на старті: розбіжність префікса зібраної SPA і `API_PATH_PREFIX` видно
       в лозі (спосіб звірки обрати в задачі).
       **AC:** unit-тест перевірки; ручний запуск образу з типовим префіксом і `API_PATH_PREFIX=v1`
       дає запис у лозі.
-- [ ] **V07.D** Шаблон D: `documentation/backend/deployment.md`.
-- [ ] **V07.E** Шаблон E. **V07.X** Шаблон X.
+- [x] **V07.D** Шаблон D: `documentation/backend/deployment.md`.
+- [x] **V07.E** Шаблон E. **V07.X** Шаблон X.
 
 ### V08 Sign-in Redirect (M10) · e2e
 
