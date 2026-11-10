@@ -283,6 +283,7 @@ Reconnecting (vueuse's built-in `autoReconnect` is commented out, the logic is c
 
 The decision is made by the pure function [`resolveWebSocketCloseAction`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-close.ts) (covered by tests):
 
+- a socket the client closed itself (a sign-out through `websocketClose()`, or a socket replaced in `websocketOpen()` when the token is refreshed over a live connection) → the `close` event is ignored, whatever the code. vueuse reports the close of every socket, also when another one is current by then; such a socket is marked at the moment it is closed and its requests are rejected then, so the late event touches neither the requests of the new socket nor the reconnect timer. A close by the heartbeat (no `pong`) is not one of these — it is a lost connection;
 - code `4001` → `unauthorized()`: a new `mainApi.updateWsToken()` and `websocketOpen(wsUrl, wsToken)`; if HTTP also says "not authenticated" — the `unauthorized` event on the event bus and a close; other errors — retry after 5 s;
 - `1006` when the connection never opened (the server rejected the upgrade with `401` or is unavailable) → also `unauthorized()`: the first time immediately, subsequent ones in a row after 5 s, so that an unavailable WS endpoint with a working HTTP does not cause a fast loop of token refreshes;
 - codes `4000–4099` (except `4001`) → no reconnect; `4029` belongs here (the connection went over its [message budget](#connection-message-budget));
