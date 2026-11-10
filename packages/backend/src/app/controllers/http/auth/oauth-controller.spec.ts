@@ -4,21 +4,32 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // The OAuth callback is a browser navigation: every outcome must be a 302 back to the
 // frontend, never an error status that leaves the user on a raw JSON page.
 
-const { handleCallback, getConfiguredProviders, confirmLink, resendFirstEmailLink } = vi.hoisted(
-    () => ({
-        handleCallback: vi.fn(),
-        getConfiguredProviders: vi.fn(),
-        confirmLink: vi.fn(),
-        resendFirstEmailLink: vi.fn(),
-    }),
-)
+const {
+    handleCallback,
+    getConfiguredProviders,
+    confirmLink,
+    resendFirstEmailLink,
+    getAuthorizationUrl,
+} = vi.hoisted(() => ({
+    getAuthorizationUrl: vi.fn(),
+    handleCallback: vi.fn(),
+    getConfiguredProviders: vi.fn(),
+    confirmLink: vi.fn(),
+    resendFirstEmailLink: vi.fn(),
+}))
 
 vi.mock('#app/services/auth/oauth-service.js', () => ({
     OAUTH_LINK_REVOKED: 'oauth_link_revoked',
     EMAIL_CHANGED: 'email_changed',
     OAUTH_ALREADY_LINKED: 'oauth_already_linked',
     TOO_MANY_ATTEMPTS: 'too_many_attempts',
-    oauthService: { handleCallback, getConfiguredProviders, confirmLink, resendFirstEmailLink },
+    oauthService: {
+        handleCallback,
+        getConfiguredProviders,
+        confirmLink,
+        resendFirstEmailLink,
+        getAuthorizationUrl,
+    },
 }))
 vi.mock('#config/oauth.js', () => ({
     default: {
@@ -409,5 +420,36 @@ describe('withReason', () => {
         expect(withReason('/login?error=oauth_failed#login', null)).toBe(
             '/login?error=oauth_failed#login',
         )
+    })
+})
+
+// feat-150 (review 2026-11-10): the authorization URL carries the single-use state and the PKCE
+// challenge. The log names the provider only.
+describe('OAuthController.redirect', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+    })
+
+    it('redirects to the provider without logging the URL or the state', async () => {
+        getAuthorizationUrl.mockReturnValue(
+            Result.ok({
+                url: 'https://accounts.example/authorize?state=state-secret-1&code_challenge=challenge-1',
+                state: 'state-secret-1',
+                codeVerifier: 'verifier-secret-1',
+            }),
+        )
+        const context = createContext({})
+
+        await OAuthController.redirect(context)
+
+        expect(context.responseData.status).toBe(302)
+        expect(context.headers.get('Location')).toContain('state=state-secret-1')
+        const logged = JSON.stringify(
+            (context.logger.info as unknown as ReturnType<typeof vi.fn>).mock.calls,
+        )
+        expect(logged).not.toContain('state-secret-1')
+        expect(logged).not.toContain('challenge-1')
+        expect(logged).not.toContain('verifier-secret-1')
+        expect(logged).toContain('google')
     })
 })
