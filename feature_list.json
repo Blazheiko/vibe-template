@@ -1501,8 +1501,8 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-client-close-handling",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #485 (merge commit e2ba093). RED before the fix: 4 of 7 tests of composables/__tests__/useWebSocketConnection.spec.ts failed (after a sign-out a second socket was opened; the request pending on the new socket was rejected by the close of the replaced one); in a real browser e2e-live/ws-close-after-logout.spec.ts on the old composable ended on /login instead of /register. The 3 tests of a really lost connection were green before and stay as regression tests. After the fix: pnpm format:check, typecheck, lint, test (frontend 426, backend 2597, playground 62); frontend test:e2e 87 passed; test:e2e:live 9 passed three runs in a row locally and in the e2e-live job; docs:build && docs:verify. Not verified in a browser: the replacement of a live socket (covered by the composable test with controlled events)."
         },
         {
             "id": "feat-152",
@@ -1511,7 +1511,7 @@
             "owner": "Blazheiko",
             "branch": "feat/support-chat-stream-recovery",
             "dependencies": ["feat-151"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
