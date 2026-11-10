@@ -63,7 +63,7 @@ If you need access to the provider API on behalf of the user (offline), the toke
 
 ### What ends up in the logs
 
-The email and name from the profile are personal data. The OAuth login log contains the provider and a **masked** email (`u***r@e*****e.com`, `maskEmailForLogs`), without the name, without the id at the provider and without tokens.
+The email and name from the profile are personal data. The OAuth login log contains the provider and a **masked** email (`u***r@e*****e.com`, `maskEmailForLogs`), without the name, without the id at the provider and without tokens. The redirect to the provider (`GET /auth/oauth/:provider/redirect`) logs only the provider's name: the authorization URL carries the single-use `state` and the PKCE challenge, so it stays out of the log.
 
 ## Linking by email
 
