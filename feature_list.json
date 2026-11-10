@@ -1471,8 +1471,8 @@
             "owner": "Blazheiko",
             "branch": "feat/push-subscription-account-sync",
             "dependencies": ["feat-147"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #479 (merge commit 9bc0a95). RED before the fix: 2 new tests in stores/__tests__/push.spec.ts failed (no POST for a subscription the browser already had; the store reported enabled after the server refused). After the fix: pnpm format:check, typecheck, lint, test (backend 2562, frontend 412, playground 62); frontend test:e2e 87 passed; test:e2e:live 8 passed locally and in the e2e-live job, including three new scenarios in e2e-live/push-account-switch.spec.ts on the real backend with only PushManager replaced (A -> sign-out -> B; a leftover subscription after a lost session; a refused save and a retry); backend PG test push-delivery-ownership.pg.test.ts with the transport replaced (3 passed); docs:build && docs:verify. Behaviour change: the account-page toggle is now about this browser's subscription, not any device of the account. Not verified: real delivery through a push service in a real browser. Open: one local run of the new live spec (the first of 7) failed once at sign-in with a 503 from POST /api/auth/login; it did not repeat and the cause is unknown."
         },
         {
             "id": "feat-149",
@@ -1481,7 +1481,7 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-message-budget",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
