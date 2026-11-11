@@ -1661,8 +1661,8 @@
             "owner": "Blazheiko",
             "branch": "docs/route-contracts-design",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #501 (merge commit e13bf32). docs/adr/0005-route-contracts.md fixes the five design decisions and the multipart boundary; packages/frontend/scripts/check-bundle-graph.mjs proves on the module graph of the production build that the frontend bundle has no schema and no validator library (492 modules; a negative control with a schema imported as a value in utils/api.ts exits 1). The prototype behind the ADR (12 routes on contracts, defineContractRoute, the typed client) passed pnpm typecheck, backend unit 2612 and PG 288 unchanged, negative type checks on both sides and 12 client tests over the real transport; it is the starting point of feat-168. Deviation: a separate defineContractRoute instead of defineRoute({ contract })."
         },
         {
             "id": "feat-168",
@@ -1671,7 +1671,7 @@
             "owner": "Blazheiko",
             "branch": "feat/route-contracts-pilot",
             "dependencies": ["feat-167", "feat-148", "feat-156"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
