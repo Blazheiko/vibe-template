@@ -1676,21 +1676,21 @@
         },
         {
             "id": "feat-169",
-            "name": "Route Contracts Migration",
-            "description": "docs/plan/code-review-2026-11-10-plan.md C4: Move the remaining route groups to shared route contracts, group by group, shrinking the ESLint exception list. Starts only after the pilot decision C1.R; split into per-group features at start",
+            "name": "Admin Monitoring Routes Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.1: Move the admin monitoring routes (users-online, users-online/:id, history-online, usage/text, usage/stats) to route contracts through the schema registry, with their frontend calls on callApi. e2e",
             "owner": "Blazheiko",
-            "branch": "feat/route-contracts-migration",
-            "dependencies": ["feat-168"],
+            "branch": "feat/contracts-admin-monitoring",
+            "dependencies": ["feat-172"],
             "status": "not-started",
             "evidence": ""
         },
         {
             "id": "feat-170",
             "name": "Route Contracts Lock",
-            "description": "docs/plan/code-review-2026-11-10-plan.md C5b: Remove the ESLint exception list for direct baseApi.http calls and add a backend test that every route is declared through a contract and routes with a body have a request schema",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C5b: Delete the old defineRoute and rename defineContractRoute to defineRoute; remove the direct-call counter and the ESLint exception for utils/api.ts; a backend test that every route has a contract and a registry entry and routes with a body have a body schema. PG suite, e2e",
             "owner": "Blazheiko",
             "branch": "feat/route-contracts-lock",
-            "dependencies": ["feat-169"],
+            "dependencies": ["feat-177"],
             "status": "not-started",
             "evidence": ""
         },
@@ -1701,6 +1701,66 @@
             "owner": "Blazheiko",
             "branch": "docs/websocket-contracts-design",
             "dependencies": ["feat-170"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-172",
+            "name": "Route Contract Schema Registry",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C7: A server-side registry contract -> {body, query, response} schemas; defineContractRoute takes the schemas from it and the compile-time checks move to the registry entries; the 12 pilot routes move to the registry. Decide first where the registry lives (backend or a server-only shared subpath). PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/contract-schema-registry",
+            "dependencies": ["feat-168"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-173",
+            "name": "Knowledge Base Routes Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.2: Move the admin knowledge base routes (except the screenshot upload) to route contracts with their frontend calls on callApi",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-knowledge-base",
+            "dependencies": ["feat-169"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-174",
+            "name": "Core, Prompts, Support Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.3: Move /ping, /ready, main/*, prompts/* and support/chat/history to route contracts with their frontend calls on callApi",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-core-prompts-support",
+            "dependencies": ["feat-173"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-175",
+            "name": "Auth Session Routes Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.4: Move the auth registration, logout, logout-all, change-password, verify-email and resend-verification-email routes to route contracts with their frontend calls on callApi, keeping each call's csrfRecovery and sessionAfter. PG suite, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-auth-session",
+            "dependencies": ["feat-174"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-176",
+            "name": "Auth Recovery and OAuth Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.5: Move the auth password recovery and phone/email linking routes and the JSON OAuth routes (providers, link/confirm, email/resend) to route contracts with their frontend calls on callApi. PG suite, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-auth-recovery-oauth",
+            "dependencies": ["feat-175"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-177",
+            "name": "Non-JSON Route Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C8: Contracts describe multipart bodies and redirect and file responses; callApi sends FormData through the existing transport; move avatar upload and delete, the knowledge base screenshot upload, the support screenshot and the OAuth redirect and callback routes. e2e, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-non-json",
+            "dependencies": ["feat-176"],
             "status": "not-started",
             "evidence": ""
         }
