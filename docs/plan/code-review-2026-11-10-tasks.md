@@ -256,17 +256,20 @@
 
 ### V08 Sign-in Redirect (M10) · e2e
 
-- [ ] **V08.S** Шаблон S.
-- [ ] **V08.T** Шаблон T: e2e — анонім відкриває `/support`, потрапляє на
+Виконано 2026-11-11: `feat-154`, PR #491. M10 відтворено тестом і в реальному браузері. OAuth-шлях
+у браузері не перевірено (у live e2e немає провайдера).
+
+- [x] **V08.S** Шаблон S.
+- [x] **V08.T** Шаблон T: e2e — анонім відкриває `/support`, потрапляє на
       `/login?redirect=%2Fsupport`, входить через форму.
       **Очікує:** кінцева адреса `/support`.
       **До виправлення:** кінцева адреса `/account`.
-- [ ] **V08.1** `composables/useCompleteSignIn.ts`: ціль — `safeRedirectTarget(route.query.redirect)`
+- [x] **V08.1** `composables/useCompleteSignIn.ts`: ціль — `safeRedirectTarget(route.query.redirect)`
       або `UserAccount`; значення читається до закриття модального вікна.
       **AC:** V08.T зелений; unit-тест: `https://evil.example` і `//evil.example` → `/account`.
-- [ ] **V08.2** Вхід через OAuth зберігає `redirect` на час переходу до провайдера.
+- [x] **V08.2** Вхід через OAuth зберігає `redirect` на час переходу до провайдера.
       **AC:** тест потоку OAuth з `redirect` → цільова сторінка.
-- [ ] **V08.E** Шаблон E (e2e). **V08.X** Шаблон X.
+- [x] **V08.E** Шаблон E (e2e). **V08.X** Шаблон X.
 
 ## Хвиля 4 — невеликі задачі
 

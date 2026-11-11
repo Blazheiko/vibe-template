@@ -1531,8 +1531,8 @@
             "owner": "Blazheiko",
             "branch": "feat/sign-in-redirect",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #491 (merge commit 1435976). RED before the fix: 3 tests of composables/__tests__/auth-composables.spec.ts failed (the push went to UserAccount, not to /support from ?redirect=); in a real browser the new e2e-live/sign-in-redirect.spec.ts scenario ended on /account instead of /support. After the fix: make check (frontend 452, backend 2605, playground 62); frontend test:e2e 87 passed; test:e2e:live 12 passed twice locally and in the e2e-live job; docs:build && docs:verify. init_app is now emitted after the post-sign-in navigation settles. Not verified in a browser: the OAuth path (no provider in the live e2e); the sessionStorage helper and the click are covered by unit tests."
         },
         {
             "id": "feat-155",
@@ -1541,7 +1541,7 @@
             "owner": "Blazheiko",
             "branch": "feat/online-history-pagination",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
