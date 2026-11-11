@@ -1601,8 +1601,8 @@
             "owner": "Blazheiko",
             "branch": "feat/schema-bounds-lows",
             "dependencies": ["feat-156"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #509 (merge commit 41eae93). Low findings about unbounded input, each reproduced by a failing test: prompt update/test accepted a negative or fractional maxTokens, temperature 100 and a model of any length; a knowledge base article accepted a title of any length; an OAuth name longer than the column failed the sign-up; an avatar upload after an OAuth sign-in asked the object store to delete the provider's URL as a key; a 30-digit id in a path or query was a 500. After the fix: parseEntityId in nine places, bounded schemas, the name cut to USER_NAME_MAX_LENGTH, external avatar URLs skipped. make check (backend 2655, frontend 467, shared 30, playground 81); backend test:pg 295; docs:build && docs:verify."
         },
         {
             "id": "feat-162",
@@ -1611,7 +1611,7 @@
             "owner": "Blazheiko",
             "branch": "feat/frontend-lows",
             "dependencies": ["feat-151"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
