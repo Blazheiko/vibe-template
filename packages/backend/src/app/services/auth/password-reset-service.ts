@@ -218,6 +218,30 @@ export const passwordResetService = {
             return Result.err(ipThrottle.error)
         }
 
+        // The resend cooldown first (feat-160): a start refused because a code was sent a moment
+        // ago sends nothing, so it does not spend the hourly SMS budget of the number either.
+        // The answer is the same for a known and an unknown number: both have a challenge.
+        const pendingChallengeResult = await findPendingChallenge(normalizedPhone, RESET_PHONE_FLOW)
+        if (Result.isError(pendingChallengeResult)) {
+            return Result.err(pendingChallengeResult.error)
+        }
+
+        // A challenge that is still alive belongs to the session that started it. Only that
+        // session may replace it (below); a start from another session gets the generic answer
+        // and changes nothing — otherwise anyone who knows the number could cancel the owner's
+        // reset once a minute. Nothing is sent, so the SMS budget is not spent here either.
+        const waiting = pendingChallengeResult.value
+        if (waiting !== undefined && waiting.expiresAt.getTime() > Date.now()) {
+            const ownerSessionId = extractChallengeSessionId(waiting.metadata)
+            const sameSession =
+                ownerSessionId !== null &&
+                requestMeta.sessionId !== null &&
+                ownerSessionId === requestMeta.sessionId
+            if (!sameSession) {
+                return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })
+            }
+        }
+
         const phoneThrottle = await enforceThrottle(
             throttlePolicies.smsSendPhone,
             normalizedPhone,
@@ -243,37 +267,10 @@ export const passwordResetService = {
         const user = lookup.user
         const shouldSendSms = user?.email === null
 
-        const pendingChallengeResult = await findPendingChallenge(normalizedPhone, RESET_PHONE_FLOW)
-        if (Result.isError(pendingChallengeResult)) {
-            return Result.err(pendingChallengeResult.error)
-        }
-
-        if (
-            pendingChallengeResult.value !== undefined &&
-            pendingChallengeResult.value.expiresAt.getTime() > Date.now()
-        ) {
-            const pendingChallengeSessionId = extractChallengeSessionId(
-                pendingChallengeResult.value.metadata,
-            )
-
-            if (
-                pendingChallengeSessionId !== null &&
-                requestMeta.sessionId !== null &&
-                pendingChallengeSessionId === requestMeta.sessionId
-            ) {
-                return Result.ok({
-                    message: GENERIC_PHONE_RESET_MESSAGE,
-                    challengeId: pendingChallengeResult.value.id,
-                    expiresAt: pendingChallengeResult.value.expiresAt.toISOString(),
-                    resendAvailableAt: pendingChallengeResult.value.resendAvailableAt.toISOString(),
-                })
-            }
-
-            return Result.ok({
-                message: GENERIC_PHONE_RESET_MESSAGE,
-            })
-        }
-
+        // After the cooldown the session that started the reset gets a new code (feat-160,
+        // decision Д5): `openChallenge` retires the challenge that was waiting. It used to hand
+        // the old challenge back without sending anything, so a user whose SMS never arrived had
+        // no way to get another one while the first challenge was alive.
         const metadata = {
             ...(shouldSendSms ? { userId: String(user.id) } : { blind: true }),
             ipAddress: requestMeta.ipAddress,

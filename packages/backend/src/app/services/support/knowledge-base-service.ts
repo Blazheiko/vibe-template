@@ -287,13 +287,24 @@ export const knowledgeBaseService = {
         })
     },
 
-    async getScreenshotKey(articleId: bigint): Promise<AppResult<string | null>> {
+    async getScreenshotKey(
+        articleId: bigint,
+        options: { activeOnly?: boolean } = {},
+    ): Promise<AppResult<string | null>> {
         const article = await supportKnowledgeRepository.findById(articleId)
-        return Result.ok(article?.screenshotKey ?? null)
+        if (article === undefined) return Result.ok(null)
+        if (options.activeOnly === true && !article.isActive) return Result.ok(null)
+        return Result.ok(article.screenshotKey ?? null)
     },
 
+    /**
+     * The screenshot a user may see. A deactivated article is out of the support chat, and so
+     * is its screenshot (feat-160, decision Д3): it used to be served to anyone who asked by id.
+     */
     async getScreenshotUrl(articleId: bigint): Promise<AppResult<{ url: string | null }>> {
-        const screenshotKeyResult = await knowledgeBaseService.getScreenshotKey(articleId)
+        const screenshotKeyResult = await knowledgeBaseService.getScreenshotKey(articleId, {
+            activeOnly: true,
+        })
         if (Result.isError(screenshotKeyResult)) {
             return Result.err(screenshotKeyResult.error)
         }
@@ -327,8 +338,7 @@ export const knowledgeBaseService = {
         return Result.ok({ indexed: stored ? 1 : 0 })
     },
 
-    async reindexAll(): Promise<AppResult<{ indexed: number }>> {
-        const indexed = await supportEmbeddingService.reindexAll()
-        return Result.ok({ indexed })
+    async reindexAll(): Promise<AppResult<{ indexed: number; failed: string[] }>> {
+        return Result.ok(await supportEmbeddingService.reindexAll())
     },
 }

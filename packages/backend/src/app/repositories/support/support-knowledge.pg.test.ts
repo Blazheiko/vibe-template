@@ -90,4 +90,52 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
         expect(row?.hasEmbedding).toBe(false)
         expect(row?.updatedAt.getTime()).toBeGreaterThan(0)
     })
+
+    // feat-160 (review 2026-11-10): the admin list pages with LIMIT/OFFSET. Without an ORDER BY
+    // the pages follow the order the table happens to be read in, and an article edited between
+    // two page requests moves: one article is shown twice and another never.
+    describe('findAll pages in a stable order', () => {
+        const category = `paging-${String(Date.now())}`
+        const ids: bigint[] = []
+
+        beforeAll(async () => {
+            for (const title of ['first', 'second', 'third']) {
+                const [row] = await db
+                    .insert(supportKnowledgeBase)
+                    .values({ title, content: `${title} content`, category })
+                    .returning({ id: supportKnowledgeBase.id })
+                if (row === undefined) throw new Error('article not inserted')
+                ids.push(row.id)
+                created.push(row.id)
+            }
+        })
+
+        it('an article edited between two pages is neither repeated nor skipped', async () => {
+            const firstPage = await supportKnowledgeRepository.findAll({
+                category,
+                limit: 2,
+                offset: 0,
+            })
+            // The edit writes a new row version at the end of the table.
+            await db
+                .update(supportKnowledgeBase)
+                .set({ title: 'first, edited' })
+                .where(eq(supportKnowledgeBase.id, ids[0] ?? 0n))
+            const secondPage = await supportKnowledgeRepository.findAll({
+                category,
+                limit: 2,
+                offset: 2,
+            })
+
+            expect(firstPage.rows.map((row) => row.id)).toEqual([ids[0], ids[1]])
+            expect(secondPage.rows.map((row) => row.id)).toEqual([ids[2]])
+            expect(secondPage.total).toBe(3)
+        })
+
+        it('orders the unfiltered list the same way', async () => {
+            const { rows } = await supportKnowledgeRepository.findAll({ limit: 200 })
+            const listed = rows.map((row) => row.id)
+            expect(listed).toEqual([...listed].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)))
+        })
+    })
 })

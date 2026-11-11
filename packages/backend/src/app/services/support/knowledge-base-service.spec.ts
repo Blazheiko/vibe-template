@@ -278,6 +278,41 @@ describe('knowledgeBaseService', () => {
         }
     })
 
+    // feat-160 (decision Д3): a deactivated article is out of the support chat, and so is its
+    // screenshot. It used to be served to any signed-in user who asked by id.
+    it('returns no url for the screenshot of a deactivated article', async () => {
+        supportKnowledgeRepositoryMock.findById.mockResolvedValue({
+            id: 11n,
+            title: 'Article',
+            content: 'Content',
+            category: null,
+            isActive: false,
+            screenshotKey: 'kb/11/screenshot.png',
+            embeddingIndexed: true,
+            createdAt: new Date('2026-05-08T10:00:00.000Z'),
+            updatedAt: new Date('2026-05-08T10:00:00.000Z'),
+        })
+
+        const { knowledgeBaseService } = await loadKnowledgeBaseService()
+        const result = await knowledgeBaseService.getScreenshotUrl(11n)
+
+        expect(result).toEqual(Result.ok({ url: null }))
+    })
+
+    it('still gives the admin the screenshot key of a deactivated article', async () => {
+        supportKnowledgeRepositoryMock.findById.mockResolvedValue({
+            id: 11n,
+            isActive: false,
+            screenshotKey: 'kb/11/screenshot.png',
+        })
+
+        const { knowledgeBaseService } = await loadKnowledgeBaseService()
+
+        expect(await knowledgeBaseService.getScreenshotKey(11n)).toEqual(
+            Result.ok('kb/11/screenshot.png'),
+        )
+    })
+
     it('returns no url when CDN_URL is not set', async () => {
         appConfigMock.cdnUrl = ''
         supportKnowledgeRepositoryMock.findById.mockResolvedValue({
