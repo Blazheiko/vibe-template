@@ -1731,8 +1731,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-core-prompts-support",
             "dependencies": ["feat-173"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #528 (merge commit 69ac453, by the owner with admin rights: the e2e and e2e-live jobs failed three times on GitHub's side, playwright install-deps could not reach the Ubuntu apt mirrors, an unrelated dependabot PR failed the same way; quality, build, test-pg and test-redis green). Ten routes on contracts: /ping, /ready, main/init, main/update-ws-token, prompts/* (4, no frontend caller), support/chat/history GET and DELETE. mainApi and supportApi on callApi with the shared SupportChatHistoryItem; DIRECT_HTTP_CALLS 24 -> 20; new api-core-support.spec.ts. Locally: make check (backend 2656, frontend 500, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify."
         },
         {
             "id": "feat-175",
@@ -1741,7 +1741,7 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-auth-session",
             "dependencies": ["feat-174"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
