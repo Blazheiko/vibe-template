@@ -630,7 +630,7 @@ C5b → C6.
 - [x] **C4.1** `feat-169` — `admin`: онлайн-користувачі, історія, облік LLM (5 маршрутів, 3
       виклики). Тест: e2e адмінки.
 - [x] **C4.2** `feat-173` — `admin/knowledge-base/*` без завантаження скриншота (10, 9).
-- [ ] **C4.3** `feat-174` — `/ping`, `/ready`, `main/*`, `prompts/*`, `support/chat/history` (10,
+- [x] **C4.3** `feat-174` — `/ping`, `/ready`, `main/*`, `prompts/*`, `support/chat/history` (10,
       4). `/ready` відповідає 503 тілом `unavailable`: контракт описує обидві гілки.
 - [ ] **C4.4** `feat-175` — `auth`: реєстрація, вихід, зміна пароля, підтвердження пошти (9, 9).
       Тести: PG, e2e live; `csrfRecovery` / `sessionAfter` кожного виклику не змінилися.
