@@ -1741,8 +1741,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-auth-session",
             "dependencies": ["feat-174"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #530 (merge commit 4454835, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Nine auth routes on contracts: registration by email and phone (start, confirm, complete-profile), logout, logout-all, change-password, verify-email, resend-verification-email; their auth_guard and rate limits unchanged. authApi on callApi with the same csrfRecovery and sessionAfter options; DIRECT_HTTP_CALLS 20 -> 11. Locally: make check (backend 2656, frontend 500, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92 in two of three full runs (one run lost the login double-click test, which passed 8 of 8 alone: recorded as flaky), test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         },
         {
             "id": "feat-176",
@@ -1751,7 +1751,7 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-auth-recovery-oauth",
             "dependencies": ["feat-175"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
