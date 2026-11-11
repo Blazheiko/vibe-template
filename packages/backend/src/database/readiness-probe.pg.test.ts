@@ -35,11 +35,8 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 describe.skipIf(!hasPg)('readiness probe and main pool timeouts (feat-113)', async () => {
     const { pool } = await import('#database/db.js')
-    const {
-        default: readinessProbe,
-        createReadinessProbe,
-        ProbeInFlightError,
-    } = await import('#database/readiness-probe.js')
+    const { default: readinessProbe, createReadinessProbe } =
+        await import('#database/readiness-probe.js')
     const { connectionOptions } = await import('#database/pool-options.js')
     const { readinessService } = await import('#app/services/core/readiness-service.js')
 
@@ -103,16 +100,14 @@ describe.skipIf(!hasPg)('readiness probe and main pool timeouts (feat-113)', asy
 
         const started = Date.now()
         const first = probe.ping()
+        // feat-159: pings that arrive meanwhile share the one in flight — one query, one
+        // connection, the same outcome.
         const parallel = Array.from({ length: 5 }, () => probe.ping())
-        const outcomes = await Promise.allSettled(parallel)
-        for (const outcome of outcomes) {
-            expect(outcome.status).toBe('rejected')
-            expect((outcome as PromiseRejectedResult).reason).toBeInstanceOf(ProbeInFlightError)
-        }
         await sleep(100)
         expect(await connectionsOf(name)).toBe(1)
 
-        await expect(first).rejects.toThrow()
+        const outcomes = await Promise.allSettled([first, ...parallel])
+        for (const outcome of outcomes) expect(outcome.status).toBe('rejected')
         expect(Date.now() - started).toBeLessThan(1000)
 
         // The server cancelled the statement: nothing of the probe stays active.
@@ -121,6 +116,32 @@ describe.skipIf(!hasPg)('readiness probe and main pool timeouts (feat-113)', asy
 
         // Recovery: the database answers again, the next probe is ready.
         slow = false
+        await expect(probe.ping()).resolves.toBeUndefined()
+        expect(await connectionsOf(name)).toBeLessThanOrEqual(1)
+    })
+
+    // feat-159 (review 2026-11-10): two checkers that ask at the same moment (an orchestrator
+    // and a load balancer) used to make a healthy instance answer 503 to one of them.
+    it('a healthy database: concurrent pings are all ready, over one connection', async () => {
+        const name = `probe-healthy-${run}`
+        const probe = createReadinessProbe({
+            connection: connectionOptions,
+            timeoutMs: 1000,
+            // Long enough for the pings to overlap, far inside the deadline.
+            statement: () => 'SELECT pg_sleep(0.15)',
+            applicationName: name,
+        })
+        extraProbes.push(probe)
+
+        const pings = Array.from({ length: 6 }, () => probe.ping())
+        await sleep(50)
+        expect(await connectionsOf(name)).toBe(1)
+        const outcomes = await Promise.allSettled(pings)
+
+        expect(outcomes.map((outcome) => outcome.status)).toEqual(
+            Array.from({ length: 6 }, () => 'fulfilled'),
+        )
+        // The next one starts a probe of its own.
         await expect(probe.ping()).resolves.toBeUndefined()
         expect(await connectionsOf(name)).toBeLessThanOrEqual(1)
     })
@@ -164,7 +185,6 @@ describe.skipIf(!hasPg)('readiness probe and main pool timeouts (feat-113)', asy
                     (error: unknown) => error,
                 )
                 expect(outcome).toBeInstanceOf(Error)
-                expect(outcome).not.toBeInstanceOf(ProbeInFlightError)
                 expect(Date.now() - started).toBeLessThan(1000)
             }
         })
