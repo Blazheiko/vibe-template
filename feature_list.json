@@ -1581,8 +1581,8 @@
             "owner": "Blazheiko",
             "branch": "feat/backend-core-lows",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #505 (merge commit 6cd8488). Four low findings, each reproduced by a failing test first: a bare IPv6 entry of TRUSTED_PROXY_CIDRS compared as text (ip-address.spec.ts: ::1 did not match the full form); the 404 of the fallback route without CORS headers and a space-separated Access-Control-Expose-Headers (server-rate-limit.spec.ts); a /ready ping refused while another was in flight (readiness-probe.pg.test.ts against the old probe: 5 of 6 concurrent pings rejected on a healthy database). After the fix: make check (backend 2633, frontend 467, shared 29, playground 81); backend test:pg 289 passed; docs:build && docs:verify. Behaviour change: against a stuck database a second /ready request now waits for the probe in flight (at most READINESS_CHECK_TIMEOUT_MS) instead of being answered not-ready at once; one connection is kept. Not verified: the CORS answer in a browser."
         },
         {
             "id": "feat-160",
@@ -1591,7 +1591,7 @@
             "owner": "Blazheiko",
             "branch": "feat/support-and-auth-lows",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
