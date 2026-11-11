@@ -294,19 +294,21 @@
 
 ### V10 Push Subscription Input Bounds (M5) · PG · → V01
 
-- [ ] **V10.S** Шаблон S.
-- [ ] **V10.T** Шаблон T: три запити `POST push-subscriptions`.
+Виконано 2026-11-11: `feat-156`, PR #495. M5 відтворено на рівні HTTP з реальною таблицею маршрутів.
+
+- [x] **V10.S** Шаблон S.
+- [x] **V10.T** Шаблон T: три запити `POST push-subscriptions`.
       **Очікує:** `deviceType` із 51 символу → 422; `endpoint` понад 500 символів → 422; запит з
       полем `ipAddress` → 422.
       **До виправлення:** перші два → 500; третій → 201, у рядку БД збережено надісланий рядок.
-- [ ] **V10.1** `packages/shared/src/schemas/push-subscription/create-subscription.ts`,
+- [x] **V10.1** `packages/shared/src/schemas/push-subscription/create-subscription.ts`,
       `update-subscription.ts`: межі довжини за колонками (`schema.ts:128-147`) і для полів `text`.
       **AC:** тести `shared` на межі кожного поля; перші два випадки V10.T → 422.
-- [ ] **V10.2** Прибрати `ipAddress` зі схеми; сервіс записує `context.httpData.ip`; фронтенд
+- [x] **V10.2** Прибрати `ipAddress` зі схеми; сервіс записує `context.httpData.ip`; фронтенд
       (`stores/push.ts`, `utils/push-device.ts`) його не надсилає.
       **AC:** запит з `ipAddress` → 422; у рядку БД — адреса з боку сервера.
-- [ ] **V10.D** Шаблон D: `documentation/backend/web-push-notification.md`.
-- [ ] **V10.E** Шаблон E (PG). **V10.X** Шаблон X.
+- [x] **V10.D** Шаблон D: `documentation/backend/web-push-notification.md`.
+- [x] **V10.E** Шаблон E (PG). **V10.X** Шаблон X.
 
 ### V11 Strict Registration Session Oracle · Redis · → Д4
 
