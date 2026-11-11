@@ -19,7 +19,7 @@ export interface RequestDescription {
     apiPrefix: string
 }
 
-const STATIC_PREFIXES = ['/assets/', '/icons/', '/screenshots/', '/splash/', '/audio/']
+const STATIC_PREFIXES = ['/assets/', '/icons/', '/screenshots/', '/splash/']
 const STATIC_FILES = new Set(['/manifest.json', '/favicon.svg'])
 const NETWORK_ONLY_DESTINATIONS = new Set(['script', 'style', 'worker', 'sharedworker'])
 
@@ -50,6 +50,12 @@ export const classifyRequest = (request: RequestDescription): RequestStrategy =>
     if (NETWORK_ONLY_DESTINATIONS.has(request.destination)) return 'bypass'
     if (request.mode === 'navigate' || request.destination === 'document') return 'network-first'
     return 'stale-while-revalidate'
+}
+
+/** The cache key of the HTML shell for a navigation: the URL without its query and hash. */
+export const navigationCacheKey = (url: string): string => {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
 }
 
 /** Only complete same-origin responses the server allows to be stored. */

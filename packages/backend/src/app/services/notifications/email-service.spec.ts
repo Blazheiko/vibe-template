@@ -5,6 +5,9 @@ const createTransportMock = vi.fn()
 const sendMailMock = vi.fn()
 const originalEnv = { ...process.env }
 
+const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }))
+vi.mock('#logger', () => ({ default: logger }))
+
 vi.mock('nodemailer', () => ({
     default: {
         createTransport: createTransportMock,
@@ -222,5 +225,36 @@ describe('emailService', () => {
         await expect(
             emailService.send({ to: 'user@example.com', subject: 'Welcome', text: 'Hello' }),
         ).rejects.toBe(smtpError)
+    })
+})
+
+// feat-150 (review 2026-11-10): the log of a sent mail holds masked addresses, like the rest of
+// the auth logs (maskEmailForLogs).
+describe('emailService: what a sent mail logs', () => {
+    it('masks the recipients it logs', async () => {
+        configureSmtpEnv()
+        sendMailMock.mockResolvedValue({
+            messageId: 'message-1',
+            accepted: ['olena.kovalenko@example.com'],
+            rejected: ['bounced.person@example.org'],
+            response: '250 OK',
+        })
+        createTransportMock.mockReturnValue({ sendMail: sendMailMock })
+        const { emailService } = await loadEmailService()
+
+        const result = await emailService.send({
+            to: 'olena.kovalenko@example.com',
+            subject: 'Reset your password',
+            text: 'link',
+        })
+
+        // The caller still gets the addresses as they are.
+        expect(Result.isOk(result) && result.value.accepted).toEqual([
+            'olena.kovalenko@example.com',
+        ])
+        const logged = JSON.stringify(logger.info.mock.calls)
+        expect(logged).toContain('Email sent')
+        expect(logged).not.toContain('olena.kovalenko@example.com')
+        expect(logged).not.toContain('bounced.person@example.org')
     })
 })

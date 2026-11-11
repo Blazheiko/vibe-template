@@ -35,6 +35,10 @@ There is no separate `static/` folder in controllers: static file serving lives 
 
 A controller is a default-exported object (`export default { ... }`) with async methods. In routes a method is passed as `handler: AuthController.login.bind(AuthController)` ([http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts), [ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts)).
 
+::: tip Numeric ids in the path and the query
+An id from a path parameter or the query (`:id`, `:subscriptionId`, `:articleId`, `userId`, `cursor`) is read by [`parseEntityId`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/parse-id.ts): decimal digits only and no more than PostgreSQL's `bigint`. A value outside that (30 digits, `0x10`, `-5`) is refused by the controller the same way as a non-numeric id (`400` or `404`) instead of reaching the query, where it would be a `500` (feat-161).
+:::
+
 ## Handler context
 
 A short cheat sheet below; each field is covered in the sections [HttpContext in detail](#httpcontext-in-detail) and [WsContext in detail](#wscontext-in-detail).

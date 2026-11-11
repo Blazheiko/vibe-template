@@ -108,7 +108,20 @@ Endpoint зберігається й шукається в **канонічні�
 
 ## Збереження підписки
 
-[`push-subscription-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.ts) у `createSubscription` шукає підписку за `endpoint` (він унікальний серед усіх користувачів). Якщо підписка належить іншому користувачу, її переносять на поточного лише тоді, коли `p256dhKey` і `authKey` збігаються з збереженими (той самий браузер, зміна акаунта); інакше — `409 conflict`, підписка лишається за старим власником. Якщо вона є — оновлює ключі `p256dhKey`/`authKey`, метадані пристрою, `notificationTypes`, `timezone` і знову робить `isActive: true`; інакше створює новий запис. `POST` і `PUT` пишуть у транзакції під блокуванням рядка користувача й лише поки пред'явлений токен сесії актуальний ([`withCurrentSession`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/session-guard.ts)): запит із сесії, яку відкликав claim акаунта, отримує `401 session_revoked` і не повертає пристрій атакуючого (див. [Автентифікація](/backend/auth#зміни-облікових-даних-із-сесіі)). Робота з таблицею — через репозиторій, див. [Репозиторії](/backend/repositories).
+**Поля запиту й межі.** Тіло `POST /push-subscriptions` перевіряє [`CreateSubscriptionInputSchema`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/push-subscription/create-subscription.ts); зайві поля відхиляються (`422`). Межі довжини відповідають колонкам `push_subscriptions`, тож задовге значення — це `422`, а не помилка бази:
+
+| Поле                                                    | Межа                                               |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| `endpoint`                                              | 1–500 символів (і лише дозволений хост, див. вище) |
+| `p256dhKey`, `authKey`                                  | 1–255                                              |
+| `userAgent`                                             | до 1024                                            |
+| `deviceType`, `browserVersion`, `osVersion`, `timezone` | до 50                                              |
+| `browserName`, `osName`                                 | до 100                                             |
+| `notificationTypes`                                     | до 10 елементів `mention` / `system`               |
+
+`PUT /push-subscriptions/:subscriptionId` ([`UpdateSubscriptionInputSchema`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/push-subscription/update-subscription.ts)) має ті самі межі для своїх полів. Адреса пристрою (`ipAddress` у відповіді) — не поле запиту: сервер записує адресу, з якої прийшов запит (`context.httpData.ip`, з урахуванням [довірених проксі](/backend/security)); `ipAddress` у тілі — `422`.
+
+[`push-subscription-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.ts) у `createSubscription` шукає підписку за `endpoint` (він унікальний серед усіх користувачів). Якщо підписка належить іншому користувачу, її переносять на поточного лише тоді, коли `p256dhKey` і `authKey` збігаються з збереженими (той самий браузер, зміна акаунта); інакше — `409 conflict`, підписка лишається за старим власником. Перенесена підписка зберігає свій id, а журнал відправок попереднього власника лишається за ним: список підписок, `…/logs` і `…/statistics` показують новому власнику лише його власні відправки. Якщо вона є — оновлює ключі `p256dhKey`/`authKey`, метадані пристрою, `notificationTypes`, `timezone` і знову робить `isActive: true`; інакше створює новий запис. `POST` і `PUT` пишуть у транзакції під блокуванням рядка користувача й лише поки пред'явлений токен сесії актуальний ([`withCurrentSession`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/session-guard.ts)): запит із сесії, яку відкликав claim акаунта, отримує `401 session_revoked` і не повертає пристрій атакуючого (див. [Автентифікація](/backend/auth#зміни-облікових-даних-із-сесіі)). Робота з таблицею — через репозиторій, див. [Репозиторії](/backend/repositories).
 
 ## Відправка та формат payload
 
@@ -136,7 +149,7 @@ Endpoint зберігається й шукається в **канонічні�
 }
 ```
 
-Активні підписки (з урахуванням `notificationType`) обробляються паралельно, не більше `PUSH_SEND_CONCURRENCY = 5` запитів до push-сервісу одночасно. Результат кожної спроби — рядок `pushNotificationLogs` зі статусом `SENT` (і `statusCode` відповіді) або `FAILED` (з `errorMessage`, який лишається в базі й у логах сервера); після всіх відправок рядки пишуться одним `insertMany` через [`push-notification-log-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-notification-log-repository.ts), а `lastUsedAt` успішних підписок оновлюється одним `touchLastUsed`. Якщо запис не вдався, помилка логується, а результат `{ sent, failed }` відповідає фактичним відповідям push-сервісу.
+Активні підписки (з урахуванням `notificationType`) обробляються паралельно, не більше `PUSH_SEND_CONCURRENCY = 5` запитів до push-сервісу одночасно. Результат кожної спроби — рядок `pushNotificationLogs` зі статусом `SENT` (і `statusCode` відповіді) або `FAILED` (з `errorMessage`, який лишається в базі; у лог сервера йдуть лише `statusCode` та ім'я помилки, без endpoint і відповіді push-сервісу); після всіх відправок рядки пишуться одним `insertMany` через [`push-notification-log-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-notification-log-repository.ts), а `lastUsedAt` успішних підписок оновлюється одним `touchLastUsed`. Якщо запис не вдався, помилка логується, а результат `{ sent, failed }` відповідає фактичним відповідям push-сервісу.
 
 **Прострочені підписки:** відповідь push-сервісу `410` або `404` деактивує підписку (`pushSubscriptionRepository.deactivate`). Окремої фонової очистки чи видалення неактивних записів немає.
 
@@ -168,6 +181,11 @@ Endpoint зберігається й шукається в **канонічні�
 ## Фронтенд
 
 - Підписка — у [`stores/push.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/stores/push.ts) (опис пристрою для сервера — у [`utils/push-device.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/push-device.ts)): перевіряє `registration.pushManager.getSubscription()`, отримує VAPID-ключ з `/api/push-subscriptions/vapid-public-key`, викликає `pushManager.subscribe({ applicationServerKey })` і відправляє дані на `POST /api/push-subscriptions`.
+- Підписка браузера переживає вихід і зміну акаунта, а сервер надсилає тому, кому належить запис, тому стор тримає їх узгодженими:
+    - «увімкнено» означає, що підписка **цього браузера** є активним записом поточного акаунта; підписки на інших пристроях на перемикач не впливають;
+    - увімкнення завжди надсилає підписку на сервер (також коли браузер її вже має), і стан «увімкнено» настає лише після відповіді сервера; якщо сервер відмовив, повторна спроба надсилає ту саму підписку ще раз;
+    - вихід (`useSessionLifecycle.logout`) до запиту виходу видаляє запис на сервері й знімає підписку в браузері — best-effort і не довше 3 секунд, помилка вихід не блокує;
+    - після входу (`initializeApp` в `App.vue` і сторінка акаунта) підписка браузера, якої немає серед підписок поточного акаунта, знімається: її лишив інший акаунт, і його сповіщення більше не приходять у цей браузер. Новий користувач вмикає push сам, його запис не переноситься мовчки.
 - [`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) у обробнику `push` парсить JSON, зливає `payload.notification` з дефолтами і викликає `showNotification`; `notificationclick` закриває нотифікацію і відкриває `data.url`. Адреса приходить із payload, тому [`notification-target.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/notification-target.ts) приймає лише адресу того ж origin (інакше — `/`): чужий хост, порт чи схема, `//host`, `/\host`, `javascript:` відкидаються. Уже відкрите вікно знаходиться за збігом origin і `pathname`, а не за підрядком в URL, тож `/support/archive` не береться за `/support`.
 
 ```mermaid

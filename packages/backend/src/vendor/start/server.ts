@@ -669,22 +669,28 @@ const configureHttp = async (server: TemplatedApp, routes: ServerRoutes): Promis
                 res.end()
             })
         } else if (isApiPath && method !== 'options') {
-            sendErrorResponse(res, 404, {
-                status: 'error',
-                code: 'not_found',
-                message: 'Route not found',
-            })
+            // With the request's origin: a cross-origin SPA has to be able to read the 404
+            // (feat-159), like every other error answer.
+            sendErrorResponse(
+                res,
+                404,
+                { status: 'error', code: 'not_found', message: 'Route not found' },
+                {},
+                { origin },
+            )
         } else if (appConfig.serveStatic && method === 'get') {
             void staticHandler(res, req).catch((err: unknown) => {
                 const error = err instanceof Error ? err : new Error(String(err))
                 logger.error({ err: error, url }, 'Unhandled static handler error')
             })
         } else {
-            sendErrorResponse(res, 404, {
-                status: 'error',
-                code: 'not_found',
-                message: 'Not found',
-            })
+            sendErrorResponse(
+                res,
+                404,
+                { status: 'error', code: 'not_found', message: 'Not found' },
+                {},
+                { origin },
+            )
         }
     })
 }

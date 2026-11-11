@@ -180,11 +180,14 @@ const uk: typeof en = {
         loadEarlier: 'Показати попередні повідомлення',
         loadingEarlier: 'Завантаження...',
         inputPlaceholder: 'Введіть повідомлення...',
+        send: 'Надіслати повідомлення',
+        connectionLost: "З'єднання втрачено. Розмова оновиться, коли воно відновиться.",
     },
 
     account: {
         avatar: {
             delete: 'Видалити аватар',
+            closeEditor: 'Закрити редактор аватара',
             errorFileSize: 'Файл має бути меншим за 10 МБ',
             errorFileType: 'Оберіть файл зображення',
         },

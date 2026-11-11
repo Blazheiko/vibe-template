@@ -16,7 +16,7 @@ export type QueryOutputChecks = [
     Expect<
         AssertEqual<
             AdminUserListQuery,
-            { userId?: string; limit: number; dateFrom?: Date; dateTo?: Date }
+            { userId?: string; cursor?: string; limit: number; dateFrom?: Date; dateTo?: Date }
         >
     >,
     Expect<

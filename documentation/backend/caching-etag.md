@@ -67,7 +67,7 @@ CORS: якщо `ENABLED_CORS=true`, `setCorsHeader` пише `Vary: Origin` і `
 
 ## Фронтенд: Service Worker
 
-[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (збирається через [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) під час `install` прекешує список `filesToCache`: `/`, іконки, splash, аудіо. Для `/assets/`, `/icons/`, `/audio/`, `.css` тощо (`isStaticAsset`) він працює за стратегією cache-first. Ім'я кешу — `BUILD_TIMESTAMP`. Старі кеші видаляються на `activate`.
+[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (збирається через [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) під час `install` прекешує список `PRECACHE_FILES` із [`sw-precache.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/sw-precache.ts): `/`, іконки, splash, знімки екрана для маніфесту. Кожен шлях списку має існувати в `public/` — це перевіряє unit-тест. HTML-оболонку (навігації, стратегія network-first) він зберігає під шляхом без рядка запиту: одноразовий токен із `/reset-password?token=…` не лишається в Cache Storage, а офлайн-навігація отримує копію, збережену для того самого шляху. Для `/assets/`, `/icons/`, `/audio/`, `.css` тощо (`isStaticAsset`) він працює за стратегією cache-first. Ім'я кешу — `BUILD_TIMESTAMP`. Старі кеші видаляються на `activate`.
 
 ## Перевірка через curl
 

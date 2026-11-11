@@ -56,7 +56,7 @@ export { CreateNoteInputSchema, type CreateNoteInput } from './note/create-note.
 
 ## Крок 2. Схеми відповідей у `shared`
 
-Відповіді контролерів живуть у `packages/shared/src/responses/` і будуються як `type.or(<успіх>, CanonicalErrorResponseSchema)`, див. [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) та [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). Тип `Note` — це публічний контракт, який повертає transformer. Поза production сервер перевіряє кожну відповідь контролера за цією схемою, і розбіжність дає `500` — див. [Перевірка відповідей](/backend/response-validation).
+Відповіді контролерів живуть у `packages/shared/src/responses/` і будуються як `type.or(<успіх>, CanonicalErrorResponseSchema)`, див. [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) та [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). Тип `Note` — це публічний контракт, який повертає transformer. Сервер перевіряє кожну відповідь маршруту за цією схемою в будь-якому середовищі: розбіжність дає `500`, а зайве поле — `500` поза production і вирізається в production (режим `log`) — див. [Перевірка відповідей](/backend/response-validation).
 
 ```ts
 // packages/shared/src/responses/note-controller.ts
@@ -340,6 +340,10 @@ import {
 [`defineRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) виводить тип payload з `validator`, тому `HttpContext<CreateNoteInput>` у контролері перевіряє компілятор. Результат контролера він звіряє з `ResponseSchema`: якщо `create` поверне не `CreateNoteResponse`, `tsc` впаде на рядку `handler:`. Анотацію `Promise<CreateNoteResponse>` у контролері лишайте — без неї літерали на кшталт `'success'` розширюються до `string` ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Набір middleware `session_web` + `csrf_guard` + `auth_guard` такий самий, як у групи `avatar`. Отже, `POST` вимагає сесії й CSRF-токена (деталі — у [Маршрутизації](/backend/routing) і [Middleware](/backend/middlewares)).
 
 Якщо додаєте оновлення або видалення нотатки: для часткового оновлення беріть `method: "patch"` з `validator`, а для видалення — `method: "delete"` з `url: "/:id"` і без `validator`, бо `DELETE` тіло не читає ([Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)).
+
+::: tip Контракти маршрутів
+Туторіал оголошує маршрути через `defineRoute`. Частина маршрутів шаблону вже має контракт у `shared/contracts` і оголошена через `defineContractRoute`, а її схеми записані в реєстрі `app/routes/contract-schemas/` (див. [Маршрути з контрактом](/backend/routing#маршрути-з-контрактом-definecontractroute)); решта переходить групами. Для нового ресурсу можна одразу додати контракт: тоді фронтенд викликає маршрут через `callApi` з перевіркою типів.
+:::
 
 ## Крок 9. Тест сервісу
 

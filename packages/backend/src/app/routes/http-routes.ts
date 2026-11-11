@@ -11,19 +11,21 @@ import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
 import { defineRoute } from '#app/routing/define-route.js'
+import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
-    AdminKnowledgeBaseListQuerySchema,
-    AdminOnlineHistoryListQuerySchema,
-    AdminUserListQuerySchema,
-    LlmTextUsageQuerySchema,
     SupportChatHistoryQuerySchema,
     OAuthCallbackQuerySchema,
     OAuthLinkConfirmInputSchema,
     OAuthRedirectQuerySchema,
-    PushSubscriptionTestInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
+import {
+    adminContracts,
+    authContracts,
+    knowledgeBaseContracts,
+    pushSubscriptionContracts,
+} from 'shared/contracts'
 
 import {
     RegisterEmailInputSchema,
@@ -33,20 +35,15 @@ import {
     LinkPhoneStartInputSchema,
     LinkPhoneConfirmInputSchema,
     LinkEmailStartInputSchema,
-    LoginInputSchema,
     ForgotPasswordInputSchema,
     ResetPhoneStartInputSchema,
     ResetPhoneCompleteInputSchema,
     ResetPasswordInputSchema,
     ChangePasswordInputSchema,
     VerifyEmailInputSchema,
-    CreateSubscriptionInputSchema,
-    UpdateSubscriptionInputSchema,
     EmptyFormInputSchema,
     PromptUpdateInputSchema,
     PromptTestInputSchema,
-    SupportKnowledgeBaseCreateSchema,
-    SupportKnowledgeBaseUpdateSchema,
 } from 'shared/schemas'
 import {
     AVATAR_MAX_FILE_BYTES,
@@ -103,12 +100,9 @@ export default [
                 ResponseSchema: ResponseSchemas.RegisterPhoneCompleteResponseSchema,
                 description: 'Complete phone registration profile and password',
             }),
-            defineRoute({
-                url: '/login',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.login,
                 handler: AuthController.login.bind(AuthController),
-                validator: LoginInputSchema,
-                ResponseSchema: ResponseSchemas.LoginResponseSchema,
                 description: 'Login a user by email or phone identifier',
             }),
             defineRoute({
@@ -298,99 +292,75 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/vapid-public-key',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.vapidPublicKey,
                 handler: PushSubscriptionController.getVapidPublicKey.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetVapidPublicKeyResponseSchema,
                 description: 'Get VAPID public key for push subscriptions',
             }),
-            defineRoute({
-                url: '/test-push',
-                method: 'post',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.testPush,
                 handler: PushSubscriptionController.testPush.bind(PushSubscriptionController),
-                validator: PushSubscriptionTestInputSchema,
-                ResponseSchema: ResponseSchemas.TestPushResponseSchema,
                 description: 'Send a test push notification to the current user',
                 middlewares: ['auth_guard'],
                 // feat-104: every call fans out to all the user's devices.
                 rateLimit: { windowMs: 60_000, maxRequests: 5 },
             }),
-            defineRoute({
-                url: '/',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.list,
                 handler: PushSubscriptionController.getSubscriptions.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/',
-                method: 'post',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.create,
                 handler: PushSubscriptionController.createSubscription.bind(
                     PushSubscriptionController,
                 ),
-                validator: CreateSubscriptionInputSchema,
-                ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.get,
                 handler: PushSubscriptionController.getSubscription.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId',
-                method: 'put',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.update,
                 handler: PushSubscriptionController.updateSubscription.bind(
                     PushSubscriptionController,
                 ),
-                validator: UpdateSubscriptionInputSchema,
-                ResponseSchema: ResponseSchemas.UpdateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId',
-                method: 'delete',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.remove,
                 handler: PushSubscriptionController.deleteSubscription.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.DeleteSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId/logs',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.logs,
                 handler: PushSubscriptionController.getSubscriptionLogs.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionLogsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId/statistics',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.statistics,
                 handler: PushSubscriptionController.getSubscriptionStatistics.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionStatisticsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId/deactivate',
-                method: 'put',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.deactivate,
                 handler: PushSubscriptionController.deactivateSubscription.bind(
                     PushSubscriptionController,
                 ),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.DeactivateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
         ],
@@ -455,42 +425,29 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/knowledge-base',
-                method: 'get',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.list,
                 handler: AdminKnowledgeBaseController.getAll.bind(AdminKnowledgeBaseController),
-                queryValidator: AdminKnowledgeBaseListQuerySchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseListResponseSchema,
                 description: 'List all knowledge base articles',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id',
-                method: 'get',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.get,
                 handler: AdminKnowledgeBaseController.getById.bind(AdminKnowledgeBaseController),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Get a knowledge base article by id',
             }),
-            defineRoute({
-                url: '/knowledge-base',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.create,
                 handler: AdminKnowledgeBaseController.create.bind(AdminKnowledgeBaseController),
-                validator: SupportKnowledgeBaseCreateSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Create a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id',
-                method: 'put',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.update,
                 handler: AdminKnowledgeBaseController.update.bind(AdminKnowledgeBaseController),
-                validator: SupportKnowledgeBaseUpdateSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Update a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id',
-                method: 'delete',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.remove,
                 handler: AdminKnowledgeBaseController.delete.bind(AdminKnowledgeBaseController),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseDeleteResponseSchema,
                 description: 'Delete a knowledge base article',
             }),
             defineRoute({
@@ -505,46 +462,33 @@ export default [
                 ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Upload screenshot for a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id/screenshot',
-                method: 'delete',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.removeScreenshot,
                 handler: AdminKnowledgeBaseController.deleteScreenshot.bind(
                     AdminKnowledgeBaseController,
                 ),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Delete screenshot for a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id/reindex',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.reindex,
                 handler: AdminKnowledgeBaseController.reindex.bind(AdminKnowledgeBaseController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseReindexResponseSchema,
                 description: 'Reindex a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/reindex-all',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.reindexAll,
                 handler: AdminKnowledgeBaseController.reindexAll.bind(AdminKnowledgeBaseController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseReindexResponseSchema,
                 description: 'Reindex all knowledge base articles',
             }),
-            defineRoute({
-                url: '/knowledge-base/init',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.startInit,
                 handler: AdminKnowledgeBaseController.startInit.bind(AdminKnowledgeBaseController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseInitResponseSchema,
                 description: 'Initialize knowledge base from docs/support-knowledge-base',
             }),
-            defineRoute({
-                url: '/knowledge-base/init-status',
-                method: 'get',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.initStatus,
                 handler: AdminKnowledgeBaseController.getInitStatus.bind(
                     AdminKnowledgeBaseController,
                 ),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseInitResponseSchema,
                 description: 'Get knowledge base initialization status',
             }),
         ],
@@ -591,19 +535,14 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/usage/text',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.textUsage,
                 handler: LlmUsageController.getTextUsage.bind(LlmUsageController),
-                queryValidator: LlmTextUsageQuerySchema,
-                ResponseSchema: ResponseSchemas.GetTextUsageResponseSchema,
                 description: 'Get retained Support AI text token usage (admin)',
             }),
-            defineRoute({
-                url: '/usage/stats',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.usageStats,
                 handler: LlmUsageController.getStats.bind(LlmUsageController),
-                ResponseSchema: ResponseSchemas.GetUsageStatsResponseSchema,
                 description: 'Get retained Support AI usage aggregate stats (admin)',
             }),
         ],
@@ -613,34 +552,24 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/users-online',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.onlineUsers,
                 handler: AdminOnlineUserController.list.bind(AdminOnlineUserController),
-                ResponseSchema: ResponseSchemas.AdminOnlineUserListResponseSchema,
                 description: 'List online users (admin)',
             }),
-            defineRoute({
-                url: '/history-online',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.onlineHistory,
                 handler: AdminOnlineHistoryController.list.bind(AdminOnlineHistoryController),
-                queryValidator: AdminOnlineHistoryListQuerySchema,
-                ResponseSchema: ResponseSchemas.AdminOnlineHistoryListResponseSchema,
                 description: 'List online history records (admin)',
             }),
-            defineRoute({
-                url: '/users-online/:id',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.onlineUser,
                 handler: AdminOnlineUserController.getById.bind(AdminOnlineUserController),
-                ResponseSchema: ResponseSchemas.AdminOnlineUserDetailResponseSchema,
                 description: 'Get online user detail (admin)',
             }),
-            defineRoute({
-                url: '/users',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.users,
                 handler: AdminUserController.list.bind(AdminUserController),
-                queryValidator: AdminUserListQuerySchema,
-                ResponseSchema: ResponseSchemas.AdminUserListResponseSchema,
                 description: 'List users with filters (admin)',
             }),
         ],

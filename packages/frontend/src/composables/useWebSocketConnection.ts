@@ -1,7 +1,7 @@
 // src/composables/useWebSocketConnection.ts
 import { useWebSocket } from '@vueuse/core'
 import { createHeartbeatOptions } from '@/utils/websocket-heartbeat'
-import { ref, computed } from 'vue'
+import { ref, computed, toRaw } from 'vue'
 import { WsDeliveryUnknownError } from '@/utils/websocket-types'
 import type { WebsocketMessage, WebsocketPayload } from '@/utils/websocket-types'
 import {
@@ -105,6 +105,10 @@ const handleServiceError = (data: WebsocketMessage): void => {
 
 let isUpdatingWsToken = false
 let reconnectTimeout: number | null = null
+// feat-151: sockets the client closed itself (a sign-out, or an old socket replaced by a new
+// one). vueuse reports the close of every socket through onDisconnected, also after it
+// stopped being the current one; for these it is not a lost connection.
+const retiredSockets = new WeakSet<WebSocket>()
 // Whether the current socket reached "open"; a refused upgrade closes without it.
 let connectionOpened = false
 let handshakeFailuresInARow = 0
@@ -160,8 +164,18 @@ const unauthorized = async () => {
 }
 
 // Handle WebSocket close event
-const handleWebSocketClose = (event: CloseEvent): void => {
+const handleWebSocketClose = (socket: WebSocket, event: CloseEvent): void => {
     console.log(`WebSocket closed with code: ${event.code}, reason: ${event.reason}`)
+
+    // A retired socket: its requests were rejected and its timers cleared when it was
+    // retired. The requests pending now, the reconnect timer and the "opened" flag belong to
+    // the socket that replaced it (or to nobody, after a sign-out).
+    if (retiredSockets.has(socket)) {
+        const ignored = resolveWebSocketCloseAction(event.code, false, 0, true)
+        console.log(`WebSocket close of a retired socket: ${ignored.kind}`)
+        return
+    }
+
     resetApiResolve()
 
     // Clear any pending reconnect attempts to prevent multiple reconnection timers
@@ -171,6 +185,7 @@ const handleWebSocketClose = (event: CloseEvent): void => {
     connectionOpened = false
     handshakeFailuresInARow = wasOpened ? 0 : handshakeFailuresInARow + 1
     const action = resolveWebSocketCloseAction(event.code, wasOpened, handshakeFailuresInARow)
+    if (action.kind === 'ignore') return
 
     // 4001, or the server refused the upgrade (no live session): refresh the token
     if (action.kind === 'refresh-token') {
@@ -293,11 +308,14 @@ const { status, send, close, open, ws } = useWebSocket(wsUrl, {
                 .catch(() => undefined)
         }
     },
-    onDisconnected(_, event) {
+    onDisconnected(socket, event) {
         console.log('WebSocket disconnected', event)
-        isInitialized.value = false
+        // Not for a retired socket: a new one may be connected by now.
+        if (!retiredSockets.has(socket)) {
+            isInitialized.value = false
+        }
         // Handle close event with proper code checking
-        handleWebSocketClose(event)
+        handleWebSocketClose(socket, event)
     },
     onError(_, event) {
         console.error('WebSocket error:', event)
@@ -358,6 +376,20 @@ const websocketApi = async (
     })
 }
 
+/**
+ * The current socket is closed by the client: its close event, when it arrives, is not a lost
+ * connection. What belonged to it goes now — its pending requests and its "opened" flag —
+ * so the event has nothing left to undo and the next socket starts clean.
+ */
+const retireCurrentSocket = (): void => {
+    if (ws.value !== undefined) {
+        // The raw socket: the one vueuse hands to onDisconnected.
+        retiredSockets.add(toRaw(ws.value))
+    }
+    connectionOpened = false
+    resetApiResolve()
+}
+
 const websocketClose = () => {
     console.log('websocketClose')
 
@@ -365,6 +397,7 @@ const websocketClose = () => {
     clearReconnectTimeout()
 
     // Close the connection
+    retireCurrentSocket()
     close()
 
     // Reset state
@@ -387,6 +420,10 @@ const websocketOpen = (url: string, token: string) => {
     console.log('websocketOpen', url)
 
     clearReconnectTimeout()
+
+    // A live socket is about to be replaced (a token refresh over an open connection):
+    // vueuse closes it inside open(), and its close event arrives after the new one exists.
+    retireCurrentSocket()
 
     // Update protocols before creating the connection — vueuse captured this
     // array by reference, so the next WebSocket() call will use the new value.

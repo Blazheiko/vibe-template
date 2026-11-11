@@ -10,17 +10,12 @@ import { connectionOptions } from './pool-options.js'
 // - Every step is bounded by the readiness deadline: getting the connection, the statement on the
 //   server (statement_timeout) and the wait for the answer (query_timeout). A connection that
 //   timed out is dropped by pg-pool and the next probe opens a new one.
-// - One probe at a time: while one is in flight, the next answers "not ready" at once instead of
-//   queueing behind it, so frequent health checks against a stuck database hold one connection.
+// - One probe at a time: a ping that arrives while one is in flight gets the result of that one
+//   instead of starting another, so frequent health checks against a stuck database hold one
+//   connection. It used to be refused at once ("not ready"), which also answered 503 from a
+//   healthy instance whenever two checkers asked at the same moment (feat-159).
 
 export const READINESS_PROBE_APPLICATION_NAME = 'readiness-probe'
-
-export class ProbeInFlightError extends Error {
-    constructor() {
-        super('the previous database probe is still running')
-        this.name = 'ProbeInFlightError'
-    }
-}
 
 export interface ReadinessProbeOptions {
     connection: Pick<
@@ -34,7 +29,10 @@ export interface ReadinessProbeOptions {
 }
 
 export interface ReadinessProbe {
-    /** Resolves when PostgreSQL answered; rejects on any failure or while a probe is in flight. */
+    /**
+     * Resolves when PostgreSQL answered; rejects on any failure. Concurrent calls share one
+     * query and its outcome.
+     */
     ping(): Promise<void>
     end(): Promise<void>
 }
@@ -42,8 +40,7 @@ export interface ReadinessProbe {
 /**
  * feat-138 (sixth review L14): the probe's whole budget, split between waiting for the connection
  * and the query, so one probe ends within `timeoutMs`. Each part used to get all of it, and the
- * worst probe took about twice as long; /ready, which refuses a probe while one is in flight,
- * recovered that much later. Each part gets at least 1 ms.
+ * worst probe took about twice as long, and so did every /ready request that shared it. Each part gets at least 1 ms.
  */
 export const probeTimeouts = (timeoutMs: number): { connectMs: number; queryMs: number } => {
     const connectMs = Math.max(1, Math.floor(timeoutMs / 2))
@@ -74,7 +71,7 @@ export const createReadinessProbe = ({
 
     return {
         ping(): Promise<void> {
-            if (inFlight !== null) return Promise.reject(new ProbeInFlightError())
+            if (inFlight !== null) return inFlight
             const run = pool.query(statement()).then(() => undefined)
             inFlight = run
             const clear = (): void => {

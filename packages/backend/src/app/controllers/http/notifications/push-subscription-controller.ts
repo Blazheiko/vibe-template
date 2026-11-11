@@ -29,12 +29,13 @@ import type {
     PushSubscriptionTestInput,
     UpdateSubscriptionInput,
 } from 'shared/schemas'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 // Non-numeric ids (e.g. GET /test-push, which now only exists as POST) are the
 // same "not found" as someone else's subscription, instead of a BigInt 500.
 function resolveSubscriptionId(context: HttpContext<unknown, unknown>): bigint | null {
     const raw = context.httpData.params['subscriptionId'] ?? ''
-    return /^\d+$/.test(raw) ? BigInt(raw) : null
+    return parseEntityId(raw)
 }
 
 const subscriptionNotFound = (): AppError => notFound('Subscription', 'Subscription not found')
@@ -75,6 +76,7 @@ export default {
             userId,
             payload,
             context.auth.getPresentedUserToken(),
+            context.httpData.ip ?? null,
         )
         return respond(context, result, (value) => ({
             status: 'success',

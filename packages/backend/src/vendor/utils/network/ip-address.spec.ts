@@ -172,3 +172,30 @@ describe('CIDR prefixes are read strictly (feat-132)', () => {
         expect(isValidCidrEntry(entry)).toBe(valid)
     })
 })
+
+// feat-159 (review 2026-11-10): an entry of TRUSTED_PROXY_CIDRS without a prefix is one address.
+// It was compared as text, and an IPv6 address has many spellings: uWS reports the peer in
+// full form, the config says `::1`. The proxy was then not trusted and every client shared the
+// proxy's address in the rate limits.
+describe('isIpInCidr with a bare address', () => {
+    it.each([
+        ['0000:0000:0000:0000:0000:0000:0000:0001', '::1', true],
+        ['::1', '0:0:0:0:0:0:0:1', true],
+        ['2001:0db8:0000:0000:0000:0000:0000:0001', '2001:db8::1', true],
+        ['2001:DB8::1', '2001:db8:0:0:0:0:0:1', true],
+        ['2001:db8::2', '2001:db8::1', false],
+        ['10.0.0.1', '10.0.0.1', true],
+        ['10.0.0.2', '10.0.0.1', false],
+        // An IPv4-mapped peer is the IPv4 address (feat-121).
+        ['::ffff:10.0.0.1', '10.0.0.1', true],
+        ['10.0.0.1', '::1', false],
+        ['not an address', '::1', false],
+    ])('%s is %s → %s', (ip, entry, expected) => {
+        expect(isIpInCidr(ip, entry)).toBe(expected)
+    })
+
+    it('agrees with the same address written as a /128', () => {
+        const peer = '0000:0000:0000:0000:0000:0000:0000:0001'
+        expect(isIpInCidr(peer, '::1')).toBe(isIpInCidr(peer, '::1/128'))
+    })
+})

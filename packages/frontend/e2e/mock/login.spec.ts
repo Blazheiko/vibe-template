@@ -30,12 +30,12 @@ test.describe('login modal', () => {
 
         await expect(page).toHaveURL(/\/account$/)
         await expect(page.locator('.modal-overlay.show')).toHaveCount(0)
-        // The identifier is trimmed; the token of an invite is empty without one.
+        // The identifier is trimmed.
         expect(api.callsTo('auth/login')).toEqual([
             {
                 method: 'POST',
                 path: '/api/auth/login',
-                body: { identifier: 'jane@example.com', password: 'correct-horse', token: '' },
+                body: { identifier: 'jane@example.com', password: 'correct-horse' },
             },
         ])
     })
@@ -51,7 +51,6 @@ test.describe('login modal', () => {
         expect(api.callsTo('auth/login')[0]?.body).toEqual({
             identifier: '+15551234567',
             password: 'correct-horse',
-            token: '',
         })
     })
 

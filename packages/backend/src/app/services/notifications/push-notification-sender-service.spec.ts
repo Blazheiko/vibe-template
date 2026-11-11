@@ -247,3 +247,34 @@ describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
         expect(logs[0]).toMatchObject({ status: 'FAILED', responseData: { statusCode: 302 } })
     })
 })
+
+// feat-150 (review 2026-11-10): a WebPushError carries the subscription's endpoint, the answer's
+// headers and its body as own fields. The log gets the status and the name of the error only.
+describe('pushNotificationSenderService.sendToUser: what a failed send logs', () => {
+    it('logs the status code, not the endpoint, headers or body of the push service answer', async () => {
+        const { default: logger } = await import('#logger')
+        pushSubscriptionRepository.findByUserId.mockResolvedValue([subscription(1)])
+        sendNotification.mockRejectedValue(
+            Object.assign(new Error('Received unexpected response code'), {
+                name: 'WebPushError',
+                statusCode: 403,
+                endpoint: 'https://fcm.googleapis.com/fcm/send/1',
+                headers: { 'x-push-secret': 'header-value' },
+                body: 'the body of the push service answer',
+            }),
+        )
+
+        await pushNotificationSenderService.sendToUser(7n, payload)
+
+        expect(logger.error).toHaveBeenCalledTimes(1)
+        const logged = JSON.stringify(vi.mocked(logger.error).mock.calls)
+        expect(logged).not.toContain('fcm/send/1')
+        expect(logged).not.toContain('header-value')
+        expect(logged).not.toContain('the body of the push service answer')
+        expect(vi.mocked(logger.error).mock.calls[0]?.[0]).toMatchObject({
+            subscriptionId: '1',
+            statusCode: 403,
+            errorName: 'WebPushError',
+        })
+    })
+})

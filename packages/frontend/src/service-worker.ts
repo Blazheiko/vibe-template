@@ -1,9 +1,11 @@
 /// <reference lib="webworker" />
 import { API_PREFIX } from './utils/api-path'
 import { isSameTarget, resolveNotificationTarget } from './utils/notification-target'
+import { PRECACHE_FILES } from './utils/sw-precache'
 import {
     classifyRequest,
     isCacheableResponse,
+    navigationCacheKey,
     removeCachedApiResponses,
 } from './utils/sw-request-policy'
 
@@ -13,31 +15,6 @@ declare const self: ServiceWorkerGlobalScope
 // The service worker never caches them: see utils/sw-request-policy.ts.
 
 const cacheName = typeof BUILD_TIMESTAMP !== 'undefined' ? BUILD_TIMESTAMP : `now: ${Date.now()}`
-
-const filesToCache = [
-    '/',
-    '/manifest.json',
-    '/favicon.svg',
-    '/icons/badge-72.png',
-    '/icons/icon_192x192.png',
-    '/icons/icon_512x512.png',
-    '/icons/apple-touch-icon-120x120.png',
-    '/icons/apple-touch-icon-152x152.png',
-    '/icons/apple-touch-icon-167x167.png',
-    '/icons/apple-touch-icon.png',
-    '/icons/icon_maskable_192x192.png',
-    '/icons/icon_maskable_512x512.png',
-    '/splash/apple-splash-1170x2532.png',
-    '/splash/apple-splash-1179x2556.png',
-    '/splash/apple-splash-1290x2796.png',
-    '/splash/splash-1080x2400.png',
-    '/screenshots/account-settings-mobile.png',
-    '/screenshots/navigation-mobile.png',
-    '/audio/notification.mp3',
-    '/audio/notification_1.mp3',
-    '/audio/click-button-140881.mp3',
-    '/audio/pdjyznja.mp3',
-]
 
 const serviceWorkerErrorQueueCacheName = '__vibe_template_sw_error_queue__'
 const serviceWorkerErrorQueueRequestPrefix = '/__vibe_template_sw_error_queue__/'
@@ -69,7 +46,7 @@ async function putIfCacheable(
     }
 }
 
-function cacheResponse(request: Request, response: Response): void {
+function cacheResponse(request: RequestInfo, response: Response): void {
     if (!isCacheableResponse(response)) return
     const responseClone = response.clone()
     void caches
@@ -228,7 +205,7 @@ self.addEventListener('install', function (e: ExtendableEvent) {
                 console.log('[ServiceWorker] Caching app shell')
                 // Cache all files individually so a single 404 doesn't abort install
                 await Promise.allSettled(
-                    filesToCache.map((url) =>
+                    PRECACHE_FILES.map((url) =>
                         fetch(url)
                             .then((r) => putIfCacheable(cache, url, r))
                             .catch(() => undefined),
@@ -320,16 +297,19 @@ self.addEventListener('fetch', function (e: FetchEvent) {
         }
 
         if (strategy === 'network-first') {
+            // The shell is stored per path: the query of a navigation can carry a one-time
+            // token (`/reset-password?token=…`) that must not stay in Cache Storage.
+            const shellKey = navigationCacheKey(e.request.url)
             e.respondWith(
                 fetch(e.request)
                     .then(function (response) {
-                        cacheResponse(e.request, response)
+                        cacheResponse(shellKey, response)
                         return response
                     })
                     .catch(function (error: unknown) {
                         return reportServiceWorkerErrorAndFallback(
                             error,
-                            caches.match(e.request).then(function (cachedResponse) {
+                            caches.match(shellKey).then(function (cachedResponse) {
                                 if (cachedResponse) return cachedResponse
                                 return caches.match('/').then(function (indexResponse) {
                                     return indexResponse ?? new Response('Offline', { status: 503 })

@@ -6,9 +6,6 @@ import type {
     InitResponse,
     PingResponse,
     ReadyResponse,
-    TestHeadersResponse,
-    GetSetCookiesResponse,
-    TestSessionResponse,
     SetHeaderAndCookieResponse,
     TestMiddlewareResponse,
     UpdateWsTokenResponse,
@@ -26,18 +23,6 @@ export default {
             return { status: 'unavailable' }
         }
         return { status: 'ok' }
-    },
-
-    testHeaders({ httpData }: HttpContext): TestHeadersResponse {
-        return mainService.testHeaders(httpData)
-    },
-
-    getSetCookies({ httpData }: HttpContext): GetSetCookiesResponse {
-        return mainService.getSetCookies(httpData)
-    },
-
-    testSession({ session, httpData }: HttpContext): TestSessionResponse {
-        return mainService.testSession(httpData, session.sessionInfo ?? null)
     },
 
     async updateWsToken(context: HttpContext): Promise<UpdateWsTokenResponse> {

@@ -1453,6 +1453,316 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged in #471 (merge commit f07a04c). 47 pages in documentation/en/, i18n in .vitepress/config.ts, parity and h1 checks in scripts/verify-dist.mjs. pnpm docs:build && pnpm docs:verify, format:check, lint, typecheck and documentation tests passed. Heading, code-fence and table-line counts match the Ukrainian originals; 29 cross-page anchors were remapped to the English headings. Not verified: translation wording was not proofread, language switcher not checked in a browser. Entry added after the merge, so there was no separate start PR."
+        },
+        {
+            "id": "feat-147",
+            "name": "Push Log Isolation",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V01: M2: push notification log and statistics queries filter by subscription_id only, so after a subscription moves to another account the new owner reads the previous owner's log. Filter by the log's user_id in every read path. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/push-log-isolation",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #477 (merge commit b3ec890). RED before the fix: 3 of 4 new tests in push-data.pg.test.ts failed (the subscription list returned the previous owner's 3 log titles instead of 1, the statistics counted 3 sends instead of 1); the third read path, getLogsBySubscriptionId, was already owner-scoped and got a regression test. After the fix: PG suite of the push group 39 passed, none skipped, locally (pgvector/pgvector:pg16) and in the test-pg job; pnpm format:check, typecheck, lint, test (backend 2562, frontend 400), docs:build && docs:verify. Not verified in a browser: the scenario A -> logout -> B is feat-148."
+        },
+        {
+            "id": "feat-148",
+            "name": "Push Subscription Account Sync",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V02: M9: the frontend reports push as enabled when the browser already has a subscription without posting it to the server, and logout leaves the subscription in place. Sync the browser subscription with the signed-in account, remove it on logout and on sign-in of another account. Needs owner decision Д1. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/push-subscription-account-sync",
+            "dependencies": ["feat-147"],
+            "status": "done",
+            "evidence": "Merged in #479 (merge commit 9bc0a95). RED before the fix: 2 new tests in stores/__tests__/push.spec.ts failed (no POST for a subscription the browser already had; the store reported enabled after the server refused). After the fix: pnpm format:check, typecheck, lint, test (backend 2562, frontend 412, playground 62); frontend test:e2e 87 passed; test:e2e:live 8 passed locally and in the e2e-live job, including three new scenarios in e2e-live/push-account-switch.spec.ts on the real backend with only PushManager replaced (A -> sign-out -> B; a leftover subscription after a lost session; a refused save and a retry); backend PG test push-delivery-ownership.pg.test.ts with the transport replaced (3 passed); docs:build && docs:verify. Behaviour change: the account-page toggle is now about this browser's subscription, not any device of the account. Not verified: real delivery through a push service in a real browser. Open: one local run of the new live spec (the first of 7) failed once at sign-in with a 503 from POST /api/auth/login; it did not repeat and the cause is unknown."
+        },
+        {
+            "id": "feat-149",
+            "name": "WS Message Budget",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V03: M1: a valid WebSocket message, including one with an unknown event, runs the session check (Redis + PostgreSQL) before any rate limit; ping and invalid messages are not limited either. Add a per-connection message budget and a cap on concurrent handlers before the session check; build the WS route map without a prototype. Needs owner decision Д2. Redis suite",
+            "owner": "Blazheiko",
+            "branch": "feat/ws-message-budget",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #481 (merge commit 66653b6). RED before the fix (budget mocked to 20): the session check ran 30 times instead of 20, the Redis token refresh ran for every malformed message and every ping (70 instead of 60), and the events constructor / __proto__ / toString / hasOwnProperty / valueOf answered internal_error. ping and malformed JSON never reached the PostgreSQL check before the fix either, as the report's revision 2 says. After the fix: ws-message-budget.spec.ts 10 passed, ws-error-envelope.spec.ts 11 passed, config/websocket.spec.ts; pnpm format:check, typecheck, lint, test (backend 2592, frontend 413, playground 62); backend test:redis 116 passed; frontend test:e2e:live 8 passed on a fresh build; docs:build && docs:verify. The window is fixed, not sliding. Not verified: the hypothesis that a flood starves the session-check pool (503 for other users) was not load-tested; the defaults 120 / 8 / 60 are by decision Д2, not measured."
+        },
+        {
+            "id": "feat-150",
+            "name": "Log Privacy: Support, Push, Mail",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V04: M3 and three lows: the support query translation logs the full user message on failure, the push sender logs the WebPushError with the endpoint, the mail service logs full recipient addresses, the OAuth redirect logs the URL with the state. Remove or mask these values",
+            "owner": "Blazheiko",
+            "branch": "feat/log-privacy-support-push-mail",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #483 (merge commit acdf351). RED before the fix: 5 new tests failed, one or two per finding (the support message text and an error-level entry for a client abort in the translation log; the WebPushError with the endpoint and the push service's answer; full recipient addresses in 'Email sent'; the authorization URL with the state in the OAuth redirect log). After the fix: the four specs 54 passed; pnpm format:check, typecheck, lint, test (backend 2597, frontend 413, playground 62); docs:build && docs:verify. A push failure no longer carries an err object, so it does not reach Sentry with the full error; the text stays in push_notifications_log.error_message. Not verified against a running server. Seen during the feature and unrelated to it: upload-limits.transport.spec.ts failed once in a full run (one of 20 parallel 50 MiB uploads answered 400 instead of 413) and passed 8 of 8 times alone."
+        },
+        {
+            "id": "feat-151",
+            "name": "WS Client Close Handling",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V05: M8: the frontend treats a socket it closed on purpose (logout, replaced socket) as a lost connection, schedules a reconnect with a revoked token and rejects requests pending on the new socket. Distinguish deliberate close from connection loss. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/ws-client-close-handling",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #485 (merge commit e2ba093). RED before the fix: 4 of 7 tests of composables/__tests__/useWebSocketConnection.spec.ts failed (after a sign-out a second socket was opened; the request pending on the new socket was rejected by the close of the replaced one); in a real browser e2e-live/ws-close-after-logout.spec.ts on the old composable ended on /login instead of /register. The 3 tests of a really lost connection were green before and stay as regression tests. After the fix: pnpm format:check, typecheck, lint, test (frontend 426, backend 2597, playground 62); frontend test:e2e 87 passed; test:e2e:live 9 passed three runs in a row locally and in the e2e-live job; docs:build && docs:verify. Not verified in a browser: the replacement of a live socket (covered by the composable test with controlled events)."
+        },
+        {
+            "id": "feat-152",
+            "name": "Support Chat Stream Recovery",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V06: M11: the support chat \"answer in progress\" state is cleared only by the completion events, so a dropped socket or leaving the page leaves the input disabled and a frozen partial answer. Reset the state on socket close and on leaving, reload history after reconnect. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/support-chat-stream-recovery",
+            "dependencies": ["feat-151"],
+            "status": "done",
+            "evidence": "Merged in #487 (merge commit 3a2bfb8). RED before the fix: 3 of 6 tests of views/__tests__/SupportView.spec.ts failed (the textarea stayed disabled after the socket dropped; the history was not reloaded when the connection came back; store.isStreaming stayed true after the page was left). After the fix: SupportView.spec.ts 6 passed; pnpm format:check, typecheck, lint, test (frontend 432, backend 2597, playground 62); frontend test:e2e 87 passed; docs:build && docs:verify. Not verified in a browser: the live e2e runs without an AI provider, so there is no real stream to cut; the behaviour is covered by the component test on the real store."
+        },
+        {
+            "id": "feat-153",
+            "name": "Docker API Prefix Build Arg",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V07: M6: the Dockerfile declares build args only for VITE_SENTRY_*, so the SPA in the image always uses the api prefix and breaks when the container runs with another API_PATH_PREFIX. Add the build arg, pass it from compose, report a prefix mismatch at startup",
+            "owner": "Blazheiko",
+            "branch": "feat/docker-api-prefix-build-arg",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #489 (merge commit e0aa5b2). RED (manual, Docker): the Dockerfile of main built with --build-arg VITE_API_PATH_PREFIX=v1 produced a SPA for api (build-meta.json {apiPathPrefix: api}). After the fix: API_PATH_PREFIX=v1 scripts/docker-build.sh produced a SPA for v1; the same image started with API_PATH_PREFIX=v1 answers the SPA's GET /v1/main/init with 401 application/json and logs no mismatch, started with API_PATH_PREFIX=api it answers that path with the SPA shell (200 text/html) and logs the error 'built for another API prefix' with builtFor v1 / served api. static-build-meta.spec.ts 8 passed; make check (backend 2605, frontend 432, playground 62); docs:build && docs:verify. docker-compose.yml unchanged: its app service has no build section, the build script passes the prefix. Not verified: the SPA of the image in a browser; VITE_BASE_URL and VITE_AUTH_PHONE_ENABLED as build args."
+        },
+        {
+            "id": "feat-154",
+            "name": "Sign-in Redirect",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V08: M10: the redirect query written by the router guard is dropped after a form or OAuth sign-in, the user always lands on /account (AC-AUTH-001). Read the safe redirect target when completing sign-in. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/sign-in-redirect",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #491 (merge commit 1435976). RED before the fix: 3 tests of composables/__tests__/auth-composables.spec.ts failed (the push went to UserAccount, not to /support from ?redirect=); in a real browser the new e2e-live/sign-in-redirect.spec.ts scenario ended on /account instead of /support. After the fix: make check (frontend 452, backend 2605, playground 62); frontend test:e2e 87 passed; test:e2e:live 12 passed twice locally and in the e2e-live job; docs:build && docs:verify. init_app is now emitted after the post-sign-in navigation settles. Not verified in a browser: the OAuth path (no provider in the live e2e); the sessionStorage helper and the click are covered by unit tests."
+        },
+        {
+            "id": "feat-155",
+            "name": "Online History Pagination",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V09: M4: the online history service asks for limit + 1 rows while the repository clamps to 100, so with limit=100 the next page is never detected; /admin/users has no cursor past the first 100 rows. PG suite, e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/online-history-pagination",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #493 (merge commit cdb2809). RED before the fix: 4 of 6 tests of services/admin/admin-pagination.pg.test.ts failed (101 history rows at limit=100: hasMore false and no cursor; limit=200 returned 100 rows; the admin user list had no cursor). The 99-row and 100-row cases were green and stay as regression tests. After the fix: backend test:pg 31 files / 272 tests passed, none skipped; make check (backend 2612, frontend 452, shared 26, playground 62); frontend test:e2e 88 passed including the new mocked scenario e2e/mock/admin-users.spec.ts; docs:build && docs:verify. Behaviour change: the admin user list is ordered by id descending instead of created_at descending. Not verified: the admin UI against the real backend with more than 100 users."
+        },
+        {
+            "id": "feat-156",
+            "name": "Push Subscription Input Bounds",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V10: M5: push subscription request schemas have unbounded strings against varchar columns (500 instead of 422) and accept a client-supplied ipAddress. Add length bounds, drop ipAddress from the request and store the server-side address. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/push-subscription-input-bounds",
+            "dependencies": ["feat-147"],
+            "status": "done",
+            "evidence": "Merged in #495 (merge commit fb7637b). RED before the fix, at the HTTP level with the real route table and PostgreSQL: 14 new tests of push-subscription-ownership.pg.test.ts failed (500 for over-long varchar fields, 200 for over-long text fields and for a client ipAddress). After the fix: that file 37 passed; backend test:pg 31 files / 286 tests, none skipped; make check (backend 2612, frontend 452, shared 27, playground 62); frontend test:e2e:live 12 passed; docs:build && docs:verify. ipAddress is no longer a request field; the server stores the address it saw. Not verified: a subscription from a real browser's push service."
+        },
+        {
+            "id": "feat-157",
+            "name": "Strict Registration Session Oracle",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V11: Low raised to medium: in strict registration the caller's session is destroyed only when the address was free, so the generic answer still reveals whether the email is registered. Same session action in every generic-answer branch. Needs owner decision Д4. Redis suite",
+            "owner": "Blazheiko",
+            "branch": "feat/strict-registration-session-oracle",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #497 (merge commit b0e7c8e). RED before the fix: 2 tests of register-race.pg.test.ts failed (destroySession called 0 times for a taken address and for the loser of the race); with real sessions in Redis the new e2e-live/registration.spec.ts scenario on the old service left the caller of the taken address signed in. After the fix: backend test:pg 288 passed, test:redis 116 passed; make check (backend 2612, frontend 452, shared 27, playground 62); frontend test:e2e:live 13 passed; docs:build && docs:verify. Behaviour change by decision Д4: in strict mode a registration sent from a signed-in session signs it out whatever the address is; two tests that pinned the old asymmetry were changed. Not verified: the time of the answer was not measured."
+        },
+        {
+            "id": "feat-158",
+            "name": "Playground Error Reporting",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V12: M7 and one low: the API playground parses the response body only for 422 and shows WebSocket errors and timeouts as a 200 success. Show the server error body and status for HTTP and WS",
+            "owner": "Blazheiko",
+            "branch": "feat/playground-error-reporting",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #499 (merge commit 6251556). RED before the fix: 14 of 19 new playground tests failed (data null for a 403 and for 400/404/409/413/429/500/503; a 204 and a non-JSON 200 reported with no status; a rejected WS request returned as a result; an error reply waiting for the timeout because the handler threw on a reply without payload). After the fix: playground 9 files / 81 tests, eslint and vue-tsc --build clean; make check (backend 2612, frontend 452, shared 27); docs:build && docs:verify. Not verified: the playground in a browser against a backend."
+        },
+        {
+            "id": "feat-159",
+            "name": "Backend Core Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V13: Lows: a bare IPv6 address in TRUSTED_PROXY_CIDRS never matches the peer, the fallback 404 carries no CORS headers, Access-Control-Expose-Headers is space-separated, a concurrent /ready request gets 503 on a healthy database. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/backend-core-lows",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #505 (merge commit 6cd8488). Four low findings, each reproduced by a failing test first: a bare IPv6 entry of TRUSTED_PROXY_CIDRS compared as text (ip-address.spec.ts: ::1 did not match the full form); the 404 of the fallback route without CORS headers and a space-separated Access-Control-Expose-Headers (server-rate-limit.spec.ts); a /ready ping refused while another was in flight (readiness-probe.pg.test.ts against the old probe: 5 of 6 concurrent pings rejected on a healthy database). After the fix: make check (backend 2633, frontend 467, shared 29, playground 81); backend test:pg 289 passed; docs:build && docs:verify. Behaviour change: against a stuck database a second /ready request now waits for the probe in flight (at most READINESS_CHECK_TIMEOUT_MS) instead of being answered not-ready at once; one connection is kept. Not verified: the CORS answer in a browser."
+        },
+        {
+            "id": "feat-160",
+            "name": "Support and Auth Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V14: Lows: reindexAll aborts on one failed batch, the support context filter drops earlier identical user messages, knowledge base findAll pages without ORDER BY, budget is charged for provider calls that never started, screenshots of deactivated articles are served, a repeated phone reset start spends the SMS budget without sending. Needs owner decisions Д3 and Д5. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/support-and-auth-lows",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #507 (merge commit 37f1fc2). Six low findings, each reproduced by a failing test: reindex-all stopped at a failed batch; the answered message was left out of the model's history by its text; the admin knowledge base list had no ORDER BY (the unfiltered list came back as 1, 3, 2, 5, 6, 4); the budget marked a translation and a search as started with no provider configured; the screenshot of a deactivated article was served; a repeated reset-phone/start spent the SMS budget on a cooldown refusal and sent no new code after the cooldown. After the fix: make check (backend 2638, frontend 467, shared 29, playground 81); backend test:pg 291 and test:redis 116; docs:build && docs:verify. Decision Д5 was narrowed: after the cooldown only the session that started the reset gets a new code; another session still gets the generic answer and changes nothing (otherwise anyone who knows the number could cancel the owner's reset once a minute). Tests that pinned the old behaviour were changed. Not verified against a real embedding provider."
+        },
+        {
+            "id": "feat-161",
+            "name": "Schema Bounds Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V15: Lows: no bounds on prompt maxTokens / temperature / model and on knowledge base title / category / content, an OAuth provider name longer than 100 characters breaks sign-up, unbounded BigInt ids from the path and query give 500. PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/schema-bounds-lows",
+            "dependencies": ["feat-156"],
+            "status": "done",
+            "evidence": "Merged in #509 (merge commit 41eae93). Low findings about unbounded input, each reproduced by a failing test: prompt update/test accepted a negative or fractional maxTokens, temperature 100 and a model of any length; a knowledge base article accepted a title of any length; an OAuth name longer than the column failed the sign-up; an avatar upload after an OAuth sign-in asked the object store to delete the provider's URL as a key; a 30-digit id in a path or query was a 500. After the fix: parseEntityId in nine places, bounded schemas, the name cut to USER_NAME_MAX_LENGTH, external avatar URLs skipped. make check (backend 2655, frontend 467, shared 30, playground 81); backend test:pg 295; docs:build && docs:verify."
+        },
+        {
+            "id": "feat-162",
+            "name": "Frontend Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V16: Lows: every 401 redirects to /login, the service worker caches the HTML shell under the full URL with one-time tokens, the precache list drifted from public/, the admin knowledge base list hides errors, Sentry breadcrumb messages are turned into URLs. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/frontend-lows",
+            "dependencies": ["feat-151"],
+            "status": "done",
+            "evidence": "Merged in #511 (merge commit 20a6503). Five low frontend findings, reproduced by 15 unit tests and one e2e test that fail on the old code: every 401 raised the unauthorized event (a wrong password reset the sign-in page; /verify-email lost its session-revoked explanation to a redirect); the service worker stored the HTML shell under the full URL, token included; the precache named two missing screenshots and four unused mp3 files; a failed knowledge base list looked like an empty one and failed actions were silent; Sentry turned a plain breadcrumb message into a URL. After the fix: make check (frontend 484, backend 2655, shared 30, playground 81); frontend test:e2e 89; docs:build && docs:verify. Decision for feat-163: the mp3 files of public/audio are unused and are deleted there. Not verified: the service worker in a real browser install."
+        },
+        {
+            "id": "feat-163",
+            "name": "Dead Code Cleanup",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V17: Remove dead code found by the review in the backend (unused script, unrouted controller methods, unread schema fields, unused column) and the frontend (unused stores, utils, components, API wrappers, events) after re-checking usages on a fresh main",
+            "owner": "Blazheiko",
+            "branch": "chore/dead-code-cleanup",
+            "dependencies": ["feat-148", "feat-162"],
+            "status": "done",
+            "evidence": "Merged in #519 (merge commit d4db87b). Each item checked for usages on a fresh main first (table in the PR's progress.md). Removed: copy-static.js; the testHeaders / getSetCookies / testSession endpoints with no route, their service methods and shared schemas; the token field of the login and registration schemas (never read; a client that still sends it gets 422); sms_auth_challenges.send_count (never read or written, migration 20261111120018_sms_challenge_drop_send_count); counter store, isToday, ConnectionStatus, LoaderOverlay, five icon components, useLocale(), useToast with its store and container (no caller), authApi.register, supportApi.getScreenshotUrl, the destroy_websocket_base event, the notification sound button whose event had no listener, four mp3 files (730 KB). Kept: the three push wrappers of the contract pilot and authApi.logoutAll. make check (backend 2654, frontend 499, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify. CI e2e-live failed once on an unrelated test (verify-email 400 in sign-in-redirect) and passed on rerun."
+        },
+        {
+            "id": "feat-164",
+            "name": "Modal Accessibility",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V18: Lows: the auth, admin user detail and avatar editor modals have no dialog role, focus handling or Escape, and two icon-only buttons have no accessible name. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/modal-accessibility",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #513 (merge commit 0c5d45c). The three modals (AuthModalShell, AdminUserDetailModal, AvatarEditorModal) had no dialog role, no focus management and no Escape; icon-only buttons had no name. Reproduced by 3 component tests and 3 e2e tests that fail on the old components. After the fix: useModalDialog (initial focus, Tab trap, Escape, focus return, a stack of open dialogs; 11 unit tests), role=dialog / aria-modal / aria-labelledby on the three panels, names for the avatar editor close button and the chat send button in en, uk, pl. make check (frontend 499, backend 2655, shared 30, playground 81); frontend test:e2e 92; test:e2e:live 13; docs:build && docs:verify. Not verified with a screen reader; the admin modal and the avatar editor are covered in jsdom only."
+        },
+        {
+            "id": "feat-165",
+            "name": "Playground Lows",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V19: Lows in the API playground: the load-test average is below the minimum for parallel threads, limits are HTML attributes only with no stop, an empty token throws on connect, Test Connection does nothing through the proxy, request and response bodies are logged to the console",
+            "owner": "Blazheiko",
+            "branch": "feat/playground-lows",
+            "dependencies": ["feat-158"],
+            "status": "done",
+            "evidence": "Merged in #515 (merge commit 2aa00f2). Playground lows, reproduced by 27 tests that fail on the old code: the average time was the wall-clock time / requests (below the fastest request with threads); the 1000 / 100 bounds were only input attributes and a run could not be stopped; an empty WS token went as subprotocol '' and threw SyntaxError; Test Connection did nothing with an empty base URL and a saved baseUrl won over VITE_API_BASE_URL; request bodies were logged. After the fix: mean of durations, clampCount in run(), stop() and a Stop button, no empty subprotocol, env precedence, no bodies in the console. make check (playground 111, frontend 499, backend 2655, shared 30); docs:build && docs:verify. Not verified in a browser."
+        },
+        {
+            "id": "feat-166",
+            "name": "Docs Home Page Accuracy",
+            "description": "docs/plan/code-review-2026-11-10-plan.md V20: Review notes on PR #473: the home page statement about ResponseSchema is wrong for the log mode and differs between locales, contradicts how-backend-works and adding-a-feature, omits route access control and the optional validator, and says the implementation can change without the reader's involvement",
+            "owner": "Blazheiko",
+            "branch": "docs/home-page-accuracy",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #517 (merge commit 7b434b8). The remarks of the report on PR #473 closed in both locales: the home page no longer says ResponseSchema rejects extra fields (wrong in log mode) and links the one detailed description; says the route validator is optional; names route access control (middleware, guards, limits) as outside the three contracts; replaces 'the implementation can change without your involvement' with the AGENTS.md review rule, tests included; guide/how-backend-works.md and backend/adding-a-feature.md no longer say response validation is off in production. docs:build && docs:verify; format:check."
+        },
+        {
+            "id": "feat-167",
+            "name": "Route Contracts Design",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C0: Fix the five design decisions for shared route contracts before the pilot: package boundary (no schemas in the browser bundle, proven on the production module graph), input vs output schema type, the full call shape on top of the current transport, server policies outside the contract, URL building; multipart boundary. Needs owner decision Д6",
+            "owner": "Blazheiko",
+            "branch": "docs/route-contracts-design",
+            "dependencies": [],
+            "status": "done",
+            "evidence": "Merged in #501 (merge commit e13bf32). docs/adr/0005-route-contracts.md fixes the five design decisions and the multipart boundary; packages/frontend/scripts/check-bundle-graph.mjs proves on the module graph of the production build that the frontend bundle has no schema and no validator library (492 modules; a negative control with a schema imported as a value in utils/api.ts exits 1). The prototype behind the ADR (12 routes on contracts, defineContractRoute, the typed client) passed pnpm typecheck, backend unit 2612 and PG 288 unchanged, negative type checks on both sides and 12 client tests over the real transport; it is the starting point of feat-168. Deviation: a separate defineContractRoute instead of defineRoute({ contract })."
+        },
+        {
+            "id": "feat-168",
+            "name": "Route Contracts Pilot",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C1: Pilot of shared route contracts: contract scaffold in shared, defineRoute with a contract, a typed frontend client on top of base-api, three migrated routes (push-subscriptions group, one query route, auth/login) and an ESLint rule against new direct baseApi.http calls. PG suite, e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/route-contracts-pilot",
+            "dependencies": ["feat-167", "feat-148", "feat-156"],
+            "status": "done",
+            "evidence": "Merged in #503 (merge commit 16968fa). Twelve routes on contracts (the push-subscriptions group, GET /admin/users, POST /auth/login): shared/contracts, defineContractRoute, callApi on top of base-api, an ESLint rule against direct baseApi.http outside utils/api-client.ts and utils/api.ts with a counting test for the 36 calls left there, check:bundle-graph in make check. pnpm typecheck clean with negative @ts-expect-error checks on both sides; api-client.spec.ts 12 tests over the real transport (signal, csrfRecovery, sessionAfter, one repeat after a token mismatch, no repeat on an account change); check-bundle-graph 498 modules with no schema and no validator library; make check (backend 2618, frontend 467, shared 29, playground 81); backend test:pg 288 and test:redis 116; frontend test:e2e 88 and test:e2e:live 13; docs:build && docs:verify. The types found stores/push.ts reading answers without narrowing by status. Open: decision C1.R (start C4 or change the design) is the owner's. Local live e2e failed in 2 of the first 5 runs with a 503 from the test helper's POST /api/auth/register/email; none in 6 runs with RATE_LIMIT_REDIS_TIMEOUT_MS=1000 (see the review report); not seen in CI."
+        },
+        {
+            "id": "feat-169",
+            "name": "Admin Monitoring Routes Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.1: Move the admin monitoring routes (users-online, users-online/:id, history-online, usage/text, usage/stats) to route contracts through the schema registry, with their frontend calls on callApi. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-admin-monitoring",
+            "dependencies": ["feat-172"],
+            "status": "done",
+            "evidence": "Merged in #524 (merge commit 07bc48a). Five admin monitoring routes on contracts through the schema registry: GET /admin/users-online, /admin/users-online/:id, /admin/history-online (query), /admin/usage/text (query), /admin/usage/stats. Three frontend calls on callApi (hand-built URLs and encodeURIComponent gone); DIRECT_HTTP_CALLS 36 -> 33. admin-query.spec.ts checks the same exact URLs. make check (backend 2656, frontend 499, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92; docs:build && docs:verify. /admin/usage/* has no frontend caller."
+        },
+        {
+            "id": "feat-170",
+            "name": "Route Contracts Lock",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C5b: Delete the old defineRoute and rename defineContractRoute to defineRoute; remove the direct-call counter and the ESLint exception for utils/api.ts; a backend test that every route has a contract and a registry entry and routes with a body have a body schema. PG suite, e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/route-contracts-lock",
+            "dependencies": ["feat-177"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-171",
+            "name": "WebSocket Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C6: Separate design for WebSocket contracts: requests, responses, broadcast events and message correlation, with its own estimate and task list",
+            "owner": "Blazheiko",
+            "branch": "docs/websocket-contracts-design",
+            "dependencies": ["feat-170"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-172",
+            "name": "Route Contract Schema Registry",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C7: A server-side registry contract -> {body, query, response} schemas; defineContractRoute takes the schemas from it and the compile-time checks move to the registry entries; the 12 pilot routes move to the registry. Decide first where the registry lives (backend or a server-only shared subpath). PG suite",
+            "owner": "Blazheiko",
+            "branch": "feat/contract-schema-registry",
+            "dependencies": ["feat-168"],
+            "status": "done",
+            "evidence": "Merged in #522 (merge commit 082ed9e). C7.1: the registry lives in the backend (app/routes/contract-schemas/, generic code in app/routing/contract-registry.ts), keyed by '<method> <path>' of the contract (ADR 0005 decision 6). contractSchemas(group, entries) requires an entry per contract of the group and checks it against the contract's types; defineContractRoute takes validator, queryValidator and ResponseSchema from the entry, and types the handler's payload and query as the schemas' outputs. A contract without an entry does not compile and stops the server at start. The 12 pilot routes name only their contract. 10 compile-time negative checks; serialized routes byte-for-byte identical (233452 bytes). make check (backend 2656, frontend 499, shared 30, playground 111; bundle graph 495 modules, no schema); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify. To watch: typecheck time as C4 adds about 50 entries."
+        },
+        {
+            "id": "feat-173",
+            "name": "Knowledge Base Routes Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.2: Move the admin knowledge base routes (except the screenshot upload) to route contracts with their frontend calls on callApi",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-knowledge-base",
+            "dependencies": ["feat-169"],
+            "status": "done",
+            "evidence": "Merged in #526 (merge commit e04ac8b). Ten /admin/knowledge-base routes on contracts (list, get, create, update, delete, delete screenshot, reindex, reindex-all, init, init-status); the multipart screenshot upload waits for feat-177. adminKnowledgeBaseApi on callApi with the shared SupportKnowledgeBaseItem and input types; DIRECT_HTTP_CALLS 33 -> 24. The types caught an update wrapper that allowed category: null (the schema answers 422). isSuccessfulResponse narrows to the success branch; the unused adminQueryString is deleted with its 3 tests. A space in the list query is now %20 instead of + (the server reads both). make check (backend 2656, frontend 496, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92; docs:build && docs:verify."
+        },
+        {
+            "id": "feat-174",
+            "name": "Core, Prompts, Support Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.3: Move /ping, /ready, main/*, prompts/* and support/chat/history to route contracts with their frontend calls on callApi",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-core-prompts-support",
+            "dependencies": ["feat-173"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-175",
+            "name": "Auth Session Routes Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.4: Move the auth registration, logout, logout-all, change-password, verify-email and resend-verification-email routes to route contracts with their frontend calls on callApi, keeping each call's csrfRecovery and sessionAfter. PG suite, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-auth-session",
+            "dependencies": ["feat-174"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-176",
+            "name": "Auth Recovery and OAuth Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C4.5: Move the auth password recovery and phone/email linking routes and the JSON OAuth routes (providers, link/confirm, email/resend) to route contracts with their frontend calls on callApi. PG suite, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-auth-recovery-oauth",
+            "dependencies": ["feat-175"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-177",
+            "name": "Non-JSON Route Contracts",
+            "description": "docs/plan/code-review-2026-11-10-plan.md C8: Contracts describe multipart bodies and redirect and file responses; callApi sends FormData through the existing transport; move avatar upload and delete, the knowledge base screenshot upload, the support screenshot and the OAuth redirect and callback routes. e2e, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/contracts-non-json",
+            "dependencies": ["feat-176"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }

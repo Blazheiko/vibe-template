@@ -90,7 +90,9 @@ export default {
             return mapControllerError(context, result.error)
         }
 
-        context.logger.info({ url: result.value.url }, 'oauth generated URL')
+        // The URL carries the single-use state and the PKCE challenge: the log names the
+        // provider only (feat-150).
+        context.logger.info({ provider }, 'oauth redirect to the provider')
 
         // Store OAuth state and PKCE verifier in session. feat-111: a session that vanished
         // meanwhile (a logout in another tab) is not recreated; the sign-in stops here instead of

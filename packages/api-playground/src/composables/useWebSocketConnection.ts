@@ -8,22 +8,37 @@ export type WebsocketPayload = Record<string, unknown>
 
 export interface WebsocketMessage {
     event: string
-    status: number
+    /** `'200'` for a reply to a request, `'error'` for a refused one; a number in broadcasts. */
+    status: number | string
     payload: WebsocketPayload
+    /** The answer of a request. */
+    data?: unknown
+    /** Set on an error reply: the backend's error envelope. */
+    error?: { code?: string; message?: string; details?: unknown } | null
     timestamp?: number
+}
+
+/**
+ * A WS request that did not succeed (feat-158): the server answered with an error, or nothing
+ * came before the timeout. `reply` is the whole error reply, for the form to show.
+ */
+export class WsRequestError extends Error {
+    constructor(
+        message: string,
+        readonly status: number | string,
+        readonly code?: string,
+        readonly reply?: WebsocketMessage,
+    ) {
+        super(message)
+        this.name = 'WsRequestError'
+    }
 }
 
 // Interfaces for API resolve
 interface ApiResolveItem {
     resolve: (data: WebsocketMessage) => void
-    reject: (error?: ApiError) => void
+    reject: (error: WsRequestError) => void
     timeout: number
-}
-
-interface ApiError {
-    status?: number | string
-    message?: string
-    messages?: string[]
 }
 
 interface SendPayload {
@@ -46,7 +61,9 @@ const connectionError = ref<string | null>(null)
 const lastMessage = ref<WebsocketMessage | null>(null)
 // Mutable array passed to vueuse by reference so token updates are reflected
 // in the next WebSocket() construction without recreating the composable.
-const wsProtocols: string[] = ['']
+// Empty until a token is given: an empty string is not a valid subprotocol, and
+// `new WebSocket(url, [''])` throws a SyntaxError.
+const wsProtocols: string[] = []
 
 // API resolve for handling responses (created once)
 const apiResolve = ref<Partial<Record<string, ApiResolveItem>>>({})
@@ -93,7 +110,7 @@ const processBroadcast = (message: WebsocketMessage): void => {
 // Service error handling
 const handleServiceError = (data: WebsocketMessage): void => {
     if (data.status === 4001) {
-        console.warn('Token expired or invalid:', data.payload.message)
+        console.warn('Token expired or invalid:', data.error?.message)
     }
 }
 
@@ -157,13 +174,18 @@ const messageHandler = (data: WebsocketMessage): void => {
 
     if (Number.isFinite(statusCode) && statusCode >= 200 && statusCode < 300) {
         cb.resolve(data)
-    } else {
-        cb.reject({
-            status: data.status,
-            message: data.payload.message as string | undefined,
-            messages: data.payload.messages as string[] | undefined,
-        })
+        return
     }
+    // The error envelope of the backend: `error.code` and `error.message`. A reply has no
+    // `payload`; reading `payload.message` threw here, and the request waited for its timeout.
+    cb.reject(
+        new WsRequestError(
+            data.error?.message ?? 'WebSocket request failed',
+            data.status,
+            data.error?.code,
+            data,
+        ),
+    )
 }
 
 // Incoming message handler
@@ -295,7 +317,7 @@ const websocketApi = async (
             reject,
             timeout: window.setTimeout(() => {
                 Reflect.deleteProperty(apiResolve.value, event)
-                reject(new Error('Request timeout'))
+                reject(new WsRequestError('Request timeout', 408))
             }, TIMEOUT_API),
         }
     })
@@ -316,7 +338,7 @@ const resetApiResolve = () => {
     Object.values(apiResolve.value).forEach((item) => {
         if (item === undefined) return
         window.clearTimeout(item.timeout)
-        item.reject(new Error('WebSocket connection reset'))
+        item.reject(new WsRequestError('WebSocket connection reset', 0))
     })
     apiResolve.value = {}
 }
@@ -332,7 +354,8 @@ const websocketOpen = (url: string, token: string) => {
     clearReconnectTimeout()
     connectionError.value = null
 
-    wsProtocols[0] = token
+    wsProtocols.length = 0
+    if (token !== '') wsProtocols.push(token)
 
     wsUrl.value = url
     open()

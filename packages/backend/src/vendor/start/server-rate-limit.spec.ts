@@ -278,3 +278,41 @@ describe('L1 coverage with other settings', () => {
         expect(header(blocked, 'retry-after')).toHaveLength(1)
     })
 })
+
+// feat-159 (review 2026-11-10): a 404 of the fallback route is an answer a cross-origin SPA has
+// to be able to read. Without the CORS headers the browser reports "Failed to fetch" instead.
+describe('CORS headers on the 404 of the fallback route', () => {
+    beforeEach(async () => {
+        freshIp()
+        await loadServer()
+    })
+
+    it('an unknown API path answers 404 with the allowed origin', async () => {
+        const response = await call('any /*', '/api/nope', 'get', ORIGIN)
+
+        expect(response.status).toBe('404 Not Found')
+        expect(header(response, 'access-control-allow-origin')).toEqual(['https://app.test'])
+    })
+
+    it('an unknown path outside the API answers 404 with the allowed origin too', async () => {
+        const response = await call('any /*', '/nope', 'post', ORIGIN)
+
+        expect(response.status).toBe('404 Not Found')
+        expect(header(response, 'access-control-allow-origin')).toEqual(['https://app.test'])
+    })
+
+    it('an origin that is not allowed gets no allow-origin header', async () => {
+        const response = await call('any /*', '/api/nope', 'get', { origin: 'https://evil.test' })
+
+        expect(response.status).toBe('404 Not Found')
+        expect(header(response, 'access-control-allow-origin')).toEqual([])
+    })
+
+    it('exposes headers as a comma-separated list', async () => {
+        const response = await call('any /*', '/api/nope', 'get', ORIGIN)
+
+        const [exposed = ''] = header(response, 'access-control-expose-headers')
+        expect(exposed).toContain(', ')
+        expect(exposed.split(', ').every((name) => /^[A-Za-z-]+$/.test(name))).toBe(true)
+    })
+})

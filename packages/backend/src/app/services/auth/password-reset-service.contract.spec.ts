@@ -730,26 +730,45 @@ const ROWS: readonly Row[] = [
             'A verification code was already sent recently. Please wait before requesting another one.',
             'resend_cooldown_active',
         ),
+        // feat-160: nothing is sent, so the hourly SMS budget of the number is not spent
+        // either — only the per-address limit was counted.
+        after: () => {
+            expect(issueMock).not.toHaveBeenCalled()
+            const policies = consumeAuthThrottleMock.mock.calls.map(
+                ([policy]) => (policy as { name?: string }).name,
+            )
+            expect(policies).not.toContain('sms_send_phone')
+            expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
+        },
     },
+    // feat-160 (decision Д5): after the cooldown the session that started the reset gets a new
+    // code. It used to hand the waiting challenge back and send nothing, so a user
+    // whose SMS never arrived could not get another one while that challenge was alive.
     {
-        name: 'startPhonePasswordReset · a live challenge of this session is handed back',
+        name: 'startPhonePasswordReset · after the cooldown a new code is sent and the waiting challenge is retired',
         arrange: () => {
-            userRepositoryMock.findByPhone.mockResolvedValue(phoneOnlyUser())
+            arrangeStartOk(phoneOnlyUser())
             challengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(challenge())
         },
         call: startPhone('sess-1'),
         ok: {
             message: GENERIC_PHONE,
-            challengeId: 'ch-1',
-            expiresAt: FUTURE.toISOString(),
-            resendAvailableAt: expect.any(String),
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
         },
         after: () => {
-            expect(challengeRepositoryMock.create).not.toHaveBeenCalled()
+            expect(issueMock).toHaveBeenCalledWith({ phone: PHONE, flow: 'reset_phone' })
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledWith(
+                PHONE,
+                'reset_phone',
+                expect.anything(),
+            )
         },
     },
     {
-        name: 'startPhonePasswordReset · a live challenge of another session is not revealed',
+        // An attacker who knows the number must not be able to cancel the owner's reset.
+        name: 'startPhonePasswordReset · a live challenge of another session is not revealed, not replaced, and costs no SMS budget',
         arrange: () => {
             userRepositoryMock.findByPhone.mockResolvedValue(phoneOnlyUser())
             challengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(challenge())
@@ -758,6 +777,12 @@ const ROWS: readonly Row[] = [
         ok: { message: GENERIC_PHONE },
         after: () => {
             expect(challengeRepositoryMock.create).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
+            expect(issueMock).not.toHaveBeenCalled()
+            const policies = consumeAuthThrottleMock.mock.calls.map(
+                ([policy]) => (policy as { name?: string }).name,
+            )
+            expect(policies).not.toContain('sms_send_phone')
         },
     },
     {

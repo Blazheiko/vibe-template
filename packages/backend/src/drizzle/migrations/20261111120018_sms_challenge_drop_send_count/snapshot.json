@@ -1,0 +1,35 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "03c08b1f-d07e-43cd-9971-7de1e36dea5e",
+  "prevIds": [
+    "49eb9a20-ccbf-462f-a398-60e523132870"
+  ],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "sms_auth_challenges",
+        "send_count"
+      ],
+      "writes": [
+        "s|col|public.sms_auth_challenges.send_count",
+        "n|col|public.sms_auth_challenges.send_count",
+        "e|col|public.sms_auth_challenges.send_count"
+      ],
+      "reads": [
+        "n|tbl|public.sms_auth_challenges",
+        "n|sch|public"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"sms_auth_challenges\",\"send_count\"]"
+    }
+  ]
+}

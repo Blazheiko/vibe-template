@@ -56,7 +56,7 @@ export { CreateNoteInputSchema, type CreateNoteInput } from './note/create-note.
 
 ## Step 2. Response schemas in `shared`
 
-Controller responses live in `packages/shared/src/responses/` and are built as `type.or(<success>, CanonicalErrorResponseSchema)`, see [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) and [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). The `Note` type is the public contract that the transformer returns. Outside production the server checks every controller response against this schema, and a mismatch gives a `500` — see [Response validation](/en/backend/response-validation).
+Controller responses live in `packages/shared/src/responses/` and are built as `type.or(<success>, CanonicalErrorResponseSchema)`, see [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) and [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). The `Note` type is the public contract that the transformer returns. The server checks every response of the route against this schema in any environment: a mismatch gives a `500`, and an extra field is a `500` outside production and is stripped in production (the `log` mode) — see [Response validation](/en/backend/response-validation).
 
 ```ts
 // packages/shared/src/responses/note-controller.ts
@@ -340,6 +340,10 @@ Then add the group as the last element of the array, before `] satisfies routeLi
 [`defineRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) infers the payload type from `validator`, so the compiler checks `HttpContext<CreateNoteInput>` in the controller. It compares the controller's result with `ResponseSchema`: if `create` returns something other than `CreateNoteResponse`, `tsc` fails on the `handler:` line. Keep the `Promise<CreateNoteResponse>` annotation in the controller — without it, literals like `'success'` widen to `string` ([Handler response type](/en/backend/routing#handler-response-type)). The `session_web` + `csrf_guard` + `auth_guard` middleware set is the same as for the `avatar` group. So `POST` requires a session and a CSRF token (details in [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares)).
 
 If you add updating or deleting a note: for a partial update use `method: "patch"` with a `validator`, and for deletion use `method: "delete"` with `url: "/:id"` and no `validator`, because `DELETE` does not read a body ([Methods and request body](/en/backend/routing#methods-and-request-body)).
+
+::: tip Route contracts
+The tutorial declares routes with `defineRoute`. Some of the template's routes already have a contract in `shared/contracts` and are declared with `defineContractRoute`, with their schemas in the registry `app/routes/contract-schemas/` (see [Routes with a contract](/en/backend/routing#routes-with-a-contract-definecontractroute)); the rest move group by group. A new resource can get a contract right away: the frontend then calls the route through `callApi` with type checking.
+:::
 
 ## Step 9. Service test
 

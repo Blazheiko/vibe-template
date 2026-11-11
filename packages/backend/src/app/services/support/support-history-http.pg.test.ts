@@ -155,7 +155,6 @@ describe.skipIf(!hasPg || !hasRedis)('support chat history over HTTP', async () 
             const reply = await this.request('POST', '/auth/login', {
                 identifier: email,
                 password: PASSWORD,
-                token: '',
             })
             this.keep(reply)
             expect(reply.status).toBe(200)

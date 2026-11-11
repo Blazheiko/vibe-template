@@ -363,6 +363,25 @@ describe('avatarService', () => {
             ).toBeLessThan(deleteFromS3Mock.mock.invocationCallOrder[0] ?? 0)
         })
 
+        // feat-161 (review 2026-11-10): an account created through OAuth has the provider's
+        // picture URL in users.avatar. It is not an object of this storage: nothing to delete.
+        it.each(['https://lh3.googleusercontent.com/a/photo', 'http://cdn.example.com/a.png'])(
+            'deleteAvatar clears a provider picture (%s) without a storage request',
+            async (pictureUrl) => {
+                userRepositoryMock.findById.mockResolvedValue(owner)
+                userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue({
+                    user: { ...owner, avatar: null },
+                    previousAvatar: pictureUrl,
+                })
+
+                const { avatarService } = await loadAvatarService()
+                const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
+
+                expect(Result.isOk(result)).toBe(true)
+                expect(deleteFromS3Mock).not.toHaveBeenCalled()
+            },
+        )
+
         // feat-116: the object deleted is the one the row held when the key was swapped, not the
         // one read before the upload: a concurrent change in between has set another one.
         it('uploadAvatar deletes the key the swap replaced, not the one read before', async () => {

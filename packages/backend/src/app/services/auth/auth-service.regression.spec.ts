@@ -126,7 +126,6 @@ describe('authService legacy regressions', () => {
                 name: 'Jane',
                 email: 'User@Example.com',
                 password: 'secret123',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -187,7 +186,6 @@ describe('authService legacy regressions', () => {
                 name: 'Jane',
                 email: 'User@Example.com',
                 password: 'secret123',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -226,7 +224,6 @@ describe('authService legacy regressions', () => {
             {
                 identifier: 'User@Example.com',
                 password: 'secret123',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -282,7 +279,6 @@ describe('authService legacy regressions', () => {
                 {
                     identifier: 'user@example.com',
                     password: 'secret123',
-                    token: '',
                 },
                 authMock as any,
                 sessionMock as any,
@@ -411,7 +407,7 @@ describe('auth throttle fail-closed (email registration)', () => {
         // ADR 0004: the Redis failure propagates; nothing downstream runs.
         await expect(
             authService.registerByEmail(
-                { name: 'Jane', email: 'user@example.com', password: 'secret123', token: '' },
+                { name: 'Jane', email: 'user@example.com', password: 'secret123' },
                 authMock as any,
                 sessionMock as any,
                 loggerMock as any,
@@ -504,7 +500,7 @@ describe('email registration losing the race to the unique index', () => {
     const register = async () => {
         const { authService } = await loadAuthService()
         return await authService.registerByEmail(
-            { name: 'Jane', email: 'user@example.com', password: 'secret123', token: '' },
+            { name: 'Jane', email: 'user@example.com', password: 'secret123' },
             authMock as any,
             sessionMock as any,
             loggerMock as any,
@@ -538,7 +534,9 @@ describe('email registration losing the race to the unique index', () => {
 
             expect(Result.isOk(result) && result.value).toEqual(GENERIC)
             expect(sendVerificationEmailAfterRegistrationMock).not.toHaveBeenCalled()
-            expect(sessionMock.destroySession).not.toHaveBeenCalled()
+            // feat-157: strict mode ends the caller's session in every branch, the lost race
+            // included; the non-strict mode leaves it.
+            expect(sessionMock.destroySession).toHaveBeenCalledTimes(strict === 'true' ? 1 : 0)
             expect(authMock.login).not.toHaveBeenCalled()
         })
 

@@ -53,6 +53,7 @@ export const SupportKnowledgeBaseItemSchema = type({
     createdAt: 'string',
     updatedAt: 'string',
 })
+export type SupportKnowledgeBaseItem = typeof SupportKnowledgeBaseItemSchema.infer
 
 export const SupportKnowledgeBaseListResponseSchema = type.or(
     {
@@ -87,7 +88,13 @@ export type SupportKnowledgeBaseDeleteResponse =
     typeof SupportKnowledgeBaseDeleteResponseSchema.infer
 
 export const SupportKnowledgeBaseReindexResponseSchema = type.or(
-    { status: "'ok'", 'message?': 'string', 'indexed?': 'number' },
+    {
+        status: "'ok'",
+        'message?': 'string',
+        'indexed?': 'number',
+        /** Ids of the articles a reindex of everything could not embed. */
+        'failed?': 'string[]',
+    },
     CanonicalErrorResponseSchema,
 )
 export type SupportKnowledgeBaseReindexResponse =

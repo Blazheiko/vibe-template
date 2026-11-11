@@ -22,7 +22,39 @@ export const readWsAdminRecheckIntervalMs = (source: NodeJS.ProcessEnv = env): n
     return value
 }
 
+// feat-149: the budget of one connection, checked before a message costs a Redis command or a
+// PostgreSQL query (vendor/utils/rate-limit/ws-message-budget.ts). The defaults leave room for
+// the support chat and the admin channel; a heartbeat is counted apart.
+const MESSAGES_PER_MINUTE_DEFAULT = 120
+const MAX_CONCURRENT_HANDLERS_DEFAULT = 8
+
+export const readWsMessagesPerMinute = (source: NodeJS.ProcessEnv = env): number => {
+    const { value, error } = parseInteger(
+        'WS_MESSAGES_PER_MINUTE',
+        source['WS_MESSAGES_PER_MINUTE'],
+        MESSAGES_PER_MINUTE_DEFAULT,
+        { min: 1, max: 100_000 },
+    )
+    if (error !== null) throw new Error(error)
+    return value
+}
+
+export const readWsMaxConcurrentHandlers = (source: NodeJS.ProcessEnv = env): number => {
+    const { value, error } = parseInteger(
+        'WS_MAX_CONCURRENT_HANDLERS',
+        source['WS_MAX_CONCURRENT_HANDLERS'],
+        MAX_CONCURRENT_HANDLERS_DEFAULT,
+        { min: 1, max: 1000 },
+    )
+    if (error !== null) throw new Error(error)
+    return value
+}
+
 export default Object.freeze({
     /** Re-check period of admin WebSocket connections, in ms (WS_ADMIN_RECHECK_INTERVAL_MS, default 30000). */
     adminRecheckIntervalMs: readWsAdminRecheckIntervalMs(),
+    /** Messages one connection may send in a minute, heartbeats apart (WS_MESSAGES_PER_MINUTE, default 120). */
+    messagesPerMinute: readWsMessagesPerMinute(),
+    /** Handlers of one connection that may run at once (WS_MAX_CONCURRENT_HANDLERS, default 8). */
+    maxConcurrentHandlers: readWsMaxConcurrentHandlers(),
 })

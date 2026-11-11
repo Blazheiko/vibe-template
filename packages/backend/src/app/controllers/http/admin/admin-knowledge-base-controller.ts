@@ -18,16 +18,10 @@ import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { badRequest, conflict } from '#app/services/shared/errors.js'
 import { knowledgeBaseInitService } from '#app/services/support/knowledge-base-init-service.js'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
-function parseId(context: HttpContext<unknown, unknown>): bigint | null {
-    const idStr = context.httpData.params['id']
-    if (idStr === undefined) return null
-    try {
-        return BigInt(idStr)
-    } catch {
-        return null
-    }
-}
+const parseId = (context: HttpContext<unknown, unknown>): bigint | null =>
+    parseEntityId(context.httpData.params['id'])
 
 export default {
     async getAll(
@@ -129,7 +123,12 @@ export default {
         context: HttpContext<EmptyFormInput>,
     ): Promise<SupportKnowledgeBaseReindexResponse> {
         const result = await knowledgeBaseService.reindexAll()
-        return respond(context, result, (value) => ({ status: 'ok', indexed: value.indexed }))
+        return respond(context, result, (value) => ({
+            status: 'ok',
+            indexed: value.indexed,
+            // The articles of a batch the provider refused; the others were indexed.
+            ...(value.failed.length > 0 ? { failed: value.failed } : {}),
+        }))
     },
 
     async startInit(

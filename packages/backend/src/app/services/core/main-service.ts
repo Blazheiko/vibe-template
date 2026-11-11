@@ -1,4 +1,4 @@
-import type { HttpData, ResponseData, SessionInfo } from '#vendor/types/types.js'
+import type { ResponseData, SessionInfo } from '#vendor/types/types.js'
 import { userRepository } from '#app/repositories/index.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
@@ -31,52 +31,6 @@ interface InitUserPayload {
 export const mainService = {
     ping(): { status: 'ok' } {
         return { status: 'ok' }
-    },
-
-    testHeaders(httpData: HttpData): {
-        status: 'ok'
-        headers: { key: string; value: string }[]
-        params: unknown[]
-    } {
-        const headers: { key: string; value: string }[] = []
-        const params: unknown[] = Object.entries(httpData.params)
-
-        // Never echo headers that carry secrets back to the client. `cookie` is
-        // already excluded from httpData.headers, but `authorization` is kept there
-        // (handlers may read it) — so redact here.
-        const SENSITIVE_HEADERS = new Set(['cookie', 'authorization'])
-        httpData.headers.forEach((value, key) => {
-            if (SENSITIVE_HEADERS.has(key)) return
-            headers.push({ key, value })
-        })
-
-        return { status: 'ok', headers, params }
-    },
-
-    getSetCookies(httpData: HttpData): {
-        status: 'ok'
-        cookies: { key: string; value: string }[]
-    } {
-        const cookies: { key: string; value: string }[] = []
-        httpData.cookies.forEach((value, key) => {
-            cookies.push({ key, value })
-        })
-        return { status: 'ok', cookies }
-    },
-
-    testSession(
-        httpData: HttpData,
-        sessionInfo: SessionInfo | null,
-    ): {
-        status: 'ok'
-        cookies: { key: string; value: string }[]
-        sessionInfo: SessionInfo | null
-    } {
-        const cookies: { key: string; value: string }[] = []
-        httpData.cookies.forEach((value, key) => {
-            cookies.push({ key, value })
-        })
-        return { status: 'ok', cookies, sessionInfo }
     },
 
     async updateWsToken(sessionInfo: SessionInfo | null): Promise<

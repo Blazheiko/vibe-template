@@ -110,6 +110,48 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 It is best to read from the end: the last lines name the field that did not match. The union with `CanonicalErrorResponseSchema` in the middle of the message is expanded in full.
 
+## Routes with a contract: `defineContractRoute`
+
+Some routes are declared through a **contract** from `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): the `push-subscriptions` group, `POST /auth/login`, `GET /admin/users` the admin monitoring routes (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`) and the knowledge base ones (`/admin/knowledge-base/*`, except the screenshot upload). A contract is a method, a path under the API prefix and three types (body, query, response); at run time it is only `{ method, path }`, so the frontend imports it without schemas and without ArkType.
+
+```ts
+// packages/shared/src/contracts/push-subscriptions.ts
+export const pushSubscriptionContracts = {
+    create: contract<
+        typeof CreateSubscriptionInputSchema.inferIn,
+        undefined,
+        CreateSubscriptionResponse
+    >()('post', '/push-subscriptions'),
+}
+
+// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
+export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts, {
+    create: {
+        body: CreateSubscriptionInputSchema,
+        response: ResponseSchemas.CreateSubscriptionResponseSchema,
+    },
+    // …one entry per contract of the group
+})
+
+// packages/backend/src/app/routes/http-routes.ts
+defineContractRoute({
+    contract: pushSubscriptionContracts.create,
+    handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
+    middlewares: ['auth_guard'],
+})
+
+// packages/frontend/src/utils/api.ts
+callApi(pushSubscriptionContracts.create, { body })
+```
+
+- The schemas of the routes with a contract live in one **registry**, [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts), a file per contract group, keyed by `<method> <path>` of the contract. [`contractSchemas`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) requires an entry for every contract of the group and checks it against the contract's types: the body schema of another route, a missing or extra schema, another response schema, a missing contract is a `pnpm typecheck` error. The registry is in the backend, so the schemas never reach the frontend bundle.
+- `defineContractRoute` takes `method` and `url` from the contract and `validator`, `queryValidator` and `ResponseSchema` from the registry entry; the route table does not name them. The handler's `payload` and `query` types are the outputs of the entry's schemas. A contract without an entry is a compile error, and at start `Route contract … has no entry in the schema registry`.
+- Middlewares, limits, `allowedContentTypes`, `maxBodySize` and the route's group stay backend configuration. The route sits in the group whose prefix is the start of the contract's path; otherwise the server does not start.
+- On the frontend, [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) calls the contract's route on top of the existing transport (CSRF, the session gate). A wrong body, path parameter or query key is a compile error. Direct `baseApi.http` calls outside `utils/api.ts` are forbidden by an ESLint rule; inside `utils/api.ts` their number is held by the test [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
+- `pnpm check:bundle-graph` (part of `make check`) checks on the module graph of the production build that no schema and no ArkType got into the frontend bundle.
+
+The other routes are declared with `defineRoute` and move to contracts group by group. Multipart routes (file uploads) have no contracts.
+
 ## Methods and request body
 
 | Method                      | Body is read | `validator`                                                  |

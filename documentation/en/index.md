@@ -90,13 +90,15 @@ Start with the [Introduction](/en/guide/introduction), then the [Quick start](/e
 
 ## How the developer's role changes
 
-The template moves control from the code to the **contracts**. The agent writes the implementation and immediately gets feedback from the framework: whether the contracts are broken, whether the layers are in place, whether the tests pass. So you do not need to read every line of generated code. It is enough to control three things:
+The template moves control from the code to the **contracts**. The agent writes the implementation and immediately gets feedback from the framework: whether the contracts are broken, whether the layers are in place, whether the tests pass. So you do not need to read every line of generated code. The main attention goes to three contracts:
 
-1. **What comes into the backend.** The request schemas in `shared` define what data each route accepts.
-2. **What the backend returns.** A route's `ResponseSchema` validates every response and rejects extra fields.
+1. **What comes into the backend.** The request schemas in `shared` define what data a route accepts. A `validator` on a route is optional: a route without one accepts any body, so check that it is there wherever the route reads input.
+2. **What the backend returns.** A route with a `ResponseSchema` checks each of its responses (how exactly — [argument 5](#why-the-template-suits-agent-based-development) below).
 3. **The database schema.** The Drizzle schema and migrations define the data structure that everything else depends on.
 
-The correctness of business logic is verified by **tests**, not by reviewing every line: if a behavior is described by a test and the test is green, the implementation can change without your involvement.
+The three contracts do not describe **access to routes**: which middleware, guards and limits a group or a route has is in `http-routes.ts` and `ws-routes.ts`, and part of the rules is checked by `route-access.spec.ts`. These files need attention in review too.
+
+The correctness of business logic is verified by **tests**: if a behavior is described by a test and the test is green, review can focus on the tests and the contracts rather than on every line of the implementation. Human review stays required ([`AGENTS.md`](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md), Definition of Done), and a change to tests needs review just as a change to code does: a weakened test lets through what it was meant to catch.
 
 ## Why the template suits agent-based development
 
@@ -114,7 +116,7 @@ The correctness of business logic is verified by **tests**, not by reviewing eve
 8. **The working rules are written for the agent.** [`AGENTS.md`](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md) describes the session start order, the Definition of Done and the documentation rules. `feature_list.json` records who works on which feature, and `progress.md` and `session-handoff.md` on the feature branch carry the state between sessions. The agent starts a new session from files, not from the memory of the previous conversation. More in [Workflow](/en/guide/workflow).
 
 ::: warning What types do not guarantee
-The checks catch errors of form: wrong types, forgotten usage sites, broken layers. They do not verify that the business logic is correct. For that you need behavior tests. A test checks only the cases it describes, so those cases (not the implementation) are what deserve your attention.
+The checks catch errors of form: wrong types, forgotten usage sites, broken layers. They do not verify that the business logic is correct. For that you need behavior tests. A test checks only the cases it describes, so in review a human checks that the needed cases are described and the existing ones are not weakened.
 :::
 
 ## Why this template
@@ -162,7 +164,7 @@ src/views/admin/AdminUsersView.vue(165,37): error TS2339: Property 'name' does n
 Without a shared type, the backend would start returning the new field, and the table in the admin panel would silently show an empty column. The same schema describes the response of the `GET /api/admin/users` route in the [API Playground](/en/playground/), so the API documentation does not diverge from the type either.
 
 ::: warning Limitation
-Protection by types works only where both sides really import the type from `shared`. At runtime the route's `ResponseSchema` checks every response ([Response validation](/en/backend/response-validation)), but the frontend is not protected by this: if a component described its own type instead of importing it from `shared`, only the user will see the mismatch. New code is best written as in the example above: a schema in `shared`, a type via `.infer`, and this type in the service, the controller and the component.
+Protection by types works only where both sides really import the type from `shared`. Response validation against `ResponseSchema` ([argument 5](#why-the-template-suits-agent-based-development)) protects the server, but the frontend is not protected by this: if a component described its own type instead of importing it from `shared`, only the user will see the mismatch. New code is best written as in the example above: a schema in `shared`, a type via `.infer`, and this type in the service, the controller and the component.
 :::
 
 ### One service for HTTP and WebSocket

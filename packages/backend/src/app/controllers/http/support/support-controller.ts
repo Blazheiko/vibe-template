@@ -11,6 +11,7 @@ import type {
 } from 'shared/responses'
 import { Result } from 'better-result'
 import type { SupportChatHistoryQuery } from 'shared/schemas'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 export default {
     async getChatHistory(
@@ -49,10 +50,8 @@ export default {
             return mapControllerError(context, badRequest('Missing articleId'))
         }
 
-        let articleId: bigint
-        try {
-            articleId = BigInt(articleIdStr)
-        } catch {
+        const articleId = parseEntityId(articleIdStr)
+        if (articleId === null) {
             return mapControllerError(context, badRequest('Invalid articleId'))
         }
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SendHttp } from '@/utils/base-api'
 import {
+    clampCount,
     executeRequest,
     executeThread,
     failedRunOf,
@@ -231,7 +232,7 @@ describe('summaryOf', () => {
     ]
     const responseTimes = [10, 30, 20]
 
-    it('counts, averages over the wall-clock time and takes the extremes', () => {
+    it('counts, averages the durations of the requests and takes the extremes', () => {
         const summary = summaryOf({ spec, results, responseTimes, totalTime: 90, totalRequests: 3 })
         expect(summary.success).toBe(true)
         expect(summary.firstResult).toBe(results[0])
@@ -240,7 +241,7 @@ describe('summaryOf', () => {
             successfulRequests: 2,
             failedRequests: 1,
             totalTime: 90,
-            avgResponseTime: 30,
+            avgResponseTime: 20,
             minResponseTime: 10,
             maxResponseTime: 30,
         })
@@ -280,5 +281,91 @@ describe('summaryOf', () => {
         })
         expect(summary.threadResults).toEqual([])
         expect(summary.firstResult).toBeUndefined()
+    })
+})
+
+// feat-165 (review 2026-11-10): the average was the wall-clock time of the run divided by the
+// number of requests. Threads send at the same time, so 10 threads of 5 requests of ~200 ms
+// each take ~1 s in all and "averaged" 20 ms, ten times less than the fastest request.
+describe('summaryOf on parallel threads', () => {
+    it('has an average between the fastest and the slowest request', () => {
+        const responseTimes = Array.from({ length: 50 }, (_, i) => 190 + (i % 21))
+        const results = responseTimes.map((responseTime, i) =>
+            outcome({ requestNumber: (i % 5) + 1, responseTime }),
+        )
+
+        const statistics = summaryOf({
+            spec,
+            results,
+            responseTimes,
+            totalTime: 1_000,
+            totalRequests: 50,
+            threads: { threadCount: 10, requestsPerThread: 5, threadResults: [] },
+        }).statistics
+
+        expect(statistics?.minResponseTime).toBe(190)
+        expect(statistics?.maxResponseTime).toBe(210)
+        expect(statistics?.avgResponseTime).toBeGreaterThanOrEqual(190)
+        expect(statistics?.avgResponseTime).toBeLessThanOrEqual(210)
+    })
+
+    it('has no Infinity for a run on one thread that sent nothing', () => {
+        const statistics = summaryOf({
+            spec,
+            results: [],
+            responseTimes: [],
+            totalTime: 0,
+            totalRequests: 5,
+        }).statistics
+
+        expect(statistics).toMatchObject({
+            avgResponseTime: 0,
+            minResponseTime: 0,
+            maxResponseTime: 0,
+        })
+    })
+})
+
+describe('clampCount', () => {
+    it.each([
+        [5, 5],
+        [1000, 1000],
+        [100_000, 1000],
+        [0, 1],
+        [-3, 1],
+        [2.9, 2],
+        ['', 1],
+        ['7', 1],
+        [Number.NaN, 1],
+        [Number.POSITIVE_INFINITY, 1],
+        [undefined, 1],
+    ])('%j is %i', (value, expected) => {
+        expect(clampCount(value, 1000)).toBe(expected)
+    })
+})
+
+describe('executeThread asked to stop', () => {
+    it('sends no further request and returns what it has', async () => {
+        const progress: Progress = {
+            totalRequests: 10,
+            completedRequests: 0,
+            currentThread: 0,
+            totalThreads: 1,
+            isVisible: true,
+        }
+        const send = vi.fn(client({ data: {}, error: null, status: 200 })) as unknown as SendHttp &
+            ReturnType<typeof vi.fn>
+
+        const thread = await executeThread(
+            send,
+            spec,
+            0,
+            10,
+            progress,
+            () => progress.completedRequests >= 3,
+        )
+
+        expect(send).toHaveBeenCalledTimes(3)
+        expect(thread.results).toHaveLength(3)
     })
 })

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // Главный компонент приложения
 import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
+import { takePostSignInTarget } from '@/utils/post-sign-in-target'
 import { safeRedirectTarget } from '@/utils/safe-redirect'
 import { useI18n } from 'vue-i18n'
+import { usePushStore } from '@/stores/push'
 import { useStateStore } from '@/stores/state'
 import { useUserStore } from '@/stores/user'
 import { useRouter, useRoute } from 'vue-router'
@@ -11,7 +13,6 @@ import { setCurrentUserIdProvider } from '@/utils/base-api'
 import { useEventBus } from '@/utils/event-bus'
 import AppHeader from '@/components/AppHeader.vue'
 import UpdateNotification from '@/components/UpdateNotification.vue'
-import ToastContainer from '@/components/ToastContainer.vue'
 import AiDisclosureBanner from '@/components/AiDisclosureBanner.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
@@ -21,13 +22,14 @@ const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const pushStore = usePushStore()
 // CSRF recovery checks a refreshed session against the user the UI shows.
 setCurrentUserIdProvider(() => userStore.user?.id ?? null)
 const isLoading = ref(true)
 
 const stateStore = useStateStore()
 const eventBus = useEventBus()
-const { websocketClose, websocketOpen } = useWebSocketConnection()
+const { websocketOpen } = useWebSocketConnection()
 const { redirectToLogin } = useSessionLifecycle()
 
 const hasUpdate = ref(false)
@@ -48,11 +50,6 @@ const dismissUpdate = () => {
 const onReauthorize = async () => {
     console.error('onReauthorize')
     await redirectToLogin()
-}
-
-const destroyWebsocketBase = () => {
-    console.log('destroyWebsocketBase')
-    websocketClose()
 }
 
 // Пропсы для глобального хедера из meta маршрута
@@ -95,7 +92,6 @@ onMounted(async () => {
     isLoading.value = false
     eventBus.on('init_app', onInitAppEvent)
     eventBus.on('unauthorized', onUnauthorizedEvent)
-    eventBus.on('destroy_websocket_base', destroyWebsocketBase)
     eventBus.on('update_available', handleUpdateAvailable)
 })
 
@@ -105,7 +101,6 @@ onBeforeUnmount(() => {
     eventBus.off('init_app', onInitAppEvent)
     eventBus.off('unauthorized', onUnauthorizedEvent)
     eventBus.off('update_available', handleUpdateAvailable)
-    eventBus.off('destroy_websocket_base', destroyWebsocketBase)
 })
 
 // interface UserOnlineData {
@@ -168,7 +163,8 @@ const initializeApp = async () => {
 
             if (routePath === '/' || routePath === '/login' || routePath === '/register') {
                 // Only a path inside the application: the link that carries it is not trusted.
-                const intended = safeRedirectTarget(route.query.redirect)
+                // From the link, or kept in the tab across an OAuth round trip (feat-154).
+                const intended = safeRedirectTarget(route.query.redirect) ?? takePostSignInTarget()
                 if (intended !== null) {
                     void router.push(intended)
                 } else {
@@ -177,6 +173,9 @@ const initializeApp = async () => {
             }
 
             websocketOpen(data.wsUrl, data.wsToken)
+            // A subscription another account left in this browser is removed here, not only
+            // when the account page is opened (feat-148).
+            void pushStore.ensurePushSubscriptionsLoaded()
         }
     } catch (error) {
         console.error('Error in initialization:', error)
@@ -204,7 +203,6 @@ const initializeApp = async () => {
         <UpdateNotification v-if="hasUpdate" @refresh="refreshApp" @dismiss="dismissUpdate" />
 
         <!-- Универсальные toast-уведомления -->
-        <ToastContainer />
 
         <!-- AI disclosure banner (shown once per user until dismissed) -->
         <AiDisclosureBanner v-if="userStore.user" :user-id="userStore.user.id" />

@@ -110,6 +110,48 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 Читати варто з кінця: останні рядки називають поле, що не збіглося. Union з `CanonicalErrorResponseSchema` у середині повідомлення розгортається повністю.
 
+## Маршрути з контрактом: `defineContractRoute`
+
+Частину маршрутів оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): група `push-subscriptions`, `POST /auth/login`, `GET /admin/users` маршрути моніторингу адмінки (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`) і бази знань (`/admin/knowledge-base/*`, крім завантаження скриншота). Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }`, тож фронтенд імпортує його без схем і без ArkType.
+
+```ts
+// packages/shared/src/contracts/push-subscriptions.ts
+export const pushSubscriptionContracts = {
+    create: contract<
+        typeof CreateSubscriptionInputSchema.inferIn,
+        undefined,
+        CreateSubscriptionResponse
+    >()('post', '/push-subscriptions'),
+}
+
+// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
+export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts, {
+    create: {
+        body: CreateSubscriptionInputSchema,
+        response: ResponseSchemas.CreateSubscriptionResponseSchema,
+    },
+    // …one entry per contract of the group
+})
+
+// packages/backend/src/app/routes/http-routes.ts
+defineContractRoute({
+    contract: pushSubscriptionContracts.create,
+    handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
+    middlewares: ['auth_guard'],
+})
+
+// packages/frontend/src/utils/api.ts
+callApi(pushSubscriptionContracts.create, { body })
+```
+
+- Схеми маршрутів з контрактом живуть в одному **реєстрі** [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts), по файлу на групу контрактів, за ключем `<метод> <шлях>` контракту. [`contractSchemas`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) вимагає запис для кожного контракту групи й звіряє його з типами контракту: схема тіла іншого маршруту, пропущена чи зайва схема, інша схема відповіді, пропущений контракт — помилка `pnpm typecheck`. Реєстр лежить у бекенді, тож схеми не потрапляють у бандл фронтенду.
+- `defineContractRoute` бере `method` і `url` з контракту, а `validator`, `queryValidator` і `ResponseSchema` — із запису реєстру; у таблиці маршрутів вони не вказуються. Тип `payload` і `query` обробника — вихід схем запису. Контракт без запису — помилка компіляції, а на старті — `Route contract … has no entry in the schema registry`.
+- Middleware, ліміти, `allowedContentTypes`, `maxBodySize` і група маршруту лишаються конфігурацією бекенду. Маршрут стоїть у групі, префікс якої є початком шляху контракту; інакше сервер не стартує.
+- На фронтенді [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) викликає маршрут контракту поверх наявного транспорту (CSRF, шлюз сесії). Неправильне тіло, параметр шляху чи ключ query — помилка компіляції. Прямі виклики `baseApi.http` поза `utils/api.ts` заборонено правилом ESLint; у самому `utils/api.ts` їхню кількість тримає тест [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
+- `pnpm check:bundle-graph` (частина `make check`) перевіряє на графі модулів production-збірки, що у бандл фронтенду не потрапили схеми й ArkType.
+
+Решта маршрутів оголошена через `defineRoute` і переходить на контракти групами. Multipart-маршрути (завантаження файлів) контрактів не мають.
+
 ## Методи і тіло запиту
 
 | Метод                         | Тіло читається | `validator`                                                   |

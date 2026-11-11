@@ -14,6 +14,7 @@ import {
     writeHttpStatus,
 } from '#vendor/utils/network/http-response-handlers.js'
 import { matchesIfNoneMatch } from '#vendor/utils/network/if-none-match.js'
+import { checkStaticBuildPrefix } from './static-build-meta.js'
 
 const STATIC_PATH =
     appConfig.env === 'manual-test'
@@ -183,6 +184,14 @@ const cacheStaticSource = async (): Promise<Map<string, StaticEntry> | null> => 
             return null
         }
         await cacheDirectory(STATIC_PATH)
+        // feat-153: the SPA's API prefix is compiled in; say so when it is not the server's.
+        const build = await checkStaticBuildPrefix(STATIC_PATH, appConfig.pathPrefix)
+        if (build.kind === 'mismatch') {
+            logger.error(
+                { builtFor: build.builtFor, served: build.served },
+                'The SPA in the static directory was built for another API prefix: its API calls will not reach the API (a GET gets index.html, anything else 404). Rebuild it with VITE_API_PATH_PREFIX equal to API_PATH_PREFIX',
+            )
+        }
         const index = cache.get('/index.html')
         if (index !== undefined) cache.set('/', index)
         const onDisk = [...cache.values()].filter((entry) => entry.kind === 'disk').length

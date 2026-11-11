@@ -1,3 +1,4 @@
+import { createECDH } from 'node:crypto'
 import process from 'node:process'
 import { defineConfig, devices } from '@playwright/test'
 
@@ -13,6 +14,11 @@ import { DB_NAME, ORIGIN, PORT, SMTP_PORT, USER_1, USER_2 } from './e2e-live/fix
 
 // A prefix per run: the throttle counters of an earlier run cannot leak into this one.
 const REDIS_PREFIX = `e2e-live-${String(Date.now())}:`
+
+// A VAPID key pair per run (push-account-switch.spec.ts): the SPA asks the backend for the
+// public key before it subscribes. Nothing is sent with it: the specs replace PushManager.
+const vapid = createECDH('prime256v1')
+vapid.generateKeys()
 
 export default defineConfig({
     testDir: './e2e-live',
@@ -60,6 +66,9 @@ export default defineConfig({
             SMTP_PASSWORD: '',
             SMTP_FROM_EMAIL: 'noreply@example.test',
             SMTP_FROM_NAME: 'Live E2E',
+            VAPID_PUBLIC_KEY: vapid.getPublicKey('base64url'),
+            VAPID_PRIVATE_KEY: vapid.getPrivateKey('base64url'),
+            VAPID_SUBJECT: 'mailto:live-e2e@example.test',
             // Every browser of a scenario is its own device: it presents its own address in
             // X-Forwarded-For (e2e-live/support.ts), which the backend trusts from localhost only.
             // Without it all of them are 127.0.0.1 and the 10-a-minute limit of the auth routes

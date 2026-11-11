@@ -185,11 +185,14 @@ const pl: typeof en = {
         loadEarlier: 'Pokaż wcześniejsze wiadomości',
         loadingEarlier: 'Ładowanie...',
         inputPlaceholder: 'Wpisz wiadomość...',
+        send: 'Wyślij wiadomość',
+        connectionLost: 'Połączenie zostało utracone. Rozmowa odświeży się po jego przywróceniu.',
     },
 
     account: {
         avatar: {
             delete: 'Usuń awatar',
+            closeEditor: 'Zamknij edytor awatara',
             errorFileSize: 'Plik musi być mniejszy niż 10 MB',
             errorFileType: 'Wybierz plik graficzny',
         },

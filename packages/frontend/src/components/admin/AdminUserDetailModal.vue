@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { ref, useId } from 'vue'
 import type { AdminOnlineUserDetail } from 'shared/responses'
+import { useModalDialog } from '@/composables/useModalDialog'
 
-defineProps<{
+const props = defineProps<{
     open: boolean
     loading: boolean
     error: string | null
@@ -13,6 +15,10 @@ const emit = defineEmits<(e: 'close') => void>()
 function closeModal() {
     emit('close')
 }
+
+const panel = ref<HTMLElement | null>(null)
+const titleId = useId()
+useModalDialog({ panel, isOpen: () => props.open, close: closeModal })
 
 function formatDate(value: string | null): string {
     if (value === null) return '—'
@@ -33,10 +39,17 @@ function formatAppType(appType: 'web' | 'pwa' | null): string {
 
 <template>
     <div v-if="open" class="online-modal-overlay" @click.self="closeModal">
-        <div class="online-modal">
+        <div
+            ref="panel"
+            class="online-modal"
+            role="dialog"
+            aria-modal="true"
+            :aria-labelledby="titleId"
+            tabindex="-1"
+        >
             <div class="online-modal__header">
                 <div>
-                    <h2 class="online-modal__title">User Details</h2>
+                    <h2 :id="titleId" class="online-modal__title">User Details</h2>
                     <div v-if="user !== null" class="online-modal__status">
                         <span
                             :class="[
@@ -48,7 +61,15 @@ function formatAppType(appType: 'web' | 'pwa' | null): string {
                         </span>
                     </div>
                 </div>
-                <button class="online-modal__close" type="button" @click="closeModal">✕</button>
+                <button
+                    class="online-modal__close"
+                    type="button"
+                    aria-label="Close"
+                    data-modal-close
+                    @click="closeModal"
+                >
+                    ✕
+                </button>
             </div>
 
             <div class="online-modal__body">
@@ -129,6 +150,10 @@ function formatAppType(appType: 'web' | 'pwa' | null): string {
     border: 1px solid var(--border-color);
     border-radius: 14px;
     box-shadow: 0 18px 60px rgba(0, 0, 0, 0.2);
+}
+
+.online-modal:focus {
+    outline: none;
 }
 
 .online-modal__header {

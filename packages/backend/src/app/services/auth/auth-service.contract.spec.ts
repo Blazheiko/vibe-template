@@ -215,7 +215,7 @@ function arrangeLinkStart(): void {
 }
 const completeReg = (s: Service) =>
     s.completePhoneRegistration(
-        { challengeId: 'ch-1', name: 'Jane', password: 'secret-pass' } as never,
+        { challengeId: 'ch-1', name: 'Jane', password: 'secret-pass' },
         authMock as never,
         sessionMock as never,
         loggerMock as never,
