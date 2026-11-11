@@ -431,21 +431,23 @@
 
 ### V13 Backend Core Lows · PG
 
-- [ ] **V13.S** Шаблон S.
-- [ ] **V13.1** `vendor/utils/network/ip-address.ts:154-157`: адреса без префікса порівнюється в
+Виконано 2026-11-11: `feat-159`, PR #505. Усі чотири знахідки відтворено тестами.
+
+- [x] **V13.S** Шаблон S.
+- [x] **V13.1** `vendor/utils/network/ip-address.ts:154-157`: адреса без префікса порівнюється в
       числовій формі. Тест RED: `isIpInCidr('0000:…:0001', '::1')`.
       **AC:** тест зелений; `get-ip.spec.ts` доповнено випадком проксі з IPv6 без префікса.
-- [ ] **V13.2** `vendor/start/server.ts:672,683`: 404 з `{ origin }`. Тест RED з увімкненим CORS.
+- [x] **V13.2** `vendor/start/server.ts:672,683`: 404 з `{ origin }`. Тест RED з увімкненим CORS.
       **AC:** відповідь 404 містить `Access-Control-Allow-Origin` для дозволеного origin.
-- [ ] **V13.3** `config/cors.ts:61`: `Access-Control-Expose-Headers` через кому.
+- [x] **V13.3** `config/cors.ts:61`: `Access-Control-Expose-Headers` через кому.
       **AC:** тест значення заголовка.
-- [ ] **V13.4** `database/readiness-probe.ts:77`: паралельні запити ділять один проміс перевірки.
+- [x] **V13.4** `database/readiness-probe.ts:77`: паралельні запити ділять один проміс перевірки.
       **AC:** PG-тест: два одночасні `/ready` при здоровій базі → обидва 200, одне з'єднання;
       тест зависання (feat-113) зелений.
-- [ ] **V13.D** Шаблон D: `TRUSTED_PROXY_CIDRS` (запис адреси без префікса) у сторінці
+- [x] **V13.D** Шаблон D: `TRUSTED_PROXY_CIDRS` (запис адреси без префікса) у сторінці
       конфігурації й `.env.example`; CORS (404 з заголовками, `Expose-Headers`); поведінка `/ready`
       при паралельних запитах.
-- [ ] **V13.E** Шаблон E (PG). **V13.X** Шаблон X.
+- [x] **V13.E** Шаблон E (PG). **V13.X** Шаблон X.
 
 ### V14 Support and Auth Lows · PG · → Д3, Д5
 
