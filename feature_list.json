@@ -1551,8 +1551,8 @@
             "owner": "Blazheiko",
             "branch": "feat/push-subscription-input-bounds",
             "dependencies": ["feat-147"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #495 (merge commit fb7637b). RED before the fix, at the HTTP level with the real route table and PostgreSQL: 14 new tests of push-subscription-ownership.pg.test.ts failed (500 for over-long varchar fields, 200 for over-long text fields and for a client ipAddress). After the fix: that file 37 passed; backend test:pg 31 files / 286 tests, none skipped; make check (backend 2612, frontend 452, shared 27, playground 62); frontend test:e2e:live 12 passed; docs:build && docs:verify. ipAddress is no longer a request field; the server stores the address it saw. Not verified: a subscription from a real browser's push service."
         },
         {
             "id": "feat-157",
@@ -1561,7 +1561,7 @@
             "owner": "Blazheiko",
             "branch": "feat/strict-registration-session-oracle",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
