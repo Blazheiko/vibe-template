@@ -1691,7 +1691,7 @@
             "owner": "Blazheiko",
             "branch": "feat/route-contracts-lock",
             "dependencies": ["feat-177"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -1761,8 +1761,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-non-json",
             "dependencies": ["feat-176"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #534 (merge commit 866603a, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Contracts got a kind: multipart (a { fields, files } body sent as FormData through baseApi.upload with the same CSRF token, session gate and one repeat; the server checks the fields schema and accepts only multipart) and navigation (a GET the browser opens; callApi refuses it, contractUrl builds its URL). Six routes moved: avatar upload and delete, the knowledge base screenshot upload, the support screenshot, the OAuth redirect and callback. Every route of http-routes.ts is declared by contract; utils/api.ts calls the transport only through callApi (both counters 0). Locally: make check (backend 2659, frontend 504, shared 30, playground 111; bundle graph no schema); backend test:pg 295; frontend test:e2e 92 on the third full run (the first two lost tests while another project kept the load average at 60-80), test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         }
     ]
 }
