@@ -484,32 +484,18 @@ export const adminUsersApi = {
 }
 
 export const adminOnlineUsersApi = {
-    list: async (): Promise<ApiResponse<AdminOnlineUserListResponse>> => {
-        return baseApi.http<AdminOnlineUserListResponse>('GET', apiPath('admin/users-online'))
-    },
+    list: (): Promise<ApiResponse<AdminOnlineUserListResponse>> =>
+        callApi(adminContracts.onlineUsers),
 
-    getById: async (id: string): Promise<ApiResponse<AdminOnlineUserDetailResponse>> => {
-        return baseApi.http<AdminOnlineUserDetailResponse>(
-            'GET',
-            apiPath(`admin/users-online/${encodeURIComponent(id)}`),
-        )
-    },
+    getById: (id: string): Promise<ApiResponse<AdminOnlineUserDetailResponse>> =>
+        callApi(adminContracts.onlineUser, { params: { id } }),
 }
 
 export const adminOnlineHistoryApi = {
-    list: async (
+    list: (
         params?: AdminOnlineHistoryListQueryInput,
-    ): Promise<ApiResponse<AdminOnlineHistoryListResponse>> => {
-        const qs = adminQueryString({
-            limit: params?.limit,
-            cursor: params?.cursor,
-            userId: params?.userId?.trim(),
-            dateFrom: params?.dateFrom,
-            dateTo: params?.dateTo,
-        })
-        return baseApi.http<AdminOnlineHistoryListResponse>(
-            'GET',
-            apiPath(`admin/history-online${qs}`),
-        )
-    },
+    ): Promise<ApiResponse<AdminOnlineHistoryListResponse>> =>
+        callApi(adminContracts.onlineHistory, {
+            query: { ...params, userId: params?.userId?.trim() },
+        }),
 }

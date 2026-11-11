@@ -15,8 +15,6 @@ import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
     AdminKnowledgeBaseListQuerySchema,
-    AdminOnlineHistoryListQuerySchema,
-    LlmTextUsageQuerySchema,
     SupportChatHistoryQuerySchema,
     OAuthCallbackQuerySchema,
     OAuthLinkConfirmInputSchema,
@@ -561,19 +559,14 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/usage/text',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.textUsage,
                 handler: LlmUsageController.getTextUsage.bind(LlmUsageController),
-                queryValidator: LlmTextUsageQuerySchema,
-                ResponseSchema: ResponseSchemas.GetTextUsageResponseSchema,
                 description: 'Get retained Support AI text token usage (admin)',
             }),
-            defineRoute({
-                url: '/usage/stats',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.usageStats,
                 handler: LlmUsageController.getStats.bind(LlmUsageController),
-                ResponseSchema: ResponseSchemas.GetUsageStatsResponseSchema,
                 description: 'Get retained Support AI usage aggregate stats (admin)',
             }),
         ],
@@ -583,26 +576,19 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/users-online',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.onlineUsers,
                 handler: AdminOnlineUserController.list.bind(AdminOnlineUserController),
-                ResponseSchema: ResponseSchemas.AdminOnlineUserListResponseSchema,
                 description: 'List online users (admin)',
             }),
-            defineRoute({
-                url: '/history-online',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.onlineHistory,
                 handler: AdminOnlineHistoryController.list.bind(AdminOnlineHistoryController),
-                queryValidator: AdminOnlineHistoryListQuerySchema,
-                ResponseSchema: ResponseSchemas.AdminOnlineHistoryListResponseSchema,
                 description: 'List online history records (admin)',
             }),
-            defineRoute({
-                url: '/users-online/:id',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.onlineUser,
                 handler: AdminOnlineUserController.getById.bind(AdminOnlineUserController),
-                ResponseSchema: ResponseSchemas.AdminOnlineUserDetailResponseSchema,
                 description: 'Get online user detail (admin)',
             }),
             defineContractRoute({

@@ -10,6 +10,10 @@ vi.mock('../event-bus', () => ({ useEventBus: () => ({ emit: vi.fn() }) }))
 const http = vi.hoisted(() => vi.fn())
 vi.mock('../base-api', () => ({ default: { http } }))
 
+// Through the typed client (ADR 0005): the method and the URL are the first two arguments of the
+// transport; an empty body and no options follow.
+const lastRequest = (): unknown[] => (http.mock.lastCall ?? []).slice(0, 2)
+
 describe('adminQueryString', () => {
     it('is empty when nothing is left', () => {
         expect(adminQueryString({})).toBe('')
@@ -36,9 +40,6 @@ describe('the admin list requests', () => {
     it('users: limit, trimmed user id, dates; a blank id or date is not sent', async () => {
         const { adminUsersApi } = await import('../api')
         await adminUsersApi.list({ limit: 20, userId: '  42 ', dateFrom: '2026-01-01', dateTo: '' })
-        // Through the typed client (ADR 0005): the method and the URL are the first two
-        // arguments of the transport; an empty body and no options follow.
-        const lastRequest = (): unknown[] => (http.mock.lastCall ?? []).slice(0, 2)
         expect(lastRequest()).toEqual([
             'GET',
             '/api/admin/users?limit=20&userId=42&dateFrom=2026-01-01',
@@ -58,12 +59,12 @@ describe('the admin list requests', () => {
             userId: '7',
             dateTo: '2026-02-01',
         })
-        expect(http).toHaveBeenLastCalledWith(
+        expect(lastRequest()).toEqual([
             'GET',
             '/api/admin/history-online?limit=50&cursor=812&userId=7&dateTo=2026-02-01',
-        )
+        ])
         await adminOnlineHistoryApi.list({ cursor: '' })
-        expect(http).toHaveBeenLastCalledWith('GET', '/api/admin/history-online')
+        expect(lastRequest()).toEqual(['GET', '/api/admin/history-online'])
     })
 
     it('knowledge base: category, page, limit', async () => {
@@ -104,6 +105,6 @@ describe('the admin list requests', () => {
     it('an online user is fetched by its encoded id', async () => {
         const { adminOnlineUsersApi } = await import('../api')
         await adminOnlineUsersApi.getById('a/b?c')
-        expect(http).toHaveBeenLastCalledWith('GET', '/api/admin/users-online/a%2Fb%3Fc')
+        expect(lastRequest()).toEqual(['GET', '/api/admin/users-online/a%2Fb%3Fc'])
     })
 })

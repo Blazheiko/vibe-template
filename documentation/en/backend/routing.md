@@ -112,7 +112,7 @@ It is best to read from the end: the last lines name the field that did not matc
 
 ## Routes with a contract: `defineContractRoute`
 
-Some routes are declared through a **contract** from `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): the `push-subscriptions` group, `POST /auth/login`, `GET /admin/users`. A contract is a method, a path under the API prefix and three types (body, query, response); at run time it is only `{ method, path }`, so the frontend imports it without schemas and without ArkType.
+Some routes are declared through a **contract** from `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): the `push-subscriptions` group, `POST /auth/login`, `GET /admin/users` and the admin monitoring routes (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`). A contract is a method, a path under the API prefix and three types (body, query, response); at run time it is only `{ method, path }`, so the frontend imports it without schemas and without ArkType.
 
 ```ts
 // packages/shared/src/contracts/push-subscriptions.ts
