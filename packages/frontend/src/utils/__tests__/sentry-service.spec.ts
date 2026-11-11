@@ -234,6 +234,31 @@ describe('sentry service', () => {
         })
     })
 
+    // feat-162 (review 2026-11-10): the message of every breadcrumb went through the URL
+    // mask, which parses its input as a URL: a plain sentence came out as a link.
+    it('masks the URLs of a breadcrumb message and leaves plain text alone', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const initOptions = sentryMocks.init.mock.calls[0]?.[0]
+        const beforeBreadcrumb = initOptions.beforeBreadcrumb as (
+            breadcrumb: Record<string, unknown> | null,
+        ) => Record<string, unknown> | null
+        const messageOf = (message: string): unknown =>
+            beforeBreadcrumb({ category: 'console', message })?.message
+
+        expect(messageOf('WebSocket connected')).toBe('WebSocket connected')
+        expect(messageOf('Sign-in failed: wrong password?')).toBe('Sign-in failed: wrong password?')
+        expect(messageOf('GET https://example.com/reset?token=secret failed')).toBe(
+            'GET https://example.com/reset?token=%5BFiltered%5D failed',
+        )
+        expect(messageOf('/reset-password?token=secret')).toContain('token=%5BFiltered%5D')
+        expect(messageOf('/reset-password?token=secret')).not.toContain('secret')
+    })
+
     // feat-075 (I): request data and breadcrumb data share one walker; they differ only in what
     // happens to a sensitive key (dropped from the request, kept as "[Filtered]" in a breadcrumb).
     it('treats a sensitive key by where it is: dropped in request data, filtered in breadcrumbs', async () => {

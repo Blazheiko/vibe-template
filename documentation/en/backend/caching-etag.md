@@ -67,7 +67,7 @@ CORS: if `ENABLED_CORS=true`, `setCorsHeader` writes `Vary: Origin` and `Access-
 
 ## Frontend: Service Worker
 
-[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (built via [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) precaches the `filesToCache` list on `install`: `/`, icons, splash, audio. For `/assets/`, `/icons/`, `/audio/`, `.css`, etc. (`isStaticAsset`) it uses a cache-first strategy. The cache name is `BUILD_TIMESTAMP`. Old caches are deleted on `activate`.
+[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (built via [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) precaches the `PRECACHE_FILES` list from [`sw-precache.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/sw-precache.ts) on `install`: `/`, icons, splash, the manifest screenshots. Every path of the list must exist in `public/`; a unit test checks it. The HTML shell (navigations, the network-first strategy) is stored under the path without the query string: a one-time token from `/reset-password?token=…` does not stay in Cache Storage, and an offline navigation gets the copy stored for the same path. For `/assets/`, `/icons/`, `/audio/`, `.css`, etc. (`isStaticAsset`) it uses a cache-first strategy. The cache name is `BUILD_TIMESTAMP`. Old caches are deleted on `activate`.
 
 ## Checking with curl
 
