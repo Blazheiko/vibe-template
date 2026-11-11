@@ -1,13 +1,16 @@
 import type { OAuthLinkConfirmInputSchema } from '../schemas/auth/oauth-link-confirm.js'
+import type { OAuthCallbackQueryInput, OAuthRedirectQueryInput } from '../schemas/query/simple.js'
 import type {
     EmailLinkResendResponse,
+    OAuthCallbackResponse,
     OAuthLinkConfirmResponse,
     OAuthProvidersResponse,
+    OAuthRedirectResponse,
 } from '../responses/oauth-controller.js'
-import { contract } from './core.js'
+import { contract, navigationContract } from './core.js'
 
-// The JSON routes of OAuth. The provider redirect and the callback answer with a redirect, not
-// JSON, and get their contracts with the other non-JSON routes (feat-177).
+// OAuth: three JSON routes and two the browser navigates through (a 302 to the provider, and the
+// provider's 302 back to the callback, which ends with a 302 to the frontend).
 export const oauthContracts = {
     providers: contract<undefined, undefined, OAuthProvidersResponse>()(
         'get',
@@ -24,5 +27,12 @@ export const oauthContracts = {
     resendEmailLink: contract<undefined, undefined, EmailLinkResendResponse>()(
         'post',
         '/auth/oauth/email/resend',
+    ),
+    redirect: navigationContract<OAuthRedirectQueryInput, OAuthRedirectResponse>()(
+        '/auth/oauth/:provider/redirect',
+    ),
+    // The provider calls it; the query is the provider's (`code`, `state`, and more).
+    callback: navigationContract<OAuthCallbackQueryInput, OAuthCallbackResponse>()(
+        '/auth/oauth/:provider/callback',
     ),
 } as const

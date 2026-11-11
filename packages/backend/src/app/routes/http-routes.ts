@@ -10,14 +10,12 @@ import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
 import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
-import { OAuthCallbackQuerySchema, OAuthRedirectQuerySchema } from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
 import {
     adminContracts,
     authContracts,
+    avatarContracts,
     knowledgeBaseContracts,
     mainContracts,
     oauthContracts,
@@ -26,7 +24,6 @@ import {
     supportContracts,
 } from 'shared/contracts'
 
-import { EmptyFormInputSchema } from 'shared/schemas'
 import {
     AVATAR_MAX_FILE_BYTES,
     KB_SCREENSHOT_MAX_FILE_BYTES,
@@ -156,21 +153,15 @@ export default [
                 handler: OAuthController.providers.bind(OAuthController),
                 description: 'OAuth providers configured on the backend',
             }),
-            defineRoute({
-                url: '/:provider/redirect',
-                method: 'get',
+            defineContractRoute({
+                contract: oauthContracts.redirect,
                 handler: OAuthController.redirect.bind(OAuthController),
-                queryValidator: OAuthRedirectQuerySchema,
-                ResponseSchema: ResponseSchemas.OAuthRedirectResponseSchema,
                 description: 'Redirect to OAuth provider',
             }),
-            defineRoute({
-                url: '/:provider/callback',
-                method: 'get',
+            defineContractRoute({
+                contract: oauthContracts.callback,
                 handler: OAuthController.callback.bind(OAuthController),
-                queryValidator: OAuthCallbackQuerySchema,
                 queryAllowExtra: true,
-                ResponseSchema: ResponseSchemas.OAuthCallbackResponseSchema,
                 description: 'OAuth provider callback',
             }),
             defineContractRoute({
@@ -289,21 +280,15 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/upload',
-                method: 'post',
+            defineContractRoute({
+                contract: avatarContracts.upload,
                 handler: AvatarController.uploadAvatar.bind(AvatarController),
-                validator: EmptyFormInputSchema,
-                allowedContentTypes: ['multipart'],
                 maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
-                ResponseSchema: ResponseSchemas.UploadAvatarResponseSchema,
                 description: 'Upload user avatar',
             }),
-            defineRoute({
-                url: '/',
-                method: 'delete',
+            defineContractRoute({
+                contract: avatarContracts.remove,
                 handler: AvatarController.deleteAvatar.bind(AvatarController),
-                ResponseSchema: ResponseSchemas.DeleteAvatarResponseSchema,
                 description: 'Delete user avatar',
             }),
         ],
@@ -325,11 +310,9 @@ export default [
                 handler: SupportController.deleteChatHistory.bind(SupportController),
                 description: 'Delete all support chat history',
             }),
-            defineRoute({
-                url: '/screenshot/:articleId',
-                method: 'get',
+            defineContractRoute({
+                contract: supportContracts.screenshot,
                 handler: SupportController.getScreenshot.bind(SupportController),
-                ResponseSchema: ResponseSchemas.SupportScreenshotResponseSchema,
                 description: 'Get screenshot for a knowledge base article',
             }),
         ],
@@ -364,16 +347,12 @@ export default [
                 handler: AdminKnowledgeBaseController.delete.bind(AdminKnowledgeBaseController),
                 description: 'Delete a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id/screenshot',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.uploadScreenshot,
                 handler: AdminKnowledgeBaseController.uploadScreenshot.bind(
                     AdminKnowledgeBaseController,
                 ),
-                validator: EmptyFormInputSchema,
-                allowedContentTypes: ['multipart'],
                 maxBodySize: multipartBodyLimit(KB_SCREENSHOT_MAX_FILE_BYTES),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Upload screenshot for a knowledge base article',
             }),
             defineContractRoute({

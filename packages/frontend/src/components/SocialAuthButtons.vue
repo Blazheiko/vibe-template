@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { OAuthProvider } from 'shared/responses'
 import { useOAuthProviders } from '@/composables/useOAuthProviders'
-import { apiPath } from '@/utils/api-path'
+import { oauthContracts } from 'shared/contracts'
+import { contractUrl } from '@/utils/api-client'
 import { rememberPostSignInTarget } from '@/utils/post-sign-in-target'
 
 // Buttons only for providers configured on the backend; nothing at all when none are.
@@ -28,7 +29,7 @@ const buttons = computed(() =>
     providers.value.map((provider) => ({
         provider,
         label: LABELS[provider],
-        url: apiPath(`auth/oauth/${provider}/redirect`),
+        url: contractUrl(oauthContracts.redirect, { params: { provider } }),
     })),
 )
 
