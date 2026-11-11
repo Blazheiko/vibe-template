@@ -89,7 +89,7 @@ export const authApi = {
 
     /** feat-097: send again the link that confirms the address of an account without one. */
     resendOAuthEmailLink: (): Promise<ApiResponse<EmailLinkResendResponse>> =>
-        callApi(oauthContracts.resendEmailLink),
+        callApi(oauthContracts.resendEmailLink, { body: {} }),
 
     login: (body: LoginInput): Promise<ApiResponse<LoginResponse>> =>
         callApi(authContracts.login, { body }, { csrfRecovery: 'public' }),

@@ -22,17 +22,30 @@ Sec-Fetch-Site: same-site
 {"isActive": false, "timezone": "Europe/Kyiv"}
 ```
 
-Маршрут оголошено в [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts):
+Маршрут складається з контракту в `shared`, запису в реєстрі схем і рядка в [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) (детальніше — [Маршрутизація](/backend/routing#http-маршрути-defineroute)):
 
 ```ts
+// packages/shared/src/contracts/push-subscriptions.ts // контракт: метод і шлях
+update: contract<
+    typeof UpdateSubscriptionInputSchema.inferIn,
+    undefined,
+    UpdateSubscriptionResponse
+>()('put', '/push-subscriptions/:subscriptionId'),
+
+// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
+update: {
+    body: UpdateSubscriptionInputSchema, // схема тіла
+    response: ResponseSchemas.UpdateSubscriptionResponseSchema, // схема відповіді
+},
+
+// packages/backend/src/app/routes/http-routes.ts
 {
     group: [
         defineRoute({
-            url: '/:subscriptionId',
-            method: 'put',
-            handler: PushSubscriptionController.updateSubscription.bind(PushSubscriptionController),
-            validator: UpdateSubscriptionInputSchema, // схема тіла
-            ResponseSchema: ResponseSchemas.UpdateSubscriptionResponseSchema,
+            contract: pushSubscriptionContracts.update,
+            handler: PushSubscriptionController.updateSubscription.bind(
+                PushSubscriptionController,
+            ),
             middlewares: ['auth_guard'],
         }),
     ],
@@ -40,6 +53,8 @@ Sec-Fetch-Site: same-site
     prefix: 'push-subscriptions',
 }
 ```
+
+`defineRoute` бере метод і шлях з контракту, а схему тіла й відповіді — із запису реєстру й кладе їх у поля маршруту `validator` і `ResponseSchema`; далі на сторінці йдеться саме про ці поля.
 
 ## З чого складається запит
 

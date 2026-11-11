@@ -8,7 +8,7 @@ Middleware are set as a list of names on a route group (or on a single route) an
 
 ```ts
 {
-    group: [ /* defineRoute(...) */ ],
+    group: [ /* defineRoute({ contract: ..., handler: ... }) */ ],
     prefix: 'notes',
     middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
 }

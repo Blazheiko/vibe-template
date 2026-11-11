@@ -7,7 +7,7 @@
 | **Веб-маршрут**            | SPA з `packages/frontend` у браузері користувача           | cookie сесії, яку браузер надсилає сам   | `session_web`, `csrf_guard`                      |
 | **Маршрут публічного API** | інший сервер, мобільний застосунок, скрипт, чужий фронтенд | заголовок запиту, який клієнт додає явно | немає (`session_web` і `csrf_guard` не потрібні) |
 
-Обидва види оголошуються однаково, через `defineRoute` у [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts), і мають однакову валідацію, ліміти та заголовки безпеки. Відрізняються лише групою, у якій лежить маршрут. Ця сторінка пояснює, чому так, як обрати правильну групу і що ламається, якщо помилитися.
+Обидва види оголошуються однаково, через `defineRoute({ contract, ... })` у [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) з контрактом у `shared/contracts` і схемами в реєстрі `app/routes/contract-schemas/` ([Маршрутизація](/backend/routing#http-маршрути-defineroute)), і мають однакову валідацію, ліміти та заголовки безпеки. Відрізняються лише групою, у якій лежить маршрут. Ця сторінка пояснює, чому так, як обрати правильну групу і що ламається, якщо помилитися.
 
 ::: tip Правило в одному реченні
 Маршрут, який викликає наш фронтенд, кладіть у групу з `middlewares: ['session_web', 'csrf_guard', ...]`. Маршрут для зовнішніх клієнтів кладіть в окрему групу без цих двох middleware і не читайте в ньому cookie.
@@ -53,18 +53,13 @@ CSRF-атака можлива лише тоді, коли браузер **са
 {
     group: [
         defineRoute({
-            url: '/',
-            method: 'get',
+            contract: noteContracts.list, // GET /notes
             handler: NotesController.list.bind(NotesController),
-            ResponseSchema: ResponseSchemas.NoteListResponseSchema,
             description: 'List notes of the current user',
         }),
         defineRoute({
-            url: '/',
-            method: 'post',
+            contract: noteContracts.create, // POST /notes
             handler: NotesController.create.bind(NotesController),
-            validator: NoteCreateInputSchema,
-            ResponseSchema: ResponseSchemas.NoteResponseSchema,
             description: 'Create a note',
         }),
     ],
@@ -74,7 +69,7 @@ CSRF-атака можлива лише тоді, коли браузер **са
 },
 ```
 
-Так влаштовані всі групи в `http-routes.ts`: `auth`, `auth/oauth`, `main`, `push-subscriptions`, `avatar`, `support`, `prompts` і `admin`. Порядок важливий: `csrf_guard` і `auth_guard` читають сесію, яку піднімає `session_web`.
+`noteContracts` тут — приклад (так їх оголошує [туторіал](/backend/adding-a-feature#крок-8-контракт-і-реєстрація-маршрутів)): контракти лежать у `shared/contracts`, а схеми тіла й відповіді — у записі реєстру, тому в маршруті їх немає. Так влаштовані всі групи в `http-routes.ts`: `auth`, `auth/oauth`, `main`, `push-subscriptions`, `avatar`, `support`, `prompts` і `admin`. Порядок важливий: `csrf_guard` і `auth_guard` читають сесію, яку піднімає `session_web`.
 
 ### Що потрібно від клієнта
 
@@ -96,18 +91,13 @@ CSRF-атака можлива лише тоді, коли браузер **са
 {
     group: [
         defineRoute({
-            url: '/orders/:id',
-            method: 'get',
+            contract: publicOrderContracts.show, // GET /v1/orders/:id
             handler: PublicOrdersController.show.bind(PublicOrdersController),
-            ResponseSchema: ResponseSchemas.PublicOrderResponseSchema,
             description: 'Public API: order status',
         }),
         defineRoute({
-            url: '/orders',
-            method: 'post',
+            contract: publicOrderContracts.create, // POST /v1/orders
             handler: PublicOrdersController.create.bind(PublicOrdersController),
-            validator: PublicOrderCreateInputSchema,
-            ResponseSchema: ResponseSchemas.PublicOrderResponseSchema,
             description: 'Public API: create an order',
             rateLimit: { windowMs: 60_000, maxRequests: 10 },
         }),
@@ -118,7 +108,7 @@ CSRF-атака можлива лише тоді, коли браузер **са
 },
 ```
 
-Маршрути отримають адреси `/api/v1/orders/:id` і `/api/v1/orders` (глобальний префікс `API_PATH_PREFIX` додається до всіх маршрутів, див. [Маршрутизація → Групи та префікси](/backend/routing#групи-та-префікси)). У репозиторії вже є два маршрути без middleware: `GET /api/ping` і `GET /api/ready`.
+`publicOrderContracts` — теж приклад: таку групу контрактів треба оголосити в `shared/contracts` зі шляхами від `/v1`, бо шлях контракту має починатися з префікса групи, і записати її схеми в реєстр. Маршрути отримають адреси `/api/v1/orders/:id` і `/api/v1/orders` (глобальний префікс `API_PATH_PREFIX` додається до всіх маршрутів, див. [Маршрутизація → Групи та префікси](/backend/routing#групи-та-префікси)). У репозиторії вже є два маршрути без middleware: `GET /api/ping` і `GET /api/ready`.
 
 ### Що отримує handler
 

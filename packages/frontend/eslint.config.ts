@@ -77,16 +77,15 @@ export default defineConfigWithVueTs(
     {
         // docs/adr/0005-route-contracts.md: the API is called through a contract
         // (`callApi` in utils/api-client.ts), which gives the call its method, path and types.
-        // The two files left out are the client itself and utils/api.ts, whose calls that are
-        // not moved yet are counted by utils/__tests__/api-direct-calls.spec.ts.
+        // The client itself is the only file that calls the transport (feat-170).
         files: ['src/**/*.{ts,vue}'],
-        ignores: ['src/utils/api-client.ts', 'src/utils/api.ts', 'src/**/__tests__/**'],
+        ignores: ['src/utils/api-client.ts', 'src/**/__tests__/**'],
         rules: {
             'no-restricted-syntax': [
                 'error',
                 {
                     selector:
-                        "CallExpression[callee.property.name='http'][callee.object.name=/^(baseApi|api)$/]",
+                        'CallExpression[callee.property.name=/^(http|upload)$/][callee.object.name=/^(baseApi|api)$/]',
                     message:
                         'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
                 },

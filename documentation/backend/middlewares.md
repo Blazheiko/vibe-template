@@ -8,7 +8,7 @@ Middleware задаються списком назв на групі маршр
 
 ```ts
 {
-    group: [ /* defineRoute(...) */ ],
+    group: [ /* defineRoute({ contract: ..., handler: ... }) */ ],
     prefix: 'notes',
     middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
 }

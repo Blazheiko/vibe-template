@@ -46,7 +46,7 @@ flowchart LR
   Sh -.-> C
 ```
 
-- **Route** is the object `defineRoute({ url, method, handler, validator, ResponseSchema, middlewares, rateLimit })` ([define-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts)). Groups set `prefix`, shared `middlewares` and `rateLimit`; `routesHandler` in [router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts) flattens them into a list and adds `appConfig.pathPrefix` (`api` by default, the `API_PATH_PREFIX` variable).
+- **Route** is the object `defineRoute({ contract, handler, middlewares, rateLimit, description })` ([contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts)). The method and the path come from a contract in `shared/contracts`, the body, query and response schemas from the entry of the `app/routes/contract-schemas/` registry (see [Routing](/en/backend/routing#http-routes-defineroute)). Groups set `prefix`, shared `middlewares` and `rateLimit`; `routesHandler` in [router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts) flattens them into a list and adds `appConfig.pathPrefix` (`api` by default, the `API_PATH_PREFIX` variable).
 - **Middleware** is a `(context, next)` function; if it did not call `next()`, the handler does not run (see [Middleware](/en/backend/middlewares)).
 - **Controller** receives `HttpContext`, calls a service, and returns `respond(context, result, toBody)`, which maps a `Result` error to an HTTP response via `mapControllerError`.
 - **Service** is the business logic, returns `Result.ok(...)` / `Result.err(...)`.
@@ -62,7 +62,7 @@ Import rules between layers are checked by [`layering.spec.ts`](https://github.c
 
 ## Contracts in packages/shared
 
-The `shared` package ([index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/index.ts)) exports `schemas` (input schemas, e.g. `VerifyEmailInputSchema`), `responses` (response schemas, e.g. `InitResponseSchema`), `enums`, `errors`, `brands`, `utils`. Routes import them as `shared/schemas` and `shared/responses`, and controllers import response types (`InitResponse`, `PingResponse`) from `shared`.
+The `shared` package ([index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/index.ts)) exports `schemas` (input schemas, e.g. `VerifyEmailInputSchema`), `responses` (response schemas, e.g. `InitResponseSchema`), `enums`, `errors`, `brands`, `utils`. A separate `shared/contracts` subpath holds the route contracts (method, path and types; no schemas at run time), which both the backend and the frontend import. The backend schema registry (`app/routes/contract-schemas/`) imports the schemas as `shared/schemas` and `shared/responses`, and controllers import response types (`InitResponse`, `PingResponse`) from `shared`.
 
 ## End-to-end example: GET /api/main/init
 
@@ -70,16 +70,14 @@ The `shared` package ([index.ts](https://github.com/Blazheiko/vibe-template/blob
 
 ```ts
 defineRoute({
-  url: "/init",
-  method: "get",
-  handler: MainController.init.bind(MainController),
-  ResponseSchema: ResponseSchemas.InitResponseSchema,
-  description: "Initialize app state",
-  middlewares: ["auth_guard"],
+    contract: mainContracts.init,
+    handler: MainController.init.bind(MainController),
+    description: 'Initialize app state',
+    middlewares: ['auth_guard'],
 }),
 ```
 
-After `routesHandler`, the URL becomes `api/main/init` and the middleware chain is `session_web → csrf_guard → auth_guard`.
+The contract `mainContracts.init` is `GET /main/init`, and the response schema `InitResponseSchema` comes from the registry entry ([contract-schemas/main.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/main.ts)). After `routesHandler`, the URL becomes `api/main/init` and the middleware chain is `session_web → csrf_guard → auth_guard`.
 
 2. **Middleware.** `executeMiddlewares` takes the functions from [kernel.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/middlewares/kernel.ts). `auth_guard` ([auth-guard.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/core/auth-guard.ts)) sets `responseData.status = 401` when there is no authentication and does not call `next()`.
 3. **Controller.** `MainController.init` ([main-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/core/main-controller.ts)) calls `mainService.init(session.sessionInfo ?? null)`; on error it uses `mapControllerError`, otherwise it returns `{ status: "ok", ...result.value }`.

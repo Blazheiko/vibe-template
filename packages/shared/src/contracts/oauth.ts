@@ -1,4 +1,5 @@
 import type { OAuthLinkConfirmInputSchema } from '../schemas/auth/oauth-link-confirm.js'
+import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
 import type { OAuthCallbackQueryInput, OAuthRedirectQueryInput } from '../schemas/query/simple.js'
 import type {
     EmailLinkResendResponse,
@@ -23,11 +24,12 @@ export const oauthContracts = {
         OAuthLinkConfirmResponse
     >()('post', '/auth/oauth/link/confirm'),
     // feat-097: the link that confirms the address of an account without one, sent again. The
-    // route reads no body.
-    resendEmailLink: contract<undefined, undefined, EmailLinkResendResponse>()(
-        'post',
-        '/auth/oauth/email/resend',
-    ),
+    // body is an empty form: anything else is a 422 (feat-170 found it unchecked).
+    resendEmailLink: contract<
+        typeof EmptyFormInputSchema.inferIn,
+        undefined,
+        EmailLinkResendResponse
+    >()('post', '/auth/oauth/email/resend'),
     redirect: navigationContract<OAuthRedirectQueryInput, OAuthRedirectResponse>()(
         '/auth/oauth/:provider/redirect',
     ),

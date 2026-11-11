@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import type { HttpContext } from '#vendor/types/types.js'
 
 // Goes through the handler registered with uWS (server.patch / server.post),
@@ -67,8 +67,8 @@ const route = (
     validator?: typeof RequiredSchema | typeof OptionalSchema | typeof DefaultSchema,
 ) => ({
     ...(validator === undefined
-        ? defineRoute({ url, method, handler: controller })
-        : defineRoute({ url, method, validator, handler: controller })),
+        ? defineRawRoute({ url, method, handler: controller })
+        : defineRawRoute({ url, method, validator, handler: controller })),
     url: `api/${url}`,
     middlewares: [],
 })

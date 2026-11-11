@@ -263,13 +263,13 @@ type BivariantHandler<TContext> = {
 export type RouteHandler<TPayload = unknown, TQuery = null> = BivariantHandler<
     HttpContext<TPayload, TQuery> | WsContext<TPayload>
 >
-// Same bivariance trick as BivariantHandler, with a typed result for defineRoute /
+// Same bivariance trick as BivariantHandler, with a typed result for defineRoute, defineRawRoute /
 // defineWsRoute routes that declare a ResponseSchema.
 export type TypedHandler<TContext, TOut> = {
     bivarianceHack(context: TContext): TOut | Promise<TOut>
 }['bivarianceHack']
 
-// Base route configuration without handler (for defineRoute)
+// Base route configuration without handler (for defineRoute and defineRawRoute)
 export interface RouteConfig<
     TValidator extends Validator<unknown> | undefined = undefined,
     TQueryValidator extends Validator<unknown> | undefined = undefined,
@@ -277,7 +277,7 @@ export interface RouteConfig<
     url: string
     method: Method
     /**
-     * Set by `defineRoute({ contract })`: the route's whole path under the API prefix, as the
+     * Set by `defineRawRoute({ contract })`: the route's whole path under the API prefix, as the
      * contract says it. The router checks that the group the route is in has that prefix, and
      * takes the URL from here (docs/adr/0005-route-contracts.md).
      */

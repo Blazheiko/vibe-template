@@ -7,7 +7,7 @@ The backend serves HTTP routes of two kinds, and each needs its own set of middl
 | **Web route**        | the SPA from `packages/frontend` in the user's browser          | the session cookie the browser sends itself | `session_web`, `csrf_guard`                          |
 | **Public API route** | another server, a mobile app, a script, someone else's frontend | a request header the client adds explicitly | none (`session_web` and `csrf_guard` are not needed) |
 
-Both kinds are declared the same way, via `defineRoute` in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts), and have the same validation, limits and security headers. They differ only in the group the route lives in. This page explains why, how to choose the right group and what breaks if you get it wrong.
+Both kinds are declared the same way, via `defineRoute({ contract, ... })` in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) with a contract in `shared/contracts` and schemas in the `app/routes/contract-schemas/` registry ([Routing](/en/backend/routing#http-routes-defineroute)), and have the same validation, limits and security headers. They differ only in the group the route lives in. This page explains why, how to choose the right group and what breaks if you get it wrong.
 
 ::: tip The rule in one sentence
 Put a route that our frontend calls into a group with `middlewares: ['session_web', 'csrf_guard', ...]`. Put a route for external clients into a separate group without these two middleware, and do not read the cookie in it.
@@ -53,18 +53,13 @@ A route goes into a group where `session_web` comes first and `csrf_guard` secon
 {
     group: [
         defineRoute({
-            url: '/',
-            method: 'get',
+            contract: noteContracts.list, // GET /notes
             handler: NotesController.list.bind(NotesController),
-            ResponseSchema: ResponseSchemas.NoteListResponseSchema,
             description: 'List notes of the current user',
         }),
         defineRoute({
-            url: '/',
-            method: 'post',
+            contract: noteContracts.create, // POST /notes
             handler: NotesController.create.bind(NotesController),
-            validator: NoteCreateInputSchema,
-            ResponseSchema: ResponseSchemas.NoteResponseSchema,
             description: 'Create a note',
         }),
     ],
@@ -74,7 +69,7 @@ A route goes into a group where `session_web` comes first and `csrf_guard` secon
 },
 ```
 
-All groups in `http-routes.ts` are built this way: `auth`, `auth/oauth`, `main`, `push-subscriptions`, `avatar`, `support`, `prompts` and `admin`. The order matters: `csrf_guard` and `auth_guard` read the session that `session_web` sets up.
+`noteContracts` here is an example (this is how the [tutorial](/en/backend/adding-a-feature#step-8-contract-and-route-registration) declares them): the contracts live in `shared/contracts` and the body and response schemas in the registry entry, so the route does not name them. All groups in `http-routes.ts` are built this way: `auth`, `auth/oauth`, `main`, `push-subscriptions`, `avatar`, `support`, `prompts` and `admin`. The order matters: `csrf_guard` and `auth_guard` read the session that `session_web` sets up.
 
 ### What the client must provide
 
@@ -96,18 +91,13 @@ API routes go into a **separate group without `session_web` and `csrf_guard`**, 
 {
     group: [
         defineRoute({
-            url: '/orders/:id',
-            method: 'get',
+            contract: publicOrderContracts.show, // GET /v1/orders/:id
             handler: PublicOrdersController.show.bind(PublicOrdersController),
-            ResponseSchema: ResponseSchemas.PublicOrderResponseSchema,
             description: 'Public API: order status',
         }),
         defineRoute({
-            url: '/orders',
-            method: 'post',
+            contract: publicOrderContracts.create, // POST /v1/orders
             handler: PublicOrdersController.create.bind(PublicOrdersController),
-            validator: PublicOrderCreateInputSchema,
-            ResponseSchema: ResponseSchemas.PublicOrderResponseSchema,
             description: 'Public API: create an order',
             rateLimit: { windowMs: 60_000, maxRequests: 10 },
         }),
@@ -118,7 +108,7 @@ API routes go into a **separate group without `session_web` and `csrf_guard`**, 
 },
 ```
 
-The routes get the addresses `/api/v1/orders/:id` and `/api/v1/orders` (the global prefix `API_PATH_PREFIX` is added to all routes, see [Routing → Groups and prefixes](/en/backend/routing#groups-and-prefixes)). The repository already has two routes without middleware: `GET /api/ping` and `GET /api/ready`.
+`publicOrderContracts` is an example too: such a contract group has to be declared in `shared/contracts` with paths starting at `/v1`, because a contract's path must start with its group's prefix, and its schemas written into the registry. The routes get the addresses `/api/v1/orders/:id` and `/api/v1/orders` (the global prefix `API_PATH_PREFIX` is added to all routes, see [Routing → Groups and prefixes](/en/backend/routing#groups-and-prefixes)). The repository already has two routes without middleware: `GET /api/ping` and `GET /api/ready`.
 
 ### What the handler receives
 

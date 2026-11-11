@@ -22,17 +22,30 @@ Sec-Fetch-Site: same-site
 {"isActive": false, "timezone": "Europe/Kyiv"}
 ```
 
-The route is declared in [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts):
+The route consists of a contract in `shared`, an entry in the schema registry and a line in [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) (more in [Routing](/en/backend/routing#http-routes-defineroute)):
 
 ```ts
+// packages/shared/src/contracts/push-subscriptions.ts // the contract: method and path
+update: contract<
+    typeof UpdateSubscriptionInputSchema.inferIn,
+    undefined,
+    UpdateSubscriptionResponse
+>()('put', '/push-subscriptions/:subscriptionId'),
+
+// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
+update: {
+    body: UpdateSubscriptionInputSchema, // body schema
+    response: ResponseSchemas.UpdateSubscriptionResponseSchema, // response schema
+},
+
+// packages/backend/src/app/routes/http-routes.ts
 {
     group: [
         defineRoute({
-            url: '/:subscriptionId',
-            method: 'put',
-            handler: PushSubscriptionController.updateSubscription.bind(PushSubscriptionController),
-            validator: UpdateSubscriptionInputSchema, // body schema
-            ResponseSchema: ResponseSchemas.UpdateSubscriptionResponseSchema,
+            contract: pushSubscriptionContracts.update,
+            handler: PushSubscriptionController.updateSubscription.bind(
+                PushSubscriptionController,
+            ),
             middlewares: ['auth_guard'],
         }),
     ],
@@ -40,6 +53,8 @@ The route is declared in [http-routes.ts](https://github.com/Blazheiko/vibe-temp
     prefix: 'push-subscriptions',
 }
 ```
+
+`defineRoute` takes the method and the path from the contract, and the body and response schemas from the registry entry, and puts them into the route's `validator` and `ResponseSchema` fields; the rest of the page talks about these fields.
 
 ## What a request consists of
 

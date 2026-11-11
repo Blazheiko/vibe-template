@@ -24,5 +24,8 @@ export const contractSchemaRegistry = {
     ...supportSchemas,
 }
 
-/** A route of the route table declared through its contract; the schemas come from the registry. */
-export const defineContractRoute = contractRouteDefiner(contractSchemaRegistry)
+/**
+ * The one way to declare a route of the application: its contract, its handler and its server
+ * settings (middlewares, limits). The schemas come from the registry (ADR 0005).
+ */
+export const defineRoute = contractRouteDefiner(contractSchemaRegistry)

@@ -143,12 +143,12 @@ const applyStrictPolicy = <T>(schema: Type<T>, allowExtra: boolean): Type<T> =>
     schema.onUndeclaredKey(allowExtra ? 'delete' : 'reject') as unknown as Type<T>
 
 /**
- * `defineContractRoute` for a registry: the method and the path come from the contract, the
+ * `defineRoute` for a registry: the method and the path come from the contract, the
  * schemas from the registry entry of the contract. Middlewares, limits and body kinds stay
  * settings of the route: the contract says nothing about them.
  */
 export function contractRouteDefiner<R extends Readonly<Record<string, SchemaEntry>>>(registry: R) {
-    return function defineContractRoute<C extends AnyContract>(
+    return function defineRoute<C extends AnyContract>(
         config: ContractRouteInput<R, C>,
     ): RouteItem {
         const { contract, ...rest } = config

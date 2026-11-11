@@ -101,15 +101,15 @@ Shared limits use a separate connection ([`redis-rate-limit.ts`](https://github.
 
 ### How to add a limit
 
-Protecting the process — `rateLimit` on a route:
+Protecting the process — `rateLimit` on a route (an example from [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts); the route's contract says nothing about limits):
 
 ```ts
 defineRoute({
-    url: '/report/export',
-    method: 'post',
-    handler: ReportController.export.bind(ReportController),
-    rateLimit: { windowMs: 60_000, maxRequests: 5 },
-})
+    contract: authContracts.forgotPassword,
+    handler: AuthController.forgotPassword.bind(AuthController),
+    description: 'Request password reset email',
+    rateLimit: { windowMs: 60_000, maxRequests: 3 },
+}),
 ```
 
 A sensitive action — a policy in the registry, a call in the service, and a row in the table above:

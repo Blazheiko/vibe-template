@@ -1,359 +1,272 @@
 import { type } from '@arktype/type'
-import { describe, expect, it } from 'vitest'
-
-import { mapControllerError } from '#app/controllers/shared/controller-error.js'
-import { badRequest } from '#app/services/shared/errors.js'
+import { describe, expect, it, vi } from 'vitest'
+import { contract, multipartContract, navigationContract } from 'shared/contracts'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 
-import { defineRoute } from './define-route.js'
-import { defineWsRoute } from './define-ws-route.js'
+vi.mock('#logger', () => ({
+    default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}))
+vi.mock('#vendor/utils/logger.js', () => ({
+    default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}))
+
+const { contractRouteDefiner, contractSchemas } = await import('./contract-registry.js')
+const { routesHandler } = await import('#vendor/start/router.js')
+const { default: appConfig } = await import('#config/app.js')
+
+// docs/adr/0005-route-contracts.md: a route declared through a contract takes its method and
+// path from it and its schemas from the registry entry of the contract; the compiler checks each
+// entry against the contract's types (feat-172).
+
+const NoteInputSchema = type({ text: '1 <= string <= 200', '+': 'reject' })
+const NoteQuerySchema = type({ 'limit?': 'string.integer.parse', 'tag?': 'string' })
+const NoteResponseSchema = type.or(
+    { status: "'success'", id: 'string' },
+    CanonicalErrorResponseSchema,
+)
+type NoteResponse = typeof NoteResponseSchema.infer
+
+const notes = {
+    create: contract<typeof NoteInputSchema.inferIn, undefined, NoteResponse>()('post', '/notes'),
+    list: contract<undefined, { limit?: number | string; tag?: string }, NoteResponse>()(
+        'get',
+        '/notes',
+    ),
+    remove: contract<undefined, undefined, NoteResponse>()('delete', '/notes/:noteId'),
+}
+
+const answer = (): NoteResponse => ({ status: 'success', id: '1' })
+
+const noteSchemas = contractSchemas(notes, {
+    create: { body: NoteInputSchema, response: NoteResponseSchema },
+    list: { query: NoteQuerySchema, response: NoteResponseSchema },
+    remove: { response: NoteResponseSchema },
+})
+const defineRoute = contractRouteDefiner(noteSchemas)
+
+describe('contractSchemas', () => {
+    it('keys the entries by the method and the path of their contracts', () => {
+        expect(Object.keys(noteSchemas).sort()).toEqual([
+            'delete /notes/:noteId',
+            'get /notes',
+            'post /notes',
+        ])
+        expect(noteSchemas['post /notes'].body).toBe(NoteInputSchema)
+    })
+})
 
 describe('defineRoute', () => {
-    it('wraps the input schema with the default validator', () => {
-        const schema = type({
-            email: 'string.email',
-        })
-
+    it('takes the method and the path from the contract and the schemas from the registry', () => {
         const route = defineRoute({
-            url: '/login',
-            method: 'post',
-            validator: schema,
-            handler: () => ({ ok: true }),
+            contract: notes.create,
+            handler: answer,
+            middlewares: ['auth_guard'],
         })
 
-        expect(route.validator).toBeDefined()
-        expect(route.validator?.describe?.()).toBe(schema)
-        expect(route.validator?.validate({ email: 'user@example.com' })).toEqual({
-            ok: true,
-            value: { email: 'user@example.com' },
+        expect(route).toMatchObject({
+            url: '/notes',
+            method: 'post',
+            contractPath: '/notes',
+            middlewares: ['auth_guard'],
+            ResponseSchema: NoteResponseSchema,
         })
+        expect(route.validator).toBeDefined()
+        expect(route.queryValidator).toBeUndefined()
+        expect('contract' in route).toBe(false)
     })
 
-    it('leaves validator undefined when route has no schema', () => {
-        const route = defineRoute({
-            url: '/ping',
-            method: 'get',
-            handler: () => ({ ok: true }),
-        })
+    it('wraps the query schema of a contract with a query', () => {
+        const route = defineRoute({ contract: notes.list, handler: answer })
 
+        expect(route.queryValidator).toBeDefined()
         expect(route.validator).toBeUndefined()
     })
 
-    it('wraps queryValidator in strict mode by default', () => {
-        const schema = type({
-            page: 'string.integer.parse',
-        })
+    it('refuses at start a contract that has no entry in the registry', () => {
+        const unknown = contract<undefined, undefined, NoteResponse>()('get', '/elsewhere')
+        const define = defineRoute as (config: unknown) => unknown
 
-        const route = defineRoute({
-            url: '/items',
-            method: 'get',
-            queryValidator: schema,
-            handler: () => ({ ok: true }),
-        })
-
-        expect(route.queryValidator).toBeDefined()
-        expect(route.queryValidator?.validate({ page: '1' })).toEqual({
-            ok: true,
-            value: { page: 1 },
-        })
-        expect(route.queryValidator?.validate({ page: '1', extra: 'x' })).toMatchObject({
-            ok: false,
-        })
-    })
-
-    it('supports queryAllowExtra as loose plus strip', () => {
-        const schema = type({
-            page: 'string.integer.parse',
-        })
-
-        const route = defineRoute({
-            url: '/items',
-            method: 'get',
-            queryValidator: schema,
-            queryAllowExtra: true,
-            handler: () => ({ ok: true }),
-        })
-
-        expect(route.queryValidator?.validate({ page: '1', extra: 'x' })).toEqual({
-            ok: true,
-            value: { page: 1 },
-        })
+        expect(() => define({ contract: unknown, handler: answer })).toThrow(
+            'Route contract get /elsewhere has no entry in the schema registry',
+        )
     })
 })
 
-describe('defineRoute body validator typing', () => {
-    const schema = type({ id: 'string' })
-
-    it('allows a body validator on post/put/patch', () => {
-        for (const method of ['post', 'put', 'patch'] as const) {
-            expect(
-                defineRoute({
-                    url: '/items',
-                    method,
-                    validator: schema,
-                    handler: () => ({}),
-                }).validator,
-            ).toBeDefined()
-        }
+// feat-177: a multipart contract checks its text fields against the body schema and accepts only
+// multipart; a navigation contract is a GET route like any other on the server.
+describe('multipart and navigation contracts', () => {
+    const EmptyFieldsSchema = type({ '+': 'reject' })
+    const files = {
+        upload: multipartContract<typeof EmptyFieldsSchema.inferIn, 'picture', NoteResponse>()(
+            'post',
+            '/notes/:noteId/picture',
+        ),
+        picture: navigationContract<undefined, NoteResponse>()('/notes/:noteId/picture'),
+    }
+    const fileSchemas = contractSchemas(files, {
+        upload: { body: EmptyFieldsSchema, response: NoteResponseSchema },
+        picture: { response: NoteResponseSchema },
     })
+    const defineFileRoute = contractRouteDefiner(fileSchemas)
 
-    it('rejects a body validator on get/delete/del at the type level', () => {
-        // Runtime would throw in routesHandler; here only the type error matters.
-        // @ts-expect-error get never reads a body
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            validator: schema,
-            handler: () => ({}),
-        })
-        // @ts-expect-error delete never reads a body
-        defineRoute({
-            url: '/items',
-            method: 'delete',
-            validator: schema,
-            handler: () => ({}),
-        })
-        // @ts-expect-error del never reads a body
-        defineRoute({
-            url: '/items',
-            method: 'del',
-            validator: schema,
-            handler: () => ({}),
-        })
-        expect(true).toBe(true)
-    })
+    it('a multipart route accepts multipart only and validates its fields', () => {
+        const route = defineFileRoute({ contract: files.upload, handler: answer })
 
-    it('accepts only methods registerHttpRoute can register', () => {
-        // @ts-expect-error ws routes go through defineWsRoute
-        defineRoute({ url: '/items', method: 'ws', handler: () => ({}) })
-        // @ts-expect-error options is answered by the CORS preflight handler
-        defineRoute({ url: '/items', method: 'options', handler: () => ({}) })
-        expect(true).toBe(true)
-    })
-})
-
-describe('defineWsRoute', () => {
-    it('wraps websocket route schemas through the same validator wrapper', () => {
-        const schema = type({
-            roomId: 'string',
-        })
-
-        const route = defineWsRoute({
-            url: 'join_room',
-            validator: schema,
-            handler: () => ({ ok: true }),
-        })
-
-        expect(route.method).toBe('ws')
-        expect(route.validator?.describe?.()).toBe(schema)
-    })
-})
-
-// Type-level checks: each `@ts-expect-error` must hit a real error, so `pnpm typecheck`
-// fails if the handler result stops being checked against the route's ResponseSchema.
-describe('defineRoute response typing', () => {
-    const OkSchema = type({ status: "'ok'" })
-    const ReadySchema = type({ ready: 'boolean' })
-    const OkOrErrorSchema = type.or(OkSchema, CanonicalErrorResponseSchema)
-    const ok = (): { status: 'ok' } => ({ status: 'ok' })
-
-    it('rejects a handler result that does not match ResponseSchema', () => {
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            // @ts-expect-error 'fail' is not 'ok'
-            handler: () => ({ status: 'fail' as const }),
-        })
-        expect(true).toBe(true)
-    })
-
-    it('rejects an annotated handler declared with a foreign schema', () => {
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: ReadySchema,
-            // @ts-expect-error { status: 'ok' } has no `ready`
-            handler: ok,
-        })
-        expect(true).toBe(true)
-    })
-
-    it('accepts any Payload when the route has no ResponseSchema', () => {
-        defineRoute({ url: '/items', method: 'get', handler: () => 'text' })
-        defineRoute({ url: '/items', method: 'get', handler: () => ({ anything: 1 }) })
-        expect(true).toBe(true)
-    })
-
-    it('accepts a sync and an async result', () => {
-        defineRoute({ url: '/a', method: 'get', ResponseSchema: OkSchema, handler: ok })
-        defineRoute({
-            url: '/b',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            handler: async () => ok(),
-        })
-        // Known limit: TypeScript widens a literal whose contextual type is the generic
-        // `TRes['inferIn']`, so an inline handler needs `as const` like a controller does.
-        defineRoute({
-            url: '/c',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            handler: () => ({ status: 'ok' as const }),
-        })
-        defineRoute({
-            url: '/d',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            // @ts-expect-error the literal widens to string without `as const`
-            handler: (_context) => ({ status: 'ok' }),
-        })
-        expect(true).toBe(true)
-    })
-
-    it('accepts a mapControllerError result when the schema includes the error union', () => {
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: OkOrErrorSchema,
-            handler: (context) => mapControllerError(context, badRequest('bad')),
-        })
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            // @ts-expect-error the schema has no error branch
-            handler: (context) => mapControllerError(context, badRequest('bad')),
-        })
-        expect(true).toBe(true)
-    })
-
-    it('accepts null only when the schema allows it', () => {
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            // @ts-expect-error null is not in the schema
-            handler: () => null,
-        })
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: OkSchema.or('null'),
-            handler: () => null,
-        })
-        expect(true).toBe(true)
-    })
-
-    it('checks a bound controller method like an arrow function', () => {
-        const controller = {
-            prefix: 'ok',
-            get(this: { prefix: string }): { status: string } {
-                return { status: this.prefix }
-            },
-        }
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: OkSchema,
-            // @ts-expect-error string is wider than 'ok'
-            handler: controller.get.bind(controller),
-        })
-        expect(true).toBe(true)
-    })
-
-    it('still infers body and query alongside the result', () => {
-        defineRoute({
-            url: '/items',
+        expect(route).toMatchObject({
+            url: '/notes/:noteId/picture',
             method: 'post',
-            validator: type({ id: 'string' }),
-            queryValidator: type({ page: 'string' }),
-            ResponseSchema: type({ id: 'string', page: 'string' }),
-            handler: ({ httpData }) => ({
-                id: httpData.payload?.id ?? '',
-                page: httpData.query.page,
-            }),
+            allowedContentTypes: ['multipart'],
         })
-        expect(true).toBe(true)
+        expect(route.validator).toBeDefined()
     })
 
-    it('checks the result against the schema input, not its morphed output', () => {
-        const Morphed = type({ count: 'string.numeric.parse' })
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: Morphed,
-            handler: () => ({ count: '1' }),
-        })
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: Morphed,
-            // @ts-expect-error the input is a string; the parsed number is the output
-            handler: () => ({ count: 1 }),
-        })
-        expect(true).toBe(true)
+    it('a navigation route is a plain GET with its response schema', () => {
+        const route = defineFileRoute({ contract: files.picture, handler: answer })
+
+        expect(route).toMatchObject({ url: '/notes/:noteId/picture', method: 'get' })
+        expect(route.allowedContentTypes).toBeUndefined()
+        expect(route.ResponseSchema).toBe(NoteResponseSchema)
     })
 
-    it('does not check the result when ResponseSchema is Type | undefined', () => {
-        // Known limit: only an exact `Type` enables the check.
-        const maybe: typeof OkSchema | undefined = undefined as typeof OkSchema | undefined
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: maybe,
-            handler: () => ({ anything: 1 }),
+    // Compiled, never run.
+    function multipartTypeChecks(): void {
+        contractSchemas(files, {
+            // @ts-expect-error — the fields schema of a multipart contract is checked too
+            upload: { body: NoteInputSchema, response: NoteResponseSchema },
+            picture: { response: NoteResponseSchema },
         })
-        expect(true).toBe(true)
-    })
+    }
 
-    it('rejects a schema whose input is not a Payload', () => {
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: type('string[]'),
-            // @ts-expect-error a top-level array is not a Payload
-            handler: () => ['a'],
-        })
-        defineRoute({
-            url: '/items',
-            method: 'get',
-            ResponseSchema: type('string[]'),
-            // @ts-expect-error no object satisfies a non-Payload schema
-            handler: () => ({ responseSchemaIsNotPayload: ['a'] }),
-        })
-        expect(true).toBe(true)
+    it('compiles its type checks', () => {
+        expect(multipartTypeChecks).toBeTypeOf('function')
     })
 })
 
-describe('defineWsRoute response typing', () => {
-    const OkSchema = type({ status: "'ok'" })
+describe('a contract route in the route table', () => {
+    const remove = defineRoute({ contract: notes.remove, handler: answer })
 
-    it('checks the handler result against ResponseSchema', () => {
-        defineWsRoute({
-            url: 'ok',
-            ResponseSchema: OkSchema,
-            handler: () => ({ status: 'ok' as const }),
-        })
-        defineWsRoute({
-            url: 'fail',
-            ResponseSchema: OkSchema,
-            // @ts-expect-error 'fail' is not 'ok'
-            handler: () => ({ status: 'fail' as const }),
-        })
-        defineWsRoute({
-            url: 'foreign',
-            ResponseSchema: type({ ready: 'boolean' }),
-            // @ts-expect-error { status: 'ok' } has no `ready`
-            handler: (): { status: 'ok' } => ({ status: 'ok' }),
-        })
-        defineWsRoute({
-            url: 'not-payload',
-            ResponseSchema: type('string[]'),
-            // @ts-expect-error no object satisfies a non-Payload schema
-            handler: () => ({ responseSchemaIsNotPayload: ['a'] }),
-        })
-        defineWsRoute({ url: 'free', handler: () => ({ anything: 1 }) })
-        expect(true).toBe(true)
+    it('gets its URL from the contract, inside the group that has its prefix', () => {
+        const [route] = routesHandler([{ group: [remove], prefix: 'notes', middlewares: ['a'] }])
+
+        expect(route?.url).toBe(`${appConfig.pathPrefix}/notes/:noteId`)
+        expect(route?.method).toBe('del')
+        expect(route?.parametersKey).toEqual(['noteId'])
+        expect(route?.middlewares).toEqual(['a'])
+    })
+
+    it('works in nested groups and without a group', () => {
+        const nested = routesHandler([
+            { group: [{ group: [remove], prefix: '' }], prefix: 'notes' },
+        ])
+        const bare = routesHandler([remove])
+
+        expect(nested[0]?.url).toBe(`${appConfig.pathPrefix}/notes/:noteId`)
+        expect(bare[0]?.url).toBe(`${appConfig.pathPrefix}/notes/:noteId`)
+    })
+
+    it('refuses a contract placed in the group of another prefix', () => {
+        expect(() => routesHandler([{ group: [remove], prefix: 'admin' }])).toThrow(
+            'Route contract /notes/:noteId is declared in the route group "/admin"',
+        )
+        // A prefix that only looks alike is another prefix.
+        expect(() => routesHandler([{ group: [remove], prefix: 'note' }])).toThrow(
+            'the path of a contract has to start with the prefix of its group',
+        )
+    })
+})
+
+// Checked by the compiler, never run: an entry that is not its contract's does not compile, and
+// neither does a route whose contract has no entry.
+function typeChecks(): void {
+    const OtherInputSchema = type({ title: 'string' })
+    const OtherResponseSchema = type.or(
+        { status: "'success'", name: 'string' },
+        CanonicalErrorResponseSchema,
+    )
+
+    contractSchemas(notes, {
+        // @ts-expect-error — the body schema of another route
+        create: { body: OtherInputSchema, response: NoteResponseSchema },
+        list: { query: NoteQuerySchema, response: NoteResponseSchema },
+        remove: { response: NoteResponseSchema },
+    })
+
+    contractSchemas(notes, {
+        // @ts-expect-error — the contract has a body, the entry needs its schema
+        create: { response: NoteResponseSchema },
+        list: { query: NoteQuerySchema, response: NoteResponseSchema },
+        remove: { response: NoteResponseSchema },
+    })
+
+    contractSchemas(notes, {
+        create: { body: NoteInputSchema, response: NoteResponseSchema },
+        list: { query: NoteQuerySchema, response: NoteResponseSchema },
+        // @ts-expect-error — the contract has no body
+        remove: { body: NoteInputSchema, response: NoteResponseSchema },
+    })
+
+    contractSchemas(notes, {
+        // @ts-expect-error — the response schema of another route
+        create: { body: NoteInputSchema, response: OtherResponseSchema },
+        list: { query: NoteQuerySchema, response: NoteResponseSchema },
+        remove: { response: NoteResponseSchema },
+    })
+
+    contractSchemas(notes, {
+        create: { body: NoteInputSchema, response: NoteResponseSchema },
+        // @ts-expect-error — the query schema has other keys than the contract's query
+        list: { query: type({ 'page?': 'string' }), response: NoteResponseSchema },
+        remove: { response: NoteResponseSchema },
+    })
+
+    contractSchemas(notes, {
+        create: { body: NoteInputSchema, response: NoteResponseSchema },
+        // @ts-expect-error — the contract has a query, the entry needs its schema
+        list: { response: NoteResponseSchema },
+        remove: { response: NoteResponseSchema },
+    })
+
+    // @ts-expect-error — a contract of the group has no entry
+    contractSchemas(notes, {
+        create: { body: NoteInputSchema, response: NoteResponseSchema },
+        list: { query: NoteQuerySchema, response: NoteResponseSchema },
+    })
+
+    defineRoute({
+        // @ts-expect-error — the contract has no entry in the registry
+        contract: contract<undefined, undefined, NoteResponse>()('get', '/elsewhere'),
+        handler: answer,
+    })
+
+    defineRoute({
+        contract: notes.create,
+        // @ts-expect-error — the handler answers something the response schema does not allow
+        handler: () => ({ status: 'success' as const, id: 7 }),
+    })
+
+    defineRoute({
+        contract: notes.create,
+        // The payload is what the body schema of the entry hands over.
+        handler: (context) => {
+            const text: string = context.httpData.payload?.text ?? ''
+            // @ts-expect-error — the payload has no such field
+            const missing: unknown = context.httpData.payload?.title
+            return { status: 'success' as const, id: `${text}${String(missing)}` }
+        },
+    })
+
+    defineRoute({
+        contract: notes.list,
+        // The query is what the query schema of the entry hands over.
+        handler: (context) => {
+            const limit: number | undefined = context.httpData.query.limit
+            return { status: 'success' as const, id: String(limit) }
+        },
+    })
+}
+
+describe('the compile-time checks above', () => {
+    it('are compiled with the spec (the function is never called)', () => {
+        expect(typeChecks).toBeTypeOf('function')
     })
 })

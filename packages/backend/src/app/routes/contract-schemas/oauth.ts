@@ -1,4 +1,5 @@
 import {
+    EmptyFormInputSchema,
     OAuthCallbackQuerySchema,
     OAuthLinkConfirmInputSchema,
     OAuthRedirectQuerySchema,
@@ -13,7 +14,10 @@ export const oauthSchemas = contractSchemas(oauthContracts, {
         body: OAuthLinkConfirmInputSchema,
         response: ResponseSchemas.OAuthLinkConfirmResponseSchema,
     },
-    resendEmailLink: { response: ResponseSchemas.EmailLinkResendResponseSchema },
+    resendEmailLink: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.EmailLinkResendResponseSchema,
+    },
     redirect: {
         query: OAuthRedirectQuerySchema,
         response: ResponseSchemas.OAuthRedirectResponseSchema,

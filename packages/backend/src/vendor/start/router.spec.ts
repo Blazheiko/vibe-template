@@ -1,14 +1,14 @@
 import { type } from '@arktype/type'
 import { describe, expect, it } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import { defineWsRoute } from '#app/routing/define-ws-route.js'
 import type { routeList } from '#vendor/types/types.js'
 import { routesHandler } from './router.js'
 
 describe('routesHandler', () => {
     it('does not mutate source route definitions while flattening groups', () => {
-        const loginRoute = defineRoute({
+        const loginRoute = defineRawRoute({
             url: '/login',
             method: 'post',
             middlewares: ['route_middleware'],
@@ -37,17 +37,17 @@ describe('routesHandler', () => {
 
     describe('body validator on methods without a body', () => {
         const schema = type({ id: 'string' })
-        // Bypasses defineRoute's type check, like a hand-written route would.
+        // Bypasses defineRawRoute's type check, like a hand-written route would.
         const withValidator = (method: 'get' | 'delete' | 'del') =>
             ({
-                ...defineRoute({
+                ...defineRawRoute({
                     url: '/items',
                     method: 'post',
                     validator: schema,
                     handler: () => ({}),
                 }),
                 method,
-            }) as ReturnType<typeof defineRoute>
+            }) as ReturnType<typeof defineRawRoute>
 
         it.each(['get', 'delete', 'del'] as const)('throws at startup for %s', (method) => {
             expect(() => routesHandler([withValidator(method)])).toThrow(
@@ -57,8 +57,8 @@ describe('routesHandler', () => {
 
         it('accepts get/delete routes without a body validator', () => {
             const routes = routesHandler([
-                defineRoute({ url: '/items', method: 'get', handler: () => ({}) }),
-                defineRoute({
+                defineRawRoute({ url: '/items', method: 'get', handler: () => ({}) }),
+                defineRawRoute({
                     url: '/items/:id',
                     method: 'delete',
                     handler: () => ({}),
@@ -69,7 +69,7 @@ describe('routesHandler', () => {
 
         it('accepts patch routes with a validator', () => {
             const [route] = routesHandler([
-                defineRoute({
+                defineRawRoute({
                     url: '/items/:id',
                     method: 'patch',
                     validator: schema,
@@ -94,7 +94,7 @@ describe('routesHandler', () => {
     describe('maxBodySize', () => {
         const upload = (maxBodySize: number | undefined, method: 'post' | 'get' = 'post') =>
             ({
-                ...defineRoute({
+                ...defineRawRoute({
                     url: '/upload',
                     method: 'post',
                     allowedContentTypes: ['multipart'],
@@ -102,7 +102,7 @@ describe('routesHandler', () => {
                 }),
                 method,
                 ...(maxBodySize !== undefined ? { maxBodySize } : {}),
-            }) as ReturnType<typeof defineRoute>
+            }) as ReturnType<typeof defineRawRoute>
 
         it('is carried into the normalized route', () => {
             const [route] = routesHandler([upload(1234)])
