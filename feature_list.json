@@ -1701,7 +1701,7 @@
             "owner": "Blazheiko",
             "branch": "docs/websocket-contracts-design",
             "dependencies": ["feat-170"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
