@@ -5,10 +5,7 @@ Plan: `docs/plan/code-review-2026-11-10-plan.md` (C7, C4, C8, C5b, C6), tasks:
 
 ## State
 
-Done locally. The branch is stacked on `feat/contracts-core-prompts-support` (#528). That PR's
-e2e jobs fail on GitHub's side: `playwright install-deps` cannot reach the Ubuntu apt mirrors,
-three times, and an unrelated dependabot PR fails the same way. The PR of this branch opens once
-#528 is on `main` and feat-175 is `in_progress` there.
+Done, waiting for review and merge.
 
 ## What changed
 
