@@ -1,4 +1,5 @@
 export * from './core.js'
+export { avatarContracts } from './avatar.js'
 export { adminContracts } from './admin.js'
 export { authContracts } from './auth.js'
 export { knowledgeBaseContracts } from './knowledge-base.js'

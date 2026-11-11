@@ -9,4 +9,5 @@ export const supportSchemas = contractSchemas(supportContracts, {
         response: ResponseSchemas.SupportGetChatHistoryResponseSchema,
     },
     deleteHistory: { response: ResponseSchemas.SupportDeleteChatHistoryResponseSchema },
+    screenshot: { response: ResponseSchemas.SupportScreenshotResponseSchema },
 })

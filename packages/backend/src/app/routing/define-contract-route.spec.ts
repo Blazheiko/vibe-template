@@ -1,6 +1,6 @@
 import { type } from '@arktype/type'
 import { describe, expect, it, vi } from 'vitest'
-import { contract } from 'shared/contracts'
+import { contract, multipartContract, navigationContract } from 'shared/contracts'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 
 vi.mock('#logger', () => ({
@@ -89,6 +89,56 @@ describe('defineContractRoute', () => {
         expect(() => define({ contract: unknown, handler: answer })).toThrow(
             'Route contract get /elsewhere has no entry in the schema registry',
         )
+    })
+})
+
+// feat-177: a multipart contract checks its text fields against the body schema and accepts only
+// multipart; a navigation contract is a GET route like any other on the server.
+describe('multipart and navigation contracts', () => {
+    const EmptyFieldsSchema = type({ '+': 'reject' })
+    const files = {
+        upload: multipartContract<typeof EmptyFieldsSchema.inferIn, 'picture', NoteResponse>()(
+            'post',
+            '/notes/:noteId/picture',
+        ),
+        picture: navigationContract<undefined, NoteResponse>()('/notes/:noteId/picture'),
+    }
+    const fileSchemas = contractSchemas(files, {
+        upload: { body: EmptyFieldsSchema, response: NoteResponseSchema },
+        picture: { response: NoteResponseSchema },
+    })
+    const defineFileRoute = contractRouteDefiner(fileSchemas)
+
+    it('a multipart route accepts multipart only and validates its fields', () => {
+        const route = defineFileRoute({ contract: files.upload, handler: answer })
+
+        expect(route).toMatchObject({
+            url: '/notes/:noteId/picture',
+            method: 'post',
+            allowedContentTypes: ['multipart'],
+        })
+        expect(route.validator).toBeDefined()
+    })
+
+    it('a navigation route is a plain GET with its response schema', () => {
+        const route = defineFileRoute({ contract: files.picture, handler: answer })
+
+        expect(route).toMatchObject({ url: '/notes/:noteId/picture', method: 'get' })
+        expect(route.allowedContentTypes).toBeUndefined()
+        expect(route.ResponseSchema).toBe(NoteResponseSchema)
+    })
+
+    // Compiled, never run.
+    function multipartTypeChecks(): void {
+        contractSchemas(files, {
+            // @ts-expect-error — the fields schema of a multipart contract is checked too
+            upload: { body: NoteInputSchema, response: NoteResponseSchema },
+            picture: { response: NoteResponseSchema },
+        })
+    }
+
+    it('compiles its type checks', () => {
+        expect(multipartTypeChecks).toBeTypeOf('function')
     })
 })
 

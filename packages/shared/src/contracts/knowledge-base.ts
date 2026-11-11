@@ -11,12 +11,11 @@ import type {
     SupportKnowledgeBaseListResponse,
     SupportKnowledgeBaseReindexResponse,
 } from '../responses/support-controller.js'
-import { contract } from './core.js'
+import { contract, multipartContract } from './core.js'
 
 type EmptyBody = typeof EmptyFormInputSchema.inferIn
 
-// The admin side of the support knowledge base. The screenshot upload is multipart and gets its
-// contract with the other non-JSON routes (feat-177).
+// The admin side of the support knowledge base.
 export const knowledgeBaseContracts = {
     list: contract<undefined, AdminKnowledgeBaseListQueryInput, SupportKnowledgeBaseListResponse>()(
         'get',
@@ -40,6 +39,12 @@ export const knowledgeBaseContracts = {
         'delete',
         '/admin/knowledge-base/:id',
     ),
+    // One file under `screenshot` (KB_SCREENSHOT_MAX_FILE_BYTES).
+    uploadScreenshot: multipartContract<
+        EmptyBody,
+        'screenshot',
+        SupportKnowledgeBaseItemResponse
+    >()('post', '/admin/knowledge-base/:id/screenshot'),
     removeScreenshot: contract<undefined, undefined, SupportKnowledgeBaseItemResponse>()(
         'delete',
         '/admin/knowledge-base/:id/screenshot',

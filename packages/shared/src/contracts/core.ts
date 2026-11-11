@@ -7,6 +7,33 @@
 
 export type ContractMethod = 'get' | 'post' | 'put' | 'patch' | 'delete'
 
+/**
+ * How a route's request and answer travel (feat-177):
+ * - `json` (the default): fetched, a JSON body, a JSON answer;
+ * - `multipart`: fetched with a FormData body (fields and files), a JSON answer;
+ * - `navigation`: never fetched; the browser goes to its URL (a redirect) or loads it (a file,
+ *   an `<img>`). The client only builds its URL.
+ */
+export type ContractKind = 'json' | 'multipart' | 'navigation'
+
+/**
+ * What a file is to this package, which declares neither the DOM nor Node: a browser `Blob` or
+ * `File` is one.
+ */
+export interface FileLike {
+    readonly size: number
+    readonly type: string
+}
+
+/** A file of a multipart body: the file, or the file with the name to send it under. */
+export type MultipartFile = FileLike | { readonly blob: FileLike; readonly filename: string }
+
+/** The body of a multipart contract: its text fields and its files by field name. */
+export interface MultipartBody<TFields, TFile extends string> {
+    readonly fields: TFields
+    readonly files: Readonly<Record<TFile, MultipartFile>>
+}
+
 /** A property that exists only for the type checker. */
 declare const contractTypes: unique symbol
 
@@ -16,7 +43,10 @@ export interface RouteContract<
     TBody = undefined,
     TQuery = undefined,
     TResponse = unknown,
+    TKind extends ContractKind = 'json',
 > {
+    /** Absent for `json`. */
+    readonly kind?: TKind
     readonly method: TMethod
     /** The path under the API prefix, with `:name` segments: `/push-subscriptions/:subscriptionId`. */
     readonly path: TPath
@@ -25,17 +55,29 @@ export interface RouteContract<
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- "any contract" in constraints */
-export type AnyContract = RouteContract<ContractMethod, string, any, any, any>
+export type AnyContract = RouteContract<ContractMethod, string, any, any, any, ContractKind>
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 export type BodyOf<C> =
-    C extends RouteContract<ContractMethod, string, infer B, unknown> ? B : never
+    C extends RouteContract<ContractMethod, string, infer B, unknown, unknown, ContractKind>
+        ? B
+        : never
 export type QueryOf<C> =
-    C extends RouteContract<ContractMethod, string, unknown, infer Q> ? Q : never
+    C extends RouteContract<ContractMethod, string, unknown, infer Q, unknown, ContractKind>
+        ? Q
+        : never
 export type ResponseOf<C> =
-    C extends RouteContract<ContractMethod, string, unknown, unknown, infer R> ? R : never
+    C extends RouteContract<ContractMethod, string, unknown, unknown, infer R, ContractKind>
+        ? R
+        : never
 export type PathOf<C> =
-    C extends RouteContract<ContractMethod, infer P, unknown, unknown> ? P : never
+    C extends RouteContract<ContractMethod, infer P, unknown, unknown, unknown, ContractKind>
+        ? P
+        : never
+export type KindOf<C> =
+    C extends RouteContract<ContractMethod, string, unknown, unknown, unknown, infer K> ? K : never
+/** The text fields of a multipart contract: what its body schema checks. */
+export type FieldsOf<C> = BodyOf<C> extends MultipartBody<infer F, string> ? F : never
 
 /** The names of the `:name` segments of a path. */
 export type PathParamNames<TPath extends string> =
@@ -60,6 +102,39 @@ export const contract =
         method: TMethod,
         path: TPath,
     ): RouteContract<TMethod, TPath, TBody, TQuery, TResponse> => ({ method, path })
+
+/**
+ * Declares a multipart contract: text fields of type `TFields`, files under the names `TFile`.
+ *
+ *     multipartContract<EmptyBody, 'avatar', UploadAvatarResponse>()('post', '/avatar/upload')
+ */
+export const multipartContract =
+    <TFields, TFile extends string, TResponse = unknown>() =>
+    <const TMethod extends 'post' | 'put' | 'patch', const TPath extends string>(
+        method: TMethod,
+        path: TPath,
+    ): RouteContract<
+        TMethod,
+        TPath,
+        MultipartBody<TFields, TFile>,
+        undefined,
+        TResponse,
+        'multipart'
+    > => ({ kind: 'multipart', method, path })
+
+/**
+ * Declares a GET route the browser navigates to or loads (a redirect, a file): the client builds
+ * its URL and never fetches it.
+ */
+export const navigationContract =
+    <TQuery = undefined, TResponse = unknown>() =>
+    <const TPath extends string>(
+        path: TPath,
+    ): RouteContract<'get', TPath, undefined, TQuery, TResponse, 'navigation'> => ({
+        kind: 'navigation',
+        method: 'get',
+        path,
+    })
 
 /**
  * The path with its `:name` segments replaced. Every value is percent-encoded, so a value with

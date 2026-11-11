@@ -1,6 +1,4 @@
-import baseApi from './base-api'
 import type { ApiResponse } from './api-error'
-import { apiPath } from './api-path'
 import { callApi } from './api-client'
 import type {
     OAuthProvidersResponse,
@@ -62,6 +60,7 @@ import type {
 import {
     adminContracts,
     authContracts,
+    avatarContracts,
     knowledgeBaseContracts,
     mainContracts,
     oauthContracts,
@@ -190,15 +189,12 @@ export const pushSubscriptionApi = {
 }
 
 export const avatarApi = {
-    upload: async (file: Blob): Promise<ApiResponse<UploadAvatarResponse>> => {
-        const formData = new FormData()
-        formData.append('avatar', file, 'avatar.webp')
-        return baseApi.upload<UploadAvatarResponse>('POST', apiPath('avatar/upload'), formData)
-    },
+    upload: (file: Blob): Promise<ApiResponse<UploadAvatarResponse>> =>
+        callApi(avatarContracts.upload, {
+            body: { fields: {}, files: { avatar: { blob: file, filename: 'avatar.webp' } } },
+        }),
 
-    delete: async (): Promise<ApiResponse<DeleteAvatarResponse>> => {
-        return baseApi.http<DeleteAvatarResponse>('DELETE', apiPath('avatar'))
-    },
+    delete: (): Promise<ApiResponse<DeleteAvatarResponse>> => callApi(avatarContracts.remove),
 }
 
 export type SupportChatMessage = SupportChatHistoryItem
@@ -279,13 +275,10 @@ export const adminKnowledgeBaseApi = {
     },
 
     uploadScreenshot: async (id: string, file: File): Promise<KnowledgeBaseArticle | null> => {
-        const formData = new FormData()
-        formData.append('screenshot', file)
-        const response = await baseApi.upload<{ status: string; data?: KnowledgeBaseArticle }>(
-            'POST',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/screenshot`),
-            formData,
-        )
+        const response = await callApi(knowledgeBaseContracts.uploadScreenshot, {
+            params: { id },
+            body: { fields: {}, files: { screenshot: file } },
+        })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },

@@ -3,7 +3,8 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSupportStore } from '@/stores/support'
 import { useEventBus } from '@/utils/event-bus'
-import { apiPath } from '@/utils/api-path'
+import { supportContracts } from 'shared/contracts'
+import { contractUrl } from '@/utils/api-client'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { supportLanguage } from '@/composables/useLocale'
 import { getResponseMessage } from '@/utils/response-normalizer'
@@ -332,9 +333,9 @@ onUnmounted(() => {
                                         v-for="articleId in msg.screenshots"
                                         :key="articleId"
                                         :src="
-                                            apiPath(
-                                                `support/screenshot/${encodeURIComponent(articleId)}`,
-                                            )
+                                            contractUrl(supportContracts.screenshot, {
+                                                params: { articleId },
+                                            })
                                         "
                                         class="message-screenshot"
                                         alt="Screenshot"

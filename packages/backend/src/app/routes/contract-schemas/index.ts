@@ -1,5 +1,6 @@
 import { contractRouteDefiner } from '#app/routing/contract-registry.js'
 import { adminSchemas } from './admin.js'
+import { avatarSchemas } from './avatar.js'
 import { authSchemas } from './auth.js'
 import { knowledgeBaseSchemas } from './knowledge-base.js'
 import { mainSchemas } from './main.js'
@@ -13,6 +14,7 @@ import { supportSchemas } from './support.js'
 // group's file names every contract of the group, or it does not compile.
 export const contractSchemaRegistry = {
     ...adminSchemas,
+    ...avatarSchemas,
     ...authSchemas,
     ...knowledgeBaseSchemas,
     ...mainSchemas,
