@@ -364,7 +364,10 @@ export const adminKnowledgeBaseApi = {
             data?: KnowledgeBaseArticle[]
             total?: number
         }>('GET', apiPath(`admin/knowledge-base${qs}`))
-        if (!isSuccessfulResponse(response)) return { items: [], total: 0 }
+        // A failure is not an empty knowledge base: the view must tell them apart.
+        if (!isSuccessfulResponse(response)) {
+            throw new Error(response.error?.message ?? 'Failed to load the knowledge base')
+        }
         return { items: response.data.data ?? [], total: response.data.total ?? 0 }
     },
 
@@ -433,13 +436,15 @@ export const adminKnowledgeBaseApi = {
         return isSuccessfulResponse(response)
     },
 
-    reindexAll: async (): Promise<number> => {
-        const response = await baseApi.http<{ status: string; indexed?: number }>(
-            'POST',
-            apiPath('admin/knowledge-base/reindex-all'),
-        )
-        if (!isSuccessfulResponse(response)) return 0
-        return response.data.indexed ?? 0
+    /** `null` when the request failed; `failed` are the ids of the articles left unindexed. */
+    reindexAll: async (): Promise<{ indexed: number; failed: string[] } | null> => {
+        const response = await baseApi.http<{
+            status: string
+            indexed?: number
+            failed?: string[]
+        }>('POST', apiPath('admin/knowledge-base/reindex-all'))
+        if (!isSuccessfulResponse(response)) return null
+        return { indexed: response.data.indexed ?? 0, failed: response.data.failed ?? [] }
     },
 
     startInit: async (): Promise<{

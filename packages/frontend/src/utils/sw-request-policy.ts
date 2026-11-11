@@ -52,6 +52,12 @@ export const classifyRequest = (request: RequestDescription): RequestStrategy =>
     return 'stale-while-revalidate'
 }
 
+/** The cache key of the HTML shell for a navigation: the URL without its query and hash. */
+export const navigationCacheKey = (url: string): string => {
+    const parsed = new URL(url)
+    return `${parsed.origin}${parsed.pathname}`
+}
+
 /** Only complete same-origin responses the server allows to be stored. */
 export const isCacheableResponse = (response: Response): boolean => {
     if (!response.ok || response.type !== 'basic') return false

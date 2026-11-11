@@ -327,7 +327,12 @@ const send = async <T>(
                 isRecord(responseData) &&
                 responseData.reason === CsrfRejectReason.TokenMismatch
 
-            if (isUnauthorizedError(responseData, normalizedError.transportCode)) {
+            // A 401 of a request that runs without a session of its own (sign-in, registration,
+            // a mailed link) is the answer for the form that sent it, not a lost session.
+            if (
+                options.csrfRecovery !== 'public' &&
+                isUnauthorizedError(responseData, normalizedError.transportCode)
+            ) {
                 eventBus.emit('unauthorized')
             }
 

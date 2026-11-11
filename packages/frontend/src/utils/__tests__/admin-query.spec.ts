@@ -68,6 +68,7 @@ describe('the admin list requests', () => {
 
     it('knowledge base: category, page, limit', async () => {
         const { adminKnowledgeBaseApi } = await import('../api')
+        http.mockResolvedValue({ data: { status: 'ok', data: [], total: 0 }, error: null })
         await adminKnowledgeBaseApi.getAll({ category: 'billing & plans', page: 2, limit: 25 })
         expect(http).toHaveBeenLastCalledWith(
             'GET',
@@ -75,6 +76,29 @@ describe('the admin list requests', () => {
         )
         await adminKnowledgeBaseApi.getAll({ category: '' })
         expect(http).toHaveBeenLastCalledWith('GET', '/api/admin/knowledge-base')
+    })
+
+    // feat-162: a failed list is an error, not an empty knowledge base.
+    it('knowledge base: a failed list throws the message of the response', async () => {
+        const { adminKnowledgeBaseApi } = await import('../api')
+        http.mockResolvedValue({
+            data: { status: 'error', code: 'internal_error', message: 'Internal server error' },
+            error: { code: 'internal_error', transportCode: 500, message: 'Internal server error' },
+        })
+
+        await expect(adminKnowledgeBaseApi.getAll()).rejects.toThrow('Internal server error')
+    })
+
+    it('knowledge base: reindex-all returns the failed ids, and null when it fails', async () => {
+        const { adminKnowledgeBaseApi } = await import('../api')
+        http.mockResolvedValueOnce({
+            data: { status: 'ok', indexed: 3, failed: ['4'] },
+            error: null,
+        })
+        expect(await adminKnowledgeBaseApi.reindexAll()).toEqual({ indexed: 3, failed: ['4'] })
+
+        http.mockResolvedValueOnce({ data: null, error: { code: 'x', transportCode: 500 } })
+        expect(await adminKnowledgeBaseApi.reindexAll()).toBeNull()
     })
 
     it('an online user is fetched by its encoded id', async () => {

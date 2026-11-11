@@ -69,6 +69,16 @@ const maskUrl = (value: string): string => {
     }
 }
 
+const ABSOLUTE_URL_RE = /https?:\/\/[^\s"'<>]+/g
+const RELATIVE_URL_RE = /^\/\S*$/
+
+/**
+ * Masks the URLs of a free text and leaves the rest as it is: `maskUrl` on a whole sentence
+ * turns it into a URL (`WebSocket connected` became `https://host/WebSocket%20connected`).
+ */
+const maskUrlsInText = (text: string): string =>
+    RELATIVE_URL_RE.test(text) ? maskUrl(text) : text.replace(ABSOLUTE_URL_RE, maskUrl)
+
 const sanitizeHeaders = (headers: unknown): unknown => {
     if (!headers || typeof headers !== 'object' || Array.isArray(headers)) {
         return headers
@@ -231,7 +241,7 @@ const beforeBreadcrumb = (breadcrumb: SentryBreadcrumbLike | null) => {
     }
 
     if (typeof sanitized.message === 'string') {
-        sanitized.message = maskUrl(sanitized.message)
+        sanitized.message = maskUrlsInText(sanitized.message)
     }
 
     if (sanitized.category === 'navigation' && sanitized.data) {
