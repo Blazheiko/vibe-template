@@ -14,14 +14,18 @@ import { defineRoute } from '#app/routing/define-route.js'
 import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
-    AdminKnowledgeBaseListQuerySchema,
     SupportChatHistoryQuerySchema,
     OAuthCallbackQuerySchema,
     OAuthLinkConfirmInputSchema,
     OAuthRedirectQuerySchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
-import { adminContracts, authContracts, pushSubscriptionContracts } from 'shared/contracts'
+import {
+    adminContracts,
+    authContracts,
+    knowledgeBaseContracts,
+    pushSubscriptionContracts,
+} from 'shared/contracts'
 
 import {
     RegisterEmailInputSchema,
@@ -40,8 +44,6 @@ import {
     EmptyFormInputSchema,
     PromptUpdateInputSchema,
     PromptTestInputSchema,
-    SupportKnowledgeBaseCreateSchema,
-    SupportKnowledgeBaseUpdateSchema,
 } from 'shared/schemas'
 import {
     AVATAR_MAX_FILE_BYTES,
@@ -423,42 +425,29 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/knowledge-base',
-                method: 'get',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.list,
                 handler: AdminKnowledgeBaseController.getAll.bind(AdminKnowledgeBaseController),
-                queryValidator: AdminKnowledgeBaseListQuerySchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseListResponseSchema,
                 description: 'List all knowledge base articles',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id',
-                method: 'get',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.get,
                 handler: AdminKnowledgeBaseController.getById.bind(AdminKnowledgeBaseController),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Get a knowledge base article by id',
             }),
-            defineRoute({
-                url: '/knowledge-base',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.create,
                 handler: AdminKnowledgeBaseController.create.bind(AdminKnowledgeBaseController),
-                validator: SupportKnowledgeBaseCreateSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Create a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id',
-                method: 'put',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.update,
                 handler: AdminKnowledgeBaseController.update.bind(AdminKnowledgeBaseController),
-                validator: SupportKnowledgeBaseUpdateSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Update a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id',
-                method: 'delete',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.remove,
                 handler: AdminKnowledgeBaseController.delete.bind(AdminKnowledgeBaseController),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseDeleteResponseSchema,
                 description: 'Delete a knowledge base article',
             }),
             defineRoute({
@@ -473,46 +462,33 @@ export default [
                 ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Upload screenshot for a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id/screenshot',
-                method: 'delete',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.removeScreenshot,
                 handler: AdminKnowledgeBaseController.deleteScreenshot.bind(
                     AdminKnowledgeBaseController,
                 ),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Delete screenshot for a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id/reindex',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.reindex,
                 handler: AdminKnowledgeBaseController.reindex.bind(AdminKnowledgeBaseController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseReindexResponseSchema,
                 description: 'Reindex a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/reindex-all',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.reindexAll,
                 handler: AdminKnowledgeBaseController.reindexAll.bind(AdminKnowledgeBaseController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseReindexResponseSchema,
                 description: 'Reindex all knowledge base articles',
             }),
-            defineRoute({
-                url: '/knowledge-base/init',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.startInit,
                 handler: AdminKnowledgeBaseController.startInit.bind(AdminKnowledgeBaseController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseInitResponseSchema,
                 description: 'Initialize knowledge base from docs/support-knowledge-base',
             }),
-            defineRoute({
-                url: '/knowledge-base/init-status',
-                method: 'get',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.initStatus,
                 handler: AdminKnowledgeBaseController.getInitStatus.bind(
                     AdminKnowledgeBaseController,
                 ),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseInitResponseSchema,
                 description: 'Get knowledge base initialization status',
             }),
         ],

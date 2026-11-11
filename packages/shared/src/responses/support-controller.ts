@@ -53,6 +53,7 @@ export const SupportKnowledgeBaseItemSchema = type({
     createdAt: 'string',
     updatedAt: 'string',
 })
+export type SupportKnowledgeBaseItem = typeof SupportKnowledgeBaseItemSchema.infer
 
 export const SupportKnowledgeBaseListResponseSchema = type.or(
     {

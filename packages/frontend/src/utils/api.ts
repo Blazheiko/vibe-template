@@ -1,7 +1,6 @@
 import baseApi from './base-api'
 import type { ApiResponse } from './api-error'
 import { apiPath } from './api-path'
-import { adminQueryString } from './admin-query'
 import { callApi } from './api-client'
 import type {
     OAuthProvidersResponse,
@@ -20,6 +19,7 @@ import type {
     ResetPasswordResponse,
     UpdateWsTokenResponse,
     SupportKnowledgeBaseInitJob,
+    SupportKnowledgeBaseItem,
     AdminUserListResponse,
     AdminOnlineUserListResponse,
     AdminOnlineUserDetailResponse,
@@ -55,13 +55,20 @@ import type {
     LinkEmailStartInput,
     ResetPhoneStartInput,
     ResetPhoneCompleteInput,
+    SupportKnowledgeBaseCreateInput,
+    SupportKnowledgeBaseUpdateInput,
 } from 'shared/schemas'
-import { adminContracts, authContracts, pushSubscriptionContracts } from 'shared/contracts'
+import {
+    adminContracts,
+    authContracts,
+    knowledgeBaseContracts,
+    pushSubscriptionContracts,
+} from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
 const isSuccessfulResponse = <T extends Record<string, unknown>>(
     response: ApiResponse<T>,
-): response is { data: T; error: null } =>
+): response is { data: Exclude<T, { status: 'error' }>; error: null } =>
     response.error === null && response.data !== null && !hasResponseError(response.data)
 
 export const authApi = {
@@ -287,18 +294,7 @@ export interface SupportChatMessage {
     createdAt: string
 }
 
-export interface KnowledgeBaseArticle {
-    id: string
-    title: string
-    content: string
-    category: string | null
-    isActive: boolean
-    hasScreenshot: boolean
-    screenshotKey: string | null
-    embeddingIndexed: boolean
-    createdAt: string
-    updatedAt: string
-}
+export type KnowledgeBaseArticle = SupportKnowledgeBaseItem
 
 export type KnowledgeBaseInitStatus = SupportKnowledgeBaseInitJob
 
@@ -346,16 +342,9 @@ export const adminKnowledgeBaseApi = {
     getAll: async (
         params?: AdminKnowledgeBaseListQueryInput,
     ): Promise<{ items: KnowledgeBaseArticle[]; total: number }> => {
-        const qs = adminQueryString({
-            category: params?.category,
-            page: params?.page,
-            limit: params?.limit,
+        const response = await callApi(knowledgeBaseContracts.list, {
+            query: { category: params?.category, page: params?.page, limit: params?.limit },
         })
-        const response = await baseApi.http<{
-            status: string
-            data?: KnowledgeBaseArticle[]
-            total?: number
-        }>('GET', apiPath(`admin/knowledge-base${qs}`))
         // A failure is not an empty knowledge base: the view must tell them apart.
         if (!isSuccessfulResponse(response)) {
             throw new Error(response.error?.message ?? 'Failed to load the knowledge base')
@@ -363,39 +352,28 @@ export const adminKnowledgeBaseApi = {
         return { items: response.data.data ?? [], total: response.data.total ?? 0 }
     },
 
-    create: async (payload: {
-        title: string
-        content: string
-        category?: string
-        isActive?: boolean
-    }): Promise<KnowledgeBaseArticle | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseArticle }>(
-            'POST',
-            apiPath('admin/knowledge-base'),
-            payload,
-        )
+    create: async (
+        payload: SupportKnowledgeBaseCreateInput,
+    ): Promise<KnowledgeBaseArticle | null> => {
+        const response = await callApi(knowledgeBaseContracts.create, { body: payload })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     update: async (
         id: string,
-        payload: { title?: string; content?: string; category?: string | null; isActive?: boolean },
+        payload: SupportKnowledgeBaseUpdateInput,
     ): Promise<KnowledgeBaseArticle | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseArticle }>(
-            'PUT',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}`),
-            payload,
-        )
+        const response = await callApi(knowledgeBaseContracts.update, {
+            params: { id },
+            body: payload,
+        })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     delete: async (id: string): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'DELETE',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}`),
-        )
+        const response = await callApi(knowledgeBaseContracts.remove, { params: { id } })
         return isSuccessfulResponse(response)
     },
 
@@ -412,29 +390,22 @@ export const adminKnowledgeBaseApi = {
     },
 
     deleteScreenshot: async (id: string): Promise<KnowledgeBaseArticle | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseArticle }>(
-            'DELETE',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/screenshot`),
-        )
+        const response = await callApi(knowledgeBaseContracts.removeScreenshot, { params: { id } })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     reindex: async (id: string): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'POST',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/reindex`),
-        )
+        const response = await callApi(knowledgeBaseContracts.reindex, {
+            params: { id },
+            body: {},
+        })
         return isSuccessfulResponse(response)
     },
 
     /** `null` when the request failed; `failed` are the ids of the articles left unindexed. */
     reindexAll: async (): Promise<{ indexed: number; failed: string[] } | null> => {
-        const response = await baseApi.http<{
-            status: string
-            indexed?: number
-            failed?: string[]
-        }>('POST', apiPath('admin/knowledge-base/reindex-all'))
+        const response = await callApi(knowledgeBaseContracts.reindexAll, { body: {} })
         if (!isSuccessfulResponse(response)) return null
         return { indexed: response.data.indexed ?? 0, failed: response.data.failed ?? [] }
     },
@@ -444,11 +415,7 @@ export const adminKnowledgeBaseApi = {
         status: KnowledgeBaseInitStatus | null
         message: string | null
     }> => {
-        const response = await baseApi.http<{
-            status: string
-            data?: KnowledgeBaseInitStatus
-            message?: string
-        }>('POST', apiPath('admin/knowledge-base/init'))
+        const response = await callApi(knowledgeBaseContracts.startInit, { body: {} })
         if (!isSuccessfulResponse(response)) {
             return {
                 ok: false,
@@ -467,10 +434,7 @@ export const adminKnowledgeBaseApi = {
     },
 
     getInitStatus: async (): Promise<KnowledgeBaseInitStatus | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseInitStatus }>(
-            'GET',
-            apiPath('admin/knowledge-base/init-status'),
-        )
+        const response = await callApi(knowledgeBaseContracts.initStatus)
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },

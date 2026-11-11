@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { adminQueryString } from '../admin-query'
 
 vi.mock('@/composables/useWebSocketConnection', () => ({
     useWebSocketConnection: () => ({ websocketApi: vi.fn() }),
@@ -13,23 +12,6 @@ vi.mock('../base-api', () => ({ default: { http } }))
 // Through the typed client (ADR 0005): the method and the URL are the first two arguments of the
 // transport; an empty body and no options follow.
 const lastRequest = (): unknown[] => (http.mock.lastCall ?? []).slice(0, 2)
-
-describe('adminQueryString', () => {
-    it('is empty when nothing is left', () => {
-        expect(adminQueryString({})).toBe('')
-        expect(adminQueryString({ a: undefined, b: '' })).toBe('')
-    })
-
-    it('leaves out undefined and empty strings, keeps zero, and keeps the order', () => {
-        expect(adminQueryString({ limit: 0, cursor: '', userId: undefined, page: 2 })).toBe(
-            '?limit=0&page=2',
-        )
-    })
-
-    it('encodes the values', () => {
-        expect(adminQueryString({ q: 'a b&c=d/é' })).toBe('?q=a+b%26c%3Dd%2F%C3%A9')
-    })
-})
 
 describe('the admin list requests', () => {
     beforeEach(() => {
@@ -71,12 +53,13 @@ describe('the admin list requests', () => {
         const { adminKnowledgeBaseApi } = await import('../api')
         http.mockResolvedValue({ data: { status: 'ok', data: [], total: 0 }, error: null })
         await adminKnowledgeBaseApi.getAll({ category: 'billing & plans', page: 2, limit: 25 })
-        expect(http).toHaveBeenLastCalledWith(
+        expect(lastRequest()).toEqual([
             'GET',
-            '/api/admin/knowledge-base?category=billing+%26+plans&page=2&limit=25',
-        )
+            // A contract encodes a space as %20 (encodeURIComponent); the server reads it the same as +.
+            '/api/admin/knowledge-base?category=billing%20%26%20plans&page=2&limit=25',
+        ])
         await adminKnowledgeBaseApi.getAll({ category: '' })
-        expect(http).toHaveBeenLastCalledWith('GET', '/api/admin/knowledge-base')
+        expect(lastRequest()).toEqual(['GET', '/api/admin/knowledge-base'])
     })
 
     // feat-162: a failed list is an error, not an empty knowledge base.
