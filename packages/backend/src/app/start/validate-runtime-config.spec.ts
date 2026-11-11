@@ -184,10 +184,15 @@ describe('rate limit configuration', () => {
         expect(rateLimitConfig.wsUpgrade.windowMs).toBe(1000)
     })
 
-    it('defaults RATE_LIMIT_REDIS_TIMEOUT_MS to 50', async () => {
+    // feat-178: 50 ms gave intermittent 503s on login and registration on a loaded machine; the
+    // default is now the timeout of the main Redis client.
+    it('defaults RATE_LIMIT_REDIS_TIMEOUT_MS to 500, as REDIS_COMMAND_TIMEOUT_MS', async () => {
         delete process.env['RATE_LIMIT_REDIS_TIMEOUT_MS']
+        delete process.env['REDIS_COMMAND_TIMEOUT_MS']
         const { default: rateLimitConfig } = await import('#config/rate-limit.js')
-        expect(rateLimitConfig.redisTimeoutMs).toBe(50)
+        const { default: redisConfig } = await import('#config/redis.js')
+        expect(rateLimitConfig.redisTimeoutMs).toBe(500)
+        expect(rateLimitConfig.redisTimeoutMs).toBe(redisConfig.commandTimeoutMs)
     })
 })
 
