@@ -56,7 +56,7 @@ export { CreateNoteInputSchema, type CreateNoteInput } from './note/create-note.
 
 ## Step 2. Response schemas in `shared`
 
-Controller responses live in `packages/shared/src/responses/` and are built as `type.or(<success>, CanonicalErrorResponseSchema)`, see [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) and [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). The `Note` type is the public contract that the transformer returns. Outside production the server checks every controller response against this schema, and a mismatch gives a `500` — see [Response validation](/en/backend/response-validation).
+Controller responses live in `packages/shared/src/responses/` and are built as `type.or(<success>, CanonicalErrorResponseSchema)`, see [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) and [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). The `Note` type is the public contract that the transformer returns. The server checks every response of the route against this schema in any environment: a mismatch gives a `500`, and an extra field is a `500` outside production and is stripped in production (the `log` mode) — see [Response validation](/en/backend/response-validation).
 
 ```ts
 // packages/shared/src/responses/note-controller.ts

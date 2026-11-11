@@ -56,7 +56,7 @@ export { CreateNoteInputSchema, type CreateNoteInput } from './note/create-note.
 
 ## Крок 2. Схеми відповідей у `shared`
 
-Відповіді контролерів живуть у `packages/shared/src/responses/` і будуються як `type.or(<успіх>, CanonicalErrorResponseSchema)`, див. [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) та [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). Тип `Note` — це публічний контракт, який повертає transformer. Поза production сервер перевіряє кожну відповідь контролера за цією схемою, і розбіжність дає `500` — див. [Перевірка відповідей](/backend/response-validation).
+Відповіді контролерів живуть у `packages/shared/src/responses/` і будуються як `type.or(<успіх>, CanonicalErrorResponseSchema)`, див. [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) та [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). Тип `Note` — це публічний контракт, який повертає transformer. Сервер перевіряє кожну відповідь маршруту за цією схемою в будь-якому середовищі: розбіжність дає `500`, а зайве поле — `500` поза production і вирізається в production (режим `log`) — див. [Перевірка відповідей](/backend/response-validation).
 
 ```ts
 // packages/shared/src/responses/note-controller.ts
