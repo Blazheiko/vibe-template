@@ -476,24 +476,24 @@
 
 ### V15 Schema Bounds Lows · PG · → V10
 
-- [ ] **V15.S** Шаблон S.
-- [ ] **V15.1** `packages/shared/src/schemas/main/prompt-update.ts`, `prompt-test.ts`: межі
+- [x] **V15.S** Шаблон S.
+- [x] **V15.1** `packages/shared/src/schemas/main/prompt-update.ts`, `prompt-test.ts`: межі
       `maxTokens`, `temperature`, `model`.
       **AC:** `-5`, `1.5`, `temperature: 100`, `model` зі 101 символу → 422.
-- [ ] **V15.2** `packages/shared/src/schemas/support/support-knowledge-base.ts`: межі `title`,
+- [x] **V15.2** `packages/shared/src/schemas/support/support-knowledge-base.ts`: межі `title`,
       `category`, `content`.
       **AC:** заголовок із 256 символів → 422.
-- [ ] **V15.3** `services/auth/oauth-service.ts:782-790`: обрізання імені; URL аватара провайдера
+- [x] **V15.3** `services/auth/oauth-service.ts:782-790`: обрізання імені; URL аватара провайдера
       не в полі ключа S3.
       **AC:** тест: ім'я зі 150 символів — акаунт створено; завантаження аватара після OAuth-входу
       не викликає `DeleteObject` з URL як ключем.
-- [ ] **V15.4** Числові id зі шляху й query: перевірка діапазону `bigint`
+- [x] **V15.4** Числові id зі шляху й query: перевірка діапазону `bigint`
       (`support-controller.ts:54`, `parseId` KB, `cursor` / `userId` історії).
       **AC:** id із 30 цифр → 422 або 404, не 500, на кожному з маршрутів.
-- [ ] **V15.D** Шаблон D: межі полів промптів і бази знань, відповідь 422 / 404 на id поза
+- [x] **V15.D** Шаблон D: межі полів промптів і бази знань, відповідь 422 / 404 на id поза
       діапазоном, обрізання імені з OAuth-провайдера — у сторінках відповідних маршрутів і
       `documentation/backend/oauth.md`.
-- [ ] **V15.E** Шаблон E (PG). **V15.X** Шаблон X.
+- [x] **V15.E** Шаблон E (PG). **V15.X** Шаблон X.
 
 ### V16 Frontend Lows · e2e · → V05
 
