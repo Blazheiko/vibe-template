@@ -1771,8 +1771,8 @@
             "owner": "Blazheiko",
             "branch": "fix/rate-limit-redis-timeout",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #539 (merge commit ebed4b9, all checks green). RATE_LIMIT_REDIS_TIMEOUT_MS defaults to 500 ms (was 50), the timeout of the main Redis client (REDIS_COMMAND_TIMEOUT_MS); a timeout still fails closed with 503 and is not retried. RED: the default test failed on 50. The two Redis client tests pin 500 ms (the server pause outlasts it, the command fails in under 1 s). make check (backend 2662, frontend 501); backend test:redis 116; frontend test:e2e:live 3 runs of 13 with no 503 (at a lower machine load than when the 503s were seen, so not a proof); .env.example and configuration/security pages in both locales; docs:build && docs:verify."
         },
         {
             "id": "feat-179",
@@ -1781,7 +1781,7 @@
             "owner": "Blazheiko",
             "branch": "ci/playwright-deps-retry",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
