@@ -1783,6 +1783,36 @@
             "dependencies": [],
             "status": "done",
             "evidence": "Merged in #541 (merge commit ec32f9b, all checks green). scripts/retry.sh ATTEMPTS DELAY COMMAND reruns a command with a doubling pause and exits with its last status. The four browser install steps of ci.yml (install --with-deps and install-deps in e2e and e2e-live) run as scripts/retry.sh 3 30 timeout 300 ...: up to 3 attempts of at most 5 minutes (one attempt hung up to 10 minutes during the outage), 30 s and 60 s apart; job timeouts e2e 30 -> 40 and e2e-live 20 -> 30 minutes. The retry was checked by hand (retried success, failure with its exit code, single success, usage); the CI run of #541 ran the new install-deps steps successfully in both jobs (success path only: the mirrors were up). docs:build && docs:verify."
+        },
+        {
+            "id": "feat-180",
+            "name": "WS Request Correlation",
+            "description": "docs/adr/0006-websocket-contracts.md, docs/plan/ws-contracts-tasks.md W1: the WS request envelope gets an optional id that the server echoes in every reply (errors and rate-limit refusals too); both clients keep pending requests by id, so several requests of one event can be in flight. Starts after the owner decides Д-WS1. e2e, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/ws-request-correlation",
+            "dependencies": ["feat-171"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-181",
+            "name": "WS Request Contracts",
+            "description": "docs/adr/0006-websocket-contracts.md, docs/plan/ws-contracts-tasks.md W2: wsContract in shared/contracts, ws entries in the schema registry, defineWsRoute({ contract }), callWs on the frontend for the four WS routes, an ESLint rule against string websocketApi calls, route-contracts.spec.ts over ws-routes.ts. e2e, e2e live",
+            "owner": "Blazheiko",
+            "branch": "feat/ws-request-contracts",
+            "dependencies": ["feat-180"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-182",
+            "name": "Broadcast Contracts",
+            "description": "docs/adr/0006-websocket-contracts.md, docs/plan/ws-contracts-tasks.md W3: BroadcastContracts (types only), an exhaustive registry of frontend guards, onBroadcast and event-bus events typed from the contract, WsServiceMessage in shared/ws-client and the dead pong/connection_closed handlers removed. Starts after the owner decides Д-WS2/Д-WS3. e2e",
+            "owner": "Blazheiko",
+            "branch": "feat/broadcast-contracts",
+            "dependencies": ["feat-181"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
