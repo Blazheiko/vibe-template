@@ -1681,7 +1681,7 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-admin-monitoring",
             "dependencies": ["feat-172"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -1711,8 +1711,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contract-schema-registry",
             "dependencies": ["feat-168"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #522 (merge commit 082ed9e). C7.1: the registry lives in the backend (app/routes/contract-schemas/, generic code in app/routing/contract-registry.ts), keyed by '<method> <path>' of the contract (ADR 0005 decision 6). contractSchemas(group, entries) requires an entry per contract of the group and checks it against the contract's types; defineContractRoute takes validator, queryValidator and ResponseSchema from the entry, and types the handler's payload and query as the schemas' outputs. A contract without an entry does not compile and stops the server at start. The 12 pilot routes name only their contract. 10 compile-time negative checks; serialized routes byte-for-byte identical (233452 bytes). make check (backend 2656, frontend 499, shared 30, playground 111; bundle graph 495 modules, no schema); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify. To watch: typecheck time as C4 adds about 50 entries."
         },
         {
             "id": "feat-173",
