@@ -1581,7 +1581,7 @@
             "owner": "Blazheiko",
             "branch": "feat/backend-core-lows",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -1671,8 +1671,8 @@
             "owner": "Blazheiko",
             "branch": "feat/route-contracts-pilot",
             "dependencies": ["feat-167", "feat-148", "feat-156"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #503 (merge commit 16968fa). Twelve routes on contracts (the push-subscriptions group, GET /admin/users, POST /auth/login): shared/contracts, defineContractRoute, callApi on top of base-api, an ESLint rule against direct baseApi.http outside utils/api-client.ts and utils/api.ts with a counting test for the 36 calls left there, check:bundle-graph in make check. pnpm typecheck clean with negative @ts-expect-error checks on both sides; api-client.spec.ts 12 tests over the real transport (signal, csrfRecovery, sessionAfter, one repeat after a token mismatch, no repeat on an account change); check-bundle-graph 498 modules with no schema and no validator library; make check (backend 2618, frontend 467, shared 29, playground 81); backend test:pg 288 and test:redis 116; frontend test:e2e 88 and test:e2e:live 13; docs:build && docs:verify. The types found stores/push.ts reading answers without narrowing by status. Open: decision C1.R (start C4 or change the design) is the owner's. Local live e2e failed in 2 of the first 5 runs with a 503 from the test helper's POST /api/auth/register/email; none in 6 runs with RATE_LIMIT_REDIS_TIMEOUT_MS=1000 (see the review report); not seen in CI."
         },
         {
             "id": "feat-169",
