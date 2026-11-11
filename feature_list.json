@@ -1791,7 +1791,7 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-request-correlation",
             "dependencies": ["feat-171"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
