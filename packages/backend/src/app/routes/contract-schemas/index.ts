@@ -1,6 +1,7 @@
 import { contractRouteDefiner } from '#app/routing/contract-registry.js'
 import { adminSchemas } from './admin.js'
 import { authSchemas } from './auth.js'
+import { knowledgeBaseSchemas } from './knowledge-base.js'
 import { pushSubscriptionSchemas } from './push-subscriptions.js'
 
 // The schemas of every route declared through a contract, by `<method> <path>` of the contract
@@ -9,6 +10,7 @@ import { pushSubscriptionSchemas } from './push-subscriptions.js'
 export const contractSchemaRegistry = {
     ...adminSchemas,
     ...authSchemas,
+    ...knowledgeBaseSchemas,
     ...pushSubscriptionSchemas,
 }
 
