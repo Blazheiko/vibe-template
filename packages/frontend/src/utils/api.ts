@@ -2,6 +2,7 @@ import baseApi from './base-api'
 import type { ApiResponse } from './api-error'
 import { apiPath } from './api-path'
 import { adminQueryString } from './admin-query'
+import { callApi } from './api-client'
 import type {
     OAuthProvidersResponse,
     OAuthLinkConfirmResponse,
@@ -32,7 +33,6 @@ import type {
     LinkEmailStartResponse,
     ResetPhoneStartResponse,
     ResetPhoneCompleteResponse,
-    GetSubscriptionStatisticsResponse,
 } from 'shared/responses'
 import type {
     CreateSubscriptionInput,
@@ -56,6 +56,7 @@ import type {
     ResetPhoneStartInput,
     ResetPhoneCompleteInput,
 } from 'shared/schemas'
+import { adminContracts, authContracts, pushSubscriptionContracts } from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
 const isSuccessfulResponse = <T extends Record<string, unknown>>(
@@ -88,11 +89,8 @@ export const authApi = {
         return baseApi.http<EmailLinkResendResponse>('POST', apiPath('auth/oauth/email/resend'))
     },
 
-    login: async (body: LoginInput): Promise<ApiResponse<LoginResponse>> => {
-        return baseApi.http<LoginResponse>('POST', apiPath('auth/login'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    login: (body: LoginInput): Promise<ApiResponse<LoginResponse>> =>
+        callApi(authContracts.login, { body }, { csrfRecovery: 'public' }),
 
     registerEmail: async (
         body: RegisterEmailInput,
@@ -247,104 +245,30 @@ export const mainApi = {
     },
 }
 
-interface PushSubscriptionData extends Record<string, unknown> {
-    endpoint: string
-    p256dhKey: string
-    authKey: string
-    userAgent?: string
-    deviceType?: string
-    browserName?: string
-    browserVersion?: string
-    osName?: string
-    osVersion?: string
-    notificationTypes?: ('mention' | 'system')[]
-    timezone?: string
-}
-
-interface PushSubscriptionResponse {
-    id: string
-    userId: string
-    endpoint: string
-    p256dhKey: string
-    authKey: string
-    userAgent?: string
-    deviceType?: string
-    browserName?: string
-    isActive: boolean
-    created_at: string
-    updated_at: string
-}
-
+// The push-subscriptions routes go through their contracts (docs/adr/0005-route-contracts.md):
+// the method, the path, the body and the answer of each call are the contract's.
 export const pushSubscriptionApi = {
-    getSubscriptions: async (): Promise<ApiResponse<PushSubscriptionResponse[]>> => {
-        return baseApi.http<PushSubscriptionResponse[]>('GET', apiPath('push-subscriptions'))
-    },
+    getSubscriptions: () => callApi(pushSubscriptionContracts.list),
 
-    createSubscription: async (
-        subscriptionData: CreateSubscriptionInput | PushSubscriptionData,
-    ): Promise<ApiResponse<PushSubscriptionResponse>> => {
-        return baseApi.http<PushSubscriptionResponse>(
-            'POST',
-            apiPath('push-subscriptions'),
-            subscriptionData,
-        )
-    },
+    createSubscription: (body: CreateSubscriptionInput) =>
+        callApi(pushSubscriptionContracts.create, { body }),
 
-    getSubscription: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<PushSubscriptionResponse>> => {
-        return baseApi.http<PushSubscriptionResponse>(
-            'GET',
-            apiPath(`push-subscriptions/${subscriptionId}`),
-        )
-    },
+    getSubscription: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.get, { params: { subscriptionId } }),
 
-    deleteSubscription: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<{ success: boolean }>> => {
-        return baseApi.http<{ success: boolean }>(
-            'DELETE',
-            apiPath(`push-subscriptions/${subscriptionId}`),
-        )
-    },
+    deleteSubscription: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.remove, { params: { subscriptionId } }),
 
-    getSubscriptionStatistics: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<GetSubscriptionStatisticsResponse>> => {
-        return baseApi.http<GetSubscriptionStatisticsResponse>(
-            'GET',
-            apiPath(`push-subscriptions/${subscriptionId}/statistics`),
-        )
-    },
+    getSubscriptionStatistics: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.statistics, { params: { subscriptionId } }),
 
-    deactivateSubscription: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<PushSubscriptionResponse>> => {
-        return baseApi.http<PushSubscriptionResponse>(
-            'PUT',
-            apiPath(`push-subscriptions/${subscriptionId}/deactivate`),
-            {},
-        )
-    },
+    deactivateSubscription: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.deactivate, { params: { subscriptionId }, body: {} }),
 
-    getVapidPublicKey: async (): Promise<ApiResponse<{ vapidPublicKey: string }>> => {
-        return baseApi.http<{ vapidPublicKey: string }>(
-            'GET',
-            apiPath('push-subscriptions/vapid-public-key'),
-        )
-    },
+    getVapidPublicKey: () => callApi(pushSubscriptionContracts.vapidPublicKey),
 
-    testPush: async (
-        payload: PushSubscriptionTestInput = {},
-    ): Promise<
-        ApiResponse<{ status: string; message: string; sent?: number; failed?: number }>
-    > => {
-        return baseApi.http<{ status: string; message: string; sent?: number; failed?: number }>(
-            'POST',
-            apiPath('push-subscriptions/test-push'),
-            payload,
-        )
-    },
+    testPush: (body: PushSubscriptionTestInput = {}) =>
+        callApi(pushSubscriptionContracts.testPush, { body }),
 }
 
 export const avatarApi = {
@@ -556,16 +480,10 @@ export const adminKnowledgeBaseApi = {
 }
 
 export const adminUsersApi = {
-    list: async (params?: AdminUserListQueryInput): Promise<ApiResponse<AdminUserListResponse>> => {
-        const qs = adminQueryString({
-            limit: params?.limit,
-            cursor: params?.cursor,
-            userId: params?.userId?.trim(),
-            dateFrom: params?.dateFrom,
-            dateTo: params?.dateTo,
-        })
-        return baseApi.http<AdminUserListResponse>('GET', apiPath(`admin/users${qs}`))
-    },
+    list: (params?: AdminUserListQueryInput): Promise<ApiResponse<AdminUserListResponse>> =>
+        callApi(adminContracts.users, {
+            query: { ...params, userId: params?.userId?.trim() },
+        }),
 }
 
 export const adminOnlineUsersApi = {

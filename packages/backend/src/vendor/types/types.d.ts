@@ -276,6 +276,12 @@ export interface RouteConfig<
 > {
     url: string
     method: Method
+    /**
+     * Set by `defineRoute({ contract })`: the route's whole path under the API prefix, as the
+     * contract says it. The router checks that the group the route is in has that prefix, and
+     * takes the URL from here (docs/adr/0005-route-contracts.md).
+     */
+    contractPath?: string | undefined
     middlewares?: string[] | undefined
     validator?: TValidator | undefined
     /**

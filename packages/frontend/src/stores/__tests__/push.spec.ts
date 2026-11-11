@@ -92,7 +92,10 @@ describe('push store: subscribing', () => {
         const store = usePushStore()
         api.createSubscription.mockImplementation(() => {
             enabledWhenPosted = store.isSubscribedToPush
-            return Promise.resolve({ data: { subscription: { id: 'sub-1' } }, error: null })
+            return Promise.resolve({
+                data: { status: 'success', subscription: { id: 'sub-1' } },
+                error: null,
+            })
         })
 
         expect(await store.subscribeToPush()).toBe(existing)
@@ -109,7 +112,9 @@ describe('push store: subscribing', () => {
     it('is not enabled when the server refuses the subscription, and a retry posts it again', async () => {
         const created = subscription('https://push.example/2')
         const { subscribe } = stubBrowser({ created })
-        api.getVapidPublicKey.mockResolvedValue({ data: { vapidPublicKey: VAPID } })
+        api.getVapidPublicKey.mockResolvedValue({
+            data: { status: 'success', vapidPublicKey: VAPID },
+        })
         api.createSubscription.mockResolvedValueOnce({
             data: null,
             error: { message: 'Too many requests' },
@@ -124,7 +129,7 @@ describe('push store: subscribing', () => {
         // The browser now has the subscription the first attempt created.
         stubBrowser({ existing: created })
         api.createSubscription.mockResolvedValueOnce({
-            data: { subscription: { id: 'sub-2' } },
+            data: { status: 'success', subscription: { id: 'sub-2' } },
             error: null,
         })
 
@@ -139,9 +144,11 @@ describe('push store: subscribing', () => {
     it('subscribes with the server key, sends the device to the server and keeps the id it answers with', async () => {
         const created = subscription('https://push.example/2')
         const { subscribe } = stubBrowser({ created })
-        api.getVapidPublicKey.mockResolvedValue({ data: { vapidPublicKey: VAPID } })
+        api.getVapidPublicKey.mockResolvedValue({
+            data: { status: 'success', vapidPublicKey: VAPID },
+        })
         api.createSubscription.mockResolvedValue({
-            data: { subscription: { id: 'sub-7' } },
+            data: { status: 'success', subscription: { id: 'sub-7' } },
             error: null,
         })
         const { usePushStore } = await import('../push')
@@ -165,7 +172,9 @@ describe('push store: subscribing', () => {
 
     it('gives up with null when the server has no usable key', async () => {
         stubBrowser({})
-        api.getVapidPublicKey.mockResolvedValue({ data: { vapidPublicKey: 'short' } })
+        api.getVapidPublicKey.mockResolvedValue({
+            data: { status: 'success', vapidPublicKey: 'short' },
+        })
         const { usePushStore } = await import('../push')
         const store = usePushStore()
         expect(await store.subscribeToPush()).toBeNull()
@@ -187,7 +196,7 @@ describe('push store: unsubscribing and resetting', () => {
         const existing = subscription('https://push.example/1', unsubscribe)
         stubBrowser({ existing })
         api.createSubscription.mockResolvedValue({
-            data: { subscription: { id: 'sub-7' } },
+            data: { status: 'success', subscription: { id: 'sub-7' } },
             error: null,
         })
         api.deleteSubscription.mockResolvedValue({ data: {}, error: null })
@@ -207,7 +216,7 @@ describe('push store: unsubscribing and resetting', () => {
     it('resetPushSubscriptionState forgets everything about the subscription (a sign-out)', async () => {
         stubBrowser({ existing: subscription('https://push.example/1') })
         api.createSubscription.mockResolvedValue({
-            data: { subscription: { id: 'sub-7' } },
+            data: { status: 'success', subscription: { id: 'sub-7' } },
             error: null,
         })
         const { usePushStore } = await import('../push')
@@ -229,6 +238,7 @@ describe('push store: what the server already knows', () => {
         stubBrowser({ existing: current })
         api.getSubscriptions.mockResolvedValue({
             data: {
+                status: 'success',
                 subscriptions: [
                     { id: 'a', isActive: false, endpoint: 'https://push.example/0' },
                     { id: 'b', isActive: true, endpoint: 'https://push.example/1' },
@@ -253,7 +263,10 @@ describe('push store: what the server already knows', () => {
         const unsubscribe = vi.fn().mockResolvedValue(true)
         stubBrowser({ existing: subscription('https://push.example/9', unsubscribe) })
         api.getSubscriptions.mockResolvedValue({
-            data: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
+            data: {
+                status: 'success',
+                subscriptions: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
+            },
             error: null,
         })
         const { usePushStore } = await import('../push')
@@ -270,7 +283,10 @@ describe('push store: what the server already knows', () => {
     it('reports push disabled in a browser with no subscription, whatever other devices have', async () => {
         stubBrowser({})
         api.getSubscriptions.mockResolvedValue({
-            data: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
+            data: {
+                status: 'success',
+                subscriptions: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
+            },
             error: null,
         })
         const { usePushStore } = await import('../push')
@@ -285,7 +301,10 @@ describe('push store: what the server already knows', () => {
         const unsubscribe = vi.fn().mockResolvedValue(true)
         stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
         api.getSubscriptions.mockResolvedValue({
-            data: [{ id: 'b', isActive: false, endpoint: 'https://push.example/1' }],
+            data: {
+                status: 'success',
+                subscriptions: [{ id: 'b', isActive: false, endpoint: 'https://push.example/1' }],
+            },
             error: null,
         })
         const { usePushStore } = await import('../push')
@@ -304,7 +323,12 @@ describe('push store: what the server already knows', () => {
             existing: subscription('https://PUSH.example/send/a%2fb', unsubscribe),
         })
         api.getSubscriptions.mockResolvedValue({
-            data: [{ id: 'b', isActive: true, endpoint: 'https://push.example/send/a%2Fb' }],
+            data: {
+                status: 'success',
+                subscriptions: [
+                    { id: 'b', isActive: true, endpoint: 'https://push.example/send/a%2Fb' },
+                ],
+            },
             error: null,
         })
         const { usePushStore } = await import('../push')
@@ -318,7 +342,10 @@ describe('push store: what the server already knows', () => {
 
     it('loads once within its window, and again after a reset', async () => {
         stubBrowser({})
-        api.getSubscriptions.mockResolvedValue({ data: { subscriptions: [] }, error: null })
+        api.getSubscriptions.mockResolvedValue({
+            data: { status: 'success', subscriptions: [] },
+            error: null,
+        })
         const { usePushStore } = await import('../push')
         const store = usePushStore()
 
@@ -343,6 +370,7 @@ describe('push store: releasing the subscription at sign-out', () => {
         stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
         api.getSubscriptions.mockResolvedValue({
             data: {
+                status: 'success',
                 subscriptions: [{ id: 'b', isActive: true, endpoint: 'https://push.example/1' }],
             },
             error: null,
@@ -384,7 +412,10 @@ describe('push store: releasing the subscription at sign-out', () => {
     it('does not fail the sign-out when the browser cannot unsubscribe', async () => {
         const unsubscribe = vi.fn().mockRejectedValue(new Error('push service down'))
         stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
-        api.getSubscriptions.mockResolvedValue({ data: { subscriptions: [] }, error: null })
+        api.getSubscriptions.mockResolvedValue({
+            data: { status: 'success', subscriptions: [] },
+            error: null,
+        })
         const { usePushStore } = await import('../push')
 
         await expect(usePushStore().releaseBrowserSubscription()).resolves.toBeUndefined()
@@ -395,7 +426,10 @@ describe('push store: releasing the subscription at sign-out', () => {
         try {
             const unsubscribe = vi.fn().mockReturnValue(new Promise(() => undefined))
             stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
-            api.getSubscriptions.mockResolvedValue({ data: { subscriptions: [] }, error: null })
+            api.getSubscriptions.mockResolvedValue({
+                data: { status: 'success', subscriptions: [] },
+                error: null,
+            })
             const { usePushStore } = await import('../push')
             let released = false
 

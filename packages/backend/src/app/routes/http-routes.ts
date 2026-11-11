@@ -10,7 +10,7 @@ import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineContractRoute, defineRoute } from '#app/routing/define-route.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
     AdminKnowledgeBaseListQuerySchema,
@@ -24,6 +24,7 @@ import {
     PushSubscriptionTestInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
+import { adminContracts, authContracts, pushSubscriptionContracts } from 'shared/contracts'
 
 import {
     RegisterEmailInputSchema,
@@ -103,9 +104,8 @@ export default [
                 ResponseSchema: ResponseSchemas.RegisterPhoneCompleteResponseSchema,
                 description: 'Complete phone registration profile and password',
             }),
-            defineRoute({
-                url: '/login',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.login,
                 handler: AuthController.login.bind(AuthController),
                 validator: LoginInputSchema,
                 ResponseSchema: ResponseSchemas.LoginResponseSchema,
@@ -298,18 +298,16 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/vapid-public-key',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.vapidPublicKey,
                 handler: PushSubscriptionController.getVapidPublicKey.bind(
                     PushSubscriptionController,
                 ),
                 ResponseSchema: ResponseSchemas.GetVapidPublicKeyResponseSchema,
                 description: 'Get VAPID public key for push subscriptions',
             }),
-            defineRoute({
-                url: '/test-push',
-                method: 'post',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.testPush,
                 handler: PushSubscriptionController.testPush.bind(PushSubscriptionController),
                 validator: PushSubscriptionTestInputSchema,
                 ResponseSchema: ResponseSchemas.TestPushResponseSchema,
@@ -318,18 +316,16 @@ export default [
                 // feat-104: every call fans out to all the user's devices.
                 rateLimit: { windowMs: 60_000, maxRequests: 5 },
             }),
-            defineRoute({
-                url: '/',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.list,
                 handler: PushSubscriptionController.getSubscriptions.bind(
                     PushSubscriptionController,
                 ),
                 ResponseSchema: ResponseSchemas.GetSubscriptionsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/',
-                method: 'post',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.create,
                 handler: PushSubscriptionController.createSubscription.bind(
                     PushSubscriptionController,
                 ),
@@ -337,18 +333,16 @@ export default [
                 ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.get,
                 handler: PushSubscriptionController.getSubscription.bind(
                     PushSubscriptionController,
                 ),
                 ResponseSchema: ResponseSchemas.GetSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId',
-                method: 'put',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.update,
                 handler: PushSubscriptionController.updateSubscription.bind(
                     PushSubscriptionController,
                 ),
@@ -356,36 +350,32 @@ export default [
                 ResponseSchema: ResponseSchemas.UpdateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId',
-                method: 'delete',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.remove,
                 handler: PushSubscriptionController.deleteSubscription.bind(
                     PushSubscriptionController,
                 ),
                 ResponseSchema: ResponseSchemas.DeleteSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId/logs',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.logs,
                 handler: PushSubscriptionController.getSubscriptionLogs.bind(
                     PushSubscriptionController,
                 ),
                 ResponseSchema: ResponseSchemas.GetSubscriptionLogsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId/statistics',
-                method: 'get',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.statistics,
                 handler: PushSubscriptionController.getSubscriptionStatistics.bind(
                     PushSubscriptionController,
                 ),
                 ResponseSchema: ResponseSchemas.GetSubscriptionStatisticsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/:subscriptionId/deactivate',
-                method: 'put',
+            defineContractRoute({
+                contract: pushSubscriptionContracts.deactivate,
                 handler: PushSubscriptionController.deactivateSubscription.bind(
                     PushSubscriptionController,
                 ),
@@ -635,9 +625,8 @@ export default [
                 ResponseSchema: ResponseSchemas.AdminOnlineUserDetailResponseSchema,
                 description: 'Get online user detail (admin)',
             }),
-            defineRoute({
-                url: '/users',
-                method: 'get',
+            defineContractRoute({
+                contract: adminContracts.users,
                 handler: AdminUserController.list.bind(AdminUserController),
                 queryValidator: AdminUserListQuerySchema,
                 ResponseSchema: ResponseSchemas.AdminUserListResponseSchema,

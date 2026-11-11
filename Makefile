@@ -20,7 +20,7 @@ ENV_FILE := packages/backend/.env
 
 .PHONY: help setup init doctor install env build-shared \
 	dev dev-backend dev-frontend dev-playground prod-local start \
-	check verify-makefile typecheck lint lint-fix format format-check \
+	check verify-makefile check-bundle-graph typecheck lint lint-fix format format-check \
 	test test-e2e test-pg test-redis coverage \
 	services-up services-down \
 	db-create db-migrate db-generate db-seed db-studio \
@@ -80,10 +80,13 @@ start: ## Start the built backend
 
 ##@ Quality
 
-check: build-shared verify-makefile format-check typecheck lint test ## Everything the CI quality job checks
+check: build-shared verify-makefile format-check typecheck lint check-bundle-graph test ## Everything the CI quality job checks
 
 verify-makefile: ## Check that Makefile targets are described and call existing scripts
 	@node scripts/verify-makefile.mjs
+
+check-bundle-graph: ## Frontend bundle carries no validation schema (ADR 0005)
+	$(PNPM) check:bundle-graph
 
 typecheck: ## TypeScript checks in every package
 	$(PNPM) typecheck

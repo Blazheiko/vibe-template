@@ -110,6 +110,40 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 Читати варто з кінця: останні рядки називають поле, що не збіглося. Union з `CanonicalErrorResponseSchema` у середині повідомлення розгортається повністю.
 
+## Маршрути з контрактом: `defineContractRoute`
+
+Частину маршрутів оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): група `push-subscriptions`, `POST /auth/login`, `GET /admin/users`. Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }`, тож фронтенд імпортує його без схем і без ArkType.
+
+```ts
+// packages/shared/src/contracts/push-subscriptions.ts
+export const pushSubscriptionContracts = {
+    create: contract<
+        typeof CreateSubscriptionInputSchema.inferIn,
+        undefined,
+        CreateSubscriptionResponse
+    >()('post', '/push-subscriptions'),
+}
+
+// packages/backend/src/app/routes/http-routes.ts
+defineContractRoute({
+    contract: pushSubscriptionContracts.create,
+    validator: CreateSubscriptionInputSchema,
+    ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
+    handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
+    middlewares: ['auth_guard'],
+})
+
+// packages/frontend/src/utils/api.ts
+callApi(pushSubscriptionContracts.create, { body })
+```
+
+- [`defineContractRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) бере `method` і `url` з контракту, решта полів — ті самі, що в `defineRoute`. Схеми звіряються з типами контракту під час компіляції: схема тіла іншого маршруту, пропущена схема чи інша схема відповіді — помилка `pnpm typecheck`.
+- Middleware, ліміти, `allowedContentTypes`, `maxBodySize` і група маршруту лишаються конфігурацією бекенду. Маршрут стоїть у групі, префікс якої є початком шляху контракту; інакше сервер не стартує.
+- На фронтенді [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) викликає маршрут контракту поверх наявного транспорту (CSRF, шлюз сесії). Неправильне тіло, параметр шляху чи ключ query — помилка компіляції. Прямі виклики `baseApi.http` поза `utils/api.ts` заборонено правилом ESLint; у самому `utils/api.ts` їхню кількість тримає тест [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
+- `pnpm check:bundle-graph` (частина `make check`) перевіряє на графі модулів production-збірки, що у бандл фронтенду не потрапили схеми й ArkType.
+
+Решта маршрутів оголошена через `defineRoute` і переходить на контракти групами. Multipart-маршрути (завантаження файлів) контрактів не мають.
+
 ## Методи і тіло запиту
 
 | Метод                         | Тіло читається | `validator`                                                   |

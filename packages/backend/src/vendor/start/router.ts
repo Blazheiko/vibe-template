@@ -74,6 +74,23 @@ const routeHandler = (route: RouteItem, groupRateLimit?: RateLimit): NormalizedR
     return createRoute(method, route, groupRateLimit)
 }
 
+/**
+ * The URL of a route declared through a contract. The contract names the whole path; the group
+ * the route sits in supplies the middlewares and limits and must be the group of that path — a
+ * contract for `/admin/users` in the `auth` group is a mistake caught at startup.
+ */
+const contractRouteUrl = (contractPath: string, groupPrefix: string): string => {
+    const path = normalizePath(contractPath)
+    const prefix = normalizePath(groupPrefix)
+    if (prefix !== '' && path !== prefix && !path.startsWith(`${prefix}/`)) {
+        throw new Error(
+            `Route contract /${path} is declared in the route group "/${prefix}": ` +
+                'the path of a contract has to start with the prefix of its group.',
+        )
+    }
+    return path
+}
+
 const routesHandler = (routeList: routeList): NormalizedRouteItem[] => {
     logger.info('routes Handler start')
     const parseRouteList = parseGroups(routeList, '', [], undefined)
@@ -109,7 +126,12 @@ const parseGroups = (
                 parseRouteList.push(item)
             })
         } else if ('url' in route && 'handler' in route) {
-            const routeUrl = prefix !== '' ? `${prefix}/${normalizePath(route.url)}` : route.url
+            const routeUrl =
+                route.contractPath !== undefined
+                    ? contractRouteUrl(route.contractPath, prefix)
+                    : prefix !== ''
+                      ? `${prefix}/${normalizePath(route.url)}`
+                      : route.url
             const routeMiddlewares =
                 middlewares.length > 0
                     ? middlewares.concat(route.middlewares ?? [])

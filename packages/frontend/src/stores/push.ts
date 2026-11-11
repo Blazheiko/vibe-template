@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { pushSubscriptionApi } from '@/utils/api'
+import type { GetSubscriptionsResponse } from 'shared/responses'
 import { apiPath } from '@/utils/api-path'
 import { createResource, isAbortError } from '@/utils/resource-state'
 import { getResponseMessage } from '@/utils/response-normalizer'
@@ -55,14 +56,9 @@ const currentBrowserSubscription = async (): Promise<PushSubscription | null> =>
     return await registration.pushManager.getSubscription()
 }
 
-const serverSubscriptionsOf = (data: unknown): ServerSubscription[] => {
-    const list = Array.isArray(data)
-        ? data
-        : Array.isArray((data as { subscriptions?: unknown } | null)?.subscriptions)
-          ? (data as { subscriptions: unknown[] }).subscriptions
-          : []
-    return list as ServerSubscription[]
-}
+/** The subscriptions of an answer of the list route, as its contract types it. */
+const serverSubscriptionsOf = (data: GetSubscriptionsResponse | null): ServerSubscription[] =>
+    data?.status === 'success' ? (data.subscriptions ?? []) : []
 export const usePushStore = defineStore('push', () => {
     const notificationPermission = ref<NotificationPermission>('default')
     const pushSubscription = ref<PushSubscription | null>(null)
@@ -182,7 +178,7 @@ export const usePushStore = defineStore('push', () => {
     const getVapidPublicKey = async (): Promise<string | null> => {
         try {
             const response = await pushSubscriptionApi.getVapidPublicKey()
-            if (response.data?.vapidPublicKey) {
+            if (response.data?.status === 'success' && response.data.vapidPublicKey) {
                 return response.data.vapidPublicKey
             }
         } catch (error) {
@@ -224,12 +220,8 @@ export const usePushStore = defineStore('push', () => {
                 )
             }
 
-            const data = response.data as Record<string, unknown> | null
-            if (data !== null && typeof data === 'object' && 'subscription' in data) {
-                const sub = data.subscription as { id?: string }
-                if (sub.id !== undefined) {
-                    pushSubscriptionId.value = sub.id
-                }
+            if (response.data?.status === 'success' && response.data.subscription !== undefined) {
+                pushSubscriptionId.value = response.data.subscription.id
             }
         } catch (error) {
             console.error('Error sending subscription to server:', error)
