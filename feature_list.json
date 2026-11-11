@@ -1763,6 +1763,26 @@
             "dependencies": ["feat-176"],
             "status": "done",
             "evidence": "Merged in #534 (merge commit 866603a, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Contracts got a kind: multipart (a { fields, files } body sent as FormData through baseApi.upload with the same CSRF token, session gate and one repeat; the server checks the fields schema and accepts only multipart) and navigation (a GET the browser opens; callApi refuses it, contractUrl builds its URL). Six routes moved: avatar upload and delete, the knowledge base screenshot upload, the support screenshot, the OAuth redirect and callback. Every route of http-routes.ts is declared by contract; utils/api.ts calls the transport only through callApi (both counters 0). Locally: make check (backend 2659, frontend 504, shared 30, playground 111; bundle graph no schema); backend test:pg 295; frontend test:e2e 92 on the third full run (the first two lost tests while another project kept the load average at 60-80), test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
+        },
+        {
+            "id": "feat-178",
+            "name": "Rate Limit Redis Timeout Default",
+            "description": "docs/plan/code-review-2026-11-10-report.md (found during the plan): raise the default RATE_LIMIT_REDIS_TIMEOUT_MS from 50 to 1000 ms. At 50 ms a loaded developer machine got intermittent 503s on login and registration (2 of 5 live e2e runs); at 1000 ms none in 6. The limiter still fails closed when Redis is unreachable. Owner decision 2026-11-11.",
+            "owner": "Blazheiko",
+            "branch": "fix/rate-limit-redis-timeout",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-179",
+            "name": "CI Browser Deps Retry",
+            "description": "docs/plan/code-review-2026-11-10-report.md (found during the plan): retry playwright install-deps in the e2e and e2e-live jobs with pauses, so a short outage of the Ubuntu apt mirrors on GitHub runners does not fail the jobs (2026-11-11: every PR failed at this step for hours). Owner decision 2026-11-11: retry rather than the Playwright container.",
+            "owner": "Blazheiko",
+            "branch": "ci/playwright-deps-retry",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }

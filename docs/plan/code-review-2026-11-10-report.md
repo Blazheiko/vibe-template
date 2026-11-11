@@ -342,6 +342,17 @@ ArkType-схем, і покладатися на їх видалення зби�
   `.env` (`3D000`): конфіг, на відміну від live, не створює й не мігрує свою базу. Запущено з
   `PGSQL_DB_NAME=vibe_e2e_live`.
 
+**Рішення власника 2026-11-11 щодо знайденого:**
+
+- Епізодичний 503 у live e2e: типове `RATE_LIMIT_REDIS_TIMEOUT_MS` піднімається з 50 до 1000 мс
+  (`feat-178`).
+- Нестабільні тести (`upload-limits.transport.spec.ts`, разовий `400` від `verify-email` у CI,
+  тест подвійного кліку на вході під навантаженням): разові збої не відстежуємо, задач не
+  заводимо.
+- Збій `playwright install-deps` на runner'ах GitHub (недоступні apt-дзеркала): повтор кроку з
+  паузами (`feat-179`).
+- `test:e2e:security` без бази за замовчуванням: лишається як є; запуск з `PGSQL_DB_NAME`.
+
 ## Не охоплено
 
 - `packages/backend/src/app/validate/**` поза auth, `services/observability`, `admin-ws-*`,
