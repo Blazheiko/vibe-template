@@ -21,7 +21,7 @@ Done, waiting for review and merge.
   (`account.avatar.closeEditor`), the chat send button (`support.send`) in `en`, `uk`, `pl`; the
   admin modal's `✕` has `aria-label="Close"` (the admin UI is not translated).
 
-No documentation page describes these components: nothing to update in `documentation/`.
+Docs (both locales): `frontend/index.md` lists the new composable.
 
 ## Evidence of Completion
 
@@ -45,6 +45,7 @@ e2e/mock/modal-keyboard.spec.ts   3 failed
 - `make check`: frontend 45 files / 499 tests, backend 2655, shared 30, playground 81.
 - `pnpm --filter frontend test:e2e`: 92 passed.
 - `pnpm --filter frontend test:e2e:live`: 13 passed.
+- `pnpm docs:build && pnpm docs:verify`: passed.
 
 ### Not verified
 
