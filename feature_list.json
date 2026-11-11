@@ -1631,8 +1631,8 @@
             "owner": "Blazheiko",
             "branch": "feat/modal-accessibility",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #513 (merge commit 0c5d45c). The three modals (AuthModalShell, AdminUserDetailModal, AvatarEditorModal) had no dialog role, no focus management and no Escape; icon-only buttons had no name. Reproduced by 3 component tests and 3 e2e tests that fail on the old components. After the fix: useModalDialog (initial focus, Tab trap, Escape, focus return, a stack of open dialogs; 11 unit tests), role=dialog / aria-modal / aria-labelledby on the three panels, names for the avatar editor close button and the chat send button in en, uk, pl. make check (frontend 499, backend 2655, shared 30, playground 81); frontend test:e2e 92; test:e2e:live 13; docs:build && docs:verify. Not verified with a screen reader; the admin modal and the avatar editor are covered in jsdom only."
         },
         {
             "id": "feat-165",
@@ -1641,7 +1641,7 @@
             "owner": "Blazheiko",
             "branch": "feat/playground-lows",
             "dependencies": ["feat-158"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
