@@ -603,20 +603,20 @@ C5b → C6.
 
 ### C7 Route Contract Schema Registry · → C1
 
-- [ ] **C7.S** Шаблон S.
-- [ ] **C7.1** Рішення, де живе реєстр: бекенд чи серверний subpath `shared` (схеми не мають
+- [x] **C7.S** Шаблон S.
+- [x] **C7.1** Рішення, де живе реєстр: бекенд чи серверний subpath `shared` (схеми не мають
       потрапити в бандл фронтенду; playground серіалізує схеми маршрутів через `serialize-routes`).
       **AC:** рядок рішення в ADR 0005 з причиною.
-- [ ] **C7.2** → C7.1. Реєстр `контракт → { body?, query?, response }`; `defineContractRoute`
+- [x] **C7.2** → C7.1. Реєстр `контракт → { body?, query?, response }`; `defineContractRoute`
       без `validator` / `queryValidator` / `ResponseSchema` бере їх із реєстру.
       **AC:** тести типів: запис реєстру зі схемою іншого маршруту, пропущена або зайва схема — не
       компілюється (ті самі випадки, що в пілоті, але на записі реєстру); маршрут, контракту якого
       немає в реєстрі, — помилка на старті або компіляції.
-- [ ] **C7.3** → C7.2. 12 маршрутів пілота на реєстрі; схеми в `http-routes.ts` більше не
+- [x] **C7.3** → C7.2. 12 маршрутів пілота на реєстрі; схеми в `http-routes.ts` більше не
       вказуються.
       **AC:** PG-тести `push-subscriptions`, тести `admin/users` і `auth/login` зелені;
       `serialize-routes` для playground не змінився; `check:bundle-graph` зелений.
-- [ ] **C7.D** Шаблон D (ADR 0005, `backend/routing.md`, додавання фічі, навичка
+- [x] **C7.D** Шаблон D (ADR 0005, `backend/routing.md`, додавання фічі, навичка
       `backend-feature`). **C7.E** Шаблон E (PG). **C7.X** Шаблон X.
 
 ### C4.1–C4.5 Route Contracts Migration · → C7 (послідовно)
