@@ -1701,8 +1701,8 @@
             "owner": "Blazheiko",
             "branch": "docs/websocket-contracts-design",
             "dependencies": ["feat-170"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #545 (merge commit 06ff622). Design only: ADR 0006 (status proposed) describes the current WS state checked against main (four routes with schemas on the route and string calls, correlation by event name with one request per event, broadcast schemas checked on the server with hand-written client guards and a parity test, dead pong/connection_closed client handlers) and proposes WS request contracts on the same schema registry (wsContract, ws <event> entries, defineWsRoute({ contract }), callWs), a request id echoed by the server (Д-WS1), broadcast type contracts with an exhaustive guard registry (Д-WS2) and service messages as a shared type (Д-WS3), with alternatives and an estimate. Task list docs/plan/ws-contracts-tasks.md: W1 correlation (S), W2 request contracts (M), W3 broadcast (S); features feat-180..feat-182 wait for the owner's decisions."
         },
         {
             "id": "feat-172",
