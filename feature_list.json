@@ -1691,8 +1691,8 @@
             "owner": "Blazheiko",
             "branch": "feat/route-contracts-lock",
             "dependencies": ["feat-177"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #536 (merge commit 17d547d, all checks green). defineContractRoute became defineRoute({ contract, handler, ... }), the one way to declare a route of the application; the schema-only helper is defineRawRoute, kept for the HTTP-machinery tests, and a root ESLint rule forbids importing it in backend source outside tests. The frontend counter and the utils/api.ts exception are gone; the ESLint rule covers baseApi.http and baseApi.upload outside utils/api-client.ts. route-contracts.spec.ts fails on a route without a contract, registry entry, response schema or (post/put/patch) body schema, and on a registry entry without a route; it found POST /auth/oauth/email/resend taking any body (now the empty-form schema). Docs: 15 pages in both locales, ADR 0005 (target state reached). Both tutorials run end to end on a clean worktree (migration, seed, server, every curl); three old page errors fixed (login body, a service test, UTC examples). make check (backend 2662, frontend 501, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         },
         {
             "id": "feat-171",
