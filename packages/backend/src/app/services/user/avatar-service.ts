@@ -55,6 +55,10 @@ function serializeUser(user: {
 
 // Best-effort cleanup: a leftover S3 object must not fail the request, but is logged.
 async function deleteAvatarObject(key: string): Promise<void> {
+    // users.avatar of an account created through OAuth holds the provider's picture URL, not a
+    // key of this storage: there is no object to delete, and asking for one would be a
+    // DeleteObject for a key like `<prefix>/https://…` (feat-161).
+    if (/^https?:\/\//i.test(key)) return
     try {
         await deleteFromS3(key)
     } catch (err: unknown) {

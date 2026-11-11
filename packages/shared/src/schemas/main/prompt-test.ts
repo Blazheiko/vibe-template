@@ -1,7 +1,8 @@
 import { type } from '@arktype/type'
 
 export const PromptTestInputSchema = type({
-    message: 'string >= 1',
+    // As long as a support message may be (SUPPORT_MESSAGE_MAX_LENGTH).
+    message: '1 <= string <= 4000',
     '+': 'reject',
 })
 
