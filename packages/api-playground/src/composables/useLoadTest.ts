@@ -3,9 +3,12 @@ import type { ComputedRef, Ref } from 'vue'
 import baseApi from '@/utils/base-api'
 import type { SendHttp } from '@/utils/base-api'
 import {
+    clampCount,
     executeRequest,
     executeThread,
     failedRunOf,
+    MAX_REQUESTS_PER_THREAD,
+    MAX_THREADS,
     singleResultOf,
     summaryOf,
 } from '@/utils/load-test'
@@ -34,6 +37,8 @@ export interface LoadTest {
     progress: Ref<Progress>
     progressPercentage: ComputedRef<number>
     run: (spec: RequestSpec) => Promise<void>
+    /** Ends the run after the requests already on their way; the summary is of what was sent. */
+    stop: () => void
     clear: () => void
 }
 
@@ -61,13 +66,15 @@ export function useLoadTest(options: LoadTestOptions): LoadTest {
         return Math.round((progress.value.completedRequests / progress.value.totalRequests) * 100)
     })
 
-    async function runOnOneThread(spec: RequestSpec): Promise<void> {
-        const requestCount = options.requestCount.value
+    let stopRequested = false
+    const shouldStop = (): boolean => stopRequested
+
+    async function runOnOneThread(spec: RequestSpec, requestCount: number): Promise<void> {
         const startedAt = Date.now()
         const results: NumberedOutcome[] = []
         const responseTimes: number[] = []
 
-        for (let i = 0; i < requestCount; i++) {
+        for (let i = 0; i < requestCount && !stopRequested; i++) {
             progress.value.currentThread = 1
             const result = await executeRequest(send, spec)
             results.push({ ...result, requestNumber: i + 1 })
@@ -93,14 +100,16 @@ export function useLoadTest(options: LoadTestOptions): LoadTest {
         })
     }
 
-    async function runOnThreads(spec: RequestSpec): Promise<void> {
-        const requestCount = options.requestCount.value
-        const threadCount = options.threadCount.value
+    async function runOnThreads(
+        spec: RequestSpec,
+        requestCount: number,
+        threadCount: number,
+    ): Promise<void> {
         const startedAt = Date.now()
 
         const threads = await Promise.all(
             Array.from({ length: threadCount }, (_, index) =>
-                executeThread(send, spec, index, requestCount, progress.value),
+                executeThread(send, spec, index, requestCount, progress.value, shouldStop),
             ),
         )
 
@@ -115,19 +124,24 @@ export function useLoadTest(options: LoadTestOptions): LoadTest {
     }
 
     async function run(spec: RequestSpec): Promise<void> {
+        // The bounds are here, not only in the form's `min` / `max`: a typed 100000 or an
+        // emptied field would otherwise be the size of the run.
+        const requestCount = clampCount(options.requestCount.value, MAX_REQUESTS_PER_THREAD)
+        const threadCount = clampCount(options.threadCount.value, MAX_THREADS)
+        stopRequested = false
         isLoading.value = true
         testResult.value = null
         progress.value = {
-            totalRequests: options.threadCount.value * options.requestCount.value,
+            totalRequests: threadCount * requestCount,
             completedRequests: 0,
             currentThread: 0,
-            totalThreads: options.threadCount.value,
+            totalThreads: threadCount,
             isVisible: true,
         }
 
         try {
-            if (options.threadCount.value === 1) await runOnOneThread(spec)
-            else await runOnThreads(spec)
+            if (threadCount === 1) await runOnOneThread(spec, requestCount)
+            else await runOnThreads(spec, requestCount, threadCount)
         } catch (error) {
             console.error(error)
             testResult.value = failedRunOf(error, spec)
@@ -139,10 +153,14 @@ export function useLoadTest(options: LoadTestOptions): LoadTest {
         }
     }
 
+    function stop(): void {
+        stopRequested = true
+    }
+
     function clear(): void {
         testResult.value = null
         progress.value.isVisible = false
     }
 
-    return { testResult, isLoading, progress, progressPercentage, run, clear }
+    return { testResult, isLoading, progress, progressPercentage, run, stop, clear }
 }

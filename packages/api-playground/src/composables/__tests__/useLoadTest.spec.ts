@@ -180,3 +180,102 @@ describe('useLoadTest', () => {
         expect(test.progress.value.isVisible).toBe(false)
     })
 })
+
+// feat-165 (review 2026-11-10): the bounds of a run were the `min` / `max` of two number inputs,
+// which a typed value ignores, and a run could not be stopped.
+describe('useLoadTest: the size of a run', () => {
+    it('zero requests is a run of one, not a summary with Infinity', async () => {
+        const send = vi.fn(scripted([]))
+        const { test } = setup(0, 1, send)
+
+        await test.run(spec)
+
+        expect(send).toHaveBeenCalledTimes(1)
+        expect(test.testResult.value).toMatchObject({ success: true, status: 200 })
+        expect(test.testResult.value?.statistics).toBeUndefined()
+    })
+
+    it('an emptied field is a run of one', async () => {
+        const send = vi.fn(scripted([]))
+        const { test } = setup('' as unknown as number, 1, send)
+
+        await test.run(spec)
+
+        expect(send).toHaveBeenCalledTimes(1)
+    })
+
+    it('100000 threads are 100', async () => {
+        const send = vi.fn(scripted([]))
+        const { test } = setup(1, 100_000, send)
+
+        await test.run(spec)
+
+        expect(send).toHaveBeenCalledTimes(100)
+        expect(test.testResult.value?.statistics).toMatchObject({
+            totalRequests: 100,
+            threadCount: 100,
+        })
+    })
+
+    it('100000 requests are 1000', async () => {
+        const send = vi.fn(scripted([]))
+        const { test } = setup(100_000, 1, send)
+
+        await test.run(spec)
+
+        expect(send).toHaveBeenCalledTimes(1000)
+    })
+})
+
+describe('useLoadTest: stop', () => {
+    it('ends a run on one thread after the request on its way; the summary is of what was sent', async () => {
+        const holder: { test?: LoadTest } = {}
+        let sent = 0
+        const send = (() => {
+            sent++
+            if (sent === 3) holder.test?.stop()
+            vi.advanceTimersByTime(10)
+            return Promise.resolve({ data: {}, error: null, status: 200 })
+        }) as SendHttp
+        const { test } = setup(50, 1, send)
+        holder.test = test
+
+        await test.run(spec)
+
+        expect(sent).toBe(3)
+        expect(test.isLoading.value).toBe(false)
+        expect(test.testResult.value?.allResults).toHaveLength(3)
+        expect(test.testResult.value?.statistics).toMatchObject({
+            successfulRequests: 3,
+            avgResponseTime: 10,
+        })
+    })
+
+    it('ends every thread', async () => {
+        const holder: { test?: LoadTest } = {}
+        let sent = 0
+        const send = (() => {
+            sent++
+            if (sent === 8) holder.test?.stop()
+            return Promise.resolve({ data: {}, error: null, status: 200 })
+        }) as SendHttp
+        const { test } = setup(100, 4, send)
+        holder.test = test
+
+        await test.run(spec)
+
+        // The four requests of the round in which stop was asked are sent; nothing after it.
+        expect(sent).toBe(8)
+        expect(test.testResult.value?.allResults).toHaveLength(8)
+    })
+
+    it('a stop of one run does not end the next', async () => {
+        const send = vi.fn(scripted([]))
+        const { test } = setup(3, 1, send)
+        test.stop()
+
+        await test.run(spec)
+
+        expect(send).toHaveBeenCalledTimes(3)
+    })
+})

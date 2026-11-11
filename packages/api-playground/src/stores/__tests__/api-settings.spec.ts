@@ -128,3 +128,46 @@ describe('the playground settings store', () => {
         expect(store.globalHeaders).toEqual({})
     })
 })
+
+// feat-165 (review 2026-11-10): the store saved its base URL on every change of any setting, so
+// localStorage held a copy of VITE_API_BASE_URL as it was then, and that copy won over the
+// value of the current build.
+describe('the playground base URL', () => {
+    afterEach(() => {
+        vi.unstubAllEnvs()
+    })
+
+    it('is the VITE_API_BASE_URL of this build, not a value saved earlier', async () => {
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify({ baseUrl: 'http://old-host:3000', pathPrefix: 'v2' }),
+        )
+        vi.stubEnv('VITE_API_BASE_URL', 'http://new-host:4000')
+
+        const store = await freshStore()
+        store.loadFromLocalStorage()
+
+        expect(store.settings.baseUrl).toBe('http://new-host:4000')
+        expect(store.settings.pathPrefix).toBe('v2')
+    })
+
+    it('is the saved value when the build names none', async () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ baseUrl: 'http://saved-host:3000' }))
+        vi.stubEnv('VITE_API_BASE_URL', '')
+
+        const store = await freshStore()
+        store.loadFromLocalStorage()
+
+        expect(store.settings.baseUrl).toBe('http://saved-host:3000')
+    })
+
+    it('an override typed in the settings still wins for the tab', async () => {
+        vi.stubEnv('VITE_API_BASE_URL', 'http://new-host:4000')
+        const store = await freshStore()
+        store.loadFromLocalStorage()
+
+        store.setBaseUrlOverride('http://typed-host:5000')
+
+        expect(store.settings.baseUrl).toBe('http://typed-host:5000')
+    })
+})
