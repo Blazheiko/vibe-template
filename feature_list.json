@@ -1767,7 +1767,7 @@
         {
             "id": "feat-178",
             "name": "Rate Limit Redis Timeout Default",
-            "description": "docs/plan/code-review-2026-11-10-report.md (found during the plan): raise the default RATE_LIMIT_REDIS_TIMEOUT_MS from 50 to 1000 ms. At 50 ms a loaded developer machine got intermittent 503s on login and registration (2 of 5 live e2e runs); at 1000 ms none in 6. The limiter still fails closed when Redis is unreachable. Owner decision 2026-11-11.",
+            "description": "docs/plan/code-review-2026-11-10-report.md (found during the plan): raise the default RATE_LIMIT_REDIS_TIMEOUT_MS from 50 to 500 ms, the timeout of the main Redis client (REDIS_COMMAND_TIMEOUT_MS). At 50 ms a loaded developer machine got intermittent 503s on login and registration (2 of 5 live e2e runs); at 1000 ms none in 6, and the main client at 500 ms never failed in the same runs. The limiter still fails closed when Redis is unreachable. Owner decision 2026-11-11.",
             "owner": "Blazheiko",
             "branch": "fix/rate-limit-redis-timeout",
             "dependencies": [],
