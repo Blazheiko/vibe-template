@@ -21,7 +21,7 @@ Before deleting or rewriting anything, look at what you get right away. All scre
 
 ![Account page](/screenshots/account.jpg)
 
-**Admin: users.** A list with a filter by id and registration date (`GET /api/admin/users`), available only to the `admin` role.
+**Admin: users.** A list with a filter by id and registration date (`GET /api/admin/users`), available only to the `admin` role. The list is paged: the response carries `total`, `hasMore` and `nextCursor` (the id of the last user of the page), and the next page is the same request with `cursor=<nextCursor>`. A page holds up to 200 rows (`limit`, 50 by default; the admin UI asks for 100), newest registrations first. The connection history (`GET /api/admin/history-online`) works the same way.
 
 ![Admin: users](/screenshots/admin-users.jpg)
 

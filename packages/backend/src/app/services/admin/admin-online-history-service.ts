@@ -1,4 +1,5 @@
 import { userOnlineRepository, userRepository } from '#app/repositories/index.js'
+import { MAX_PAGE_LIMIT } from 'shared/schemas'
 import logger from '#vendor/utils/logger.js'
 
 interface AdminOnlineHistoryFilters {
@@ -33,7 +34,9 @@ export const adminOnlineHistoryService = {
         nextCursor: string | null
         hasMore: boolean
     }> {
-        const limit = Math.min(Math.max(filters.limit ?? 100, 1), 100)
+        // One row more than the page tells whether there is a next one; the repository does not
+        // cut that row off (feat-155).
+        const limit = Math.min(Math.max(filters.limit ?? 100, 1), MAX_PAGE_LIMIT)
         const countFilters = {
             ...(filters.userId !== undefined && { userId: filters.userId }),
             ...(filters.dateFrom !== undefined && { dateFrom: filters.dateFrom }),
