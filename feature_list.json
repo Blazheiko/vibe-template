@@ -1641,8 +1641,8 @@
             "owner": "Blazheiko",
             "branch": "feat/playground-lows",
             "dependencies": ["feat-158"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #515 (merge commit 2aa00f2). Playground lows, reproduced by 27 tests that fail on the old code: the average time was the wall-clock time / requests (below the fastest request with threads); the 1000 / 100 bounds were only input attributes and a run could not be stopped; an empty WS token went as subprotocol '' and threw SyntaxError; Test Connection did nothing with an empty base URL and a saved baseUrl won over VITE_API_BASE_URL; request bodies were logged. After the fix: mean of durations, clampCount in run(), stop() and a Stop button, no empty subprotocol, env precedence, no bodies in the console. make check (playground 111, frontend 499, backend 2655, shared 30); docs:build && docs:verify. Not verified in a browser."
         },
         {
             "id": "feat-166",
@@ -1651,7 +1651,7 @@
             "owner": "Blazheiko",
             "branch": "docs/home-page-accuracy",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {

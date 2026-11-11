@@ -532,22 +532,22 @@
 
 ### V19 Playground Lows · → V12
 
-- [ ] **V19.S** Шаблон S.
-- [ ] **V19.1** `utils/load-test.ts:204`: середнє тривалостей запитів; прибрати згадку
+- [x] **V19.S** Шаблон S.
+- [x] **V19.1** `utils/load-test.ts:204`: середнє тривалостей запитів; прибрати згадку
       `perRequestDivisor`.
       **AC:** тест: 10 потоків × 5 запитів по ~200 мс → середнє між мінімумом і максимумом.
-- [ ] **V19.2** `TestForm.vue`, `useLoadTest.ts`: межі в коді, кнопка зупинки, `requests = 0` не
+- [x] **V19.2** `TestForm.vue`, `useLoadTest.ts`: межі в коді, кнопка зупинки, `requests = 0` не
       дає `Infinity`.
       **AC:** тести меж і зупинки.
-- [ ] **V19.3** `useWebSocketConnection.ts:49,335`: порожній токен не передається як subprotocol.
+- [x] **V19.3** `useWebSocketConnection.ts:49,335`: порожній токен не передається як subprotocol.
       **AC:** тест: підключення з порожнім токеном не кидає `SyntaxError`.
-- [ ] **V19.4** `ApiSettingsModal.vue:131`, `stores/api-settings.ts:117`: перевірка з'єднання через
+- [x] **V19.4** `ApiSettingsModal.vue:131`, `stores/api-settings.ts:117`: перевірка з'єднання через
       проксі; env має перевагу над збереженим `baseUrl`.
       **AC:** тести обох випадків.
-- [ ] **V19.5** `utils/base-api.ts`, `stores/api-doc.ts:288`: тіла запиту й відповіді не в консолі
+- [x] **V19.5** `utils/base-api.ts`, `stores/api-doc.ts:288`: тіла запиту й відповіді не в консолі
       або замасковані.
       **AC:** тест: пароль із тіла `auth/login` не потрапляє в `console.log`.
-- [ ] **V19.E** Шаблон E. **V19.X** Шаблон X.
+- [x] **V19.E** Шаблон E. **V19.X** Шаблон X.
 
 ### V20 Docs Home Page Accuracy
 
