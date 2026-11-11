@@ -1751,8 +1751,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-auth-recovery-oauth",
             "dependencies": ["feat-175"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #532 (merge commit 2c6f4d4, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Ten routes on contracts: forgot-password, reset-phone/start, reset-phone/complete, reset-password, link-phone/start, link-phone/confirm, link-email/start (authContracts) and the JSON OAuth routes providers, link/confirm, email/resend (new oauthContracts). Settings and transport options unchanged; DIRECT_HTTP_CALLS 11 -> 1 (DELETE avatar, moved by feat-177). Locally: make check (backend 2656, frontend 500, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         },
         {
             "id": "feat-177",
@@ -1761,7 +1761,7 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-non-json",
             "dependencies": ["feat-176"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
