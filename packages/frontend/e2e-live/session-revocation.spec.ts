@@ -35,7 +35,6 @@ async function canLogIn(
         const response = await session(context.request).post('/api/auth/login', {
             identifier: email,
             password,
-            token: '',
         })
         return response.status() === 200
     } finally {

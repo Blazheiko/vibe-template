@@ -1,7 +1,6 @@
 /**
  * What the service worker stores on install, next to the HTML shell. Every path must exist in
  * `public/` (`service-worker-fetch.spec.ts` checks it): a missing one is a 404 on each install.
- * The mp3 files of `public/audio` are not here: nothing plays them.
  */
 export const PRECACHE_FILES: readonly string[] = [
     '/',

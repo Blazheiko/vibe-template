@@ -2,10 +2,8 @@ import mitt from 'mitt'
 import type { EventType } from 'mitt'
 
 export interface Events extends Record<EventType, unknown> {
-    toggle_notifications: { enabled: boolean }
     init_app: undefined
     unauthorized: undefined
-    destroy_websocket_base: undefined
     support_chat_token: {
         token: string
         clientMessageId?: string

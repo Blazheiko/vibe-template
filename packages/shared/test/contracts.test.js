@@ -144,14 +144,9 @@ test('the password limits are what every auth schema enforces', async () => {
                     name: 'J',
                     email: 'j@example.com',
                     password,
-                    token: '',
                 }),
         ],
-        [
-            'login',
-            (password) => LoginInputSchema({ identifier: 'j@example.com', password, token: '' }),
-        ],
-        ['login without token', (password) => LoginInputSchema({ identifier: 'jane', password })],
+        ['login', (password) => LoginInputSchema({ identifier: 'j@example.com', password })],
         ['change', (newPassword) => ChangePasswordInputSchema({ newPassword })],
         [
             'reset',

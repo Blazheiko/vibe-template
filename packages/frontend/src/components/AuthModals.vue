@@ -23,10 +23,6 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
-    token: {
-        type: String,
-        default: '',
-    },
 })
 
 const emit = defineEmits(['close', 'show-login', 'show-register', 'auth-success'])
@@ -143,7 +139,6 @@ watch(
             :key="loginEpoch"
             v-model:identifier="loginIdentifier"
             v-model:password="loginPassword"
-            :token="props.token"
             :notice="loginNotice"
             @forgot="showForgotPasswordStep"
             @register="switchToRegister"
@@ -185,7 +180,6 @@ watch(
         <RegisterEmailForm
             v-else-if="registerMode === 'email'"
             :key="registerEpoch"
-            :token="props.token"
             @login="switchToLogin"
             @signed-in="finishSignIn"
         />
@@ -193,7 +187,6 @@ watch(
         <RegisterPhoneFlow
             v-else
             :key="registerEpoch"
-            :token="props.token"
             @back="registerMode = 'choice'"
             @signed-in="finishSignIn"
         />

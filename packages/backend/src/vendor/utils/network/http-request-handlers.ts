@@ -57,7 +57,7 @@ const getHeaders = (req: HttpRequest): Map<string, string> => {
         // The raw `cookie` header carries session/csrf/ws secrets and is parsed
         // separately into `httpData.cookies`. Keeping it out of the headers map
         // avoids redundant validation and prevents accidental leakage by code
-        // that serializes/echoes all headers (e.g. testHeaders).
+        // that serializes or echoes all headers.
         if (key === 'cookie') return
         if (validateHeader(key, value)) {
             headers.set(key, value.trim())

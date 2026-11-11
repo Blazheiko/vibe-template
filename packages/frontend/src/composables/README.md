@@ -82,9 +82,8 @@ if (isConnected.value) {
 
 ## Остальные composables
 
-| Файл                     | Назначение                                      |
-| ------------------------ | ----------------------------------------------- |
-| `useBroadcastHandler.ts` | разбор broadcast-событий WebSocket (см. выше)   |
-| `useLocale.ts`           | текущая локаль и переключение языка             |
-| `useSessionLifecycle.ts` | реакция на окончание сессии (`redirectToLogin`) |
-| `useToast.ts`            | уведомления                                     |
+| Файл                     | Назначение                                             |
+| ------------------------ | ------------------------------------------------------ |
+| `useBroadcastHandler.ts` | разбор broadcast-событий WebSocket (см. выше)          |
+| `useLocale.ts`           | язык браузера: начальная локаль и язык ответов Support |
+| `useSessionLifecycle.ts` | реакция на окончание сессии (`redirectToLogin`)        |

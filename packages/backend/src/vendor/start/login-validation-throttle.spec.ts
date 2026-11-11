@@ -141,7 +141,6 @@ describe('login body validation runs before the login throttle', () => {
             JSON.stringify({
                 identifier: 'user@example.com',
                 password: 'secret123',
-                token: '',
             }),
         )
         expect(status).toBe('200 OK')

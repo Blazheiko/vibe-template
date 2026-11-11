@@ -35,7 +35,6 @@ test('register by e-mail, confirm the link, sign in', async ({ browser, sink }) 
     const early = await session(stranger.context.request).post('/api/auth/login', {
         identifier: account.email,
         password: account.password,
-        token: '',
     })
     expect(early.status()).toBe(401)
 
@@ -67,7 +66,7 @@ test('the registration counter per address is real: the fourth try in an hour is
     const account = newAccount()
     const { context } = await newBrowser(browser)
     const tab = session(context.request)
-    const body = { name: 'Live E2E', email: account.email, password: account.password, token: '' }
+    const body = { name: 'Live E2E', email: account.email, password: account.password }
 
     for (let attempt = 1; attempt <= 3; attempt++) {
         expect(
@@ -104,7 +103,6 @@ test('strict registration ends the caller’s session the same way for a taken a
             name: 'Probe',
             email,
             password: 'live-e2e-probe-pass-1',
-            token: '',
         })
     const forTaken = await register(a.context, registered.email)
     const forFree = await register(b.context, newAccount().email)

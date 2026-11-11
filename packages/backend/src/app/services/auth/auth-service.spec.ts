@@ -180,7 +180,6 @@ describe('authService', () => {
                 name: 'Jane',
                 email: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -221,7 +220,6 @@ describe('authService', () => {
                 name: 'Jane',
                 email: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -261,7 +259,6 @@ describe('authService', () => {
                 name: 'Jane',
                 email: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -288,7 +285,7 @@ describe('authService', () => {
             const { authService } = await loadAuthService()
             const started = performance.now()
             const result = await authService.registerByEmail(
-                { name: 'Jane', email: 'user@example.com', password: 'secret', token: '' },
+                { name: 'Jane', email: 'user@example.com', password: 'secret' },
                 authMock as any,
                 sessionMock as any,
                 loggerMock as any,
@@ -361,7 +358,7 @@ describe('authService', () => {
                 let settled = false
                 const pending = authService
                     .registerByEmail(
-                        { name: 'Jane', email: 'user@example.com', password: 'secret', token: '' },
+                        { name: 'Jane', email: 'user@example.com', password: 'secret' },
                         authMock as any,
                         sessionMock as any,
                         loggerMock as any,
@@ -428,7 +425,6 @@ describe('authService', () => {
             {
                 identifier: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -461,7 +457,7 @@ describe('authService', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.login(
-            { identifier: 'user@example.com', password: 'secret', token: '' },
+            { identifier: 'user@example.com', password: 'secret' },
             authMock as any,
             sessionMock as any,
             { ipAddress: '127.0.0.1' },
@@ -617,7 +613,6 @@ describe('authService', () => {
             {
                 identifier: 'missing@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -650,7 +645,6 @@ describe('authService', () => {
             {
                 identifier: 'user@example.com',
                 password: 'wrong-secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -678,7 +672,7 @@ describe('authService', () => {
             password: 'hashed-password',
             sessionToken: 'session-token',
         }
-        const credentials = { identifier: 'user@example.com', password: 'secret', token: '' }
+        const credentials = { identifier: 'user@example.com', password: 'secret' }
         const login = async () => {
             const { authService } = await loadAuthService()
             return authService.login(credentials, authMock as any, sessionMock as any, {
@@ -810,7 +804,6 @@ describe('authService', () => {
             {
                 identifier: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -1316,7 +1309,7 @@ describe('auth throttle fail-closed (email link)', () => {
 })
 
 describe('authService while Redis is unavailable', () => {
-    const LOGIN_INPUT = { identifier: 'user@example.com', password: 'secret', token: '' }
+    const LOGIN_INPUT = { identifier: 'user@example.com', password: 'secret' }
     const LOGIN_CONTEXT = { ipAddress: '127.0.0.1' }
 
     const arrangeLogin = (): void => {

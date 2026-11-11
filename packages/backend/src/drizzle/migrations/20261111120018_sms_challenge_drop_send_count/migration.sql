@@ -1,0 +1,1 @@
+ALTER TABLE "sms_auth_challenges" DROP COLUMN "send_count";
