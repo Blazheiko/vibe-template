@@ -480,16 +480,13 @@ describe('noteService', () => {
         }
     })
 
-    it('maps repository failure to an Internal error', async () => {
+    // An unexpected failure is not a Result: it reaches the HTTP layer, which answers 500.
+    it('lets a repository failure through: the HTTP layer answers 500', async () => {
         noteRepositoryMock.findByUserId.mockRejectedValue(new Error('db down'))
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.getNotes(7n)
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error._tag).toBe('Internal')
-        }
+        await expect(noteService.getNotes(7n)).rejects.toThrow('db down')
     })
 })
 ```
@@ -527,7 +524,7 @@ csrf() { curl -s -b cookies.txt -c cookies.txt $B/main/init | sed -E 's/.*"csrfT
 # log in
 curl -s -o /dev/null -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json' \
   -H "x-csrf-token: $(csrf)" \
-  -d '{"email":"user@example.com","password":"<user-password>","token":""}' $B/auth/login
+  -d '{"identifier":"user@example.com","password":"<user-password>"}' $B/auth/login
 
 CSRF=$(csrf)   # the token is new after login
 ```
@@ -546,12 +543,12 @@ curl -s -b cookies.txt -H "$O" -H 'content-type: application/json' -H "x-csrf-to
         "id": "1",
         "title": "Buy milk",
         "body": "2 liters",
-        "created_at": "2026-10-25T17:23:05.794+02:00"
+        "created_at": "2026-10-25T15:23:05.794Z"
     }
 }
 ```
 
-Status `200`. The response was captured on a server with the `Europe/Kiev` time zone and PostgreSQL in UTC, so `created_at` has a `+02:00` offset. Without the `body` field the note is created too, and the response will have `"body": null`.
+Status `200`. `created_at` is always UTC (`Z`): the transformer returns `toISOString()`, whatever the time zone of the server. Without the `body` field the note is created too, and the response will have `"body": null`.
 
 **Get the list** (newest first):
 
@@ -567,13 +564,13 @@ curl -s -b cookies.txt $B/notes
             "id": "2",
             "title": "Call",
             "body": null,
-            "created_at": "2026-10-25T17:23:05.810+02:00"
+            "created_at": "2026-10-25T15:23:05.810Z"
         },
         {
             "id": "1",
             "title": "Buy milk",
             "body": "2 liters",
-            "created_at": "2026-10-25T17:23:05.794+02:00"
+            "created_at": "2026-10-25T15:23:05.794Z"
         }
     ]
 }

@@ -128,7 +128,7 @@ B=http://127.0.0.1:3000/api
 O='origin: http://localhost:5173'
 CSRF=$(curl -s -c cookies.txt -b cookies.txt $B/main/init | sed -E 's/.*"csrfToken":"([^"]+)".*/\1/')
 curl -s -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json' \
-  -H "x-csrf-token: $CSRF" -d '{"email":"user@example.com","password":"<user-password>","token":""}' \
+  -H "x-csrf-token: $CSRF" -d '{"identifier":"user@example.com","password":"<user-password>"}' \
   $B/auth/login
 ```
 

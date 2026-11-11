@@ -480,16 +480,13 @@ describe('noteService', () => {
         }
     })
 
-    it('maps repository failure to an Internal error', async () => {
+    // An unexpected failure is not a Result: it reaches the HTTP layer, which answers 500.
+    it('lets a repository failure through: the HTTP layer answers 500', async () => {
         noteRepositoryMock.findByUserId.mockRejectedValue(new Error('db down'))
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.getNotes(7n)
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error._tag).toBe('Internal')
-        }
+        await expect(noteService.getNotes(7n)).rejects.toThrow('db down')
     })
 })
 ```
@@ -527,7 +524,7 @@ csrf() { curl -s -b cookies.txt -c cookies.txt $B/main/init | sed -E 's/.*"csrfT
 # вхід
 curl -s -o /dev/null -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json' \
   -H "x-csrf-token: $(csrf)" \
-  -d '{"email":"user@example.com","password":"<user-password>","token":""}' $B/auth/login
+  -d '{"identifier":"user@example.com","password":"<user-password>"}' $B/auth/login
 
 CSRF=$(csrf)   # після входу токен новий
 ```
@@ -546,12 +543,12 @@ curl -s -b cookies.txt -H "$O" -H 'content-type: application/json' -H "x-csrf-to
         "id": "1",
         "title": "Купити молоко",
         "body": "2 літри",
-        "created_at": "2026-10-25T17:23:05.794+02:00"
+        "created_at": "2026-10-25T15:23:05.794Z"
     }
 }
 ```
 
-Статус `200`. Відповідь знято на сервері з часовим поясом `Europe/Kiev` і PostgreSQL у UTC, тому `created_at` має офсет `+02:00`. Без поля `body` нотатка теж створюється, і в відповіді буде `"body": null`.
+Статус `200`. `created_at` — завжди UTC (`Z`): transformer віддає `toISOString()`, незалежно від часового поясу сервера. Без поля `body` нотатка теж створюється, і в відповіді буде `"body": null`.
 
 **Отримати список** (найновіші першими):
 
@@ -567,13 +564,13 @@ curl -s -b cookies.txt $B/notes
             "id": "2",
             "title": "Подзвонити",
             "body": null,
-            "created_at": "2026-10-25T17:23:05.810+02:00"
+            "created_at": "2026-10-25T15:23:05.810Z"
         },
         {
             "id": "1",
             "title": "Купити молоко",
             "body": "2 літри",
-            "created_at": "2026-10-25T17:23:05.794+02:00"
+            "created_at": "2026-10-25T15:23:05.794Z"
         }
     ]
 }
