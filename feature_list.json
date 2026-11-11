@@ -1591,8 +1591,8 @@
             "owner": "Blazheiko",
             "branch": "feat/support-and-auth-lows",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #507 (merge commit 37f1fc2). Six low findings, each reproduced by a failing test: reindex-all stopped at a failed batch; the answered message was left out of the model's history by its text; the admin knowledge base list had no ORDER BY (the unfiltered list came back as 1, 3, 2, 5, 6, 4); the budget marked a translation and a search as started with no provider configured; the screenshot of a deactivated article was served; a repeated reset-phone/start spent the SMS budget on a cooldown refusal and sent no new code after the cooldown. After the fix: make check (backend 2638, frontend 467, shared 29, playground 81); backend test:pg 291 and test:redis 116; docs:build && docs:verify. Decision Д5 was narrowed: after the cooldown only the session that started the reset gets a new code; another session still gets the generic answer and changes nothing (otherwise anyone who knows the number could cancel the owner's reset once a minute). Tests that pinned the old behaviour were changed. Not verified against a real embedding provider."
         },
         {
             "id": "feat-161",
@@ -1601,7 +1601,7 @@
             "owner": "Blazheiko",
             "branch": "feat/schema-bounds-lows",
             "dependencies": ["feat-156"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
