@@ -108,6 +108,19 @@ Endpoint зберігається й шукається в **канонічні�
 
 ## Збереження підписки
 
+**Поля запиту й межі.** Тіло `POST /push-subscriptions` перевіряє [`CreateSubscriptionInputSchema`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/push-subscription/create-subscription.ts); зайві поля відхиляються (`422`). Межі довжини відповідають колонкам `push_subscriptions`, тож задовге значення — це `422`, а не помилка бази:
+
+| Поле                                                    | Межа                                               |
+| ------------------------------------------------------- | -------------------------------------------------- |
+| `endpoint`                                              | 1–500 символів (і лише дозволений хост, див. вище) |
+| `p256dhKey`, `authKey`                                  | 1–255                                              |
+| `userAgent`                                             | до 1024                                            |
+| `deviceType`, `browserVersion`, `osVersion`, `timezone` | до 50                                              |
+| `browserName`, `osName`                                 | до 100                                             |
+| `notificationTypes`                                     | до 10 елементів `mention` / `system`               |
+
+`PUT /push-subscriptions/:subscriptionId` ([`UpdateSubscriptionInputSchema`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/push-subscription/update-subscription.ts)) має ті самі межі для своїх полів. Адреса пристрою (`ipAddress` у відповіді) — не поле запиту: сервер записує адресу, з якої прийшов запит (`context.httpData.ip`, з урахуванням [довірених проксі](/backend/security)); `ipAddress` у тілі — `422`.
+
 [`push-subscription-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.ts) у `createSubscription` шукає підписку за `endpoint` (він унікальний серед усіх користувачів). Якщо підписка належить іншому користувачу, її переносять на поточного лише тоді, коли `p256dhKey` і `authKey` збігаються з збереженими (той самий браузер, зміна акаунта); інакше — `409 conflict`, підписка лишається за старим власником. Перенесена підписка зберігає свій id, а журнал відправок попереднього власника лишається за ним: список підписок, `…/logs` і `…/statistics` показують новому власнику лише його власні відправки. Якщо вона є — оновлює ключі `p256dhKey`/`authKey`, метадані пристрою, `notificationTypes`, `timezone` і знову робить `isActive: true`; інакше створює новий запис. `POST` і `PUT` пишуть у транзакції під блокуванням рядка користувача й лише поки пред'явлений токен сесії актуальний ([`withCurrentSession`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/session-guard.ts)): запит із сесії, яку відкликав claim акаунта, отримує `401 session_revoked` і не повертає пристрій атакуючого (див. [Автентифікація](/backend/auth#зміни-облікових-даних-із-сесіі)). Робота з таблицею — через репозиторій, див. [Репозиторії](/backend/repositories).
 
 ## Відправка та формат payload

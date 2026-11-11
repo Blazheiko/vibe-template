@@ -548,4 +548,123 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             expect(statuses[5]).toBe(429)
         })
     })
+
+    // feat-156 (review 2026-11-10, M5): the columns are varchar, the request schema took any
+    // string: a long value reached the INSERT and came back as a 500. And the stored address was
+    // whatever the client wrote into `ipAddress`.
+    describe('input bounds of a subscription', () => {
+        let user = 0n
+        const endpoint = (tag: string): string =>
+            `https://fcm.googleapis.com/fcm/send/bounds-${tag}-${String(now)}`
+        const valid = (tag: string): Record<string, unknown> => ({
+            endpoint: endpoint(tag),
+            p256dhKey: 'p'.repeat(87),
+            authKey: 'a'.repeat(22),
+        })
+        const stored = async (tag: string) => {
+            const [row] = await db
+                .select()
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.endpoint, endpoint(tag)))
+            return row
+        }
+
+        beforeAll(async () => {
+            user = await insertUser('push-bounds')
+        })
+
+        it.each([
+            ['deviceType', 51],
+            ['browserName', 101],
+            ['browserVersion', 51],
+            ['osName', 101],
+            ['osVersion', 51],
+            ['timezone', 51],
+            ['userAgent', 1025],
+            ['p256dhKey', 256],
+            ['authKey', 256],
+        ])('answers 422 for %s of %i characters and stores nothing', async (field, length) => {
+            const tag = `long-${field}`
+            const result = await call('POST', '', {
+                user,
+                body: { ...valid(tag), [field]: 'x'.repeat(length) },
+            })
+
+            expect(result.status).toBe(422)
+            expect(await stored(tag)).toBeUndefined()
+        })
+
+        it('answers 422 for an endpoint longer than the column', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: {
+                    ...valid('long-endpoint'),
+                    endpoint: `${endpoint('e')}/${'x'.repeat(500)}`,
+                },
+            })
+
+            expect(result.status).toBe(422)
+        })
+
+        it('answers 422 for more notification types than there are', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: {
+                    ...valid('many-types'),
+                    notificationTypes: Array.from({ length: 11 }, () => 'system'),
+                },
+            })
+
+            expect(result.status).toBe(422)
+        })
+
+        it('does not take the address from the client: `ipAddress` in the body is refused', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: { ...valid('client-ip'), ipAddress: '203.0.113.99' },
+            })
+
+            expect(result.status).toBe(422)
+            expect(await stored('client-ip')).toBeUndefined()
+        })
+
+        it('stores a subscription with every field at its limit, with the address the server saw', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: {
+                    ...valid('at-limit'),
+                    p256dhKey: 'p'.repeat(255),
+                    authKey: 'a'.repeat(255),
+                    userAgent: 'u'.repeat(1024),
+                    deviceType: 'd'.repeat(50),
+                    browserName: 'b'.repeat(100),
+                    browserVersion: 'v'.repeat(50),
+                    osName: 'o'.repeat(100),
+                    osVersion: 'w'.repeat(50),
+                    timezone: 't'.repeat(50),
+                    notificationTypes: ['mention', 'system'],
+                },
+            })
+
+            expect(result.status).toBe(200)
+            const row = await stored('at-limit')
+            expect(row).toMatchObject({ userId: user, deviceType: 'd'.repeat(50) })
+            // The test client connects from the loopback address.
+            expect(row?.ipAddress).toMatch(/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/)
+        })
+
+        it('answers 422 for an over-long field of an update too', async () => {
+            await call('POST', '', { user, body: valid('to-update') })
+            const row = await stored('to-update')
+            if (row === undefined) throw new Error('subscription missing')
+
+            const result = await call('PUT', `/${String(row.id)}`, {
+                user,
+                body: { deviceType: 'x'.repeat(51) },
+            })
+
+            expect(result.status).toBe(422)
+            expect((await stored('to-update'))?.deviceType).toBeNull()
+        })
+    })
 })

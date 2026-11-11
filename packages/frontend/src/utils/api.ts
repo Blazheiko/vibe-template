@@ -252,7 +252,6 @@ interface PushSubscriptionData extends Record<string, unknown> {
     p256dhKey: string
     authKey: string
     userAgent?: string
-    ipAddress?: string
     deviceType?: string
     browserName?: string
     browserVersion?: string
