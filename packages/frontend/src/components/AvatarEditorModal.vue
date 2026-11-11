@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, useId } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
+import { useModalDialog } from '@/composables/useModalDialog'
 
 defineOptions({
     name: 'AvatarEditorModal',
@@ -15,6 +17,19 @@ const emit = defineEmits<{
     (e: 'save', blob: Blob): void
     (e: 'cancel'): void
 }>()
+
+const { t } = useI18n()
+
+// The editor is mounted while it is shown: open for its whole life.
+const panel = ref<HTMLElement | null>(null)
+const titleId = useId()
+useModalDialog({
+    panel,
+    isOpen: () => true,
+    close: () => {
+        emit('cancel')
+    },
+})
 
 const cropperRef = ref<InstanceType<typeof Cropper> | null>(null)
 const isSaving = ref(false)
@@ -78,11 +93,29 @@ async function handleSave(): Promise<void> {
 
 <template>
     <div class="avatar-editor-overlay" @click.self="emit('cancel')">
-        <div class="avatar-editor-modal">
+        <div
+            ref="panel"
+            class="avatar-editor-modal"
+            role="dialog"
+            aria-modal="true"
+            :aria-labelledby="titleId"
+            tabindex="-1"
+        >
             <div class="editor-header">
-                <h3>Edit Avatar</h3>
-                <button class="close-btn" @click="emit('cancel')">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <h3 :id="titleId">Edit Avatar</h3>
+                <button
+                    class="close-btn"
+                    type="button"
+                    :aria-label="t('account.avatar.closeEditor')"
+                    data-modal-close
+                    @click="emit('cancel')"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                    >
                         <path
                             d="M19 6.41L17.59 5L12 10.59L6.41 5L5 6.41L10.59 12L5 17.59L6.41 19L12 13.41L17.59 19L19 17.59L13.41 12L19 6.41Z"
                             fill="currentColor"
@@ -185,6 +218,10 @@ async function handleSave(): Promise<void> {
     max-height: 90vh;
     overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.avatar-editor-modal:focus {
+    outline: none;
 }
 
 .dark-theme .avatar-editor-modal {
