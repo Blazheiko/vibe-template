@@ -1621,7 +1621,7 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-cleanup",
             "dependencies": ["feat-148", "feat-162"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -1651,8 +1651,8 @@
             "owner": "Blazheiko",
             "branch": "docs/home-page-accuracy",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #517 (merge commit 7b434b8). The remarks of the report on PR #473 closed in both locales: the home page no longer says ResponseSchema rejects extra fields (wrong in log mode) and links the one detailed description; says the route validator is optional; names route access control (middleware, guards, limits) as outside the three contracts; replaces 'the implementation can change without your involvement' with the AGENTS.md review rule, tests included; guide/how-backend-works.md and backend/adding-a-feature.md no longer say response validation is off in production. docs:build && docs:verify; format:check."
         },
         {
             "id": "feat-167",

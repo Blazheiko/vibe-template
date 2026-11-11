@@ -551,8 +551,8 @@
 
 ### V20 Docs Home Page Accuracy
 
-- [ ] **V20.S** Шаблон S.
-- [ ] **V20.1** `documentation/index.md`, `documentation/en/index.md`, розділ про три контракти.
+- [x] **V20.S** Шаблон S.
+- [x] **V20.1** `documentation/index.md`, `documentation/en/index.md`, розділ про три контракти.
       **AC:** кожне зауваження звіту закрито в обох мовах, зміст однаковий:
       (1) формулювання про `ResponseSchema` відповідає режимам `strict` / `log` у
       `config/response-validation.ts` і тому, що перевіряються лише маршрути зі схемою;
@@ -566,10 +566,10 @@
       (5) блок попередження знову називає рев'ю людиною;
       (6) опис `ResponseSchema` не повторюється на сторінці тричі з різною точністю — коротка
       версія посилається на докладну.
-- [ ] **V20.2** `documentation/guide/how-backend-works.md:170`,
+- [x] **V20.2** `documentation/guide/how-backend-works.md:170`,
       `documentation/backend/adding-a-feature.md:59` та англійські близнюки.
       **AC:** жодна сторінка не каже, що перевірка відповідей у production вимкнена.
-- [ ] **V20.E** Шаблон E (`pnpm docs:build && pnpm docs:verify`). **V20.X** Шаблон X.
+- [x] **V20.E** Шаблон E (`pnpm docs:build && pnpm docs:verify`). **V20.X** Шаблон X.
 
 ### V17 Dead Code Cleanup · → V02, V16
 
