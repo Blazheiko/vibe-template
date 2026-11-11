@@ -20,6 +20,7 @@ import type {
     UpdateWsTokenResponse,
     SupportKnowledgeBaseInitJob,
     SupportKnowledgeBaseItem,
+    SupportChatHistoryItem,
     AdminUserListResponse,
     AdminOnlineUserListResponse,
     AdminOnlineUserDetailResponse,
@@ -62,7 +63,9 @@ import {
     adminContracts,
     authContracts,
     knowledgeBaseContracts,
+    mainContracts,
     pushSubscriptionContracts,
+    supportContracts,
 } from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
@@ -239,13 +242,10 @@ export const authApi = {
 }
 
 export const mainApi = {
-    init: async (): Promise<ApiResponse<InitResponse>> => {
-        return baseApi.http<InitResponse>('GET', apiPath('main/init'))
-    },
+    init: (): Promise<ApiResponse<InitResponse>> => callApi(mainContracts.init),
 
-    updateWsToken: async (): Promise<ApiResponse<UpdateWsTokenResponse>> => {
-        return baseApi.http<UpdateWsTokenResponse>('GET', apiPath('main/update-ws-token'))
-    },
+    updateWsToken: (): Promise<ApiResponse<UpdateWsTokenResponse>> =>
+        callApi(mainContracts.updateWsToken),
 }
 
 // The push-subscriptions routes go through their contracts (docs/adr/0005-route-contracts.md):
@@ -286,13 +286,7 @@ export const avatarApi = {
     },
 }
 
-export interface SupportChatMessage {
-    id: string
-    role: 'user' | 'assistant'
-    content: string
-    screenshots: string[] | null
-    createdAt: string
-}
+export type SupportChatMessage = SupportChatHistoryItem
 
 export type KnowledgeBaseArticle = SupportKnowledgeBaseItem
 
@@ -315,14 +309,9 @@ export const supportApi = {
         options: { before?: string; signal?: AbortSignal } = {},
     ): Promise<SupportHistoryPage | null> => {
         const { before, ...requestOptions } = options
-        const response = await baseApi.http<{
-            status: string
-            data?: SupportChatMessage[]
-            hasMore?: boolean
-        }>(
-            'GET',
-            apiPath(`support/chat/history${before !== undefined ? `?before=${before}` : ''}`),
-            {},
+        const response = await callApi(
+            supportContracts.history,
+            { query: { before } },
             requestOptions,
         )
         if (!isSuccessfulResponse(response)) return null
@@ -330,10 +319,7 @@ export const supportApi = {
     },
 
     deleteChatHistory: async (): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'DELETE',
-            apiPath('support/chat/history'),
-        )
+        const response = await callApi(supportContracts.deleteHistory)
         return isSuccessfulResponse(response)
     },
 }

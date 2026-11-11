@@ -14,7 +14,6 @@ import { defineRoute } from '#app/routing/define-route.js'
 import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
-    SupportChatHistoryQuerySchema,
     OAuthCallbackQuerySchema,
     OAuthLinkConfirmInputSchema,
     OAuthRedirectQuerySchema,
@@ -24,7 +23,10 @@ import {
     adminContracts,
     authContracts,
     knowledgeBaseContracts,
+    mainContracts,
+    promptContracts,
     pushSubscriptionContracts,
+    supportContracts,
 } from 'shared/contracts'
 
 import {
@@ -42,8 +44,6 @@ import {
     ChangePasswordInputSchema,
     VerifyEmailInputSchema,
     EmptyFormInputSchema,
-    PromptUpdateInputSchema,
-    PromptTestInputSchema,
 } from 'shared/schemas'
 import {
     AVATAR_MAX_FILE_BYTES,
@@ -52,18 +52,14 @@ import {
 } from '#app/services/shared/upload-limits.js'
 
 export default [
-    defineRoute({
-        url: '/ping',
-        method: 'get',
+    defineContractRoute({
+        contract: mainContracts.ping,
         handler: MainController.ping.bind(MainController),
-        ResponseSchema: ResponseSchemas.PingResponseSchema,
         description: 'Ping',
     }),
-    defineRoute({
-        url: '/ready',
-        method: 'get',
+    defineContractRoute({
+        contract: mainContracts.ready,
         handler: MainController.ready.bind(MainController),
-        ResponseSchema: ResponseSchemas.ReadyResponseSchema,
         description: 'Readiness: 200 when PostgreSQL and Redis answer, 503 otherwise',
     }),
     {
@@ -269,19 +265,15 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/init',
-                method: 'get',
+            defineContractRoute({
+                contract: mainContracts.init,
                 handler: MainController.init.bind(MainController),
-                ResponseSchema: ResponseSchemas.InitResponseSchema,
                 description: 'Initialize app state',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/update-ws-token',
-                method: 'get',
+            defineContractRoute({
+                contract: mainContracts.updateWsToken,
                 handler: MainController.updateWsToken.bind(MainController),
-                ResponseSchema: ResponseSchemas.UpdateWsTokenResponseSchema,
                 description: 'Update the WebSocket token',
                 middlewares: ['auth_guard'],
             }),
@@ -395,20 +387,15 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/chat/history',
-                method: 'get',
+            defineContractRoute({
+                contract: supportContracts.history,
                 handler: SupportController.getChatHistory.bind(SupportController),
-                queryValidator: SupportChatHistoryQuerySchema,
-                ResponseSchema: ResponseSchemas.SupportGetChatHistoryResponseSchema,
                 description:
                     'Get a page of the support chat history (latest first page; `before` for older)',
             }),
-            defineRoute({
-                url: '/chat/history',
-                method: 'delete',
+            defineContractRoute({
+                contract: supportContracts.deleteHistory,
                 handler: SupportController.deleteChatHistory.bind(SupportController),
-                ResponseSchema: ResponseSchemas.SupportDeleteChatHistoryResponseSchema,
                 description: 'Delete all support chat history',
             }),
             defineRoute({
@@ -498,34 +485,24 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/',
-                method: 'get',
+            defineContractRoute({
+                contract: promptContracts.list,
                 handler: PromptController.list.bind(PromptController),
-                ResponseSchema: ResponseSchemas.PromptGetListResponseSchema,
                 description: 'List retained Support AI prompts',
             }),
-            defineRoute({
-                url: '/:type',
-                method: 'get',
+            defineContractRoute({
+                contract: promptContracts.get,
                 handler: PromptController.getByType.bind(PromptController),
-                ResponseSchema: ResponseSchemas.PromptGetByTypeResponseSchema,
                 description: 'Get a retained Support AI prompt by type',
             }),
-            defineRoute({
-                url: '/:type',
-                method: 'put',
+            defineContractRoute({
+                contract: promptContracts.update,
                 handler: PromptController.update.bind(PromptController),
-                validator: PromptUpdateInputSchema,
-                ResponseSchema: ResponseSchemas.PromptUpdateResponseSchema,
                 description: 'Update a retained Support AI prompt by type',
             }),
-            defineRoute({
-                url: '/:type/test',
-                method: 'post',
+            defineContractRoute({
+                contract: promptContracts.test,
                 handler: PromptController.testPrompt.bind(PromptController),
-                validator: PromptTestInputSchema,
-                ResponseSchema: ResponseSchemas.PromptTestResponseSchema,
                 description: 'Test a retained Support AI prompt with a user message',
             }),
         ],
