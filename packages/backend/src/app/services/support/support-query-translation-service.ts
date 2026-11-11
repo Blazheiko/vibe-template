@@ -10,6 +10,13 @@ import { aiAbortKind } from '#app/services/ai/ai-request-signal.js'
 const { defaultTranslationPrompt, defaultGeneration } = supportConfig
 
 export const supportQueryTranslationService = {
+    /** Whether `translateToEnglish` will call the provider (it returns the text as is without one). */
+    isConfigured(): boolean {
+        return getTextAdapterForModel(
+            promptService.getModel('SUPPORT_QUERY_TRANSLATION'),
+        ).isConfigured()
+    },
+
     async translateToEnglish(
         text: string,
         options: {

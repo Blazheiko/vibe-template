@@ -16,6 +16,7 @@ const supportRepositoryMock = {
 
 const supportEmbeddingServiceMock = {
     search: vi.fn(),
+    isConfigured: vi.fn(() => true),
 }
 
 const supportLlmServiceMock = {
@@ -25,6 +26,7 @@ const supportLlmServiceMock = {
 
 const supportQueryTranslationServiceMock = {
     translateToEnglish: vi.fn(),
+    isConfigured: vi.fn(() => true),
 }
 
 const broadcastServiceMock = {
@@ -159,7 +161,9 @@ async function loadSupportService() {
 }
 
 beforeEach(() => {
-    supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: true })
+    supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: true, id: 900n })
+    supportEmbeddingServiceMock.isConfigured.mockReturnValue(true)
+    supportQueryTranslationServiceMock.isConfigured.mockReturnValue(true)
     reserveDailyTokensMock.mockResolvedValue({ allowed: true, reservation: reservationOf() })
 })
 
@@ -364,6 +368,50 @@ describe('supportService', () => {
                 'begin:chat',
                 'call:chat',
             ])
+        })
+
+        // feat-160 (ADR 0003, point 5): a call that is never made is not charged. Without a
+        // configured provider the translation and the search answer without a request, and the
+        // reservation used to be settled as if both had run.
+        it('does not mark the translation or the search as started when no provider will be called', async () => {
+            const order: string[] = []
+            happyPath()
+            supportQueryTranslationServiceMock.isConfigured.mockReturnValue(false)
+            supportEmbeddingServiceMock.isConfigured.mockReturnValue(false)
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admissionOf(order, undefined, { trackBegin: true }),
+                7n,
+                'hello',
+                'conn-1',
+            )
+
+            expect(order.filter((e) => e.startsWith('begin:'))).toEqual(['begin:chat'])
+        })
+
+        // feat-160: the message being answered is left out of the history by its id. Left out
+        // by its text, every earlier message with the same words went with it.
+        it('keeps an earlier message with the same text in the history the model is shown', async () => {
+            happyPath()
+            const row = (id: bigint, role: 'user' | 'assistant', content: string) => ({
+                id,
+                userId: 7n,
+                role,
+                content,
+            })
+            supportRepositoryMock.findRecentForContext.mockResolvedValue([
+                row(897n, 'assistant', 'Do you use the mobile app?'),
+                row(898n, 'user', 'yes'),
+                row(899n, 'assistant', 'Is the app up to date?'),
+                row(900n, 'user', 'yes'),
+            ])
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(admissionOf(), 7n, 'yes', 'conn-1')
+
+            const history = supportLlmServiceMock.chatStream.mock.calls[0]?.[2] as { id: bigint }[]
+            expect(history.map((message) => message.id)).toEqual([897n, 898n, 899n])
         })
 
         it('hands each call a way to report its usage to the budget', async () => {

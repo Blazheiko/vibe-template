@@ -248,6 +248,10 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             sourceWsRoutes: wsRoutes,
         })
 
+        // The two calls below stand for calls of a configured provider: the run marks a call
+        // as started only when one will be made (feat-160).
+        vi.spyOn(supportQueryTranslationService, 'isConfigured').mockReturnValue(true)
+        vi.spyOn(supportEmbeddingService, 'isConfigured').mockReturnValue(true)
         vi.spyOn(supportQueryTranslationService, 'translateToEnglish').mockImplementation(
             (message: string, options) => {
                 if (llm.usage !== null) options?.onUsage?.(reported(llm.usage.translation))

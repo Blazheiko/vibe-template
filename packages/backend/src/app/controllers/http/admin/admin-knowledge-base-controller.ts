@@ -129,7 +129,12 @@ export default {
         context: HttpContext<EmptyFormInput>,
     ): Promise<SupportKnowledgeBaseReindexResponse> {
         const result = await knowledgeBaseService.reindexAll()
-        return respond(context, result, (value) => ({ status: 'ok', indexed: value.indexed }))
+        return respond(context, result, (value) => ({
+            status: 'ok',
+            indexed: value.indexed,
+            // The articles of a batch the provider refused; the others were indexed.
+            ...(value.failed.length > 0 ? { failed: value.failed } : {}),
+        }))
     },
 
     async startInit(
