@@ -5,9 +5,20 @@ import type { RegisterPhoneConfirmInputSchema } from '../schemas/auth/register-p
 import type { RegisterPhoneCompleteInputSchema } from '../schemas/auth/register-phone-complete.js'
 import type { ChangePasswordInputSchema } from '../schemas/auth/change-password.js'
 import type { VerifyEmailInputSchema } from '../schemas/auth/verify-email.js'
+import type { ForgotPasswordInputSchema } from '../schemas/auth/forgot-password.js'
+import type { ResetPhoneStartInputSchema } from '../schemas/auth/reset-phone-start.js'
+import type { ResetPhoneCompleteInputSchema } from '../schemas/auth/reset-phone-complete.js'
+import type { ResetPasswordInputSchema } from '../schemas/auth/reset-password.js'
+import type { LinkPhoneStartInputSchema } from '../schemas/auth/link-phone-start.js'
+import type { LinkPhoneConfirmInputSchema } from '../schemas/auth/link-phone-confirm.js'
+import type { LinkEmailStartInputSchema } from '../schemas/auth/link-email-start.js'
 import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
 import type {
     ChangePasswordResponse,
+    ForgotPasswordResponse,
+    LinkEmailStartResponse,
+    LinkPhoneConfirmResponse,
+    LinkPhoneStartResponse,
     LoginResponse,
     LogoutAllResponse,
     LogoutResponse,
@@ -16,6 +27,9 @@ import type {
     RegisterPhoneConfirmResponse,
     RegisterPhoneStartResponse,
     ResendVerificationEmailResponse,
+    ResetPasswordResponse,
+    ResetPhoneCompleteResponse,
+    ResetPhoneStartResponse,
     VerifyEmailResponse,
 } from '../responses/auth-controller.js'
 import { contract } from './core.js'
@@ -64,4 +78,39 @@ export const authContracts = {
         'post',
         '/auth/resend-verification-email',
     ),
+    forgotPassword: contract<
+        typeof ForgotPasswordInputSchema.inferIn,
+        undefined,
+        ForgotPasswordResponse
+    >()('post', '/auth/forgot-password'),
+    resetPhoneStart: contract<
+        typeof ResetPhoneStartInputSchema.inferIn,
+        undefined,
+        ResetPhoneStartResponse
+    >()('post', '/auth/reset-phone/start'),
+    resetPhoneComplete: contract<
+        typeof ResetPhoneCompleteInputSchema.inferIn,
+        undefined,
+        ResetPhoneCompleteResponse
+    >()('post', '/auth/reset-phone/complete'),
+    resetPassword: contract<
+        typeof ResetPasswordInputSchema.inferIn,
+        undefined,
+        ResetPasswordResponse
+    >()('post', '/auth/reset-password'),
+    linkPhoneStart: contract<
+        typeof LinkPhoneStartInputSchema.inferIn,
+        undefined,
+        LinkPhoneStartResponse
+    >()('post', '/auth/link-phone/start'),
+    linkPhoneConfirm: contract<
+        typeof LinkPhoneConfirmInputSchema.inferIn,
+        undefined,
+        LinkPhoneConfirmResponse
+    >()('post', '/auth/link-phone/confirm'),
+    linkEmailStart: contract<
+        typeof LinkEmailStartInputSchema.inferIn,
+        undefined,
+        LinkEmailStartResponse
+    >()('post', '/auth/link-email/start'),
 } as const

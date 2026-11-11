@@ -3,6 +3,7 @@ import { adminSchemas } from './admin.js'
 import { authSchemas } from './auth.js'
 import { knowledgeBaseSchemas } from './knowledge-base.js'
 import { mainSchemas } from './main.js'
+import { oauthSchemas } from './oauth.js'
 import { promptSchemas } from './prompts.js'
 import { pushSubscriptionSchemas } from './push-subscriptions.js'
 import { supportSchemas } from './support.js'
@@ -15,6 +16,7 @@ export const contractSchemaRegistry = {
     ...authSchemas,
     ...knowledgeBaseSchemas,
     ...mainSchemas,
+    ...oauthSchemas,
     ...promptSchemas,
     ...pushSubscriptionSchemas,
     ...supportSchemas,

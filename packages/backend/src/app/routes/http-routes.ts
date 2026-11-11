@@ -13,32 +13,20 @@ import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-control
 import { defineRoute } from '#app/routing/define-route.js'
 import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
-import {
-    OAuthCallbackQuerySchema,
-    OAuthLinkConfirmInputSchema,
-    OAuthRedirectQuerySchema,
-} from 'shared/schemas'
+import { OAuthCallbackQuerySchema, OAuthRedirectQuerySchema } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
 import {
     adminContracts,
     authContracts,
     knowledgeBaseContracts,
     mainContracts,
+    oauthContracts,
     promptContracts,
     pushSubscriptionContracts,
     supportContracts,
 } from 'shared/contracts'
 
-import {
-    LinkPhoneStartInputSchema,
-    LinkPhoneConfirmInputSchema,
-    LinkEmailStartInputSchema,
-    ForgotPasswordInputSchema,
-    ResetPhoneStartInputSchema,
-    ResetPhoneCompleteInputSchema,
-    ResetPasswordInputSchema,
-    EmptyFormInputSchema,
-} from 'shared/schemas'
+import { EmptyFormInputSchema } from 'shared/schemas'
 import {
     AVATAR_MAX_FILE_BYTES,
     KB_SCREENSHOT_MAX_FILE_BYTES,
@@ -101,37 +89,25 @@ export default [
                 description: 'Change or set user password',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/forgot-password',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.forgotPassword,
                 handler: AuthController.forgotPassword.bind(AuthController),
-                validator: ForgotPasswordInputSchema,
-                ResponseSchema: ResponseSchemas.ForgotPasswordResponseSchema,
                 description: 'Request password reset email',
                 rateLimit: { windowMs: 60_000, maxRequests: 3 },
             }),
-            defineRoute({
-                url: '/reset-phone/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resetPhoneStart,
                 handler: AuthController.startPhonePasswordReset.bind(AuthController),
-                validator: ResetPhoneStartInputSchema,
-                ResponseSchema: ResponseSchemas.ResetPhoneStartResponseSchema,
                 description: 'Start phone-based password reset flow',
             }),
-            defineRoute({
-                url: '/reset-phone/complete',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resetPhoneComplete,
                 handler: AuthController.completePhonePasswordReset.bind(AuthController),
-                validator: ResetPhoneCompleteInputSchema,
-                ResponseSchema: ResponseSchemas.ResetPhoneCompleteResponseSchema,
                 description: 'Complete phone-based password reset flow',
             }),
-            defineRoute({
-                url: '/reset-password',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resetPassword,
                 handler: AuthController.resetPassword.bind(AuthController),
-                validator: ResetPasswordInputSchema,
-                ResponseSchema: ResponseSchemas.ResetPasswordResponseSchema,
                 description: 'Reset password using a one-time token',
                 rateLimit: { windowMs: 60_000, maxRequests: 10 },
             }),
@@ -148,30 +124,21 @@ export default [
                 middlewares: ['auth_guard'],
                 rateLimit: { windowMs: 60_000, maxRequests: 3 },
             }),
-            defineRoute({
-                url: '/link-phone/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.linkPhoneStart,
                 handler: AuthController.startPhoneLink.bind(AuthController),
-                validator: LinkPhoneStartInputSchema,
-                ResponseSchema: ResponseSchemas.LinkPhoneStartResponseSchema,
                 description: 'Start linking a phone to the current account',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/link-phone/confirm',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.linkPhoneConfirm,
                 handler: AuthController.confirmPhoneLink.bind(AuthController),
-                validator: LinkPhoneConfirmInputSchema,
-                ResponseSchema: ResponseSchemas.LinkPhoneConfirmResponseSchema,
                 description: 'Confirm and link a phone to the current account',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/link-email/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.linkEmailStart,
                 handler: AuthController.startEmailLink.bind(AuthController),
-                validator: LinkEmailStartInputSchema,
-                ResponseSchema: ResponseSchemas.LinkEmailStartResponseSchema,
                 description:
                     'Send an email verification link for adding an email to the current account',
                 middlewares: ['auth_guard'],
@@ -184,11 +151,9 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/providers',
-                method: 'get',
+            defineContractRoute({
+                contract: oauthContracts.providers,
                 handler: OAuthController.providers.bind(OAuthController),
-                ResponseSchema: ResponseSchemas.OAuthProvidersResponseSchema,
                 description: 'OAuth providers configured on the backend',
             }),
             defineRoute({
@@ -208,19 +173,14 @@ export default [
                 ResponseSchema: ResponseSchemas.OAuthCallbackResponseSchema,
                 description: 'OAuth provider callback',
             }),
-            defineRoute({
-                url: '/link/confirm',
-                method: 'post',
+            defineContractRoute({
+                contract: oauthContracts.confirmLink,
                 handler: OAuthController.confirmLink.bind(OAuthController),
-                validator: OAuthLinkConfirmInputSchema,
-                ResponseSchema: ResponseSchemas.OAuthLinkConfirmResponseSchema,
                 description: 'Confirm a mailed OAuth link in the browser that started the sign-in',
             }),
-            defineRoute({
-                url: '/email/resend',
-                method: 'post',
+            defineContractRoute({
+                contract: oauthContracts.resendEmailLink,
                 handler: OAuthController.resendEmailLink.bind(OAuthController),
-                ResponseSchema: ResponseSchemas.EmailLinkResendResponseSchema,
                 description: 'Send again the link confirming the address of an OAuth account',
                 middlewares: ['auth_guard'],
             }),

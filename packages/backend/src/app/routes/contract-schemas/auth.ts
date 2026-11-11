@@ -1,11 +1,18 @@
 import {
     ChangePasswordInputSchema,
     EmptyFormInputSchema,
+    ForgotPasswordInputSchema,
+    LinkEmailStartInputSchema,
+    LinkPhoneConfirmInputSchema,
+    LinkPhoneStartInputSchema,
     LoginInputSchema,
     RegisterEmailInputSchema,
     RegisterPhoneCompleteInputSchema,
     RegisterPhoneConfirmInputSchema,
     RegisterPhoneStartInputSchema,
+    ResetPasswordInputSchema,
+    ResetPhoneCompleteInputSchema,
+    ResetPhoneStartInputSchema,
     VerifyEmailInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
@@ -43,5 +50,33 @@ export const authSchemas = contractSchemas(authContracts, {
     resendVerificationEmail: {
         body: EmptyFormInputSchema,
         response: ResponseSchemas.ResendVerificationEmailResponseSchema,
+    },
+    forgotPassword: {
+        body: ForgotPasswordInputSchema,
+        response: ResponseSchemas.ForgotPasswordResponseSchema,
+    },
+    resetPhoneStart: {
+        body: ResetPhoneStartInputSchema,
+        response: ResponseSchemas.ResetPhoneStartResponseSchema,
+    },
+    resetPhoneComplete: {
+        body: ResetPhoneCompleteInputSchema,
+        response: ResponseSchemas.ResetPhoneCompleteResponseSchema,
+    },
+    resetPassword: {
+        body: ResetPasswordInputSchema,
+        response: ResponseSchemas.ResetPasswordResponseSchema,
+    },
+    linkPhoneStart: {
+        body: LinkPhoneStartInputSchema,
+        response: ResponseSchemas.LinkPhoneStartResponseSchema,
+    },
+    linkPhoneConfirm: {
+        body: LinkPhoneConfirmInputSchema,
+        response: ResponseSchemas.LinkPhoneConfirmResponseSchema,
+    },
+    linkEmailStart: {
+        body: LinkEmailStartInputSchema,
+        response: ResponseSchemas.LinkEmailStartResponseSchema,
     },
 })
