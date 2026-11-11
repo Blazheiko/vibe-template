@@ -112,7 +112,7 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 ## Маршрути з контрактом: `defineContractRoute`
 
-Частину маршрутів оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): група `push-subscriptions`, `POST /auth/login`, `GET /admin/users` маршрути моніторингу адмінки (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`) і бази знань (`/admin/knowledge-base/*`, крім завантаження скриншота). Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }`, тож фронтенд імпортує його без схем і без ArkType.
+Частину маршрутів оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): група `push-subscriptions`, `POST /auth/login`, `GET /admin/users` маршрути моніторингу адмінки (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`) бази знань (`/admin/knowledge-base/*`, крім завантаження скриншота), а також `/ping`, `/ready`, `main/*`, `prompts/*` і `support/chat/history`. Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }`, тож фронтенд імпортує його без схем і без ArkType.
 
 ```ts
 // packages/shared/src/contracts/push-subscriptions.ts
