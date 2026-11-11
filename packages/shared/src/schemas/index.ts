@@ -59,7 +59,12 @@ export {
     type BroadcastMessage,
 } from './ws/broadcast-events.js'
 
-export { PositiveIntFromString, LimitIntFromString, DateFromString } from './query/common.js'
+export {
+    PositiveIntFromString,
+    LimitIntFromString,
+    DateFromString,
+    MAX_PAGE_LIMIT,
+} from './query/common.js'
 export type { DateString, PositiveIntInput } from './query/types.js'
 export {
     AdminUserSearchQuerySchema,

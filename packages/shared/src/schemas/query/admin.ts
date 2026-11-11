@@ -5,6 +5,8 @@ import type { PositiveIntInput } from './types.js'
 
 export type AdminUserListQueryInput = DateRangeQueryInput & {
     userId?: string
+    /** The `nextCursor` of the previous page. */
+    cursor?: string
     limit?: PositiveIntInput
 }
 
@@ -12,14 +14,13 @@ export const AdminUserListQuerySchema = type({
     'dateFrom?': DateFromString,
     'dateTo?': DateFromString,
     'userId?': 'string',
+    'cursor?': 'string',
     limit: LimitIntFromString.default('50'),
 })
 
 export type AdminUserListQuery = typeof AdminUserListQuerySchema.infer
 
-export type AdminOnlineHistoryListQueryInput = AdminUserListQueryInput & {
-    cursor?: string
-}
+export type AdminOnlineHistoryListQueryInput = AdminUserListQueryInput
 
 export const AdminOnlineHistoryListQuerySchema = type({
     'dateFrom?': DateFromString,

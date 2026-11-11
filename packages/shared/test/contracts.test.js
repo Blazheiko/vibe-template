@@ -219,3 +219,18 @@ test('the query schemas default and parse their strings as before', async () => 
     }
     assert.ok(AdminUserListQuerySchema({ dateFrom: 'not a date' }) instanceof type.errors)
 })
+
+// feat-155: the services clamp a page to MAX_PAGE_LIMIT, the schema rejects a larger `limit`;
+// the bound is written twice (a constant and a schema literal), so it is checked here.
+test('the page limit of the query schemas is MAX_PAGE_LIMIT', async () => {
+    const { LimitIntFromString, MAX_PAGE_LIMIT, AdminUserListQuerySchema } =
+        await import('../dist/schemas/index.js')
+
+    assert.equal(LimitIntFromString(String(MAX_PAGE_LIMIT)), MAX_PAGE_LIMIT)
+    assert.ok(LimitIntFromString(String(MAX_PAGE_LIMIT + 1)) instanceof type.errors)
+    assert.ok(LimitIntFromString('0') instanceof type.errors)
+
+    // The admin user list takes the cursor of the previous page as a string.
+    const parsed = AdminUserListQuerySchema({ cursor: '42', limit: '100' })
+    assert.deepEqual(parsed, { cursor: '42', limit: 100 })
+})

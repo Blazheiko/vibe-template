@@ -560,6 +560,7 @@ export const adminUsersApi = {
     list: async (params?: AdminUserListQueryInput): Promise<ApiResponse<AdminUserListResponse>> => {
         const qs = adminQueryString({
             limit: params?.limit,
+            cursor: params?.cursor,
             userId: params?.userId?.trim(),
             dateFrom: params?.dateFrom,
             dateTo: params?.dateTo,
