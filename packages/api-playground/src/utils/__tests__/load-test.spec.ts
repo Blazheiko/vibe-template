@@ -353,7 +353,8 @@ describe('executeThread asked to stop', () => {
             totalThreads: 1,
             isVisible: true,
         }
-        const send = vi.fn(client({ data: {}, error: null, status: 200 }))
+        const send = vi.fn(client({ data: {}, error: null, status: 200 })) as unknown as SendHttp &
+            ReturnType<typeof vi.fn>
 
         const thread = await executeThread(
             send,

@@ -185,7 +185,7 @@ describe('useLoadTest', () => {
 // which a typed value ignores, and a run could not be stopped.
 describe('useLoadTest: the size of a run', () => {
     it('zero requests is a run of one, not a summary with Infinity', async () => {
-        const send = vi.fn(scripted([]))
+        const send = vi.fn(scripted([])) as unknown as SendHttp & ReturnType<typeof vi.fn>
         const { test } = setup(0, 1, send)
 
         await test.run(spec)
@@ -196,7 +196,7 @@ describe('useLoadTest: the size of a run', () => {
     })
 
     it('an emptied field is a run of one', async () => {
-        const send = vi.fn(scripted([]))
+        const send = vi.fn(scripted([])) as unknown as SendHttp & ReturnType<typeof vi.fn>
         const { test } = setup('' as unknown as number, 1, send)
 
         await test.run(spec)
@@ -205,7 +205,7 @@ describe('useLoadTest: the size of a run', () => {
     })
 
     it('100000 threads are 100', async () => {
-        const send = vi.fn(scripted([]))
+        const send = vi.fn(scripted([])) as unknown as SendHttp & ReturnType<typeof vi.fn>
         const { test } = setup(1, 100_000, send)
 
         await test.run(spec)
@@ -218,7 +218,7 @@ describe('useLoadTest: the size of a run', () => {
     })
 
     it('100000 requests are 1000', async () => {
-        const send = vi.fn(scripted([]))
+        const send = vi.fn(scripted([])) as unknown as SendHttp & ReturnType<typeof vi.fn>
         const { test } = setup(100_000, 1, send)
 
         await test.run(spec)
@@ -270,7 +270,7 @@ describe('useLoadTest: stop', () => {
     })
 
     it('a stop of one run does not end the next', async () => {
-        const send = vi.fn(scripted([]))
+        const send = vi.fn(scripted([])) as unknown as SendHttp & ReturnType<typeof vi.fn>
         const { test } = setup(3, 1, send)
         test.stop()
 
