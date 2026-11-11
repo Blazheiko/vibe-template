@@ -316,6 +316,22 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     // The other routes with :subscriptionId were already owner-scoped; their
     // contract is pinned here because the docs state it.
     describe('the other routes with :subscriptionId', () => {
+        // feat-161 (review 2026-11-10): an id PostgreSQL cannot hold is not an id of anything.
+        // It used to reach the query and come back as a 500 ("out of range for type bigint").
+        it.each([
+            ['GET', ''],
+            ['GET', '/statistics'],
+            ['GET', '/logs'],
+            ['DELETE', ''],
+        ] as const)(
+            '%s /:id%s answers like a missing id for a 30-digit id',
+            async (method, path) => {
+                const result = await call(method, `/${'9'.repeat(30)}${path}`, { user: ids.owner })
+
+                expect(result.status).toBe(404)
+            },
+        )
+
         it('GET /:id answers 404 for a foreign id and leaks nothing', async () => {
             const result = await call('GET', `/${String(ids.ownerSub)}`, { user: ids.other })
 

@@ -334,3 +334,68 @@ test('the contracts module loads no schema', async () => {
         )
     }
 })
+
+// feat-161: the bounds of the prompt and knowledge base schemas are their columns and what a
+// provider accepts.
+test('the prompt and knowledge base schemas bound their fields', async () => {
+    const {
+        PromptTestInputSchema,
+        PromptUpdateInputSchema,
+        SupportKnowledgeBaseCreateSchema,
+        SupportKnowledgeBaseUpdateSchema,
+    } = await import('../dist/schemas/index.js')
+    const rejected = (schema, value) => schema(value) instanceof type.errors
+
+    for (const value of [
+        { maxTokens: -5 },
+        { maxTokens: 0 },
+        { maxTokens: 1.5 },
+        { maxTokens: 100001 },
+        { temperature: -0.1 },
+        { temperature: 100 },
+        { model: 'm'.repeat(101) },
+        { content: 'c'.repeat(50001) },
+    ]) {
+        assert.ok(
+            rejected(PromptUpdateInputSchema, value),
+            `${JSON.stringify(value).slice(0, 40)} is rejected`,
+        )
+    }
+    for (const value of [
+        { maxTokens: 1 },
+        { maxTokens: 100000 },
+        { maxTokens: null },
+        { temperature: 0 },
+        { temperature: 2 },
+        { temperature: null },
+        { model: 'm'.repeat(100) },
+        { model: null },
+        {},
+    ]) {
+        assert.ok(
+            !rejected(PromptUpdateInputSchema, value),
+            `${JSON.stringify(value).slice(0, 40)} is accepted`,
+        )
+    }
+
+    assert.ok(!rejected(PromptTestInputSchema, { message: 'm'.repeat(4000) }))
+    assert.ok(rejected(PromptTestInputSchema, { message: 'm'.repeat(4001) }))
+    assert.ok(rejected(PromptTestInputSchema, { message: '' }))
+
+    const article = { title: 't', content: 'c' }
+    assert.ok(!rejected(SupportKnowledgeBaseCreateSchema, { ...article, title: 't'.repeat(255) }))
+    assert.ok(rejected(SupportKnowledgeBaseCreateSchema, { ...article, title: 't'.repeat(256) }))
+    assert.ok(
+        !rejected(SupportKnowledgeBaseCreateSchema, { ...article, category: 'c'.repeat(100) }),
+    )
+    assert.ok(rejected(SupportKnowledgeBaseCreateSchema, { ...article, category: 'c'.repeat(101) }))
+    assert.ok(
+        !rejected(SupportKnowledgeBaseCreateSchema, { ...article, content: 'c'.repeat(30000) }),
+    )
+    assert.ok(
+        rejected(SupportKnowledgeBaseCreateSchema, { ...article, content: 'c'.repeat(30001) }),
+    )
+    assert.ok(rejected(SupportKnowledgeBaseUpdateSchema, { title: 't'.repeat(256) }))
+    assert.ok(rejected(SupportKnowledgeBaseUpdateSchema, { category: 'c'.repeat(101) }))
+    assert.ok(!rejected(SupportKnowledgeBaseUpdateSchema, { isActive: false }))
+})

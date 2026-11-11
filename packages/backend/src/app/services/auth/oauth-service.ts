@@ -50,6 +50,9 @@ type JsonObject = Record<string, unknown>
  * feat-125: a provider that hangs must not hold the callback (and its browser) until the HTTP
  * client gives up (undici waits ~300 s for the headers). The request is cancelled after this.
  */
+/** The length of `users.name`. */
+const USER_NAME_MAX_LENGTH = 100
+
 export const OAUTH_PROVIDER_TIMEOUT_MS = 10_000
 
 /**
@@ -781,7 +784,10 @@ async function signInWithIdentity(
         newUser = await withTransaction(async (tx) => {
             const created = await userRepository.create(
                 {
-                    name: identity.providerName,
+                    // users.name is varchar(100); a provider's display name may be longer
+                    // (feat-161: it used to fail the INSERT, and with it every sign-up of that
+                    // person through the provider).
+                    name: identity.providerName.slice(0, USER_NAME_MAX_LENGTH),
                     email: authoritative ? providerEmail : null,
                     password: null,
                     avatar: identity.providerAvatar,

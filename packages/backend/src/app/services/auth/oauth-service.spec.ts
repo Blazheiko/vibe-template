@@ -906,6 +906,22 @@ describe('oauthService.handleCallback', () => {
 
     // --- nobody has the address ----------------------------------------------------------------
     describe('a new account', () => {
+        // feat-161 (review 2026-11-10): users.name is varchar(100). A longer display name used
+        // to fail the INSERT, and with it every sign-up of that person through the provider.
+        it('cuts a display name longer than the column to its length', async () => {
+            const longName = `${'Jane '.repeat(30)}Doe`
+            stubGoogle({ email: 'jane@gmail.com', name: longName })
+            givenNewUser()
+
+            const result = await callback('google')
+
+            expect(Result.isOk(result)).toBe(true)
+            const [created] = userRepositoryMock.create.mock.calls[0] as [{ name: string }]
+            expect(longName.length).toBeGreaterThan(100)
+            expect(created.name).toBe(longName.slice(0, 100))
+            expect(created.name).toHaveLength(100)
+        })
+
         it('Google authoritative: created with the address, verified', async () => {
             stubGoogle({ email: 'Jane@Gmail.com', picture: 'https://cdn.example.com/g.png' })
             givenNewUser()

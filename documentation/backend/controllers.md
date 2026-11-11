@@ -35,6 +35,10 @@ flowchart LR
 
 Контролер — це об'єкт за замовчуванням (`export default { ... }`) з async-методами. У маршрутах метод передається як `handler: AuthController.login.bind(AuthController)` ([http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts), [ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts)).
 
+::: tip Числові id у шляху й query
+Id з параметра шляху чи query (`:id`, `:subscriptionId`, `:articleId`, `userId`, `cursor`) читає [`parseEntityId`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/parse-id.ts): лише десяткові цифри й не більше за `bigint` PostgreSQL. Значення поза цим (30 цифр, `0x10`, `-5`) контролер відхиляє так само, як нечисловий id (`400` або `404`), а не доводить до запиту, де воно дало б `500` (feat-161).
+:::
+
 ## Контекст обробника
 
 Коротка шпаргалка нижче; кожне поле розібрано в розділах [HttpContext докладно](#httpcontext-докладно) і [WsContext докладно](#wscontext-докладно).
