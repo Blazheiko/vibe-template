@@ -57,7 +57,8 @@ jobs:
     # (libicudata.so.74 missing), so every WebKit and Mobile Safari test failed. Chromium and
     # Firefox were fine. Unpin once the Playwright version in use supports the newer image.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # 30 + up to 16 minutes of retried browser dependencies (feat-179).
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -84,12 +85,15 @@ jobs:
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       # All browsers of playwright.config.ts projects: chromium, firefox, webkit
-      # (webkit also runs Mobile Safari). System deps are not cached.
+      # (webkit also runs Mobile Safari). System deps are not cached. They come from the
+      # runner's apt mirrors, which can be down for a while (2026-11-11): up to 3 attempts of
+      # at most 5 minutes each (apt waits long on an unreachable mirror), 30 s and 60 s apart
+      # (scripts/retry.sh, feat-179). The job timeout leaves room for them.
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter frontend exec playwright install --with-deps
+        run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install --with-deps
 
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter frontend exec playwright install-deps
+        run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps
 
       - run: pnpm --filter frontend test:e2e
 
@@ -105,7 +109,8 @@ jobs:
   # another one out (feat-069, G3). The run uses a database and a Redis key prefix of its own.
   e2e-live:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # 20 + room for retried browser dependencies (feat-179).
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -155,12 +160,13 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-live-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
-      # Chromium only: the live specs are about the session, not about the engines.
+      # Chromium only: the live specs are about the session, not about the engines. The apt
+      # mirrors can be down for a while: retried as in the e2e job (scripts/retry.sh).
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter frontend exec playwright install --with-deps chromium
+        run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install --with-deps chromium
 
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter frontend exec playwright install-deps chromium
+        run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps chromium
 
       # Builds shared, the SPA (phone auth off, API at http://localhost:3100) and the backend,
       # then Playwright starts the backend with the database made first.
