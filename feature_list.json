@@ -1721,8 +1721,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-knowledge-base",
             "dependencies": ["feat-169"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #526 (merge commit e04ac8b). Ten /admin/knowledge-base routes on contracts (list, get, create, update, delete, delete screenshot, reindex, reindex-all, init, init-status); the multipart screenshot upload waits for feat-177. adminKnowledgeBaseApi on callApi with the shared SupportKnowledgeBaseItem and input types; DIRECT_HTTP_CALLS 33 -> 24. The types caught an update wrapper that allowed category: null (the schema answers 422). isSuccessfulResponse narrows to the success branch; the unused adminQueryString is deleted with its 3 tests. A space in the list query is now %20 instead of + (the server reads both). make check (backend 2656, frontend 496, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92; docs:build && docs:verify."
         },
         {
             "id": "feat-174",
@@ -1731,7 +1731,7 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-core-prompts-support",
             "dependencies": ["feat-173"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
