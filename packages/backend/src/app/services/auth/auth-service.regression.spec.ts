@@ -538,7 +538,9 @@ describe('email registration losing the race to the unique index', () => {
 
             expect(Result.isOk(result) && result.value).toEqual(GENERIC)
             expect(sendVerificationEmailAfterRegistrationMock).not.toHaveBeenCalled()
-            expect(sessionMock.destroySession).not.toHaveBeenCalled()
+            // feat-157: strict mode ends the caller's session in every branch, the lost race
+            // included; the non-strict mode leaves it.
+            expect(sessionMock.destroySession).toHaveBeenCalledTimes(strict === 'true' ? 1 : 0)
             expect(authMock.login).not.toHaveBeenCalled()
         })
 

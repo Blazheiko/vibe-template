@@ -166,11 +166,46 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
             }
             expect(await usersWithEmail(email)).toHaveLength(1)
             for (const request of requests) expect(request.auth.login).not.toHaveBeenCalled()
-            // Only the winner leaves its anonymous session; the loser keeps it, like a taken address.
-            const destroyed = requests.filter(
-                (request) => request.session.destroySession.mock.calls.length > 0,
-            )
-            expect(destroyed).toHaveLength(1)
+            // feat-157: both leave their session, the loser like the winner. What happens to the
+            // caller's session says nothing about the address.
+            for (const request of requests) {
+                expect(request.session.destroySession).toHaveBeenCalledTimes(1)
+            }
+        })
+
+        // feat-157 (review 2026-11-10): the answer is the same for a free and a taken address,
+        // and so is what happens to the caller's stored session. It used to be destroyed only
+        // when the address was free, which told the caller whether the email was registered.
+        it('strict: the caller’s session ends the same way for a free and a taken address', async () => {
+            authConfig.strictRegistration = true
+            const taken = nextEmail()
+            const first = fakeRequest()
+            expect(Result.isOk(await register(taken, first))).toBe(true)
+            expect(await usersWithEmail(taken)).toHaveLength(1)
+
+            const forFree = fakeRequest()
+            const forTaken = fakeRequest()
+            const answers = [await register(nextEmail(), forFree), await register(taken, forTaken)]
+
+            for (const answer of answers) {
+                expect(Result.isOk(answer) && answer.value).toEqual(GENERIC)
+            }
+            expect(forFree.session.destroySession).toHaveBeenCalledTimes(1)
+            expect(forTaken.session.destroySession).toHaveBeenCalledTimes(1)
+            expect(forTaken.auth.login).not.toHaveBeenCalled()
+            expect(await usersWithEmail(taken)).toHaveLength(1)
+        })
+
+        it('non-strict: a taken address keeps the caller’s session (the mode signs a free one in anyway)', async () => {
+            authConfig.strictRegistration = false
+            const taken = nextEmail()
+            await register(taken, fakeRequest())
+
+            const again = fakeRequest()
+            const answer = await register(taken, again)
+
+            expect(Result.isOk(answer) && answer.value).toEqual(GENERIC)
+            expect(again.session.destroySession).not.toHaveBeenCalled()
         })
 
         it('non-strict: the winner signs in, the loser answers the generic message', async () => {
