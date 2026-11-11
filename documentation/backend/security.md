@@ -70,7 +70,7 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 
 `0` у змінній auth-політики — помилка конфігу на старті: захист чутливої дії вимкнути не можна. Вимкнути змінною (`MAX=0`) можна лише `wsUpgradeShared` (`disableable`), напр. для одного інстансу.
 
-Спільні ліміти ходять в окреме з'єднання ([`redis-rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/redis-rate-limit.ts)) до того самого Redis-сервера: без offline queue, без повторного надсилання команд і з коротким таймаутом `RATE_LIMIT_REDIS_TIMEOUT_MS`. Основний клієнт сесій тепер теж працює без offline queue і повторів, але з довшим таймаутом `REDIS_COMMAND_TIMEOUT_MS` (див. [Відмова Redis](#відмова-redis)). Таймаут означає «результат невідомий»: Lua могла вже спожити спробу, тому повтору немає.
+Спільні ліміти ходять в окреме з'єднання ([`redis-rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/redis-rate-limit.ts)) до того самого Redis-сервера: без offline queue, без повторного надсилання команд і з таймаутом `RATE_LIMIT_REDIS_TIMEOUT_MS` (за замовчуванням 500 мс, як `REDIS_COMMAND_TIMEOUT_MS`: 50 мс на завантаженій машині давали епізодичні 503 на вході й реєстрації). Основний клієнт сесій теж працює без offline queue і повторів, з таймаутом `REDIS_COMMAND_TIMEOUT_MS` (див. [Відмова Redis](#відмова-redis)). Таймаут означає «результат невідомий»: Lua могла вже спожити спробу, тому повтору немає.
 
 ### Політика входу
 
