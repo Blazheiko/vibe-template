@@ -3,7 +3,7 @@ import type { Type } from '@arktype/type'
 import { defaultValidator } from '#app/validate/index.js'
 import type { HttpContext, RouteConfig, RouteItem, TypedHandler } from '#vendor/types/types.js'
 import type { RouteResponse } from '#app/routing/route-response.js'
-import type { AnyContract, BodyOf, QueryOf, ResponseOf } from 'shared/contracts'
+import type { AnyContract, BodyOf, FieldsOf, KindOf, QueryOf, ResponseOf } from 'shared/contracts'
 
 // The schemas of the routes declared through a contract (docs/adr/0005-route-contracts.md,
 // "Цільовий стан"): one registry, keyed by the method and the path of the contract, so a route
@@ -25,6 +25,12 @@ type SchemaOutput<TSchema> = TSchema extends { infer: infer TOut } ? TOut : neve
 /** A response type without its error branch. */
 type SuccessOf<T> = Exclude<T, { status: 'error' }>
 
+/**
+ * What the body schema of a route checks: the body of a JSON contract, the text fields of a
+ * multipart one (its files are read from `httpData.files`, not validated by the schema).
+ */
+type CheckedBodyOf<C> = KindOf<C> extends 'multipart' ? FieldsOf<C> : BodyOf<C>
+
 /** The schemas of one route. `body` and `query` are there exactly when the contract has them. */
 export interface SchemaEntry {
     readonly body?: Type
@@ -45,7 +51,7 @@ type EntryCheck<C extends AnyContract, E> = ([BodyOf<C>] extends [undefined]
     ? { readonly body?: undefined }
     : {
           readonly body: E extends { body: infer B }
-              ? Same<SchemaInput<B>, BodyOf<C>> extends true
+              ? Same<SchemaInput<B>, CheckedBodyOf<C>> extends true
                   ? unknown
                   : ContractMismatch<'the input of the body schema is not the body type of the contract'>
               : Type
@@ -154,6 +160,8 @@ export function contractRouteDefiner<R extends Readonly<Record<string, SchemaEnt
 
         return {
             ...rest,
+            // A multipart contract accepts nothing else: the body kind follows the contract.
+            ...(contract.kind === 'multipart' ? { allowedContentTypes: ['multipart'] } : {}),
             url: contract.path,
             method: contract.method,
             contractPath: contract.path,

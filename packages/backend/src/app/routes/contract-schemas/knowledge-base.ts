@@ -23,6 +23,10 @@ export const knowledgeBaseSchemas = contractSchemas(knowledgeBaseContracts, {
         response: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
     },
     remove: { response: ResponseSchemas.SupportKnowledgeBaseDeleteResponseSchema },
+    uploadScreenshot: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
+    },
     removeScreenshot: { response: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema },
     reindex: {
         body: EmptyFormInputSchema,

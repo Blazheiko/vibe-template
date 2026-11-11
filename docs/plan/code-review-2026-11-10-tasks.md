@@ -630,26 +630,26 @@ C5b → C6.
 - [x] **C4.1** `feat-169` — `admin`: онлайн-користувачі, історія, облік LLM (5 маршрутів, 3
       виклики). Тест: e2e адмінки.
 - [x] **C4.2** `feat-173` — `admin/knowledge-base/*` без завантаження скриншота (10, 9).
-- [ ] **C4.3** `feat-174` — `/ping`, `/ready`, `main/*`, `prompts/*`, `support/chat/history` (10,
+- [x] **C4.3** `feat-174` — `/ping`, `/ready`, `main/*`, `prompts/*`, `support/chat/history` (10,
       4). `/ready` відповідає 503 тілом `unavailable`: контракт описує обидві гілки.
-- [ ] **C4.4** `feat-175` — `auth`: реєстрація, вихід, зміна пароля, підтвердження пошти (9, 9).
+- [x] **C4.4** `feat-175` — `auth`: реєстрація, вихід, зміна пароля, підтвердження пошти (9, 9).
       Тести: PG, e2e live; `csrfRecovery` / `sessionAfter` кожного виклику не змінилися.
-- [ ] **C4.5** `feat-176` — `auth`: відновлення пароля, прив'язка телефону й пошти;
+- [x] **C4.5** `feat-176` — `auth`: відновлення пароля, прив'язка телефону й пошти;
       `auth/oauth`: `providers`, `link/confirm`, `email/resend` (10, 10). Тести: PG, e2e live.
 
 ### C8 Non-JSON Route Contracts · → C4.5
 
-- [ ] **C8.S** Шаблон S.
-- [ ] **C8.1** Контракт описує тіло multipart (поля й файли) і відповіді-редірект та файл;
+- [x] **C8.S** Шаблон S.
+- [x] **C8.1** Контракт описує тіло multipart (поля й файли) і відповіді-редірект та файл;
       `callApi` надсилає `FormData` через наявний транспорт (`baseApi.upload`), реєстр — схему
       полів multipart.
       **AC:** тести типів: файл замість поля, пропущений файл — не компілюється; тест клієнта на
       справжньому транспорті: CSRF і `signal` для multipart такі самі, як для JSON.
-- [ ] **C8.2** → C8.1. Переходять `avatar/upload`, `DELETE avatar`, `knowledge-base/:id/screenshot`
+- [x] **C8.2** → C8.1. Переходять `avatar/upload`, `DELETE avatar`, `knowledge-base/:id/screenshot`
       (POST), `support/screenshot/:articleId`, `auth/oauth/:provider/redirect`, `callback`.
       **AC:** тести завантажень (ліміти, `413`, типи вмісту) і OAuth зелені; прямих
       `baseApi.upload` поза клієнтом немає.
-- [ ] **C8.D** Шаблон D. **C8.E** Шаблон E (e2e, live). **C8.X** Шаблон X.
+- [x] **C8.D** Шаблон D. **C8.E** Шаблон E (e2e, live). **C8.X** Шаблон X.
 
 ### C5b Route Contracts Lock · → C8
 

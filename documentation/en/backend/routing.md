@@ -37,7 +37,7 @@ defineRoute({
 }),
 ```
 
-This is the real avatar upload route from the `avatar` group in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts): it accepts `multipart/form-data` instead of JSON.
+This is how the avatar upload route looked before contracts: it accepts `multipart/form-data` instead of JSON. It is now declared through a contract (see [Routes with a contract](#routes-with-a-contract-definecontractroute)); the fields below are the same ones `defineContractRoute` takes.
 
 ## All route fields
 
@@ -112,7 +112,7 @@ It is best to read from the end: the last lines name the field that did not matc
 
 ## Routes with a contract: `defineContractRoute`
 
-Some routes are declared through a **contract** from `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): the `push-subscriptions` group, `POST /auth/login`, `GET /admin/users` the admin monitoring routes (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`) and the knowledge base ones (`/admin/knowledge-base/*`, except the screenshot upload). A contract is a method, a path under the API prefix and three types (body, query, response); at run time it is only `{ method, path }`, so the frontend imports it without schemas and without ArkType.
+Every HTTP route of the template is declared through a **contract** from `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)). A contract is a method, a path under the API prefix and three types (body, query, response); at run time it is only `{ method, path }` (and `kind` for non-JSON), so the frontend imports it without schemas and without ArkType.
 
 ```ts
 // packages/shared/src/contracts/push-subscriptions.ts
@@ -150,7 +150,12 @@ callApi(pushSubscriptionContracts.create, { body })
 - On the frontend, [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) calls the contract's route on top of the existing transport (CSRF, the session gate). A wrong body, path parameter or query key is a compile error. Direct `baseApi.http` calls outside `utils/api.ts` are forbidden by an ESLint rule; inside `utils/api.ts` their number is held by the test [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
 - `pnpm check:bundle-graph` (part of `make check`) checks on the module graph of the production build that no schema and no ArkType got into the frontend bundle.
 
-The other routes are declared with `defineRoute` and move to contracts group by group. Multipart routes (file uploads) have no contracts.
+### Multipart and navigation routes
+
+- `multipartContract<Fields, 'file-name', Response>()('post', path)` is a body of text fields and files. The registry entry describes the schema of the **fields**; the route accepts only `multipart` (`defineContractRoute` sets `allowedContentTypes`), and `maxBodySize` stays a setting of the route. On the frontend, `callApi(avatarContracts.upload, { body: { fields: {}, files: { avatar: blob } } })` builds a `FormData` and sends it through `baseApi.upload` with the same CSRF token and session gate.
+- `navigationContract<Query, Response>()(path)` is a GET the browser does not fetch but opens: the OAuth redirect (`/auth/oauth/:provider/redirect`, `callback`) or a file (`/support/screenshot/:articleId` for an `<img>`). `callApi` does not take such a contract; [`contractUrl`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) builds its URL.
+
+The old `defineRoute` without a contract is still in the code, but the route table no longer uses it; the next step of the plan (C5b) removes it.
 
 ## Methods and request body
 

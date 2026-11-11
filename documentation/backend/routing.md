@@ -37,7 +37,7 @@ defineRoute({
 }),
 ```
 
-Це реальний маршрут завантаження аватара з групи `avatar` у [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts): він приймає `multipart/form-data` замість JSON.
+Так маршрут завантаження аватара виглядав до контрактів: він приймає `multipart/form-data` замість JSON. Зараз його оголошено через контракт (див. [Маршрути з контрактом](#маршрути-з-контрактом-definecontractroute)); поля нижче — ті самі, що бере й `defineContractRoute`.
 
 ## Усі поля маршруту
 
@@ -112,7 +112,7 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 ## Маршрути з контрактом: `defineContractRoute`
 
-Частину маршрутів оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): група `push-subscriptions`, `POST /auth/login`, `GET /admin/users` маршрути моніторингу адмінки (`/admin/users-online`, `/admin/users-online/:id`, `/admin/history-online`, `/admin/usage/text`, `/admin/usage/stats`) і бази знань (`/admin/knowledge-base/*`, крім завантаження скриншота). Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }`, тож фронтенд імпортує його без схем і без ArkType.
+Усі HTTP-маршрути шаблону оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)). Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }` (і `kind` для не-JSON), тож фронтенд імпортує його без схем і без ArkType.
 
 ```ts
 // packages/shared/src/contracts/push-subscriptions.ts
@@ -150,7 +150,12 @@ callApi(pushSubscriptionContracts.create, { body })
 - На фронтенді [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) викликає маршрут контракту поверх наявного транспорту (CSRF, шлюз сесії). Неправильне тіло, параметр шляху чи ключ query — помилка компіляції. Прямі виклики `baseApi.http` поза `utils/api.ts` заборонено правилом ESLint; у самому `utils/api.ts` їхню кількість тримає тест [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
 - `pnpm check:bundle-graph` (частина `make check`) перевіряє на графі модулів production-збірки, що у бандл фронтенду не потрапили схеми й ArkType.
 
-Решта маршрутів оголошена через `defineRoute` і переходить на контракти групами. Multipart-маршрути (завантаження файлів) контрактів не мають.
+### Multipart і маршрути-переходи
+
+- `multipartContract<Поля, 'імʼя-файлу', Відповідь>()('post', шлях)` — тіло з текстових полів і файлів. Запис реєстру описує схему **полів**; маршрут сам приймає лише `multipart` (`allowedContentTypes` ставить `defineContractRoute`), `maxBodySize` лишається налаштуванням маршруту. На фронтенді `callApi(avatarContracts.upload, { body: { fields: {}, files: { avatar: blob } } })` збирає `FormData` і надсилає через `baseApi.upload` з тим самим CSRF-токеном і шлюзом сесії.
+- `navigationContract<Query, Відповідь>()(шлях)` — GET, який браузер не завантажує через `fetch`, а відкриває: редірект OAuth (`/auth/oauth/:provider/redirect`, `callback`) чи файл (`/support/screenshot/:articleId` для `<img>`). `callApi` такий контракт не приймає; [`contractUrl`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) будує його адресу.
+
+Старий `defineRoute` без контракту ще є в коді, але таблиця маршрутів його більше не використовує; його прибирає наступний крок плану (C5b).
 
 ## Методи і тіло запиту
 

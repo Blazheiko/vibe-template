@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { adminContracts, authContracts, pushSubscriptionContracts } from 'shared/contracts'
+import {
+    adminContracts,
+    authContracts,
+    avatarContracts,
+    knowledgeBaseContracts,
+    oauthContracts,
+    pushSubscriptionContracts,
+    supportContracts,
+} from 'shared/contracts'
 
 // The typed client (docs/adr/0005-route-contracts.md) over the REAL transport: the fetch double
 // is the only fake. The transport's own tests (base-api-csrf.spec.ts) would stay green if this
@@ -88,8 +96,8 @@ const load = async ({ token = TOKEN_U1, tokenUser = '1', uiUser = '1' }: Setup =
     const reload = vi.fn()
     transport.setReloadHandler(reload)
     transport.setCurrentUserIdProvider(() => uiUser)
-    const { callApi } = await import('../api-client')
-    return { callApi, csrf, reload }
+    const { callApi, contractUrl } = await import('../api-client')
+    return { callApi, contractUrl, csrf, reload }
 }
 
 const SUBSCRIPTION = {
@@ -299,11 +307,96 @@ describe('callApi: the options reach the transport', () => {
     })
 })
 
+// feat-177: a multipart contract goes through the same transport as a JSON one (the CSRF token,
+// the session gate), with a FormData body the browser frames itself.
+describe('callApi: a multipart contract', () => {
+    it('sends the files and the fields as FormData, with the CSRF token', async () => {
+        const server = createServer({})
+        const { callApi } = await load()
+        const avatar = new Blob(['x'], { type: 'image/webp' })
+
+        await callApi(avatarContracts.upload, {
+            body: { fields: {}, files: { avatar: { blob: avatar, filename: 'avatar.webp' } } },
+        })
+
+        const [request] = requests(server)
+        expect(request).toMatchObject({
+            url: '/api/avatar/upload',
+            method: 'POST',
+            token: TOKEN_U1,
+        })
+        expect(request.body).toBeInstanceOf(FormData)
+        const file = (request.body as FormData).get('avatar')
+        expect(file).toBeInstanceOf(File)
+        expect((file as File).name).toBe('avatar.webp')
+        // No JSON Content-Type: the browser sets the multipart boundary itself.
+        const headers = server.mock.lastCall?.[1]?.headers as Record<string, string>
+        expect(headers['Content-Type']).toBeUndefined()
+    })
+
+    it('puts the path parameters of a multipart contract into the path', async () => {
+        const server = createServer({})
+        const { callApi } = await load()
+
+        await callApi(knowledgeBaseContracts.uploadScreenshot, {
+            params: { id: '7' },
+            body: { fields: {}, files: { screenshot: new Blob(['x']) } },
+        })
+
+        expect(requests(server)[0]?.url).toBe('/api/admin/knowledge-base/7/screenshot')
+    })
+
+    it('is repeated once after a token mismatch, with the same files', async () => {
+        const server = createServer({
+            init: [initAs('1', TOKEN_U1_FRESH)],
+            other: [tokenMismatch(), jsonResponse({ status: 'ok' })],
+        })
+        const { callApi } = await load()
+
+        const result = await callApi(avatarContracts.upload, {
+            body: { fields: {}, files: { avatar: new Blob(['x']) } },
+        })
+
+        expect(result.error).toBeNull()
+        const sent = requests(server)
+        expect(sent.map((request) => request.token)).toEqual([TOKEN_U1, TOKEN_U1_FRESH])
+        expect((sent[1]?.body as FormData).get('avatar')).toBeInstanceOf(File)
+    })
+})
+
+describe('contractUrl', () => {
+    it('builds the URL of a navigation contract under the API prefix, encoded', async () => {
+        const { contractUrl } = await load()
+
+        expect(contractUrl(oauthContracts.redirect, { params: { provider: 'google' } })).toBe(
+            '/api/auth/oauth/google/redirect',
+        )
+        expect(contractUrl(supportContracts.screenshot, { params: { articleId: 'a/b' } })).toBe(
+            '/api/support/screenshot/a%2Fb',
+        )
+    })
+})
+
 // Checked by the type checker (`vue-tsc --build` compiles the specs): a call that does not fit
 // the contract does not compile. Nothing here runs.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function typeChecks(): Promise<void> {
-    const { callApi } = await import('../api-client')
+    const { callApi, contractUrl } = await import('../api-client')
+
+    // @ts-expect-error — a navigation contract is never fetched
+    await callApi(supportContracts.screenshot, { params: { articleId: '1' } })
+    // @ts-expect-error — contractUrl is for navigation contracts only
+    contractUrl(pushSubscriptionContracts.list)
+    // @ts-expect-error — the path parameter of a navigation contract is required
+    contractUrl(oauthContracts.redirect)
+    await callApi(avatarContracts.upload, {
+        // @ts-expect-error — the file goes under the contract's field name
+        body: { fields: {}, files: { picture: new Blob(['x']) } },
+    })
+    await callApi(avatarContracts.upload, {
+        // @ts-expect-error — a multipart body is fields and files, not a JSON object
+        body: { avatar: new Blob(['x']) },
+    })
 
     // @ts-expect-error — the body is required
     await callApi(pushSubscriptionContracts.create)

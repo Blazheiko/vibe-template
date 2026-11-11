@@ -10,41 +10,20 @@ import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
 import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
-    SupportChatHistoryQuerySchema,
-    OAuthCallbackQuerySchema,
-    OAuthLinkConfirmInputSchema,
-    OAuthRedirectQuerySchema,
-} from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
-import {
     adminContracts,
     authContracts,
+    avatarContracts,
     knowledgeBaseContracts,
+    mainContracts,
+    oauthContracts,
+    promptContracts,
     pushSubscriptionContracts,
+    supportContracts,
 } from 'shared/contracts'
 
-import {
-    RegisterEmailInputSchema,
-    RegisterPhoneStartInputSchema,
-    RegisterPhoneConfirmInputSchema,
-    RegisterPhoneCompleteInputSchema,
-    LinkPhoneStartInputSchema,
-    LinkPhoneConfirmInputSchema,
-    LinkEmailStartInputSchema,
-    ForgotPasswordInputSchema,
-    ResetPhoneStartInputSchema,
-    ResetPhoneCompleteInputSchema,
-    ResetPasswordInputSchema,
-    ChangePasswordInputSchema,
-    VerifyEmailInputSchema,
-    EmptyFormInputSchema,
-    PromptUpdateInputSchema,
-    PromptTestInputSchema,
-} from 'shared/schemas'
 import {
     AVATAR_MAX_FILE_BYTES,
     KB_SCREENSHOT_MAX_FILE_BYTES,
@@ -52,52 +31,36 @@ import {
 } from '#app/services/shared/upload-limits.js'
 
 export default [
-    defineRoute({
-        url: '/ping',
-        method: 'get',
+    defineContractRoute({
+        contract: mainContracts.ping,
         handler: MainController.ping.bind(MainController),
-        ResponseSchema: ResponseSchemas.PingResponseSchema,
         description: 'Ping',
     }),
-    defineRoute({
-        url: '/ready',
-        method: 'get',
+    defineContractRoute({
+        contract: mainContracts.ready,
         handler: MainController.ready.bind(MainController),
-        ResponseSchema: ResponseSchemas.ReadyResponseSchema,
         description: 'Readiness: 200 when PostgreSQL and Redis answer, 503 otherwise',
     }),
     {
         group: [
-            defineRoute({
-                url: '/register/email',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerEmail,
                 handler: AuthController.registerByEmail.bind(AuthController),
-                validator: RegisterEmailInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterEmailResponseSchema,
                 description: 'Register a new user by email',
             }),
-            defineRoute({
-                url: '/register/phone/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerPhoneStart,
                 handler: AuthController.startPhoneRegistration.bind(AuthController),
-                validator: RegisterPhoneStartInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterPhoneStartResponseSchema,
                 description: 'Start phone-based registration',
             }),
-            defineRoute({
-                url: '/register/phone/confirm',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerPhoneConfirm,
                 handler: AuthController.confirmPhoneRegistration.bind(AuthController),
-                validator: RegisterPhoneConfirmInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterPhoneConfirmResponseSchema,
                 description: 'Confirm phone registration challenge',
             }),
-            defineRoute({
-                url: '/register/phone/complete-profile',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerPhoneComplete,
                 handler: AuthController.completePhoneRegistration.bind(AuthController),
-                validator: RegisterPhoneCompleteInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterPhoneCompleteResponseSchema,
                 description: 'Complete phone registration profile and password',
             }),
             defineContractRoute({
@@ -105,110 +68,74 @@ export default [
                 handler: AuthController.login.bind(AuthController),
                 description: 'Login a user by email or phone identifier',
             }),
-            defineRoute({
-                url: '/logout',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.LogoutResponseSchema,
                 description: 'Logout a user',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/logout-all',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.logoutAll,
                 handler: AuthController.logoutAll.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.LogoutAllResponseSchema,
                 description: 'Logout all devices',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/change-password',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.changePassword,
                 handler: AuthController.changePassword.bind(AuthController),
-                validator: ChangePasswordInputSchema,
-                ResponseSchema: ResponseSchemas.ChangePasswordResponseSchema,
                 description: 'Change or set user password',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/forgot-password',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.forgotPassword,
                 handler: AuthController.forgotPassword.bind(AuthController),
-                validator: ForgotPasswordInputSchema,
-                ResponseSchema: ResponseSchemas.ForgotPasswordResponseSchema,
                 description: 'Request password reset email',
                 rateLimit: { windowMs: 60_000, maxRequests: 3 },
             }),
-            defineRoute({
-                url: '/reset-phone/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resetPhoneStart,
                 handler: AuthController.startPhonePasswordReset.bind(AuthController),
-                validator: ResetPhoneStartInputSchema,
-                ResponseSchema: ResponseSchemas.ResetPhoneStartResponseSchema,
                 description: 'Start phone-based password reset flow',
             }),
-            defineRoute({
-                url: '/reset-phone/complete',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resetPhoneComplete,
                 handler: AuthController.completePhonePasswordReset.bind(AuthController),
-                validator: ResetPhoneCompleteInputSchema,
-                ResponseSchema: ResponseSchemas.ResetPhoneCompleteResponseSchema,
                 description: 'Complete phone-based password reset flow',
             }),
-            defineRoute({
-                url: '/reset-password',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resetPassword,
                 handler: AuthController.resetPassword.bind(AuthController),
-                validator: ResetPasswordInputSchema,
-                ResponseSchema: ResponseSchemas.ResetPasswordResponseSchema,
                 description: 'Reset password using a one-time token',
                 rateLimit: { windowMs: 60_000, maxRequests: 10 },
             }),
-            defineRoute({
-                url: '/verify-email',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.verifyEmail,
                 handler: AuthController.verifyEmail.bind(AuthController),
-                validator: VerifyEmailInputSchema,
-                ResponseSchema: ResponseSchemas.VerifyEmailResponseSchema,
                 description: 'Confirm user email by verification token',
                 rateLimit: { windowMs: 60_000, maxRequests: 10 },
             }),
-            defineRoute({
-                url: '/resend-verification-email',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resendVerificationEmail,
                 handler: AuthController.resendVerificationEmail.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.ResendVerificationEmailResponseSchema,
                 description: 'Resend verification email to authenticated user',
                 middlewares: ['auth_guard'],
                 rateLimit: { windowMs: 60_000, maxRequests: 3 },
             }),
-            defineRoute({
-                url: '/link-phone/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.linkPhoneStart,
                 handler: AuthController.startPhoneLink.bind(AuthController),
-                validator: LinkPhoneStartInputSchema,
-                ResponseSchema: ResponseSchemas.LinkPhoneStartResponseSchema,
                 description: 'Start linking a phone to the current account',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/link-phone/confirm',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.linkPhoneConfirm,
                 handler: AuthController.confirmPhoneLink.bind(AuthController),
-                validator: LinkPhoneConfirmInputSchema,
-                ResponseSchema: ResponseSchemas.LinkPhoneConfirmResponseSchema,
                 description: 'Confirm and link a phone to the current account',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/link-email/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.linkEmailStart,
                 handler: AuthController.startEmailLink.bind(AuthController),
-                validator: LinkEmailStartInputSchema,
-                ResponseSchema: ResponseSchemas.LinkEmailStartResponseSchema,
                 description:
                     'Send an email verification link for adding an email to the current account',
                 middlewares: ['auth_guard'],
@@ -221,43 +148,30 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/providers',
-                method: 'get',
+            defineContractRoute({
+                contract: oauthContracts.providers,
                 handler: OAuthController.providers.bind(OAuthController),
-                ResponseSchema: ResponseSchemas.OAuthProvidersResponseSchema,
                 description: 'OAuth providers configured on the backend',
             }),
-            defineRoute({
-                url: '/:provider/redirect',
-                method: 'get',
+            defineContractRoute({
+                contract: oauthContracts.redirect,
                 handler: OAuthController.redirect.bind(OAuthController),
-                queryValidator: OAuthRedirectQuerySchema,
-                ResponseSchema: ResponseSchemas.OAuthRedirectResponseSchema,
                 description: 'Redirect to OAuth provider',
             }),
-            defineRoute({
-                url: '/:provider/callback',
-                method: 'get',
+            defineContractRoute({
+                contract: oauthContracts.callback,
                 handler: OAuthController.callback.bind(OAuthController),
-                queryValidator: OAuthCallbackQuerySchema,
                 queryAllowExtra: true,
-                ResponseSchema: ResponseSchemas.OAuthCallbackResponseSchema,
                 description: 'OAuth provider callback',
             }),
-            defineRoute({
-                url: '/link/confirm',
-                method: 'post',
+            defineContractRoute({
+                contract: oauthContracts.confirmLink,
                 handler: OAuthController.confirmLink.bind(OAuthController),
-                validator: OAuthLinkConfirmInputSchema,
-                ResponseSchema: ResponseSchemas.OAuthLinkConfirmResponseSchema,
                 description: 'Confirm a mailed OAuth link in the browser that started the sign-in',
             }),
-            defineRoute({
-                url: '/email/resend',
-                method: 'post',
+            defineContractRoute({
+                contract: oauthContracts.resendEmailLink,
                 handler: OAuthController.resendEmailLink.bind(OAuthController),
-                ResponseSchema: ResponseSchemas.EmailLinkResendResponseSchema,
                 description: 'Send again the link confirming the address of an OAuth account',
                 middlewares: ['auth_guard'],
             }),
@@ -269,19 +183,15 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/init',
-                method: 'get',
+            defineContractRoute({
+                contract: mainContracts.init,
                 handler: MainController.init.bind(MainController),
-                ResponseSchema: ResponseSchemas.InitResponseSchema,
                 description: 'Initialize app state',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/update-ws-token',
-                method: 'get',
+            defineContractRoute({
+                contract: mainContracts.updateWsToken,
                 handler: MainController.updateWsToken.bind(MainController),
-                ResponseSchema: ResponseSchemas.UpdateWsTokenResponseSchema,
                 description: 'Update the WebSocket token',
                 middlewares: ['auth_guard'],
             }),
@@ -370,21 +280,15 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/upload',
-                method: 'post',
+            defineContractRoute({
+                contract: avatarContracts.upload,
                 handler: AvatarController.uploadAvatar.bind(AvatarController),
-                validator: EmptyFormInputSchema,
-                allowedContentTypes: ['multipart'],
                 maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
-                ResponseSchema: ResponseSchemas.UploadAvatarResponseSchema,
                 description: 'Upload user avatar',
             }),
-            defineRoute({
-                url: '/',
-                method: 'delete',
+            defineContractRoute({
+                contract: avatarContracts.remove,
                 handler: AvatarController.deleteAvatar.bind(AvatarController),
-                ResponseSchema: ResponseSchemas.DeleteAvatarResponseSchema,
                 description: 'Delete user avatar',
             }),
         ],
@@ -395,27 +299,20 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/chat/history',
-                method: 'get',
+            defineContractRoute({
+                contract: supportContracts.history,
                 handler: SupportController.getChatHistory.bind(SupportController),
-                queryValidator: SupportChatHistoryQuerySchema,
-                ResponseSchema: ResponseSchemas.SupportGetChatHistoryResponseSchema,
                 description:
                     'Get a page of the support chat history (latest first page; `before` for older)',
             }),
-            defineRoute({
-                url: '/chat/history',
-                method: 'delete',
+            defineContractRoute({
+                contract: supportContracts.deleteHistory,
                 handler: SupportController.deleteChatHistory.bind(SupportController),
-                ResponseSchema: ResponseSchemas.SupportDeleteChatHistoryResponseSchema,
                 description: 'Delete all support chat history',
             }),
-            defineRoute({
-                url: '/screenshot/:articleId',
-                method: 'get',
+            defineContractRoute({
+                contract: supportContracts.screenshot,
                 handler: SupportController.getScreenshot.bind(SupportController),
-                ResponseSchema: ResponseSchemas.SupportScreenshotResponseSchema,
                 description: 'Get screenshot for a knowledge base article',
             }),
         ],
@@ -450,16 +347,12 @@ export default [
                 handler: AdminKnowledgeBaseController.delete.bind(AdminKnowledgeBaseController),
                 description: 'Delete a knowledge base article',
             }),
-            defineRoute({
-                url: '/knowledge-base/:id/screenshot',
-                method: 'post',
+            defineContractRoute({
+                contract: knowledgeBaseContracts.uploadScreenshot,
                 handler: AdminKnowledgeBaseController.uploadScreenshot.bind(
                     AdminKnowledgeBaseController,
                 ),
-                validator: EmptyFormInputSchema,
-                allowedContentTypes: ['multipart'],
                 maxBodySize: multipartBodyLimit(KB_SCREENSHOT_MAX_FILE_BYTES),
-                ResponseSchema: ResponseSchemas.SupportKnowledgeBaseItemResponseSchema,
                 description: 'Upload screenshot for a knowledge base article',
             }),
             defineContractRoute({
@@ -498,34 +391,24 @@ export default [
     },
     {
         group: [
-            defineRoute({
-                url: '/',
-                method: 'get',
+            defineContractRoute({
+                contract: promptContracts.list,
                 handler: PromptController.list.bind(PromptController),
-                ResponseSchema: ResponseSchemas.PromptGetListResponseSchema,
                 description: 'List retained Support AI prompts',
             }),
-            defineRoute({
-                url: '/:type',
-                method: 'get',
+            defineContractRoute({
+                contract: promptContracts.get,
                 handler: PromptController.getByType.bind(PromptController),
-                ResponseSchema: ResponseSchemas.PromptGetByTypeResponseSchema,
                 description: 'Get a retained Support AI prompt by type',
             }),
-            defineRoute({
-                url: '/:type',
-                method: 'put',
+            defineContractRoute({
+                contract: promptContracts.update,
                 handler: PromptController.update.bind(PromptController),
-                validator: PromptUpdateInputSchema,
-                ResponseSchema: ResponseSchemas.PromptUpdateResponseSchema,
                 description: 'Update a retained Support AI prompt by type',
             }),
-            defineRoute({
-                url: '/:type/test',
-                method: 'post',
+            defineContractRoute({
+                contract: promptContracts.test,
                 handler: PromptController.testPrompt.bind(PromptController),
-                validator: PromptTestInputSchema,
-                ResponseSchema: ResponseSchemas.PromptTestResponseSchema,
                 description: 'Test a retained Support AI prompt with a user message',
             }),
         ],

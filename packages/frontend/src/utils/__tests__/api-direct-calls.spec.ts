@@ -7,9 +7,9 @@ import source from '../api.ts?raw'
 // direct calls of the transport. ESLint forbids them everywhere else; this test keeps their
 // number here from growing. A group that moves to `callApi` lowers the number; when it reaches
 // zero, the file loses its exception in eslint.config.ts and this test goes (feat-170).
-const DIRECT_HTTP_CALLS = 24
+const DIRECT_HTTP_CALLS = 0
 // Multipart is outside contracts (ADR 0005, decision 3): the avatar and the screenshot upload.
-const UPLOAD_CALLS = 2
+const UPLOAD_CALLS = 0
 
 const count = (pattern: RegExp): number => source.match(pattern)?.length ?? 0
 

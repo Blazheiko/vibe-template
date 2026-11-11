@@ -1691,7 +1691,7 @@
             "owner": "Blazheiko",
             "branch": "feat/route-contracts-lock",
             "dependencies": ["feat-177"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -1731,8 +1731,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-core-prompts-support",
             "dependencies": ["feat-173"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #528 (merge commit 69ac453, by the owner with admin rights: the e2e and e2e-live jobs failed three times on GitHub's side, playwright install-deps could not reach the Ubuntu apt mirrors, an unrelated dependabot PR failed the same way; quality, build, test-pg and test-redis green). Ten routes on contracts: /ping, /ready, main/init, main/update-ws-token, prompts/* (4, no frontend caller), support/chat/history GET and DELETE. mainApi and supportApi on callApi with the shared SupportChatHistoryItem; DIRECT_HTTP_CALLS 24 -> 20; new api-core-support.spec.ts. Locally: make check (backend 2656, frontend 500, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify."
         },
         {
             "id": "feat-175",
@@ -1741,8 +1741,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-auth-session",
             "dependencies": ["feat-174"],
-            "status": "not-started",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #530 (merge commit 4454835, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Nine auth routes on contracts: registration by email and phone (start, confirm, complete-profile), logout, logout-all, change-password, verify-email, resend-verification-email; their auth_guard and rate limits unchanged. authApi on callApi with the same csrfRecovery and sessionAfter options; DIRECT_HTTP_CALLS 20 -> 11. Locally: make check (backend 2656, frontend 500, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92 in two of three full runs (one run lost the login double-click test, which passed 8 of 8 alone: recorded as flaky), test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         },
         {
             "id": "feat-176",
@@ -1751,8 +1751,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-auth-recovery-oauth",
             "dependencies": ["feat-175"],
-            "status": "not-started",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #532 (merge commit 2c6f4d4, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Ten routes on contracts: forgot-password, reset-phone/start, reset-phone/complete, reset-password, link-phone/start, link-phone/confirm, link-email/start (authContracts) and the JSON OAuth routes providers, link/confirm, email/resend (new oauthContracts). Settings and transport options unchanged; DIRECT_HTTP_CALLS 11 -> 1 (DELETE avatar, moved by feat-177). Locally: make check (backend 2656, frontend 500, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         },
         {
             "id": "feat-177",
@@ -1761,8 +1761,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-non-json",
             "dependencies": ["feat-176"],
-            "status": "not-started",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #534 (merge commit 866603a, by the owner with admin rights while GitHub's apt mirrors failed playwright install-deps). Contracts got a kind: multipart (a { fields, files } body sent as FormData through baseApi.upload with the same CSRF token, session gate and one repeat; the server checks the fields schema and accepts only multipart) and navigation (a GET the browser opens; callApi refuses it, contractUrl builds its URL). Six routes moved: avatar upload and delete, the knowledge base screenshot upload, the support screenshot, the OAuth redirect and callback. Every route of http-routes.ts is declared by contract; utils/api.ts calls the transport only through callApi (both counters 0). Locally: make check (backend 2659, frontend 504, shared 30, playground 111; bundle graph no schema); backend test:pg 295; frontend test:e2e 92 on the third full run (the first two lost tests while another project kept the load average at 60-80), test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify."
         }
     ]
 }

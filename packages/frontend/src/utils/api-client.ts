@@ -2,6 +2,9 @@ import {
     buildUrl,
     type AnyContract,
     type BodyOf,
+    type KindOf,
+    type MultipartBody,
+    type MultipartFile,
     type PathOf,
     type PathParams,
     type PathParamNames,
@@ -36,18 +39,39 @@ export type CallInput<C> = ParamsPart<C> & QueryPart<C> & BodyPart<C>
 type RequiredKeys<T> = { [K in keyof T]-?: undefined extends T[K] ? never : K }[keyof T]
 
 /** The input may be left out only when nothing in it is required. */
-type CallArgs<C> = [RequiredKeys<CallInput<C>>] extends [never]
-    ? [input?: CallInput<C>, options?: HttpOptions]
-    : [input: CallInput<C>, options?: HttpOptions]
+type InputArgs<C, TRest extends unknown[]> = [RequiredKeys<CallInput<C>>] extends [never]
+    ? [input?: CallInput<C>, ...rest: TRest]
+    : [input: CallInput<C>, ...rest: TRest]
+
+/** A navigation contract is never fetched: `callApi` does not accept one (see `contractUrl`). */
+type CallArgs<C> =
+    KindOf<C> extends 'navigation'
+        ? [input: never, options?: never]
+        : InputArgs<C, [options?: HttpOptions]>
+
+const toFormData = (body: MultipartBody<Record<string, unknown>, string>): FormData => {
+    const form = new FormData()
+    for (const [name, value] of Object.entries(body.fields)) {
+        if (value === undefined || value === null) continue
+        form.append(name, typeof value === 'string' ? value : JSON.stringify(value))
+    }
+    for (const [name, file] of Object.entries<MultipartFile>(body.files)) {
+        if ('blob' in file) form.append(name, file.blob as Blob, file.filename)
+        else form.append(name, file as Blob)
+    }
+    return form
+}
 
 /**
  * Calls the route of a contract.
  *
  *     callApi(pushSubscriptionContracts.remove, { params: { subscriptionId } })
  *     callApi(authContracts.login, { body }, { csrfRecovery: 'public' })
+ *     callApi(avatarContracts.upload, { body: { fields: {}, files: { avatar: blob } } })
  *
  * `options` are the transport's (`signal`, `csrfRecovery`, `sessionAfter`) and reach it
- * unchanged. A multipart body is not a contract's: uploads keep using `baseApi.upload`.
+ * unchanged. A multipart contract sends a FormData through `baseApi.upload`, with the same CSRF
+ * token and session gate as a JSON call.
  */
 export const callApi = <C extends AnyContract>(
     contract: C,
@@ -59,6 +83,14 @@ export const callApi = <C extends AnyContract>(
             ...(input?.query !== undefined ? { query: input.query } : {}),
         }),
     )
+    if (contract.kind === 'multipart') {
+        return baseApi.upload<ResponseOf<C>>(
+            contract.method.toUpperCase(),
+            url,
+            toFormData(input?.body as MultipartBody<Record<string, unknown>, string>),
+            options,
+        )
+    }
     return baseApi.http<ResponseOf<C>>(
         contract.method.toUpperCase(),
         url,
@@ -66,3 +98,24 @@ export const callApi = <C extends AnyContract>(
         options,
     )
 }
+
+type UrlInput<C> = ParamsPart<C> & QueryPart<C>
+
+/**
+ * The URL of a navigation contract: what an `<a href>`, a `location.assign` or an `<img src>`
+ * gets. The browser follows it; nothing here fetches it.
+ *
+ *     contractUrl(oauthContracts.redirect, { params: { provider } })
+ */
+export const contractUrl = <C extends AnyContract>(
+    contract: C & (KindOf<C> extends 'navigation' ? unknown : { readonly kind: 'navigation' }),
+    ...[input]: [RequiredKeys<UrlInput<C>>] extends [never]
+        ? [input?: UrlInput<C>]
+        : [input: UrlInput<C>]
+): string =>
+    apiPath(
+        buildUrl(contract, {
+            ...(input?.params !== undefined ? { params: input.params } : {}),
+            ...(input?.query !== undefined ? { query: input.query } : {}),
+        }),
+    )

@@ -21,6 +21,7 @@ export const SupportChatHistoryItemSchema = type({
     screenshots: 'string[] | null',
     createdAt: 'string',
 })
+export type SupportChatHistoryItem = typeof SupportChatHistoryItemSchema.infer
 
 export const SupportGetChatHistoryResponseSchema = type.or(
     {

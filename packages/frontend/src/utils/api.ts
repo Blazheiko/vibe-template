@@ -1,6 +1,4 @@
-import baseApi from './base-api'
 import type { ApiResponse } from './api-error'
-import { apiPath } from './api-path'
 import { callApi } from './api-client'
 import type {
     OAuthProvidersResponse,
@@ -20,6 +18,7 @@ import type {
     UpdateWsTokenResponse,
     SupportKnowledgeBaseInitJob,
     SupportKnowledgeBaseItem,
+    SupportChatHistoryItem,
     AdminUserListResponse,
     AdminOnlineUserListResponse,
     AdminOnlineUserDetailResponse,
@@ -61,8 +60,12 @@ import type {
 import {
     adminContracts,
     authContracts,
+    avatarContracts,
     knowledgeBaseContracts,
+    mainContracts,
+    oauthContracts,
     pushSubscriptionContracts,
+    supportContracts,
 } from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
@@ -72,180 +75,91 @@ const isSuccessfulResponse = <T extends Record<string, unknown>>(
     response.error === null && response.data !== null && !hasResponseError(response.data)
 
 export const authApi = {
-    getOAuthProviders: async (): Promise<ApiResponse<OAuthProvidersResponse>> => {
-        return baseApi.http<OAuthProvidersResponse>('GET', apiPath('auth/oauth/providers'))
-    },
+    getOAuthProviders: (): Promise<ApiResponse<OAuthProvidersResponse>> =>
+        callApi(oauthContracts.providers),
 
     /**
      * feat-097: the mailed link that confirms an OAuth link. It works only in the browser
      * session that started the sign-in, which is usually still anonymous: `public` recovery.
      */
-    confirmOAuthLink: async (
+    confirmOAuthLink: (
         body: OAuthLinkConfirmInput,
-    ): Promise<ApiResponse<OAuthLinkConfirmResponse>> => {
-        return baseApi.http<OAuthLinkConfirmResponse>(
-            'POST',
-            apiPath('auth/oauth/link/confirm'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<OAuthLinkConfirmResponse>> =>
+        callApi(oauthContracts.confirmLink, { body }, { csrfRecovery: 'public' }),
 
     /** feat-097: send again the link that confirms the address of an account without one. */
-    resendOAuthEmailLink: async (): Promise<ApiResponse<EmailLinkResendResponse>> => {
-        return baseApi.http<EmailLinkResendResponse>('POST', apiPath('auth/oauth/email/resend'))
-    },
+    resendOAuthEmailLink: (): Promise<ApiResponse<EmailLinkResendResponse>> =>
+        callApi(oauthContracts.resendEmailLink),
 
     login: (body: LoginInput): Promise<ApiResponse<LoginResponse>> =>
         callApi(authContracts.login, { body }, { csrfRecovery: 'public' }),
 
-    registerEmail: async (
-        body: RegisterEmailInput,
-    ): Promise<ApiResponse<RegisterEmailResponse>> => {
-        return baseApi.http<RegisterEmailResponse>('POST', apiPath('auth/register/email'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    registerEmail: (body: RegisterEmailInput): Promise<ApiResponse<RegisterEmailResponse>> =>
+        callApi(authContracts.registerEmail, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneStart: async (
+    registerPhoneStart: (
         body: RegisterPhoneStartInput,
-    ): Promise<ApiResponse<RegisterPhoneStartResponse>> => {
-        return baseApi.http<RegisterPhoneStartResponse>(
-            'POST',
-            apiPath('auth/register/phone/start'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneStartResponse>> =>
+        callApi(authContracts.registerPhoneStart, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneConfirm: async (
+    registerPhoneConfirm: (
         body: RegisterPhoneConfirmInput,
-    ): Promise<ApiResponse<RegisterPhoneConfirmResponse>> => {
-        return baseApi.http<RegisterPhoneConfirmResponse>(
-            'POST',
-            apiPath('auth/register/phone/confirm'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneConfirmResponse>> =>
+        callApi(authContracts.registerPhoneConfirm, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneComplete: async (
+    registerPhoneComplete: (
         body: RegisterPhoneCompleteInput,
-    ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> => {
-        return baseApi.http<RegisterPhoneCompleteResponse>(
-            'POST',
-            apiPath('auth/register/phone/complete-profile'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> =>
+        callApi(authContracts.registerPhoneComplete, { body }, { csrfRecovery: 'public' }),
 
-    logout: async (): Promise<ApiResponse<LogoutResponse>> => {
-        return baseApi.http<LogoutResponse>(
-            'POST',
-            apiPath('auth/logout'),
-            {},
-            { sessionAfter: 'anonymous' },
-        )
-    },
+    logout: (): Promise<ApiResponse<LogoutResponse>> =>
+        callApi(authContracts.logout, { body: {} }, { sessionAfter: 'anonymous' }),
 
-    logoutAll: async (): Promise<ApiResponse<LogoutAllResponse>> => {
-        return baseApi.http<LogoutAllResponse>(
-            'POST',
-            apiPath('auth/logout-all'),
-            {},
-            { sessionAfter: 'anonymous' },
-        )
-    },
+    logoutAll: (): Promise<ApiResponse<LogoutAllResponse>> =>
+        callApi(authContracts.logoutAll, { body: {} }, { sessionAfter: 'anonymous' }),
 
-    changePassword: async (
-        body: ChangePasswordInput,
-    ): Promise<ApiResponse<ChangePasswordResponse>> => {
-        return baseApi.http<ChangePasswordResponse>('POST', apiPath('auth/change-password'), body)
-    },
+    changePassword: (body: ChangePasswordInput): Promise<ApiResponse<ChangePasswordResponse>> =>
+        callApi(authContracts.changePassword, { body }),
 
-    forgotPassword: async (
-        body: ForgotPasswordInput,
-    ): Promise<ApiResponse<ForgotPasswordResponse>> => {
-        return baseApi.http<ForgotPasswordResponse>('POST', apiPath('auth/forgot-password'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    forgotPassword: (body: ForgotPasswordInput): Promise<ApiResponse<ForgotPasswordResponse>> =>
+        callApi(authContracts.forgotPassword, { body }, { csrfRecovery: 'public' }),
 
-    startPhonePasswordReset: async (
+    startPhonePasswordReset: (
         body: ResetPhoneStartInput,
-    ): Promise<ApiResponse<ResetPhoneStartResponse>> => {
-        return baseApi.http<ResetPhoneStartResponse>(
-            'POST',
-            apiPath('auth/reset-phone/start'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<ResetPhoneStartResponse>> =>
+        callApi(authContracts.resetPhoneStart, { body }, { csrfRecovery: 'public' }),
 
-    completePhonePasswordReset: async (
+    completePhonePasswordReset: (
         body: ResetPhoneCompleteInput,
-    ): Promise<ApiResponse<ResetPhoneCompleteResponse>> => {
-        return baseApi.http<ResetPhoneCompleteResponse>(
-            'POST',
-            apiPath('auth/reset-phone/complete'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<ResetPhoneCompleteResponse>> =>
+        callApi(authContracts.resetPhoneComplete, { body }, { csrfRecovery: 'public' }),
 
-    resetPassword: async (
-        body: ResetPasswordInput,
-    ): Promise<ApiResponse<ResetPasswordResponse>> => {
-        return baseApi.http<ResetPasswordResponse>('POST', apiPath('auth/reset-password'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    resetPassword: (body: ResetPasswordInput): Promise<ApiResponse<ResetPasswordResponse>> =>
+        callApi(authContracts.resetPassword, { body }, { csrfRecovery: 'public' }),
 
-    verifyEmail: async (body: VerifyEmailInput): Promise<ApiResponse<VerifyEmailResponse>> => {
-        return baseApi.http<VerifyEmailResponse>('POST', apiPath('auth/verify-email'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    verifyEmail: (body: VerifyEmailInput): Promise<ApiResponse<VerifyEmailResponse>> =>
+        callApi(authContracts.verifyEmail, { body }, { csrfRecovery: 'public' }),
 
-    resendVerificationEmail: async (): Promise<ApiResponse<ResendVerificationEmailResponse>> => {
-        return baseApi.http<ResendVerificationEmailResponse>(
-            'POST',
-            apiPath('auth/resend-verification-email'),
-        )
-    },
+    resendVerificationEmail: (): Promise<ApiResponse<ResendVerificationEmailResponse>> =>
+        callApi(authContracts.resendVerificationEmail, { body: {} }),
 
-    startPhoneLink: async (
-        body: LinkPhoneStartInput,
-    ): Promise<ApiResponse<LinkPhoneStartResponse>> => {
-        return baseApi.http<LinkPhoneStartResponse>('POST', apiPath('auth/link-phone/start'), body)
-    },
+    startPhoneLink: (body: LinkPhoneStartInput): Promise<ApiResponse<LinkPhoneStartResponse>> =>
+        callApi(authContracts.linkPhoneStart, { body }),
 
-    confirmPhoneLink: async (
+    confirmPhoneLink: (
         body: LinkPhoneConfirmInput,
-    ): Promise<ApiResponse<LinkPhoneConfirmResponse>> => {
-        return baseApi.http<LinkPhoneConfirmResponse>(
-            'POST',
-            apiPath('auth/link-phone/confirm'),
-            body,
-        )
-    },
+    ): Promise<ApiResponse<LinkPhoneConfirmResponse>> =>
+        callApi(authContracts.linkPhoneConfirm, { body }),
 
-    startEmailLink: async (
-        body: LinkEmailStartInput,
-    ): Promise<ApiResponse<LinkEmailStartResponse>> => {
-        return baseApi.http<LinkEmailStartResponse>('POST', apiPath('auth/link-email/start'), body)
-    },
+    startEmailLink: (body: LinkEmailStartInput): Promise<ApiResponse<LinkEmailStartResponse>> =>
+        callApi(authContracts.linkEmailStart, { body }),
 }
 
 export const mainApi = {
-    init: async (): Promise<ApiResponse<InitResponse>> => {
-        return baseApi.http<InitResponse>('GET', apiPath('main/init'))
-    },
+    init: (): Promise<ApiResponse<InitResponse>> => callApi(mainContracts.init),
 
-    updateWsToken: async (): Promise<ApiResponse<UpdateWsTokenResponse>> => {
-        return baseApi.http<UpdateWsTokenResponse>('GET', apiPath('main/update-ws-token'))
-    },
+    updateWsToken: (): Promise<ApiResponse<UpdateWsTokenResponse>> =>
+        callApi(mainContracts.updateWsToken),
 }
 
 // The push-subscriptions routes go through their contracts (docs/adr/0005-route-contracts.md):
@@ -275,24 +189,15 @@ export const pushSubscriptionApi = {
 }
 
 export const avatarApi = {
-    upload: async (file: Blob): Promise<ApiResponse<UploadAvatarResponse>> => {
-        const formData = new FormData()
-        formData.append('avatar', file, 'avatar.webp')
-        return baseApi.upload<UploadAvatarResponse>('POST', apiPath('avatar/upload'), formData)
-    },
+    upload: (file: Blob): Promise<ApiResponse<UploadAvatarResponse>> =>
+        callApi(avatarContracts.upload, {
+            body: { fields: {}, files: { avatar: { blob: file, filename: 'avatar.webp' } } },
+        }),
 
-    delete: async (): Promise<ApiResponse<DeleteAvatarResponse>> => {
-        return baseApi.http<DeleteAvatarResponse>('DELETE', apiPath('avatar'))
-    },
+    delete: (): Promise<ApiResponse<DeleteAvatarResponse>> => callApi(avatarContracts.remove),
 }
 
-export interface SupportChatMessage {
-    id: string
-    role: 'user' | 'assistant'
-    content: string
-    screenshots: string[] | null
-    createdAt: string
-}
+export type SupportChatMessage = SupportChatHistoryItem
 
 export type KnowledgeBaseArticle = SupportKnowledgeBaseItem
 
@@ -315,14 +220,9 @@ export const supportApi = {
         options: { before?: string; signal?: AbortSignal } = {},
     ): Promise<SupportHistoryPage | null> => {
         const { before, ...requestOptions } = options
-        const response = await baseApi.http<{
-            status: string
-            data?: SupportChatMessage[]
-            hasMore?: boolean
-        }>(
-            'GET',
-            apiPath(`support/chat/history${before !== undefined ? `?before=${before}` : ''}`),
-            {},
+        const response = await callApi(
+            supportContracts.history,
+            { query: { before } },
             requestOptions,
         )
         if (!isSuccessfulResponse(response)) return null
@@ -330,10 +230,7 @@ export const supportApi = {
     },
 
     deleteChatHistory: async (): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'DELETE',
-            apiPath('support/chat/history'),
-        )
+        const response = await callApi(supportContracts.deleteHistory)
         return isSuccessfulResponse(response)
     },
 }
@@ -378,13 +275,10 @@ export const adminKnowledgeBaseApi = {
     },
 
     uploadScreenshot: async (id: string, file: File): Promise<KnowledgeBaseArticle | null> => {
-        const formData = new FormData()
-        formData.append('screenshot', file)
-        const response = await baseApi.upload<{ status: string; data?: KnowledgeBaseArticle }>(
-            'POST',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/screenshot`),
-            formData,
-        )
+        const response = await callApi(knowledgeBaseContracts.uploadScreenshot, {
+            params: { id },
+            body: { fields: {}, files: { screenshot: file } },
+        })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
