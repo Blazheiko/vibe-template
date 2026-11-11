@@ -8,6 +8,8 @@ export type WebsocketPayload = Record<string, unknown>
 
 export interface WebsocketMessage {
     event: string
+    /** The id of the request this message replies to (ADR 0006); absent on broadcasts. */
+    id?: string
     /** `'200'` for a reply to a request, `'error'` for a refused one; a number in broadcasts. */
     status: number | string
     payload: WebsocketPayload
@@ -43,6 +45,8 @@ interface ApiResolveItem {
 
 interface SendPayload {
     event: string
+    /** Request id, echoed by the reply (ADR 0006). */
+    id?: string
     timestamp: number
     payload: Record<string, unknown>
 }
@@ -161,11 +165,12 @@ const handleWebSocketClose = (event: CloseEvent): void => {
 // API response handling
 const messageHandler = (data: WebsocketMessage): void => {
     console.log('message handler')
-    const cb = apiResolve.value[data.event]
+    if (data.id === undefined) return
+    const cb = apiResolve.value[data.id]
     if (!cb) return
 
     window.clearTimeout(cb.timeout)
-    Reflect.deleteProperty(apiResolve.value, data.event)
+    Reflect.deleteProperty(apiResolve.value, data.id)
 
     lastMessage.value = data
 
@@ -209,7 +214,8 @@ const handleMessage = async (messageData: string | Blob | ArrayBuffer) => {
             return
         }
 
-        switch (classifyWsMessage(data.event, apiResolve.value[data.event] !== undefined)) {
+        const isPending = data.id !== undefined && apiResolve.value[data.id] !== undefined
+        switch (classifyWsMessage(data.event, isPending)) {
             case 'service-error':
                 handleServiceError(data)
                 break
@@ -286,6 +292,12 @@ const sendMessage = (data: SendPayload): boolean => {
     return false
 }
 
+const newRequestId = (): string =>
+    // randomUUID is missing in older runtimes and outside secure contexts.
+    typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+
 // API method — route is used directly as the event name (full path, e.g. 'api/ws/test')
 const websocketApi = async (
     route: string,
@@ -300,23 +312,20 @@ const websocketApi = async (
         }
 
         const event = route
-        const timestamp = Date.now()
-        if (apiResolve.value[event]) {
-            console.error('Request already in progress')
-            reject(new Error('Request already in progress'))
-            return
-        }
+        // The reply carries this id back (ADR 0006): requests of one event do not wait in line.
+        const id = newRequestId()
 
         sendMessage({
             event: event,
-            timestamp,
+            id,
+            timestamp: Date.now(),
             payload,
         })
-        apiResolve.value[event] = {
+        apiResolve.value[id] = {
             resolve,
             reject,
             timeout: window.setTimeout(() => {
-                Reflect.deleteProperty(apiResolve.value, event)
+                Reflect.deleteProperty(apiResolve.value, id)
                 reject(new WsRequestError('Request timeout', 408))
             }, TIMEOUT_API),
         }

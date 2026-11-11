@@ -30,7 +30,7 @@ In [`vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packa
 | --------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------- |
 | `/<VITE_API_PATH_PREFIX>` (`/api` by default) | `http://127.0.0.1:3000` | `changeOrigin: true`, `ws: true` — HTTP and the WS endpoint `/<prefix>/websocket` |
 
-The API prefix is taken from `VITE_API_PATH_PREFIX` (it must match the backend `API_PATH_PREFIX`, `api` by default). A WS response is recognized by the expected request with the same event, so it works with any prefix. The base URL for HTTP calls is empty by default. So requests go relative to the dev server origin and pass through the proxy. It can be overridden with the `VITE_API_BASE_URL` variable or in the UI settings ([`stores/api-settings.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-settings.ts)).
+The API prefix is taken from `VITE_API_PATH_PREFIX` (it must match the backend `API_PATH_PREFIX`, `api` by default). A WS response is recognized by the `id` of the pending request ([protocol](/en/backend/websocket#message-protocol)), so it works with any prefix, and several requests of one event can be in flight at once. The base URL for HTTP calls is empty by default. So requests go relative to the dev server origin and pass through the proxy. It can be overridden with the `VITE_API_BASE_URL` variable or in the UI settings ([`stores/api-settings.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-settings.ts)).
 
 ```mermaid
 flowchart LR

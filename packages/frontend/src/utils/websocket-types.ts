@@ -13,6 +13,8 @@ interface WebsocketErrorPayload {
 
 export interface WebsocketMessage {
     event: string
+    /** The id of the request this message replies to (ADR 0006): absent on broadcasts. */
+    id?: string
     status: number | string
     timestamp: number
     payload: WebsocketPayload

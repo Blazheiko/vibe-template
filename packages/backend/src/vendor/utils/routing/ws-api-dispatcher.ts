@@ -34,6 +34,8 @@ export default async (
         // null until the handler answers: an error or a stopped middleware sends no data.
         data: null,
         event: message.event,
+        // Echoed in every outcome (ADR 0006): the client waits for its reply under this id.
+        ...(message.id !== undefined ? { id: message.id } : {}),
         timestamp: message.timestamp,
         status: '200',
         error: null,
@@ -57,11 +59,14 @@ export default async (
 
             if (!rateLimitResult.allowed) {
                 // Rate limit exceeded - return error response
-                return createWsRateLimitErrorResponse(
-                    rateLimitResult.errorMessage ?? 'Rate limit exceeded',
-                    rateLimitResult.retryAfter ?? 60,
-                    message.event,
-                )
+                return {
+                    ...createWsRateLimitErrorResponse(
+                        rateLimitResult.errorMessage ?? 'Rate limit exceeded',
+                        rateLimitResult.retryAfter ?? 60,
+                        message.event,
+                    ),
+                    ...(message.id !== undefined ? { id: message.id } : {}),
+                }
             }
 
             const rawPayload = (message as { payload?: unknown }).payload

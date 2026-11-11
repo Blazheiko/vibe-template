@@ -137,6 +137,7 @@ registerWsAppHooks({
 const WsMessageSchema = type({
     payload: 'Record<string, unknown> | null',
     event: 'string',
+    'id?': '0 < string <= 64',
     timestamp: 'number',
 })
 ```
@@ -144,14 +145,22 @@ const WsMessageSchema = type({
 Приклад запиту від клієнта:
 
 ```json
-{ "event": "api/support/support_chat", "timestamp": 1760000000000, "payload": { "message": "..." } }
+{
+    "event": "api/support/support_chat",
+    "id": "3f2c9a4e-…",
+    "timestamp": 1760000000000,
+    "payload": { "message": "..." }
+}
 ```
 
-Відповідь (`WsResponseData`) повторює `event` і `timestamp` запиту, тож клієнт зіставляє її із запитом:
+`id` — ідентифікатор запиту від клієнта (непорожній рядок до 64 символів; клієнти беруть `crypto.randomUUID()`). Сервер його не тлумачить, лише повторює в **кожній** відповіді на цей запит: успіх, помилка валідації, `not_found`, ліміт, `service_unavailable`, виняток ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md), feat-180). Клієнт чекає відповідь саме за `id`, тож кілька запитів однієї події можуть бути в дорозі одночасно. Повідомлення без `id` теж приймається (ручні запити в playground), тоді його немає й у відповіді.
+
+Відповідь (`WsResponseData`) повторює `event`, `id` і `timestamp` запиту:
 
 ```json
 {
     "event": "api/support/support_chat",
+    "id": "3f2c9a4e-…",
     "timestamp": 1760000000000,
     "status": "200",
     "error": null,
@@ -276,8 +285,8 @@ Presence публікується лише якщо в каналі `admin` є �
 
 - `protocols` — масив `[wsToken, 'app-web']`, який мутується перед перепідключенням;
 - heartbeat з [websocket-heartbeat.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-heartbeat.ts): `ping` кожні 10 с, закриття, якщо `pong` не прийшов за 5 с. Планувальник створюється з `immediate: false` — після виправлення «don't start the heartbeat interval before the socket connects» інтервал запускає сам `useWebSocket` при підключенні, а не з моменту завантаження модуля (інакше pong-таймаут міг закрити сокет ще під час handshake);
-- `websocketApi(route, payload)` надсилає `event` у форматі `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` — `VITE_API_PATH_PREFIX`, за замовчуванням `api`, слеші на краях обрізаються) і чекає відповідь з тим самим `event` до 10 с. Одночасно для однієї події може чекати лише один запит: другий отримує `Request already in progress`;
-- повідомлення розбираються за префіксом: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → сервісні обробники, `api` → резолв запиту.
+- `websocketApi(route, payload)` надсилає `event` у форматі `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` — `VITE_API_PATH_PREFIX`, за замовчуванням `api`, слеші на краях обрізаються) додає до запиту новий `id` і чекає відповідь з цим `id` до 10 с; запити однієї події не чекають один одного;
+- повідомлення розбираються за префіксом: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → сервісні обробники, відповідь з `id` запиту, що чекає → резолв цього запиту.
 
 Перепідключення (вбудований `autoReconnect` vueuse закоментовано, логіка своя в `handleWebSocketClose`):
 

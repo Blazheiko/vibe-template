@@ -26,8 +26,16 @@ vi.mock('@vueuse/core', () => ({
 
 const { useWebSocketConnection, WsRequestError } = await import('../useWebSocketConnection')
 
+/** The id of the request sent last: a reply carries it back (feat-180). */
+const lastId = (): string | undefined => {
+    const data = send.mock.lastCall?.[0] as string | undefined
+    return data === undefined ? undefined : (JSON.parse(data) as { id?: string }).id
+}
+
+/** A reply to the last request: its id unless the message names one. */
 const reply = (message: Record<string, unknown>): void => {
-    ;(fake.options as Options).onMessage(null, { data: JSON.stringify(message) })
+    const withId = 'id' in message ? message : { id: lastId(), ...message }
+    ;(fake.options as Options).onMessage(null, { data: JSON.stringify(withId) })
 }
 
 /** The outcome of a request once it settles: the reply, or the error it was rejected with. */
@@ -83,7 +91,7 @@ describe('playground websocketApi', () => {
         expect(rejected.message).toBe('Validation failure')
         expect(rejected.code).toBe('validation_failed')
         expect(rejected.status).toBe('error')
-        expect(rejected.reply).toEqual(errorReply)
+        expect(rejected.reply).toEqual({ ...errorReply, id: expect.any(String) })
     })
 
     it('rejects with a timeout when no reply comes', async () => {
@@ -94,5 +102,25 @@ describe('playground websocketApi', () => {
         expect(rejected).toBeInstanceOf(WsRequestError)
         expect(rejected.message).toBe('Request timeout')
         expect(rejected.status).toBe(408)
+    })
+})
+
+// feat-180 (ADR 0006, Д-WS1): a reply is matched by the request's id, not by its event.
+describe('playground websocketApi: correlation by id', () => {
+    it('two requests of one event are in flight together and each gets its own reply', async () => {
+        const connection = useWebSocketConnection()
+        const one = outcomeOf(connection.websocketApi('api/same', { n: 1 }))
+        const firstId = lastId()
+        const two = outcomeOf(connection.websocketApi('api/same', { n: 2 }))
+        const secondId = lastId()
+        expect(firstId).toBeDefined()
+        expect(firstId).not.toBe(secondId)
+
+        reply({ event: 'api/same', id: secondId, status: '200', data: { n: 2 }, error: null })
+        reply({ event: 'api/same', id: firstId, status: '200', data: { n: 1 }, error: null })
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(await one).toEqual({ resolved: expect.objectContaining({ data: { n: 1 } }) })
+        expect(await two).toEqual({ resolved: expect.objectContaining({ data: { n: 2 } }) })
     })
 })

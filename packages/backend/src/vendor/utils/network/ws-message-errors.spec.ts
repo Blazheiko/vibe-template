@@ -117,3 +117,43 @@ describe('onMessage error replies', () => {
         expect(logger.error).toHaveBeenCalledTimes(1)
     })
 })
+
+// feat-180 (ADR 0006, Д-WS1): an error reply built before the dispatcher carries the request's
+// `id` too, or the client's request would wait until its timeout.
+describe('onMessage error replies keep the request id', () => {
+    it('on an invalid message', async () => {
+        validate.mockReturnValue({ ok: false, messages: ['bad'] })
+
+        const reply = await send(
+            JSON.stringify({ event: 'support:chat', id: 'req-1', timestamp: 4 }),
+        )
+
+        expect(reply).toMatchObject({ id: 'req-1', error: { code: 'validation_failed' } })
+    })
+
+    it('on an unexpected failure', async () => {
+        wsSessionHandler.mockRejectedValue(new Error('boom'))
+
+        const reply = await send(JSON.stringify({ event: 'user:me', id: 'req-2', timestamp: 5 }))
+
+        expect(reply).toMatchObject({ id: 'req-2', error: { code: 'internal_error' } })
+    })
+
+    it('on Redis unavailable for the session', async () => {
+        wsSessionHandler.mockResolvedValue({ kind: 'unavailable' })
+
+        const reply = await send(
+            JSON.stringify({ event: 'user:me', id: 'req-3', timestamp: 6, payload: {} }),
+        )
+
+        expect(reply).toMatchObject({ id: 'req-3', error: { code: 'service_unavailable' } })
+    })
+
+    it('not an id that is not a string', async () => {
+        validate.mockReturnValue({ ok: false, messages: ['bad'] })
+
+        const reply = await send(JSON.stringify({ event: 'user:me', id: 42, timestamp: 7 }))
+
+        expect('id' in reply).toBe(false)
+    })
+})

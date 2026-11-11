@@ -154,8 +154,9 @@ const unAuthorizedMessage = (): WsResponseData => ({
 // Redis is down: the connection stays open, only this request fails. Same shape
 // as createWsRateLimitErrorResponse, with the request's event so the client
 // rejects the matching promise at once.
-const serviceUnavailableMessage = (event: string): WsResponseData => ({
+const serviceUnavailableMessage = (event: string, id: string | undefined): WsResponseData => ({
     event,
+    ...(id !== undefined ? { id } : {}),
     status: 'error',
     data: null,
     timestamp: Date.now(),
@@ -362,13 +363,18 @@ const handleAdmittedMessage = async (
         parsedMessage = JSON.parse(jsonMessage)
     } catch {
         // A client error like a malformed HTTP body: warn, no message text, no Sentry.
-        sendWsError(ws, '', 0, classifyAndLog(new MalformedBodyError('json')), userData)
+        sendWsError(
+            ws,
+            { event: '', timestamp: 0, id: undefined },
+            classifyAndLog(new MalformedBodyError('json')),
+            userData,
+        )
         return
     }
 
     // Known before validation, so even a validation failure answers the request's
-    // event and the client can match it.
-    const { event, timestamp } = requestIdentity(parsedMessage)
+    // event and id, and the client can match it.
+    const { event, timestamp, id } = requestIdentity(parsedMessage)
 
     try {
         const validatedMessage = getWsMessageValidator().validate(parsedMessage)
@@ -378,13 +384,13 @@ const handleAdmittedMessage = async (
                 undefined,
                 validatedMessage.issues,
             )
-            sendWsError(ws, event, timestamp, classifyAndLog(error), userData)
+            sendWsError(ws, { event, timestamp, id }, classifyAndLog(error), userData)
             return
         }
         const message = validatedMessage.value
 
         if (!refreshed) {
-            sendJson(ws, serviceUnavailableMessage(message.event), userData)
+            sendJson(ws, serviceUnavailableMessage(message.event, message.id), userData)
             return
         }
 
@@ -395,7 +401,7 @@ const handleAdmittedMessage = async (
                 : ({ kind: 'missing' } as const)
 
         if (sessionResult.kind === 'unavailable') {
-            sendJson(ws, serviceUnavailableMessage(message.event), userData)
+            sendJson(ws, serviceUnavailableMessage(message.event, message.id), userData)
         } else if (sessionResult.kind === 'missing') {
             closeExpiredSession(ws, userData)
         } else {
@@ -410,18 +416,29 @@ const handleAdmittedMessage = async (
             sendJson(ws, result, userData)
         }
     } catch (err: unknown) {
-        sendWsError(ws, event, timestamp, classifyAndLog(err), userData)
+        sendWsError(ws, { event, timestamp, id }, classifyAndLog(err), userData)
     }
 }
 
-/** `event` / `timestamp` of a parsed message when they have the right type, else empty. */
-const requestIdentity = (parsed: unknown): { event: string; timestamp: number } => {
+interface RequestIdentity {
+    event: string
+    timestamp: number
+    id: string | undefined
+}
+
+/**
+ * `event` / `timestamp` / `id` of a parsed message when they have the right type, else empty.
+ * The id is echoed only when it is one the envelope allows (a non-empty string ≤ 64).
+ */
+const requestIdentity = (parsed: unknown): RequestIdentity => {
     const record = typeof parsed === 'object' && parsed !== null ? parsed : {}
     const event = (record as { event?: unknown }).event
     const timestamp = (record as { timestamp?: unknown }).timestamp
+    const id = (record as { id?: unknown }).id
     return {
         event: typeof event === 'string' ? event : '',
         timestamp: typeof timestamp === 'number' ? timestamp : 0,
+        id: typeof id === 'string' && id.length > 0 && id.length <= 64 ? id : undefined,
     }
 }
 
@@ -433,8 +450,7 @@ const classifyAndLog = (err: unknown): ClassifiedError => {
 
 const sendWsError = (
     ws: MyWebSocket,
-    event: string,
-    timestamp: number,
+    { event, timestamp, id }: RequestIdentity,
     classified: ClassifiedError,
     userData?: UserConnection,
 ): void => {
@@ -449,6 +465,7 @@ const sendWsError = (
                 details !== undefined ? { details } : undefined,
             ),
             event,
+            ...(id !== undefined ? { id } : {}),
             timestamp,
             data: null,
         },

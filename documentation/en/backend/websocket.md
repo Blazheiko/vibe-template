@@ -137,6 +137,7 @@ The client sends text JSON (binary messages are ignored with an error log). The 
 const WsMessageSchema = type({
     payload: 'Record<string, unknown> | null',
     event: 'string',
+    'id?': '0 < string <= 64',
     timestamp: 'number',
 })
 ```
@@ -144,14 +145,22 @@ const WsMessageSchema = type({
 An example request from the client:
 
 ```json
-{ "event": "api/support/support_chat", "timestamp": 1760000000000, "payload": { "message": "..." } }
+{
+    "event": "api/support/support_chat",
+    "id": "3f2c9a4e-…",
+    "timestamp": 1760000000000,
+    "payload": { "message": "..." }
+}
 ```
 
-The response (`WsResponseData`) repeats the request's `event` and `timestamp`, so the client matches it to the request:
+`id` is the client's id of the request (a non-empty string of up to 64 characters; the clients use `crypto.randomUUID()`). The server does not interpret it, it only echoes it in **every** reply to that request: success, validation failure, `not_found`, rate limit, `service_unavailable`, an exception ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md), feat-180). The client waits for the reply by that `id`, so several requests of one event can be in flight at once. A message without an `id` is accepted too (manual requests in the playground), and then the reply has none either.
+
+The response (`WsResponseData`) repeats the request's `event`, `id` and `timestamp`:
 
 ```json
 {
     "event": "api/support/support_chat",
+    "id": "3f2c9a4e-…",
     "timestamp": 1760000000000,
     "status": "200",
     "error": null,
@@ -276,8 +285,8 @@ The frontend client is the singleton composable [useWebSocketConnection.ts](http
 
 - `protocols` — an array `[wsToken, 'app-web']`, mutated before reconnecting;
 - heartbeat from [websocket-heartbeat.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-heartbeat.ts): `ping` every 10 s, close if no `pong` arrives within 5 s. The scheduler is created with `immediate: false` — after the fix "don't start the heartbeat interval before the socket connects", the interval is started by `useWebSocket` itself on connect, not from module load (otherwise the pong timeout could close the socket during the handshake);
-- `websocketApi(route, payload)` sends `event` in the format `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` is `VITE_API_PATH_PREFIX`, `api` by default, slashes at the edges are trimmed) and waits for a response with the same `event` for up to 10 s. Only one request can wait for a given event at a time: the second gets `Request already in progress`;
-- messages are routed by prefix: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → service handlers, `api` → request resolve.
+- `websocketApi(route, payload)` sends `event` in the format `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` is `VITE_API_PATH_PREFIX`, `api` by default, slashes at the edges are trimmed) adds a new `id` to the request and waits for the reply with that `id` for up to 10 s; requests of one event do not wait for each other;
+- messages are routed by prefix: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → service handlers, a reply with the `id` of a pending request → that request resolves.
 
 Reconnecting (vueuse's built-in `autoReconnect` is commented out, the logic is custom in `handleWebSocketClose`):
 
