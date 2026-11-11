@@ -30,10 +30,6 @@ import {
 } from 'shared/contracts'
 
 import {
-    RegisterEmailInputSchema,
-    RegisterPhoneStartInputSchema,
-    RegisterPhoneConfirmInputSchema,
-    RegisterPhoneCompleteInputSchema,
     LinkPhoneStartInputSchema,
     LinkPhoneConfirmInputSchema,
     LinkEmailStartInputSchema,
@@ -41,8 +37,6 @@ import {
     ResetPhoneStartInputSchema,
     ResetPhoneCompleteInputSchema,
     ResetPasswordInputSchema,
-    ChangePasswordInputSchema,
-    VerifyEmailInputSchema,
     EmptyFormInputSchema,
 } from 'shared/schemas'
 import {
@@ -64,36 +58,24 @@ export default [
     }),
     {
         group: [
-            defineRoute({
-                url: '/register/email',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerEmail,
                 handler: AuthController.registerByEmail.bind(AuthController),
-                validator: RegisterEmailInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterEmailResponseSchema,
                 description: 'Register a new user by email',
             }),
-            defineRoute({
-                url: '/register/phone/start',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerPhoneStart,
                 handler: AuthController.startPhoneRegistration.bind(AuthController),
-                validator: RegisterPhoneStartInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterPhoneStartResponseSchema,
                 description: 'Start phone-based registration',
             }),
-            defineRoute({
-                url: '/register/phone/confirm',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerPhoneConfirm,
                 handler: AuthController.confirmPhoneRegistration.bind(AuthController),
-                validator: RegisterPhoneConfirmInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterPhoneConfirmResponseSchema,
                 description: 'Confirm phone registration challenge',
             }),
-            defineRoute({
-                url: '/register/phone/complete-profile',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.registerPhoneComplete,
                 handler: AuthController.completePhoneRegistration.bind(AuthController),
-                validator: RegisterPhoneCompleteInputSchema,
-                ResponseSchema: ResponseSchemas.RegisterPhoneCompleteResponseSchema,
                 description: 'Complete phone registration profile and password',
             }),
             defineContractRoute({
@@ -101,30 +83,21 @@ export default [
                 handler: AuthController.login.bind(AuthController),
                 description: 'Login a user by email or phone identifier',
             }),
-            defineRoute({
-                url: '/logout',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.LogoutResponseSchema,
                 description: 'Logout a user',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/logout-all',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.logoutAll,
                 handler: AuthController.logoutAll.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.LogoutAllResponseSchema,
                 description: 'Logout all devices',
                 middlewares: ['auth_guard'],
             }),
-            defineRoute({
-                url: '/change-password',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.changePassword,
                 handler: AuthController.changePassword.bind(AuthController),
-                validator: ChangePasswordInputSchema,
-                ResponseSchema: ResponseSchemas.ChangePasswordResponseSchema,
                 description: 'Change or set user password',
                 middlewares: ['auth_guard'],
             }),
@@ -162,21 +135,15 @@ export default [
                 description: 'Reset password using a one-time token',
                 rateLimit: { windowMs: 60_000, maxRequests: 10 },
             }),
-            defineRoute({
-                url: '/verify-email',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.verifyEmail,
                 handler: AuthController.verifyEmail.bind(AuthController),
-                validator: VerifyEmailInputSchema,
-                ResponseSchema: ResponseSchemas.VerifyEmailResponseSchema,
                 description: 'Confirm user email by verification token',
                 rateLimit: { windowMs: 60_000, maxRequests: 10 },
             }),
-            defineRoute({
-                url: '/resend-verification-email',
-                method: 'post',
+            defineContractRoute({
+                contract: authContracts.resendVerificationEmail,
                 handler: AuthController.resendVerificationEmail.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.ResendVerificationEmailResponseSchema,
                 description: 'Resend verification email to authenticated user',
                 middlewares: ['auth_guard'],
                 rateLimit: { windowMs: 60_000, maxRequests: 3 },
