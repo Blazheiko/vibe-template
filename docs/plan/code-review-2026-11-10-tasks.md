@@ -632,7 +632,7 @@ C5b → C6.
 - [x] **C4.2** `feat-173` — `admin/knowledge-base/*` без завантаження скриншота (10, 9).
 - [x] **C4.3** `feat-174` — `/ping`, `/ready`, `main/*`, `prompts/*`, `support/chat/history` (10,
       4). `/ready` відповідає 503 тілом `unavailable`: контракт описує обидві гілки.
-- [ ] **C4.4** `feat-175` — `auth`: реєстрація, вихід, зміна пароля, підтвердження пошти (9, 9).
+- [x] **C4.4** `feat-175` — `auth`: реєстрація, вихід, зміна пароля, підтвердження пошти (9, 9).
       Тести: PG, e2e live; `csrfRecovery` / `sessionAfter` кожного виклику не змінилися.
 - [ ] **C4.5** `feat-176` — `auth`: відновлення пароля, прив'язка телефону й пошти;
       `auth/oauth`: `providers`, `link/confirm`, `email/resend` (10, 10). Тести: PG, e2e live.
