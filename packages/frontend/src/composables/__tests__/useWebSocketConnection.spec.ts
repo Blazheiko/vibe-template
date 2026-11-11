@@ -148,7 +148,10 @@ describe('useWebSocketConnection: a socket closed on purpose', () => {
                 throw error
             },
         )
-        const { event } = JSON.parse(fake.sent[fake.sent.length - 1] ?? '{}') as { event: string }
+        const { event, id } = JSON.parse(fake.sent[fake.sent.length - 1] ?? '{}') as {
+            event: string
+            id?: string
+        }
 
         options().onDisconnected(first, closeEvent(1000))
         await vi.advanceTimersByTimeAsync(6000)
@@ -158,7 +161,7 @@ describe('useWebSocketConnection: a socket closed on purpose', () => {
         expect(ws.value).toBe(second)
 
         options().onMessage(second, {
-            data: JSON.stringify({ event, status: 'ok', payload: { ok: true }, timestamp: 1 }),
+            data: JSON.stringify({ event, id, status: 'ok', payload: { ok: true }, timestamp: 1 }),
         })
         await expect(request).resolves.toMatchObject({ event })
     })
@@ -236,5 +239,83 @@ describe('useWebSocketConnection: a lost connection', () => {
         options().onDisconnected(socket, closeEvent(1006))
 
         expect(await outcome).toBe('WebSocket connection reset')
+    })
+})
+
+// feat-180 (ADR 0006, Д-WS1): a reply is matched to its request by the request's `id`, not by its
+// event. Before, a second request of the same event was refused while the first was pending.
+describe('useWebSocketConnection: request correlation by id', () => {
+    const sentRequests = (): { event: string; id?: string; payload: unknown }[] =>
+        fake.sent.map(
+            (data) => JSON.parse(data) as { event: string; id?: string; payload: unknown },
+        )
+
+    const reply = (socket: FakeSocket, request: { event: string; id?: string }, data: unknown) => {
+        options().onMessage(socket, {
+            data: JSON.stringify({
+                event: request.event,
+                ...(request.id !== undefined ? { id: request.id } : {}),
+                status: '200',
+                error: null,
+                data,
+                timestamp: 1,
+            }),
+        })
+    }
+
+    it('sends an id with every request, a new one each time', async () => {
+        const { websocketOpen, websocketApi } = await load()
+        await websocketOpen(URL, 'token-1')
+        connect(currentSocket())
+
+        void websocketApi('support/chat', { message: 'a' }).catch(() => undefined)
+        void websocketApi('support/open', {}).catch(() => undefined)
+
+        const [first, second] = sentRequests()
+        expect(typeof first.id).toBe('string')
+        expect(first.id).not.toBe(second.id)
+    })
+
+    it('two requests of one event are in flight together and each gets its own reply', async () => {
+        const { websocketOpen, websocketApi } = await load()
+        await websocketOpen(URL, 'token-1')
+        const socket = currentSocket()
+        connect(socket)
+
+        const one = websocketApi('support/chat', { message: 'one' })
+        const two = websocketApi('support/chat', { message: 'two' })
+        const [first, second] = sentRequests()
+        expect(first.event).toBe(second.event)
+
+        // The replies come back in the other order.
+        reply(socket, second, { answer: 'two' })
+        reply(socket, first, { answer: 'one' })
+
+        await expect(one).resolves.toMatchObject({ data: { answer: 'one' } })
+        await expect(two).resolves.toMatchObject({ data: { answer: 'two' } })
+    })
+
+    it('a reply without the id of a pending request settles nothing', async () => {
+        const { websocketOpen, websocketApi } = await load()
+        await websocketOpen(URL, 'token-1')
+        const socket = currentSocket()
+        connect(socket)
+
+        let settled = false
+        void websocketApi('support/chat', { message: 'one' }).then(
+            () => {
+                settled = true
+            },
+            () => {
+                settled = true
+            },
+        )
+        const [request] = sentRequests()
+
+        reply(socket, { event: request.event }, { answer: 'no id' })
+        reply(socket, { event: request.event, id: 'someone-else' }, { answer: 'other' })
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(settled).toBe(false)
     })
 })

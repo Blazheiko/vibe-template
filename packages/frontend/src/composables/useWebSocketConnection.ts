@@ -17,12 +17,19 @@ import { mainApi } from '@/utils/api'
 import { getCurrentAppType } from '@/utils/app-type'
 import { sentryService } from '@/utils/sentry-service'
 import { classifyWsMessage } from 'shared/ws-client'
-import { hasPendingRequest, settleApiResponse, type ApiResolveItem } from '@/utils/ws-api-response'
+import {
+    hasPendingRequest,
+    newRequestId,
+    settleApiResponse,
+    type ApiResolveItem,
+} from '@/utils/ws-api-response'
 import { buildWsEvent } from '@/utils/ws-event'
 import { resolveWebSocketCloseAction } from '@/utils/websocket-close'
 
 interface SendPayload {
     event: string
+    /** Request id, echoed by the reply (ADR 0006). */
+    id?: string
     timestamp: number
     payload: Record<string, unknown>
 }
@@ -47,6 +54,7 @@ const isInitialized = ref(false)
 const wsProtocols: string[] = ['', 'app-web']
 
 // API resolve for handling responses (created once)
+// Pending requests by request id.
 const apiResolve = ref<Record<string, ApiResolveItem>>({})
 const TIMEOUT_API = 10000
 
@@ -246,7 +254,7 @@ const handleMessage = async (messageData: string | Blob | ArrayBuffer) => {
             return
         }
 
-        switch (classifyWsMessage(data.event, hasPendingRequest(apiResolve.value, data.event))) {
+        switch (classifyWsMessage(data.event, hasPendingRequest(apiResolve.value, data))) {
             case 'service-error':
                 handleServiceError(data)
                 break
@@ -352,24 +360,20 @@ const websocketApi = async (
         }
 
         const event = buildWsEvent(route)
-        const timestamp = Date.now()
-        // One pending request per event: a second one would overwrite the first.
-        if (hasPendingRequest(apiResolve.value, event)) {
-            console.error('Request already in progress')
-            reject(new Error('Request already in progress'))
-            return
-        }
+        // The reply carries this id back (ADR 0006): requests of one event do not wait in line.
+        const id = newRequestId()
 
         sendMessage({
             event: event,
-            timestamp,
+            id,
+            timestamp: Date.now(),
             payload,
         })
-        apiResolve.value[event] = {
+        apiResolve.value[id] = {
             resolve,
             reject,
             timeout: window.setTimeout(() => {
-                Reflect.deleteProperty(apiResolve.value, event)
+                Reflect.deleteProperty(apiResolve.value, id)
                 reject(new WsDeliveryUnknownError('Request timeout'))
             }, TIMEOUT_API),
         }

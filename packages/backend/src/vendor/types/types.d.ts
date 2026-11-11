@@ -198,6 +198,8 @@ export interface ErrorResponse {
 export interface WsMessage {
     payload: Record<string, unknown> | null
     event: string
+    /** The client's id of the request, echoed by the reply (ADR 0006, feat-180). */
+    id?: string
     timestamp: number
 }
 
@@ -205,6 +207,8 @@ export interface WsResponseData {
     data: Payload | null
     error: ErrorResponse | null
     event: string
+    /** The `id` of the request this replies to, when it had one. */
+    id?: string
     status: string
     timestamp: number
 }
