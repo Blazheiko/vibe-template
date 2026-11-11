@@ -1621,8 +1621,8 @@
             "owner": "Blazheiko",
             "branch": "chore/dead-code-cleanup",
             "dependencies": ["feat-148", "feat-162"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #519 (merge commit d4db87b). Each item checked for usages on a fresh main first (table in the PR's progress.md). Removed: copy-static.js; the testHeaders / getSetCookies / testSession endpoints with no route, their service methods and shared schemas; the token field of the login and registration schemas (never read; a client that still sends it gets 422); sms_auth_challenges.send_count (never read or written, migration 20261111120018_sms_challenge_drop_send_count); counter store, isToday, ConnectionStatus, LoaderOverlay, five icon components, useLocale(), useToast with its store and container (no caller), authApi.register, supportApi.getScreenshotUrl, the destroy_websocket_base event, the notification sound button whose event had no listener, four mp3 files (730 KB). Kept: the three push wrappers of the contract pilot and authApi.logoutAll. make check (backend 2654, frontend 499, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92, test:e2e:live 13, test:e2e:security 7; docs:build && docs:verify. CI e2e-live failed once on an unrelated test (verify-email 400 in sign-in-redirect) and passed on rerun."
         },
         {
             "id": "feat-164",
