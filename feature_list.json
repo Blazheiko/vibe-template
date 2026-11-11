@@ -1611,8 +1611,8 @@
             "owner": "Blazheiko",
             "branch": "feat/frontend-lows",
             "dependencies": ["feat-151"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #511 (merge commit 20a6503). Five low frontend findings, reproduced by 15 unit tests and one e2e test that fail on the old code: every 401 raised the unauthorized event (a wrong password reset the sign-in page; /verify-email lost its session-revoked explanation to a redirect); the service worker stored the HTML shell under the full URL, token included; the precache named two missing screenshots and four unused mp3 files; a failed knowledge base list looked like an empty one and failed actions were silent; Sentry turned a plain breadcrumb message into a URL. After the fix: make check (frontend 484, backend 2655, shared 30, playground 81); frontend test:e2e 89; docs:build && docs:verify. Decision for feat-163: the mp3 files of public/audio are unused and are deleted there. Not verified: the service worker in a real browser install."
         },
         {
             "id": "feat-163",
@@ -1631,7 +1631,7 @@
             "owner": "Blazheiko",
             "branch": "feat/modal-accessibility",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {

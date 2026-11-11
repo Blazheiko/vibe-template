@@ -497,23 +497,23 @@
 
 ### V16 Frontend Lows · e2e · → V05
 
-- [ ] **V16.S** Шаблон S.
-- [ ] **V16.1** `utils/base-api.ts:330-332`: подія `unauthorized` лише для 401 втрати сесії.
+- [x] **V16.S** Шаблон S.
+- [x] **V16.1** `utils/base-api.ts:330-332`: подія `unauthorized` лише для 401 втрати сесії.
       **AC:** тест: `/verify-email` з 401 `session_revoked` показує своє пояснення без переходу;
       неправильний пароль на вході не викликає `redirectToLogin`; справжня втрата сесії — веде на
       `/login`.
-- [ ] **V16.2** `service-worker.ts:322-327`: ключ кешу HTML без query.
+- [x] **V16.2** `service-worker.ts:322-327`: ключ кешу HTML без query.
       **AC:** тест: після навігації на `/reset-password?token=x` у Cache Storage немає ключа з
       `token`.
-- [ ] **V16.3** `service-worker.ts:34-39`: precache відповідає `public/`; тест, що кожен шлях
+- [x] **V16.3** `service-worker.ts:34-39`: precache відповідає `public/`; тест, що кожен шлях
       списку існує.
       **AC:** тест зелений; рішення щодо mp3 записано для V17.
-- [ ] **V16.4** `utils/api.ts:444`, `views/admin/AdminKnowledgeBaseView.vue`: помилка списку й
+- [x] **V16.4** `utils/api.ts:444`, `views/admin/AdminKnowledgeBaseView.vue`: помилка списку й
       результати дій показуються.
       **AC:** тест: 500 на списку → повідомлення про помилку, без кнопки ініціалізації.
-- [ ] **V16.5** `utils/sentry-service.ts:233-235`: `maskUrl` лише для URL.
+- [x] **V16.5** `utils/sentry-service.ts:233-235`: `maskUrl` лише для URL.
       **AC:** тест: `message: 'WebSocket connected'` лишається без змін.
-- [ ] **V16.E** Шаблон E (e2e). **V16.X** Шаблон X.
+- [x] **V16.E** Шаблон E (e2e). **V16.X** Шаблон X.
 
 ### V18 Modal Accessibility · e2e
 
