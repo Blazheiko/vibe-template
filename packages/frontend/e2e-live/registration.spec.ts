@@ -1,4 +1,13 @@
-import { expect, linkIn, loginInUi, newAccount, newBrowser, session, test } from './support'
+import {
+    createVerifiedAccount,
+    expect,
+    linkIn,
+    loginInUi,
+    newAccount,
+    newBrowser,
+    session,
+    test,
+} from './support'
 
 // feat-069 (G3): registration, e-mail verification and login on the real backend, with the real
 // throttle counters in Redis (strict registration: no sign-in before the address is confirmed).
@@ -70,4 +79,43 @@ test('the registration counter per address is real: the fourth try in an hour is
     // feat-134 (L3): a spent auth throttle answers 429 rate_limited, as every other limit.
     expect(fourth.status()).toBe(429)
     expect(await fourth.text()).toContain('Too many registration attempts')
+})
+
+// feat-157 (review 2026-11-10): strict registration answers the same for a free and a taken
+// address. What happens to the caller's stored session has to be the same too: it used to end
+// only when the address was free, so a caller who was still signed in afterwards knew the email
+// was registered.
+test('strict registration ends the caller’s session the same way for a taken and a free address', async ({
+    browser,
+    sink,
+}) => {
+    const registered = await createVerifiedAccount(browser, sink)
+    const callerA = await createVerifiedAccount(browser, sink)
+    const callerB = await createVerifiedAccount(browser, sink)
+    const a = await newBrowser(browser)
+    const b = await newBrowser(browser)
+    await loginInUi(a.page, callerA)
+    await loginInUi(b.page, callerB)
+    expect(await session(a.context.request).whoAmI()).toBe(callerA.email)
+    expect(await session(b.context.request).whoAmI()).toBe(callerB.email)
+
+    const register = (context: typeof a.context, email: string) =>
+        session(context.request).post('/api/auth/register/email', {
+            name: 'Probe',
+            email,
+            password: 'live-e2e-probe-pass-1',
+            token: '',
+        })
+    const forTaken = await register(a.context, registered.email)
+    const forFree = await register(b.context, newAccount().email)
+
+    expect(forTaken.status()).toBe(200)
+    expect(forFree.status()).toBe(200)
+    expect(await forTaken.json()).toEqual(await forFree.json())
+    // The same on both sides: neither caller is signed in any more.
+    expect(await session(a.context.request).whoAmI()).toBeNull()
+    expect(await session(b.context.request).whoAmI()).toBeNull()
+
+    await a.context.close()
+    await b.context.close()
 })

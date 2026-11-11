@@ -366,10 +366,21 @@ async function registerEmailFlow(
     // one: otherwise the duration of the answer says whether the address is registered.
     const passwordHash = await hashPassword(password)
 
+    // feat-157: in strict mode the answer is the same whatever the address is, and so is what
+    // happens to the caller's stored session: it ends in every branch. It used to end only
+    // when the address was free, which told the caller whether the email was registered. (The
+    // non-strict mode signs a free address in, so it has nothing to hide here.)
+    const answerStrict = async (): Promise<AppResult<RegisterEmailFlowPayload>> => {
+        await session.destroySession()
+        return genericEmailRegistrationAnswer()
+    }
+
     const existResult = await userRepository.findByEmail(email)
 
     if (existResult !== undefined) {
-        return genericEmailRegistrationAnswer()
+        return authConfig.strictRegistration
+            ? await answerStrict()
+            : genericEmailRegistrationAnswer()
     }
 
     if (!authConfig.strictRegistration) {
@@ -406,14 +417,13 @@ async function registerEmailFlow(
     )
     if (Result.isError(registeredUserResult)) {
         if (isRegistrationTaken(registeredUserResult.error)) {
-            return genericEmailRegistrationAnswer()
+            // Lost the race to a concurrent registration: like a taken address.
+            return await answerStrict()
         }
         return Result.err(registeredUserResult.error)
     }
 
-    await session.destroySession()
-
-    return genericEmailRegistrationAnswer()
+    return await answerStrict()
 }
 
 export const authService = {
