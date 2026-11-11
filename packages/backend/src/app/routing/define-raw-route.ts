@@ -47,7 +47,14 @@ type DefineRouteInput<
 const applyStrictPolicy = <T>(schema: Type<T>, allowExtra: boolean): Type<T> =>
     schema.onUndeclaredKey(allowExtra ? 'delete' : 'reject') as unknown as Type<T>
 
-export function defineRoute<
+/**
+ * A route from schemas, without a contract. Not for the route table: every route of the
+ * application is declared through its contract (`defineRoute` of app/routes/contract-schemas,
+ * docs/adr/0005-route-contracts.md), and ESLint refuses this import in src/app outside tests.
+ * It stays for the tests of the HTTP machinery (body methods, limits, validation, cache), which
+ * build routes of their own.
+ */
+export function defineRawRoute<
     TBody extends Type | undefined = undefined,
     TQuery extends Type | undefined = undefined,
     TRes extends Type | undefined = undefined,

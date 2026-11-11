@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { describe, expect, it } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 import { defineWsRoute } from '#app/routing/define-ws-route.js'
 import appConfig from '#config/app.js'
@@ -35,7 +35,7 @@ describe('serializeRoutes', () => {
         })
 
         const routes = [
-            defineRoute({
+            defineRawRoute({
                 url: '/login',
                 method: 'post',
                 validator: schema,
@@ -60,7 +60,7 @@ describe('serializeRoutes', () => {
 
     it('serializes union request schemas through JSON Schema anyOf', () => {
         const routes = [
-            defineRoute({
+            defineRawRoute({
                 url: '/sign-in',
                 method: 'post',
                 // A union request schema: either an email or a phone sign-in.
@@ -95,7 +95,7 @@ describe('serializeRoutes', () => {
         })
 
         const routes = [
-            defineRoute({
+            defineRawRoute({
                 url: '/register',
                 method: 'post',
                 ResponseSchema: type.or(successSchema, CanonicalErrorResponseSchema),
@@ -127,7 +127,7 @@ describe('serializeRoutes', () => {
         })
 
         const routes = [
-            defineRoute({
+            defineRawRoute({
                 url: '/ping',
                 method: 'get',
                 ResponseSchema: responseSchema,
@@ -149,7 +149,7 @@ describe('serializeRoutes', () => {
 
     it('omits inputSchema when validator is absent', () => {
         const routes = [
-            defineRoute({
+            defineRawRoute({
                 url: '/ping',
                 method: 'get',
                 handler: () => ({ ok: true }),
@@ -302,14 +302,14 @@ describe('serializeRoutes bodyLimits', () => {
     it.each(['post', 'put', 'patch'] as const)(
         '%s without allowedContentTypes → the JSON limit',
         (method) => {
-            expect(bodyLimitsOf(defineRoute({ url: '/x', method, handler }))).toEqual([json])
+            expect(bodyLimitsOf(defineRawRoute({ url: '/x', method, handler }))).toEqual([json])
         },
     )
 
     it('lists each allowed type in order', () => {
         expect(
             bodyLimitsOf(
-                defineRoute({
+                defineRawRoute({
                     url: '/x',
                     method: 'post',
                     allowedContentTypes: ['multipart'],
@@ -319,7 +319,7 @@ describe('serializeRoutes bodyLimits', () => {
         ).toEqual([multipart])
         expect(
             bodyLimitsOf(
-                defineRoute({
+                defineRawRoute({
                     url: '/x',
                     method: 'post',
                     allowedContentTypes: ['json', 'multipart'],
@@ -331,7 +331,7 @@ describe('serializeRoutes bodyLimits', () => {
 
     it('shows the route maxBodySize where it tightens the limit, and never above the global one', () => {
         const tight = bodyLimitsOf(
-            defineRoute({
+            defineRawRoute({
                 url: '/x',
                 method: 'post',
                 allowedContentTypes: ['json', 'multipart'],
@@ -340,7 +340,7 @@ describe('serializeRoutes bodyLimits', () => {
             }),
         )
         const loose = bodyLimitsOf(
-            defineRoute({
+            defineRawRoute({
                 url: '/x',
                 method: 'post',
                 allowedContentTypes: ['multipart'],
@@ -359,13 +359,13 @@ describe('serializeRoutes bodyLimits', () => {
     it('allowedContentTypes: [] → an empty list', () => {
         expect(
             bodyLimitsOf(
-                defineRoute({ url: '/x', method: 'post', allowedContentTypes: [], handler }),
+                defineRawRoute({ url: '/x', method: 'post', allowedContentTypes: [], handler }),
             ),
         ).toEqual([])
     })
 
     it.each(['get', 'delete'] as const)('%s has no bodyLimits', (method) => {
-        expect(bodyLimitsOf(defineRoute({ url: '/x', method, handler }))).toBeUndefined()
+        expect(bodyLimitsOf(defineRawRoute({ url: '/x', method, handler }))).toBeUndefined()
     })
 
     it('a WS route has no bodyLimits', () => {
@@ -374,7 +374,7 @@ describe('serializeRoutes bodyLimits', () => {
 
     it('is set on routes inside nested groups', () => {
         const [group] = serializeRoutes([
-            { group: [{ group: [defineRoute({ url: '/x', method: 'patch', handler })] }] },
+            { group: [{ group: [defineRawRoute({ url: '/x', method: 'patch', handler })] }] },
         ]) as { group: { group: Record<string, unknown>[] }[] }[]
 
         expect(group?.group[0]?.group[0]?.['bodyLimits']).toEqual([json])

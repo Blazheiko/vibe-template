@@ -13,7 +13,7 @@ flowchart LR
 Дані з [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json):
 
 - `name: "shared"`, `private: true`, `type: "module"`;
-- `exports` має кореневий вхід `.` і підшляхи `./brands`, `./schemas`, `./responses`, `./errors`, `./enums`, `./utils`, `./guards`, `./limits`, `./patterns`, `./ws-client`. Кожен вказує на `dist/<розділ>/index.js` і `.d.ts`;
+- `exports` має кореневий вхід `.` і підшляхи `./brands`, `./schemas`, `./responses`, `./errors`, `./enums`, `./utils`, `./guards`, `./limits`, `./patterns`, `./ws-client`, `./contracts`. Кожен вказує на `dist/<розділ>/index.js` і `.d.ts`;
 - `build`: `tsc --build`, `dev`: `tsc --build --watch`. [tsconfig.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/tsconfig.json) збирає `src` у `dist` (`composite: true`);
 - залежності в рантаймі: `@arktype/type`, `@ark/util`, `libphonenumber-js`.
 
@@ -26,6 +26,7 @@ Backend і frontend підключають пакет як `"shared": "workspace
 | Розділ                                                                                                   | Вміст                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [brands](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/brands)                | branded-примітиви: у [primitives.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/brands/primitives.ts), напр., `EmailSchema = type("string.email").brand("Email")` і `PositiveIntSchema`, а в [ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/brands/ids.ts) лежить `EntityIdSchema`                                                                                                                                                                                                                              |
+| [contracts](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/contracts)          | контракти HTTP-маршрутів за групами (`authContracts`, `pushSubscriptionContracts`…): `contract<Тіло, Query, Відповідь>()(метод, шлях)`, `multipartContract`, `navigationContract` і `buildPath`/`buildQuery`/`buildUrl` з [core.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/core.ts). Під час виконання контракт — лише `{ method, path }` (і `kind`), схеми імпортуються як типи, тож фронтенд бере його без ArkType ([Маршрутизація](/backend/routing#http-маршрути-defineroute))                                                   |
 | [enums](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/enums/languages.ts)     | `APP_LOCALE_CODES` (`as const`), `SHIPPED_LOCALE_CODES` (мови з перекладом інтерфейсу), мапи назв мов і функції `resolveLanguageName`, `resolveLanguageCode`, `isAppLocaleCode` тощо                                                                                                                                                                                                                                                                                                                                                                                             |
 | [errors](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/errors/error-codes.ts) | об'єкт `ErrorCode` (`BadRequest: "bad_request"`, `ValidationFailed: "validation_failed"`, `CsrfInvalid: "csrf_invalid"`…) і список `ErrorCodeValues`, без runtime-залежності від ArkType (модуль імпортує фронтенд). `ErrorCodeSchema` — у `responses`                                                                                                                                                                                                                                                                                                                           |
 | [guards](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/guards/index.ts)       | [ws-channels.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/guards/ws-channels.ts): whitelist WS-каналів `WS_CHANNELS` (`admin`), тип `WsChannel` і guard `isWsChannel(value: unknown)` без залежностей; його використовує `broadcastToChannel`, а фронтенд може імпортувати з `shared/guards`                                                                                                                                                                                                                                                     |
@@ -41,25 +42,35 @@ Backend і frontend підключають пакет як `"shared": "workspace
 
 ## Використання в backend
 
-Маршрути беруть схеми вводу із `shared/schemas`, а схеми відповідей імпортують з `shared/responses` як простір імен ([http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts)):
+Маршрут вказує контракт з `shared/contracts`, а його схеми записано в реєстрі [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts): схеми вводу — із `shared/schemas`, схеми відповідей — з `shared/responses` як простір імен. Таблиця маршрутів — [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts):
 
 ```ts
+// packages/backend/src/app/routes/contract-schemas/auth.ts
+import { LoginInputSchema /* … */ } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
+import { authContracts } from 'shared/contracts'
 
-defineRoute({
-    url: '/login',
-    method: 'post',
-    handler: AuthController.login.bind(AuthController),
-    validator: LoginInputSchema,
-    ResponseSchema: ResponseSchemas.LoginResponseSchema,
+export const authSchemas = contractSchemas(authContracts, {
+    login: {
+        body: LoginInputSchema,
+        response: ResponseSchemas.LoginResponseSchema,
+    },
+    // …
 })
+
+// packages/backend/src/app/routes/http-routes.ts
+defineRoute({
+    contract: authContracts.login,
+    handler: AuthController.login.bind(AuthController),
+    description: 'Login a user by email or phone identifier',
+}),
 ```
 
-`ResponseSchema` у рантаймі не перевіряється, а потрапляє лише в doc-серіалізацію маршрутів (див. [«Валідація»](/backend/validation)). Контролери імпортують лише типи, напр. `import type { SupportChatInput } from 'shared/schemas'` у [ws/support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts). Сервіси користуються утилітами, як-от `resolveLanguageName` з `shared/enums` у [support-llm-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-llm-service.ts).
+Схема `response` потрапляє в doc-серіалізацію маршрутів і під час виконання перевіряє кожну відповідь (див. [«Перевірка відповідей»](/backend/response-validation)). Контролери імпортують лише типи, напр. `import type { SupportChatInput } from 'shared/schemas'` у [ws/support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts). Сервіси користуються утилітами, як-от `resolveLanguageName` з `shared/enums` у [support-llm-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-llm-service.ts).
 
 ## Використання у frontend
 
-- API-клієнт [utils/api.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api.ts) типізується через `shared/responses`, `shared/schemas` і `import type { ErrorCode } from 'shared/errors'`;
+- API-клієнт [utils/api.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api.ts) викликає маршрути через `callApi(contract, { params, query, body })` з [api-client.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) і контракти з `shared/contracts`, а типи бере з `shared/responses`, `shared/schemas` (лише `import type`) і `import type { ErrorCode } from 'shared/errors'`;
 - [response-normalizer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/response-normalizer.ts) і компоненти (наприклад, [AuthModals.vue](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/components/AuthModals.vue)) порівнюють коди помилок зі значеннями `ErrorCode`;
 - [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts) перевіряє payload broadcast-подій guard'ами з [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts), а не схемами: ArkType у рантаймі збільшив би бандл і порушив CSP (JIT через `new Function`). Типи guard'ів — `BroadcastPayload<E>` з `shared/schemas`; тест паритету проганяє кожен guard і схему реєстру `BroadcastEventSchemas` на тих самих фікстурах (ArkType імпортує лише тест);
 - [plugins/i18n.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/plugins/i18n.ts) і [useLocale.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useLocale.ts) беруть `SHIPPED_LOCALE_CODES` (мови з перекладом інтерфейсу: `en`, `uk`, `pl`) і `resolveLanguageCode` з `shared/enums`;

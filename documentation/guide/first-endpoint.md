@@ -25,7 +25,9 @@ curl 'http://127.0.0.1:3000/api/hello?name=Olena'
 | Контракт   | `packages/shared/src/responses/hello-controller.ts`                   | Як виглядає відповідь                                                      |
 | Service    | `packages/backend/src/app/services/hello/hello-service.ts`            | Бізнес-правило: як вітати                                                  |
 | Controller | `packages/backend/src/app/controllers/http/hello/hello-controller.ts` | Бере query, викликає сервіс, формує відповідь                              |
-| Route      | `packages/backend/src/app/routes/http-routes.ts`                      | Зв'язує URL з контролером і схемою                                         |
+| Контракт   | `packages/shared/src/contracts/hello.ts`                              | Метод, шлях і типи маршруту для бекенду й фронтенду                        |
+| Route      | `packages/backend/src/app/routes/contract-schemas/hello.ts`           | Схеми query й відповіді для контракту                                      |
+| Route      | `packages/backend/src/app/routes/http-routes.ts`                      | Зв'язує контракт з контролером                                             |
 
 Увесь код нижче реально додано в чисту копію шаблону і перевірено `pnpm typecheck`, тестом і запитами `curl`.
 
@@ -144,15 +146,62 @@ export default {
 
 ## Крок 4. Route
 
-Залишилось сказати серверу, що `GET /api/hello` обробляє наш контролер. Відкрийте [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) і додайте імпорти до наявних:
+Залишилось сказати серверу, що `GET /api/hello` обробляє наш контролер. Кожен HTTP-маршрут шаблону оголошено через **контракт** ([Маршрутизація](/backend/routing#http-маршрути-defineroute)), тож тут три невеликі зміни.
+
+**Контракт.** Метод, повний шлях під префіксом `api` і типи query й відповіді. Схеми імпортуються лише як типи, тому фронтенд може імпортувати контракт без них:
+
+```ts
+// packages/shared/src/contracts/hello.ts
+import type { HelloQuerySchema } from '../schemas/hello/hello-query.js'
+import type { HelloResponse } from '../responses/hello-controller.js'
+import { contract } from './core.js'
+
+export const helloContracts = {
+    hello: contract<undefined, typeof HelloQuerySchema.inferIn, HelloResponse>()('get', '/hello'),
+} as const
+```
+
+Додайте рядок у кінець `packages/shared/src/contracts/index.ts` і знову виконайте `pnpm --filter shared build`:
+
+```ts
+export { helloContracts } from './hello.js'
+```
+
+**Схеми маршруту.** Бекенд тримає схеми кожного контракту в реєстрі `app/routes/contract-schemas/`. `contractSchemas` звіряє запис із типами контракту: якщо ключі `HelloQuerySchema` розійдуться з query контракту, `pnpm typecheck` це покаже.
+
+```ts
+// packages/backend/src/app/routes/contract-schemas/hello.ts
+import { HelloQuerySchema } from 'shared/schemas'
+import * as ResponseSchemas from 'shared/responses'
+import { helloContracts } from 'shared/contracts'
+import { contractSchemas } from '#app/routing/contract-registry.js'
+
+export const helloSchemas = contractSchemas(helloContracts, {
+    hello: { query: HelloQuerySchema, response: ResponseSchemas.HelloResponseSchema },
+})
+```
+
+Розгорніть його в `contractSchemaRegistry` у `packages/backend/src/app/routes/contract-schemas/index.ts`:
+
+```ts
+import { helloSchemas } from './hello.js'
+// ...
+export const contractSchemaRegistry = {
+    // ...
+    ...helloSchemas,
+}
+```
+
+**Маршрут.** Відкрийте [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). `defineRoute` там уже імпортовано з `#app/routes/contract-schemas/index.js`; додайте імпорт контролера і `helloContracts` до наявного імпорту з `shared/contracts`:
 
 ```ts
 import HelloController from '#app/controllers/http/hello/hello-controller.js'
 // ...
 import {
     // ...
-    HelloQuerySchema,
-} from 'shared/schemas'
+    supportContracts,
+    helloContracts,
+} from 'shared/contracts'
 ```
 
 Потім додайте групу останнім елементом масиву, перед `] satisfies routeList`:
@@ -161,11 +210,8 @@ import {
     {
         group: [
             defineRoute({
-                url: '/',
-                method: 'get',
+                contract: helloContracts.hello,
                 handler: HelloController.hello.bind(HelloController),
-                queryValidator: HelloQuerySchema,
-                ResponseSchema: ResponseSchemas.HelloResponseSchema,
                 description: 'Say hello',
             }),
         ],
@@ -174,10 +220,10 @@ import {
     },
 ```
 
-- `prefix: 'hello'` + `url: '/'` + глобальний префікс `api` = `/api/hello`.
-- `queryValidator` — ядро перевірить query за схемою **до** виклику контролера. Невідомі параметри відхиляються (строга політика за замовчуванням).
-- `middlewares` немає, тож маршрут публічний: ні сесії, ні входу не потрібно. Як закрити маршрут для незалогінених, показано в [Як додати фічу](/backend/adding-a-feature#крок-8-реєстрація-маршрутів).
-- `ResponseSchema` описує відповідь для документації API та [API Playground](/playground/). Під час розробки сервер ще й перевіряє за нею кожну відповідь контролера: якщо вона не збігається зі схемою, клієнт отримає `500`, а в лозі буде шлях до поля, що не збіглося. Див. [Перевірка відповідей](/backend/response-validation). Ще до запуску TypeScript звіряє зі схемою тип, який повертає контролер, тому анотацію `HelloResponse` у контролері лишаємо ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)).
+- Шлях контракту `/hello` + глобальний префікс `api` = `/api/hello`. `prefix: 'hello'` групи має бути початком шляху контракту, інакше сервер не стартує.
+- Схема `query` із запису реєстру — ядро перевірить query за нею **до** виклику контролера. Невідомі параметри відхиляються (строга політика за замовчуванням).
+- `middlewares` немає, тож маршрут публічний: ні сесії, ні входу не потрібно. Як закрити маршрут для незалогінених, показано в [Як додати фічу](/backend/adding-a-feature#крок-8-контракт-і-реєстрація-маршрутів).
+- Схема `response` описує відповідь для документації API та [API Playground](/playground/). Під час розробки сервер ще й перевіряє за нею кожну відповідь контролера: якщо вона не збігається зі схемою, клієнт отримає `500`, а в лозі буде шлях до поля, що не збіглося. Див. [Перевірка відповідей](/backend/response-validation). Ще до запуску TypeScript звіряє зі схемою тип, який повертає контролер, тому анотацію `HelloResponse` у контролері лишаємо ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)).
 
 `pnpm dev` перезапустить бекенд сам, коли ви збережете файл.
 
@@ -271,10 +317,10 @@ cd packages/backend && npx vitest run src/app/services/hello
 | Поняття                  | Де в цій вправі                             | Детальніше                                                             |
 | ------------------------ | ------------------------------------------- | ---------------------------------------------------------------------- |
 | Контракт у `shared`      | `HelloQuerySchema`, `HelloResponseSchema`   | [Пакет shared](/shared/), [Валідація](/backend/validation)             |
-| Runtime-валідація        | `queryValidator` → `422`                    | [Валідація](/backend/validation)                                       |
+| Runtime-валідація        | схема `query` у реєстрі → `422`             | [Валідація](/backend/validation)                                       |
 | `Result` замість `throw` | `Result.ok` / `Result.err(badRequest(...))` | [Сервіси](/backend/services)                                           |
 | Мапінг помилок           | `mapControllerError` → `400`                | [Контролери](/backend/controllers)                                     |
-| Оголошення маршруту      | `defineRoute` у групі з `prefix`            | [Маршрутизація](/backend/routing) і [Middleware](/backend/middlewares) |
+| Оголошення маршруту      | `defineRoute({ contract })` у групі         | [Маршрутизація](/backend/routing) і [Middleware](/backend/middlewares) |
 
 Чого тут ще немає: бази даних, сесії і захисту маршруту. Усе це додає наступний крок.
 

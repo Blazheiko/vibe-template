@@ -125,9 +125,9 @@ export type LoginInput = typeof LoginInputSchema.infer // тип виведен�
 
 Цей один файл використовують три місця:
 
-- **маршрут** `POST /api/auth/login` перевіряє тіло запиту: `validator: LoginInputSchema` у [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts);
+- **маршрут** `POST /api/auth/login` перевіряє тіло запиту: `body: LoginInputSchema` у записі реєстру [`contract-schemas/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/auth.ts) для контракту `authContracts.login`, а контракт сам звірений з типом схеми;
 - **контролер** отримує вже типізовані дані: `login(context: HttpContext<LoginInput>)`;
-- **фронтенд** надсилає запит того самого типу: `login: async (body: LoginInput)` у [`api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api.ts).
+- **фронтенд** надсилає запит того самого типу: `login: (body: LoginInput) => callApi(authContracts.login, { body }, …)` у [`api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api.ts).
 
 Що це дає: перейменуйте в схемі `identifier` на `login`, перезберіть `shared` і запустіть `pnpm typecheck`. Помилки з'являться з обох боків одразу (вивід скорочено):
 
@@ -167,7 +167,7 @@ export type UserInsert = InferInsertModel<typeof users> // те, що можна
 
 - **API і БД — різні контракти, і це навмисно.** Тип відповіді не виводиться з таблиці автоматично: між ними стоїть transformer, який прибирає секрети і перетворює дати та `bigint` на рядки.
 - **Захист працює там, де тип справді імпортовано.** Якщо компонент оголосить власний тип замість імпорту зі `shared`, зміну схеми TypeScript у ньому не помітить. Виняток у самому `shared` один: у `CanonicalErrorResponse` поле `details` має точніший TypeScript-тип, ніж може описати схема ([error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts)).
-- **Перевірка відповіді під час виконання залежить від режиму.** Крім TypeScript під час компіляції, сервер перевіряє відповідь кожного маршруту з `ResponseSchema`. Поза production діє `strict`: розбіжність зі схемою або зайве поле дає `500`. У production за замовчуванням діє `log`: зайві поля вирізаються з попередженням у лозі, розбіжність зі схемою все одно дає `500`. Вимкнути перевірку не можна; маршрут без `ResponseSchema` не перевіряється. Див. [Перевірка відповідей](/backend/response-validation).
+- **Перевірка відповіді під час виконання залежить від режиму.** Крім TypeScript під час компіляції, сервер перевіряє відповідь кожного маршруту за його схемою відповіді (`ResponseSchema`; для HTTP — `response` запису реєстру). Поза production діє `strict`: розбіжність зі схемою або зайве поле дає `500`. У production за замовчуванням діє `log`: зайві поля вирізаються з попередженням у лозі, розбіжність зі схемою все одно дає `500`. Вимкнути перевірку не можна; маршрут без `ResponseSchema` не перевіряється. Див. [Перевірка відповідей](/backend/response-validation).
 
 Детальніше — [Валідація](/backend/validation), [Пакет shared](/shared/), [База даних](/backend/database).
 

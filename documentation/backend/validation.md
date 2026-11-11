@@ -16,10 +16,11 @@
     })
     ```
 
-2. Передайте її маршруту як `validator` (для query — `queryValidator`):
+2. Запишіть її як `body` у запис реєстру схем для контракту маршруту (для query — `query`); маршрут вказує лише контракт ([крок 8 туторіалу](/backend/adding-a-feature#крок-8-контракт-і-реєстрація-маршрутів)):
 
     ```ts
-    defineRoute({ url: '/', method: 'post', handler: ..., validator: CreateNoteInputSchema })
+    // app/routes/contract-schemas/notes.ts
+    create: { body: CreateNoteInputSchema, response: ResponseSchemas.CreateNoteResponseSchema },
     ```
 
 3. У контролері візьміть уже перевірені дані: `getTypedPayload(context)` повертає `CreateNoteInput`.
@@ -76,27 +77,31 @@ export { arkValidator as defaultValidator, arkValidator } from './adapters/arkty
 
 ## Як маршрут отримує валідатор
 
-У маршрутах передається **схема**, а не валідатор: `defineRoute` / `defineWsRoute` самі загортають її через `defaultValidator` ([define-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts), [define-ws-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts)). Вручну обгортати `arkValidator(...)` у файлах маршрутів не потрібно.
+Маршрут отримує **схему**, а не валідатор. HTTP-маршрут бере схеми із запису реєстру свого контракту (`body`, `query`, `response` у [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts)), і `defineRoute` ([contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)) сам загортає їх через `defaultValidator` у поля `validator` і `queryValidator`. WS-маршрут передає схему в `validator` напряму, і її загортає `defineWsRoute` ([define-ws-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts)). Вручну обгортати `arkValidator(...)` не потрібно.
 
-- `validator` — схема тіла (HTTP) або payload (WS). На HTTP він дозволений лише для `post`, `put` і `patch`; на `get`/`delete` дає помилку типів і помилку на старті, бо тіло там не читається ([Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)). Без `Content-Type` і без тіла валідується `{}`, тож handler з `validator` не отримує `payload = null` (крім `octet`-маршрутів).
-- `queryValidator` — схема query (лише HTTP). До неї `defineRoute` застосовує `onUndeclaredKey("reject")` (зайві ключі → помилка) або, з `queryAllowExtra: true`, `onUndeclaredKey("delete")` (зайві ключі видаляються). `queryArrays` перелічує ключі, які можуть повторюватися (збираються в `string[]`); див. [flatten-query.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/flatten-query.ts).
+- `validator` — схема тіла (HTTP, з `body` запису реєстру) або payload (WS). На HTTP він дозволений лише для `post`, `put` і `patch` (для них тест `route-contracts.spec.ts` його вимагає); на `get`/`delete` дає помилку на старті, бо тіло там не читається ([Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)). Без `Content-Type` і без тіла валідується `{}`, тож handler з `validator` не отримує `payload = null` (крім `octet`-маршрутів).
+- `queryValidator` — схема query (лише HTTP, з `query` запису реєстру). До неї `defineRoute` застосовує `onUndeclaredKey("reject")` (зайві ключі → помилка) або, з `queryAllowExtra: true`, `onUndeclaredKey("delete")` (зайві ключі видаляються). `queryArrays` перелічує ключі, які можуть повторюватися (збираються в `string[]`); див. [flatten-query.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/flatten-query.ts).
 
 Приклад з [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts):
 
 ```ts
+// app/routes/contract-schemas/auth.ts — запис реєстру
+login: {
+    body: LoginInputSchema,
+    response: ResponseSchemas.LoginResponseSchema,
+},
+
+// app/routes/http-routes.ts — маршрут
 defineRoute({
-    url: '/login',
-    method: 'post',
+    contract: authContracts.login,
     handler: AuthController.login.bind(AuthController),
-    validator: LoginInputSchema,
-    ResponseSchema: ResponseSchemas.LoginResponseSchema,
     description: 'Login a user by email or phone identifier',
-})
+}),
 ```
 
 ### Виведення типів
 
-`defineRoute` виводить тип `payload` з `Type<T>` схеми тіла, а тип `query` — зі схеми query (або `null`, якщо `queryValidator` не задано). Якщо задано `ResponseSchema`, результат хендлера звіряється з її вхідним типом (`inferIn`) — див. [Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера). Для обробників, оголошених окремо (методи контролерів), є хелпер `InferQuery<typeof Schema>` в [app/validate/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/index.ts); на рівні контракту — `InferPayload<V>`. У shared-схемах тип зазвичай експортується поруч зі схемою через `typeof Schema.infer` / `["inferIn"]`.
+`defineRoute` виводить тип `payload` з виходу схеми `body` запису реєстру, а тип `query` — з виходу схеми `query` (або `null`, якщо в записі її немає). Результат хендлера звіряється з вхідним типом (`inferIn`) схеми `response` — див. [Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера). Для обробників, оголошених окремо (методи контролерів), є хелпер `InferQuery<typeof Schema>` в [app/validate/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/index.ts); на рівні контракту — `InferPayload<V>`. У shared-схемах тип зазвичай експортується поруч зі схемою через `typeof Schema.infer` / `["inferIn"]`.
 
 ## Де виконується валідація
 
@@ -194,8 +199,8 @@ HTTP-відповідь (обробник помилок у [server.ts](https://
 
 - `ResponseSchema?: BaseType` у `vendor/types/types.d.ts`;
 - перевірка відповідей під час виконання ([validate-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/validate-response.ts)) викликає схему напряму й розпізнає помилки через `type.errors`, а не через `Validator<T>`;
-- `defineRoute`/`defineWsRoute` і `InferQuery` типізовані через `Type` з `@arktype/type`;
-- doc-серіалізація `ResponseSchema` (`outputSchema`) — лише ArkType; схеми `validator` / `queryValidator` приймаються й від інших движків через `describe()` (див. [контракт](#контракт-validator-t));
+- реєстр схем контрактів (`SchemaEntry` у [contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)), `defineRoute`/`defineWsRoute` і `InferQuery` типізовані через `Type` з `@arktype/type`;
+- doc-серіалізація `ResponseSchema` (`outputSchema`) — лише ArkType; схеми `validator` / `queryValidator` серіалізуються через `describe()` валідатора, тож ядро прийняло б їх і від інших движків (див. [контракт](#контракт-validator-t));
 - схема WS-конверта в `ws-message-validator.ts`.
 
 ::: warning План
@@ -205,10 +210,10 @@ HTTP-відповідь (обробник помилок у [server.ts](https://
 ## Рецепт: валідація для нового маршруту
 
 1. Опишіть схему в `packages/shared/src/schemas/<домен>/` через `type({...})` з `'+': 'reject'` і експортуйте її разом з типом; додайте в `index.ts` пакета.
-2. Передайте схему в `validator` (і/або `queryValidator`) у `defineRoute`/`defineWsRoute` — не обгортайте вручну.
+2. Для HTTP запишіть схему як `body` (і/або `query`) у запис реєстру `app/routes/contract-schemas/` для контракту маршруту; для WS передайте її у `validator` у `defineWsRoute`. Не обгортайте вручну.
 3. Типізуйте handler: тип payload виводиться автоматично; для окремо оголошених обробників — `InferQuery<typeof Schema>` або тип зі схеми.
 4. Перевірте 422 з `validation_failed` на невалідному тілі. Повний сценарій — [Додавання фічі](/backend/adding-a-feature).
 
 ### Заміна бібліотеки валідації
 
-Код це підтримує лише як **глобальну** заміну: новий адаптер, що реалізує `Validator<T>`, і зміна експорту `defaultValidator` в `app/validate/index.ts`. Але доведеться також переписати всі схеми в `shared`, типи `defineRoute`/`defineWsRoute`/`InferQuery` (вони на `Type` ArkType), `ws-message-validator.ts` і doc-серіалізацію. Проєкт використовує один валідатор: маршрути передають сиру схему (`validator: SomeSchema`), обгортку робить `defineRoute`, а змішувати движки по маршрутах не можна ([ADR 0001](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0001-validator-abstraction.md)).
+Код це підтримує лише як **глобальну** заміну: новий адаптер, що реалізує `Validator<T>`, і зміна експорту `defaultValidator` в `app/validate/index.ts`. Але доведеться також переписати всі схеми в `shared`, типи реєстру контрактів і `defineRoute`/`defineWsRoute`/`InferQuery` (вони на `Type` ArkType), `ws-message-validator.ts` і doc-серіалізацію. Проєкт використовує один валідатор: реєстр контрактів передає сиру схему (`body: SomeSchema`), обгортку робить `defineRoute`, а змішувати движки по маршрутах не можна ([ADR 0001](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0001-validator-abstraction.md)).

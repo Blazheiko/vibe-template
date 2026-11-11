@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 
 const getDataMock = vi.fn()
 
@@ -45,7 +45,7 @@ describe('readAndParseBody', () => {
 
     it('throws ValidationError for invalid HTTP body', async () => {
         const { readAndParseBody } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/login',
             method: 'post',
             validator: type({
@@ -82,7 +82,7 @@ describe('readAndParseBody', () => {
 
     it('returns validated payload for valid HTTP body', async () => {
         const { readAndParseBody } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/login',
             method: 'post',
             validator: type({
@@ -126,7 +126,7 @@ describe('readAndParseBody', () => {
 describe('validateQuery', () => {
     it('returns null when route has no queryValidator', async () => {
         const { validateQuery } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/ping',
             method: 'get',
             handler: () => ({ ok: true }),
@@ -144,7 +144,7 @@ describe('validateQuery', () => {
 
     it('returns typed query values after validation', async () => {
         const { validateQuery } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/items',
             method: 'get',
             queryValidator: type({
@@ -165,7 +165,7 @@ describe('validateQuery', () => {
 
     it('applies query defaults', async () => {
         const { validateQuery } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/items',
             method: 'get',
             queryValidator: type({
@@ -190,7 +190,7 @@ describe('validateQuery', () => {
 
     it('rejects invalid query values', async () => {
         const { validateQuery } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/items',
             method: 'get',
             queryValidator: type({
@@ -211,7 +211,7 @@ describe('validateQuery', () => {
 
     it('collects queryArrays keys before validation', async () => {
         const { validateQuery } = await import('./server.js')
-        const route = defineRoute({
+        const route = defineRawRoute({
             url: '/items',
             method: 'get',
             queryValidator: type({

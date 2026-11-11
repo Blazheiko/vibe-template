@@ -1,7 +1,7 @@
 import { LoginInputSchema } from 'shared/schemas'
 import { describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 
 // An invalid login body is rejected by the route validator before the
 // controller runs, so the login throttle (called from authService.login) is
@@ -114,7 +114,7 @@ describe('login body validation runs before the login throttle', () => {
         await initServer({
             httpRoutes: [
                 {
-                    ...defineRoute({
+                    ...defineRawRoute({
                         url: '/auth/login',
                         method: 'post',
                         validator: LoginInputSchema,

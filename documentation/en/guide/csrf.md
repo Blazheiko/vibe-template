@@ -101,7 +101,7 @@ These cases are handled by `src/utils/base-api.ts`; you don't need to write your
 
 ### A new route that changes data
 
-Add it to a route group that has `session_web` and `csrf_guard`; all groups in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) are built this way. Then the protection works automatically. The frontend inserts the token itself if you call the API via `baseApi.http` or `baseApi.upload`.
+Add it to a route group that has `session_web` and `csrf_guard`; all groups in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) are built this way. Then the protection works automatically. The frontend inserts the token itself: every API call goes through `callApi` ([api-client.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts)), which hands it to `baseApi.http` or `baseApi.upload`.
 
 This is the rule for routes called by our frontend. A route of the public API for other servers and apps takes credentials from a header, not from a cookie, so CSRF is not a threat to it: it goes into a separate group without `session_web` and `csrf_guard`. See [Web routes and public API](/en/backend/web-and-api-routes).
 

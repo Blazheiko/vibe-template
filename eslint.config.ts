@@ -131,6 +131,31 @@ export default tseslint.config(
         },
     },
     {
+        // docs/adr/0005-route-contracts.md: a route of the application is declared through its
+        // contract (`defineRoute` of app/routes/contract-schemas). The schema-only helper is for
+        // the tests of the HTTP machinery (feat-170).
+        files: ['packages/backend/src/**/*.ts'],
+        ignores: [
+            '**/*.spec.ts',
+            '**/*.test.ts',
+            'packages/backend/src/app/routing/define-raw-route.ts',
+        ],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        {
+                            name: '#app/routing/define-raw-route.js',
+                            message:
+                                'Declare the route through its contract: defineRoute from #app/routes/contract-schemas/index.js (ADR 0005).',
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         files: ['**/*.spec.ts', '**/*.test.ts'],
         rules: {
             '@typescript-eslint/no-unsafe-assignment': 'off',

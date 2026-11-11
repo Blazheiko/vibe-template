@@ -79,7 +79,7 @@ callApi(pushSubscriptionContracts.list)
 
 ```ts
 // packages/backend/src/app/routes/http-routes.ts
-defineContractRoute({
+defineRoute({
     contract: pushSubscriptionContracts.create,
     handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
     middlewares: ['auth_guard'],
@@ -88,7 +88,7 @@ defineContractRoute({
 
 Схеми — у реєстрі (рішення 6).
 
-- `defineContractRoute` — окрема функція поруч із `defineRoute` (перевантаження `defineRoute` ламало виведення типів у наявному коді). Метод і шлях беруться з контракту; `url` і `method` у маршруті не повторюються.
+- `defineRoute` (з `app/routes/contract-schemas/index.ts`) — єдиний спосіб оголосити маршрут застосунку (feat-170). Метод і шлях беруться з контракту; `url` і `method` у маршруті не повторюються. Під час міграції це була окрема функція `defineContractRoute`, бо перевантаження старого `defineRoute` ламало виведення типів; старий хелпер без контракту тепер `defineRawRoute` (`app/routing/define-raw-route.ts`) і лишився лише для тестів HTTP-машинерії: ESLint забороняє його імпорт поза тестами, а `route-contracts.spec.ts` падає, якщо маршрут таблиці не має контракту, запису реєстру чи схеми тіла для post/put/patch.
 - Схеми записано в реєстрі (рішення 6) і звіряються з типами контракту компілятором: вхід схеми тіла дорівнює типу тіла; ключі query-схеми дорівнюють ключам query контракту; успішні гілки схеми відповіді дорівнюють типу відповіді. Схема іншого маршруту, пропущена схема або зайва схема — помилка `pnpm typecheck` з назвою причини (`__contractMismatch`).
 - Middleware, guards, ліміти запитів, `allowedContentTypes`, `maxBodySize`, групи маршрутів лишаються конфігурацією бекенду. Контракт про них нічого не каже, і клієнт про них не знає.
 - Маршрут лишається у своїй групі (вона дає middleware і ліміти). Роутер на старті перевіряє, що шлях контракту починається з префікса групи: контракт `/admin/users` у групі `auth` зупиняє запуск.
@@ -138,9 +138,10 @@ export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts
 - **Лише e2e-тести.** Ловлять розбіжність тільки на покритих сценаріях і пізно.
 - **Перевантаження `defineRoute({ contract })`.** Відхилено на прототипі: `Parameters<typeof defineRoute>` у наявних тестах почав виводитися з іншої сигнатури. Окрема функція простіша в типах, і маршрути з контрактом легко знайти.
 
-## Цільовий стан (рішення C1.R, 2026-11-11)
+## Цільовий стан (рішення C1.R, 2026-11-11; досягнуто в feat-170)
 
-Власник прийняв пілот і перенесення решти маршрутів (C4) з такою кінцевою точкою:
+Власник прийняв пілот і перенесення решти маршрутів (C4) з такою кінцевою точкою. Усі три пункти
+виконано: C7 (#522), C4.1–C4.5 (#524–#532), C8 (#534), C5b (feat-170).
 
 1. **Контракт — єдиний спосіб оголосити маршрут.** Коли старих маршрутів не лишиться (C5b),
    `defineRoute` без контракту видаляється, а `defineContractRoute` стає `defineRoute`.
@@ -161,5 +162,5 @@ export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts
 - Розбіжність між клієнтом і сервером у методі, шляху, тілі, параметрах чи формі відповіді стає помилкою `pnpm typecheck`.
 - Типи гарантують форму даних, а не поведінку: логічні дефекти (наприклад, загублений `?redirect=`) вони не ловлять.
 - Нова фіча бекенду додає контракт у `shared/contracts`; сторінки `documentation/backend/` про маршрути й додавання фічі оновлюються в пілоті.
-- До завершення міграції (C4) співіснують `defineRoute` і `defineContractRoute`, `baseApi.http` і `callApi`. Правило ESLint забороняє нові прямі виклики `baseApi.http`; наявні — у списку винятків, який скорочується з кожною групою.
+- Усі HTTP-маршрути оголошено через контракти, усі виклики фронтенду йдуть через `callApi` / `contractUrl`. Прямий `baseApi.http` / `baseApi.upload` поза `utils/api-client.ts` — помилка `pnpm lint`, маршрут без контракту — падіння `route-contracts.spec.ts`. Перший прогін цього тесту знайшов `POST /auth/oauth/email/resend` без схеми тіла: тепер у нього схема порожньої форми, як в інших POST без даних.
 - WebSocket (запити, відповіді, broadcast-події, кореляція) — окремий дизайн (C6).

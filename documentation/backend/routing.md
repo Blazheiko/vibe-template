@@ -4,60 +4,123 @@
 
 ## Маршрут — єдине джерело істини
 
-Усе, що бекенд знає про ендпоінт, записано **в одному об'єкті маршруту**. Окремого файлу з правами доступу, окремого опису API чи окремої реєстрації схем немає: з цього об'єкта все виводиться автоматично.
+Усе, що бекенд знає про ендпоінт, записано у трьох місцях, які звіряє компілятор: **контракт** у `shared/contracts` (метод, шлях, типи тіла, query й відповіді), **запис реєстру схем** у бекенді (ArkType-схеми тіла, query й відповіді цього контракту) і **об'єкт маршруту** в `http-routes.ts` (обробник, middleware, ліміти). Окремого файлу з правами доступу чи окремого опису API немає: з цих трьох місць усе виводиться автоматично.
 
 | Що                             | Звідки береться                                                                                                               |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| URL і HTTP-метод               | `url`, `method` + `prefix` груп + `API_PATH_PREFIX`                                                                           |
+| URL і HTTP-метод               | `method` і `path` контракту + `API_PATH_PREFIX`; префікс групи має бути початком `path`                                       |
 | Хто має доступ                 | `middlewares` маршруту і всіх його груп                                                                                       |
-| Перевірка тіла і query         | `validator`, `queryValidator`, `queryAllowExtra`, `queryArrays` — під час виконання                                           |
+| Перевірка тіла і query         | схеми `body` і `query` запису реєстру, `queryAllowExtra`, `queryArrays` маршруту — під час виконання                          |
 | Типи `payload` і `query`       | TypeScript виводить їх з тих самих схем у сигнатуру `handler` — під час компіляції                                            |
-| Параметри шляху (`:id`)        | роутер читає їх з `url`                                                                                                       |
-| Які `Content-Type` приймаються | `allowedContentTypes` (за замовчуванням лише JSON)                                                                            |
+| Параметри шляху (`:id`)        | роутер читає їх з `path` контракту                                                                                            |
+| Які `Content-Type` приймаються | `allowedContentTypes` (за замовчуванням лише JSON; для multipart-контракту — лише `multipart`)                                |
 | Ліміт частоти запитів          | `rateLimit` маршруту або групи                                                                                                |
 | Документація API               | `GET /<prefix>/doc/routes` і [API Playground](/playground/) серіалізують ті самі об'єкти: URL, метод, middleware, схеми, опис |
 
-Тому правило просте: **щоб змінити поведінку ендпоінту, змініть його маршрут.** Додали `auth_guard` — маршрут закрито і це одразу видно в playground. Змінили схему в `validator` — змінилися і перевірка на сервері, і тип `payload` у контролері, і опис у `/doc/routes`. Розбіжності між «що написано в документації» і «що робить сервер» тут неможливі, бо це один і той самий об'єкт.
+Тому правило просте: **щоб змінити поведінку ендпоінту, змініть його маршрут, контракт або запис реєстру.** Додали `auth_guard` — маршрут закрито і це одразу видно в playground. Змінили схему тіла в записі реєстру — змінилися і перевірка на сервері, і тип `payload` у контролері, і опис у `/doc/routes`, а якщо вхід схеми розійшовся з типом тіла контракту, `pnpm typecheck` назве це місце. Розбіжності між «що написано в документації» і «що робить сервер» тут неможливі, бо документацію серіалізовано з тих самих об'єктів.
 
-Схеми самі живуть у пакеті `shared`, тож вони — єдине джерело істини для контракту між фронтендом і бекендом, а маршрут — для того, як цей контракт підключено до сервера. Детальніше — [Звідки беруться типи](/guide/how-backend-works#звідки-беруться-типи-єдине-джерело-істини).
+Схеми самі живуть у пакеті `shared`, тож вони — єдине джерело істини для форми даних між фронтендом і бекендом, а маршрут — для того, як контракт підключено до сервера. Детальніше — [Звідки беруться типи](/guide/how-backend-works#звідки-беруться-типи-єдине-джерело-істини).
 
 ## HTTP-маршрути: `defineRoute`
 
-Хелпер `defineRoute` лежить у [`src/app/routing/define-route.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts). Він загортає ArkType-схеми в `defaultValidator`, застосовує політику зайвих ключів для query і виводить типи `payload`/`query` для handler-а. Тип об'єкта — `RouteConfig` у [`vendor/types/types.d.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts).
+Кожен HTTP-маршрут застосунку оголошено через **контракт** ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)). Інших способів оголосити маршрут у таблиці немає. Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }` (і `kind` для не-JSON), тож фронтенд імпортує його без схем і без ArkType.
+
+Новий маршрут складається з чотирьох частин:
+
+```ts
+// 1. packages/shared/src/contracts/push-subscriptions.ts — контракт
+export const pushSubscriptionContracts = {
+    create: contract<
+        typeof CreateSubscriptionInputSchema.inferIn,
+        undefined,
+        CreateSubscriptionResponse
+    >()('post', '/push-subscriptions'),
+    // …
+} as const
+
+// 2. packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts — схеми
+export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts, {
+    create: {
+        body: CreateSubscriptionInputSchema,
+        response: ResponseSchemas.CreateSubscriptionResponseSchema,
+    },
+    // …по запису на кожен контракт групи
+})
+
+// 3. packages/backend/src/app/routes/http-routes.ts — маршрут
+import { defineRoute } from '#app/routes/contract-schemas/index.js'
+
+defineRoute({
+    contract: pushSubscriptionContracts.create,
+    handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
+    middlewares: ['auth_guard'],
+})
+
+// 4. packages/frontend/src/utils/api.ts — виклик
+callApi(pushSubscriptionContracts.create, { body })
+```
+
+- **Контракт** оголошують у [`packages/shared/src/contracts/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/core.ts), по файлу на групу: `contract<Тіло, Query, Відповідь>()(метод, шлях)`. Шлях повний, від API-префікса (`/push-subscriptions/:subscriptionId`), а не відносно групи. Типи схем імпортуються через `import type`, тому в JS контракту немає жодної схеми. Група експортується з [`contracts/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/index.ts) (subpath `shared/contracts`).
+- **Схеми** маршрутів живуть в одному **реєстрі** [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts), по файлу на групу контрактів, а [`index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts) розгортає їх у `contractSchemaRegistry` за ключем `<метод> <шлях>` контракту. [`contractSchemas(group, { name: { body?, query?, response } })`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) вимагає запис для кожного контракту групи й звіряє його з типами контракту: вхід схеми `body` дорівнює типу тіла, ключі схеми `query` — ключам query контракту, успішні гілки схеми `response` — типу відповіді. Схема тіла іншого маршруту, пропущена чи зайва схема, інша схема відповіді, пропущений контракт — помилка `pnpm typecheck` з причиною в `__contractMismatch`. Реєстр лежить у бекенді, тож схеми не потрапляють у бандл фронтенду.
+- **`defineRoute`** експортує [`app/routes/contract-schemas/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts) (його будує `contractRouteDefiner(contractSchemaRegistry)`). Він бере `method` і `url` з контракту, а `validator`, `queryValidator` і `ResponseSchema` — із запису реєстру: схему тіла загортає в `defaultValidator`, до схеми query застосовує політику зайвих ключів. У маршруті ці поля не пишуться. Тип `payload` і `query` обробника — вихід (`infer`) схем запису. Контракт без запису — помилка компіляції, а на старті — `Route contract … has no entry in the schema registry`. Тип результату — `RouteItem` з [`vendor/types/types.d.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts).
+- Middleware, ліміти, `allowedContentTypes`, `maxBodySize` і група маршруту лишаються конфігурацією бекенду: контракт про них нічого не каже. Маршрут стоїть у групі, префікс якої є початком шляху контракту; інакше сервер не стартує (`Route contract /… is declared in the route group "/…"`).
+- На фронтенді [`callApi(contract, { params, query, body }, options)`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) викликає маршрут контракту поверх наявного транспорту (CSRF, шлюз сесії, `options` — `signal`, `csrfRecovery`, `sessionAfter`). Неправильне тіло, параметр шляху чи ключ query — помилка компіляції. Прямі виклики `baseApi.http` і `baseApi.upload` поза `utils/api-client.ts` забороняє правило ESLint у [`packages/frontend/eslint.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/eslint.config.ts).
+- `pnpm check:bundle-graph` (частина `make check`) перевіряє на графі модулів production-збірки, що у бандл фронтенду не потрапили схеми й ArkType.
+
+### Multipart і маршрути-переходи
+
+- `multipartContract<Поля, 'імʼя-файлу', Відповідь>()('post', шлях)` — тіло з текстових полів і файлів. Запис реєстру описує схему **полів**, файли читаються з `httpData.files`. `defineRoute` сам ставить `allowedContentTypes: ['multipart']`, `maxBodySize` лишається налаштуванням маршруту. На фронтенді `callApi(avatarContracts.upload, { body: { fields: {}, files: { avatar: blob } } })` збирає `FormData` і надсилає через `baseApi.upload` з тим самим CSRF-токеном і шлюзом сесії. Приклад з `http-routes.ts`:
 
 ```ts
 defineRoute({
-    url: '/upload',
-    method: 'post',
+    contract: avatarContracts.upload,
     handler: AvatarController.uploadAvatar.bind(AvatarController),
-    validator: EmptyFormInputSchema,
-    allowedContentTypes: ['multipart'],
-    ResponseSchema: ResponseSchemas.UploadAvatarResponseSchema,
+    maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
     description: 'Upload user avatar',
 }),
 ```
 
-Так маршрут завантаження аватара виглядав до контрактів: він приймає `multipart/form-data` замість JSON. Зараз його оголошено через контракт (див. [Маршрути з контрактом](#маршрути-з-контрактом-definecontractroute)); поля нижче — ті самі, що бере й `defineContractRoute`.
+- `navigationContract<Query, Відповідь>()(шлях)` — GET, який браузер не завантажує через `fetch`, а відкриває: редірект OAuth (`/auth/oauth/:provider/redirect`, `callback`) чи файл (`/support/screenshot/:articleId` для `<img>`). `callApi` такий контракт не приймає; [`contractUrl(contract, { params, query })`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) будує його адресу.
+
+### Маршрут без контракту: лише в тестах
+
+Хелпер, що будує маршрут зі схем без контракту, називається `defineRawRoute` і лежить у [`src/app/routing/define-raw-route.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-raw-route.ts). Він приймає `url`, `method`, `validator`, `queryValidator` і `ResponseSchema` напряму і потрібен лише тестам HTTP-машинерії (методи з тілом, ліміти, валідація, кеш у `src/vendor/start/*.spec.ts`), які будують власні маршрути.
+
+- Правило ESLint `no-restricted-imports` у кореневому [`eslint.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/eslint.config.ts) забороняє імпорт `#app/routing/define-raw-route.js` у `packages/backend/src` поза `*.spec.ts`/`*.test.ts`.
+- Тест [`route-contracts.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/route-contracts.spec.ts) проходить усю таблицю `http-routes.ts` і падає, якщо маршрут не має контракту, запису в реєстрі, схеми відповіді або, для `post`/`put`/`patch`, схеми тіла; а також якщо в реєстрі є запис без маршруту.
 
 ## Усі поля маршруту
 
+Поля, які приймає `defineRoute`. Тип — `RouteConfig` у [`vendor/types/types.d.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts) без полів, що їх дає контракт і реєстр.
+
 ### Обов'язкові
 
-| Поле      | Тип                                               | Що робить                                                                                                                                                                                                                                |
-| --------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`     | `string`                                          | Шлях відносно префікса групи. Сегменти `:name` стають параметрами шляху: роутер збирає їх у `parametersKey`, а значення приходять у `httpData.params` (`/:provider/callback` → `params.provider`). Скісні риски на краях нормалізуються. |
-| `method`  | `'get' \| 'post' \| 'put' \| 'patch' \| 'delete'` | HTTP-метод. `delete` всередині перетворюється на `del` (так його називає uWebSockets.js). Чи читається тіло, залежить від методу — див. [нижче](#методи-і-тіло-запиту).                                                                  |
-| `handler` | `(context) => Payload \| Promise<Payload>`        | Метод контролера, прив'язаний через `.bind(Controller)`. Тип `context.httpData.payload` виводиться з `validator`, тип `context.httpData.query` — з `queryValidator`. Повернене значення стає тілом відповіді.                            |
+| Поле       | Тип                                        | Що робить                                                                                                                                                                                                                     |
+| ---------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract` | контракт з `shared/contracts`              | Дає метод і шлях маршруту та ключ запису в реєстрі схем. Сегменти `:name` шляху стають параметрами: роутер збирає їх у `parametersKey`, а значення приходять у `httpData.params` (`/:provider/callback` → `params.provider`). |
+| `handler`  | `(context) => Payload \| Promise<Payload>` | Метод контролера, прив'язаний через `.bind(Controller)`. Тип `context.httpData.payload` виводиться зі схеми `body` запису реєстру, тип `context.httpData.query` — зі схеми `query`. Повернене значення стає тілом відповіді.  |
 
-### Валідація запиту
+### Що дає контракт і реєстр
 
-| Поле                  | Тип                 | За замовчуванням | Що робить                                                                                                                                                                                                                                                                                                                            |
-| --------------------- | ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `validator`           | ArkType-схема       | —                | Схема тіла запиту з `shared/schemas`. Дозволена лише для `post`/`put`/`patch`: на `get`/`delete` це помилка типів у `defineRoute` і помилка на старті. Невалідне тіло → `422`. Без `validator` тіло не валідується і `payload` має тип `unknown`.                                                                                    |
-| `queryValidator`      | ArkType-схема       | —                | Схема query-рядка. Якщо не задано, `httpData.query === null`, і читати будь-яке поле — помилка TypeScript. Query перевіряється до читання тіла.                                                                                                                                                                                      |
-| `queryAllowExtra`     | `boolean`           | `false`          | `false` — суворо: незадекларований ключ → `422` (`onUndeclaredKey('reject')`). `true` — зайві ключі пропускаються, але **видаляються** і до контролера не доходять. Потрібно, коли query формує стороння система (OAuth-callback).                                                                                                   |
-| `queryArrays`         | `readonly string[]` | `[]`             | Ключі, які можуть повторюватися (`?tag=a&tag=b`). Вони збираються в `string[]` через `getAll`. Будь-який інший ключ, що трапився двічі, → `422`.                                                                                                                                                                                     |
-| `allowedContentTypes` | `BodyKind[]`        | `['json']`       | Які типи тіла приймає маршрут: `json`, `multipart`, `urlencoded`, `text`, `octet`, `other`. Інший `Content-Type` → `415`. Від типу залежить і ліміт розміру тіла (`MAX_JSON_BODY_SIZE`, `MAX_MULTIPART_BODY_SIZE` тощо, див. [Життєвий цикл запиту](/backend/request-lifecycle)). Завантаження аватара використовує `['multipart']`. |
+Ці поля є в `RouteConfig`, але в `defineRoute` їх **не пишуть**: `defineRoute` заповнює їх сам, а TypeScript не прийме їх у маршруті.
+
+| Поле             | Звідки                    | Що робить                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`            | `path` контракту          | Повний шлях під API-префіксом; префікс групи має бути його початком. Скісні риски на краях нормалізуються.                                                                                                                                                                                                                                                                                                                                  |
+| `method`         | `method` контракту        | `'get' \| 'post' \| 'put' \| 'patch' \| 'delete'`. `delete` всередині перетворюється на `del` (так його називає uWebSockets.js). Чи читається тіло, залежить від методу — див. [нижче](#методи-і-тіло-запиту).                                                                                                                                                                                                                              |
+| `validator`      | `body` запису реєстру     | Схема тіла з `shared/schemas`, загорнута в `defaultValidator`. Лише для `post`/`put`/`patch`: контракти `get`/`delete` оголошують тіло `undefined`, а маршрут `get`/`delete` зі схемою тіла зупиняє старт. Невалідне тіло → `422`.                                                                                                                                                                                                          |
+| `queryValidator` | `query` запису реєстру    | Схема query-рядка з політикою зайвих ключів (див. `queryAllowExtra`). Якщо в контракту немає query, `httpData.query === null`, і читати будь-яке поле — помилка TypeScript. Query перевіряється до читання тіла.                                                                                                                                                                                                                            |
+| `ResponseSchema` | `response` запису реєстру | Схема відповіді з `shared/responses`. Потрапляє в `/doc/routes` (`outputSchema`) і в playground, а під час виконання вона працює як allow-list: невідповідність — `500`, зайві поля — `500` у `strict` і вирізаються в `log` (`RESPONSE_VALIDATION_CONTRACT`, див. [Перевірка відповідей](/backend/response-validation)). Тип результату хендлера TypeScript звіряє з цією схемою — див. [Тип відповіді хендлера](#тип-відповіді-хендлера). |
+| `contractPath`   | `path` контракту          | Службове: за ним роутер перевіряє префікс групи, а `route-contracts.spec.ts` — наявність запису в реєстрі.                                                                                                                                                                                                                                                                                                                                  |
+
+### Запит
+
+| Поле                  | Тип                 | За замовчуванням | Що робить                                                                                                                                                                                                                                                                                                                                            |
+| --------------------- | ------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `queryAllowExtra`     | `boolean`           | `false`          | `false` — суворо: незадекларований ключ → `422` (`onUndeclaredKey('reject')`). `true` — зайві ключі пропускаються, але **видаляються** і до контролера не доходять. Потрібно, коли query формує стороння система (OAuth-callback).                                                                                                                   |
+| `queryArrays`         | `readonly string[]` | `[]`             | Ключі, які можуть повторюватися (`?tag=a&tag=b`). Вони збираються в `string[]` через `getAll`. Будь-який інший ключ, що трапився двічі, → `422`.                                                                                                                                                                                                     |
+| `allowedContentTypes` | `BodyKind[]`        | `['json']`       | Які типи тіла приймає маршрут: `json`, `multipart`, `urlencoded`, `text`, `octet`, `other`. Інший `Content-Type` → `415`. Від типу залежить і ліміт розміру тіла (`MAX_JSON_BODY_SIZE`, `MAX_MULTIPART_BODY_SIZE` тощо, див. [Життєвий цикл запиту](/backend/request-lifecycle)). Для multipart-контракту `defineRoute` ставить `['multipart']` сам. |
+| `maxBodySize`         | `number`            | ліміт типу тіла  | Власний ліміт розміру тіла маршруту в байтах. Завантаження аватара і скриншотів бази знань задають його через `multipartBodyLimit(...)` з [`upload-limits.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/upload-limits.ts).                                                                      |
 
 ### Доступ і обмеження
 
@@ -68,10 +131,9 @@ defineRoute({
 
 ### Документація
 
-| Поле             | Тип           | Що робить                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ResponseSchema` | ArkType-схема | Схема відповіді з `shared/responses`. Потрапляє в `/doc/routes` (`outputSchema`) і в playground, а під час виконання вона працює як allow-list: невідповідність — `500`, зайві поля — `500` у `strict` і вирізаються в `log` (`RESPONSE_VALIDATION_CONTRACT`, див. [Перевірка відповідей](/backend/response-validation)). Тип результату хендлера TypeScript звіряє з цією схемою — див. [Тип відповіді хендлера](#тип-відповіді-хендлера). |
-| `description`    | `string`      | Короткий опис для `/doc/routes` і playground.                                                                                                                                                                                                                                                                                                                                                                                               |
+| Поле          | Тип      | Що робить                                     |
+| ------------- | -------- | --------------------------------------------- |
+| `description` | `string` | Короткий опис для `/doc/routes` і playground. |
 
 ### Службові поля
 
@@ -79,15 +141,15 @@ defineRoute({
 
 | Поле             | Хто заповнює                                                                        |
 | ---------------- | ----------------------------------------------------------------------------------- |
-| `parametersKey`  | роутер — список імен `:param` з `url`                                               |
+| `parametersKey`  | роутер — список імен `:param` зі шляху                                              |
 | `groupRateLimit` | роутер — ліміт групи, успадкований маршрутом                                        |
 | `requestBody`    | ніхто: застаріле поле старого формату опису запиту, роутер і сервер його не читають |
 
 ## Тип відповіді хендлера
 
-Якщо маршрут оголошує `ResponseSchema`, [`defineRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) і [`defineWsRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts) вимагають, щоб хендлер повертав **вхідний** тип схеми (`inferIn`) або `Promise` від нього ([route-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/route-response.ts)). Це те саме значення, яке [перевірка відповідей](/backend/response-validation) подає у схему під час виконання. Розбіжність — помилка `tsc` на рядку `handler:` маршруту, на всіх маршрутах, а не лише на викликаних, і також для відповідей без перевірки під час виконання (3xx, 204, 205).
+[`defineRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) і [`defineWsRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts) вимагають, щоб хендлер повертав **вхідний** тип схеми відповіді (`inferIn`) або `Promise` від нього ([route-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/route-response.ts)). Для HTTP-маршруту це схема `response` запису реєстру, для WS — `ResponseSchema` маршруту. Це те саме значення, яке [перевірка відповідей](/backend/response-validation) подає у схему під час виконання. Розбіжність — помилка `tsc` на рядку `handler:` маршруту, на всіх маршрутах, а не лише на викликаних, і також для відповідей без перевірки під час виконання (3xx, 204, 205).
 
-Без `ResponseSchema` хендлер повертає будь-який `Payload`, як і раніше.
+Без схеми відповіді (можливо лише у WS-маршруті або в `defineRawRoute` у тестах) хендлер повертає будь-який `Payload`.
 
 Межі:
 
@@ -110,64 +172,17 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 Читати варто з кінця: останні рядки називають поле, що не збіглося. Union з `CanonicalErrorResponseSchema` у середині повідомлення розгортається повністю.
 
-## Маршрути з контрактом: `defineContractRoute`
-
-Усі HTTP-маршрути шаблону оголошено через **контракт** з `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)). Контракт — це метод, шлях під API-префіксом і три типи (тіло, query, відповідь); під час виконання він лише `{ method, path }` (і `kind` для не-JSON), тож фронтенд імпортує його без схем і без ArkType.
-
-```ts
-// packages/shared/src/contracts/push-subscriptions.ts
-export const pushSubscriptionContracts = {
-    create: contract<
-        typeof CreateSubscriptionInputSchema.inferIn,
-        undefined,
-        CreateSubscriptionResponse
-    >()('post', '/push-subscriptions'),
-}
-
-// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
-export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts, {
-    create: {
-        body: CreateSubscriptionInputSchema,
-        response: ResponseSchemas.CreateSubscriptionResponseSchema,
-    },
-    // …one entry per contract of the group
-})
-
-// packages/backend/src/app/routes/http-routes.ts
-defineContractRoute({
-    contract: pushSubscriptionContracts.create,
-    handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
-    middlewares: ['auth_guard'],
-})
-
-// packages/frontend/src/utils/api.ts
-callApi(pushSubscriptionContracts.create, { body })
-```
-
-- Схеми маршрутів з контрактом живуть в одному **реєстрі** [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts), по файлу на групу контрактів, за ключем `<метод> <шлях>` контракту. [`contractSchemas`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) вимагає запис для кожного контракту групи й звіряє його з типами контракту: схема тіла іншого маршруту, пропущена чи зайва схема, інша схема відповіді, пропущений контракт — помилка `pnpm typecheck`. Реєстр лежить у бекенді, тож схеми не потрапляють у бандл фронтенду.
-- `defineContractRoute` бере `method` і `url` з контракту, а `validator`, `queryValidator` і `ResponseSchema` — із запису реєстру; у таблиці маршрутів вони не вказуються. Тип `payload` і `query` обробника — вихід схем запису. Контракт без запису — помилка компіляції, а на старті — `Route contract … has no entry in the schema registry`.
-- Middleware, ліміти, `allowedContentTypes`, `maxBodySize` і група маршруту лишаються конфігурацією бекенду. Маршрут стоїть у групі, префікс якої є початком шляху контракту; інакше сервер не стартує.
-- На фронтенді [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) викликає маршрут контракту поверх наявного транспорту (CSRF, шлюз сесії). Неправильне тіло, параметр шляху чи ключ query — помилка компіляції. Прямі виклики `baseApi.http` поза `utils/api.ts` заборонено правилом ESLint; у самому `utils/api.ts` їхню кількість тримає тест [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
-- `pnpm check:bundle-graph` (частина `make check`) перевіряє на графі модулів production-збірки, що у бандл фронтенду не потрапили схеми й ArkType.
-
-### Multipart і маршрути-переходи
-
-- `multipartContract<Поля, 'імʼя-файлу', Відповідь>()('post', шлях)` — тіло з текстових полів і файлів. Запис реєстру описує схему **полів**; маршрут сам приймає лише `multipart` (`allowedContentTypes` ставить `defineContractRoute`), `maxBodySize` лишається налаштуванням маршруту. На фронтенді `callApi(avatarContracts.upload, { body: { fields: {}, files: { avatar: blob } } })` збирає `FormData` і надсилає через `baseApi.upload` з тим самим CSRF-токеном і шлюзом сесії.
-- `navigationContract<Query, Відповідь>()(шлях)` — GET, який браузер не завантажує через `fetch`, а відкриває: редірект OAuth (`/auth/oauth/:provider/redirect`, `callback`) чи файл (`/support/screenshot/:articleId` для `<img>`). `callApi` такий контракт не приймає; [`contractUrl`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) будує його адресу.
-
-Старий `defineRoute` без контракту ще є в коді, але таблиця маршрутів його більше не використовує; його прибирає наступний крок плану (C5b).
-
 ## Методи і тіло запиту
 
-| Метод                         | Тіло читається | `validator`                                                   |
-| ----------------------------- | -------------- | ------------------------------------------------------------- |
-| `post`, `put`, `patch`        | так            | дозволено                                                     |
-| `get`, `delete` (`del`)       | ні             | заборонено: помилка типів у `defineRoute` і помилка на старті |
-| WS-маршрути (`defineWsRoute`) | —              | дозволено (payload повідомлення)                              |
+| Метод                         | Тіло читається | Схема тіла (`body` у реєстрі, `validator`)                                |
+| ----------------------------- | -------------- | ------------------------------------------------------------------------- |
+| `post`, `put`, `patch`        | так            | дозволено; для маршруту з таблиці обов'язкова (`route-contracts.spec.ts`) |
+| `get`, `delete` (`del`)       | ні             | заборонено: помилка на старті (і помилка типів у `defineRawRoute`)        |
+| WS-маршрути (`defineWsRoute`) | —              | дозволено (payload повідомлення)                                          |
 
 - Для часткового оновлення використовуйте `patch`.
-- `DELETE` тіло не читає: за [RFC 9110 §9.3.5](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.5) вміст `DELETE` не має загальновизначеної семантики, і частина проксі його відкидає. Ідентифікатор передавайте через `:param` (`url: "/:id"`), додаткові дані — через `queryValidator`.
-- Перевірку на старті робить `routesHandler` ([router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts)): маршрут `get`/`delete` з `validator`, оголошений в обхід `defineRoute`, зупиняє запуск з помилкою `Route DELETE … declares a body validator…`. Множини методів — у [body-methods.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/body-methods.ts).
+- `DELETE` тіло не читає: за [RFC 9110 §9.3.5](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.5) вміст `DELETE` не має загальновизначеної семантики, і частина проксі його відкидає. Ідентифікатор передавайте через `:param` у шляху контракту (`'/notes/:id'`), додаткові дані — через query контракту і схему `query` в реєстрі.
+- Перевірку на старті робить `routesHandler` ([router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts)): маршрут `get`/`delete` з `validator`, оголошений в обхід типів, зупиняє запуск з помилкою `Route DELETE … declares a body validator…`. Множини методів — у [body-methods.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/body-methods.ts).
 - Як обробляється запит без `Content-Type`, див. [Життєвий цикл запиту](/backend/request-lifecycle#запит-без-content-type).
 
 ## Групи та префікси
@@ -177,7 +192,7 @@ callApi(pushSubscriptionContracts.create, { body })
 | Поле          | Обов'язкове | Що робить                                                                                        |
 | ------------- | ----------- | ------------------------------------------------------------------------------------------------ |
 | `group`       | так         | масив маршрутів **або вкладених груп**                                                           |
-| `prefix`      | так         | сегмент шляху, що додається до `url` усіх маршрутів групи                                        |
+| `prefix`      | так         | сегмент шляху, з якого мають починатися шляхи контрактів усіх маршрутів групи                    |
 | `middlewares` | ні          | middleware для всіх маршрутів групи; виконуються перед middleware самого маршруту                |
 | `rateLimit`   | ні          | ліміт для кожного маршруту групи, якщо в маршруту немає власного; передається і вкладеним групам |
 | `description` | ні          | опис групи                                                                                       |
@@ -186,7 +201,7 @@ callApi(pushSubscriptionContracts.create, { body })
 
 ```ts
 {
-  group: [ /* defineRoute(...) */ ],
+  group: [ /* defineRoute({ contract: ..., handler: ... }) */ ],
   description: "Admin user and online routes",
   middlewares: ["session_web", "csrf_guard", "auth_guard", "admin_guard"],
   prefix: "admin",
@@ -195,7 +210,7 @@ callApi(pushSubscriptionContracts.create, { body })
 
 Правила злиття (див. `router.ts`):
 
-- префікс групи додається до `url` маршруту, а до всього — глобальний префікс `appConfig.pathPrefix` з env `API_PATH_PREFIX` (за замовчуванням `api`, [`src/config/app.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts)). Отже `/logout` у групі `auth` стає `/api/auth/logout`;
+- шлях маршруту — це `path` його контракту, вже з префіксом групи: роутер не додає префікс, а перевіряє, що `path` з нього починається (`/push-subscriptions/:subscriptionId` у групі `push-subscriptions`). До всього додається глобальний префікс `appConfig.pathPrefix` з env `API_PATH_PREFIX` (за замовчуванням `api`, [`src/config/app.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts)). Отже контракт `/auth/logout` у групі `auth` стає `/api/auth/logout`;
 - middleware групи йдуть **перед** middleware маршруту (`middlewares.concat(route.middlewares)`);
 - `rateLimit` маршруту має пріоритет над `rateLimit` групи (`route.rateLimit ?? groupRateLimit`). Лічильник ведеться окремо для кожного маршруту (ключ IP + URL), тож ліміт групи діє на кожен її маршрут окремо, а не на групу в сумі. Поверх цього всі API-запити з IP обмежує глобальний L1, див. [Обмеження частоти запитів](/backend/security#обмеження-частоти-запитів).
 

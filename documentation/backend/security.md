@@ -101,15 +101,15 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 
 ### Як додати ліміт
 
-Захист процесу — `rateLimit` на маршруті:
+Захист процесу — `rateLimit` на маршруті (приклад з [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts); контракт маршруту про ліміти нічого не каже):
 
 ```ts
 defineRoute({
-    url: '/report/export',
-    method: 'post',
-    handler: ReportController.export.bind(ReportController),
-    rateLimit: { windowMs: 60_000, maxRequests: 5 },
-})
+    contract: authContracts.forgotPassword,
+    handler: AuthController.forgotPassword.bind(AuthController),
+    description: 'Request password reset email',
+    rateLimit: { windowMs: 60_000, maxRequests: 3 },
+}),
 ```
 
 Чутлива дія — політика в реєстрі, виклик у сервісі й рядок у таблиці вище:

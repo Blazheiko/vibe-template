@@ -1,6 +1,6 @@
 # Як додати фічу в бекенд
 
-Цей туторіал крок за кроком додає новий ресурс **`notes`** (нотатки поточного користувача) з двома ендпоінтами, `GET /api/notes` і `POST /api/notes`, і проходить усі шари архітектури проєкту: shared-схеми → Drizzle-таблиця й міграція → repository → transformer → service → controller → реєстрація маршруту → unit-тест на Vitest.
+Цей туторіал крок за кроком додає новий ресурс **`notes`** (нотатки поточного користувача) з двома ендпоінтами, `GET /api/notes` і `POST /api/notes`, і проходить усі шари архітектури проєкту: shared-схеми → Drizzle-таблиця й міграція → repository → transformer → service → controller → контракт і реєстрація маршруту → unit-тест на Vitest.
 
 ::: info Перед читанням
 Пройдіть вправу [Перший маршрут](/guide/first-endpoint): там ті самі шари (схема → service → controller → route) показано без бази даних. Цей туторіал додає до них таблицю, міграцію, repository, transformer і захист маршруту сесією.
@@ -28,7 +28,12 @@
 | Transformer (barrel) | `packages/backend/src/app/transformers/index.ts`                    | редагування |
 | Service              | `packages/backend/src/app/services/note/note-service.ts`            | новий       |
 | Controller           | `packages/backend/src/app/controllers/http/note/note-controller.ts` | новий       |
+| Shared: контракт     | `packages/shared/src/contracts/notes.ts`                            | новий       |
+| Shared: контракт     | `packages/shared/src/contracts/index.ts`                            | редагування |
+| Реєстр схем          | `packages/backend/src/app/routes/contract-schemas/notes.ts`         | новий       |
+| Реєстр схем          | `packages/backend/src/app/routes/contract-schemas/index.ts`         | редагування |
 | Маршрути             | `packages/backend/src/app/routes/http-routes.ts`                    | редагування |
+| Виклик з фронтенду   | `packages/frontend/src/utils/api.ts`                                | редагування |
 | Тест                 | `packages/backend/src/app/services/note/note-service.spec.ts`       | новий       |
 
 ## Крок 1. Схема вхідних даних у `shared`
@@ -294,56 +299,113 @@ export default {
 
 Якщо дії нема чого повертати (наприклад, видалення), handler повертає `null`: відповідь буде `204 No Content` без тіла, а явно заданий 201 чи 202 збережеться. Деталі — [Відповідь без даних](/backend/request-lifecycle#відповідь-без-даних).
 
-## Крок 8. Реєстрація маршрутів
+## Крок 8. Контракт і реєстрація маршрутів
 
-У [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) додайте імпорт контролера (поруч з іншими) і допишіть `CreateNoteInputSchema` до наявного імпорту з `shared/schemas`:
+Кожен HTTP-маршрут застосунку оголошено через контракт ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md), [Маршрутизація](/backend/routing#http-маршрути-defineroute)). Хелпер маршруту без контракту (`defineRawRoute`) у коді застосунку забороняє ESLint, а маршрут без контракту чи без запису в реєстрі не пройде тест [`route-contracts.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/route-contracts.spec.ts). Для нотаток потрібні три частини: контракт у `shared`, запис у реєстрі схем і самі маршрути.
+
+**Контракт.** Він описує метод, повний шлях під API-префіксом і типи тіла, query й відповіді. Схеми імпортуються лише як типи (`import type`), тож у браузерний бандл вони не потрапляють. Зразок — [push-subscriptions.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/push-subscriptions.ts):
+
+```ts
+// packages/shared/src/contracts/notes.ts
+import type { CreateNoteInputSchema } from '../schemas/note/create-note.js'
+import type { CreateNoteResponse, GetNotesResponse } from '../responses/note-controller.js'
+import { contract } from './core.js'
+
+export const noteContracts = {
+    list: contract<undefined, undefined, GetNotesResponse>()('get', '/notes'),
+    create: contract<typeof CreateNoteInputSchema.inferIn, undefined, CreateNoteResponse>()(
+        'post',
+        '/notes',
+    ),
+} as const
+```
+
+Експортуйте групу з [packages/shared/src/contracts/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/index.ts) (звідти її імпортують як `shared/contracts`) і знову перезберіть `shared`:
+
+```ts
+export { noteContracts } from './notes.js'
+```
+
+**Реєстр схем.** Схеми маршрутів живуть у бекенді, по файлу на групу контрактів. [`contractSchemas`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) вимагає запис для кожного контракту групи і звіряє його з типами контракту: якщо вхід `CreateNoteInputSchema` розійдеться з типом тіла контракту або забудете запис для `list`, впаде `pnpm typecheck`.
+
+```ts
+// packages/backend/src/app/routes/contract-schemas/notes.ts
+import { CreateNoteInputSchema } from 'shared/schemas'
+import * as ResponseSchemas from 'shared/responses'
+import { noteContracts } from 'shared/contracts'
+import { contractSchemas } from '#app/routing/contract-registry.js'
+
+export const noteSchemas = contractSchemas(noteContracts, {
+    list: { response: ResponseSchemas.GetNotesResponseSchema },
+    create: {
+        body: CreateNoteInputSchema,
+        response: ResponseSchemas.CreateNoteResponseSchema,
+    },
+})
+```
+
+Розгорніть групу в `contractSchemaRegistry` у [contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts):
+
+```ts
+import { noteSchemas } from './notes.js'
+// ...
+export const contractSchemaRegistry = {
+    // ...
+    ...noteSchemas,
+}
+```
+
+**Маршрути.** У [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) `defineRoute` уже імпортовано з `#app/routes/contract-schemas/index.js`. Додайте імпорт контролера (поруч з іншими) і допишіть `noteContracts` до наявного імпорту з `shared/contracts`:
 
 ```ts
 import NoteController from '#app/controllers/http/note/note-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
 // ...
 import {
     // ...
-    PushSubscriptionTestInputSchema,
-    CreateNoteInputSchema,
-} from 'shared/schemas'
+    supportContracts,
+    noteContracts,
+} from 'shared/contracts'
 ```
 
-Потім додайте групу останнім елементом масиву, перед `] satisfies routeList;`:
+Потім додайте групу останнім елементом масиву, перед `] satisfies routeList`:
 
 ```ts
-  {
-    group: [
-      defineRoute({
-        url: "/",
-        method: "get",
-        handler: NoteController.getNotes.bind(NoteController),
-        ResponseSchema: ResponseSchemas.GetNotesResponseSchema,
-        description: "List notes of the current user",
-      }),
-      defineRoute({
-        url: "/",
-        method: "post",
-        handler: NoteController.createNote.bind(NoteController),
-        validator: CreateNoteInputSchema,
-        ResponseSchema: ResponseSchemas.CreateNoteResponseSchema,
-        description: "Create a note for the current user",
-      }),
-    ],
-    description: "Note routes",
-    middlewares: ["session_web", "csrf_guard", "auth_guard"],
-    prefix: "notes",
-  },
-] satisfies routeList;
+    {
+        group: [
+            defineRoute({
+                contract: noteContracts.list,
+                handler: NoteController.getNotes.bind(NoteController),
+                description: 'List notes of the current user',
+            }),
+            defineRoute({
+                contract: noteContracts.create,
+                handler: NoteController.createNote.bind(NoteController),
+                description: 'Create a note for the current user',
+            }),
+        ],
+        description: 'Note routes',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'notes',
+    },
+] satisfies routeList
 ```
 
-[`defineRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) виводить тип payload з `validator`, тому `HttpContext<CreateNoteInput>` у контролері перевіряє компілятор. Результат контролера він звіряє з `ResponseSchema`: якщо `create` поверне не `CreateNoteResponse`, `tsc` впаде на рядку `handler:`. Анотацію `Promise<CreateNoteResponse>` у контролері лишайте — без неї літерали на кшталт `'success'` розширюються до `string` ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Набір middleware `session_web` + `csrf_guard` + `auth_guard` такий самий, як у групи `avatar`. Отже, `POST` вимагає сесії й CSRF-токена (деталі — у [Маршрутизації](/backend/routing) і [Middleware](/backend/middlewares)).
+`url`, `method`, `validator` і `ResponseSchema` у маршруті не пишуться: метод і шлях `defineRoute` бере з контракту, схеми — із запису реєстру. Шлях контракту `/notes` має починатися з префікса групи `notes`, інакше сервер не стартує. Тип payload обробника — вихід схеми `body`, тому `HttpContext<CreateNoteInput>` у контролері перевіряє компілятор. Результат контролера він звіряє зі схемою `response`: якщо `create` поверне не `CreateNoteResponse`, `tsc` впаде на рядку `handler:`. Анотацію `Promise<CreateNoteResponse>` у контролері лишайте — без неї літерали на кшталт `'success'` розширюються до `string` ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Набір middleware `session_web` + `csrf_guard` + `auth_guard` такий самий, як у групи `avatar`. Отже, `POST` вимагає сесії й CSRF-токена (деталі — у [Маршрутизації](/backend/routing) і [Middleware](/backend/middlewares)).
 
-Якщо додаєте оновлення або видалення нотатки: для часткового оновлення беріть `method: "patch"` з `validator`, а для видалення — `method: "delete"` з `url: "/:id"` і без `validator`, бо `DELETE` тіло не читає ([Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)).
+Якщо додаєте оновлення або видалення нотатки: для часткового оновлення оголосіть контракт `'patch'` з типом тіла і схемою `body` у реєстрі, а для видалення — контракт `'delete'` зі шляхом `'/notes/:id'` і без тіла, бо `DELETE` тіло не читає ([Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)).
 
-::: tip Контракти маршрутів
-Туторіал оголошує маршрути через `defineRoute`. Частина маршрутів шаблону вже має контракт у `shared/contracts` і оголошена через `defineContractRoute`, а її схеми записані в реєстрі `app/routes/contract-schemas/` (див. [Маршрути з контрактом](/backend/routing#маршрути-з-контрактом-definecontractroute)); решта переходить групами. Для нового ресурсу можна одразу додати контракт: тоді фронтенд викликає маршрут через `callApi` з перевіркою типів.
-:::
+**Виклик з фронтенду.** Фронтенд викликає маршрути лише через [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) (прямі `baseApi.http`/`baseApi.upload` поза `utils/api-client.ts` забороняє ESLint). Неправильне тіло чи зайве поле — помилка компіляції у фронтенді:
+
+```ts
+// packages/frontend/src/utils/api.ts
+import type { CreateNoteInput } from 'shared/schemas'
+import { noteContracts } from 'shared/contracts'
+
+export const noteApi = {
+    list: () => callApi(noteContracts.list),
+    create: (body: CreateNoteInput) => callApi(noteContracts.create, { body }),
+}
+```
 
 ## Крок 9. Тест сервісу
 
@@ -442,8 +504,8 @@ pnpm typecheck
 pnpm --filter backend test
 npx eslint packages/backend/src/app/services/note packages/backend/src/app/controllers/http/note \
   packages/backend/src/app/repositories/note packages/backend/src/app/transformers/note-transformer.ts \
-  packages/backend/src/app/routes/http-routes.ts packages/shared/src/schemas/note \
-  packages/shared/src/responses/note-controller.ts
+  packages/backend/src/app/routes packages/shared/src/schemas/note \
+  packages/shared/src/responses/note-controller.ts packages/shared/src/contracts/notes.ts
 ```
 
 ### Ручна перевірка: запити й відповіді
