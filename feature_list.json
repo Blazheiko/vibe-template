@@ -1541,8 +1541,8 @@
             "owner": "Blazheiko",
             "branch": "feat/online-history-pagination",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #493 (merge commit cdb2809). RED before the fix: 4 of 6 tests of services/admin/admin-pagination.pg.test.ts failed (101 history rows at limit=100: hasMore false and no cursor; limit=200 returned 100 rows; the admin user list had no cursor). The 99-row and 100-row cases were green and stay as regression tests. After the fix: backend test:pg 31 files / 272 tests passed, none skipped; make check (backend 2612, frontend 452, shared 26, playground 62); frontend test:e2e 88 passed including the new mocked scenario e2e/mock/admin-users.spec.ts; docs:build && docs:verify. Behaviour change: the admin user list is ordered by id descending instead of created_at descending. Not verified: the admin UI against the real backend with more than 100 users."
         },
         {
             "id": "feat-156",
@@ -1551,7 +1551,7 @@
             "owner": "Blazheiko",
             "branch": "feat/push-subscription-input-bounds",
             "dependencies": ["feat-147"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
