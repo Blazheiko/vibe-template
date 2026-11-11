@@ -1681,8 +1681,8 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-admin-monitoring",
             "dependencies": ["feat-172"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #524 (merge commit 07bc48a). Five admin monitoring routes on contracts through the schema registry: GET /admin/users-online, /admin/users-online/:id, /admin/history-online (query), /admin/usage/text (query), /admin/usage/stats. Three frontend calls on callApi (hand-built URLs and encodeURIComponent gone); DIRECT_HTTP_CALLS 36 -> 33. admin-query.spec.ts checks the same exact URLs. make check (backend 2656, frontend 499, shared 30, playground 111); backend test:pg 295; frontend test:e2e 92; docs:build && docs:verify. /admin/usage/* has no frontend caller."
         },
         {
             "id": "feat-170",
@@ -1721,7 +1721,7 @@
             "owner": "Blazheiko",
             "branch": "feat/contracts-knowledge-base",
             "dependencies": ["feat-169"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
