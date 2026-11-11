@@ -1571,8 +1571,8 @@
             "owner": "Blazheiko",
             "branch": "feat/playground-error-reporting",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #499 (merge commit 6251556). RED before the fix: 14 of 19 new playground tests failed (data null for a 403 and for 400/404/409/413/429/500/503; a 204 and a non-JSON 200 reported with no status; a rejected WS request returned as a result; an error reply waiting for the timeout because the handler threw on a reply without payload). After the fix: playground 9 files / 81 tests, eslint and vue-tsc --build clean; make check (backend 2612, frontend 452, shared 27); docs:build && docs:verify. Not verified: the playground in a browser against a backend."
         },
         {
             "id": "feat-159",
@@ -1661,7 +1661,7 @@
             "owner": "Blazheiko",
             "branch": "docs/route-contracts-design",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
