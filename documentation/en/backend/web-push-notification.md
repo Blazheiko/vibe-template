@@ -108,6 +108,19 @@ A new subscription (including one moved from another account) beyond `PUSH_MAX_S
 
 ## Storing a subscription
 
+**Request fields and bounds.** The body of `POST /push-subscriptions` is checked by [`CreateSubscriptionInputSchema`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/push-subscription/create-subscription.ts); extra fields are rejected (`422`). The length bounds are the columns of `push_subscriptions`, so an over-long value is a `422`, not a database error:
+
+| Field                                                   | Bound                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------ |
+| `endpoint`                                              | 1–500 characters (and only an allowed host, see above) |
+| `p256dhKey`, `authKey`                                  | 1–255                                                  |
+| `userAgent`                                             | up to 1024                                             |
+| `deviceType`, `browserVersion`, `osVersion`, `timezone` | up to 50                                               |
+| `browserName`, `osName`                                 | up to 100                                              |
+| `notificationTypes`                                     | up to 10 items of `mention` / `system`                 |
+
+`PUT /push-subscriptions/:subscriptionId` ([`UpdateSubscriptionInputSchema`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/push-subscription/update-subscription.ts)) has the same bounds for its fields. The device's address (`ipAddress` in the response) is not a request field: the server stores the address the request came from (`context.httpData.ip`, with [trusted proxies](/en/backend/security) taken into account); `ipAddress` in the body is a `422`.
+
 In `createSubscription`, [`push-subscription-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.ts) looks up the subscription by `endpoint` (it is unique across all users). If the subscription belongs to another user, it is moved to the current one only when `p256dhKey` and `authKey` match the stored ones (the same browser, an account switch); otherwise — `409 conflict`, and the subscription stays with the old owner. A moved subscription keeps its id, and the send log of the previous owner stays theirs: the subscription list, `…/logs` and `…/statistics` show the new owner only their own sends. If it exists, it updates the keys `p256dhKey`/`authKey`, the device metadata, `notificationTypes`, `timezone` and sets `isActive: true` again; otherwise it creates a new record. `POST` and `PUT` write in a transaction under a lock on the user's row and only while the presented session token is current ([`withCurrentSession`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/session-guard.ts)): a request from a session that was revoked by an account claim gets `401 session_revoked` and does not return the attacker's device (see [Authentication](/en/backend/auth#credential-changes-from-a-session)). Work with the table goes through the repository, see [Repositories](/en/backend/repositories).
 
 ## Sending and the payload format

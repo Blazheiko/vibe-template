@@ -234,3 +234,46 @@ test('the page limit of the query schemas is MAX_PAGE_LIMIT', async () => {
     const parsed = AdminUserListQuerySchema({ cursor: '42', limit: '100' })
     assert.deepEqual(parsed, { cursor: '42', limit: 100 })
 })
+
+// feat-156: the bounds of a push subscription are the columns it is stored in.
+test('the push subscription schemas bound every string and take no address from the client', async () => {
+    const { CreateSubscriptionInputSchema, UpdateSubscriptionInputSchema } =
+        await import('../dist/schemas/index.js')
+    const base = { endpoint: 'https://fcm.googleapis.com/fcm/send/x', p256dhKey: 'p', authKey: 'a' }
+    const rejected = (schema, value) => schema(value) instanceof type.errors
+
+    assert.deepEqual(CreateSubscriptionInputSchema(base), base)
+    for (const [field, max] of [
+        ['endpoint', 500],
+        ['p256dhKey', 255],
+        ['authKey', 255],
+        ['userAgent', 1024],
+        ['deviceType', 50],
+        ['browserName', 100],
+        ['browserVersion', 50],
+        ['osName', 100],
+        ['osVersion', 50],
+        ['timezone', 50],
+    ]) {
+        assert.ok(
+            !rejected(CreateSubscriptionInputSchema, { ...base, [field]: 'x'.repeat(max) }),
+            `${field} of ${String(max)} characters is accepted`,
+        )
+        assert.ok(
+            rejected(CreateSubscriptionInputSchema, { ...base, [field]: 'x'.repeat(max + 1) }),
+            `${field} of ${String(max + 1)} characters is rejected`,
+        )
+    }
+    assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, endpoint: '' }))
+    assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, ipAddress: '203.0.113.9' }))
+    assert.ok(
+        rejected(CreateSubscriptionInputSchema, {
+            ...base,
+            notificationTypes: Array.from({ length: 11 }, () => 'system'),
+        }),
+    )
+
+    assert.ok(!rejected(UpdateSubscriptionInputSchema, { deviceType: 'x'.repeat(50) }))
+    assert.ok(rejected(UpdateSubscriptionInputSchema, { deviceType: 'x'.repeat(51) }))
+    assert.ok(rejected(UpdateSubscriptionInputSchema, { timezone: 'x'.repeat(51) }))
+})
