@@ -124,11 +124,18 @@ export const pushSubscriptionContracts = {
     >()('post', '/push-subscriptions'),
 }
 
+// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
+export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts, {
+    create: {
+        body: CreateSubscriptionInputSchema,
+        response: ResponseSchemas.CreateSubscriptionResponseSchema,
+    },
+    // …one entry per contract of the group
+})
+
 // packages/backend/src/app/routes/http-routes.ts
 defineContractRoute({
     contract: pushSubscriptionContracts.create,
-    validator: CreateSubscriptionInputSchema,
-    ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
     handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
     middlewares: ['auth_guard'],
 })
@@ -137,7 +144,8 @@ defineContractRoute({
 callApi(pushSubscriptionContracts.create, { body })
 ```
 
-- [`defineContractRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) бере `method` і `url` з контракту, решта полів — ті самі, що в `defineRoute`. Схеми звіряються з типами контракту під час компіляції: схема тіла іншого маршруту, пропущена схема чи інша схема відповіді — помилка `pnpm typecheck`.
+- Схеми маршрутів з контрактом живуть в одному **реєстрі** [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts), по файлу на групу контрактів, за ключем `<метод> <шлях>` контракту. [`contractSchemas`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) вимагає запис для кожного контракту групи й звіряє його з типами контракту: схема тіла іншого маршруту, пропущена чи зайва схема, інша схема відповіді, пропущений контракт — помилка `pnpm typecheck`. Реєстр лежить у бекенді, тож схеми не потрапляють у бандл фронтенду.
+- `defineContractRoute` бере `method` і `url` з контракту, а `validator`, `queryValidator` і `ResponseSchema` — із запису реєстру; у таблиці маршрутів вони не вказуються. Тип `payload` і `query` обробника — вихід схем запису. Контракт без запису — помилка компіляції, а на старті — `Route contract … has no entry in the schema registry`.
 - Middleware, ліміти, `allowedContentTypes`, `maxBodySize` і група маршруту лишаються конфігурацією бекенду. Маршрут стоїть у групі, префікс якої є початком шляху контракту; інакше сервер не стартує.
 - На фронтенді [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) викликає маршрут контракту поверх наявного транспорту (CSRF, шлюз сесії). Неправильне тіло, параметр шляху чи ключ query — помилка компіляції. Прямі виклики `baseApi.http` поза `utils/api.ts` заборонено правилом ESLint; у самому `utils/api.ts` їхню кількість тримає тест [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
 - `pnpm check:bundle-graph` (частина `make check`) перевіряє на графі модулів production-збірки, що у бандл фронтенду не потрапили схеми й ArkType.

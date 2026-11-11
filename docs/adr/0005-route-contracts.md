@@ -81,15 +81,15 @@ callApi(pushSubscriptionContracts.list)
 // packages/backend/src/app/routes/http-routes.ts
 defineContractRoute({
     contract: pushSubscriptionContracts.create,
-    validator: CreateSubscriptionInputSchema,
-    ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
     handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
     middlewares: ['auth_guard'],
 })
 ```
 
+Схеми — у реєстрі (рішення 6).
+
 - `defineContractRoute` — окрема функція поруч із `defineRoute` (перевантаження `defineRoute` ламало виведення типів у наявному коді). Метод і шлях беруться з контракту; `url` і `method` у маршруті не повторюються.
-- Схеми вказуються тут і звіряються з типами контракту компілятором: вхід схеми тіла дорівнює типу тіла; ключі query-схеми дорівнюють ключам query контракту; успішні гілки схеми відповіді дорівнюють типу відповіді. Схема іншого маршруту, пропущена схема або зайва схема — помилка `pnpm typecheck` з назвою причини (`__contractMismatch`).
+- Схеми записано в реєстрі (рішення 6) і звіряються з типами контракту компілятором: вхід схеми тіла дорівнює типу тіла; ключі query-схеми дорівнюють ключам query контракту; успішні гілки схеми відповіді дорівнюють типу відповіді. Схема іншого маршруту, пропущена схема або зайва схема — помилка `pnpm typecheck` з назвою причини (`__contractMismatch`).
 - Middleware, guards, ліміти запитів, `allowedContentTypes`, `maxBodySize`, групи маршрутів лишаються конфігурацією бекенду. Контракт про них нічого не каже, і клієнт про них не знає.
 - Маршрут лишається у своїй групі (вона дає middleware і ліміти). Роутер на старті перевіряє, що шлях контракту починається з префікса групи: контракт `/admin/users` у групі `auth` зупиняє запуск.
 
@@ -100,6 +100,24 @@ defineContractRoute({
 - кожен `:name` замінюється на `encodeURIComponent(value)`: значення зі `/` чи `?` лишається одним сегментом; відсутнє значення — виняток (помилка програміста, а не запит на інший маршрут);
 - query: `undefined`, `null` і порожній рядок пропускаються, масив повторює ключ, порядок ключів зберігається, значення кодуються;
 - імена параметрів шляху виводяться з рядка шляху типом (`PathParams<'/x/:id'>` → `{ id: string }`), тож `params` з іншою назвою не компілюється.
+
+### 6. Реєстр схем (feat-172, 2026-11-11)
+
+```ts
+// packages/backend/src/app/routes/contract-schemas/push-subscriptions.ts
+export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts, {
+    create: {
+        body: CreateSubscriptionInputSchema,
+        response: ResponseSchemas.CreateSubscriptionResponseSchema,
+    },
+    // …кожен контракт групи
+})
+```
+
+- **Де живе — у бекенді** (`app/routes/contract-schemas/`, машинерія — `app/routing/contract-registry.ts`), а не в серверному subpath `shared`. Причини: (1) прив'язка схем до маршруту — справа сервера (обгортка `defaultValidator`, політика зайвих ключів query) і нікому, крім бекенду, не потрібна; (2) playground отримує схеми з серіалізованих маршрутів `/doc/routes`, а не з `shared`; (3) поза `shared` реєстр неможливо випадково імпортувати у фронтенд.
+- **Ключ — `<метод> <шлях>` контракту.** Маршрут вказує лише `contract`; і тип, і запис під час виконання знаходяться за цим ключем. Два контракти з однаковим методом і шляхом були б помилкою й без реєстру.
+- **Повнота групи — у компіляторі.** `contractSchemas(group, entries)` вимагає запис для кожного контракту групи; перевірки запису ті самі, що в пілоті були на полях маршруту. Контракт без запису в маршруті — помилка компіляції, а на старті сервер не запускається.
+- Серіалізація маршрутів для playground не змінилася (порівняно побайтно на 12 маршрутах пілота).
 
 ## Перевірка прототипом (2026-11-11)
 
