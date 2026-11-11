@@ -342,7 +342,7 @@ Then add the group as the last element of the array, before `] satisfies routeLi
 If you add updating or deleting a note: for a partial update use `method: "patch"` with a `validator`, and for deletion use `method: "delete"` with `url: "/:id"` and no `validator`, because `DELETE` does not read a body ([Methods and request body](/en/backend/routing#methods-and-request-body)).
 
 ::: tip Route contracts
-The tutorial declares routes with `defineRoute`. Some of the template's routes already have a contract in `shared/contracts` and are declared with `defineContractRoute` (see [Routes with a contract](/en/backend/routing#routes-with-a-contract-definecontractroute)); the rest move group by group. A new resource can get a contract right away: the frontend then calls the route through `callApi` with type checking.
+The tutorial declares routes with `defineRoute`. Some of the template's routes already have a contract in `shared/contracts` and are declared with `defineContractRoute`, with their schemas in the registry `app/routes/contract-schemas/` (see [Routes with a contract](/en/backend/routing#routes-with-a-contract-definecontractroute)); the rest move group by group. A new resource can get a contract right away: the frontend then calls the route through `callApi` with type checking.
 :::
 
 ## Step 9. Service test

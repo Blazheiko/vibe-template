@@ -10,18 +10,17 @@ import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
-import { defineContractRoute, defineRoute } from '#app/routing/define-route.js'
+import { defineRoute } from '#app/routing/define-route.js'
+import { defineContractRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
     AdminKnowledgeBaseListQuerySchema,
     AdminOnlineHistoryListQuerySchema,
-    AdminUserListQuerySchema,
     LlmTextUsageQuerySchema,
     SupportChatHistoryQuerySchema,
     OAuthCallbackQuerySchema,
     OAuthLinkConfirmInputSchema,
     OAuthRedirectQuerySchema,
-    PushSubscriptionTestInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
 import { adminContracts, authContracts, pushSubscriptionContracts } from 'shared/contracts'
@@ -34,15 +33,12 @@ import {
     LinkPhoneStartInputSchema,
     LinkPhoneConfirmInputSchema,
     LinkEmailStartInputSchema,
-    LoginInputSchema,
     ForgotPasswordInputSchema,
     ResetPhoneStartInputSchema,
     ResetPhoneCompleteInputSchema,
     ResetPasswordInputSchema,
     ChangePasswordInputSchema,
     VerifyEmailInputSchema,
-    CreateSubscriptionInputSchema,
-    UpdateSubscriptionInputSchema,
     EmptyFormInputSchema,
     PromptUpdateInputSchema,
     PromptTestInputSchema,
@@ -107,8 +103,6 @@ export default [
             defineContractRoute({
                 contract: authContracts.login,
                 handler: AuthController.login.bind(AuthController),
-                validator: LoginInputSchema,
-                ResponseSchema: ResponseSchemas.LoginResponseSchema,
                 description: 'Login a user by email or phone identifier',
             }),
             defineRoute({
@@ -303,14 +297,11 @@ export default [
                 handler: PushSubscriptionController.getVapidPublicKey.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetVapidPublicKeyResponseSchema,
                 description: 'Get VAPID public key for push subscriptions',
             }),
             defineContractRoute({
                 contract: pushSubscriptionContracts.testPush,
                 handler: PushSubscriptionController.testPush.bind(PushSubscriptionController),
-                validator: PushSubscriptionTestInputSchema,
-                ResponseSchema: ResponseSchemas.TestPushResponseSchema,
                 description: 'Send a test push notification to the current user',
                 middlewares: ['auth_guard'],
                 // feat-104: every call fans out to all the user's devices.
@@ -321,7 +312,6 @@ export default [
                 handler: PushSubscriptionController.getSubscriptions.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -329,8 +319,6 @@ export default [
                 handler: PushSubscriptionController.createSubscription.bind(
                     PushSubscriptionController,
                 ),
-                validator: CreateSubscriptionInputSchema,
-                ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -338,7 +326,6 @@ export default [
                 handler: PushSubscriptionController.getSubscription.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -346,8 +333,6 @@ export default [
                 handler: PushSubscriptionController.updateSubscription.bind(
                     PushSubscriptionController,
                 ),
-                validator: UpdateSubscriptionInputSchema,
-                ResponseSchema: ResponseSchemas.UpdateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -355,7 +340,6 @@ export default [
                 handler: PushSubscriptionController.deleteSubscription.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.DeleteSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -363,7 +347,6 @@ export default [
                 handler: PushSubscriptionController.getSubscriptionLogs.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionLogsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -371,7 +354,6 @@ export default [
                 handler: PushSubscriptionController.getSubscriptionStatistics.bind(
                     PushSubscriptionController,
                 ),
-                ResponseSchema: ResponseSchemas.GetSubscriptionStatisticsResponseSchema,
                 middlewares: ['auth_guard'],
             }),
             defineContractRoute({
@@ -379,8 +361,6 @@ export default [
                 handler: PushSubscriptionController.deactivateSubscription.bind(
                     PushSubscriptionController,
                 ),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.DeactivateSubscriptionResponseSchema,
                 middlewares: ['auth_guard'],
             }),
         ],
@@ -628,8 +608,6 @@ export default [
             defineContractRoute({
                 contract: adminContracts.users,
                 handler: AdminUserController.list.bind(AdminUserController),
-                queryValidator: AdminUserListQuerySchema,
-                ResponseSchema: ResponseSchemas.AdminUserListResponseSchema,
                 description: 'List users with filters (admin)',
             }),
         ],
