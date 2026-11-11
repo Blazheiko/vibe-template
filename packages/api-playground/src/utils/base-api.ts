@@ -108,11 +108,12 @@ const api: ApiMethods = {
                 url = `${apiSettings.baseUrl}/${route}`
             }
 
+            // No body here: it carries passwords and tokens, and a console outlives the tab
+            // in a shared screen or a pasted log. The Network panel shows it on purpose.
             console.log('Making API request:', {
                 method,
                 url,
                 headers: redactHeaders(headersToAdd),
-                body: init.body,
             })
 
             const response = await fetch(url, init)

@@ -61,7 +61,9 @@ const connectionError = ref<string | null>(null)
 const lastMessage = ref<WebsocketMessage | null>(null)
 // Mutable array passed to vueuse by reference so token updates are reflected
 // in the next WebSocket() construction without recreating the composable.
-const wsProtocols: string[] = ['']
+// Empty until a token is given: an empty string is not a valid subprotocol, and
+// `new WebSocket(url, [''])` throws a SyntaxError.
+const wsProtocols: string[] = []
 
 // API resolve for handling responses (created once)
 const apiResolve = ref<Partial<Record<string, ApiResolveItem>>>({})
@@ -352,7 +354,8 @@ const websocketOpen = (url: string, token: string) => {
     clearReconnectTimeout()
     connectionError.value = null
 
-    wsProtocols[0] = token
+    wsProtocols.length = 0
+    if (token !== '') wsProtocols.push(token)
 
     wsUrl.value = url
     open()

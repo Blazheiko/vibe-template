@@ -145,3 +145,32 @@ describe('playground ws', () => {
         await expect(api.ws('/api/x', {})).rejects.toBe(failure)
     })
 })
+
+// feat-165 (review 2026-11-10): the request was logged with its body, so the password of
+// auth/login and every token sent stayed in the console.
+describe('playground http: what goes to the console', () => {
+    it('does not log the body of a request', async () => {
+        const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+        answer(200, { status: 'success', wsToken: 'ws-secret-token' })
+
+        await api.http('POST', '/api/auth/login', {
+            identifier: 'jane@example.com',
+            password: 'correct-horse-battery',
+        })
+
+        const logged = JSON.stringify(log.mock.calls)
+        expect(logged).toContain('/api/auth/login')
+        expect(logged).not.toContain('correct-horse-battery')
+        expect(logged).not.toContain('ws-secret-token')
+    })
+})
+
+describe('playground checkServerHealth', () => {
+    it("asks the dev server's own origin when the base URL is empty (the proxy)", async () => {
+        answer(200, 'pong', 'text/plain')
+        const { checkServerHealth } = await import('../base-api')
+
+        expect(await checkServerHealth('')).toBe(true)
+        expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe('/api/ping')
+    })
+})

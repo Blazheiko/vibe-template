@@ -285,7 +285,6 @@ export const useApiStore = defineStore('api', () => {
             }
 
             const data = await response.json()
-            console.log('data', data)
 
             httpRouteGroups.value = mergeGroupsByPrefix(data.httpRoutes || [])
             wsRouteGroups.value = mergeGroupsByPrefix(data.wsRoutes || [])
