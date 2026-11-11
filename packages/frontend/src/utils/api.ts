@@ -102,70 +102,32 @@ export const authApi = {
     login: (body: LoginInput): Promise<ApiResponse<LoginResponse>> =>
         callApi(authContracts.login, { body }, { csrfRecovery: 'public' }),
 
-    registerEmail: async (
-        body: RegisterEmailInput,
-    ): Promise<ApiResponse<RegisterEmailResponse>> => {
-        return baseApi.http<RegisterEmailResponse>('POST', apiPath('auth/register/email'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    registerEmail: (body: RegisterEmailInput): Promise<ApiResponse<RegisterEmailResponse>> =>
+        callApi(authContracts.registerEmail, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneStart: async (
+    registerPhoneStart: (
         body: RegisterPhoneStartInput,
-    ): Promise<ApiResponse<RegisterPhoneStartResponse>> => {
-        return baseApi.http<RegisterPhoneStartResponse>(
-            'POST',
-            apiPath('auth/register/phone/start'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneStartResponse>> =>
+        callApi(authContracts.registerPhoneStart, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneConfirm: async (
+    registerPhoneConfirm: (
         body: RegisterPhoneConfirmInput,
-    ): Promise<ApiResponse<RegisterPhoneConfirmResponse>> => {
-        return baseApi.http<RegisterPhoneConfirmResponse>(
-            'POST',
-            apiPath('auth/register/phone/confirm'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneConfirmResponse>> =>
+        callApi(authContracts.registerPhoneConfirm, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneComplete: async (
+    registerPhoneComplete: (
         body: RegisterPhoneCompleteInput,
-    ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> => {
-        return baseApi.http<RegisterPhoneCompleteResponse>(
-            'POST',
-            apiPath('auth/register/phone/complete-profile'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> =>
+        callApi(authContracts.registerPhoneComplete, { body }, { csrfRecovery: 'public' }),
 
-    logout: async (): Promise<ApiResponse<LogoutResponse>> => {
-        return baseApi.http<LogoutResponse>(
-            'POST',
-            apiPath('auth/logout'),
-            {},
-            { sessionAfter: 'anonymous' },
-        )
-    },
+    logout: (): Promise<ApiResponse<LogoutResponse>> =>
+        callApi(authContracts.logout, { body: {} }, { sessionAfter: 'anonymous' }),
 
-    logoutAll: async (): Promise<ApiResponse<LogoutAllResponse>> => {
-        return baseApi.http<LogoutAllResponse>(
-            'POST',
-            apiPath('auth/logout-all'),
-            {},
-            { sessionAfter: 'anonymous' },
-        )
-    },
+    logoutAll: (): Promise<ApiResponse<LogoutAllResponse>> =>
+        callApi(authContracts.logoutAll, { body: {} }, { sessionAfter: 'anonymous' }),
 
-    changePassword: async (
-        body: ChangePasswordInput,
-    ): Promise<ApiResponse<ChangePasswordResponse>> => {
-        return baseApi.http<ChangePasswordResponse>('POST', apiPath('auth/change-password'), body)
-    },
+    changePassword: (body: ChangePasswordInput): Promise<ApiResponse<ChangePasswordResponse>> =>
+        callApi(authContracts.changePassword, { body }),
 
     forgotPassword: async (
         body: ForgotPasswordInput,
@@ -205,18 +167,11 @@ export const authApi = {
         })
     },
 
-    verifyEmail: async (body: VerifyEmailInput): Promise<ApiResponse<VerifyEmailResponse>> => {
-        return baseApi.http<VerifyEmailResponse>('POST', apiPath('auth/verify-email'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    verifyEmail: (body: VerifyEmailInput): Promise<ApiResponse<VerifyEmailResponse>> =>
+        callApi(authContracts.verifyEmail, { body }, { csrfRecovery: 'public' }),
 
-    resendVerificationEmail: async (): Promise<ApiResponse<ResendVerificationEmailResponse>> => {
-        return baseApi.http<ResendVerificationEmailResponse>(
-            'POST',
-            apiPath('auth/resend-verification-email'),
-        )
-    },
+    resendVerificationEmail: (): Promise<ApiResponse<ResendVerificationEmailResponse>> =>
+        callApi(authContracts.resendVerificationEmail, { body: {} }),
 
     startPhoneLink: async (
         body: LinkPhoneStartInput,
