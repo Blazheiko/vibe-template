@@ -19,7 +19,7 @@ export interface RequestDescription {
     apiPrefix: string
 }
 
-const STATIC_PREFIXES = ['/assets/', '/icons/', '/screenshots/', '/splash/', '/audio/']
+const STATIC_PREFIXES = ['/assets/', '/icons/', '/screenshots/', '/splash/']
 const STATIC_FILES = new Set(['/manifest.json', '/favicon.svg'])
 const NETWORK_ONLY_DESTINATIONS = new Set(['script', 'style', 'worker', 'sharedworker'])
 

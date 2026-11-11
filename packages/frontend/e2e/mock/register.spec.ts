@@ -92,7 +92,6 @@ test.describe('register by e-mail', () => {
                     name: 'Jane Doe',
                     email: 'jane@example.com',
                     password: 'correct-horse',
-                    token: '',
                 },
             },
         ])
@@ -381,7 +380,6 @@ test.describe('register by phone', () => {
             challengeId: 'ch-1',
             name: 'Jane Doe',
             password: 'correct-horse',
-            token: '',
         })
     })
 

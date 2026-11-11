@@ -46,26 +46,6 @@ export const InitResponseSchema = type.or(
 )
 export type InitResponse = WithCanonicalError<typeof InitResponseSchema.infer>
 
-export const TestHeadersResponseSchema = type({
-    status: 'string',
-    headers: 'unknown[]',
-    params: 'unknown[]',
-})
-export type TestHeadersResponse = typeof TestHeadersResponseSchema.infer
-
-export const GetSetCookiesResponseSchema = type({
-    status: 'string',
-    cookies: 'unknown[]',
-})
-export type GetSetCookiesResponse = typeof GetSetCookiesResponseSchema.infer
-
-export const TestSessionResponseSchema = type({
-    status: 'string',
-    cookies: 'unknown[]',
-    sessionInfo: 'unknown',
-})
-export type TestSessionResponse = typeof TestSessionResponseSchema.infer
-
 export const TestApiSessionResponseSchema = type({
     status: 'string',
     headers: 'unknown[]',

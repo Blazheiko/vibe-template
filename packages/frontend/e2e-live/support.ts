@@ -144,7 +144,6 @@ export async function createVerifiedAccount(browser: Browser, sink: MailSink): P
             name: 'Live E2E',
             email: account.email,
             password: account.password,
-            token: '',
         })
         expect(registered.status()).toBe(200)
 

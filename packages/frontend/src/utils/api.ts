@@ -133,10 +133,6 @@ export const authApi = {
         )
     },
 
-    register: async (body: RegisterEmailInput): Promise<ApiResponse<RegisterEmailResponse>> => {
-        return authApi.registerEmail(body)
-    },
-
     logout: async (): Promise<ApiResponse<LogoutResponse>> => {
         return baseApi.http<LogoutResponse>(
             'POST',
@@ -343,10 +339,6 @@ export const supportApi = {
             apiPath('support/chat/history'),
         )
         return isSuccessfulResponse(response)
-    },
-
-    getScreenshotUrl: (articleId: string): string => {
-        return apiPath(`support/screenshot/${encodeURIComponent(articleId)}`)
     },
 }
 

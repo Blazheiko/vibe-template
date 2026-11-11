@@ -146,7 +146,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
     describe('email registration', () => {
         const register = (email: string, request: ReturnType<typeof fakeRequest>) =>
             authService.registerByEmail(
-                { name: 'Racer', email, password: 'secret-123456', token: '' },
+                { name: 'Racer', email, password: 'secret-123456' },
                 request.auth as never,
                 request.session as never,
                 silent as never,
@@ -255,7 +255,6 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                             challengeId: challenge.id,
                             name: 'Phone Racer',
                             password: 'secret-123456',
-                            token: '',
                         },
                         requests[i]!.auth as never,
                         requests[i]!.session as never,

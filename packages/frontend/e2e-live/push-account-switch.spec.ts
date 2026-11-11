@@ -72,7 +72,6 @@ async function serverSubscriptionsOf(
         const login = await session(context.request).post('/api/auth/login', {
             identifier: account.email,
             password: account.password,
-            token: '',
         })
         expect(login.status()).toBe(200)
         return await serverSubscriptions(context)

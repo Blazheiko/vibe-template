@@ -101,7 +101,7 @@ describe('AuthModals', () => {
             error: null,
         })
 
-        const wrapper = createWrapper({ showLogin: false, showRegister: true, token: '' })
+        const wrapper = createWrapper({ showLogin: false, showRegister: true })
 
         const modal = visibleModal(wrapper)
 
@@ -138,7 +138,7 @@ describe('AuthModals', () => {
             error: null,
         })
 
-        const wrapper = createWrapper({ showLogin: false, showRegister: true, token: '' })
+        const wrapper = createWrapper({ showLogin: false, showRegister: true })
         const modal = visibleModal(wrapper)
 
         await modal.get('#register-name').setValue('Jane')
@@ -174,7 +174,7 @@ describe('AuthModals', () => {
             error: null,
         })
 
-        const wrapper = createWrapper({ showLogin: false, showRegister: true, token: '' })
+        const wrapper = createWrapper({ showLogin: false, showRegister: true })
         const modal = visibleModal(wrapper)
 
         await modal.get('#register-name').setValue('Jane')
@@ -211,7 +211,7 @@ describe('AuthModals', () => {
             error: null,
         })
 
-        const wrapper = createWrapper({ showLogin: true, showRegister: false, token: '' })
+        const wrapper = createWrapper({ showLogin: true, showRegister: false })
 
         const modal = visibleModal(wrapper)
 
@@ -223,7 +223,6 @@ describe('AuthModals', () => {
         expect(loginMock).toHaveBeenCalledWith({
             identifier: 'jane@example.com',
             password: 'secret123',
-            token: '',
         })
         expect(setUserMock).toHaveBeenCalled()
         expect(eventBusEmitMock).toHaveBeenCalledWith('init_app')
@@ -262,7 +261,7 @@ describe('AuthModals', () => {
             error: null,
         })
 
-        const wrapper = createWrapper({ showLogin: false, showRegister: true, token: '' })
+        const wrapper = createWrapper({ showLogin: false, showRegister: true })
 
         const modal = visibleModal(wrapper)
 
@@ -325,7 +324,7 @@ describe('AuthModals', () => {
             error: null,
         })
 
-        const wrapper = createWrapper({ showLogin: true, showRegister: false, token: '' })
+        const wrapper = createWrapper({ showLogin: true, showRegister: false })
 
         const modal = visibleModal(wrapper)
 

@@ -245,7 +245,6 @@ export const smsAuthChallenges = pgTable(
         providerRequestId: varchar('provider_request_id', { length: 100 }),
         metadata: jsonb('metadata').$type<Record<string, unknown> | null>().default(null),
         attemptCount: integer('attempt_count').notNull().default(0),
-        sendCount: integer('send_count').notNull().default(1),
         resendAvailableAt: timestamp('resend_available_at').notNull(),
         expiresAt: timestamp('expires_at').notNull(),
         confirmedAt: timestamp('confirmed_at'),
