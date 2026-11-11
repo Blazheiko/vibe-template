@@ -178,12 +178,14 @@ export default {
         loadEarlier: 'Show earlier messages',
         loadingEarlier: 'Loading...',
         inputPlaceholder: 'Type your message...',
+        send: 'Send message',
         connectionLost: 'The connection was lost. The conversation will refresh when it is back.',
     },
 
     account: {
         avatar: {
             delete: 'Delete avatar',
+            closeEditor: 'Close the avatar editor',
             errorFileSize: 'File must be under 10MB',
             errorFileType: 'Choose an image file',
         },
