@@ -1561,8 +1561,8 @@
             "owner": "Blazheiko",
             "branch": "feat/strict-registration-session-oracle",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #497 (merge commit b0e7c8e). RED before the fix: 2 tests of register-race.pg.test.ts failed (destroySession called 0 times for a taken address and for the loser of the race); with real sessions in Redis the new e2e-live/registration.spec.ts scenario on the old service left the caller of the taken address signed in. After the fix: backend test:pg 288 passed, test:redis 116 passed; make check (backend 2612, frontend 452, shared 27, playground 62); frontend test:e2e:live 13 passed; docs:build && docs:verify. Behaviour change by decision Д4: in strict mode a registration sent from a signed-in session signs it out whatever the address is; two tests that pinned the old asymmetry were changed. Not verified: the time of the answer was not measured."
         },
         {
             "id": "feat-158",
@@ -1571,7 +1571,7 @@
             "owner": "Blazheiko",
             "branch": "feat/playground-error-reporting",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
