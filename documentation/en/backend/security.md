@@ -70,7 +70,7 @@ All shared limits are described in the [`config/throttle-policies.ts`](https://g
 
 `0` in an auth policy variable is a config error at startup: protection of a sensitive action cannot be disabled. Only `wsUpgradeShared` (`disableable`) can be disabled with a variable (`MAX=0`), e.g. for a single instance.
 
-Shared limits use a separate connection ([`redis-rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/redis-rate-limit.ts)) to the same Redis server: no offline queue, no command resending, and a short `RATE_LIMIT_REDIS_TIMEOUT_MS` timeout. The main session client now also works without an offline queue and retries, but with a longer `REDIS_COMMAND_TIMEOUT_MS` timeout (see [Redis failure](#redis-failure)). A timeout means "the result is unknown": the Lua script may have already consumed the attempt, so there is no retry.
+Shared limits use a separate connection ([`redis-rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/redis-rate-limit.ts)) to the same Redis server: no offline queue, no command resending, and the `RATE_LIMIT_REDIS_TIMEOUT_MS` timeout (500 ms by default, as `REDIS_COMMAND_TIMEOUT_MS`: 50 ms gave intermittent 503s on login and registration on a loaded machine). The main session client also works without an offline queue and retries, with the `REDIS_COMMAND_TIMEOUT_MS` timeout (see [Redis failure](#redis-failure)). A timeout means "the result is unknown": the Lua script may have already consumed the attempt, so there is no retry.
 
 ### Login policy
 
