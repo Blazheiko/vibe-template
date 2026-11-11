@@ -77,6 +77,7 @@ The [`TestForm.vue`](https://github.com/Blazheiko/vibe-template/blob/main/packag
 - fields for path parameters: every `:name` in `fullUrl` is replaced with the entered value;
 - headers in JSON format (`Content-Type: application/json` by default) with JSON validation;
 - a body in JSON format, filled with a template from `inputSchema`. For `GET` and `DELETE` the body is not sent ([`utils/base-api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/base-api.ts));
+- the body of the response for any status: an error (`400`, `401`, `403`, `409`, `429`, `5xx`) is shown with its JSON — `code`, `message`, the `reason` of a CSRF refusal — not only the status number. A response without a body (`204`) or one that is not JSON is a success with empty data, not a "network error";
 - generation of an equivalent `curl` command;
 - repeated runs: the number of requests and the number of "threads", with response time statistics (average, minimum, maximum) and the number of successful requests. The run is performed by the [`useLoadTest`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/composables/useLoadTest.ts) composable (types and calculations are in [`utils/load-test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/load-test.ts)); scrolling to the response and body formatting are shared by `TestForm.vue` with `TestFormWs.vue` via [`utils/test-form-helpers.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/test-form-helpers.ts);
 - viewing the response: status, headers, time, body.
@@ -104,6 +105,7 @@ There is no special logic for authentication or CSRF: the CSRF token is not obta
 - connecting by URL and token. The token is passed as a subprotocol (`Sec-WebSocket-Protocol`);
 - autofill: if an HTTP response contains `wsUrl` and `wsToken`, they are substituted into the connection form;
 - sending messages in the format `{ event, timestamp, payload }`, where `event` is the full path of the WS route. The response is matched to the request by `event`, and a timeout applies. A parallel request with the same `event` is rejected;
+- request errors: a server reply with `status: "error"` is shown at once as an error with `error.code`, `error.message` and `details`; no reply at all is a timeout after 10 s. Neither is shown as a successful response;
 - handling connection close: the code `4001` is treated as unauthorized access, and for the codes `4000–4099` no reconnection is performed.
 
 The protocol is described in the [WebSocket](/en/backend/websocket) section.

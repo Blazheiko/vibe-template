@@ -77,6 +77,7 @@ flowchart LR
 - поля для path-параметрів: кожен `:name` у `fullUrl` замінюється введеним значенням;
 - заголовки у форматі JSON (за замовчуванням `Content-Type: application/json`) з перевіркою JSON;
 - тіло у форматі JSON, яке заповнюється заготовкою з `inputSchema`. Для `GET` і `DELETE` тіло не надсилається ([`utils/base-api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/base-api.ts));
+- тіло відповіді для будь-якого статусу: помилка (`400`, `401`, `403`, `409`, `429`, `5xx`) показується разом зі своїм JSON — `code`, `message`, `reason` відмови CSRF — а не лише числом статусу. Відповідь без тіла (`204`) чи не у форматі JSON — це успіх із порожніми даними, а не «мережева помилка»;
 - генерацію еквівалентної `curl`-команди;
 - повторні запуски: кількість запитів і кількість «потоків», зі статистикою часу відповіді (середній, мінімальний, максимальний) і кількістю успішних запитів. Запуск виконує composable [`useLoadTest`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/composables/useLoadTest.ts) (типи й підрахунки — у [`utils/load-test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/load-test.ts)); прокрутку до відповіді й форматування тіла `TestForm.vue` ділить із `TestFormWs.vue` через [`utils/test-form-helpers.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/test-form-helpers.ts);
 - перегляд відповіді: статус, заголовки, час, тіло.
@@ -104,6 +105,7 @@ flowchart LR
 - підключення за URL і токеном. Токен передається як subprotocol (`Sec-WebSocket-Protocol`);
 - автозаповнення: якщо HTTP-відповідь містить `wsUrl` і `wsToken`, вони підставляються у форму підключення;
 - надсилання повідомлень у форматі `{ event, timestamp, payload }`, де `event` — повний шлях WS-маршруту. Відповідь зіставляється з запитом за `event`, діє тайм-аут. Паралельний запит з тим самим `event` відхиляється;
+- помилки запиту: відповідь сервера з `status: "error"` одразу показується як помилка з `error.code`, `error.message` і `details`; відсутність відповіді — як тайм-аут через 10 с. Жодне з них не показується як успішна відповідь;
 - обробку закриття з'єднання: код `4001` вважається неавторизованим доступом, для кодів `4000–4099` перепідключення не виконується.
 
 Протокол описано в розділі [WebSocket](/backend/websocket).
