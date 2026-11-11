@@ -277,3 +277,60 @@ test('the push subscription schemas bound every string and take no address from 
     assert.ok(rejected(UpdateSubscriptionInputSchema, { deviceType: 'x'.repeat(51) }))
     assert.ok(rejected(UpdateSubscriptionInputSchema, { timezone: 'x'.repeat(51) }))
 })
+
+// docs/adr/0005-route-contracts.md: a contract is `{ method, path }` at run time, and its URL
+// is built with real encoding.
+test('a route contract is a method and a path, and builds its URL with encoding', async () => {
+    const {
+        adminContracts,
+        authContracts,
+        buildPath,
+        buildQuery,
+        buildUrl,
+        contract,
+        pushSubscriptionContracts,
+    } = await import('../dist/contracts/index.js')
+
+    assert.deepEqual({ ...authContracts.login }, { method: 'post', path: '/auth/login' })
+    assert.deepEqual(
+        { ...contract()('delete', '/notes/:noteId') },
+        { method: 'delete', path: '/notes/:noteId' },
+    )
+
+    // A value with a slash, a question mark or a space stays one path segment.
+    assert.equal(
+        buildUrl(pushSubscriptionContracts.remove, { params: { subscriptionId: 'a/b?c d' } }),
+        '/push-subscriptions/a%2Fb%3Fc%20d',
+    )
+    assert.equal(buildPath('/a/:x/b/:y', { x: '1', y: '2' }), '/a/1/b/2')
+    assert.throws(() => buildPath('/a/:x', {}), /no value for the path parameter "x"/)
+    assert.throws(() => buildPath('/a/:x', { x: '' }), /no value for the path parameter "x"/)
+
+    // The query: empty values are left out, an array repeats its key, the order is kept.
+    assert.equal(
+        buildUrl(adminContracts.users, {
+            query: { limit: 100, cursor: '2', userId: '', dateFrom: undefined, dateTo: null },
+        }),
+        '/admin/users?limit=100&cursor=2',
+    )
+    assert.equal(
+        buildQuery({ tag: ['a b', 'c&d'], flag: false, n: 0 }),
+        '?tag=a%20b&tag=c%26d&flag=false&n=0',
+    )
+    assert.equal(buildQuery({}), '')
+    assert.equal(buildQuery(undefined), '')
+})
+
+test('the contracts module loads no schema', async () => {
+    const { readFile, readdir } = await import('node:fs/promises')
+    const directory = new URL('../dist/contracts/', import.meta.url)
+    for (const file of await readdir(directory)) {
+        if (!file.endsWith('.js')) continue
+        const source = await readFile(new URL(file, directory), 'utf8')
+        const imports = [...source.matchAll(/from '([^']+)'/g)].map((match) => match[1])
+        assert.ok(
+            imports.every((specifier) => specifier.startsWith('./')),
+            `${file} imports only its own directory, got: ${imports.join(', ')}`,
+        )
+    }
+})

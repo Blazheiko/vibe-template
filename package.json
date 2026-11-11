@@ -34,6 +34,7 @@
         "format": "prettier --write \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "typecheck": "pnpm -r typecheck",
+        "check:bundle-graph": "pnpm --filter frontend check:bundle-graph",
         "test": "pnpm -r test",
         "clean": "pnpm -r clean && rm -rf node_modules"
     },

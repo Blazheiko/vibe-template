@@ -110,6 +110,40 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 It is best to read from the end: the last lines name the field that did not match. The union with `CanonicalErrorResponseSchema` in the middle of the message is expanded in full.
 
+## Routes with a contract: `defineContractRoute`
+
+Some routes are declared through a **contract** from `shared/contracts` ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md)): the `push-subscriptions` group, `POST /auth/login`, `GET /admin/users`. A contract is a method, a path under the API prefix and three types (body, query, response); at run time it is only `{ method, path }`, so the frontend imports it without schemas and without ArkType.
+
+```ts
+// packages/shared/src/contracts/push-subscriptions.ts
+export const pushSubscriptionContracts = {
+    create: contract<
+        typeof CreateSubscriptionInputSchema.inferIn,
+        undefined,
+        CreateSubscriptionResponse
+    >()('post', '/push-subscriptions'),
+}
+
+// packages/backend/src/app/routes/http-routes.ts
+defineContractRoute({
+    contract: pushSubscriptionContracts.create,
+    validator: CreateSubscriptionInputSchema,
+    ResponseSchema: ResponseSchemas.CreateSubscriptionResponseSchema,
+    handler: PushSubscriptionController.createSubscription.bind(PushSubscriptionController),
+    middlewares: ['auth_guard'],
+})
+
+// packages/frontend/src/utils/api.ts
+callApi(pushSubscriptionContracts.create, { body })
+```
+
+- [`defineContractRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) takes `method` and `url` from the contract; the other fields are the same as in `defineRoute`. The schemas are checked against the contract's types at compile time: the body schema of another route, a missing schema or another response schema is a `pnpm typecheck` error.
+- Middlewares, limits, `allowedContentTypes`, `maxBodySize` and the route's group stay backend configuration. The route sits in the group whose prefix is the start of the contract's path; otherwise the server does not start.
+- On the frontend, [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) calls the contract's route on top of the existing transport (CSRF, the session gate). A wrong body, path parameter or query key is a compile error. Direct `baseApi.http` calls outside `utils/api.ts` are forbidden by an ESLint rule; inside `utils/api.ts` their number is held by the test [`api-direct-calls.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/api-direct-calls.spec.ts).
+- `pnpm check:bundle-graph` (part of `make check`) checks on the module graph of the production build that no schema and no ArkType got into the frontend bundle.
+
+The other routes are declared with `defineRoute` and move to contracts group by group. Multipart routes (file uploads) have no contracts.
+
 ## Methods and request body
 
 | Method                      | Body is read | `validator`                                                  |

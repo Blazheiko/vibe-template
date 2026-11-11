@@ -36,15 +36,18 @@ describe('the admin list requests', () => {
     it('users: limit, trimmed user id, dates; a blank id or date is not sent', async () => {
         const { adminUsersApi } = await import('../api')
         await adminUsersApi.list({ limit: 20, userId: '  42 ', dateFrom: '2026-01-01', dateTo: '' })
-        expect(http).toHaveBeenLastCalledWith(
+        // Through the typed client (ADR 0005): the method and the URL are the first two
+        // arguments of the transport; an empty body and no options follow.
+        const lastRequest = (): unknown[] => (http.mock.lastCall ?? []).slice(0, 2)
+        expect(lastRequest()).toEqual([
             'GET',
             '/api/admin/users?limit=20&userId=42&dateFrom=2026-01-01',
-        )
+        ])
 
         await adminUsersApi.list({ userId: '   ' })
-        expect(http).toHaveBeenLastCalledWith('GET', '/api/admin/users')
+        expect(lastRequest()).toEqual(['GET', '/api/admin/users'])
         await adminUsersApi.list()
-        expect(http).toHaveBeenLastCalledWith('GET', '/api/admin/users')
+        expect(lastRequest()).toEqual(['GET', '/api/admin/users'])
     })
 
     it('online history: the cursor goes between the limit and the user id', async () => {

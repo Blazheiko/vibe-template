@@ -341,6 +341,10 @@ import {
 
 Якщо додаєте оновлення або видалення нотатки: для часткового оновлення беріть `method: "patch"` з `validator`, а для видалення — `method: "delete"` з `url: "/:id"` і без `validator`, бо `DELETE` тіло не читає ([Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)).
 
+::: tip Контракти маршрутів
+Туторіал оголошує маршрути через `defineRoute`. Частина маршрутів шаблону вже має контракт у `shared/contracts` і оголошена через `defineContractRoute` (див. [Маршрути з контрактом](/backend/routing#маршрути-з-контрактом-definecontractroute)); решта переходить групами. Для нового ресурсу можна одразу додати контракт: тоді фронтенд викликає маршрут через `callApi` з перевіркою типів.
+:::
+
 ## Крок 9. Тест сервісу
 
 Тести сервісів лежать поряд із кодом і мокають barrel `#app/repositories/index.js` через `vi.mock`, як у [push-subscription-service.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.spec.ts). БД для них не потрібна.
