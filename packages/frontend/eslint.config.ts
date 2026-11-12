@@ -23,8 +23,11 @@ const SENTRY_ONLY_IN_SERVICE = {
 }
 // feat-186: the transport is reached through the clients, under any name. Its named settings
 // (setCurrentUserIdProvider, setReloadHandler) stay importable.
+// The module with or without an extension (`./base-api.ts`, `@/utils/base-api.js`) or a Vite
+// query (feat-187); `my-base-api` and `base-api-docs` are other modules.
+const TRANSPORT_MODULE = '(^|[/])base-api([.][cm]?[jt]sx?)?([?].*)?$'
 const TRANSPORT_ONLY_IN_CLIENT = {
-    group: ['**/base-api', '@/utils/base-api'],
+    regex: TRANSPORT_MODULE,
     importNames: ['default'],
     message:
         'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
@@ -142,7 +145,7 @@ export default defineConfigWithVueTs(
                 },
                 {
                     // feat-186: the transport cannot be reached by a dynamic import either.
-                    selector: 'ImportExpression[source.value=/base-api$/]',
+                    selector: `ImportExpression[source.value=/${TRANSPORT_MODULE}/]`,
                     message:
                         'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
                 },
