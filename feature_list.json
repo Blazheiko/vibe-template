@@ -1871,8 +1871,8 @@
             "owner": "Blazheiko",
             "branch": "feat/shared-source-dev",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #570 (merge into main): exports.test.js 2 passed (RED before), make check passing (backend 2690, frontend 532, playground 115, shared 33, docs 26), e2e 92, pnpm build passing, docs:build+verify passing, manual pnpm dev edit of shared/src gave Vite HMR and tsx restart, CI all jobs passing"
         }
     ]
 }
