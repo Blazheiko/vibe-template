@@ -1933,6 +1933,146 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #588 (merge cb2d824): sentry-service.ts passes beforeSendSpan (Sentry 11 streams spans, so beforeSendTransaction does not run): sensitive query.<name> attributes and keys become [Filtered], url.query/http.query masked as query strings, URLs in other string attributes and the span name masked; beforeSend cleans extra at any depth (URLs inside any string); main.ts router.onError sends to.path and the route name instead of to.fullPath; maskUrl also filters params matching the sensitive-key regex and leaves unfiltered URLs unchanged; docs uk+en (backend/observability, Sentry frontend). make check passing (backend 2702, frontend 548, playground 115, shared 39, docs 26), docs:build+verify passing; sentry-tracing.spec.ts on the real @sentry/vue 11.10.0 SDK (stubbed fetch transport, canary token) fails on the old code (token in query.token span attribute and extra.targetRoute) and passes with the fix; CI all jobs passing incl. e2e and e2e-live. Details were in progress.md on fix/sentry-span-tokens (removed from main by this PR)."
+        },
+        {
+            "id": "feat-195",
+            "name": "WS Closes On Session Revocation",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S01. M-1: no logout, logout-all, password change or reset flow closes the user's open sockets, so a socket that only pings stays subscribed (admin topic, support replies) after the session is revoked. Add closeUserConnections(userId, exceptSessionId?) to the registry (ws.end(4001)), call it wherever users.session_token is rotated and on logout; extend the periodic check to compare each connection's userToken with users.session_token for all connections (multi-instance). Docs uk+en. Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/ws-close-on-revocation",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-196",
+            "name": "One-Time WS Token",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S02. L-12: the WS token is read with redis.get and its TTL is refreshed on every message, so it opens any number of sockets. Read it with GETDEL at upgrade, keep sessionId and userToken only in userData, remove onRefreshToken/onRevokeToken and the per-message EXPIRE; the client takes a new token before each reconnect. Suites: Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/ws-one-time-token",
+            "dependencies": ["feat-195"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-197",
+            "name": "WS Connection Limits",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S03. M-4, L-11, L-13 (decision Д1): no limit on simultaneous sockets per user or IP; binary frames skip the message budget; the per-route limit is keyed by IP only. Limit connections to 10 per user and 50 per IP (env), extra upgrade gets 429; close on the first binary frame with 1003 (warn); key the per-route limit by userId; check the session only after the route is found. Docs uk+en. Suites: Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/ws-connection-limits",
+            "dependencies": ["feat-196"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-198",
+            "name": "Sign-in Method Added Notification",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S04. M-2 part 1: linking an OAuth identity only sends new_sign_in. Add the sign_in_method_added security event and mail (provider and sanitized profile name), sent from confirmLink and linkTrusted. Suites: PG.",
+            "owner": "Blazheiko",
+            "branch": "fix/sign-in-method-added-notice",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-199",
+            "name": "Linked Sign-in Methods Management",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S05. M-2 part 2 (decisions Д2, Д3): a linked OAuth identity cannot be seen or removed and survives password reset and logout-all. Add list and unlink routes (web group, route contracts) with re-authentication (current password, or a sign-in not older than 10 min for accounts without one) and a ban on removing the last sign-in method; a \"Sign-in methods\" block in UserAccount.vue; the password-changed mail and the post-reset page list linked methods (links are not deleted automatically). Docs uk+en. Suites: PG, e2e.",
+            "owner": "Blazheiko",
+            "branch": "feat/linked-sign-in-methods",
+            "dependencies": ["feat-198"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-200",
+            "name": "OAuth Flow Hardening",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S06. L-6, L-7, L-8, L-9, I-2 (decision Д4): reject GET …/redirect with Sec-Fetch-Site: cross-site; bind state to the provider and send PKCE for GitHub and GitLab; treat a GitLab address without email_verified === true as no email; truncate providerName to 255 and replace a providerAvatar over 500 with null; accept a provider avatar only as an https:// URL. Docs uk+en. Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/oauth-flow-hardening",
+            "dependencies": ["feat-199"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-201",
+            "name": "In-Flight Body Budget",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S07. M-3 part 1: request bodies are buffered before authentication and only request counts are limited, so one IP can hold ~1.2 GB of buffers. Add a global and a per-IP counter of buffered bytes in readData (env thresholds): over the limit → 503 / 429 with Connection: close; released on end, abort and error. Check how long uWS keeps a stalled connection. Docs uk+en.",
+            "owner": "Blazheiko",
+            "branch": "fix/in-flight-body-budget",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-202",
+            "name": "Pre-Auth Body Limits",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S08. M-3 part 2: lower the default APP_MAX_JSON_BODY_SIZE to 100 KB with explicit route limits where more is needed; add rateLimit to the knowledge base admin group (uploadScreenshot); for multipart routes in web groups check for a signed session cookie synchronously before reading the body (per-route flag, not global wiring). Docs uk+en.",
+            "owner": "Blazheiko",
+            "branch": "fix/pre-auth-body-limits",
+            "dependencies": ["feat-201"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-203",
+            "name": "Verification Mail Abuse",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S09. L-1, L-2 (decision Д5): the registration name is put into mails sent to unverified addresses (phishing text from the product domain), and the resend on sign-in has no hourly or daily cap. Do not put the name into mails to unverified addresses; sanitize providerName in the OAuth link mail; share the 3/hour limit with resendVerificationUser and add 5/day per account. Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/verification-mail-abuse",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-204",
+            "name": "Phone Reset Hardening",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S10. L-3, L-4 (decision Д6): a third party can hold the only live reset challenge for a number, wrong SMS codes have no long-window limit, and the response time reveals phone-only accounts. Let another session open its own parallel challenge (up to 2 live per number, the feat-160 protection stays); block reset for a number after 10 wrong codes in 24 h; send the SMS in the background after the response; record SMS budget exhaustion as an accepted risk. Docs uk+en. Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/phone-reset-hardening",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-205",
+            "name": "Sentry Replay Without URL Tokens",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S11. L-17: Session Replay records the full URL, and the masking hooks of feat-194 do not run for replay events, so /reset-password?token=… reaches Sentry. Add beforeAddRecordingEvent and an event processor for replay_event that mask URLs with maskUrl; the reset, verify-email and OAuth-link views read the token into memory and remove it from the address with router.replace. Regression test on the real SDK. Docs uk+en. Suites: e2e.",
+            "owner": "Blazheiko",
+            "branch": "fix/sentry-replay-url-tokens",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-206",
+            "name": "HTTP Core and Cookie Lows",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S12. L-5, L-14, L-15, L-16: comment out SESSION_COOKIE_HOST_PREFIX=false in .env.example and fail startup when production-like and the session cookie has no Secure or no __Host- prefix; one aggregated debug line per request for invalid headers and a capped \"Rate limit exceeded\" log; CSP for HTML served from disk; route.method in the per-route rate limit key. Docs uk+en.",
+            "owner": "Blazheiko",
+            "branch": "fix/http-core-cookie-lows",
+            "dependencies": ["feat-202"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-207",
+            "name": "Supply Chain Pinning",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S13. L-18, L-19, I-4, I-5 (decision Д7): pin ubuntu:24.04 by digest in both stages and install NodeSource through an apt key and repository instead of curl | bash; pnpm.onlyBuiltDependencies; npm and docker ecosystems in Dependabot and a scheduled pnpm audit --prod; drop the public-test COPY from the production stage; record the uWebSockets.js tarball without an integrity hash as accepted.",
+            "owner": "Blazheiko",
+            "branch": "chore/supply-chain-pinning",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-208",
+            "name": "Push and Cleanup Lows",
+            "description": "docs/plan/security-review-2026-11-12-plan.md S14. L-10, I-3, I-6, I-7, I-1 (decision Д8): check the push endpoint length on the canonical value (400 instead of a failed INSERT); remove p256dhKey, authKey and ipAddress from push subscription responses; remove the unused dompurify dependency; PASSWORD_MAX_LENGTH = 128; document that the support system prompt and active knowledge base articles are visible to the user. Docs uk+en. Suites: PG, e2e.",
+            "owner": "Blazheiko",
+            "branch": "fix/push-and-cleanup-lows",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
