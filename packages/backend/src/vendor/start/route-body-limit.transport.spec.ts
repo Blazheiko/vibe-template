@@ -72,8 +72,6 @@ beforeAll(async () => {
         onUpgrade: () => Promise.resolve({ kind: 'missing' as const }),
         onConnected: () => Promise.resolve(),
         onDisconnected: () => Promise.resolve(),
-        onRefreshToken: () => Promise.resolve(),
-        onRevokeToken: () => Promise.resolve(),
     })
     const server = await import('./server.js')
     stopServer = server.stopServer

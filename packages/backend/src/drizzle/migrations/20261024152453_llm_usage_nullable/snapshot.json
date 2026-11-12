@@ -1,145 +1,113 @@
 {
-  "type": "diff",
-  "version": "9",
-  "dialect": "postgres",
-  "id": "7746ae13-fcf9-4d99-b9ca-f6caa3bca89c",
-  "prevIds": [
-    "dd8865d5-f003-4cd3-8a63-3cabe9e8fc60"
-  ],
-  "footprints": [
-    {
-      "statementType": "alter_enum",
-      "statementTarget": [
-        "enum",
-        "public",
-        "llm_text_feature"
-      ],
-      "writes": [
-        "s|enum|public.llm_text_feature"
-      ],
-      "reads": [
-        "n|sch|public"
-      ]
-    },
-    {
-      "statementType": "alter_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "llm_text_usage",
-        "user_id"
-      ],
-      "writes": [
-        "s|colprop|public.llm_text_usage.user_id.notNull"
-      ],
-      "reads": [
-        "n|tbl|public.llm_text_usage",
-        "n|sch|public",
-        "n|col|public.llm_text_usage.user_id"
-      ],
-      "sqlHash": "16d57a331e52c5de"
-    },
-    {
-      "statementType": "alter_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "llm_text_usage",
-        "prompt_tokens"
-      ],
-      "writes": [
-        "s|colprop|public.llm_text_usage.prompt_tokens.notNull",
-        "s|colprop|public.llm_text_usage.prompt_tokens.default"
-      ],
-      "reads": [
-        "n|tbl|public.llm_text_usage",
-        "n|sch|public",
-        "n|col|public.llm_text_usage.prompt_tokens"
-      ],
-      "sqlHash": "45489393a4fb656f"
-    },
-    {
-      "statementType": "alter_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "llm_text_usage",
-        "completion_tokens"
-      ],
-      "writes": [
-        "s|colprop|public.llm_text_usage.completion_tokens.notNull",
-        "s|colprop|public.llm_text_usage.completion_tokens.default"
-      ],
-      "reads": [
-        "n|tbl|public.llm_text_usage",
-        "n|sch|public",
-        "n|col|public.llm_text_usage.completion_tokens"
-      ],
-      "sqlHash": "6d28b38c88a5583a"
-    },
-    {
-      "statementType": "alter_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "llm_text_usage",
-        "total_tokens"
-      ],
-      "writes": [
-        "s|colprop|public.llm_text_usage.total_tokens.notNull",
-        "s|colprop|public.llm_text_usage.total_tokens.default"
-      ],
-      "reads": [
-        "n|tbl|public.llm_text_usage",
-        "n|sch|public",
-        "n|col|public.llm_text_usage.total_tokens"
-      ],
-      "sqlHash": "48ba571e98d569e7"
-    }
-  ],
-  "deltas": [
-    {
-      "op": "alter",
-      "key": "enums\u0000[\"public\",\"llm_text_feature\"]",
-      "set": {
-        "values": [
-          "PROMPT_TEST",
-          "SUPPORT_CHAT",
-          "SUPPORT_QUERY_TRANSLATION",
-          "SUPPORT_EMBEDDING"
-        ]
-      }
-    },
-    {
-      "op": "alter",
-      "key": "columns\u0000[\"public\",\"llm_text_usage\",\"user_id\"]",
-      "set": {
-        "notNull": false
-      }
-    },
-    {
-      "op": "alter",
-      "key": "columns\u0000[\"public\",\"llm_text_usage\",\"prompt_tokens\"]",
-      "set": {
-        "notNull": false,
-        "default": null
-      }
-    },
-    {
-      "op": "alter",
-      "key": "columns\u0000[\"public\",\"llm_text_usage\",\"completion_tokens\"]",
-      "set": {
-        "notNull": false,
-        "default": null
-      }
-    },
-    {
-      "op": "alter",
-      "key": "columns\u0000[\"public\",\"llm_text_usage\",\"total_tokens\"]",
-      "set": {
-        "notNull": false,
-        "default": null
-      }
-    }
-  ]
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "7746ae13-fcf9-4d99-b9ca-f6caa3bca89c",
+    "prevIds": ["dd8865d5-f003-4cd3-8a63-3cabe9e8fc60"],
+    "footprints": [
+        {
+            "statementType": "alter_enum",
+            "statementTarget": ["enum", "public", "llm_text_feature"],
+            "writes": ["s|enum|public.llm_text_feature"],
+            "reads": ["n|sch|public"]
+        },
+        {
+            "statementType": "alter_column",
+            "statementTarget": ["column", "public", "llm_text_usage", "user_id"],
+            "writes": ["s|colprop|public.llm_text_usage.user_id.notNull"],
+            "reads": [
+                "n|tbl|public.llm_text_usage",
+                "n|sch|public",
+                "n|col|public.llm_text_usage.user_id"
+            ],
+            "sqlHash": "16d57a331e52c5de"
+        },
+        {
+            "statementType": "alter_column",
+            "statementTarget": ["column", "public", "llm_text_usage", "prompt_tokens"],
+            "writes": [
+                "s|colprop|public.llm_text_usage.prompt_tokens.notNull",
+                "s|colprop|public.llm_text_usage.prompt_tokens.default"
+            ],
+            "reads": [
+                "n|tbl|public.llm_text_usage",
+                "n|sch|public",
+                "n|col|public.llm_text_usage.prompt_tokens"
+            ],
+            "sqlHash": "45489393a4fb656f"
+        },
+        {
+            "statementType": "alter_column",
+            "statementTarget": ["column", "public", "llm_text_usage", "completion_tokens"],
+            "writes": [
+                "s|colprop|public.llm_text_usage.completion_tokens.notNull",
+                "s|colprop|public.llm_text_usage.completion_tokens.default"
+            ],
+            "reads": [
+                "n|tbl|public.llm_text_usage",
+                "n|sch|public",
+                "n|col|public.llm_text_usage.completion_tokens"
+            ],
+            "sqlHash": "6d28b38c88a5583a"
+        },
+        {
+            "statementType": "alter_column",
+            "statementTarget": ["column", "public", "llm_text_usage", "total_tokens"],
+            "writes": [
+                "s|colprop|public.llm_text_usage.total_tokens.notNull",
+                "s|colprop|public.llm_text_usage.total_tokens.default"
+            ],
+            "reads": [
+                "n|tbl|public.llm_text_usage",
+                "n|sch|public",
+                "n|col|public.llm_text_usage.total_tokens"
+            ],
+            "sqlHash": "48ba571e98d569e7"
+        }
+    ],
+    "deltas": [
+        {
+            "op": "alter",
+            "key": "enums\u0000[\"public\",\"llm_text_feature\"]",
+            "set": {
+                "values": [
+                    "PROMPT_TEST",
+                    "SUPPORT_CHAT",
+                    "SUPPORT_QUERY_TRANSLATION",
+                    "SUPPORT_EMBEDDING"
+                ]
+            }
+        },
+        {
+            "op": "alter",
+            "key": "columns\u0000[\"public\",\"llm_text_usage\",\"user_id\"]",
+            "set": {
+                "notNull": false
+            }
+        },
+        {
+            "op": "alter",
+            "key": "columns\u0000[\"public\",\"llm_text_usage\",\"prompt_tokens\"]",
+            "set": {
+                "notNull": false,
+                "default": null
+            }
+        },
+        {
+            "op": "alter",
+            "key": "columns\u0000[\"public\",\"llm_text_usage\",\"completion_tokens\"]",
+            "set": {
+                "notNull": false,
+                "default": null
+            }
+        },
+        {
+            "op": "alter",
+            "key": "columns\u0000[\"public\",\"llm_text_usage\",\"total_tokens\"]",
+            "set": {
+                "notNull": false,
+                "default": null
+            }
+        }
+    ]
 }

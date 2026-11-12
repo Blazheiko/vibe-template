@@ -37,7 +37,6 @@ import {
 import { createWsRateLimitErrorResponse } from '#vendor/utils/rate-limit/ws-rate-limit.js'
 import type { Validator } from '#vendor/contracts/validator.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
-import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
 import {
     classifiedErrorBody,
@@ -63,8 +62,6 @@ export interface WsAppHooks {
     /** Rejects with RedisUnavailableError while Redis is down. */
     onConnected: (ws: MyWebSocket, userData: UserConnection) => Promise<void>
     onDisconnected: (ws: MyWebSocket, userData: UserConnection, code: number) => Promise<void>
-    onRefreshToken: (token: string) => Promise<void>
-    onRevokeToken: (token: string) => Promise<void>
 }
 
 let appHooks: WsAppHooks | null = null
@@ -187,11 +184,11 @@ const normalizeAppTypeProtocol = (rawAppType: string): 'web' | 'pwa' => {
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 
-// feat-112: every socket gets 4201 first, whatever Redis does; the token revokes then run
-// together and a failing one is only logged. (onClose revokes too; a DEL is idempotent.)
+// feat-112: every socket gets 4201, whatever Redis does. feat-196: there is no token left to
+// revoke, the upgrade consumed it.
 // feat-138 (sixth review L12): cleared by closeAllWs. An upgrade still waiting on its token check
-// when the shutdown began would otherwise open a socket after every socket was closed and every
-// token revoked; it is answered 503 instead.
+// when the shutdown began would otherwise open a socket after every socket was closed; it is
+// answered 503 instead.
 let acceptingUpgrades = true
 
 /** Test hook: a module-level flag outlives one test's shutdown. */
@@ -199,42 +196,23 @@ const __acceptUpgradesForTests = (): void => {
     acceptingUpgrades = true
 }
 
+// Async for its callers: the shutdown awaits it between its other steps.
+// eslint-disable-next-line @typescript-eslint/require-await
 const closeAllWs = async (): Promise<void> => {
     acceptingUpgrades = false
-    const hooks = getAppHooks()
-    const tokens: string[] = []
     for (const ws of [...wsStorage]) {
         try {
-            const token = ws.getUserData().token
-            if (token !== '') tokens.push(token)
             ws.end(4201)
         } catch (e) {
             logger.error({ err: e }, 'closeAllWs error')
         }
     }
     wsStorage.clear()
-
-    const revoked = await Promise.allSettled(tokens.map((token) => hooks.onRevokeToken(token)))
-    const failed = revoked.filter((outcome) => outcome.status === 'rejected').length
-    if (failed > 0) {
-        logger.warn({ failed, total: tokens.length }, 'closeAllWs: some WS tokens were not revoked')
-    }
 }
 
 // ---------------------------------------------------------------------------
 // uWS callbacks
 // ---------------------------------------------------------------------------
-
-/** Resolves false when Redis is unavailable; other errors are logged as before. */
-const refreshToken = async (token: string): Promise<boolean> => {
-    try {
-        await getAppHooks().onRefreshToken(token)
-    } catch (error: unknown) {
-        if (error instanceof RedisUnavailableError) return false
-        logger.error({ err: error }, 'Error refresh token')
-    }
-    return true
-}
 
 const messageBudgetOf = (userData: UserConnection, now: number): WsMessageBudgetState => {
     userData.messageBudget ??= createWsMessageBudget(now)
@@ -299,30 +277,26 @@ const onMessage = async (
     const jsonMessage = ab2str(wsMessage)
     const userData = ws.getUserData()
 
-    const token = userData.token
     const now = Date.now()
     const budget = messageBudgetOf(userData, now)
 
-    // Heartbeat confirms the transport, not Redis: pong first, with no Redis
-    // command before it; the token refresh for ping runs after and is not awaited.
+    // Heartbeat confirms the transport and costs no Redis command (feat-196: the WS token is
+    // consumed by the upgrade, there is nothing to refresh).
     if (jsonMessage === 'ping') {
         try {
             ws.send('pong')
         } catch (e) {
             logger.error({ err: e }, 'Error ws send pong')
         }
-        // The pong is free; the refresh is a Redis command and has a budget of its own.
-        const pingAdmission = admitWsPing(budget, configWebsocket, now)
-        if (pingAdmission === 'close') {
+        // Heartbeats have a budget of their own: a flood of them closes the connection.
+        if (admitWsPing(budget, configWebsocket, now) === 'close') {
             closeFloodingConnection(ws, userData)
-        } else if (pingAdmission === 'allow' && token !== '') {
-            void refreshToken(token)
         }
         return
     }
 
-    // First, from memory: everything below costs a Redis command, and a valid message a
-    // session read with a PostgreSQL query (feat-149).
+    // First, from memory: a valid message below costs a session read, a Redis command and a
+    // PostgreSQL query (feat-149).
     const admission = admitWsMessage(budget, configWebsocket, now)
     if (admission === 'close') {
         closeFloodingConnection(ws, userData)
@@ -334,7 +308,7 @@ const onMessage = async (
     }
 
     try {
-        await handleAdmittedMessage(ws, jsonMessage, userData, token, wsRoutesByUrl)
+        await handleAdmittedMessage(ws, jsonMessage, userData, wsRoutesByUrl)
     } finally {
         releaseWsHandler(budget)
     }
@@ -344,12 +318,8 @@ const handleAdmittedMessage = async (
     ws: MyWebSocket,
     jsonMessage: string,
     userData: UserConnection,
-    token: string,
     wsRoutesByUrl: Readonly<WsRoutes>,
 ): Promise<void> => {
-    // false: Redis is unavailable (already reported by redis-health, no log here).
-    const refreshed = token === '' ? true : await refreshToken(token)
-
     let parsedMessage: unknown
     try {
         parsedMessage = JSON.parse(jsonMessage)
@@ -380,11 +350,6 @@ const handleAdmittedMessage = async (
             return
         }
         const message = validatedMessage.value
-
-        if (!refreshed) {
-            sendJson(ws, serviceUnavailableMessage(message.event, message.id), userData)
-            return
-        }
 
         const { sessionId, userToken } = userData
         const sessionResult =
@@ -558,15 +523,6 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
         }
     }
 
-    const token = userData.token
-    if (token !== '') {
-        try {
-            await getAppHooks().onRevokeToken(token)
-        } catch (e) {
-            logger.error({ err: e }, 'Error in onRevokeToken hook')
-        }
-    }
-
     if (disconnected !== undefined) {
         try {
             await disconnected
@@ -706,7 +662,6 @@ const upgradeConnection = async (
         const userData: UserData = {
             ip,
             ip2: ab2str(res.getProxiedRemoteAddressAsText()),
-            token,
             user: null,
             uuid: generateUUID(),
             sessionId: dataAccess.sessionId,

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-149 (review 2026-11-10, M1): a connection has a budget of messages a minute, checked
-// before anything that costs a Redis command or a PostgreSQL query. The counters below are the
-// two costs: onRefreshToken is the Redis round trip of every message, wsSessionHandler reads the
-// session from Redis and the session token from PostgreSQL.
+// before anything that costs a Redis command or a PostgreSQL query. The counter below is that
+// cost: wsSessionHandler reads the session from Redis and the session token from PostgreSQL.
+// feat-196: the WS token is consumed by the upgrade, so a message no longer refreshes it.
 const logger = vi.hoisted(() => ({ debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#database/redis-rate-limit.js', () => ({ default: { eval: vi.fn() } }))
@@ -15,7 +15,6 @@ vi.mock('../routing/ws-api-dispatcher.js', () => ({ default: wsApiHandler }))
 const wsSessionHandler = vi.hoisted(() => vi.fn())
 vi.mock('../session/session-handler.js', () => ({ wsSessionHandler }))
 
-const onRefreshToken = vi.fn()
 const handlers = await import('./ws-handlers.js')
 const { WS_PINGS_PER_MINUTE, WS_CLOSE_MESSAGE_FLOOD } =
     await import('../rate-limit/ws-message-budget.js')
@@ -23,8 +22,6 @@ handlers.registerWsAppHooks({
     onUpgrade: vi.fn(),
     onConnected: vi.fn(),
     onDisconnected: vi.fn(),
-    onRefreshToken,
-    onRevokeToken: vi.fn(),
 })
 handlers.registerWsMessageValidator({
     validate: (value: unknown) => ({ ok: true, value }) as never,
@@ -36,7 +33,7 @@ const MAX_CONCURRENT = 3
 /** One connection: uWS hands out the same user data object for the life of the socket. */
 const createConnection = () => {
     const sent: string[] = []
-    const userData = { token: 'wstoken', sessionId: 's1', userToken: 'u1', userId: '1' }
+    const userData = { sessionId: 's1', userToken: 'u1', userId: '1' }
     const ws = {
         sent,
         getUserData: () => userData,
@@ -72,7 +69,6 @@ const unknownEvent = (n: number): string =>
 beforeEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
-    onRefreshToken.mockResolvedValue(undefined)
     wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
     wsApiHandler.mockImplementation((message: { event: string; timestamp: number }) =>
         Promise.resolve({
@@ -92,7 +88,6 @@ describe('WS message budget of a connection', () => {
         for (let n = 1; n <= BUDGET + 10; n += 1) await send(unknownEvent(n))
 
         expect(wsSessionHandler).toHaveBeenCalledTimes(BUDGET)
-        expect(onRefreshToken).toHaveBeenCalledTimes(BUDGET)
         expect(replies().filter((reply) => reply['status'] === 'error')).toHaveLength(BUDGET + 10)
         expect(replies()[BUDGET]).toMatchObject({
             status: 'error',
@@ -102,13 +97,12 @@ describe('WS message budget of a connection', () => {
         })
     })
 
-    it('never checks the session for malformed JSON, and stops the Redis refresh at the budget', async () => {
+    it('never checks the session for malformed JSON, and refuses it over the budget', async () => {
         const { send, replies } = createConnection()
 
         for (let n = 1; n <= BUDGET + 10; n += 1) await send('{not json')
 
         expect(wsSessionHandler).not.toHaveBeenCalled()
-        expect(onRefreshToken).toHaveBeenCalledTimes(BUDGET)
         expect(replies()[BUDGET]).toMatchObject({
             status: 'error',
             event: '',
@@ -116,24 +110,23 @@ describe('WS message budget of a connection', () => {
         })
     })
 
-    it('never checks the session for ping, always answers pong, and stops the Redis refresh at the ping budget', async () => {
+    it('never checks the session for ping and always answers pong', async () => {
         const { ws, send } = createConnection()
 
         for (let n = 1; n <= WS_PINGS_PER_MINUTE + 10; n += 1) await send('ping')
 
         expect(wsSessionHandler).not.toHaveBeenCalled()
         expect(ws.sent.filter((text) => text === 'pong')).toHaveLength(WS_PINGS_PER_MINUTE + 10)
-        expect(onRefreshToken).toHaveBeenCalledTimes(WS_PINGS_PER_MINUTE)
     })
 
-    it('keeps the ping budget apart: a used-up message budget does not stop the heartbeat refresh', async () => {
-        const { send } = createConnection()
+    it('keeps the ping budget apart: a used-up message budget does not stop the heartbeat', async () => {
+        const { ws, send } = createConnection()
         for (let n = 1; n <= BUDGET + 1; n += 1) await send(unknownEvent(n))
-        onRefreshToken.mockClear()
 
         await send('ping')
 
-        expect(onRefreshToken).toHaveBeenCalledTimes(1)
+        expect(ws.sent.filter((text) => text === 'pong')).toHaveLength(1)
+        expect(ws.end).not.toHaveBeenCalled()
     })
 
     it('starts a new budget in the next minute', async () => {

@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import appConfig from '#config/app.js'
-import { RedisUnavailableError } from './errors/redis-unavailable-error.js'
 
 const logger = vi.hoisted(() => ({
     debug: vi.fn(),
@@ -20,15 +19,12 @@ vi.mock('../session/session-handler.js', () => ({ wsSessionHandler }))
 vi.mock('./get-ip.js', () => ({ default: () => '10.9.0.1' }))
 
 const onUpgrade = vi.fn()
-const onRefreshToken = vi.fn()
 
 const handlers = await import('./ws-handlers.js')
 handlers.registerWsAppHooks({
     onUpgrade,
     onConnected: vi.fn(),
     onDisconnected: vi.fn(),
-    onRefreshToken,
-    onRevokeToken: vi.fn(),
 })
 handlers.registerWsMessageValidator({
     validate: (value: unknown) => ({ ok: true, value }) as never,
@@ -41,7 +37,6 @@ const createWs = () => {
         sent,
         order,
         getUserData: () => ({
-            token: 'wstoken',
             sessionId: 's1',
             userToken: 'u1',
             userId: '1',
@@ -67,47 +62,21 @@ const APP_MESSAGE = JSON.stringify({ event: 'api/user/me', timestamp: 123, paylo
 
 beforeEach(() => {
     vi.clearAllMocks()
-    onRefreshToken.mockResolvedValue(undefined)
 })
 
 describe('onMessage heartbeat', () => {
-    it('answers pong before any Redis command and does not wait for refresh', async () => {
+    // feat-196: the WS token is consumed by the upgrade, so a heartbeat has nothing to refresh
+    // and costs no Redis command at all.
+    it('answers pong without reading the session or touching Redis', async () => {
         const ws = createWs()
-        onRefreshToken.mockImplementation(() => {
-            ws.order.push('refresh')
-            return new Promise(() => {}) // hangs
-        })
 
         await handlers.onMessage(ws as never, message('ping'), false, {})
 
-        expect(ws.order).toEqual(['send:pong', 'refresh'])
+        expect(ws.order).toEqual(['send:pong'])
         expect(ws.end).not.toHaveBeenCalled()
         expect(wsSessionHandler).not.toHaveBeenCalled()
-    })
-
-    it('does not log when the refresh for ping finds Redis unavailable', async () => {
-        const ws = createWs()
-        onRefreshToken.mockRejectedValue(new RedisUnavailableError())
-
-        await handlers.onMessage(ws as never, message('ping'), false, {})
-        await new Promise((resolve) => setImmediate(resolve))
-
-        expect(ws.sent).toEqual(['pong'])
         expect(logger.error).not.toHaveBeenCalled()
         expect(logger.warn).not.toHaveBeenCalled()
-    })
-
-    it('still logs other refresh errors', async () => {
-        const ws = createWs()
-        onRefreshToken.mockRejectedValue(new Error('boom'))
-
-        await handlers.onMessage(ws as never, message('ping'), false, {})
-        await new Promise((resolve) => setImmediate(resolve))
-
-        expect(logger.error).toHaveBeenCalledWith(
-            expect.objectContaining({ err: expect.any(Error) }),
-            'Error refresh token',
-        )
     })
 })
 
@@ -124,17 +93,6 @@ describe('onMessage application requests', () => {
         expect(ws.close).not.toHaveBeenCalled()
         expect(logger.error).not.toHaveBeenCalled()
     }
-
-    it('refresh unavailable → service_unavailable with the event, session not read', async () => {
-        const ws = createWs()
-        onRefreshToken.mockRejectedValue(new RedisUnavailableError())
-
-        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, {})
-
-        expectServiceUnavailable(ws)
-        expect(wsSessionHandler).not.toHaveBeenCalled()
-        expect(wsApiHandler).not.toHaveBeenCalled()
-    })
 
     it('session unavailable → service_unavailable, connection kept', async () => {
         const ws = createWs()

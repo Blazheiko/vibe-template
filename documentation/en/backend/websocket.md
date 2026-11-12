@@ -78,7 +78,7 @@ const appType = normalizeAppTypeProtocol(protocols[1] ?? '')
 
 If `verifyUpgradeToken` did not find a live session for a token of the correct format, the upgrade is rejected **before** `res.upgrade` with a `401 Session expired` response: the connection does not open. The browser sees this as a failed handshake (close `1006`), and the client refreshes the token over HTTP (see below). If the data exists, the client receives `service:connection_established` with `socket_id` (the connection UUID) and `activity_timeout: 30`.
 
-On every incoming message, `onRefreshToken` extends the TTL of `auth:ws:<token>` to 120 s, and in `onClose` and `closeAllWs` (graceful shutdown, code `4201`) the token is deleted via `onRevokeToken`. `closeAllWs` first closes every connection with code `4201` and revokes the tokens only afterwards, in parallel: a Redis failure during revocation is only logged and does not leave connections open (feat-112). After `closeAllWs` the server no longer upgrades: an upgrade that was still waiting for token verification gets `503 Server is shutting down` (feat-138). So a token is single-use per connection: a new connection requires a new `update-ws-token` call.
+The token is **single-use**: `verifyUpgradeToken` reads `auth:ws:<token>` with `GETDEL`, so the record leaves Redis in the same step that reads it (feat-196). A second upgrade with the same token gets `401`, and of two simultaneous upgrades with one token exactly one opens. The token is consumed whatever the answer (including `503` when the DB did not respond): after a failed handshake the client takes a new one through `update-ws-token`. From then on `sessionId` and `userToken` live only in the connection's `userData`, so a message or a heartbeat costs no Redis command for the token, and there is nothing to revoke on close. `closeAllWs` (graceful shutdown) closes every connection with code `4201`. After `closeAllWs` the server no longer upgrades: an upgrade that was still waiting for token verification gets `503 Server is shutting down` (feat-138).
 
 ## Server structure
 
@@ -100,8 +100,6 @@ registerWsAppHooks({
     onConnected: (ws, userData) => websocketCoordinator.handleConnected(ws, userData),
     onDisconnected: (ws, userData, code) =>
         websocketCoordinator.handleDisconnected(ws, userData, code),
-    onRefreshToken: (token) => wsSessionAuth.refreshToken(token),
-    onRevokeToken: (token) => wsSessionAuth.revokeToken(token),
 })
 ```
 
@@ -119,7 +117,7 @@ A socket is dead from the moment uWS calls the `close` handler: after that any a
 1. reads `userData` and sets `userData.closed = true`;
 2. removes the socket from `wsStorage`;
 3. starts `onDisconnected`, whose synchronous part removes the connection from the registry;
-4. only then waits for Redis (`onRevokeToken`) and for `onDisconnected` to finish.
+4. only then waits for `onDisconnected` to finish.
 
 After `await findRole(...)`, `handleConnected` checks `userData.closed`. A socket closed while the role was being read does not get into the registry: its `close` has already run and will not be called again. If `onConnected` fails (for example, a DB error while reading the role), the connection is closed with code `1011` (feat-133): the client has already received `connection_established`, but outside the registry it gets no broadcasts, and push would behave as if the user were offline. The client reconnects on any code outside 4000–4099 and registers again. Likewise, the message handler's response (`sendJson`) checks `userData.closed`: if the client left while the handler was working (an AI reply, a slow query), nothing is sent and nothing is logged as an error (feat-124). The same applies to the `4001` close when the session was not found after the `await` of the session lookup (feat-128). The `admin_user_online_upsert` event is sent only if the user is still in the registry: its snapshot is read from the DB, and a disconnect in the meantime has already sent `remove`, so a late upsert would leave a "ghost" in the admin list. The `user_online` row is closed (`UPDATE` by socket uuid) only after the connection `INSERT` has finished, and regardless of its outcome: a failed `INSERT` might have committed (a timeout or a dropped connection after `COMMIT`), so without the `UPDATE` the row would stay open. If the row truly does not exist, the `UPDATE` finds nothing and writes a `warn` (feat-128).
 
@@ -207,7 +205,7 @@ Service events come in the reply envelope. `isWsBroadcast(message)` tells a broa
 
 ### Connection message budget
 
-The route limit is checked in the dispatcher, that is after the message has already cost a Redis command (extending the token TTL) and, for a valid message, a session read with a PostgreSQL query; for an unknown event it is not checked at all. So the first thing `onMessage` does is check the connection's budget ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). The budget state lives in the connection's `userData`: no Redis, in process memory, gone with the socket.
+The route limit is checked in the dispatcher, that is after a valid message has already cost a session read: a Redis command and a PostgreSQL query; for an unknown event it is not checked at all. So the first thing `onMessage` does is check the connection's budget ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). The budget state lives in the connection's `userData`: no Redis, in process memory, gone with the socket.
 
 | What is counted                                   | Limit                                       | Over the limit                                                                |
 | ------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -223,7 +221,7 @@ Exceptions in the dispatcher and `onMessage` are classified by the same [`classi
 
 Before the dispatcher, `onMessage` checks the session via `wsSessionHandler` ([session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts)) on **every** message, so logging out over HTTP breaks the WS on the next message.
 
-If the main Redis client is unavailable (a token refresh or a session read gave `RedisUnavailableError`), the connection is **not closed**, and the response to this message is an error with the original `event` and `id`, in the same format as `rate_limited`:
+If the main Redis client is unavailable (a session read gave `RedisUnavailableError`), the connection is **not closed**, and the response to this message is an error with the original `event` and `id`, in the same format as `rate_limited`:
 
 ```json
 {
@@ -306,7 +304,7 @@ The decision is made by the pure function [`resolveWebSocketCloseAction`](https:
 - code `4001` → `unauthorized()`: a new `mainApi.updateWsToken()` and `websocketOpen(wsUrl, wsToken)`; if HTTP also says "not authenticated" — the `unauthorized` event on the event bus and a close; other errors — retry after 5 s;
 - `1006` when the connection never opened (the server rejected the upgrade with `401` or is unavailable) → also `unauthorized()`: the first time immediately, subsequent ones in a row after 5 s, so that an unavailable WS endpoint with a working HTTP does not cause a fast loop of token refreshes;
 - codes `4000–4099` (except `4001`) → no reconnect; `4029` belongs here (the connection went over its [message budget](#connection-message-budget));
-- other codes (including `4201` on server shutdown) → `open()` after 5 s. Since the token on the server has already been revoked, such a retry will most likely get `4001` and take the token refresh branch.
+- other codes (including `4201` on server shutdown) → after 5 s the client takes a new token (`update-ws-token`) and opens a connection with it: the token of the previous connection has been consumed (feat-196).
 
 ::: tip Non-standard `API_PATH_PREFIX`
 WS route keys on the server are `<API_PATH_PREFIX>/<route>`. The frontend takes the same prefix: the Vite config reads `API_PATH_PREFIX` from the shell or `packages/backend/.env` and compiles it in as `VITE_API_PATH_PREFIX` ([one source](/en/backend/configuration#one-source-for-the-api-address-and-prefix)), so it produces the same events; with a different prefix the server responds `not_found`. The same prefix also sets the frontend's HTTP paths ([api-path.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-path.ts): `/<prefix>/<route>`), the Vite dev proxy ([vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts): `/<prefix>`, including `/<prefix>/websocket`) and the prefix whose requests the service worker never caches ([service-worker.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts)). So for a non-standard prefix it is enough to change the backend's `API_PATH_PREFIX` and restart or rebuild the frontend.
@@ -376,10 +374,10 @@ sequenceDiagram
   H->>R: SETEX auth:ws:token 60
   H-->>C: wsUrl, wsToken
   C->>W: Upgrade, Sec-WebSocket-Protocol: token, app-web
-  W->>R: GET auth:ws:token, GET session
+  W->>R: GETDEL auth:ws:token, GET session
   W-->>C: service:connection_established
   C->>W: event api/support/support_chat
-  W->>R: EXPIRE token 120, session check
+  W->>R: session check
   W->>D: message
   D->>S: handler(context)
   D-->>C: response with the same event

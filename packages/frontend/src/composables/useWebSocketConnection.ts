@@ -130,8 +130,9 @@ const clearReconnectTimeout = () => {
     }
 }
 
+// Takes a new WS token over HTTP and opens a connection with it: after 4001, after a refused
+// upgrade, and for every other reconnect (the previous token is spent).
 const unauthorized = async () => {
-    console.warn('WebSocket closed due to authentication error (4001)')
     if (isUpdatingWsToken) {
         console.log('Token update already in progress, skipping...')
         return
@@ -218,12 +219,13 @@ const handleWebSocketClose = (socket: WebSocket, event: CloseEvent): void => {
         return
     }
 
-    // For other codes, attempt to reconnect after delay
+    // For other codes, reconnect after a delay. feat-196: a WS token opens one connection, so
+    // the one this socket was opened with is spent; the reconnect starts with a new token.
     console.log(`WebSocket will attempt to reconnect in ${String(action.delayMs / 1000)} seconds`)
     reconnectTimeout = window.setTimeout(() => {
         reconnectTimeout = null
         console.log('Attempting to reconnect...')
-        open()
+        void unauthorized()
     }, action.delayMs)
 }
 
