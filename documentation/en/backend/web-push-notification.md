@@ -201,7 +201,7 @@ sequenceDiagram
     PS-->>U: endpoint + keys
     U->>API: POST /api/push-subscriptions
     API->>DB: create or update by endpoint
-    API->>PS: webpush.sendNotification(payload)
+    API->>PS: sendPush (webpush.generateRequestDetails + push-transport.ts)
     API->>DB: insert pushNotificationLogs (SENT/FAILED)
     PS->>SW: push event
     SW->>U: showNotification(title, options)

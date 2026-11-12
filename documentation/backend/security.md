@@ -7,7 +7,7 @@
 Ліміти працюють на двох рівнях, і в них різні задачі.
 
 - **Ліміт захищає процес від частих тяжких операцій** (парсинг тіла, middleware, запити до БД, AI) → `rateLimit` на маршруті чи групі або глобальний ліміт у [`config/rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/rate-limit.ts). Лічильник у пам'яті процесу, кожен інстанс рахує окремо.
-- **Ліміт стосується чутливої дії** (вхід, реєстрація, SMS, скидання й зміна пароля) і має бути спільним для всіх інстансів → політика в [`config/throttle-policies.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts) і крок `enforceThrottle(policy, key, { unavailable, rejected })` у сервісі ([`enforce-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/enforce-throttle.ts)): він споживає одну спробу через `consumeAuthThrottle` і повертає `ok`, помилку `rejected` для вичерпаного лічильника або внутрішню помилку з повідомленням `unavailable`, коли Redis не відповів (закрито: `500`, а при недоступному Redis — `503`). Лічильник у Redis.
+- **Ліміт стосується чутливої дії** (вхід, реєстрація, SMS, скидання й зміна пароля) і має бути спільним для всіх інстансів → політика в [`config/throttle-policies.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts) і крок `enforceThrottle(policy, key, rejected)` у сервісі ([`enforce-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/enforce-throttle.ts)): він споживає одну спробу через `consumeAuthThrottle` і повертає `ok` або помилку `rejected` для вичерпаного лічильника (сервіси передають `rateLimited(...)`, тобто `429`). Коли Redis не відповів, виняток не обгортається і доходить до транспорту, який відповідає `503` (закрито). Лічильник у Redis.
 
 ```
 HTTP API:  L1 (memory) → ліміт маршруту (memory) → handler → auth-політики (Redis)
@@ -51,6 +51,7 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 | `forgotPasswordEmail`     | лист скидання пароля                                          | email           | fixed-window | 1 год / 3                              | `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_EMAIL_PER_HOUR`        | загальна відповідь, лист не надсилається | —            |
 | `resetPasswordIp`         | скидання пароля за токеном                                    | IP              | fixed-window | 1 год / 20                             | `AUTH_RESET_PASSWORD_MAX_ATTEMPTS_PER_IP_PER_HOUR`            | відхилити                                | —            |
 | `verifyEmailIp`           | підтвердження email                                           | IP              | fixed-window | 1 год / 20                             | `AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR`              | відхилити                                | —            |
+| `verifyEmailPasswordUser` | пароль на посиланні підтвердження реєстрації (feat-097)       | користувач      | fixed-window | 1 год / 5                              | `AUTH_VERIFY_EMAIL_PASSWORD_MAX_ATTEMPTS_PER_HOUR`            | відхилити                                | —            |
 | `resendVerificationUser`  | повторний лист підтвердження                                  | користувач      | fixed-window | 1 год / 3                              | `AUTH_RESEND_VERIFICATION_MAX_PER_USER_PER_HOUR`              | відхилити                                | —            |
 | `loginUnverifiedResend`   | лист підтвердження після входу в непідтверджений акаунт       | користувач      | fixed-window | 5 хв / 1                               | `AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS`                    | не надсилати лист (вхід усе одно 401)    | —            |
 | `registerEmailIp`         | реєстрація email                                              | IP              | fixed-window | 1 год / 10                             | `AUTH_EMAIL_REGISTER_MAX_ATTEMPTS_PER_IP_PER_HOUR`            | відхилити                                | —            |
@@ -66,6 +67,8 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 | `linkEmailTarget`         | прив'язка email, листи OAuth-прив'язки й першої адреси        | email           | fixed-window | 1 год / 3                              | `AUTH_EMAIL_LINK_MAX_ATTEMPTS_PER_TARGET_PER_HOUR`            | відхилити                                | —            |
 | `linkEmailUser`           | прив'язка email, листи OAuth-прив'язки й першої адреси        | користувач      | fixed-window | 1 год / 3                              | `AUTH_EMAIL_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR`              | відхилити                                | —            |
 | `linkEmailUserCooldown`   | пауза між листами прив'язки                                   | користувач      | fixed-window | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS` / 1 | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS`                            | відхилити                                | —            |
+| `supportOpenChatUser`     | відкриття чату підтримки (привітання AI)                      | користувач      | fixed-window | 60 с / 5                               | `SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_*`                         | відхилити                                | —            |
+| `supportChatUser`         | повідомлення в чат підтримки (feat-063)                       | користувач      | fixed-window | 60 с / 20                              | `SUPPORT_CHAT_USER_RATE_LIMIT_*`                              | відхилити                                | —            |
 | `wsUpgradeShared`         | WS upgrade, рівень 2                                          | IP              | sliding-log  | 60 с / 60                              | `WS_UPGRADE_SHARED_RATE_LIMIT_*`                              | пропустити, діє рівень 1                 | —            |
 
 `0` у змінній auth-політики — помилка конфігу на старті: захист чутливої дії вимкнути не можна. Вимкнути змінною (`MAX=0`) можна лише `wsUpgradeShared` (`disableable`), напр. для одного інстансу.
@@ -124,10 +127,11 @@ exportReportUser: fixedWindow(
 ),
 
 // сервіс
-const throttle = await enforceThrottle(throttlePolicies.exportReportUser, String(userId), {
-  unavailable: 'Failed to enforce export throttle',
-  rejected: badRequest('Too many export requests. Please try again later.'),
-})
+const throttle = await enforceThrottle(
+  throttlePolicies.exportReportUser,
+  String(userId),
+  rateLimited('Too many export requests. Please try again later.'),
+)
 if (Result.isError(throttle)) return Result.err(throttle.error)
 ```
 

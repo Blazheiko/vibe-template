@@ -50,9 +50,7 @@ MIME-тип береться з [`MIME_TYPES`](https://github.com/Blazheiko/vibe
 - URL **без крапки** отримує `index.html` через той самий `handleHtmlRequest`, тобто з ETag і `must-revalidate`.
 - URL із крапкою, якого немає в кеші, отримує `404` з порожнім тілом.
 
-::: warning CSP
-Генерація заголовка CSP у `static-server.ts` закоментована (`setCspHeader`), тому HTML віддається без Content-Security-Policy. Це проблема 1 у `docs/plan/code-issues-found-during-docs.md`.
-:::
+HTML-оболонка (і `index.html` для SPA fallback) отримує CSP `document`, SVG — CSP `svg`, `/service-worker.js` та інші файли — без CSP (`setSecurityHeaders(res, [], cspKind)` у `static-server.ts`). Правила — у [Безпеці](/backend/security#content-security-policy).
 
 ## API-відповіді
 
@@ -91,7 +89,7 @@ curl -I -H 'If-None-Match: "3n0Yq…"' http://localhost:3000/index.html
 - Значення `Cache-Control` задані константами в `static-server.ts` (`HTML_CACHE_CONTROL`, `IMMUTABLE_CACHE_CONTROL`, `REVALIDATE_CACHE_CONTROL`); правило «`immutable` лише для `/assets/`» — у `cacheControlFor`.
 - Ліміти пам'яті — `STATIC_MAX_MEMORY_FILE_SIZE`, `STATIC_MAX_MEMORY_TOTAL` ([Конфігурація](/backend/configuration)).
 - Whitelist розширень задається в `ALLOWED_STATIC_EXTENSIONS`.
-- **Dev:** фронтенд віддає Vite dev-сервер, `SERVE_STATIC` зазвичай `false`. **Prod:** або `SERVE_STATIC=true` з каталогом `public` в образі (у Dockerfile змінна не задана, проблема 31), або окремий хостинг/CDN (`CDN_URL`). У випадку CDN заголовки кешування задає CDN. Див. [Розгортання](/backend/deployment).
+- **Dev:** фронтенд віддає Vite dev-сервер, `SERVE_STATIC` зазвичай `false`. **Prod:** або `SERVE_STATIC=true` з каталогом `public` в образі (так налаштовано [Dockerfile](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile): `SERVE_STATIC=true`), або окремий хостинг/CDN (`CDN_URL`). У випадку CDN заголовки кешування задає CDN. Див. [Розгортання](/backend/deployment).
 
 ::: info Історія
 Раніше ETag будувався з довжини файлу й URL. Зараз це SHA1-хеш вмісту, порахований один раз при старті; чому так — у коментарі в [static-server.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts). Нотатку `etag-improvements.md` з варіантами MD5 / mtime / CRC32 видалено у feat-009 ([остання версія](https://github.com/Blazheiko/vibe-template/blob/8f3479f/packages/backend/src/docs/etag-improvements.md)).

@@ -60,7 +60,7 @@ The browser adds the `Origin` header to a `POST`: the scheme, domain and port of
 
 ### 4. CSRF token: a secret the attacker does not have
 
-The main layer. For each session the server generates a random **CSRF token** and stores it next to the session in Redis. The frontend adds this token to every request that changes data, in the `X-CSRF-Token` header. The server compares: the token in the header must match the session token.
+The main layer. For each session the server generates a random **CSRF token** and stores it with the session: for a guest session (before login) in the signed session cookie, since such a session is not written to Redis at all, and after login in the session record in Redis. The frontend adds this token to every request that changes data, in the `X-CSRF-Token` header. The server compares: the token in the header must match the session token.
 
 A foreign site cannot learn the token: it cannot read your server's response (the browser forbids this), so it cannot insert the token either. A mismatched token gets `403` with the reason `token_mismatch`.
 
@@ -149,5 +149,5 @@ The full scenario is in the [Quick start](/en/guide/getting-started#the-same-wit
 - [How the backend works](/en/guide/how-backend-works): where `csrf_guard` stands among the other middleware.
 
 ::: tip Check it yourself
-Run the project following the [Quick start](/en/guide/getting-started) and send `POST /api/auth/logout` with curl without the `origin` header. The server responds `403` with `reason: origin_mismatch`. Add `-H 'origin: http://localhost:5173'`: now the `403` will be with `token_mismatch`. Add `x-csrf-token` as well: the request goes through.
+Run the project following the [Quick start](/en/guide/getting-started) and send `POST /api/auth/logout` with curl without the `origin` header. The server responds `403` with `reason: origin_mismatch`. Add `-H 'origin: http://localhost:5173'`: now the `403` will be with `token_mismatch`. Add the session cookie and `x-csrf-token` from the `GET /api/main/init` response as well: the CSRF check passes, but a guest gets `401 unauthorized`, because the route has `auth_guard` after `csrf_guard` and only a logged-in user can log out.
 :::

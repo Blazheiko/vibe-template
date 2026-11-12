@@ -120,10 +120,16 @@ pnpm --filter backend mail:test <recipient@example.com> [subject]
 
 A compact end-to-end checklist (see the detailed sections below for each layer):
 
-1. Define or reuse request/response **schemas** in the `shared` package.
-2. Register the **route** in `src/app/routes` with `defineRoute`.
-3. Add **validation** (`validator` / `queryValidator`) when the handler reads
-   body or query data.
+1. Define or reuse request/response **schemas** in the `shared` package, and
+   declare the route's **contract** (method, path, body/query/response types)
+   in `packages/shared/src/contracts` (ADR 0005).
+2. Add the contract's **schema entry** (`body` / `query` / `response`) to its
+   group file in `src/app/routes/contract-schemas/` — a contract without an
+   entry does not compile.
+3. Register the **route** in `src/app/routes/http-routes.ts` with
+   `defineRoute({ contract, handler, … })` from
+   `#app/routes/contract-schemas/index.js`, inside the group whose prefix
+   starts the contract's path.
 4. Keep the **controller** transport-focused: read context, call services, map
    errors to HTTP status codes.
 5. Put business logic in `src/app/services`.
@@ -476,7 +482,7 @@ src/
 ```ts
 import { db } from '#database/db.js'
 import logger from '#logger'
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRoute } from '#app/routes/contract-schemas/index.js'
 ```
 
 ---
@@ -493,79 +499,85 @@ Each group has:
 - `description` — shown in API docs
 - `group` — array of `defineRoute(...)` calls
 
-Individual routes can also declare their own `middlewares`, `rateLimit`, and `allowedContentTypes` that stack on top of the group's.
+Every route is declared through its **contract** from `shared/contracts` (ADR 0005): `defineRoute` from `#app/routes/contract-schemas/index.js` takes the method and the full path from the contract, and the body, query and response schemas from the schema registry (`src/app/routes/contract-schemas/*.ts`, keyed `<method> <path>`). The contract's path must start with the prefix of the group it sits in, otherwise the router refuses to start. Importing `#app/routing/define-raw-route.js` or `#app/routing/define-ws-route.js` outside tests is an ESLint error (root `eslint.config.ts`).
+
+Individual routes can also declare their own `middlewares`, `rateLimit`, `maxBodySize` and `allowedContentTypes` that stack on top of the group's.
 
 ### Route fields
 
-| Field                 | Type         | Default     | Description                                                                                                  |
-| --------------------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `url`                 | `string`     | —           | URL path (`:param` for path params)                                                                          |
-| `method`              | `string`     | —           | `get`, `post`, `put`, `patch`, `delete`, `ws`                                                                |
-| `handler`             | `Function`   | —           | Controller method                                                                                            |
-| `validator`           | `ArkType`    | `undefined` | ArkType schema for request body (`post`/`put`/`patch` only); payload is validated before the handler         |
-| `queryValidator`      | `ArkType`    | `undefined` | ArkType schema for query params; query is validated before the handler and exposed as typed `httpData.query` |
-| `queryAllowExtra`     | `boolean`    | `false`     | Allows undeclared query keys and strips them from the validated object instead of rejecting the request      |
-| `queryArrays`         | `string[]`   | `[]`        | Declares query keys that may appear multiple times and should be collected as arrays                         |
-| `allowedContentTypes` | `BodyKind[]` | `['json']`  | Allowed request body content-type kinds for POST/PUT. Non-matching requests are rejected with **415**.       |
-| `middlewares`         | `string[]`   | `[]`        | Middleware keys from `kernel.ts`, stacked on top of group middlewares                                        |
-| `rateLimit`           | `RateLimit`  | `undefined` | Per-route rate limit                                                                                         |
-| `description`         | `string`     | `undefined` | Shown in API docs                                                                                            |
-| `ResponseSchema`      | `ArkType`    | `undefined` | Response schema for docs and the runtime allow-list check (`RESPONSE_VALIDATION_CONTRACT`)                   |
+| Field                 | Type         | Default     | Description                                                                                                                                             |
+| --------------------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`            | contract     | —           | Contract from `shared/contracts`: method, full path (`:param` for path params) and the body/query/response types                                        |
+| `handler`             | `Function`   | —           | Controller method; its context and return type are checked against the contract's registry entry                                                        |
+| `queryAllowExtra`     | `boolean`    | `false`     | Allows undeclared query keys and strips them from the validated object instead of rejecting the request                                                 |
+| `queryArrays`         | `string[]`   | `[]`        | Declares query keys that may appear multiple times and should be collected as arrays                                                                    |
+| `allowedContentTypes` | `BodyKind[]` | `['json']`  | Allowed request body content-type kinds for POST/PUT. Non-matching requests are rejected with **415**. A multipart contract sets `['multipart']` itself |
+| `maxBodySize`         | `number`     | `undefined` | Per-route body limit in bytes; the smaller of this and the global `APP_MAX_*_BODY_SIZE` applies                                                         |
+| `middlewares`         | `string[]`   | `[]`        | Middleware keys from `kernel.ts`, stacked on top of group middlewares                                                                                   |
+| `rateLimit`           | `RateLimit`  | `undefined` | Per-route rate limit                                                                                                                                    |
+| `description`         | `string`     | `undefined` | Shown in API docs                                                                                                                                       |
+
+The body schema (`validator`), query schema (`queryValidator`) and `ResponseSchema` of the route are not route fields: `defineRoute` fills them from the registry entry of the contract (`body`, `query`, `response`); the response schema drives the docs and the runtime allow-list check (`RESPONSE_VALIDATION_CONTRACT`).
 
 `BodyKind` values: `'json'` · `'multipart'` · `'urlencoded'` · `'text'` · `'octet'`
 
 ```ts
+// packages/shared/src/contracts/auth.ts — the contract: types first, then method and path
+export const authContracts = {
+    login: contract<typeof LoginInputSchema.inferIn, undefined, LoginResponse>()(
+        'post',
+        '/auth/login',
+    ),
+    logout: contract<EmptyBody, undefined, LogoutResponse>()('post', '/auth/logout'),
+    // …
+}
+
+// src/app/routes/contract-schemas/auth.ts — the schemas of every contract of the group
+export const authSchemas = contractSchemas(authContracts, {
+    login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
+    logout: { body: EmptyFormInputSchema, response: ResponseSchemas.LogoutResponseSchema },
+    // …
+})
+
 // src/app/routes/http-routes.ts
 import AuthController from '#app/controllers/http/auth/auth-controller.js'
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
-import { RegisterEmailInputSchema, LoginInputSchema, EmptyFormInputSchema } from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
+import { defineRoute } from '#app/routes/contract-schemas/index.js'
+import { authContracts, avatarContracts } from 'shared/contracts'
+import { AVATAR_MAX_FILE_BYTES, multipartBodyLimit } from '#app/services/shared/upload-limits.js'
 
 export default [
     {
         group: [
             defineRoute({
-                url: '/register/email',
-                method: 'post',
-                handler: AuthController.registerByEmail.bind(AuthController),
-                validator: RegisterEmailInputSchema, // ArkType schema from shared/schemas
-                // allowedContentTypes defaults to ['json'] — no need to specify
-                ResponseSchema: ResponseSchemas.RegisterEmailResponseSchema,
-                description: 'Register a new user by email',
-            }),
-            defineRoute({
-                url: '/login',
-                method: 'post',
+                contract: authContracts.login, // post /auth/login
                 handler: AuthController.login.bind(AuthController),
-                validator: LoginInputSchema,
-                ResponseSchema: ResponseSchemas.LoginResponseSchema,
                 description: 'Login a user by email or phone identifier',
             }),
             defineRoute({
-                url: '/logout',
-                method: 'post',
+                contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.LogoutResponseSchema,
                 description: 'Logout a user',
                 middlewares: ['auth_guard'], // route-level middleware
             }),
         ],
+        description: 'Auth routes',
+        middlewares: ['session_web', 'csrf_guard'], // applied to every route in the group
+        prefix: 'auth', // every contract path in the group starts with /auth
+        rateLimit: { windowMs: 60_000, maxRequests: 10 },
     },
     {
-        prefix: 'avatar', // groups can share a URL prefix and middlewares
-        middlewares: ['auth_guard'], // applied to every route in the group
         group: [
             defineRoute({
-                url: '/upload',
-                method: 'post',
+                contract: avatarContracts.upload, // multipartContract: allowedContentTypes = ['multipart']
                 handler: AvatarController.uploadAvatar.bind(AvatarController),
-                allowedContentTypes: ['multipart'], // must be explicit for file uploads
-                ResponseSchema: ResponseSchemas.UploadAvatarResponseSchema,
+                maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
                 description: 'Upload user avatar',
             }),
         ],
+        description: 'Avatar routes',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'avatar',
     },
 ]
 ```
@@ -613,21 +625,22 @@ When the limit is exceeded the server responds **429 Too Many Requests**:
 
 ### Nested Groups
 
-Groups can be nested to compose middleware/prefix chains:
+Groups can be nested to compose middleware/prefix chains. The prefixes add up, and the contract path of a route must start with the full prefix:
 
 ```ts
 {
   prefix: 'main',
   middlewares: ['session_web'],
   group: [
-    defineRoute({ url: '/init', method: 'get', handler: MainController.init, middlewares: ['auth_guard'] }),
+    defineRoute({ contract: mainContracts.init, handler: MainController.init.bind(MainController) }),
 
-    // nested group — prefix becomes "main/admin", both session_web and auth_guard apply
+    // nested group — prefix becomes "main/admin", both session_web and auth_guard apply;
+    // its contracts have paths under /main/admin
     {
       prefix: 'admin',
       middlewares: ['auth_guard'],
       group: [
-        defineRoute({ url: '/stats', method: 'get', handler: AdminController.stats }),
+        defineRoute({ contract: someContracts.stats, handler: SomeController.stats.bind(SomeController) }),
       ],
     },
   ],
@@ -638,43 +651,50 @@ Groups can be nested to compose middleware/prefix chains:
 
 ## WebSocket Routes
 
-Defined in `src/app/routes/ws-routes.ts`. Same structure as HTTP routes but use `defineWsRoute`.
+Defined in `src/app/routes/ws-routes.ts`. Same structure as HTTP routes, but each route is declared with `defineWsRoute` from `#app/routes/contract-schemas/index.js` and a WS contract (`wsContract`) from `shared/contracts/ws.ts` (ADR 0006). The contract path is the event under the API prefix (`/support/support_open_chat` → event `api/support/support_open_chat`); the payload and reply schemas come from `src/app/routes/contract-schemas/ws.ts`.
 
 ```ts
 // src/app/routes/ws-routes.ts
-import WSApiController from '#app/controllers/ws/ws-api-controller.js'
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
-import { WSEventTypingPayloadSchema } from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
+import AdminWsController from '#app/controllers/ws/admin-ws-controller.js'
+import SupportWsController from '#app/controllers/ws/support-controller.js'
+import { defineWsRoute } from '#app/routes/contract-schemas/index.js'
+import { adminWsContracts, supportWsContracts } from 'shared/contracts'
 
 export default [
     {
-        prefix: 'main',
-        description: 'Main WS routes',
-        rateLimit: {
-            windowMs: 1 * 60 * 1000,
-            maxRequests: 600,
-        },
         group: [
             defineWsRoute({
-                url: 'event_typing',
-                handler: WSApiController.eventTyping.bind(WSApiController),
-                validator: WSEventTypingPayloadSchema,
-                ResponseSchema: ResponseSchemas.EventTypingResponseSchema,
-                description: 'Handle typing events',
-                rateLimit: {
-                    windowMs: 1 * 60 * 1000,
-                    maxRequests: 30,
-                },
+                contract: adminWsContracts.subscribeOnlineUsers, // no payload
+                handler: AdminWsController.subscribeOnlineUsers.bind(AdminWsController),
+                description: 'Subscribe current admin websocket to admin online updates',
             }),
             defineWsRoute({
-                url: 'read_message',
-                handler: WSApiController.readMessage.bind(WSApiController),
-                validator: ReadMessagesInputSchema,
-                ResponseSchema: ResponseSchemas.ReadMessageResponseSchema,
-                description: 'Handle read message events',
+                contract: adminWsContracts.unsubscribeOnlineUsers,
+                handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
+                description: 'Unsubscribe current admin websocket from admin online updates',
             }),
         ],
+        prefix: 'admin',
+        description: 'Admin websocket routes',
+        middlewares: ['ws_admin_guard'],
+        rateLimit: { windowMs: 60_000, maxRequests: 120 },
+    },
+    {
+        group: [
+            defineWsRoute({
+                contract: supportWsContracts.openChat, // payload: SupportOpenChatInputSchema
+                handler: SupportWsController.openChat.bind(SupportWsController),
+                description: 'Open support chat and trigger first greeting',
+            }),
+            defineWsRoute({
+                contract: supportWsContracts.chat,
+                handler: SupportWsController.chat.bind(SupportWsController),
+                description: 'Send a message to the support agent',
+            }),
+        ],
+        prefix: 'support',
+        description: 'Support agent routes',
+        rateLimit: { windowMs: 60_000, maxRequests: 60 },
     },
 ]
 ```
@@ -780,28 +800,34 @@ export type CreateNoteInput = typeof CreateNoteInputSchema.infer
 
 ### Using in a route
 
+A route does not name its schema: the schema goes into the registry entry of the route's contract, and `defineRoute` picks it up.
+
 ```ts
+// src/app/routes/contract-schemas/notes.ts
+export const noteSchemas = contractSchemas(noteContracts, {
+    create: { body: CreateNoteInputSchema, response: ResponseSchemas.CreateNoteResponseSchema },
+})
+
+// src/app/routes/http-routes.ts
 defineRoute({
-    url: '/',
-    method: 'post',
-    validator: CreateNoteInputSchema, // schema passed directly to defineRoute
+    contract: noteContracts.create, // post /notes
     handler: NotesController.createNote.bind(NotesController),
 })
 ```
 
-Do not wrap route validators manually with `arkValidator(...)` in route files. `defineRoute` / `defineWsRoute` normalize the schema through the active validation wrapper internally.
+Do not wrap schemas manually with `arkValidator(...)`. `defineRoute` / `defineWsRoute` normalize the registry schema through the active validation wrapper internally (`defaultValidator` in `contract-registry.ts`).
 
 ### Validation rules
 
 - This backend uses one schema engine across the project: ArkType.
-- Route files pass the raw schema object as `validator: SomeSchema`; `defineRoute` / `defineWsRoute` apply the active wrapper internally.
+- Schema files pass the raw schema object (`body: SomeSchema`, `query: SomeSchema`) in `contractSchemas(...)`; `defineRoute` / `defineWsRoute` apply the active wrapper internally. The compiler checks each entry against its contract's types.
 - Do not introduce a second schema engine per-route (`Zod`, `Valibot`, `Yup`, etc.). If the project ever migrates, that is a global refactor, not a local experiment.
 - If a rare transport edge case needs a custom validator, treat it as an exception and keep it behind the same validator contract instead of mixing route-level schema engines.
 
 ### Reading validated payload in a handler
 
 `getTypedPayload` extracts the already-validated, fully-typed payload from context.
-The generic `TPayload` on `HttpContext<TPayload>` is inferred automatically from `validator` by `defineRoute`.
+The handler's `HttpContext<TPayload>` is checked by `defineRoute` against the output of the contract's body schema.
 
 ```ts
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
@@ -813,18 +839,17 @@ async createNote(context: HttpContext<CreateNoteInput>) {
 }
 ```
 
-### Routes without a validator
+### Routes without a body schema
 
-Only `post`, `put` and `patch` read a body. A `validator` on `get` / `delete` is a type error in `defineRoute` and a startup error in `routesHandler`: pass data there via `:params` or `queryValidator`.
+Only `post`, `put` and `patch` read a body. A body schema on `get` / `delete` is a startup error in `routesHandler`: pass data there via `:params` or a query schema.
 
-If a route does **not** declare `validator`, the framework discards any incoming body and the controller receives `httpData.payload = null` — even on POST/PUT/PATCH with a JSON body. The raw body is **not** forwarded to the handler.
+If the contract's registry entry has **no** `body` schema, the framework discards any incoming body and the controller receives `httpData.payload = null` — even on POST/PUT/PATCH with a JSON body. The raw body is **not** forwarded to the handler.
 
 ```ts
+// registry entry without `body`: { response: ResponseSchemas.PingResponseSchema }
 defineRoute({
-  url: '/ping',
-  method: 'post',
+  contract: pingContracts.ping,
   handler: PingController.ping.bind(PingController),
-  // no validator
 })
 
 // in the controller:
@@ -835,10 +860,10 @@ async ping(context: HttpContext) {
 
 Implications:
 
-- Use a `validator` for any route that needs to read the request body. Without it, the body is unreachable from the handler.
-- `getTypedPayload(context)` will throw `Error("Payload is missing")` — this is intentional: it surfaces the missing validator immediately rather than silently passing empty data to the handler.
-- Handlers on validator-less routes (e.g. `logout`, `ping`) must not call `getTypedPayload` — they have nothing to read.
-- The TypeScript generic on `HttpContext<TPayload>` does **not** reflect runtime nullness, so don't trust typed fields on a route that has no validator.
+- Give the contract a `body` schema for any route that needs to read the request body. Without it, the body is unreachable from the handler.
+- `getTypedPayload(context)` will throw `Error("Payload is missing")` — this is intentional: it surfaces the missing body schema immediately rather than silently passing empty data to the handler.
+- Handlers on routes without a body schema (e.g. `ping`, `main/init`) must not call `getTypedPayload` — they have nothing to read.
+- The TypeScript generic on `HttpContext<TPayload>` does **not** reflect runtime nullness, so don't trust typed fields on a route that has no body schema.
 
 ---
 
@@ -987,12 +1012,12 @@ Notes drawn from the real controller:
 
 ### Query validation
 
-Query validation is handled by `defineRoute(...)` and executed in `server.ts`
+Query validation is set up by `defineRoute(...)` from the `query` schema of the contract's registry entry and executed in `server.ts`
 before the controller runs. The request never exposes raw `URLSearchParams` to
 handlers:
 
-- if a route does not declare `queryValidator`, `httpData.query` is `null`
-- if a route declares `queryValidator`, `httpData.query` contains the validated
+- if the entry has no `query` schema, `httpData.query` is `null`
+- if it has one, `httpData.query` contains the validated
   and typed object produced by ArkType
 - invalid query values fail the request with **422 Unprocessable Entity**
 - this happens before controller logic, so the handler only sees normalized data
@@ -1004,22 +1029,27 @@ const ListQuerySchema = type({
     'userId?': 'string',
 })
 
+// registry entry: list: { query: ListQuerySchema, response: ResponseSchemas.ItemListResponseSchema }
 defineRoute({
-    url: '/items',
-    method: 'get',
-    queryValidator: ListQuerySchema,
-    handler: ItemsController.list,
+    contract: itemContracts.list, // get /items
+    handler: ItemsController.list.bind(ItemsController),
 })
 ```
 
 Short admin example from the current codebase:
 
 ```ts
+// src/app/routes/contract-schemas/admin.ts
+users: {
+    query: AdminUserListQuerySchema,
+    response: ResponseSchemas.AdminUserListResponseSchema,
+},
+
+// src/app/routes/http-routes.ts, group prefix 'admin'
 defineRoute({
-    url: '/users',
-    method: 'get',
-    queryValidator: AdminUserListQuerySchema,
+    contract: adminContracts.users, // get /admin/users
     handler: AdminUserController.list.bind(AdminUserController),
+    description: 'List users with filters (admin)',
 })
 ```
 
@@ -1029,7 +1059,7 @@ raw query string itself.
 
 How it works in practice:
 
-1. The router registers `queryValidator` and related flags on the route.
+1. `defineRoute` turns the `query` schema into the route's `queryValidator` (strict unless `queryAllowExtra`) and the router registers it with the related flags.
 2. `server.ts` reads the URL query string, flattens repeated keys only for the
    names listed in `queryArrays`, and then runs ArkType validation.
 3. By default the schema is strict: undeclared keys are rejected with **422**.
@@ -1041,7 +1071,7 @@ How it works in practice:
 This means the controller should always treat `context.httpData.query` as the
 canonical source of truth for query params. In middleware, where the route
 generic type is not always available, use `getTypedQuery<T>(ctx)` only after the
-route has declared a `queryValidator`.
+route's contract has a `query` schema.
 
 Example for repeated keys:
 
@@ -1050,12 +1080,11 @@ const SearchQuerySchema = type({
     'tags?': 'string[]',
 })
 
+// registry entry: search: { query: SearchQuerySchema, response: … }
 defineRoute({
-    url: '/search',
-    method: 'get',
-    queryValidator: SearchQuerySchema,
+    contract: searchContracts.search, // get /search
     queryArrays: ['tags'],
-    handler: SearchController.search,
+    handler: SearchController.search.bind(SearchController),
 })
 ```
 
@@ -1403,43 +1432,51 @@ WS handlers receive `WsContext` instead of `HttpContext`. There is no `session`
 or `auth` on `WsContext` — authentication is handled at connection time and the
 resolved user identity is exposed as `context.userData`. `wsData.middlewareData`
 remains available for generic middleware state, but controllers should not read
-the current user from it. WS errors are produced with `appErrorToWsError(...)`
-(from `#app/services/shared/ws-error.js`) rather than `mapControllerError`.
+the current user from it. A WS handler returns its error as the reply payload:
+`appErrorToPayload(...)` (from `#app/services/shared/app-error-payload.js`) for an
+error the controller raises itself, and `mapWsControllerError(context, error)`
+(from `#app/controllers/shared/controller-error.js`) for the error of a service
+`Result`.
 
 ```ts
 // src/app/controllers/ws/support-controller.ts
+import { Result } from 'better-result'
 import type { WsContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { supportService } from '#app/services/support/support-service.js'
-import { appErrorToWsError } from '#app/services/shared/ws-error.js'
+import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 import { unauthorized } from '#app/services/shared/errors.js'
-import type { SupportChatInput, SupportOpenChatInput } from 'shared/schemas'
-import type { SupportChatResponse, SupportOpenChatResponse } from 'shared/responses'
+import { mapWsControllerError } from '#app/controllers/shared/controller-error.js'
+import type { SupportOpenChatInput } from 'shared/schemas'
+import type { SupportOpenChatResponse } from 'shared/responses'
 
 export default {
     async openChat(context: WsContext<SupportOpenChatInput>): Promise<SupportOpenChatResponse> {
         const { userData } = context
         if (userData?.userId === undefined) {
-            return appErrorToWsError(unauthorized())
-        }
-
-        void supportService.openChat(BigInt(userData.userId), userData.uuid)
-
-        return { status: 'ok' }
-    },
-
-    async chat(context: WsContext<SupportChatInput>): Promise<SupportChatResponse> {
-        const { userData } = context
-        if (userData?.userId === undefined) {
-            return appErrorToWsError(unauthorized())
+            return appErrorToPayload(unauthorized())
         }
 
         const payload = getTypedPayload(context)
+        const userId = BigInt(userData.userId)
 
-        void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid)
+        // The reply is the admission verdict: a refusal (e.g. 429) is the reply itself.
+        const admission = await supportService.admitOpenChat(userId)
+        if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+
+        // Accepted: the work runs on; later failures reach the client as broadcast events.
+        void supportService.runOpenChat(
+            admission.value,
+            userId,
+            userData.uuid,
+            context.signal,
+            payload.language,
+        )
 
         return { status: 'ok' }
     },
+
+    // chat: the same shape with admitChat / runChat
 }
 ```
 

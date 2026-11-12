@@ -22,7 +22,7 @@ hero:
 features:
     - icon: 🔐
       title: Акаунти та вхід
-      details: Реєстрація по email і телефону, підтвердження пошти, вхід через Google, GitHub і Facebook, скидання пароля, вихід з усіх пристроїв.
+      details: Реєстрація по email і телефону, підтвердження пошти, вхід через Google, GitHub, GitLab і Facebook, скидання пароля, вихід з усіх пристроїв.
       link: /backend/auth
     - icon: ⚡
       title: Швидкий бекенд на uWebSockets.js
@@ -53,8 +53,8 @@ features:
       details: Список користувачів, хто зараз онлайн, історія онлайну і редактор бази знань для AI-чату. Окремий layout і доступ тільки для адміністраторів.
       link: /frontend/
     - icon: 🌍
-      title: 18 мов і теми оформлення
-      details: Інтерфейс перекладено vue-i18n на 18 мов. Світла й темна тема та кольорові палітри Ocean, Mint, Lavender, Rose, Sunset і Monochrome.
+      title: Мови й теми оформлення
+      details: Інтерфейс перекладено vue-i18n англійською, українською й польською; AI-підтримка розпізнає 18 мов. Світла й темна тема та кольорові палітри Ocean, Mint, Lavender, Rose, Sunset і Monochrome.
       link: /frontend/#i18n
     - icon: 📁
       title: Файли й пошта
@@ -173,10 +173,20 @@ src/views/admin/AdminUsersView.vue(165,37): error TS2339: Property 'name' does n
 
 ```ts
 // WebSocket: нове повідомлення в чат
-void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid, context.signal)
+const admission = await supportService.admitChat(userId, payload.message)
+if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+void supportService.runChat(
+    admission.value,
+    userId,
+    payload.message,
+    userData.uuid,
+    context.signal,
+    payload.language,
+    payload.clientMessageId,
+)
 
 // HTTP: історія чату
-const result = await supportService.getChatHistory(userId)
+const result = await supportService.getChatHistory(userId, { before, limit })
 ```
 
 Правила чату (ліміти, збереження історії, звернення до AI) живуть в одному місці. Якщо їх змінити, зміниться поведінка обох транспортів.
@@ -210,7 +220,7 @@ expect(Result.isOk(result)).toBe(true)
 | Реєстрація по email           | `POST /auth/register/email`, лист з посиланням для підтвердження                   | [Автентифікація](/backend/auth#способи-входу)       |
 | Підтвердження email           | `POST /auth/verify-email`, повторна відправка `resend-verification-email`          | [Пошта](/backend/mail)                              |
 | Реєстрація і вхід по телефону | SMS-код: `register/phone/start` → `confirm` → `complete-profile`                   | [Автентифікація](/backend/auth#способи-входу)       |
-| Вхід через соцмережі (OAuth)  | Google, GitHub, Facebook: `auth/oauth/:provider/redirect` і `/callback`            | [Автентифікація](/backend/auth#способи-входу)       |
+| Вхід через соцмережі (OAuth)  | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` і `/callback`    | [Автентифікація](/backend/auth#способи-входу)       |
 | Логін / логаут                | `POST /auth/login`, `/logout`, `/logout-all` (вийти на всіх пристроях)             | [Автентифікація](/backend/auth)                     |
 | Зміна і скидання пароля       | `change-password`, `forgot-password` → лист → `reset-password`; скидання через SMS | [Автентифікація](/backend/auth)                     |
 | Прив'язка телефону / email    | `link-phone/start`, `link-phone/confirm`, `link-email/start`                       | [Автентифікація](/backend/auth)                     |
@@ -276,7 +286,7 @@ expect(Result.isOk(result)).toBe(true)
 
 - Vue 3 + Pinia + vue-router, guard-и маршрутів для авторизованих і адмін-сторінок.
 - Готові сторінки: логін/реєстрація, підтвердження email, скидання пароля, акаунт, чат підтримки, адмінка, юридичні сторінки (Privacy, Terms, Cookies, AI Policy).
-- **18 мов** інтерфейсу (vue-i18n), зокрема українська та англійська.
+- **3 мови** інтерфейсу (vue-i18n): англійська, українська й польська ([`SHIPPED_LOCALE_CODES`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/enums/languages.ts)); 18 кодів `APP_LOCALE_CODES` AI-підтримка використовує для розпізнавання мови повідомлень.
 - **PWA:** встановлення на пристрій, офлайн-режим, push-сповіщення.
 - HTTP-клієнт, який сам додає CSRF-токен і обробляє сесію; WebSocket-клієнт з перепідключенням.
 - Unit-тести (Vitest) та e2e (Playwright).

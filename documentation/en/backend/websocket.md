@@ -69,7 +69,7 @@ A browser `WebSocket` cannot pass a cookie session as an authorization header, s
 
 ### Upgrade
 
-`handleUpgrade` in [ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts) first checks the per-IP upgrade limit ([upgrade-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/upgrade-rate-limit.ts), 60 per minute by default): exceeding it gives `429` with `Retry-After`, and a counter failure gives `503`. It then parses `Sec-WebSocket-Protocol` by comma: the first element is the token, the second is the application type (`app-web` → `web`, `app-pwa` → `pwa`, anything else → `web` with a warning). The token is checked by format (`accessTokenLength` = 16, only `[a-zA-Z0-9]`), otherwise `401 Invalid token format`. Next the `onUpgrade` hook is called, that is `wsSessionAuth.verifyUpgradeToken` from [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts), and the server returns the token itself to the client as the selected subprotocol. If the main Redis client is unavailable, the upgrade is rejected **before** `res.upgrade` with a `503 Service Unavailable` response with `Retry-After: 1` (no `4001`); after the first unavailable command, the second one (the session `get`) is not executed.
+`handleUpgrade` in [ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts) first checks the per-IP upgrade limit ([upgrade-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/upgrade-rate-limit.ts), by default 120 per minute in process memory and 60 in the shared Redis counter, see [below](#limits-and-security)): exceeding it gives `429` with `Retry-After`, and a counter failure gives `503`. It then parses `Sec-WebSocket-Protocol` by comma: the first element is the token, the second is the application type (`app-web` → `web`, `app-pwa` → `pwa`, anything else → `web` with a warning). The token is checked by format (`accessTokenLength` = 16, only `[a-zA-Z0-9]`), otherwise `401 Invalid token format`. Next the `onUpgrade` hook is called, that is `wsSessionAuth.verifyUpgradeToken` from [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts), and the server returns the token itself to the client as the selected subprotocol. If the main Redis client is unavailable, the upgrade is rejected **before** `res.upgrade` with a `503 Service Unavailable` response with `Retry-After: 1` (no `4001`); after the first unavailable command, the second one (the session `get`) is not executed.
 
 ```ts
 const token = protocols[0] ?? ''
@@ -122,10 +122,6 @@ A socket is dead from the moment uWS calls the `close` handler: after that any a
 4. only then waits for Redis (`onRevokeToken`) and for `onDisconnected` to finish.
 
 After `await findRole(...)`, `handleConnected` checks `userData.closed`. A socket closed while the role was being read does not get into the registry: its `close` has already run and will not be called again. If `onConnected` fails (for example, a DB error while reading the role), the connection is closed with code `1011` (feat-133): the client has already received `connection_established`, but outside the registry it gets no broadcasts, and push would behave as if the user were offline. The client reconnects on any code outside 4000–4099 and registers again. Likewise, the message handler's response (`sendJson`) checks `userData.closed`: if the client left while the handler was working (an AI reply, a slow query), nothing is sent and nothing is logged as an error (feat-124). The same applies to the `4001` close when the session was not found after the `await` of the session lookup (feat-128). The `admin_user_online_upsert` event is sent only if the user is still in the registry: its snapshot is read from the DB, and a disconnect in the meantime has already sent `remove`, so a late upsert would leave a "ghost" in the admin list. The `user_online` row is closed (`UPDATE` by socket uuid) only after the connection `INSERT` has finished, and regardless of its outcome: a failed `INSERT` might have committed (a timeout or a dropped connection after `COMMIT`), so without the `UPDATE` the row would stay open. If the row truly does not exist, the `UPDATE` finds nothing and writes a `warn` (feat-128).
-
-::: warning `app/state/user-storage.ts`
-[user-storage.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/state/user-storage.ts) (`getUserByToken`/`setUserByToken`/`deleteToken` on a `Map`) is not imported anywhere in the current code. The real connection state lives in `ws-connection-registry.ts`.
-:::
 
 All these structures live in the memory of a single process: with several instances, the registry, channels and presence are not shared.
 
@@ -227,12 +223,13 @@ Exceptions in the dispatcher and `onMessage` are classified by the same [`classi
 
 Before the dispatcher, `onMessage` checks the session via `wsSessionHandler` ([session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts)) on **every** message, so logging out over HTTP breaks the WS on the next message.
 
-If the main Redis client is unavailable (a token refresh or a session read gave `RedisUnavailableError`), the connection is **not closed**, and the response to this message is an error with the original `event`, in the same format as `rate_limited`:
+If the main Redis client is unavailable (a token refresh or a session read gave `RedisUnavailableError`), the connection is **not closed**, and the response to this message is an error with the original `event` and `id`, in the same format as `rate_limited`:
 
 ```json
 {
     "status": "error",
     "event": "api/<route>",
+    "id": "3f2c9a4e-…",
     "error": {
         "code": "service_unavailable",
         "message": "Service temporarily unavailable. Try again later."
@@ -242,7 +239,7 @@ If the main Redis client is unavailable (a token refresh or a session read gave 
 }
 ```
 
-The frontend looks up the callback by `event`, so the matching Promise is rejected right away instead of waiting for the client timeout. After the first unavailable command the second one is not executed.
+The frontend looks up the pending request by `id` ([ws-api-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-api-response.ts)), so the matching Promise is rejected right away instead of waiting for the client timeout. After the first unavailable command the second one is not executed.
 
 ### WS routes
 
@@ -312,7 +309,7 @@ The decision is made by the pure function [`resolveWebSocketCloseAction`](https:
 - other codes (including `4201` on server shutdown) → `open()` after 5 s. Since the token on the server has already been revoked, such a retry will most likely get `4001` and take the token refresh branch.
 
 ::: tip Non-standard `API_PATH_PREFIX`
-WS route keys on the server are `<API_PATH_PREFIX>/<route>`. A frontend built with the same `VITE_API_PATH_PREFIX` produces the same events; with a different prefix the server responds `not_found`. The frontend's HTTP calls still go to `/api/...` regardless of this variable (item 73 in [code-issues](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)), so a completely different prefix also needs HTTP redirection on the proxy.
+WS route keys on the server are `<API_PATH_PREFIX>/<route>`. A frontend built with the same `VITE_API_PATH_PREFIX` produces the same events; with a different prefix the server responds `not_found`. The same variable also sets the frontend's HTTP paths ([api-path.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-path.ts): `/<prefix>/<route>`), the Vite dev proxy ([vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts): `/<prefix>`, including `/<prefix>/websocket`) and the prefix whose requests the service worker never caches ([service-worker.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts)). So for a non-standard prefix it is enough to build the frontend with `VITE_API_PATH_PREFIX` equal to the backend's `API_PATH_PREFIX`.
 :::
 
 ## Limits and security

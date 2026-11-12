@@ -214,7 +214,7 @@ function createDiscordClient(): Discord {
 
 // 3. user profile → OAuthUserInfo
 async function fetchDiscordUserInfo(accessToken: string): Promise<OAuthUserInfo> {
-    const data = await fetchJson('https://discord.com/api/users/@me', {
+    const data = await fetchJson<JsonObject>('https://discord.com/api/users/@me', {
         Authorization: `Bearer ${accessToken}`,
     })
     const id = typeof data['id'] === 'string' ? data['id'] : ''
@@ -232,13 +232,14 @@ async function fetchDiscordUserInfo(accessToken: string): Promise<OAuthUserInfo>
             avatarHash !== null
                 ? `https://cdn.discordapp.com/avatars/${id}/${avatarHash}.png`
                 : null,
-        // Discord returns `verified`: whether the email is verified. Without this field, use false.
-        emailVerified: data['verified'] === true,
+        // Discord's `verified` says the address was checked once, not that Discord hosts the
+        // mailbox: a mailed link proves it (feat-097).
+        emailTrust: 'unverified',
     }
 }
 ```
 
-The `emailVerified` field is required: it decides whether the login can be linked to an existing user with the same email (see [Linking by email](#linking-by-email)). If the provider gives no reliable flag, set `false`, as for Facebook.
+The `emailTrust` field is required: it decides whether the login is linked to an existing user with the same email right away or only through a confirmation email (see [Linking by email](#linking-by-email)). Set `authoritative` only when the provider itself hosts the mailbox (as Google does for Gmail and Workspace); an "email verified" flag is not enough for that, so everyone else gets `unverified`, like GitHub, GitLab and Facebook.
 
 In `getAuthorizationUrl`, add a branch before GitLab (it comes last as the "otherwise" case):
 
@@ -249,12 +250,17 @@ if (provider === 'discord') {
 }
 ```
 
-In `handleCallback`, add the code exchange branch:
+In `handleCallback`, add the code exchange branch before GitLab; as for the other providers, the exchange is wrapped in `withinProviderDeadline` so a hung provider does not hold the request:
 
 ```ts
 } else if (provider === 'discord') {
-    const tokens = await createDiscordClient().validateAuthorizationCode(code, null)
+    logger.info('provider discord')
+    const tokens = await withinProviderDeadline(
+        createDiscordClient().validateAuthorizationCode(code, null),
+    )
     userInfo = await fetchDiscordUserInfo(tokens.accessToken())
+} else {
+    // gitlab
 }
 ```
 

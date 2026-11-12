@@ -344,16 +344,20 @@ export const noteSchemas = contractSchemas(noteContracts, {
 })
 ```
 
-Spread the group into `contractSchemaRegistry` in [contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts):
+Add the group to `mergeContractSchemas(...)` in [contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts):
 
 ```ts
 import { noteSchemas } from './notes.js'
 // ...
-export const contractSchemaRegistry = {
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
     // ...
-    ...noteSchemas,
-}
+    supportWsSchemas,
+    noteSchemas,
+)
 ```
+
+Unlike a spread, `mergeContractSchemas` ([contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)) does not let a later group silently overwrite an entry of an earlier one: two contracts with the same `<method> <path>` stop the module import, so neither the server nor the tests start.
 
 **The routes.** In [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) `defineRoute` is already imported from `#app/routes/contract-schemas/index.js`. Add the controller import (next to the others) and append `noteContracts` to the existing import from `shared/contracts`:
 

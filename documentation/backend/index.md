@@ -12,7 +12,7 @@
 
 | Призначення           | Залежності                                                    |
 | --------------------- | ------------------------------------------------------------- |
-| HTTP/WebSocket-сервер | `uWebSockets.js` (`v20.71.0` з GitHub), `ws`                  |
+| HTTP/WebSocket-сервер | `uWebSockets.js` (`v20.71.0` з GitHub)                        |
 | БД                    | `drizzle-orm` / `drizzle-kit` `1.0.0-rc.5`, `pg` (PostgreSQL) |
 | Валідація             | `@arktype/type`                                               |
 | Redis                 | `ioredis`                                                     |
@@ -79,7 +79,6 @@ packages/backend/src/
 │   ├── validate/             # валідація запитів
 │   │   ├── adapters/         #   arktype-adapter
 │   │   ├── checkers/         #   cookie, header, parameter
-│   │   ├── schemas/          #   common/, query/
 │   │   └── errors/           #   validation-error.ts
 │   ├── websocket/            # реєстр з'єднань, координатор, авторизація WS-сесії
 │   ├── state/                # state.ts — спільний стан процесу (listenSocket)

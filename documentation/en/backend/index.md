@@ -12,7 +12,7 @@ Based on the dependencies in [packages/backend/package.json](https://github.com/
 
 | Purpose               | Dependencies                                                  |
 | --------------------- | ------------------------------------------------------------- |
-| HTTP/WebSocket server | `uWebSockets.js` (`v20.71.0` from GitHub), `ws`               |
+| HTTP/WebSocket server | `uWebSockets.js` (`v20.71.0` from GitHub)                     |
 | DB                    | `drizzle-orm` / `drizzle-kit` `1.0.0-rc.5`, `pg` (PostgreSQL) |
 | Validation            | `@arktype/type`                                               |
 | Redis                 | `ioredis`                                                     |
@@ -79,7 +79,6 @@ packages/backend/src/
 │   ├── validate/             # request validation
 │   │   ├── adapters/         #   arktype-adapter
 │   │   ├── checkers/         #   cookie, header, parameter
-│   │   ├── schemas/          #   common/, query/
 │   │   └── errors/           #   validation-error.ts
 │   ├── websocket/            # connection registry, coordinator, WS session authorization
 │   ├── state/                # state.ts — shared process state (listenSocket)

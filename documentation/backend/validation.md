@@ -134,19 +134,19 @@ flowchart LR
 
 ```ts
 import { type } from '@arktype/type'
+import { PasswordSchema } from './password.js'
 
 export const RegisterEmailInputSchema = type({
     name: 'string >= 1 & string <= 100',
     email: 'string.email & string <= 255',
-    password: 'string >= 8 & string <= 32',
-    token: 'string <= 60',
+    password: PasswordSchema,
     '+': 'reject',
 })
 
 export type RegisterEmailInput = typeof RegisterEmailInputSchema.infer
 ```
 
-`'+': 'reject'` забороняє невідомі ключі. Query-схеми приходять рядками, тому використовують морфи-парсери, напр. `type('string.integer.parse').pipe(type('number > 0'))` у [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); значення за замовчуванням задає `.default('50')` (раніше для цього були касти кортежів `[схема, '=', '50']`, які `@arktype/type` 2.2.9 більше не потребує), а те, що схема виводить для обробника, зафіксовано в [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) і порівнюється під час компіляції. Тип того, що надсилає клієнт (`*QueryInput`), не пишеться вручну: його виводить [`QueryInputOf<typeof Схема>`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts) — ключі й необов'язковість беруться зі входу схеми (поле з `.default()` необов'язкове), значення — з виходу: `number` → `number | string`, `Date` → рядок, `boolean` → `boolean | 'true' | 'false'`. Ці типи теж зафіксовано в `type-checks.ts`, а реєстр схем вимагає, щоб query контракту дорівнював `QueryInputOf` схеми.
+`PasswordSchema` ([auth/password.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/password.ts)) задає межі довжини пароля з [`shared/limits`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/limits), які перевіряє й браузер; кожне поле пароля використовує цю схему. `'+': 'reject'` забороняє невідомі ключі. Query-схеми приходять рядками, тому використовують морфи-парсери, напр. `type('string.integer.parse').pipe(type('number > 0'))` у [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); значення за замовчуванням задає `.default('50')` (раніше для цього були касти кортежів `[схема, '=', '50']`, які `@arktype/type` 2.2.9 більше не потребує), а те, що схема виводить для обробника, зафіксовано в [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) і порівнюється під час компіляції. Тип того, що надсилає клієнт (`*QueryInput`), не пишеться вручну: його виводить [`QueryInputOf<typeof Схема>`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts) — ключі й необов'язковість беруться зі входу схеми (поле з `.default()` необов'язкове), значення — з виходу: `number` → `number | string`, `Date` → рядок, `boolean` → `boolean | 'true' | 'false'`. Ці типи теж зафіксовано в `type-checks.ts`, а реєстр схем вимагає, щоб query контракту дорівнював `QueryInputOf` схеми.
 
 ## Checkers: заголовки, cookies, параметри
 

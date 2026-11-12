@@ -204,10 +204,15 @@ done
 
 ## CI/CD
 
-In `.github/workflows` there is only [`docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml), which builds and deploys this documentation site.
+There are four workflows in `.github/workflows`:
+
+- [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml) — on every PR and push to `main`: the `quality` job (`make check` and coverage), `e2e` (Playwright) and `e2e-live` (the SPA against the real backend, PostgreSQL and Redis).
+- [`pg-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/pg-tests.yml) — the `*.pg.test.ts` integration tests against PostgreSQL with pgvector (`pnpm --filter backend test:pg`), when the backend or `shared` changes.
+- [`redis-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/redis-tests.yml) — the `*.redis.test.ts` integration tests against Redis (`pnpm --filter backend test:redis`), on the same paths.
+- [`docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml) — builds and deploys this documentation site.
 
 ::: warning
-There is no workflow for building, testing or deploying the application itself. The Docker image is built and published manually.
+There is no workflow that builds and publishes the Docker image or deploys the application. The image is built and published manually.
 :::
 
 ## Checklist

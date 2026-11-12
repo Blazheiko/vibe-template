@@ -13,7 +13,7 @@ This page is about turning the template into **your** product: what to rename, w
 
 Before deleting or rewriting anything, look at what you get right away. All screenshots were taken on a clean run with demo accounts (`db:seed --demo`).
 
-**Sign-in and registration.** Email and password, sign-in buttons for Google and Facebook, password reset. Behind them are the `/api/auth/*` and `/api/auth/oauth/*` routes.
+**Sign-in and registration.** Email and password, social sign-in buttons (only for the providers configured on the backend: Google, GitHub, GitLab, Facebook), password reset. Behind them are the `/api/auth/*` and `/api/auth/oauth/*` routes.
 
 ![Sign-in form](/screenshots/login.jpg)
 
@@ -99,11 +99,11 @@ Each integration is enabled with environment variables. Without them the server 
 
 There are three levels of decision:
 
-| Decision             | What to do                                                                                                               | When                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| **Configure**        | Fill in the variables in `.env` following [Configuration](/en/backend/configuration)                                     | The feature is needed                                     |
-| **Leave disabled**   | Do nothing. Hide the buttons in the interface (for example, social sign-in in `AuthModals.vue`, the "Support" menu item) | You may need it later                                     |
-| **Remove from code** | Remove the feature's routes, controllers, services, pages and tests (see below)                                          | Definitely not needed, and you want less code to maintain |
+| Decision             | What to do                                                                                                                                                  | When                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **Configure**        | Fill in the variables in `.env` following [Configuration](/en/backend/configuration)                                                                        | The feature is needed                                     |
+| **Leave disabled**   | Do nothing. Hide the buttons in the interface (for example, the "Support" menu item). Social sign-in buttons hide themselves until a provider is configured | You may need it later                                     |
+| **Remove from code** | Remove the feature's routes, controllers, services, pages and tests (see below)                                                                             | Definitely not needed, and you want less code to maintain |
 
 ### How to remove a feature
 

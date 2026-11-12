@@ -50,9 +50,7 @@ Requests that did not match any cached path go to `server.any('/*')`. If it is a
 - A URL **without a dot** gets `index.html` through the same `handleHtmlRequest`, that is, with ETag and `must-revalidate`.
 - A URL with a dot that is not in the cache gets `404` with an empty body.
 
-::: warning CSP
-Generation of the CSP header in `static-server.ts` is commented out (`setCspHeader`), so HTML is served without a Content-Security-Policy. This is issue 1 in `docs/plan/code-issues-found-during-docs.md`.
-:::
+The HTML shell (and `index.html` for the SPA fallback) gets the `document` CSP, SVG gets the `svg` CSP, `/service-worker.js` and other files get no CSP (`setSecurityHeaders(res, [], cspKind)` in `static-server.ts`). The rules are in [Security](/en/backend/security#content-security-policy).
 
 ## API responses
 
@@ -91,7 +89,7 @@ The port and MIME depend on your configuration ([Configuration](/en/backend/conf
 - The `Cache-Control` values are set by constants in `static-server.ts` (`HTML_CACHE_CONTROL`, `IMMUTABLE_CACHE_CONTROL`, `REVALIDATE_CACHE_CONTROL`); the rule "`immutable` only for `/assets/`" is in `cacheControlFor`.
 - Memory limits are `STATIC_MAX_MEMORY_FILE_SIZE`, `STATIC_MAX_MEMORY_TOTAL` ([Configuration](/en/backend/configuration)).
 - The extension whitelist is set in `ALLOWED_STATIC_EXTENSIONS`.
-- **Dev:** the frontend is served by the Vite dev server, `SERVE_STATIC` is usually `false`. **Prod:** either `SERVE_STATIC=true` with the `public` directory in the image (the variable is not set in the Dockerfile, issue 31), or separate hosting/CDN (`CDN_URL`). With a CDN, the caching headers are set by the CDN. See [Deployment](/en/backend/deployment).
+- **Dev:** the frontend is served by the Vite dev server, `SERVE_STATIC` is usually `false`. **Prod:** either `SERVE_STATIC=true` with the `public` directory in the image (this is what the [Dockerfile](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) does: `SERVE_STATIC=true`), or separate hosting/CDN (`CDN_URL`). With a CDN, the caching headers are set by the CDN. See [Deployment](/en/backend/deployment).
 
 ::: info History
 Previously the ETag was built from the file length and URL. Now it is a SHA1 hash of the content, computed once at startup; why it is done this way is explained in a comment in [static-server.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts). The `etag-improvements.md` note with the MD5 / mtime / CRC32 options was removed in feat-009 ([last version](https://github.com/Blazheiko/vibe-template/blob/8f3479f/packages/backend/src/docs/etag-improvements.md)).

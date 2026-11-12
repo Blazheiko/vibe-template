@@ -134,19 +134,19 @@ Example schema ([shared/src/schemas/auth/register-email.ts](https://github.com/B
 
 ```ts
 import { type } from '@arktype/type'
+import { PasswordSchema } from './password.js'
 
 export const RegisterEmailInputSchema = type({
     name: 'string >= 1 & string <= 100',
     email: 'string.email & string <= 255',
-    password: 'string >= 8 & string <= 32',
-    token: 'string <= 60',
+    password: PasswordSchema,
     '+': 'reject',
 })
 
 export type RegisterEmailInput = typeof RegisterEmailInputSchema.infer
 ```
 
-`'+': 'reject'` forbids unknown keys. Query schemas arrive as strings, so they use parser morphs, e.g. `type('string.integer.parse').pipe(type('number > 0'))` in [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); default values are set with `.default('50')` (previously this was done with tuple casts `[schema, '=', '50']`, which `@arktype/type` 2.2.9 no longer needs), and what the schema infers for the handler is pinned in [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) and compared at compile time. The type of what a client sends (`*QueryInput`) is not written by hand: [`QueryInputOf<typeof Schema>`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts) derives it — keys and optionality come from the schema's input (a field with `.default()` is optional), values from its output: `number` → `number | string`, `Date` → a string, `boolean` → `boolean | 'true' | 'false'`. These types are pinned in `type-checks.ts` as well, and the schema registry requires the contract's query to equal `QueryInputOf` of the schema.
+`PasswordSchema` ([auth/password.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/password.ts)) sets the password length bounds from [`shared/limits`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/limits), which the browser checks too; every password field uses this schema. `'+': 'reject'` forbids unknown keys. Query schemas arrive as strings, so they use parser morphs, e.g. `type('string.integer.parse').pipe(type('number > 0'))` in [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); default values are set with `.default('50')` (previously this was done with tuple casts `[schema, '=', '50']`, which `@arktype/type` 2.2.9 no longer needs), and what the schema infers for the handler is pinned in [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) and compared at compile time. The type of what a client sends (`*QueryInput`) is not written by hand: [`QueryInputOf<typeof Schema>`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts) derives it — keys and optionality come from the schema's input (a field with `.default()` is optional), values from its output: `number` → `number | string`, `Date` → a string, `boolean` → `boolean | 'true' | 'false'`. These types are pinned in `type-checks.ts` as well, and the schema registry requires the contract's query to equal `QueryInputOf` of the schema.
 
 ## Checkers: headers, cookies, parameters
 

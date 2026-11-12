@@ -32,11 +32,12 @@
 
 Шаблонів-файлів і i18n немає: тема, `text` та `html` будуються в коді, англійською. Верстка в одному місці — `renderBrandedEmail` у [`email-templates.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/email-templates.ts) (палітра `EMAIL_BRAND`; `escapeHtml` екранує кожне поле: ім'я, посилання, а також `preheader`, `eyebrow`, `title`, `intro`, текст кнопки й `footer`, бо виклик може вставити в них зовнішні дані, як лист прив'язки OAuth вставляє ім'я з профілю провайдера в `intro`, feat-108); кожна з функцій нижче лише передає слова й тип дії (кнопка з запасним посиланням або одне посилання). Побайтово лист закріплено файлами в [`__snapshots__`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/__snapshots__).
 
-| Лист                                       | Функція-шаблон           | Де викликається                                                                                                                                              |
-| ------------------------------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Підтвердження email («Confirm your email») | `buildEmailContent`      | [`email-verification-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/email-verification-service.ts) |
-| Прив'язка нового email до акаунта          | `buildLinkEmailContent`  | [`email-verification-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/email-verification-service.ts) |
-| Скидання пароля                            | `buildResetEmailContent` | [`password-reset-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/password-reset-service.ts)         |
+| Лист                                                                  | Функція-шаблон                                   | Де викликається                                                                                                                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Підтвердження email («Confirm your email»)                            | `buildEmailContent`                              | [`email-verification-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/email-verification-service.ts)                        |
+| Прив'язка нового email до акаунта                                     | `buildLinkEmailContent`                          | [`email-verification-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/email-verification-service.ts)                        |
+| Скидання пароля                                                       | `buildResetEmailContent`                         | [`password-reset-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/password-reset-service.ts)                                |
+| Прив'язка OAuth-провайдера до акаунта («Link GitHub to your account») | `renderBrandedEmail` напряму (`startMailedLink`) | [`oauth-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/oauth-service.ts), див. [OAuth](/backend/oauth#прив-язка-за-email) |
 
 Посилання в листах містять сирий токен, а в БД зберігається лише його хеш. Деталі флоу — у [Автентифікації](/backend/auth#способи-входу).
 
@@ -54,6 +55,6 @@ pnpm --filter backend mail:test you@example.com "Optional subject"
 
 ## Локальне тестування
 
-підніміть локальний SMTP-перехоплювач (наприклад Mailpit або MailHog на порту `1025`), задайте `SMTP_ENABLED=true`, `SMTP_HOST=localhost`, `SMTP_PORT=1025`, `SMTP_REQUIRE_TLS=false`, `SMTP_FROM_EMAIL=noreply@example.com` без логіна/пароля і перевірте `pnpm --filter backend mail:test you@example.com`. Ці інструменти не входять до репозиторію.
+У [`docker-compose.yml`](https://github.com/Blazheiko/vibe-template/blob/main/docker-compose.yml) є сервіс `mailpit`, який перехоплює всі вихідні листи: SMTP на `127.0.0.1:1025`, веб-інтерфейс на `http://localhost:8025`. Підніміть його (`make services-up` або `pnpm services:up`, лише його — `make services-up ARGS=mailpit`), задайте `SMTP_ENABLED=true`, `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_REQUIRE_TLS=false`, `SMTP_IGNORE_TLS=true`, `SMTP_FROM_EMAIL=noreply@example.com` без логіна/пароля і перевірте `pnpm --filter backend mail:test you@example.com`. Контейнер застосунку з профілю `app` уже налаштований на `mailpit`.
 
 Юніт-тести: `pnpm --filter backend test`.

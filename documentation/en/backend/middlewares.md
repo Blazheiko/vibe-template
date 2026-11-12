@@ -14,11 +14,11 @@ Middleware are set as a list of names on a route group (or on a single route) an
 }
 ```
 
-| Middleware set                                           | Who gets through                 | Others get                                    |
-| -------------------------------------------------------- | -------------------------------- | --------------------------------------------- |
-| none                                                     | everyone (like `GET /api/hello`) | —                                             |
-| `session_web`, `csrf_guard`, `auth_guard`                | logged-in users only             | `401 unauthorized`                            |
-| `session_web`, `csrf_guard`, `auth_guard`, `admin_guard` | the `admin` role only            | `401` without login, `403` for a regular user |
+| Middleware set                                           | Who gets through                | Others get                                    |
+| -------------------------------------------------------- | ------------------------------- | --------------------------------------------- |
+| none                                                     | everyone (like `GET /api/ping`) | —                                             |
+| `session_web`, `csrf_guard`, `auth_guard`                | logged-in users only            | `401 unauthorized`                            |
+| `session_web`, `csrf_guard`, `auth_guard`, `admin_guard` | the `admin` role only           | `401` without login, `403` for a regular user |
 
 The responses were checked on a running server (`GET /api/admin/users`):
 

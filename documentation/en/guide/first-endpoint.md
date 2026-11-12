@@ -148,16 +148,20 @@ export default {
 
 All that is left is to tell the server that `GET /api/hello` is handled by our controller. Every HTTP route of the template is declared through a **contract** ([Routing](/en/backend/routing#http-routes-defineroute)), so there are three small changes here.
 
-**The contract.** The method, the full path under the `api` prefix and the types of the query and the response. The schemas are imported only as types, so the frontend can import the contract without them:
+**The contract.** The method, the full path under the `api` prefix and the types of the query and the response. The schemas are imported only as types, so the frontend can import the contract without them. As in the existing contracts, the query type comes from [`QueryInputOf`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts): what a client may pass in the query string:
 
 ```ts
 // packages/shared/src/contracts/hello.ts
 import type { HelloQuerySchema } from '../schemas/hello/hello-query.js'
+import type { QueryInputOf } from '../schemas/query/types.js'
 import type { HelloResponse } from '../responses/hello-controller.js'
 import { contract } from './core.js'
 
 export const helloContracts = {
-    hello: contract<undefined, typeof HelloQuerySchema.inferIn, HelloResponse>()('get', '/hello'),
+    hello: contract<undefined, QueryInputOf<typeof HelloQuerySchema>, HelloResponse>()(
+        'get',
+        '/hello',
+    ),
 } as const
 ```
 
@@ -181,15 +185,17 @@ export const helloSchemas = contractSchemas(helloContracts, {
 })
 ```
 
-Spread it into `contractSchemaRegistry` in `packages/backend/src/app/routes/contract-schemas/index.ts`:
+Add it as an argument of `mergeContractSchemas` in [`contract-schemas/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts): two contracts with the same method and path stop the server from starting:
 
 ```ts
 import { helloSchemas } from './hello.js'
 // ...
-export const contractSchemaRegistry = {
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
     // ...
-    ...helloSchemas,
-}
+    supportWsSchemas,
+    helloSchemas,
+)
 ```
 
 **The route.** Open [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). `defineRoute` is already imported there from `#app/routes/contract-schemas/index.js`; add the controller import and `helloContracts` to the existing import from `shared/contracts`:
