@@ -1941,8 +1941,8 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-close-on-revocation",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #592 (merge 9cf1395): the connection registry keeps the sessionId and users.session_token of every connection; wsSessionRevocation.closeUserConnections closes them with session_expired and code 4001 from logout (that session), logoutAll, changePassword and destroySessionsQuietly (password reset by email and phone, account claims); every instance re-checks its connections against users.session_token once per WS_SESSION_RECHECK_INTERVAL_MS (default 30000, one query per 1000 users) and closes those that differ; docs uk+en (backend/websocket \"Revoking a session\", auth, configuration). make check passing (backend 2734, frontend 548, playground 115), test:pg 303 and test:redis 116 passing on real services, docs:build+verify passing; RED: with the close call disabled the six new cases of session-revocation.pg.test.ts fail; real stack: e2e-live \"log out everywhere closes the open WebSocket of the other browser\" passes (the socket gets session_expired and closes within 5 s without sending a request); CI all jobs passing incl. e2e, e2e-live, test-pg, test-redis. Known limit (documented): a single-session logout does not rotate the token, so on another instance its socket closes on the next client message. Details were in progress.md on fix/ws-close-on-revocation (removed from main by this PR)."
         },
         {
             "id": "feat-196",
