@@ -1,7 +1,7 @@
 import { env } from 'node:process'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
-import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
+import { normalizeApiPrefix } from 'shared/api-prefix'
 
 const reader = createEnvReader()
 
@@ -47,8 +47,8 @@ const config = Object.freeze({
     domain: env['DOMAIN'] ?? '127.0.0.1',
     host: env['HOST'] ?? '0.0.0.0',
     port: reader.int('PORT', 3000, { min: 1, max: 65535 }),
-    // Empty means `api`, as in the frontend and shared/dev-backend: there is no root-level API.
-    pathPrefix: normalizePath(nonEmpty(env['API_PATH_PREFIX']?.trim()) ?? 'api'),
+    // The same rule as the frontend (shared/api-prefix): ``, `/` → `api`; no root-level API.
+    pathPrefix: normalizeApiPrefix(env['API_PATH_PREFIX']),
     // `APP_UNIX_PATH=` from .env.example must mean "listen on HOST:PORT", not listen_unix('')
     unixPath: nonEmpty(env['APP_UNIX_PATH']),
     // Примеры использования логических значений:

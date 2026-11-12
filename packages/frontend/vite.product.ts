@@ -1,5 +1,10 @@
 import type { Plugin } from 'vite'
-import { PRODUCT, type ProductInfo } from 'shared/product'
+// The source, not the `shared/product` package: a Vite config is loaded before Vite applies the
+// `shared-source` condition, so the package name would resolve to shared/dist and keep the values
+// of the last `shared` build. A relative import is bundled into the config, and Vite restarts the
+// dev server when the file changes, so index.html, manifest.json and robots.txt follow an edit
+// without rebuilding `shared` (feat-193). ESLint forbids `shared/*` in Vite configs.
+import { PRODUCT, type ProductInfo } from '../shared/src/product/index'
 
 /**
  * Puts the product name and texts from `shared/product` into the files a browser reads before any

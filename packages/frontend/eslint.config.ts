@@ -33,6 +33,14 @@ const TRANSPORT_ONLY_IN_CLIENT = {
         'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
 }
 
+// feat-193: a Vite config loads before the `shared-source` condition applies, so `shared/*` there
+// is shared/dist and keeps the values of the last `shared` build. Import the source by path.
+const SHARED_SOURCE_IN_VITE_CONFIG = {
+    regex: '^shared(/|$)',
+    message:
+        'A Vite config reads shared/dist through the package name: import ../shared/src/<module>/index instead (feat-193).',
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const monorepoRootDir = resolve(__dirname, '../..')
 
@@ -180,6 +188,21 @@ export default defineConfigWithVueTs(
     {
         ...pluginPlaywright.configs['flat/recommended'],
         files: ['e2e/**/*.{test,spec}.{js,ts,jsx,tsx}', 'e2e-csp/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    },
+    {
+        files: ['vite.*.ts', 'vitest.config.ts'],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    patterns: [
+                        SENTRY_ONLY_IN_SERVICE,
+                        TRANSPORT_ONLY_IN_CLIENT,
+                        SHARED_SOURCE_IN_VITE_CONFIG,
+                    ],
+                },
+            ],
+        },
     },
     {
         files: ['src/types/i18n.d.ts'],

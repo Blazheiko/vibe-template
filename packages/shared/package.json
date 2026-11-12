@@ -75,6 +75,11 @@
             "shared-source": "./src/dev-backend/index.ts",
             "types": "./dist/dev-backend/index.d.ts",
             "import": "./dist/dev-backend/index.js"
+        },
+        "./api-prefix": {
+            "shared-source": "./src/api-prefix/index.ts",
+            "types": "./dist/api-prefix/index.d.ts",
+            "import": "./dist/api-prefix/index.js"
         }
     },
     "files": [

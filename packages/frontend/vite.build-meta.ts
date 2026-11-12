@@ -1,5 +1,8 @@
 import type { Plugin } from 'vite'
 
+// Source, not the package: see the note in vite.product.ts (feat-193).
+import { DEFAULT_API_PREFIX, normalizeApiPrefix } from '../shared/src/api-prefix/index'
+
 /**
  * Writes `build-meta.json` next to index.html: the API prefix this bundle was built for.
  *
@@ -9,14 +12,14 @@ import type { Plugin } from 'vite'
  * say why (feat-153; packages/backend/src/vendor/start/static-build-meta.ts).
  */
 export const buildMeta = (): Plugin => {
-    let apiPathPrefix = 'api'
+    let apiPathPrefix = DEFAULT_API_PREFIX
     return {
         name: 'build-meta',
         apply: 'build',
         configResolved(config) {
-            // The same normalisation as normalizeApiPrefix in shared/ws-client.
-            const raw = (config.env.VITE_API_PATH_PREFIX as string | undefined) ?? ''
-            apiPathPrefix = raw.trim().replace(/^\/+|\/+$/g, '') || 'api'
+            apiPathPrefix = normalizeApiPrefix(
+                config.env.VITE_API_PATH_PREFIX as string | undefined,
+            )
         },
         generateBundle() {
             this.emitFile({

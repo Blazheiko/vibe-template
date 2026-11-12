@@ -7,7 +7,7 @@
 // Pure functions: the caller reads packages/backend/.env (node:fs + node:util parseEnv) and passes
 // both sources in, so this module needs no Node types and stays importable anywhere.
 
-import { normalizeApiPrefix } from '../ws-client/index.js'
+import { normalizeApiPrefix } from '../api-prefix/index.js'
 
 /** Environment variables: `process.env`, or the parsed lines of a `.env` file. */
 export type EnvSource = Readonly<Record<string, string | undefined>>
@@ -26,7 +26,7 @@ const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '[::]'])
 
 /** The value the backend sees: the shell's if it has the key (dotenv), else the file's; '' = unset. */
 const read = (key: string, shell: EnvSource, file: EnvSource): string | undefined => {
-    const value = Object.hasOwn(shell, key) ? shell[key] : file[key]
+    const value = key in shell ? shell[key] : file[key]
     const trimmed = value?.trim()
     return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }

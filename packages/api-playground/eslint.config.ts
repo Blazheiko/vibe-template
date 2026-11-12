@@ -59,6 +59,25 @@ export default defineConfigWithVueTs(
         },
     },
     {
+        // feat-193: a Vite config loads before the `shared-source` condition applies, so
+        // `shared/*` there is shared/dist. Import the source by path (see frontend/vite.product.ts).
+        files: ['vite.config.ts', 'vitest.config.ts'],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    patterns: [
+                        {
+                            regex: '^shared(/|$)',
+                            message:
+                                'A Vite config reads shared/dist through the package name: import ../shared/src/<module>/index instead (feat-193).',
+                        },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         files: ['eslint.config.ts', 'vite.sw.config.ts'],
         languageOptions: {
             parserOptions: {

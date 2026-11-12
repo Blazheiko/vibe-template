@@ -3,7 +3,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
 
-import { assertSameApiPrefix, resolveDevBackend, type DevBackend } from 'shared/dev-backend'
+// The source, not the package: see vite.product.ts (feat-193).
+import {
+    assertSameApiPrefix,
+    resolveDevBackend,
+    type DevBackend,
+} from '../shared/src/dev-backend/index'
 
 /**
  * The local backend this dev server proxies to, from the backend's own PORT, HOST and

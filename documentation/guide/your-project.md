@@ -53,7 +53,7 @@
 | `siteUrl`      | `canonical`, `og:url`, JSON-LD, `Sitemap` у `robots.txt`                                             |
 | `supportEmail` | AI-промпт підтримки: куди відправляти користувача, якщо відповіді немає                              |
 
-`index.html` містить плейсхолдери `%PRODUCT_*%`, а `manifest.json` і `robots.txt` генеруються: усе це робить Vite-плагін [`vite.product.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.product.ts) і в `pnpm dev`, і в `vite build`. Невідомий плейсхолдер зупиняє збірку.
+`index.html` містить плейсхолдери `%PRODUCT_*%`, а `manifest.json` і `robots.txt` генеруються: усе це робить Vite-плагін [`vite.product.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.product.ts) і в `pnpm dev`, і в `vite build`. Плагін читає `packages/shared/src/product` напряму, тож після правки dev-сервер перезапускається сам і віддає нові `index.html`, `manifest.json` і `robots.txt` без `pnpm build:shared`. Невідомий плейсхолдер зупиняє збірку.
 
 Вручну лишається замінити те, що не є текстом, і технічні ідентифікатори:
 

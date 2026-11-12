@@ -78,7 +78,7 @@ The overall structure of the monorepo: [/en/guide/project-structure](/en/guide/p
 
 ### Router and guard
 
-Routes have `meta` (`requiresAuth`, `requiresAdmin`, `hideHeader`, `authModal` and so on, the types are extended in `env.d.ts`). For protected routes `router.beforeEach` waits for `waitForApp()` from the `user` store, i.e. for `initializeApp` to finish. Public pages (sign-in, email verification, password reset) do not wait for initialization. Without a user the guard redirects to `/login?redirect=<path>`. After sign-in `redirect` is used only if it is a path inside the app (`/…`, without `//`, backslashes and control characters, [`safe-redirect.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/safe-redirect.ts)); otherwise the user lands on `/account`. A `requiresAdmin` route redirects a non-admin to `/account`.
+Routes have `meta` (`requiresAuth`, `requiresAdmin`, `hideHeader`, `authModal` and so on, the types are extended in `src/env.d.ts`). For protected routes `router.beforeEach` waits for `waitForApp()` from the `user` store, i.e. for `initializeApp` to finish. Public pages (sign-in, email verification, password reset) do not wait for initialization. Without a user the guard redirects to `/login?redirect=<path>`. After sign-in `redirect` is used only if it is a path inside the app (`/…`, without `//`, backslashes and control characters, [`safe-redirect.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/safe-redirect.ts)); otherwise the user lands on `/account`. A `requiresAdmin` route redirects a non-admin to `/account`.
 
 ### i18n
 
