@@ -1931,7 +1931,8 @@
             "owner": "Blazheiko",
             "branch": "fix/sentry-span-tokens",
             "dependencies": [],
-            "status": "in_progress"
+            "status": "done",
+            "evidence": "PR #588 (merge cb2d824): sentry-service.ts passes beforeSendSpan (Sentry 11 streams spans, so beforeSendTransaction does not run): sensitive query.<name> attributes and keys become [Filtered], url.query/http.query masked as query strings, URLs in other string attributes and the span name masked; beforeSend cleans extra at any depth (URLs inside any string); main.ts router.onError sends to.path and the route name instead of to.fullPath; maskUrl also filters params matching the sensitive-key regex and leaves unfiltered URLs unchanged; docs uk+en (backend/observability, Sentry frontend). make check passing (backend 2702, frontend 548, playground 115, shared 39, docs 26), docs:build+verify passing; sentry-tracing.spec.ts on the real @sentry/vue 11.10.0 SDK (stubbed fetch transport, canary token) fails on the old code (token in query.token span attribute and extra.targetRoute) and passes with the fix; CI all jobs passing incl. e2e and e2e-live. Details were in progress.md on fix/sentry-span-tokens (removed from main by this PR)."
         }
     ]
 }
