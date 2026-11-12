@@ -1941,7 +1941,7 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-close-on-revocation",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
