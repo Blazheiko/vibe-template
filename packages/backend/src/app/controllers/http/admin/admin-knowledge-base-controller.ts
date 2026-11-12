@@ -1,5 +1,7 @@
 import { Result } from 'better-result'
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { knowledgeBaseContracts } from 'shared/contracts'
 import { knowledgeBaseService } from '#app/services/support/knowledge-base-service.js'
 import type {
     SupportKnowledgeBaseDeleteResponse,
@@ -20,8 +22,11 @@ import { badRequest, conflict } from '#app/services/shared/errors.js'
 import { knowledgeBaseInitService } from '#app/services/support/knowledge-base-init-service.js'
 import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
-const parseId = (context: HttpContext<unknown, unknown>): bigint | null =>
-    parseEntityId(context.httpData.params['id'])
+// Each method reads the `:id` of its own contract (feat-186): renamed in one, it stops the build.
+const parseId = (context: { httpData: { params: { readonly id: string } } }): bigint | null =>
+    parseEntityId(context.httpData.params.id)
+
+type Kb = typeof knowledgeBaseContracts
 
 export default {
     async getAll(
@@ -41,7 +46,9 @@ export default {
         }))
     },
 
-    async getById(context: HttpContext): Promise<SupportKnowledgeBaseItemResponse> {
+    async getById(
+        context: HttpContext<unknown, null, ParamsOf<Kb['get']>>,
+    ): Promise<SupportKnowledgeBaseItemResponse> {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
@@ -67,7 +74,7 @@ export default {
     },
 
     async update(
-        context: HttpContext<SupportKnowledgeBaseUpdateInput>,
+        context: HttpContext<SupportKnowledgeBaseUpdateInput, null, ParamsOf<Kb['update']>>,
     ): Promise<SupportKnowledgeBaseItemResponse> {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
@@ -82,7 +89,9 @@ export default {
         return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
-    async delete(context: HttpContext): Promise<SupportKnowledgeBaseDeleteResponse> {
+    async delete(
+        context: HttpContext<unknown, null, ParamsOf<Kb['remove']>>,
+    ): Promise<SupportKnowledgeBaseDeleteResponse> {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
@@ -91,7 +100,7 @@ export default {
     },
 
     async uploadScreenshot(
-        context: HttpContext<EmptyFormInput>,
+        context: HttpContext<EmptyFormInput, null, ParamsOf<Kb['uploadScreenshot']>>,
     ): Promise<SupportKnowledgeBaseItemResponse> {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
@@ -101,7 +110,9 @@ export default {
         return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
-    async deleteScreenshot(context: HttpContext): Promise<SupportKnowledgeBaseItemResponse> {
+    async deleteScreenshot(
+        context: HttpContext<unknown, null, ParamsOf<Kb['removeScreenshot']>>,
+    ): Promise<SupportKnowledgeBaseItemResponse> {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
@@ -110,7 +121,7 @@ export default {
     },
 
     async reindex(
-        context: HttpContext<EmptyFormInput>,
+        context: HttpContext<EmptyFormInput, null, ParamsOf<Kb['reindex']>>,
     ): Promise<SupportKnowledgeBaseReindexResponse> {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))

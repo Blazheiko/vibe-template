@@ -21,14 +21,17 @@ vi.mock('#app/services/notifications/push-notification-sender-service.js', () =>
 
 const { default: PushSubscriptionController } = await import('./push-subscription-controller.js')
 
-const contextWithParam = (subscriptionId: string): HttpContext =>
+/** A context of a `:subscriptionId` route (any of them: the parameter is the same). */
+const contextWithParam = (
+    subscriptionId: string,
+): HttpContext<never, null, { subscriptionId: string }> =>
     ({
         auth: { check: () => true, getUserId: () => '7' },
         httpData: { params: { subscriptionId }, payload: {} },
         responseData: { status: 200, payload: null, headers: [], cookies: [] },
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         signal: new AbortController().signal,
-    }) as unknown as HttpContext
+    }) as unknown as HttpContext<never, null, { subscriptionId: string }>
 
 afterEach(() => {
     vi.clearAllMocks()

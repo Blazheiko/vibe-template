@@ -1,4 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { oauthContracts } from 'shared/contracts'
 import {
     mapControllerError,
     reportControllerError,
@@ -80,9 +82,9 @@ export default {
     },
 
     async redirect(
-        context: HttpContext<unknown, OAuthRedirectQuery>,
+        context: HttpContext<unknown, OAuthRedirectQuery, ParamsOf<typeof oauthContracts.redirect>>,
     ): Promise<OAuthRedirectResponse> {
-        const provider = context.httpData.params['provider'] ?? ''
+        const provider = context.httpData.params.provider
 
         const result = oauthService.getAuthorizationUrl(provider)
 
@@ -112,10 +114,10 @@ export default {
     },
 
     async callback(
-        context: HttpContext<unknown, OAuthCallbackQuery>,
+        context: HttpContext<unknown, OAuthCallbackQuery, ParamsOf<typeof oauthContracts.callback>>,
     ): Promise<OAuthCallbackResponse> {
         const { httpData, logger, session, responseData, auth } = context
-        const provider = httpData.params['provider'] ?? ''
+        const provider = httpData.params.provider
         const query = httpData.query
         const code = query.code ?? ''
         const receivedState = query.state ?? ''

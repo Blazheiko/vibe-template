@@ -9,7 +9,16 @@ import type {
     WsContext,
 } from '#vendor/types/types.js'
 import type { RouteResponse } from '#app/routing/route-response.js'
-import type { AnyContract, BodyOf, FieldsOf, KindOf, QueryOf, ResponseOf } from 'shared/contracts'
+import type {
+    AnyContract,
+    BodyOf,
+    FieldsOf,
+    KindOf,
+    PathOf,
+    PathParams,
+    QueryOf,
+    ResponseOf,
+} from 'shared/contracts'
 import type { QueryInputOf } from 'shared/schemas'
 
 // The schemas of the routes declared through a contract (docs/adr/0005-route-contracts.md,
@@ -148,6 +157,13 @@ type PayloadOf<TSchema> = TSchema extends { infer: infer T } ? T : unknown
 /** The query a handler sees: the output of the query schema, or null without one (as at run time). */
 type QueryOutputOf<TSchema> = TSchema extends { infer: infer T } ? T : null
 
+/**
+ * The path parameters of a contract, as its handler reads them (feat-186): a controller method
+ * declares `HttpContext<Payload, Query, ParamsOf<typeof contracts.get>>`, and a parameter renamed
+ * in the contract stops the build.
+ */
+export type ParamsOf<C extends AnyContract> = PathParams<PathOf<C>>
+
 type EntryOf<R, C extends AnyContract> = ContractKey<C> extends keyof R ? R[ContractKey<C>] : never
 
 type ContractRouteInput<R, C extends AnyContract> = Omit<
@@ -162,15 +178,20 @@ type ContractRouteInput<R, C extends AnyContract> = Omit<
     queryAllowExtra?: boolean
     queryArrays?: readonly string[]
     // Without an entry the contract above is already the error; the handler is not checked.
+    // NoInfer: the contract is what fixes `C`; a handler declared for another contract is an
+    // error here, not a second guess at `C`.
     handler: [EntryOf<R, C>] extends [never]
         ? (...args: never[]) => unknown
-        : TypedHandler<
-              HttpContext<
-                  PayloadOf<EntryOf<R, C> extends { body: infer B } ? B : undefined>,
-                  QueryOutputOf<EntryOf<R, C> extends { query: infer Q } ? Q : undefined>
-              >,
-              RouteResponse<
-                  EntryOf<R, C> extends { response: infer S extends Type } ? S : undefined
+        : NoInfer<
+              TypedHandler<
+                  HttpContext<
+                      PayloadOf<EntryOf<R, C> extends { body: infer B } ? B : undefined>,
+                      QueryOutputOf<EntryOf<R, C> extends { query: infer Q } ? Q : undefined>,
+                      ParamsOf<C>
+                  >,
+                  RouteResponse<
+                      EntryOf<R, C> extends { response: infer S extends Type } ? S : undefined
+                  >
               >
           >
 }

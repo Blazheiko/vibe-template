@@ -57,10 +57,15 @@ export interface Cookie {
     sameSite: string | undefined
 }
 
-export interface HttpContext<TPayload = unknown, TQuery = null> {
+/**
+ * The context of an HTTP handler. `TParams` are the path parameters: `defineRoute` passes those of
+ * the route's contract (`:name` segments), so a handler that names another parameter does not
+ * compile (feat-186).
+ */
+export interface HttpContext<TPayload = unknown, TQuery = null, TParams = Params> {
     requestId: string
     logger: Logger
-    httpData: HttpData<TPayload, TQuery>
+    httpData: HttpData<TPayload, TQuery, TParams>
     responseData: ResponseData
     session: Session
     auth: Auth
@@ -163,10 +168,10 @@ export interface UploadedFile {
     data: ArrayBuffer
 }
 
-export interface HttpData<TPayload = unknown, TQuery = null> {
+export interface HttpData<TPayload = unknown, TQuery = null, TParams = Params> {
     method: Method
     ip: string | null | undefined
-    params: Params
+    params: TParams
     payload: TPayload | null
     /**
      * Validated, typed query object. NOT a raw URLSearchParams.

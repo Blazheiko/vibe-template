@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { contract, multipartContract, navigationContract, wsContract } from 'shared/contracts'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 
+import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from './contract-registry.js'
+
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
@@ -295,6 +298,35 @@ function typeChecks(): void {
         contract: notes.create,
         // @ts-expect-error — the handler answers something the response schema does not allow
         handler: () => ({ status: 'success' as const, id: 7 }),
+    })
+
+    // feat-186: the path parameters are the contract's.
+    defineRoute({
+        contract: notes.remove,
+        handler: (context) => {
+            const noteId: string = context.httpData.params.noteId
+            // @ts-expect-error — the contract has no `:id` segment
+            const id: unknown = context.httpData.params.id
+            return { status: 'success' as const, id: `${noteId}${String(id)}` }
+        },
+    })
+
+    /** A controller method that reads `:noteId`, declared apart from the route. */
+    const removeNote = (
+        context: HttpContext<unknown, null, ParamsOf<typeof notes.remove>>,
+    ): NoteResponse => ({ status: 'success', id: context.httpData.params.noteId })
+    defineRoute({ contract: notes.remove, handler: removeNote })
+    // The same method on a contract whose segment is named otherwise.
+    const byId = {
+        remove: contract<undefined, undefined, NoteResponse>()('delete', '/notes/:id'),
+    }
+    const defineByIdRoute = contractRouteDefiner(
+        contractSchemas(byId, { remove: { response: NoteResponseSchema } }),
+    )
+    defineByIdRoute({
+        contract: byId.remove,
+        // @ts-expect-error — the handler reads `:noteId`, the contract has `:id`
+        handler: removeNote,
     })
 
     defineRoute({
