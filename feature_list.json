@@ -1893,6 +1893,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #576 (merge into main): ~75 doc/code discrepancies fixed in uk+en and package READMEs, make check passing, docs:build+verify passing, every new GitHub link target exists, manual check of each fix against the cited source, CI all jobs passing"
+        },
+        {
+            "id": "feat-191",
+            "name": "Product Name From One Place",
+            "description": "Code review: the product name is written separately in index.html, the PWA manifest, MenuButton/Login/ManifestoSocial, the locales, robots.txt, the email layout and texts, the AI support prompts and send-test-email; documentation/guide/your-project.md lists a dozen files to rename, and APP_NAME (process title) is not the product name. Add shared/product (name, short name, logo text, tagline, description, site URL, support email) and read it everywhere: a Vite plugin fills index.html and generates manifest.json and robots.txt, components and locales import it, the backend emails and prompts use it; email snapshots stay byte-identical. Images (icons, splash, logo.svg), the DB name, REDIS_PREFIX and the workspace name stay manual and are listed in the guide (uk+en).",
+            "owner": "Blazheiko",
+            "branch": "feat/product-name",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
