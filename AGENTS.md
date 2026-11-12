@@ -62,7 +62,7 @@ Generated output such as `dist/`, `node_modules/`, Playwright reports, and cover
 The root `Makefile` is the single entry point: `make` (or `make help`) lists every target. Targets only delegate to pnpm scripts or `scripts/*`; put new logic into a pnpm script or a script file, then add a target with a `## description` (enforced by `make verify-makefile`, part of `make check`). Keep it GNU Make 3.81 compatible (macOS default).
 
 - `make setup`: first run: `make doctor` (Node/pnpm/Docker/.env), install, create `packages/backend/.env` if missing, build `shared`.
-- `make check`: build `shared`, verify the Makefile, `format:check`, `typecheck`, `lint`, `test`: exactly what the CI `quality` job runs. `./init.sh` wraps `make init` (install + check + build).
+- `make check`: build `shared`, verify the Makefile and the compose API prefix, `format:check`, `typecheck`, `lint`, `test`: exactly what the CI `quality` job runs. `./init.sh` wraps `make init` (install + check + build).
 - `make test PKG=backend`, `make db-seed ARGS=--demo`: `PKG` picks a package, `ARGS` is passed to the underlying script.
 - `make services-up ARGS="redis s3 mailpit"` starts a subset (e.g. next to a local PostgreSQL); `make app-down` stops only the app container. `make` is optional for humans: every target has a pnpm equivalent (`make -n <target>`).
 

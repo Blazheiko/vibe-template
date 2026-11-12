@@ -149,6 +149,57 @@ describe('WS message budget of a connection', () => {
     })
 })
 
+// Review 2026-11-12 (feat-185): the early refusal answers the request's id like every other
+// reply (ADR 0006, feat-180); without it the client cannot match it and waits for its timeout.
+describe('early refusal keeps the request id', () => {
+    const withId = (n: number, id: unknown): string =>
+        JSON.stringify({ event: 'no/such/route', id, timestamp: n, payload: null })
+
+    it('over the message budget', async () => {
+        const { send, replies } = createConnection()
+        for (let n = 1; n <= BUDGET; n += 1) await send(unknownEvent(n))
+
+        await send(withId(BUDGET + 1, 'req-over-budget'))
+
+        expect(replies()[BUDGET]).toMatchObject({
+            event: 'no/such/route',
+            id: 'req-over-budget',
+            error: { code: 'rate_limited' },
+        })
+    })
+
+    it('over the concurrent handlers, and not an id the envelope does not allow', async () => {
+        const { send, replies } = createConnection()
+        const finish: (() => void)[] = []
+        wsApiHandler.mockImplementation(
+            (message: { event: string }) =>
+                new Promise((resolve) => {
+                    finish.push(() => {
+                        resolve({ status: 'ok', data: {}, event: message.event, error: null })
+                    })
+                }),
+        )
+        const running = Array.from({ length: MAX_CONCURRENT }, (_, n) => send(unknownEvent(n)))
+        await vi.waitFor(() => {
+            expect(finish).toHaveLength(MAX_CONCURRENT)
+        })
+
+        await send(withId(100, 'req-busy'))
+        await send(withId(101, 'x'.repeat(65)))
+        await send(withId(102, 7))
+
+        const [busy, tooLong, notText] = replies()
+        expect(busy).toMatchObject({ id: 'req-busy', error: { code: 'rate_limited' } })
+        expect(tooLong).not.toHaveProperty('id')
+        expect(notText).not.toHaveProperty('id')
+
+        finish.forEach((done) => {
+            done()
+        })
+        await Promise.all(running)
+    })
+})
+
 describe('WS concurrent handlers of a connection', () => {
     it('refuses a message while the limit of handlers is running and takes one again when a handler ends', async () => {
         const { send, replies } = createConnection()

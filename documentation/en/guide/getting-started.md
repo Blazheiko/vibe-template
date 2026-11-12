@@ -158,6 +158,7 @@ The app and migrations are described in compose under the `app` profile, so `mak
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | app address              | `APP_URL`, `FRONTEND_URL`, `LANDING_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                                   |
 | mode                     | `APP_ENV=local`, `APP_IS_PRODUCTION=false`, `SERVE_STATIC=true`, `DOC_PAGE=false`                                                     |
+| API prefix               | `API_PATH_PREFIX`: from the shell, else from `packages/backend/.env`, else `api`, as in `pnpm app:build`                              |
 | PostgreSQL, Redis        | `PGSQL_HOST=postgres`, `PGSQL_PORT=5432`, `REDIS_HOST=redis`, `REDIS_PORT=6379`                                                       |
 | S3                       | `S3_ENDPOINT=http://s3:8333`, keys and bucket are the same as for the `s3` service; `CDN_URL=http://localhost:S3_HOST_PORT/S3_BUCKET` |
 | mail                     | Mailpit: `SMTP_ENABLED=true`, `SMTP_HOST=mailpit`, `SMTP_PORT=1025`, no TLS                                                           |

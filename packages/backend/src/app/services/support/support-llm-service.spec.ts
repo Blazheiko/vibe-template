@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const adapter = { isConfigured: vi.fn(() => true), streamText: vi.fn() }
-vi.mock('#app/services/ai/ai-provider.js', () => ({ getTextAdapterForModel: () => adapter }))
+const getTextAdapterForModel = vi.fn((_model: string | null) => adapter)
+vi.mock('#app/services/ai/ai-provider.js', () => ({ getTextAdapterForModel }))
 const getContent = vi.fn((): string => '')
+const getModel = vi.fn((_stage: string): string | null => null)
 vi.mock('#app/services/ai/prompt-service.js', () => ({
     promptService: {
-        getModel: vi.fn(() => null),
+        getModel,
         getTemperature: vi.fn(() => null),
         getMaxTokens: vi.fn(() => null),
         getContent,
@@ -59,4 +61,22 @@ describe('supportLlmService.chatStream system prompt (feat-105)', () => {
         expect(prompt.startsWith('RULES\n{context}')).toBe(true)
         expect(warn).not.toHaveBeenCalled()
     })
+})
+
+// Review 2026-11-12 (feat-185): the run reserves the answer only when its adapter will make the
+// call, the adapter of the model the stage's prompt names.
+describe('supportLlmService.isConfigured', () => {
+    it.each(['SUPPORT_SYSTEM', 'SUPPORT_FIRST_CHAT'] as const)(
+        'asks the adapter of the model of %s',
+        async (stage) => {
+            getModel.mockImplementation((name) => (name === stage ? 'mistral-large' : null))
+            adapter.isConfigured.mockReturnValue(false)
+
+            expect(supportLlmService.isConfigured(stage)).toBe(false)
+            expect(getTextAdapterForModel).toHaveBeenCalledWith('mistral-large')
+
+            adapter.isConfigured.mockReturnValue(true)
+            expect(supportLlmService.isConfigured(stage)).toBe(true)
+        },
+    )
 })

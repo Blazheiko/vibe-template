@@ -158,6 +158,7 @@ make services-down   # зупинити все
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | адреса застосунку     | `APP_URL`, `FRONTEND_URL`, `LANDING_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                         |
 | режим                 | `APP_ENV=local`, `APP_IS_PRODUCTION=false`, `SERVE_STATIC=true`, `DOC_PAGE=false`                                           |
+| префікс API           | `API_PATH_PREFIX`: зі shell, інакше з `packages/backend/.env`, інакше `api`, як і під час `pnpm app:build`                  |
 | PostgreSQL, Redis     | `PGSQL_HOST=postgres`, `PGSQL_PORT=5432`, `REDIS_HOST=redis`, `REDIS_PORT=6379`                                             |
 | S3                    | `S3_ENDPOINT=http://s3:8333`, ключі й бакет — ті самі, що в сервісу `s3`; `CDN_URL=http://localhost:S3_HOST_PORT/S3_BUCKET` |
 | пошта                 | Mailpit: `SMTP_ENABLED=true`, `SMTP_HOST=mailpit`, `SMTP_PORT=1025`, без TLS                                                |
