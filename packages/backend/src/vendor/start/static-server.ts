@@ -189,7 +189,7 @@ const cacheStaticSource = async (): Promise<Map<string, StaticEntry> | null> => 
         if (build.kind === 'mismatch') {
             logger.error(
                 { builtFor: build.builtFor, served: build.served },
-                'The SPA in the static directory was built for another API prefix: its API calls will not reach the API (a GET gets index.html, anything else 404). Rebuild it with VITE_API_PATH_PREFIX equal to API_PATH_PREFIX',
+                'The SPA in the static directory was built for another API prefix: its API calls will not reach the API (a GET gets index.html, anything else 404). Rebuild it with the same API_PATH_PREFIX (the frontend build reads it from the environment or packages/backend/.env)',
             )
         }
         const index = cache.get('/index.html')

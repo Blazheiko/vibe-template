@@ -47,7 +47,8 @@ const config = Object.freeze({
     domain: env['DOMAIN'] ?? '127.0.0.1',
     host: env['HOST'] ?? '0.0.0.0',
     port: reader.int('PORT', 3000, { min: 1, max: 65535 }),
-    pathPrefix: normalizePath(env['API_PATH_PREFIX'] ?? 'api'),
+    // Empty means `api`, as in the frontend and shared/dev-backend: there is no root-level API.
+    pathPrefix: normalizePath(nonEmpty(env['API_PATH_PREFIX']?.trim()) ?? 'api'),
     // `APP_UNIX_PATH=` from .env.example must mean "listen on HOST:PORT", not listen_unix('')
     unixPath: nonEmpty(env['APP_UNIX_PATH']),
     // Примеры использования логических значений:

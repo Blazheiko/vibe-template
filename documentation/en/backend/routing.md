@@ -252,7 +252,7 @@ Workflow:
 
 1. In `packages/backend/.env` set `APP_ENV=manual-test`, `DOC_PAGE=true`, `SERVE_STATIC=true`.
 2. From the root run `pnpm dev:manual_test` — it builds `shared`, then runs the backend (`tsx watch`) and [`packages/api-playground`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground) (Vite) in parallel.
-3. The playground (a Vue app) proxies requests to `http://127.0.0.1:3000` ([`vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts)), loads `/api/doc/routes` ([`stores/api-doc.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-doc.ts)) and lets you call HTTP and WS routes manually.
+3. The playground (a Vue app) proxies requests to the backend's `HOST:PORT` (`http://127.0.0.1:3000` by default) ([`vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts)), loads `/api/doc/routes` ([`stores/api-doc.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-doc.ts)) and lets you call HTTP and WS routes manually.
 
 ::: info OpenAPI
 OpenAPI is not used in the project, and we do not plan to generate it. The [`src/openapi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/openapi) directory contains only unused stubs: `spec.ts` is empty, `schemas.ts` has only a commented-out import. The API description is provided by `/doc/routes` together with the api-playground.

@@ -79,8 +79,11 @@ Copy `.env.example` to `.env` and set the `VITE_*` variables as needed:
 - `VITE_BASE_URL` — API origin; leave empty for same-origin requests (the Vite
   proxy in dev, the backend that serves the SPA in production). Set it only
   when the API lives on another origin (the backend CORS must allow it)
-- `VITE_API_PATH_PREFIX` — must match the backend `API_PATH_PREFIX` (default
-  `api`); HTTP paths, WS events and the dev proxy key are built from it
+- `VITE_API_PATH_PREFIX` — not set by hand: `vite.config.ts` takes the backend
+  `API_PATH_PREFIX` (default `api`) from the shell or `packages/backend/.env`
+  and compiles it in; HTTP paths, WS events and the dev proxy key are built from
+  it. The dev proxy target follows the backend `HOST`/`PORT` the same way, and a
+  different `VITE_API_PATH_PREFIX` in a frontend `.env` fails the config
 - `VITE_AUTH_PHONE_ENABLED` — `'true'` enables sign-in and registration by
   phone
 - `VITE_SENTRY_DSN` / `VITE_SENTRY_ENABLED` — enable frontend Sentry (disabled

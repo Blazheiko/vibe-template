@@ -64,3 +64,30 @@ describe('APP_UNIX_PATH', () => {
         expect(await loadUnixPath('/tmp/app.sock')).toBe('/tmp/app.sock')
     })
 })
+
+// feat-192: the frontend and shared/dev-backend read an empty API_PATH_PREFIX as `api`, so the
+// backend must too, or the dev proxy and the compiled prefix would miss its routes.
+describe('API_PATH_PREFIX', () => {
+    const originalPrefix = process.env['API_PATH_PREFIX']
+
+    const loadPrefix = async (value: string | undefined): Promise<string> => {
+        if (value === undefined) delete process.env['API_PATH_PREFIX']
+        else process.env['API_PATH_PREFIX'] = value
+        vi.resetModules()
+        const { default: config } = await import('./app.js')
+        return config.pathPrefix
+    }
+
+    afterEach(() => {
+        if (originalPrefix === undefined) delete process.env['API_PATH_PREFIX']
+        else process.env['API_PATH_PREFIX'] = originalPrefix
+    })
+
+    it.each([undefined, '', '  '])('is api for %j', async (value) => {
+        expect(await loadPrefix(value)).toBe('api')
+    })
+
+    it('keeps a configured prefix without its outer slashes', async () => {
+        expect(await loadPrefix('/v1/')).toBe('v1')
+    })
+})

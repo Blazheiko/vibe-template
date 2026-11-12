@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
 
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
@@ -8,13 +8,13 @@ import { buildMeta } from './vite.build-meta'
 import { productBranding } from './vite.product'
 import { stripConsoleLogs } from './vite.console'
 import { sharedSource } from './vite.shared-source'
+import { pinApiPrefix, readDevBackend } from './vite.backend'
 
-// Dev proxy for the backend's API_PATH_PREFIX, not a hard-coded /api (code-issues item 73).
-// An object config (vitest.config.ts merges it), so the dev-mode env is read here.
-const env = loadEnv('development', process.cwd(), 'VITE_')
-const apiPrefix =
-    ((env.VITE_API_PATH_PREFIX as string | undefined) ?? '').trim().replace(/^\/+|\/+$/g, '') ||
-    'api'
+// One source for the backend address and the API prefix: PORT, HOST and API_PATH_PREFIX of
+// packages/backend/.env (or the shell). The proxy follows them, and the prefix is compiled into
+// the bundle as VITE_API_PATH_PREFIX (feat-192). An object config (vitest.config.ts merges it).
+const backend = readDevBackend()
+pinApiPrefix(backend.prefix)
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -47,8 +47,8 @@ export default defineConfig({
         port: 5173,
         proxy: {
             // Covers HTTP and the WS endpoint `/<prefix>/websocket`.
-            [`/${apiPrefix}`]: {
-                target: 'http://127.0.0.1:3000',
+            [`/${backend.prefix}`]: {
+                target: backend.origin,
                 changeOrigin: true,
                 ws: true,
             },

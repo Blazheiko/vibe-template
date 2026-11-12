@@ -40,7 +40,7 @@ API_PREFIX="${API_PATH_PREFIX:-$(env_file_prefix)}"
 echo "Building ${APP_IMAGE} (revision ${REVISION}, API prefix ${API_PREFIX:-api})"
 docker build \
     --tag "$APP_IMAGE" \
-    --build-arg "VITE_API_PATH_PREFIX=${API_PREFIX}" \
+    --build-arg "API_PATH_PREFIX=${API_PREFIX}" \
     --label "org.opencontainers.image.revision=${REVISION}" \
     --build-arg VITE_SENTRY_ENABLED=false \
     --build-arg VITE_SENTRY_DSN= \

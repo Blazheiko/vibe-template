@@ -252,7 +252,7 @@ WS-маршрути оголошено через **WS-контракти** ([AD
 
 1. У `packages/backend/.env` встановіть `APP_ENV=manual-test`, `DOC_PAGE=true`, `SERVE_STATIC=true`.
 2. З кореня запустіть `pnpm dev:manual_test` — збирає `shared`, потім паралельно запускає backend (`tsx watch`) і [`packages/api-playground`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground) (Vite).
-3. Playground (Vue-застосунок) проксіює запити на `http://127.0.0.1:3000` ([`vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts)), завантажує `/api/doc/routes` ([`stores/api-doc.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-doc.ts)) і дозволяє вручну викликати HTTP- та WS-маршрути.
+3. Playground (Vue-застосунок) проксіює запити на `HOST:PORT` бекенда (за замовчуванням `http://127.0.0.1:3000`) ([`vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts)), завантажує `/api/doc/routes` ([`stores/api-doc.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-doc.ts)) і дозволяє вручну викликати HTTP- та WS-маршрути.
 
 ::: info OpenAPI
 OpenAPI у проєкті не використовується, і генерувати його не плануємо. Каталог [`src/openapi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/openapi) містить лише невикористані заготовки: `spec.ts` порожній, `schemas.ts` має тільки закоментований імпорт. Опис API дає `/doc/routes` разом з api-playground.
