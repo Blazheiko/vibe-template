@@ -5,25 +5,14 @@ import {
     type BroadcastEventName,
 } from 'shared/schemas'
 
-import {
-    isAdminUserOnlineRemovePayload,
-    isSupportChatCompletePayload,
-    isSupportChatErrorPayload,
-    isSupportChatTokenPayload,
-    isWSAdminUserOnlineUpsertPayload,
-} from '../ws-payload-guards'
+import { broadcastGuards } from '../ws-payload-guards'
 
 // Parity of the hand-written guards with the broadcast registry (feat-049 §4.5): ArkType
 // is imported here only, the bundle stays without it. A guard rejects undeclared keys,
 // so it is compared with the schema under onDeepUndeclaredKey('reject').
 
-const guards: Record<BroadcastEventName, (value: unknown) => boolean> = {
-    support_chat_token: isSupportChatTokenPayload,
-    support_chat_complete: isSupportChatCompletePayload,
-    support_chat_error: isSupportChatErrorPayload,
-    admin_user_online_upsert: isWSAdminUserOnlineUpsertPayload,
-    admin_user_online_remove: isAdminUserOnlineRemovePayload,
-}
+// The registry the app uses (feat-182): complete by its type.
+const guards: Record<BroadcastEventName, (value: unknown) => boolean> = broadcastGuards
 
 const upsert = {
     id: '42',

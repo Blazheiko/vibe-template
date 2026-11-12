@@ -41,7 +41,7 @@ The backend keeps a single WebSocket endpoint `/<pathPrefix>/websocket` (by defa
     }
     ```
 
-1. On the frontend, events with the `broadcast:` prefix are handled by [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts): add a `payload` guard in [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts) and a `note_created` handler in `handlers`, following the `support_chat_token` example, and pass the event on through the event bus. The parity test `ws-payload-guards.spec.ts` requires a guard for every registry event.
+1. On the frontend, add a payload guard in [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts) and put it in `broadcastGuards` under the event's name. The registry is typed `satisfies BroadcastGuards`, so an event of `BroadcastEventSchemas` without a guard does not compile ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)). [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts) passes the event to the event bus under the same name with the payload of its contract (`BroadcastContracts` from `shared/contracts`); subscribe with `useEventBus().on('note_created', …)`. The parity test `ws-payload-guards.spec.ts` checks the guard against the registry schema.
 
 ::: warning Service tests
 `broadcast-service.ts` imports the server, and the server requires `APP_KEY` at startup. Without a mock, a service unit test will fail with `APP_KEY must be set...`. Add this to the test:
@@ -265,7 +265,7 @@ At runtime every event goes **once**, before serialization and before the loop o
 | has extra keys     | **not sent**, `error` | sent without them, `warn` with paths |
 | breaks the schema  | **not sent**, `error` | **not sent**, `error`                |
 
-There is nobody to answer 500 to here, so an invalid event is only written to the log (`Broadcast event dropped: payload breaks its schema`) and the method returns `0` / `false`. The frontend checks the payload with its own guards without ArkType ([ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts)); their match with the registry schemas is verified by the parity test.
+There is nobody to answer 500 to here, so an invalid event is only written to the log (`Broadcast event dropped: payload breaks its schema`) and the method returns `0` / `false`. The frontend checks the payload with its own guards without ArkType ([ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts)): the `broadcastGuards` registry must have a guard for every event (`satisfies BroadcastGuards`), and their match with the registry schemas is verified by the parity test. An event its guard accepts goes to the event bus under its name, typed `BroadcastContracts[event]`; a refused one goes to `reportValidationFailure` and no further.
 
 Events that are actually sent:
 
@@ -275,7 +275,7 @@ Events that are actually sent:
 | `broadcast:admin_user_online_remove`                                                                                                    | `ws-presence-service.ts`, the last connection closed                                                                                                                               | the `admin` channel                                                             |
 | `broadcast:support_chat_token`, `support_chat_complete`, `support_chat_error` (with the `clientMessageId` of the message it replies to) | [support-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-service.ts)                                            | the connection the request came from (fallback — all of the user's connections) |
 
-Presence is published only if the `admin` channel has subscribers (`adminWsChannelService.hasSubscribers()`). Transport service events: `service:connection_established`, `service:error`.
+Presence is published only if the `admin` channel has subscribers (`adminWsChannelService.hasSubscribers()`). Transport service events: `service:connection_established`, `service:error`: the `WsServiceEvent` type in `shared/ws-client` (the heartbeat is not an event but the text `ping` / `pong`).
 
 ## Heartbeat, timeouts, client
 

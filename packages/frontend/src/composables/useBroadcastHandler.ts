@@ -1,89 +1,34 @@
-import { useEventBus } from '@/utils/event-bus'
+import type { BroadcastEventName } from 'shared/contracts'
+
+import { useEventBus, type Events } from '@/utils/event-bus'
 import { reportValidationFailure } from '@/utils/sentry-payload-summary'
-import {
-    isAdminUserOnlineRemovePayload,
-    isSupportChatCompletePayload,
-    isSupportChatErrorPayload,
-    isSupportChatTokenPayload,
-    isWSAdminUserOnlineUpsertPayload,
-} from '@/utils/ws-payload-guards'
+import { broadcastGuards } from '@/utils/ws-payload-guards'
 import type { WebsocketMessage } from '@/utils/websocket-types'
 
+const isBroadcastEvent = (name: string): name is BroadcastEventName =>
+    Object.prototype.hasOwnProperty.call(broadcastGuards, name)
+
+/**
+ * Hands a broadcast event of the server (`broadcast:<event>`) to the event bus under its name,
+ * once its guard has accepted the payload (ADR 0006, decision 3). A payload the guard refuses
+ * is reported and dropped; an event the contract does not name is ignored.
+ */
 export const useBroadcastHandler = () => {
     const eventBus = useEventBus()
 
-    const handlers: Partial<Record<string, (event: WebsocketMessage) => void>> = {
-        support_chat_token: (event) => {
-            const payload = event.payload
-            if (!isSupportChatTokenPayload(payload)) {
-                reportValidationFailure('support_chat_token', 'payload_shape', payload)
-                return
-            }
-            eventBus.emit('support_chat_token', {
-                token: payload.token,
-                ...(payload.clientMessageId !== undefined
-                    ? { clientMessageId: payload.clientMessageId }
-                    : {}),
-            })
-        },
-        support_chat_complete: (event) => {
-            const payload = event.payload
-            if (!isSupportChatCompletePayload(payload)) {
-                reportValidationFailure('support_chat_complete', 'payload_shape', payload)
-                return
-            }
-            eventBus.emit('support_chat_complete', {
-                content: payload.content,
-                screenshots: payload.screenshots,
-                ...(payload.clientMessageId !== undefined
-                    ? { clientMessageId: payload.clientMessageId }
-                    : {}),
-            })
-        },
-        support_chat_error: (event) => {
-            const payload = event.payload
-            if (!isSupportChatErrorPayload(payload)) {
-                reportValidationFailure('support_chat_error', 'payload_shape', payload)
-                return
-            }
-            eventBus.emit('support_chat_error', {
-                message: payload.message,
-                ...(payload.code !== undefined ? { code: payload.code } : {}),
-                ...(payload.clientMessageId !== undefined
-                    ? { clientMessageId: payload.clientMessageId }
-                    : {}),
-            })
-        },
-        admin_user_online_upsert: (event) => {
-            const payload = event.payload
-            if (!isWSAdminUserOnlineUpsertPayload(payload)) {
-                reportValidationFailure('admin_user_online_upsert', 'payload_shape', payload)
-                return
-            }
-            eventBus.emit('admin_user_online_upsert', {
-                id: payload.id,
-                name: payload.name,
-                email: payload.email,
-                appType: payload.appType,
-                userAgent: payload.userAgent,
-                connectionsCount: payload.connectionsCount,
-            })
-        },
-        admin_user_online_remove: (event) => {
-            const payload = event.payload
-            if (!isAdminUserOnlineRemovePayload(payload)) {
-                reportValidationFailure('admin_user_online_remove', 'payload_shape', payload)
-                return
-            }
-            eventBus.emit('admin_user_online_remove', { id: payload.id })
-        },
+    const emitChecked = (event: BroadcastEventName, payload: unknown): void => {
+        // The guard of this very event: it is what makes `payload` that event's payload.
+        const guard = broadcastGuards[event] as (value: unknown) => boolean
+        if (!guard(payload)) {
+            reportValidationFailure(event, 'payload_shape', payload)
+            return
+        }
+        eventBus.emit(event, payload as Events[BroadcastEventName])
     }
 
-    const handleBroadcast = (event: WebsocketMessage): void => {
-        const handler = handlers[event.event.replace(/^broadcast:/, '')]
-        if (handler) {
-            handler(event)
-        }
+    const handleBroadcast = (message: WebsocketMessage): void => {
+        const event = message.event.replace(/^broadcast:/, '')
+        if (isBroadcastEvent(event)) emitChecked(event, message.payload)
     }
 
     return { handleBroadcast }

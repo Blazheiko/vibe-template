@@ -41,7 +41,7 @@
     }
     ```
 
-1. На фронтенді події з префіксом `broadcast:` розбирає [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts): додайте guard `payload` у [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts) і обробник `note_created` у `handlers` за зразком `support_chat_token`, і передайте подію далі через event bus. Тест паритету `ws-payload-guards.spec.ts` вимагає guard для кожної події реєстру.
+1. На фронтенді додайте guard payload у [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts) і запишіть його в `broadcastGuards` під іменем події. Реєстр має тип `satisfies BroadcastGuards`, тож подія з `BroadcastEventSchemas` без guard'а не компілюється ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)). [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts) сам передасть подію в event bus під тим самим іменем з payload контракту (`BroadcastContracts` з `shared/contracts`); підпишіться на неї `useEventBus().on('note_created', …)`. Тест паритету `ws-payload-guards.spec.ts` звіряє guard зі схемою реєстру.
 
 ::: warning Тести сервісу
 `broadcast-service.ts` імпортує сервер, а той на старті вимагає `APP_KEY`. Без мока unit-тест сервісу впаде з `APP_KEY must be set...`. Додайте в тест:
@@ -265,7 +265,7 @@ Support-контролери ([support-controller.ts](https://github.com/Blazhei
 | має зайві ключі     | **не надсилається**, `error` | надсилається без них, `warn` зі шляхами |
 | не відповідає схемі | **не надсилається**, `error` | **не надсилається**, `error`            |
 
-Відповісти 500 тут нікому, тому невалідна подія лише пишеться в лог (`Broadcast event dropped: payload breaks its schema`) і метод повертає `0` / `false`. Фронтенд перевіряє payload власними guard'ами без ArkType ([ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts)); їх відповідність схемам реєстру перевіряє тест паритету.
+Відповісти 500 тут нікому, тому невалідна подія лише пишеться в лог (`Broadcast event dropped: payload breaks its schema`) і метод повертає `0` / `false`. Фронтенд перевіряє payload власними guard'ами без ArkType ([ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts)): реєстр `broadcastGuards` мусить мати guard для кожної події (`satisfies BroadcastGuards`), а їх відповідність схемам реєстру перевіряє тест паритету. Подія, яку guard прийняв, іде в event bus під своїм іменем з типом `BroadcastContracts[подія]`; відхилена — у `reportValidationFailure` і далі не йде.
 
 Події, які реально надсилаються:
 
@@ -275,7 +275,7 @@ Support-контролери ([support-controller.ts](https://github.com/Blazhei
 | `broadcast:admin_user_online_remove`                                                                                                  | `ws-presence-service.ts`, останнє з'єднання закрито                                                                                                                                | канал `admin`                                                           |
 | `broadcast:support_chat_token`, `support_chat_complete`, `support_chat_error` (з `clientMessageId` повідомлення, на яке це відповідь) | [support-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-service.ts)                                            | з'єднання, з якого прийшов запит (fallback — усі з'єднання користувача) |
 
-Presence публікується лише якщо в каналі `admin` є підписники (`adminWsChannelService.hasSubscribers()`). Сервісні події транспорту: `service:connection_established`, `service:error`.
+Presence публікується лише якщо в каналі `admin` є підписники (`adminWsChannelService.hasSubscribers()`). Сервісні події транспорту: `service:connection_established`, `service:error` — тип `WsServiceEvent` у `shared/ws-client` (heartbeat — не подія, а текст `ping` / `pong`).
 
 ## Heartbeat, таймаути, клієнт
 
