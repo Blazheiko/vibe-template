@@ -20,17 +20,17 @@
 
 ## W2 WS Request Contracts · → W1 · e2e · live
 
-- [ ] **W2.S** Шаблон S.
-- [ ] **W2.1** `shared/contracts`: `wsContract<Payload, Response>()(event)` (`kind: 'ws'`, метод `ws`); групи `adminWsContracts`, `supportWsContracts`.
+- [x] **W2.S** Шаблон S.
+- [x] **W2.1** `shared/contracts`: `wsContract<Payload, Response>()(event)` (`kind: 'ws'`, метод `ws`); групи `adminWsContracts`, `supportWsContracts`.
       **AC:** `check:bundle-graph` без схем; тест типів: неправильний payload не компілюється.
-- [ ] **W2.2** Реєстр: записи `ws <event>` у `contract-schemas/`; `defineWsRoute({ contract, handler, … })`; старий хелпер → `defineRawWsRoute` для тестів; правило ESLint проти нього поза тестами.
+- [x] **W2.2** Реєстр: записи `ws <event>` у `contract-schemas/`; `defineWsRoute({ contract, handler, … })`; старий хелпер → `defineRawWsRoute` для тестів; правило ESLint проти нього поза тестами.
       **AC:** негативні перевірки типів, як у `define-route.spec.ts`; серіалізація маршрутів для playground не змінилася (побайтне порівняння).
-- [ ] **W2.3** `route-contracts.spec.ts` проходить і `ws-routes.ts`: маршрут без контракту, запису реєстру чи схеми відповіді — падіння.
+- [x] **W2.3** `route-contracts.spec.ts` проходить і `ws-routes.ts`: маршрут без контракту, запису реєстру чи схеми відповіді — падіння.
       **AC:** тимчасовий маршрут без контракту ламає тест.
-- [ ] **W2.4** Фронтенд: `callWs(contract, payload, options?)` у `utils/ws-client.ts` поверх транспорту W1; виклики в `SupportView.vue` і `AdminLayout.vue`; ESLint забороняє `websocketApi(` поза клієнтом; `baseApi.ws` видалено.
+- [x] **W2.4** Фронтенд: `callWs(contract, payload, options?)` у `utils/ws-client.ts` поверх транспорту W1; виклики в `SupportView.vue` і `AdminLayout.vue`; ESLint забороняє `websocketApi(` поза клієнтом; `baseApi.ws` видалено.
       **AC:** тести типів (`@ts-expect-error`): чужий payload, відсутнє поле, поле відповіді, якого немає; тест клієнта на справжньому транспорті W1 (відповідь, помилка транспорту, бізнес-помилка, таймаут).
-- [ ] **W2.D** Шаблон D: `backend/websocket.md` («WS-маршрути», «Як додати WS-маршрут»), `backend/routing.md` (згадка WS), ADR 0006 → «прийнято», навичка `backend-feature` (крок WS).
-- [ ] **W2.E** Шаблон E (e2e, live). **W2.X** Шаблон X.
+- [x] **W2.D** Шаблон D: `backend/websocket.md` («WS-маршрути», «Як додати WS-маршрут»), `backend/routing.md` (згадка WS), ADR 0006 → «прийнято», навичка `backend-feature` (крок WS).
+- [x] **W2.E** Шаблон E (e2e, live). **W2.X** Шаблон X.
 
 ## W3 Broadcast Contracts · → W2 · e2e
 

@@ -1801,8 +1801,8 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-request-contracts",
             "dependencies": ["feat-180"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #550 (merge commit 3f82461, all checks green). wsContract (kind and method ws) in shared/contracts with adminWsContracts and supportWsContracts; ws <event> entries in the schema registry; defineWsRoute({ contract, handler }) built by contractWsRouteDefiner, refusing an HTTP contract; the four WS routes declared by contract; defineRawWsRoute for tests, forbidden by ESLint outside them; route-contracts.spec.ts covers ws-routes.ts. Frontend: callWs in utils/ws-client.ts for the four calls, callApi refuses WS contracts, baseApi.ws (no caller) removed, one ESLint block forbids baseApi.http/upload and websocketApi outside their clients. Found and fixed: the playground sent contract routes to /api/admin/admin/... since C1 (fullUrl now from contractPath). make check (backend 2680, frontend 508, shared 30, playground 113; bundle graph no schema); backend test:redis 116; frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify."
         },
         {
             "id": "feat-182",
@@ -1811,7 +1811,7 @@
             "owner": "Blazheiko",
             "branch": "feat/broadcast-contracts",
             "dependencies": ["feat-181"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
