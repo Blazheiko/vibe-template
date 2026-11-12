@@ -1,7 +1,7 @@
-# feat-181 — WS Request Contracts (W2)
+# feat-182 — Broadcast Contracts (W3)
 
-ADR: `docs/adr/0006-websocket-contracts.md` (decision 1), tasks: `docs/plan/ws-contracts-tasks.md`
-(W2.S–W2.X). Depends on feat-180.
+ADR: `docs/adr/0006-websocket-contracts.md` (decisions 3 and 5), tasks:
+`docs/plan/ws-contracts-tasks.md` (W3.S–W3.X). Depends on feat-181.
 
 ## State
 
@@ -9,66 +9,43 @@ Done, waiting for review and merge.
 
 ## What changed
 
-- **W2.1, `shared/contracts`:**
-    - kind and method `ws`;
-    - `wsContract<Payload, Response>()(path)`, where the path is the event under the API prefix;
-    - `shared/contracts/ws.ts` has `adminWsContracts` (subscribe/unsubscribe online users) and
-      `supportWsContracts` (open chat, chat). The bundle graph stays free of schemas.
-- **W2.2, the registry and the route:**
-    - `app/routes/contract-schemas/ws.ts`, with entries keyed `ws <event>`;
-    - `contractWsRouteDefiner` builds `defineWsRoute({ contract, handler, … })`, taking the event
-      from the contract and the payload and reply schemas from the entry;
-    - an HTTP contract is refused at compile time and at start;
-    - `ws-routes.ts` declares its four routes by contract;
-    - the schema-only helper is `defineRawWsRoute`, kept for the WS machinery tests; a root ESLint
-      rule forbids importing it outside tests.
-- **W2.3:** `route-contracts.spec.ts` also walks `ws-routes.ts`. A WS route without a contract,
-  registry entry or reply schema fails it, and the registry check covers WS keys.
-- **W2.4, frontend:**
-    - `callWs(contract, payload?)` in `utils/ws-client.ts` settles as the connection does;
-    - `SupportView.vue` and `AdminLayout.vue` use it;
-    - `callApi` refuses a WS contract at compile time;
-    - `baseApi.ws` is gone. It had no caller, and dropping it drops base-api's import of the WS
-      composable.
-    - One ESLint block forbids both `baseApi.http`/`upload` and `websocketApi(...)` outside their
-      clients. It is one block because a second `no-restricted-syntax` block for the same files
-      would replace the first one, not add to it.
-- **Found on the way, a bug since the contract pilot (C1):**
-    - The playground built a route's full URL as group prefix + `url`. For a contract route `url`
-      is the whole contract path, so its forms sent `/api/admin/admin/users`.
-    - The fix: `fullUrl` uses `contractPath` when there is one.
-    - The serialized routes for HTTP contract routes did not change in this PR. For WS routes the
-      serialized `url` is now the contract path, and `contractPath` is added.
-- **Docs (both locales):**
-    - `backend/websocket.md`: WS routes, "how to add a WS route" rewritten for contracts, the client;
-    - `backend/routing.md`: the WebSocket section;
-    - `backend/validation.md`: where a WS route takes its payload schema.
-    - The global `backend-feature` skill (`~/.claude/skills`) has its WS step rewritten.
+- **W3.1:** `shared/contracts/broadcast.ts` adds `BroadcastContracts`, a types-only map
+  event → payload over `BroadcastEventSchemas`. The bundle graph is still schema-free.
+- **W3.2:**
+    - The guard registry `broadcastGuards` in `ws-payload-guards.ts` is typed
+      `satisfies BroadcastGuards`, so an event of the schema registry without a guard does not
+      compile. The parity test uses that same registry instead of a copy.
+    - The event bus types its broadcast events from `BroadcastContracts`. The five hand-written
+      payload types in `event-bus.ts` are gone.
+    - `useBroadcastHandler` is generic: it checks the payload with the event's guard, then emits it
+      under the event's name. A refused payload is reported. An unknown or inherited key such as
+      `constructor` is ignored. The five hand-written handlers that copied fields one by one are
+      gone.
+    - **Not done as written in the task list:** there is no separate `onBroadcast(event, handler)`.
+      `useEventBus().on(event, handler)` is already the typed subscription, so a second API for
+      the same thing would add nothing.
+- **W3.3:**
+    - `WsServiceEvent` / `WsServiceHandlerName` in `shared/ws-client`.
+    - The client's service handlers are a complete `Record<WsServiceHandlerName, …>`.
+    - The dead `pong` and `connection_closed` handlers are removed: the server sends neither, and
+      the heartbeat is the plain text `ping` / `pong`.
+- **Docs, both locales:**
+    - `backend/websocket.md`: adding a broadcast on the frontend, the event contract, service
+      events;
+    - `shared/index.md`.
 
 ## Evidence of Completion
 
-- RED:
-    - the playground test of the full URL failed on the old store (`api/admin/admin/users`);
-    - `route-contracts.spec.ts` for `ws-routes.ts` failed on routes declared without contracts.
-- New compile-time checks:
-    - backend: a WS entry with another event's payload schema; an HTTP contract in
-      `defineWsRoute`; a payload field that does not exist;
-    - frontend: `callWs` without its payload, with another request's field, with an HTTP contract;
-      a reply field that does not exist; `callApi` with a WS contract.
-- Runtime tests:
-    - `callWs`: the event and payload it hands over, an empty payload, a business error resolves,
-      a transport error rejects;
-    - `defineWsRoute`: the keys, the event, the schemas, the group prefix check, refusing an HTTP
-      contract.
-- Both ESLint rules fire on throwaway files.
-- `make check`: backend 2680, frontend 508, shared 30, playground 113; bundle graph: 502
-  modules, no schema.
-- `pnpm --filter backend test:redis` (with `REDIS_TEST_URL`): 116 passed.
-- `pnpm --filter frontend test:e2e` 92 and `test:e2e:live` 13. The live suite runs the support
-  chat (open, chat) and the admin subscription over WS.
+- New `useBroadcastHandler.spec.ts`:
+    - each of the five events reaches the bus with its payload;
+    - a refused payload is reported and dropped;
+    - an unknown event and `constructor` are ignored;
+    - compile-time: a guard registry without an event does not compile.
+- This is a refactor with a type guarantee. The runtime behaviour was the same before (same keys,
+  guard first), so the new runtime tests were not RED on the old code.
+- `make check`: backend 2680, frontend 515, shared 30, playground 113; bundle graph: 502 modules,
+  no schema.
+- `pnpm --filter frontend test:e2e`: 92 passed on the second run. The first lost only the known
+  flaky login double-click test (HTTP).
+- `test:e2e:live`: 13 passed (support chat streaming events, admin presence).
 - `pnpm docs:build && pnpm docs:verify`: passed.
-
-### Not verified
-
-- The playground's forms against a running backend: the full-URL fix is covered by the store
-  test only.

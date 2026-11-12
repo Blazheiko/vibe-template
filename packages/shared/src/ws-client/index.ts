@@ -5,6 +5,17 @@
 export type WsMessageKind = 'service-error' | 'broadcast' | 'service' | 'api' | 'unknown'
 
 /**
+ * The service events the server sends (backend vendor/utils/network/ws-handlers.ts): a fixed set
+ * of the transport, not routes (ADR 0006, decision 5). The heartbeat is not one of them: it is
+ * the plain text `ping` → `pong`, outside JSON.
+ */
+export type WsServiceEvent = 'service:connection_established' | 'service:error'
+
+/** The name after `service:` of a service event the client handles, e.g. `connection_established`. */
+export type WsServiceHandlerName =
+    Exclude<WsServiceEvent, 'service:error'> extends `service:${infer N}` ? N : never
+
+/**
  * Routes an incoming WS message. An API response echoes the request event, which carries
  * the configured prefix (`api/...`, `v1/...`), so it is recognised by its pending request,
  * not by a hard-coded `api` prefix.

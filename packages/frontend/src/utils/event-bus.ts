@@ -1,34 +1,13 @@
 import mitt from 'mitt'
 import type { EventType } from 'mitt'
+import type { BroadcastContracts } from 'shared/contracts'
 
-export interface Events extends Record<EventType, unknown> {
+// The events of the app. A broadcast event of the server (`broadcast:<event>`) comes out here
+// under its own name with the payload of its contract (ADR 0006, decision 3): a new event in
+// the registry is a new event of the bus, typed, with nothing to copy by hand.
+export interface Events extends Record<EventType, unknown>, BroadcastContracts {
     init_app: undefined
     unauthorized: undefined
-    support_chat_token: {
-        token: string
-        clientMessageId?: string
-    }
-    support_chat_complete: {
-        content: string
-        screenshots: string[]
-        clientMessageId?: string
-    }
-    support_chat_error: {
-        message: string
-        code?: string
-        clientMessageId?: string
-    }
-    admin_user_online_upsert: {
-        id: string
-        name: string
-        email: string
-        appType: 'web' | 'pwa'
-        userAgent: string
-        connectionsCount: number
-    }
-    admin_user_online_remove: {
-        id: string
-    }
     update_available: undefined
 }
 

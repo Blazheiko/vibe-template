@@ -3,7 +3,7 @@ import { useWebSocket } from '@vueuse/core'
 import { createHeartbeatOptions } from '@/utils/websocket-heartbeat'
 import { ref, computed, toRaw } from 'vue'
 import { WsDeliveryUnknownError } from '@/utils/websocket-types'
-import type { WebsocketMessage, WebsocketPayload } from '@/utils/websocket-types'
+import type { WebsocketMessage } from '@/utils/websocket-types'
 import {
     getResponseMessage,
     getTransportCode,
@@ -16,7 +16,7 @@ import { useEventBus } from '@/utils/event-bus'
 import { mainApi } from '@/utils/api'
 import { getCurrentAppType } from '@/utils/app-type'
 import { sentryService } from '@/utils/sentry-service'
-import { classifyWsMessage } from 'shared/ws-client'
+import { classifyWsMessage, type WsServiceHandlerName } from 'shared/ws-client'
 import {
     hasPendingRequest,
     newRequestId,
@@ -69,26 +69,21 @@ const validateMessage = (message: unknown): message is WebsocketMessage => {
     return typeof event === 'string' && (!payload || typeof payload === 'object')
 }
 
-// Service events handling
-const service = (data: WebsocketMessage): void => {
-    const serviceHandlers: Partial<Record<string, (payload: WebsocketPayload) => void>> = {
-        pong: () => {
-            console.log('Pong received')
-        },
-        connection_established: (payload: WebsocketPayload) => {
-            isInitialized.value = true
-            console.log('connection_established', payload)
-        },
-        connection_closed: () => {
-            console.log('Server requested connection close')
-            // Don't call websocketClose() here - let server close with proper code
-            // onDisconnected will handle the close event with the correct code
-        },
-    }
+// Service events of the server (shared/ws-client, ADR 0006): one handler for each of them but
+// `service:error`, which handleServiceError takes. The map must name every one.
+const serviceHandlers: Record<WsServiceHandlerName, (message: WebsocketMessage) => void> = {
+    connection_established: (message) => {
+        isInitialized.value = true
+        console.log('connection_established', message)
+    },
+}
 
-    const handlerName = data.event.split(':')[1] as string | undefined
-    if (handlerName === undefined) return
-    serviceHandlers[handlerName]?.(data.payload)
+const isServiceHandlerName = (name: string): name is WsServiceHandlerName =>
+    Object.prototype.hasOwnProperty.call(serviceHandlers, name)
+
+const service = (data: WebsocketMessage): void => {
+    const handlerName = data.event.slice('service:'.length)
+    if (isServiceHandlerName(handlerName)) serviceHandlers[handlerName](data)
 }
 
 // Broadcast events handling
