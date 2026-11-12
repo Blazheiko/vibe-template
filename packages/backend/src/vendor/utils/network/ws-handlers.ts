@@ -268,8 +268,9 @@ const closeFloodingConnection = (ws: MyWebSocket, userData: UserConnection): voi
     }
 }
 
-// A message over the budget is answered with the request's event when it can be read, so the
-// client rejects the matching promise at once; nothing else runs for it: no Redis, no session.
+// A message over the budget (or over the running handlers) is answered with the request's event
+// and id when they can be read, so the client rejects the matching promise at once (ADR 0006:
+// a reply is matched by its id, feat-185); nothing else runs for it: no Redis, no session.
 const refuseOverBudget = (
     ws: MyWebSocket,
     jsonMessage: string,
@@ -277,19 +278,22 @@ const refuseOverBudget = (
     budget: WsMessageBudgetState,
     now: number,
 ): void => {
-    let event = ''
+    let identity: Pick<RequestIdentity, 'event' | 'id'> = { event: '', id: undefined }
     try {
-        event = requestIdentity(JSON.parse(jsonMessage)).event
+        identity = requestIdentity(JSON.parse(jsonMessage))
     } catch {
         // Not JSON: answered without an event, like a malformed message.
     }
     sendJson(
         ws,
-        createWsRateLimitErrorResponse(
-            'Too many messages',
-            secondsToNextWindow(budget, now),
-            event,
-        ),
+        {
+            ...createWsRateLimitErrorResponse(
+                'Too many messages',
+                secondsToNextWindow(budget, now),
+                identity.event,
+            ),
+            ...(identity.id !== undefined ? { id: identity.id } : {}),
+        },
         userData,
     )
 }
