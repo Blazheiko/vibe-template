@@ -268,7 +268,7 @@ export type RouteHandler<TPayload = unknown, TQuery = null> = BivariantHandler<
     HttpContext<TPayload, TQuery> | WsContext<TPayload>
 >
 // Same bivariance trick as BivariantHandler, with a typed result for defineRoute, defineRawRoute /
-// defineWsRoute routes that declare a ResponseSchema.
+// defineWsRoute / defineRawWsRoute routes that declare a ResponseSchema.
 export type TypedHandler<TContext, TOut> = {
     bivarianceHack(context: TContext): TOut | Promise<TOut>
 }['bivarianceHack']

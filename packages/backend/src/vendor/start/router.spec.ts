@@ -2,7 +2,7 @@ import { type } from '@arktype/type'
 import { describe, expect, it } from 'vitest'
 
 import { defineRawRoute } from '#app/routing/define-raw-route.js'
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
+import { defineRawWsRoute } from '#app/routing/define-ws-route.js'
 import type { routeList } from '#vendor/types/types.js'
 import { routesHandler } from './router.js'
 
@@ -81,7 +81,7 @@ describe('routesHandler', () => {
 
         it('accepts WS routes with a validator (regression)', () => {
             const [route] = routesHandler([
-                defineWsRoute({
+                defineRawWsRoute({
                     url: 'join_room',
                     validator: schema,
                     handler: () => ({}),

@@ -43,9 +43,12 @@ type InputArgs<C, TRest extends unknown[]> = [RequiredKeys<CallInput<C>>] extend
     ? [input?: CallInput<C>, ...rest: TRest]
     : [input: CallInput<C>, ...rest: TRest]
 
-/** A navigation contract is never fetched: `callApi` does not accept one (see `contractUrl`). */
+/**
+ * A navigation contract is never fetched (see `contractUrl`), and a WS contract goes over the
+ * socket (`callWs` in utils/ws-client.ts): `callApi` accepts neither.
+ */
 type CallArgs<C> =
-    KindOf<C> extends 'navigation'
+    KindOf<C> extends 'navigation' | 'ws'
         ? [input: never, options?: never]
         : InputArgs<C, [options?: HttpOptions]>
 

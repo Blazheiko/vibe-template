@@ -75,11 +75,20 @@ export default defineConfigWithVueTs(
     },
 
     {
-        // docs/adr/0005-route-contracts.md: the API is called through a contract
-        // (`callApi` in utils/api-client.ts), which gives the call its method, path and types.
-        // The client itself is the only file that calls the transport (feat-170).
+        // The API is called through contracts, never by hand:
+        // - HTTP through `callApi` in utils/api-client.ts (docs/adr/0005-route-contracts.md,
+        //   feat-170);
+        // - WS requests through `callWs` in utils/ws-client.ts, on top of the connection in
+        //   composables/useWebSocketConnection.ts (docs/adr/0006-websocket-contracts.md, feat-181).
+        // One block on purpose: a second block with `no-restricted-syntax` for the same files
+        // would replace this one, not add to it.
         files: ['src/**/*.{ts,vue}'],
-        ignores: ['src/utils/api-client.ts', 'src/**/__tests__/**'],
+        ignores: [
+            'src/utils/api-client.ts',
+            'src/utils/ws-client.ts',
+            'src/composables/useWebSocketConnection.ts',
+            'src/**/__tests__/**',
+        ],
         rules: {
             'no-restricted-syntax': [
                 'error',
@@ -88,6 +97,12 @@ export default defineConfigWithVueTs(
                         'CallExpression[callee.property.name=/^(http|upload)$/][callee.object.name=/^(baseApi|api)$/]',
                     message:
                         'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                },
+                {
+                    selector:
+                        "CallExpression:matches([callee.name='websocketApi'], [callee.property.name='websocketApi'])",
+                    message:
+                        'Send the WS request through its contract: callWs(contract, payload) from @/utils/ws-client (ADR 0006).',
                 },
             ],
         },

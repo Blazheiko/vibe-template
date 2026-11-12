@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
+import { defineRawWsRoute } from '#app/routing/define-ws-route.js'
 import appConfig from '#config/app.js'
 import { serializeRoutes } from './serialize-routes.js'
 
@@ -369,7 +369,7 @@ describe('serializeRoutes bodyLimits', () => {
     })
 
     it('a WS route has no bodyLimits', () => {
-        expect(bodyLimitsOf(defineWsRoute({ url: 'x', handler }))).toBeUndefined()
+        expect(bodyLimitsOf(defineRawWsRoute({ url: 'x', handler }))).toBeUndefined()
     })
 
     it('is set on routes inside nested groups', () => {

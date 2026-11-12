@@ -24,8 +24,10 @@ vi.mock('#database/redis.js', () => ({ default: {}, redisHealth: {}, withRedis: 
 vi.stubEnv('APP_KEY', 'a'.repeat(32))
 
 const { default: httpRoutes } = await import('./http-routes.js')
+const { default: wsRoutes } = await import('./ws-routes.js')
 const { contractSchemaRegistry } = await import('./contract-schemas/index.js')
 const { defineRawRoute } = await import('#app/routing/define-raw-route.js')
+const { defineRawWsRoute } = await import('#app/routing/define-ws-route.js')
 
 const BODY_METHODS = new Set(['post', 'put', 'patch'])
 const registry: Readonly<Record<string, unknown>> = contractSchemaRegistry
@@ -60,7 +62,7 @@ describe('every route of the application has a contract', () => {
     })
 
     it('the registry has no entry without a route', () => {
-        const declared = new Set(flatten(httpRoutes).map(keyOf))
+        const declared = new Set([...flatten(httpRoutes), ...flatten(wsRoutes)].map(keyOf))
         expect(Object.keys(registry).filter((key) => !declared.has(key))).toEqual([])
     })
 
@@ -73,6 +75,21 @@ describe('every route of the application has a contract', () => {
 
         expect(contractProblems([...httpRoutes, { group: [raw], prefix: 'main' }])).toEqual([
             'GET /notes: declared without a contract',
+        ])
+    })
+})
+
+// feat-181 (ADR 0006): the same for the WS routes.
+describe('every WS route of the application has a contract', () => {
+    it('ws-routes.ts: a contract, a registry entry, a response schema', () => {
+        expect(contractProblems(wsRoutes)).toEqual([])
+    })
+
+    it('names a WS route added without a contract', () => {
+        const raw = defineRawWsRoute({ url: 'echo', handler: () => ({ status: 'ok' }) })
+
+        expect(contractProblems([...wsRoutes, { group: [raw], prefix: 'support' }])).toEqual([
+            'WS echo: declared without a contract',
         ])
     })
 })

@@ -139,6 +139,7 @@ export default tseslint.config(
             '**/*.spec.ts',
             '**/*.test.ts',
             'packages/backend/src/app/routing/define-raw-route.ts',
+            'packages/backend/src/app/routing/define-ws-route.ts',
         ],
         rules: {
             'no-restricted-imports': [
@@ -149,6 +150,11 @@ export default tseslint.config(
                             name: '#app/routing/define-raw-route.js',
                             message:
                                 'Declare the route through its contract: defineRoute from #app/routes/contract-schemas/index.js (ADR 0005).',
+                        },
+                        {
+                            name: '#app/routing/define-ws-route.js',
+                            message:
+                                'Declare the WS route through its contract: defineWsRoute from #app/routes/contract-schemas/index.js (ADR 0006).',
                         },
                     ],
                 },

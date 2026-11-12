@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
+import { defineRawWsRoute } from '#app/routing/define-ws-route.js'
 
 // feat-180 (ADR 0006, Д-WS1): the reply to a WS request carries the request's `id` back,
 // whatever the outcome: the client keeps its pending requests by that id, so a reply
@@ -26,7 +26,7 @@ const dispatch = async (
     handler: () => unknown,
     message: { event: string; id?: string; timestamp: number; payload: object },
 ) => {
-    const route = defineWsRoute({ url: 'event_x', handler: handler as never })
+    const route = defineRawWsRoute({ url: 'event_x', handler: handler as never })
     const wsApiDispatcher = (await import('./ws-api-dispatcher.js')).default
     return wsApiDispatcher(
         message as never,

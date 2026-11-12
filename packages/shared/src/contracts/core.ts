@@ -5,16 +5,19 @@
 // with `import type`, so a browser bundle that imports a contract does not get a schema or the
 // validator library with it (docs/adr/0005-route-contracts.md).
 
-export type ContractMethod = 'get' | 'post' | 'put' | 'patch' | 'delete'
+/** `ws` is a request over the WebSocket (ADR 0006): its path is the event under the prefix. */
+export type ContractMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'ws'
 
 /**
  * How a route's request and answer travel (feat-177):
  * - `json` (the default): fetched, a JSON body, a JSON answer;
  * - `multipart`: fetched with a FormData body (fields and files), a JSON answer;
  * - `navigation`: never fetched; the browser goes to its URL (a redirect) or loads it (a file,
- *   an `<img>`). The client only builds its URL.
+ *   an `<img>`). The client only builds its URL;
+ * - `ws`: a request over the WebSocket, a JSON payload and a JSON reply (ADR 0006). Its path,
+ *   without the API prefix, is the event of the request.
  */
-export type ContractKind = 'json' | 'multipart' | 'navigation'
+export type ContractKind = 'json' | 'multipart' | 'navigation' | 'ws'
 
 /**
  * What a file is to this package, which declares neither the DOM nor Node: a browser `Blob` or
@@ -121,6 +124,22 @@ export const multipartContract =
         TResponse,
         'multipart'
     > => ({ kind: 'multipart', method, path })
+
+/**
+ * Declares a WebSocket request (ADR 0006): its payload and its reply. The path is the event
+ * under the API prefix, as for HTTP:
+ *
+ *     wsContract<ChatPayload, SupportChatResponse>()('/support/support_chat')
+ */
+export const wsContract =
+    <TPayload = undefined, TResponse = unknown>() =>
+    <const TPath extends string>(
+        path: TPath,
+    ): RouteContract<'ws', TPath, TPayload, undefined, TResponse, 'ws'> => ({
+        kind: 'ws',
+        method: 'ws',
+        path,
+    })
 
 /**
  * Declares a GET route the browser navigates to or loads (a redirect, a file): the client builds
