@@ -134,12 +134,14 @@ test('"log out everywhere" closes the open WebSocket of the other browser', asyn
     const a = await newBrowser(browser)
     const b = await newBrowser(browser)
 
-    const sockets: { closed: boolean; sessionExpired: boolean }[] = []
+    const sockets: { established: boolean; closed: boolean; sessionExpired: boolean }[] = []
     b.page.on('websocket', (ws) => {
-        const socket = { closed: false, sessionExpired: false }
+        const socket = { established: false, closed: false, sessionExpired: false }
         sockets.push(socket)
         ws.on('framereceived', ({ payload }) => {
-            if (String(payload).includes('session_expired')) socket.sessionExpired = true
+            const text = String(payload)
+            if (text.includes('service:connection_established')) socket.established = true
+            if (text.includes('session_expired')) socket.sessionExpired = true
         })
         ws.on('close', () => {
             socket.closed = true
@@ -148,9 +150,13 @@ test('"log out everywhere" closes the open WebSocket of the other browser', asyn
 
     await loginInUi(a.page, account)
     await loginInUi(b.page, account)
-    // The socket of the signed-in session is open and stays open on its own.
-    await expect.poll(() => sockets.some((socket) => !socket.closed)).toBe(true)
-    const open = sockets.filter((socket) => !socket.closed)
+    // The socket of the signed-in session is open (the server greeted it) and stays open on
+    // its own. A socket that is still being opened when the session is revoked is closed too
+    // (feat-209); this test is about one that is already open.
+    const isOpen = (socket: (typeof sockets)[number]): boolean =>
+        socket.established && !socket.closed
+    await expect.poll(() => sockets.some(isOpen)).toBe(true)
+    const open = sockets.filter(isOpen)
 
     const response = await session(a.context.request).post('/api/auth/logout-all', {})
     expect(response.status()).toBe(200)
