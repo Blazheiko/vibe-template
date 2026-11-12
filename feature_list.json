@@ -1821,8 +1821,8 @@
             "owner": "Blazheiko",
             "branch": "feat/query-input-from-schemas",
             "dependencies": ["feat-182"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #555 (merge into main): make check passing (backend 2680, frontend 515, playground 113, shared 30, docs 26), docs:build+verify passing, CI e2e/e2e-live/test-pg/test-redis passing"
         },
         {
             "id": "feat-184",
@@ -1831,7 +1831,7 @@
             "owner": "Blazheiko",
             "branch": "feat/shared-ws-envelope",
             "dependencies": ["feat-183"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
