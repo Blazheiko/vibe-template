@@ -9,10 +9,11 @@ Done, in review.
 - `type-checks.ts` has a new `QueryInputChecks` block. It asserts that each derived type is identical to the shape clients were written against, so the derivation itself is under test.
 - The registry (`contract-registry.ts`) now checks `Same<QueryInputOf<Q>, QueryOf<C>>` instead of comparing keys only.
 - New negative tests in `define-route.spec.ts`:
-  - same keys but a different value type;
-  - a field that is optional in the schema but required in the contract.
+    - same keys but a different value type;
+    - a field that is optional in the schema but required in the contract.
 
-  Before the registry change, both failed as "Unused @ts-expect-error" (RED).
+    Before the registry change, both failed as "Unused @ts-expect-error" (RED).
+
 - Docs updated in both locales: `backend/routing.md` and `backend/validation.md`, plus ADR 0005.
 
 ## Evidence of Completion
