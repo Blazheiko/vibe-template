@@ -1853,6 +1853,16 @@
             "dependencies": ["feat-185"],
             "status": "done",
             "evidence": "PR #564 (merge into main): make check passing (backend 2690, frontend 526, playground 115, shared 31, docs 26), e2e 92, e2e:live 13, test:pg 297, test:redis 116, docs:build+verify passing, CI all jobs passing"
+        },
+        {
+            "id": "feat-187",
+            "name": "Transport Import With Extension",
+            "description": "Review of main 724448e (feat-186, point 5, LOW): the ESLint import pattern and the dynamic-import selector match only a path ending in base-api, so ./base-api.ts, @/utils/base-api.js and import('./base-api.ts') still reach the transport. Match the module with or without an extension.",
+            "owner": "Blazheiko",
+            "branch": "fix/transport-import-extension",
+            "dependencies": ["feat-186"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
