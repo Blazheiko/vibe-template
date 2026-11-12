@@ -15,6 +15,21 @@ import { fileURLToPath } from 'node:url'
 // configureVueProject({ scriptLangs: ['ts', 'tsx'] })
 // More info at https://github.com/vuejs/eslint-config-typescript/#advanced-setup
 
+// Restricted imports, one list per file group: a later block's `no-restricted-imports` replaces
+// an earlier one, so each block names every pattern that still applies to its files.
+const SENTRY_ONLY_IN_SERVICE = {
+    group: ['@sentry/*'],
+    message: 'Import Sentry only from src/utils/sentry-service.ts',
+}
+// feat-186: the transport is reached through the clients, under any name. Its named settings
+// (setCurrentUserIdProvider, setReloadHandler) stay importable.
+const TRANSPORT_ONLY_IN_CLIENT = {
+    group: ['**/base-api', '@/utils/base-api'],
+    importNames: ['default'],
+    message:
+        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const monorepoRootDir = resolve(__dirname, '../..')
 
@@ -55,14 +70,7 @@ export default defineConfigWithVueTs(
             ],
             'no-restricted-imports': [
                 'error',
-                {
-                    patterns: [
-                        {
-                            group: ['@sentry/*'],
-                            message: 'Import Sentry only from src/utils/sentry-service.ts',
-                        },
-                    ],
-                },
+                { patterns: [SENTRY_ONLY_IN_SERVICE, TRANSPORT_ONLY_IN_CLIENT] },
             ],
         },
     },
@@ -70,7 +78,41 @@ export default defineConfigWithVueTs(
     {
         files: ['src/utils/sentry-service.ts'],
         rules: {
-            'no-restricted-imports': 'off',
+            'no-restricted-imports': ['error', { patterns: [TRANSPORT_ONLY_IN_CLIENT] }],
+        },
+    },
+
+    {
+        // The HTTP client is the one module that holds the transport; tests drive it directly.
+        files: ['src/utils/api-client.ts', 'src/**/__tests__/**'],
+        rules: {
+            'no-restricted-imports': ['error', { patterns: [SENTRY_ONLY_IN_SERVICE] }],
+        },
+    },
+
+    {
+        // feat-186: no request by hand. The transport (base-api.ts) is the one place that calls
+        // fetch for the API; the service worker fetches for its cache.
+        files: ['src/**/*.{ts,vue}'],
+        ignores: ['src/utils/base-api.ts', 'src/service-worker.ts', 'src/**/__tests__/**'],
+        rules: {
+            'no-restricted-globals': [
+                'error',
+                {
+                    name: 'fetch',
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                },
+            ],
+            'no-restricted-properties': [
+                'error',
+                ...['window', 'globalThis', 'self'].map((object) => ({
+                    object,
+                    property: 'fetch',
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                })),
+            ],
         },
     },
 
@@ -95,6 +137,12 @@ export default defineConfigWithVueTs(
                 {
                     selector:
                         'CallExpression[callee.property.name=/^(http|upload)$/][callee.object.name=/^(baseApi|api)$/]',
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                },
+                {
+                    // feat-186: the transport cannot be reached by a dynamic import either.
+                    selector: 'ImportExpression[source.value=/base-api$/]',
                     message:
                         'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
                 },

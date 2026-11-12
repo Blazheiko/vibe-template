@@ -1,0 +1,78 @@
+// @vitest-environment node
+import { fileURLToPath } from 'node:url'
+
+import { ESLint } from 'eslint'
+import { beforeAll, describe, expect, it } from 'vitest'
+
+// feat-186: the frontend calls the API only through its contracts (ADR 0005, 0006). The ESLint
+// rules in eslint.config.ts are what keeps it so; this runs them, with the package's real config,
+// on code that goes around the clients, and on code that does not. The samples are linted as if
+// they were src/utils/api-path.ts: a file of the package that no rule exempts.
+
+const packageDir = fileURLToPath(new URL('../..', import.meta.url))
+const sampleFile = fileURLToPath(new URL('../utils/api-path.ts', import.meta.url))
+
+let eslint: ESLint
+beforeAll(() => {
+    eslint = new ESLint({ cwd: packageDir })
+})
+
+/** The ids of the rules a sample breaks. */
+const brokenRules = async (code: string): Promise<string[]> => {
+    const results = await eslint.lintText(code, { filePath: sampleFile })
+    return results.flatMap((result) =>
+        result.messages.map((message) => message.ruleId ?? 'parse-error'),
+    )
+}
+
+describe('ESLint keeps API calls on their contracts', () => {
+    it.each([
+        [
+            'the transport under its own name',
+            "import baseApi from './base-api'\nexport const used = baseApi",
+        ],
+        [
+            'the transport under another name',
+            "import transport from './base-api'\nexport const used = transport",
+        ],
+        [
+            'the transport through the alias',
+            "import t from '@/utils/base-api'\nexport const used = t",
+        ],
+        [
+            'the whole transport module',
+            "import * as transport from './base-api'\nexport const used = transport",
+        ],
+    ])('refuses %s', async (_name, code) => {
+        expect(await brokenRules(code)).toContain('no-restricted-imports')
+    })
+
+    it.each([
+        ['fetch', "void fetch('/api/main/init')"],
+        ['window.fetch', "void window.fetch('/api/main/init')"],
+        ['globalThis.fetch', "void globalThis.fetch('/api/main/init')"],
+    ])('refuses a hand-written %s', async (_name, code) => {
+        const rules = await brokenRules(code)
+        expect(
+            rules.some((rule) =>
+                ['no-restricted-globals', 'no-restricted-properties'].includes(rule),
+            ),
+        ).toBe(true)
+    })
+
+    it('refuses a dynamic import of the transport', async () => {
+        expect(await brokenRules("void import('./base-api')")).toContain('no-restricted-syntax')
+    })
+
+    it('lets the named settings of the transport through, and the clients', async () => {
+        expect(
+            await brokenRules(
+                [
+                    "import { setCurrentUserIdProvider } from './base-api'",
+                    "import { callApi } from './api-client'",
+                    'export const used = [setCurrentUserIdProvider, callApi]',
+                ].join('\n'),
+            ),
+        ).toEqual([])
+    })
+})
