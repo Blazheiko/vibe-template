@@ -56,10 +56,40 @@ Separately from `isProductionLike`, `APP_ENV` affects other places directly:
 
 ## Routing and CDN
 
-| Variable          | Purpose                                              | Default | Required (condition) | Read by file                                                                                      |
-| ----------------- | ---------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------------------------------------------------- |
-| `API_PATH_PREFIX` | Prefix of HTTP routes (leading/trailing `/` removed) | `api`   | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
-| `CDN_URL`         | Base URL of the CDN                                  | `""`    | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| Variable          | Purpose                                                                          | Default | Required (condition) | Read by file                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------------------------------------------------- |
+| `API_PATH_PREFIX` | Prefix of HTTP routes (leading/trailing `/` removed; an empty value means `api`) | `api`   | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| `CDN_URL`         | Base URL of the CDN                                                              | `""`    | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+
+### One source for the API address and prefix
+
+`PORT`, `HOST` and `API_PATH_PREFIX` are set for the backend only: in the shell or in `packages/backend/.env`. The frontend and the API playground keep no copies of these values; their Vite configs read the same variables in the same order as the backend:
+
+1. the shell environment variable (dotenv does not overwrite variables that are already set, so the shell wins);
+2. `packages/backend/.env`;
+3. the default: `PORT=3000`, `API_PATH_PREFIX=api`; a `HOST` of `0.0.0.0` or `::` (or none) means connecting over `127.0.0.1`.
+
+An empty value (`API_PATH_PREFIX=`) means the default for both the backend and the frontend. [`shared/dev-backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/dev-backend/index.ts) resolves them, and they are read by:
+
+| Who                                                                                                                                                                                                                                | What it takes                                                                                    |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [`frontend/vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts) and [`vite.backend.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.backend.ts) | the dev proxy target `http://<HOST>:<PORT>`, the proxy key `/<prefix>`, the prefix in the bundle |
+| [`frontend/vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)                                                                                                           | the prefix whose requests the service worker never caches                                        |
+| [`api-playground/vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts)                                                                                                     | the dev proxy target and key, the prefix in the bundle                                           |
+| [`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) and `docker-compose.yml`                                                                                                 | the prefix for the image build and for the container ([Deployment](/en/backend/deployment))      |
+
+`VITE_API_PATH_PREFIX` is not a setting but the channel the Vite config uses to hand the prefix to the bundle: the config writes it into `process.env` itself before building. If `VITE_API_PATH_PREFIX` is set by hand (in a frontend `.env*` file or in the shell) and differs from `API_PATH_PREFIX`, `vite`, `vite build` and Vitest fail with `VITE_API_PATH_PREFIX=… differs from the backend API_PATH_PREFIX`. An invalid `PORT` (not an integer from 1 to 65535) stops the Vite config too.
+
+So moving the local backend to another port or prefix takes one edit of `packages/backend/.env` and a restart of `pnpm dev`:
+
+```sh
+# packages/backend/.env
+PORT=4000
+API_PATH_PREFIX=v1
+DOMAIN=127.0.0.1:4000
+```
+
+`DOMAIN` (the WebSocket address the backend hands to the client) and `APP_URL` / `FRONTEND_URL` stay separate variables: they are public addresses, not the address of the process. A backend on a unix socket (`APP_UNIX_PATH`) is not served by the dev proxy: the proxy connects to `HOST:PORT` only.
 
 ## Request body limits
 

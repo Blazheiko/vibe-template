@@ -56,10 +56,40 @@
 
 ## Маршрутизація і CDN
 
-| Змінна            | Призначення                                      | Default | Обов'язковість (умова) | Читає файл                                                                                        |
-| ----------------- | ------------------------------------------------ | ------- | ---------------------- | ------------------------------------------------------------------------------------------------- |
-| `API_PATH_PREFIX` | Префікс HTTP-маршрутів (крайні `/` прибираються) | `api`   | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
-| `CDN_URL`         | Базовий URL CDN                                  | `""`    | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| Змінна            | Призначення                                                                | Default | Обов'язковість (умова) | Читає файл                                                                                        |
+| ----------------- | -------------------------------------------------------------------------- | ------- | ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `API_PATH_PREFIX` | Префікс HTTP-маршрутів (крайні `/` прибираються; порожнє значення — `api`) | `api`   | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| `CDN_URL`         | Базовий URL CDN                                                            | `""`    | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+
+### Одне джерело адреси й префікса API
+
+`PORT`, `HOST` і `API_PATH_PREFIX` задаються лише для бекенда: у shell або в `packages/backend/.env`. Фронтенд і API playground не мають власних копій цих значень, їхні Vite-конфіги читають ті самі змінні в тому самому порядку, що й бекенд:
+
+1. змінна оточення shell (dotenv не перезаписує вже задані змінні, тож shell має пріоритет);
+2. `packages/backend/.env`;
+3. default: `PORT=3000`, `API_PATH_PREFIX=api`; `HOST` `0.0.0.0` чи `::` (або не заданий) означає підключення через `127.0.0.1`.
+
+Порожнє значення (`API_PATH_PREFIX=`) означає default і для бекенда, і для фронтенда. Розв'язує їх [`shared/dev-backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/dev-backend/index.ts), а читають:
+
+| Хто                                                                                                                                                                                                                              | Що бере                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [`frontend/vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts) і [`vite.backend.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.backend.ts) | ціль dev-проксі `http://<HOST>:<PORT>`, ключ проксі `/<prefix>`, префікс у бандлі |
+| [`frontend/vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)                                                                                                         | префікс, запити під яким service worker не кешує                                  |
+| [`api-playground/vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts)                                                                                                   | ціль і ключ dev-проксі, префікс у бандлі                                          |
+| [`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) і `docker-compose.yml`                                                                                                 | префікс для збірки образу і для контейнера ([Розгортання](/backend/deployment))   |
+
+`VITE_API_PATH_PREFIX` — не налаштування, а канал, яким Vite-конфіг передає префікс у бандл: конфіг сам записує його в `process.env` перед збіркою. Якщо `VITE_API_PATH_PREFIX` задано вручну (у `.env*` фронтенда чи в shell) і воно відрізняється від `API_PATH_PREFIX`, `vite`, `vite build` і Vitest падають з помилкою `VITE_API_PATH_PREFIX=… differs from the backend API_PATH_PREFIX`. Некоректний `PORT` (не ціле число від 1 до 65535) теж зупиняє Vite-конфіг.
+
+Тож щоб перенести локальний бекенд на інший порт або префікс, досить змінити `packages/backend/.env` і перезапустити `pnpm dev`:
+
+```sh
+# packages/backend/.env
+PORT=4000
+API_PATH_PREFIX=v1
+DOMAIN=127.0.0.1:4000
+```
+
+`DOMAIN` (адреса WebSocket, яку бекенд віддає клієнту) і `APP_URL` / `FRONTEND_URL` залишаються окремими змінними: це публічні адреси, а не адреса процесу. Бекенд на unix-сокеті (`APP_UNIX_PATH`) dev-проксі не обслуговує: проксі підключається лише до `HOST:PORT`.
 
 ## Ліміти тіла запиту
 

@@ -33,9 +33,9 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Передаём Vite env в build stage до сборки frontend.
-# VITE_API_PATH_PREFIX должен совпадать с API_PATH_PREFIX, с которым запускается контейнер:
-# префикс вшивается в бандл при сборке (feat-153). Пустое значение — префикс `api`.
-ARG VITE_API_PATH_PREFIX
+# API_PATH_PREFIX — тот же, с которым запускается контейнер: vite.config.ts вшивает его в бандл
+# (feat-153, feat-192; .env в образ не попадает). Пустое значение — префикс `api`.
+ARG API_PATH_PREFIX
 ARG VITE_BASE_URL
 ARG VITE_AUTH_PHONE_ENABLED
 ARG VITE_SENTRY_DSN
@@ -46,7 +46,7 @@ ARG VITE_SENTRY_TRACES_SAMPLE_RATE
 ARG VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE
 ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE
 
-ENV VITE_API_PATH_PREFIX=$VITE_API_PATH_PREFIX \
+ENV API_PATH_PREFIX=$API_PATH_PREFIX \
     VITE_BASE_URL=$VITE_BASE_URL \
     VITE_AUTH_PHONE_ENABLED=$VITE_AUTH_PHONE_ENABLED \
     VITE_SENTRY_DSN=$VITE_SENTRY_DSN \

@@ -9,7 +9,7 @@ pnpm dev:manual_test          # from the repo root: shared + backend + playgroun
 pnpm --filter api-playground dev
 ```
 
-Open `http://localhost:5174`. The Vite dev server proxies one key, `/<prefix>` (`VITE_API_PATH_PREFIX`, default `api`), to `127.0.0.1:3000` with `ws: true`, which covers HTTP and the WS endpoint `/<prefix>/websocket`; `VITE_API_BASE_URL` overrides the base URL.
+Open `http://localhost:5174`. The Vite dev server proxies one key, `/<prefix>` (the backend `API_PATH_PREFIX`, default `api`), to the backend `HOST`:`PORT` (default `127.0.0.1:3000`) — all three read from the shell, else `packages/backend/.env`, so the playground needs no prefix or port of its own — with `ws: true`, which covers HTTP and the WS endpoint `/<prefix>/websocket`; `VITE_API_BASE_URL` overrides the base URL.
 
 Full description — stack, route loading, UI, settings, WebSocket, troubleshooting, limitations: **[documentation/playground](https://blazheiko.github.io/vibe-template/playground/)**.
 

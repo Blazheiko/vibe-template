@@ -7,6 +7,7 @@
         "vite.build-meta.ts",
         "vite.shared-source.ts",
         "vite.product.ts",
+        "vite.backend.ts",
         "vitest.config.*",
         "cypress.config.*",
         "nightwatch.conf.*",

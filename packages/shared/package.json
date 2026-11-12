@@ -70,6 +70,11 @@
             "shared-source": "./src/contracts/index.ts",
             "types": "./dist/contracts/index.d.ts",
             "import": "./dist/contracts/index.js"
+        },
+        "./dev-backend": {
+            "shared-source": "./src/dev-backend/index.ts",
+            "types": "./dist/dev-backend/index.d.ts",
+            "import": "./dist/dev-backend/index.js"
         }
     },
     "files": [
