@@ -10,6 +10,7 @@ import type {
 } from '#vendor/types/types.js'
 import type { RouteResponse } from '#app/routing/route-response.js'
 import type { AnyContract, BodyOf, FieldsOf, KindOf, QueryOf, ResponseOf } from 'shared/contracts'
+import type { QueryInputOf } from 'shared/schemas'
 
 // The schemas of the routes declared through a contract (docs/adr/0005-route-contracts.md,
 // "Цільовий стан"): one registry, keyed by the method and the path of the contract, so a route
@@ -47,8 +48,9 @@ export interface SchemaEntry {
 /**
  * What an entry has to be for its contract:
  * - a body schema whose input is exactly the contract's body type, and none without a body;
- * - a query schema with the keys of the contract's query (a query schema parses strings, so the
- *   contract names what a client may send in its own words), and none without a query;
+ * - a query schema whose `QueryInputOf` is exactly the contract's query: the same keys, the same
+ *   optionality, and values as a client sends them (a parsed number as a number or its text, a
+ *   date as text), and none without a query;
  * - a response schema whose success answers are exactly the contract's response type. The error
  *   branch is left out: every route shares one error envelope, and the client's type narrows its
  *   `details` on purpose (`WithCanonicalError` in shared/responses/error-response.ts).
@@ -65,10 +67,12 @@ type EntryCheck<C extends AnyContract, E> = ([BodyOf<C>] extends [undefined]
     ([QueryOf<C>] extends [undefined]
         ? { readonly query?: undefined }
         : {
-              readonly query: E extends { query: infer Q }
-                  ? Same<keyof SchemaInput<Q>, keyof QueryOf<C>> extends true
+              readonly query: E extends {
+                  query: infer Q extends { inferIn: object; infer: object }
+              }
+                  ? Same<QueryInputOf<Q>, QueryOf<C>> extends true
                       ? unknown
-                      : ContractMismatch<'the keys of the query schema are not the keys of the contract query'>
+                      : ContractMismatch<'what the query schema accepts is not the query type of the contract'>
                   : Type
           }) & {
         readonly response: E extends { response: infer R }

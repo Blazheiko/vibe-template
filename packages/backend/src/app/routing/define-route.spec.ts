@@ -223,6 +223,31 @@ function typeChecks(): void {
 
     contractSchemas(notes, {
         create: { body: NoteInputSchema, response: NoteResponseSchema },
+        list: {
+            // @ts-expect-error — the keys agree, but the schema hands `limit` over as text, while
+            // the contract lets a client send a number (feat-183)
+            query: type({ 'limit?': 'string', 'tag?': 'string' }),
+            response: NoteResponseSchema,
+        },
+        remove: { response: NoteResponseSchema },
+    })
+
+    contractSchemas(
+        {
+            list: contract<undefined, { limit: number | string; tag?: string }, NoteResponse>()(
+                'get',
+                '/notes',
+            ),
+        },
+        {
+            // @ts-expect-error — a client may leave `limit` out of this schema, while the
+            // contract requires it (feat-183)
+            list: { query: NoteQuerySchema, response: NoteResponseSchema },
+        },
+    )
+
+    contractSchemas(notes, {
+        create: { body: NoteInputSchema, response: NoteResponseSchema },
         // @ts-expect-error — the contract has a query, the entry needs its schema
         list: { response: NoteResponseSchema },
         remove: { response: NoteResponseSchema },
