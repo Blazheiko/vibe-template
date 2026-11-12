@@ -18,7 +18,7 @@ packages:
 | `api-playground` | `packages/api-playground` | Vue-інструмент розробника для ручного тестування HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                                              |
 | `documentation`  | `documentation`           | Цей сайт документації на VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                                         |
 
-`frontend`, `backend` і `api-playground` залежать від `shared` через `workspace:*`, тому `shared` треба зібрати першим (`pnpm build:shared`).
+`frontend`, `backend` і `api-playground` залежать від `shared` через `workspace:*`, тому `shared` треба зібрати першим (`pnpm build:shared`). Dev-сервери (`vite` і `tsx watch` бекенду) читають `shared` прямо з `src/` через export condition `shared-source` ([packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), тож зміна в `packages/shared/src` доходить до HMR і перезапуску бекенду без перезбирання. `typecheck`, тести, `vite build`, `start` і Docker цієї умови не мають і читають `dist/`.
 
 ## Ключові каталоги
 

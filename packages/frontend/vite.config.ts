@@ -6,6 +6,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 import { buildMeta } from './vite.build-meta'
 import { stripConsoleLogs } from './vite.console'
+import { sharedSource } from './vite.shared-source'
 
 // Dev proxy for the backend's API_PATH_PREFIX, not a hard-coded /api (code-issues item 73).
 // An object config (vitest.config.ts merges it), so the dev-mode env is read here.
@@ -26,6 +27,7 @@ export default defineConfig({
         }),
         vueDevTools(),
         buildMeta(),
+        sharedSource(),
     ],
     esbuild: stripConsoleLogs,
     build: {

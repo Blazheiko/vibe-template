@@ -95,7 +95,7 @@ export type CreateNoteResponse = typeof CreateNoteResponseSchema.infer
 export * from './note-controller.js'
 ```
 
-Бекенд споживає `shared` через `dist/` (див. `exports` у [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), тому після змін **обов'язково** перезберіть пакет:
+Бекенд споживає `shared` через `dist/` (див. `exports` у [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), тому після змін **обов'язково** перезберіть пакет. Лише dev-сервер (`pnpm dev`) читає `src/` через умову `shared-source` і бачить зміни без збірки:
 
 ```bash
 pnpm --filter shared build
@@ -594,7 +594,7 @@ curl -s -b cookies.txt $B/notes
 
 ## Типові помилки
 
-- **Забули `pnpm --filter shared build`.** Бекенд не бачить нових експортів `shared` / `shared/schemas`, бо читає `dist/`.
+- **Забули `pnpm --filter shared build`.** `typecheck`, тести й `start` бекенду не бачать нових експортів `shared` / `shared/schemas`, бо читають `dist/` (dev-сервер працює, бо читає `src/`).
 - **Імпорт repository напряму з файлу**, а не з `#app/repositories/index.js`. Тоді `vi.mock` у тесті його не перехопить.
 - **Повернення `bigint` або `Date` з контролера.** Завжди пропускайте рядки через transformer.
 - **Кидання винятків із сервісу.** Повертайте `Result.err(...)`, а HTTP-статус виставить `mapControllerError`.

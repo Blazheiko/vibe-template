@@ -95,7 +95,7 @@ Add a line to [packages/shared/src/responses/index.ts](https://github.com/Blazhe
 export * from './note-controller.js'
 ```
 
-The backend consumes `shared` through `dist/` (see `exports` in [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), so after the changes you **must** rebuild the package:
+The backend consumes `shared` through `dist/` (see `exports` in [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), so after the changes you **must** rebuild the package. Only the dev server (`pnpm dev`) reads `src/` through the `shared-source` condition and sees changes without a build:
 
 ```bash
 pnpm --filter shared build
@@ -594,7 +594,7 @@ Before merging, go through the full Definition of Done from [AGENTS.md](https://
 
 ## Common mistakes
 
-- **Forgot `pnpm --filter shared build`.** The backend does not see the new `shared` / `shared/schemas` exports, because it reads `dist/`.
+- **Forgot `pnpm --filter shared build`.** The backend's `typecheck`, tests and `start` do not see the new `shared` / `shared/schemas` exports, because they read `dist/` (the dev server works, since it reads `src/`).
 - **Importing the repository directly from its file**, not from `#app/repositories/index.js`. Then `vi.mock` in the test will not intercept it.
 - **Returning a `bigint` or a `Date` from a controller.** Always pass rows through the transformer.
 - **Throwing exceptions from a service.** Return `Result.err(...)`, and `mapControllerError` will set the HTTP status.

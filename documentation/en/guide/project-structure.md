@@ -18,7 +18,7 @@ packages:
 | `api-playground` | `packages/api-playground` | Vue developer tool for manually testing the HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                                                    |
 | `documentation`  | `documentation`           | This documentation site on VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                                        |
 
-`frontend`, `backend` and `api-playground` depend on `shared` via `workspace:*`, so `shared` must be built first (`pnpm build:shared`).
+`frontend`, `backend` and `api-playground` depend on `shared` via `workspace:*`, so `shared` must be built first (`pnpm build:shared`). The dev servers (`vite` and the backend's `tsx watch`) read `shared` straight from `src/` through the `shared-source` export condition ([packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), so a change in `packages/shared/src` reaches HMR and the backend restart without a rebuild. `typecheck`, tests, `vite build`, `start` and Docker have no such condition and read `dist/`.
 
 ## Key directories
 

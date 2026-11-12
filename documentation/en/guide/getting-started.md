@@ -231,7 +231,7 @@ More about the schema and migrations: [Database](/en/backend/database).
 make dev
 ```
 
-The target calls `pnpm dev`: the script builds `shared` and `backend`, and then runs the backend and frontend dev servers in parallel ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). After startup:
+The target calls `pnpm dev`: the script builds `shared` and `backend`, and then runs the backend and frontend dev servers in parallel ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Both dev servers read `shared` from `src/`, so changes in `packages/shared/src` are picked up without a rebuild (see [Project structure](/en/guide/project-structure)). After startup:
 
 | Service                    | URL                                                                       | Source                                                                                                   |
 | -------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |

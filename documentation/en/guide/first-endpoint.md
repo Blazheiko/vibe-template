@@ -76,7 +76,7 @@ And a line at the end of `packages/shared/src/responses/index.ts`:
 export * from './hello-controller.js'
 ```
 
-The backend reads `shared` from the built `dist/`, so rebuild the package after the changes:
+The backend dev server (`pnpm dev`) sees changes in `packages/shared/src` at once, but `typecheck`, tests and `start` read the built `dist/`, so rebuild the package before them:
 
 ```bash
 pnpm --filter shared build
