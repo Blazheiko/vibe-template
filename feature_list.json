@@ -1813,6 +1813,26 @@
             "dependencies": ["feat-181"],
             "status": "done",
             "evidence": "Merged in #552 (merge commit b0e39d3, all checks green). BroadcastContracts (types only) in shared/contracts; broadcastGuards satisfies BroadcastGuards, so an event without a guard does not compile, and the parity test uses that registry; the event bus takes its broadcast event types from the contract; useBroadcastHandler forwards a guard-checked payload under the event's name instead of five hand-written handlers. No separate onBroadcast: useEventBus().on is the typed subscription. WsServiceEvent/WsServiceHandlerName in shared/ws-client, a complete service handler map, dead pong/connection_closed handlers removed. New useBroadcastHandler.spec.ts (refactor with a type guarantee, not RED at runtime). make check (backend 2680, frontend 515, shared 30, playground 113; bundle graph no schema); frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify."
+        },
+        {
+            "id": "feat-183",
+            "name": "Query Input Types From Schemas",
+            "description": "Owner request 2026-11-12 after ADR 0005/0006 (single source of contract types): the client query types (*QueryInput in shared/schemas/query) are written by hand and the registry compares only their keys with the query schema. Derive them from the schema (QueryInputOf: keys and optionality of the schema input, values as sent on the wire: a number or a numeric string for a parsed number, a string for a date) and make the registry check the whole type, so a changed value type stops the build.",
+            "owner": "Blazheiko",
+            "branch": "feat/query-input-from-schemas",
+            "dependencies": ["feat-182"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-184",
+            "name": "Shared WS Envelope Type",
+            "description": "Owner request 2026-11-12 after ADR 0005/0006 (single source of contract types): the WS message envelope is described three times (backend vendor WsMessage/WsResponseData, frontend WebsocketMessage, playground WebsocketMessage). Define the request, reply and broadcast envelopes once in shared/ws-client and use them on the server and in both clients.",
+            "owner": "Blazheiko",
+            "branch": "feat/shared-ws-envelope",
+            "dependencies": ["feat-183"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
