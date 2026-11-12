@@ -26,7 +26,7 @@ const WILDCARD_HOSTS = new Set(['0.0.0.0', '::', '[::]'])
 
 /** The value the backend sees: the shell's if it has the key (dotenv), else the file's; '' = unset. */
 const read = (key: string, shell: EnvSource, file: EnvSource): string | undefined => {
-    const value = Object.hasOwn(shell, key) ? shell[key] : file[key]
+    const value = key in shell ? shell[key] : file[key]
     const trimmed = value?.trim()
     return trimmed === undefined || trimmed === '' ? undefined : trimmed
 }

@@ -56,10 +56,10 @@ Separately from `isProductionLike`, `APP_ENV` affects other places directly:
 
 ## Routing and CDN
 
-| Variable          | Purpose                                                                          | Default | Required (condition) | Read by file                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------------------------------------------------- |
+| Variable          | Purpose                                                                                                          | Default | Required (condition) | Read by file                                                                                      |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------------------------------------------------- |
 | `API_PATH_PREFIX` | Prefix of HTTP routes (spaces and every leading/trailing `/` removed; an empty value or slashes only mean `api`) | `api`   | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
-| `CDN_URL`         | Base URL of the CDN                                                              | `""`    | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| `CDN_URL`         | Base URL of the CDN                                                                                              | `""`    | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 
 ### One source for the API address and prefix
 

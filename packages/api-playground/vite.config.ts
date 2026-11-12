@@ -5,7 +5,9 @@ import { parseEnv } from 'node:util'
 import { defaultClientConditions, defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
-import { assertSameApiPrefix, resolveDevBackend } from 'shared/dev-backend'
+// The source, not the package: a config loads before the `shared-source` condition applies, so
+// `shared/dev-backend` would be shared/dist (feat-193, see frontend/vite.product.ts).
+import { assertSameApiPrefix, resolveDevBackend } from '../shared/src/dev-backend/index'
 
 const BACKEND_ENV_FILE = fileURLToPath(new URL('../backend/.env', import.meta.url))
 

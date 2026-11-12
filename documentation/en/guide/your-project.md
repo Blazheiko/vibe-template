@@ -53,7 +53,7 @@ The product name and the texts about it live in one file: [`packages/shared/src/
 | `siteUrl`      | `canonical`, `og:url`, JSON-LD, `Sitemap` in `robots.txt`                                                  |
 | `supportEmail` | the AI support prompt: where to send the user when there is no answer                                      |
 
-`index.html` holds `%PRODUCT_*%` placeholders, and `manifest.json` and `robots.txt` are generated: the Vite plugin [`vite.product.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.product.ts) does all of it in both `pnpm dev` and `vite build`. An unknown placeholder stops the build.
+`index.html` holds `%PRODUCT_*%` placeholders, and `manifest.json` and `robots.txt` are generated: the Vite plugin [`vite.product.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.product.ts) does all of it in both `pnpm dev` and `vite build`. The plugin reads `packages/shared/src/product` directly, so after an edit the dev server restarts by itself and serves the new `index.html`, `manifest.json` and `robots.txt` without `pnpm build:shared`. An unknown placeholder stops the build.
 
 What is left to replace by hand is what is not text, and the technical identifiers:
 
