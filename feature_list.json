@@ -1831,8 +1831,8 @@
             "owner": "Blazheiko",
             "branch": "feat/shared-ws-envelope",
             "dependencies": ["feat-183"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #557 (merge into main): make check passing (backend 2680, frontend 515, playground 115, shared 31, docs 26), docs:build+verify passing, e2e 92 passed, e2e:live 13 passed, CI all jobs passing (test-pg passed on rerun; race fixed in #558)"
         }
     ]
 }
