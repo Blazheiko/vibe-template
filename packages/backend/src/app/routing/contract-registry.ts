@@ -108,9 +108,39 @@ export function contractSchemas<
         const contract = group[name]
         const entry = (entries as Record<string, SchemaEntry | undefined>)[name]
         if (contract === undefined || entry === undefined) continue
-        registry[keyOf(contract)] = entry
+        addEntry(registry, keyOf(contract), entry)
     }
     return registry as GroupSchemas<G, E>
+}
+
+/** A key the registry already has would be overwritten: two contracts would share one route. */
+const addEntry = (registry: Record<string, SchemaEntry>, key: string, entry: SchemaEntry): void => {
+    if (Object.prototype.hasOwnProperty.call(registry, key)) {
+        throw new Error(`Route contract ${key} is declared twice`)
+    }
+    registry[key] = entry
+}
+
+type Merged<G extends readonly object[]> = G extends readonly [
+    infer Head,
+    ...infer Tail extends readonly object[],
+]
+    ? Head & Merged<Tail>
+    : unknown
+
+/**
+ * The registry of the application from the parts of its groups (feat-186). A spread would let a
+ * later group overwrite an entry of an earlier one; this refuses a key two groups share, at
+ * import, so neither the server nor a test starts with it.
+ */
+export function mergeContractSchemas<
+    const G extends readonly Readonly<Record<string, SchemaEntry>>[],
+>(...groups: G): Merged<G> {
+    const registry: Record<string, SchemaEntry> = {}
+    for (const group of groups) {
+        for (const [key, entry] of Object.entries(group)) addEntry(registry, key, entry)
+    }
+    return registry as Merged<G>
 }
 
 /** The payload a handler sees: the output of the body schema. */

@@ -10,7 +10,7 @@ vi.mock('#vendor/utils/logger.js', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
 
-const { contractRouteDefiner, contractSchemas, contractWsRouteDefiner } =
+const { contractRouteDefiner, contractSchemas, contractWsRouteDefiner, mergeContractSchemas } =
     await import('./contract-registry.js')
 const { routesHandler } = await import('#vendor/start/router.js')
 const { getTypedPayload } = await import('#vendor/utils/validation/get-typed-payload.js')
@@ -47,6 +47,32 @@ const noteSchemas = contractSchemas(notes, {
 const defineRoute = contractRouteDefiner(noteSchemas)
 
 describe('contractSchemas', () => {
+    // feat-186: a second contract with the same method and path would overwrite the first entry.
+    it('refuses two contracts of a group with one method and path', () => {
+        const twice = {
+            list: contract<undefined, undefined, NoteResponse>()('get', '/notes'),
+            again: contract<undefined, undefined, NoteResponse>()('get', '/notes'),
+        }
+        expect(() =>
+            contractSchemas(twice, {
+                list: { response: NoteResponseSchema },
+                again: { response: NoteResponseSchema },
+            }),
+        ).toThrow('Route contract get /notes is declared twice')
+    })
+
+    it('refuses two groups that share a method and path when they are merged', () => {
+        const other = contractSchemas(
+            { list: contract<undefined, undefined, NoteResponse>()('get', '/notes') },
+            { list: { response: NoteResponseSchema } },
+        )
+        expect(() => mergeContractSchemas(noteSchemas, other)).toThrow(
+            'Route contract get /notes is declared twice',
+        )
+        const merged = mergeContractSchemas(noteSchemas, {})
+        expect(Object.keys(merged).sort()).toEqual(Object.keys(noteSchemas).sort())
+    })
+
     it('keys the entries by the method and the path of their contracts', () => {
         expect(Object.keys(noteSchemas).sort()).toEqual([
             'delete /notes/:noteId',
