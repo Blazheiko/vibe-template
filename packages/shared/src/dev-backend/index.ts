@@ -7,7 +7,7 @@
 // Pure functions: the caller reads packages/backend/.env (node:fs + node:util parseEnv) and passes
 // both sources in, so this module needs no Node types and stays importable anywhere.
 
-import { normalizeApiPrefix } from '../ws-client/index.js'
+import { normalizeApiPrefix } from '../api-prefix/index.js'
 
 /** Environment variables: `process.env`, or the parsed lines of a `.env` file. */
 export type EnvSource = Readonly<Record<string, string | undefined>>

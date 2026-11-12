@@ -65,8 +65,8 @@ describe('APP_UNIX_PATH', () => {
     })
 })
 
-// feat-192: the frontend and shared/dev-backend read an empty API_PATH_PREFIX as `api`, so the
-// backend must too, or the dev proxy and the compiled prefix would miss its routes.
+// feat-192/193: the backend reads API_PATH_PREFIX with the frontend's rule (shared/api-prefix), or
+// the dev proxy and the compiled prefix would miss its routes: nothing but slashes means `api`.
 describe('API_PATH_PREFIX', () => {
     const originalPrefix = process.env['API_PATH_PREFIX']
 
@@ -83,11 +83,15 @@ describe('API_PATH_PREFIX', () => {
         else process.env['API_PATH_PREFIX'] = originalPrefix
     })
 
-    it.each([undefined, '', '  '])('is api for %j', async (value) => {
+    it.each([undefined, '', '  ', '/', '//', ' / '])('is api for %j', async (value) => {
         expect(await loadPrefix(value)).toBe('api')
     })
 
-    it('keeps a configured prefix without its outer slashes', async () => {
-        expect(await loadPrefix('/v1/')).toBe('v1')
+    it.each([
+        ['/v1/', 'v1'],
+        [' //v1// ', 'v1'],
+        ['internal/v2', 'internal/v2'],
+    ])('keeps %j as %j', async (value, expected) => {
+        expect(await loadPrefix(value)).toBe(expected)
     })
 })

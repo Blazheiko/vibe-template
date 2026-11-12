@@ -27,15 +27,6 @@ export const classifyWsMessage = (event: string, isPending: boolean): WsMessageK
     return isPending ? 'api' : 'unknown'
 }
 
-/**
- * The prefix HTTP paths and WS request events live under (the backend's `API_PATH_PREFIX`):
- * slashes and spaces trimmed, `api` when nothing is left.
- */
-export const normalizeApiPrefix = (raw: string | undefined): string => {
-    const trimmed = (raw ?? '').trim().replace(/^\/+|\/+$/g, '')
-    return trimmed === '' ? 'api' : trimmed
-}
-
 export {
     isWsBroadcast,
     type WsBroadcastEnvelope,

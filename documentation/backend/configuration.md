@@ -58,7 +58,7 @@
 
 | Змінна            | Призначення                                                                | Default | Обов'язковість (умова) | Читає файл                                                                                        |
 | ----------------- | -------------------------------------------------------------------------- | ------- | ---------------------- | ------------------------------------------------------------------------------------------------- |
-| `API_PATH_PREFIX` | Префікс HTTP-маршрутів (крайні `/` прибираються; порожнє значення — `api`) | `api`   | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| `API_PATH_PREFIX` | Префікс HTTP-маршрутів (пробіли й усі крайні `/` прибираються; порожнє значення чи самі слеші — `api`) | `api`   | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | `CDN_URL`         | Базовий URL CDN                                                            | `""`    | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 
 ### Одне джерело адреси й префікса API
@@ -69,7 +69,7 @@
 2. `packages/backend/.env`;
 3. default: `PORT=3000`, `API_PATH_PREFIX=api`; `HOST` `0.0.0.0` чи `::` (або не заданий) означає підключення через `127.0.0.1`.
 
-Порожнє значення (`API_PATH_PREFIX=`) означає default і для бекенда, і для фронтенда. Розв'язує їх [`shared/dev-backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/dev-backend/index.ts), а читають:
+Значення читається за одним правилом ([`shared/api-prefix`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/api-prefix/index.ts)) і в бекенді, і у фронтенді: пробіли й усі крайні слеші прибираються (`/v1/` → `v1`), а порожнє значення чи самі слеші (`API_PATH_PREFIX=`, `/`) означають `api`. API від кореня немає. Розв'язує змінні [`shared/dev-backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/dev-backend/index.ts), а читають:
 
 | Хто                                                                                                                                                                                                                              | Що бере                                                                           |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |

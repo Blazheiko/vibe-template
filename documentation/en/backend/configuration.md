@@ -58,7 +58,7 @@ Separately from `isProductionLike`, `APP_ENV` affects other places directly:
 
 | Variable          | Purpose                                                                          | Default | Required (condition) | Read by file                                                                                      |
 | ----------------- | -------------------------------------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------------------------------------------------- |
-| `API_PATH_PREFIX` | Prefix of HTTP routes (leading/trailing `/` removed; an empty value means `api`) | `api`   | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| `API_PATH_PREFIX` | Prefix of HTTP routes (spaces and every leading/trailing `/` removed; an empty value or slashes only mean `api`) | `api`   | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | `CDN_URL`         | Base URL of the CDN                                                              | `""`    | No                   | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 
 ### One source for the API address and prefix
@@ -69,7 +69,7 @@ Separately from `isProductionLike`, `APP_ENV` affects other places directly:
 2. `packages/backend/.env`;
 3. the default: `PORT=3000`, `API_PATH_PREFIX=api`; a `HOST` of `0.0.0.0` or `::` (or none) means connecting over `127.0.0.1`.
 
-An empty value (`API_PATH_PREFIX=`) means the default for both the backend and the frontend. [`shared/dev-backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/dev-backend/index.ts) resolves them, and they are read by:
+The backend and the frontend read the value by one rule ([`shared/api-prefix`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/api-prefix/index.ts)): spaces and every outer slash are trimmed (`/v1/` → `v1`), and an empty value or slashes only (`API_PATH_PREFIX=`, `/`) mean `api`. There is no root-level API. [`shared/dev-backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/dev-backend/index.ts) resolves them, and they are read by:
 
 | Who                                                                                                                                                                                                                                | What it takes                                                                                    |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |

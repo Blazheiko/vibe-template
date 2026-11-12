@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { classifyWsMessage, isWsBroadcast, normalizeApiPrefix } from '../dist/ws-client/index.js'
+import { classifyWsMessage, isWsBroadcast } from '../dist/ws-client/index.js'
 
 // feat-075 (I): one copy for the app and the API playground.
 
@@ -18,25 +18,6 @@ test('service and broadcast events are kept apart from API responses', () => {
     assert.equal(classifyWsMessage('service:pong', true), 'service')
     assert.equal(classifyWsMessage('broadcast:admin_user_online_remove', false), 'broadcast')
     assert.equal(classifyWsMessage('broadcast:x', true), 'broadcast')
-})
-
-test('normalizeApiPrefix trims slashes and spaces, and falls back to api', () => {
-    const table = [
-        [undefined, 'api'],
-        ['', 'api'],
-        ['   ', 'api'],
-        ['/', 'api'],
-        ['///', 'api'],
-        ['api', 'api'],
-        [' /v1/ ', 'v1'],
-        ['/v1/', 'v1'],
-        ['v1', 'v1'],
-        ['internal/v2', 'internal/v2'],
-        ['/internal/v2/', 'internal/v2'],
-    ]
-    for (const [raw, expected] of table) {
-        assert.equal(normalizeApiPrefix(raw), expected, JSON.stringify(raw))
-    }
 })
 
 test('the module carries no dependency, so the browser can import it', async () => {
