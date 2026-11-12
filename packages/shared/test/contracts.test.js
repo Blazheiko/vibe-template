@@ -126,40 +126,44 @@ test('the support history query is bounded and takes a numeric cursor', () => {
 // large), so this is where the two are held together.
 test('the password limits are what every auth schema enforces', async () => {
     const { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } = await import('../dist/limits/index.js')
-    const {
-        ChangePasswordInputSchema,
-        LoginInputSchema,
-        RegisterEmailInputSchema,
-        ResetPasswordInputSchema,
-    } = await import('../dist/schemas/index.js')
+    const schemas = await import('../dist/schemas/index.js')
+    const { PasswordSchema, VerifyEmailInputSchema } = schemas
     assert.equal(PASSWORD_MIN_LENGTH, 8)
     assert.equal(PASSWORD_MAX_LENGTH, 32)
 
     const ok = (length) => 'p'.repeat(length)
-    const cases = [
-        [
-            'register',
-            (password) =>
-                RegisterEmailInputSchema({
-                    name: 'J',
-                    email: 'j@example.com',
-                    password,
-                }),
-        ],
-        ['login', (password) => LoginInputSchema({ identifier: 'j@example.com', password })],
-        ['change', (newPassword) => ChangePasswordInputSchema({ newPassword })],
-        [
-            'reset',
-            (password) =>
-                ResetPasswordInputSchema({ token: 't', password, passwordConfirm: password }),
-        ],
-    ]
-    for (const [name, check] of cases) {
-        assert.ok(!(check(ok(PASSWORD_MIN_LENGTH)) instanceof type.errors), `${name}: min`)
-        assert.ok(!(check(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), `${name}: max`)
-        assert.ok(check(ok(PASSWORD_MIN_LENGTH - 1)) instanceof type.errors, `${name}: min - 1`)
-        assert.ok(check(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, `${name}: max + 1`)
+    assert.ok(!(PasswordSchema(ok(PASSWORD_MIN_LENGTH)) instanceof type.errors), 'min')
+    assert.ok(!(PasswordSchema(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), 'max')
+    assert.ok(PasswordSchema(ok(PASSWORD_MIN_LENGTH - 1)) instanceof type.errors, 'min - 1')
+    assert.ok(PasswordSchema(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, 'max + 1')
+
+    // Every field named like a password, in every exported schema, is PasswordSchema; a new
+    // schema with its own bounds fails here. The one exception is the email link, which takes
+    // any non-empty password up to the longest (a shorter one is just a wrong password).
+    const fields = []
+    for (const [name, schema] of Object.entries(schemas)) {
+        if (typeof schema !== 'function' || name === 'PasswordSchema') continue
+        let props
+        try {
+            props = schema.props
+        } catch {
+            continue // not an object schema
+        }
+        for (const prop of props ?? []) {
+            if (/password/i.test(prop.key)) fields.push([`${name}.${prop.key}`, prop.value])
+        }
     }
+    assert.ok(fields.length >= 11, `found ${fields.length} password fields`)
+    for (const [field, value] of fields) {
+        if (field === 'VerifyEmailInputSchema.password') continue
+        assert.ok(value.equals(PasswordSchema), `${field} is PasswordSchema`)
+    }
+
+    const verify = (password) => VerifyEmailInputSchema({ token: 't', password })
+    assert.ok(!(verify('p') instanceof type.errors), 'verify-email: 1')
+    assert.ok(!(verify(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), 'verify-email: max')
+    assert.ok(verify('') instanceof type.errors, 'verify-email: empty')
+    assert.ok(verify(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, 'verify-email: max + 1')
 })
 
 test('ENTITY_ID_PATTERN is what EntityIdSchema takes, and looksLikePhoneNumber what the phone check reads', async () => {

@@ -33,6 +33,7 @@ export {
     type OAuthLinkConfirmInput,
 } from './auth/oauth-link-confirm.js'
 export { ChangePasswordInputSchema, type ChangePasswordInput } from './auth/change-password.js'
+export { PasswordSchema } from './auth/password.js'
 
 export {
     CreateSubscriptionInputSchema,
