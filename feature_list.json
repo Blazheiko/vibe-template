@@ -1843,6 +1843,16 @@
             "dependencies": ["feat-184"],
             "status": "done",
             "evidence": "PR #561 (merge into main): make check passing incl. verify-compose (backend 2686, frontend 515, playground 115, shared 31, docs 26), test:pg 297, test:redis 116, docs:build+verify passing, CI all jobs passing"
+        },
+        {
+            "id": "feat-186",
+            "name": "Contract Drift Guards",
+            "description": "Review of main 4b65696 on route contracts (the routes agree; drift protection has gaps): (1) the session refresh in base-api.ts builds main/init and GET by hand next to mainContracts.init; (2) callApi always makes query optional, so a contract with a required query key compiles without it; (3) backend path params are Record<string, string>, so renaming :subscriptionId in a contract does not break the controller; (4) the schema registry overwrites a duplicate <method> <path> and the group spread allows collisions, and the completeness test uses a Set; (5) the frontend ESLint rule catches baseApi.http/upload only by name, not a renamed import or a hand-written fetch.",
+            "owner": "Blazheiko",
+            "branch": "feat/contract-drift-guards",
+            "dependencies": ["feat-185"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
