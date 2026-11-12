@@ -2081,8 +2081,8 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-revocation-race-at-connect",
             "dependencies": ["feat-195"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #595 (merge b9692b8): handleConnected reads users.session_token together with the role (userRoleService.findAccess) and closes with 4001, without registering it, a connection whose token is no longer current or whose user is gone; nothing is awaited between the read and the registration; the e2e-live test waits for connection_established before the revocation; docs uk+en (backend/websocket \"Revoking a session\"). make check passing (backend 2738, frontend 548, playground 115), test:pg 303 and test:redis 116 passing on real services, docs:build+verify passing; RED: without the token comparison ws-registry-lifecycle.spec \"closes the connection with 4001 instead of registering it\" fails; e2e-live session-revocation and ws-close-after-logout with --repeat-each 5: 25 of 25 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Found by the e2e-live job failing on PR #593, which was merged with that non-required job red. Details were in progress.md on fix/ws-revocation-race-at-connect (removed from main by this PR)."
         }
     ]
 }
