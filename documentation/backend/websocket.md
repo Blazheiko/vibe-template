@@ -233,7 +233,7 @@ const WsMessageSchema = type({
 
 ### WS-маршрути
 
-Визначені в [app/routes/ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts), контролери — у [controllers/ws/](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws):
+Визначені в [app/routes/ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts) через контракти з [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts) (`adminWsContracts`, `supportWsContracts`), контролери — у [controllers/ws/](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws):
 
 | Повна назва події (`event`)          | Контролер                                  | Призначення                                                                                                    | Ліміт групи |
 | ------------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------- | ----------- |
@@ -285,7 +285,7 @@ Presence публікується лише якщо в каналі `admin` є �
 
 - `protocols` — масив `[wsToken, 'app-web']`, який мутується перед перепідключенням;
 - heartbeat з [websocket-heartbeat.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-heartbeat.ts): `ping` кожні 10 с, закриття, якщо `pong` не прийшов за 5 с. Планувальник створюється з `immediate: false` — після виправлення «don't start the heartbeat interval before the socket connects» інтервал запускає сам `useWebSocket` при підключенні, а не з моменту завантаження модуля (інакше pong-таймаут міг закрити сокет ще під час handshake);
-- `websocketApi(route, payload)` надсилає `event` у форматі `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` — `VITE_API_PATH_PREFIX`, за замовчуванням `api`, слеші на краях обрізаються) додає до запиту новий `id` і чекає відповідь з цим `id` до 10 с; запити однієї події не чекають один одного;
+- `websocketApi(route, payload)` (його викликає лише `callWs`; поза клієнтом ESLint забороняє рядкові виклики) надсилає `event` у форматі `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` — `VITE_API_PATH_PREFIX`, за замовчуванням `api`, слеші на краях обрізаються) додає до запиту новий `id` і чекає відповідь з цим `id` до 10 с; запити однієї події не чекають один одного;
 - повідомлення розбираються за префіксом: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → сервісні обробники, відповідь з `id` запиту, що чекає → резолв цього запиту.
 
 Перепідключення (вбудований `autoReconnect` vueuse закоментовано, логіка своя в `handleWebSocketClose`):
@@ -360,21 +360,41 @@ sequenceDiagram
 
 ## Як додати WS-маршрут
 
-1. Опишіть схему вхідних даних і відповіді в `packages/shared` (як `SupportChatInputSchema` і `SupportChatResponseSchema`).
-2. Додайте метод у контролер у `packages/backend/src/app/controllers/ws/`. Він отримує `WsContext<Input>`; payload беріть через `getTypedPayload(context)`, користувача — з `context.userData`, сокет — з `context.ws`. Помилки сервісів перетворюйте через `appErrorToPayload`. Тип результату анотуйте типом відповіді з `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` звіряє його з `ResponseSchema` ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Усі поля контексту описані в [WsContext докладно](/backend/controllers#wscontext-докладно).
-3. Зареєструйте маршрут у `ws-routes.ts` в наявній або новій групі з `prefix` і `rateLimit`:
+Кожен WS-маршрут оголошено через **контракт** ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)), так само як HTTP-маршрути ([Маршрутизація](/backend/routing#http-маршрути-defineroute)).
+
+1. Опишіть схему payload і відповіді в `packages/shared` (як `SupportChatInputSchema` і `SupportChatResponseSchema`).
+2. Додайте контракт у [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts): `wsContract<Payload, Відповідь>()('/<група>/<маршрут>')`. Шлях — подія без API-префікса; маршрут без payload — `wsContract<undefined, Відповідь>()`.
+
+```ts
+export const supportWsContracts = {
+    chat: wsContract<typeof SupportChatInputSchema.inferIn, SupportChatResponse>()(
+        '/support/support_chat',
+    ),
+} as const
+```
+
+3. Додайте запис у реєстр схем [`app/routes/contract-schemas/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/ws.ts) (ключ `ws <подія>`, окремо від HTTP); `contractSchemas` звірить схеми з типами контракту:
+
+```ts
+export const supportWsSchemas = contractSchemas(supportWsContracts, {
+    chat: { body: SupportChatInputSchema, response: ResponseSchemas.SupportChatResponseSchema },
+})
+```
+
+4. Додайте метод у контролер у `packages/backend/src/app/controllers/ws/`. Він отримує `WsContext<Payload>`; payload беріть через `getTypedPayload(context)`, користувача — з `context.userData`, сокет — з `context.ws`. Помилки сервісів перетворюйте через `appErrorToPayload`. Тип результату анотуйте типом відповіді з `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` звіряє його зі схемою відповіді ([Тип відповіді хендлера](/backend/routing#тип-відповіді-хендлера)). Усі поля контексту описані в [WsContext докладно](/backend/controllers#wscontext-докладно).
+5. Зареєструйте маршрут у `ws-routes.ts` у групі, префікс якої є початком шляху контракту (інакше сервер не стартує). `defineWsRoute` з `#app/routes/contract-schemas/index.js` бере подію з контракту, а схеми — з реєстру:
 
 ```ts
 defineWsRoute({
-    url: 'support_chat',
+    contract: supportWsContracts.chat,
     handler: SupportWsController.chat.bind(SupportWsController),
-    validator: SupportChatInputSchema,
-    ResponseSchema: ResponseSchemas.SupportChatResponseSchema,
     description: 'Send a message to the support agent',
 })
 ```
 
-4. На фронтенді викликайте `websocketApi('<prefix>/<url>', payload)`; для push — `broadcastService` на бекенді і обробник у `useBroadcastHandler.ts`.
-5. Для тривалих операцій відповідайте одразу, а результат шліть push-подією на `userData.uuid`, як у support-контролері.
+6. На фронтенді надсилайте запит через [`callWs`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-client.ts): `await callWs(supportWsContracts.chat, payload)`. Неправильний payload — помилка компіляції; рядковий `websocketApi(...)` поза клієнтом забороняє ESLint. Для push — `broadcastService` на бекенді й обробник у `useBroadcastHandler.ts`.
+7. Для тривалих операцій відповідайте одразу, а результат шліть push-подією на `userData.uuid`, як у support-контролері.
+
+Маршрут без контракту (`defineRawWsRoute` з `app/routing/define-ws-route.ts`) лишився лише для тестів WS-машинерії: ESLint забороняє його імпорт поза тестами, а `route-contracts.spec.ts` падає, якщо в `ws-routes.ts` є маршрут без контракту чи запису реєстру.
 
 Загальний рецепт фічі — [Як додати фічу](/backend/adding-a-feature).

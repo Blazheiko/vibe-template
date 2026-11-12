@@ -46,6 +46,8 @@ export interface ApiRoute {
     outputSchema?: ArkSchema
     // Only routes that read a body; [] = no allowed body type.
     bodyLimits?: BodyLimit[]
+    /** Set for a route declared through a contract: its whole path, from the API prefix. */
+    contractPath?: string
     fullUrl?: string
     isSelected: boolean
 }
@@ -136,7 +138,12 @@ export const useApiStore = defineStore('api', () => {
 
                 routes.push({
                     ...route,
-                    fullUrl: `${normalizedParentPrefix}/${normalizePath(route.url)}`,
+                    // A contract names the whole path (ADR 0005, 0006): the group prefix is part
+                    // of it already, only the API prefix goes in front (feat-181).
+                    fullUrl:
+                        route.contractPath !== undefined
+                            ? `${pathPrefix.value}/${normalizePath(route.contractPath)}`
+                            : `${normalizedParentPrefix}/${normalizePath(route.url)}`,
                     isSelected: false,
                 })
             }

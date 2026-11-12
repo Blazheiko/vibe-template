@@ -15,7 +15,13 @@ type DefineWsRouteInput<TSchema extends Type | undefined, TRes extends Type | un
     handler: TypedHandler<WsContext<InferSchema<TSchema>>, RouteResponse<TRes>>
 }
 
-export function defineWsRoute<
+/**
+ * A WS route from schemas, without a contract. Not for the route table: every WS route of the
+ * application is declared through its contract (`defineWsRoute` of app/routes/contract-schemas,
+ * docs/adr/0006-websocket-contracts.md), and ESLint refuses this import in src/app outside
+ * tests. It stays for the tests of the WS machinery, which build routes of their own.
+ */
+export function defineRawWsRoute<
     TSchema extends Type | undefined,
     TRes extends Type | undefined = undefined,
 >(config: DefineWsRouteInput<TSchema, TRes>): RouteItem {

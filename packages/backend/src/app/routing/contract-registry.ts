@@ -1,7 +1,13 @@
 import type { Type } from '@arktype/type'
 
 import { defaultValidator } from '#app/validate/index.js'
-import type { HttpContext, RouteConfig, RouteItem, TypedHandler } from '#vendor/types/types.js'
+import type {
+    HttpContext,
+    RouteConfig,
+    RouteItem,
+    TypedHandler,
+    WsContext,
+} from '#vendor/types/types.js'
 import type { RouteResponse } from '#app/routing/route-response.js'
 import type { AnyContract, BodyOf, FieldsOf, KindOf, QueryOf, ResponseOf } from 'shared/contracts'
 
@@ -172,6 +178,58 @@ export function contractRouteDefiner<R extends Readonly<Record<string, SchemaEnt
                           applyStrictPolicy(entry.query, config.queryAllowExtra === true),
                       )
                     : undefined,
+            ResponseSchema: entry.response,
+        } as RouteItem
+    }
+}
+
+type WsContractRouteInput<R, C extends AnyContract> = Omit<
+    RouteConfig,
+    'url' | 'method' | 'contractPath' | 'validator' | 'queryValidator' | 'ResponseSchema'
+> & {
+    /** Event, payload and reply: packages/shared/src/contracts/ws.ts. */
+    contract: C &
+        (KindOf<C> extends 'ws'
+            ? ContractKey<C> extends keyof R
+                ? unknown
+                : ContractMismatch<'the contract has no entry in the schema registry'>
+            : ContractMismatch<'a WS route needs a WS contract (wsContract)'>)
+    // Without an entry the contract above is already the error; the handler is not checked.
+    handler: [EntryOf<R, C>] extends [never]
+        ? (...args: never[]) => unknown
+        : TypedHandler<
+              WsContext<PayloadOf<EntryOf<R, C> extends { body: infer B } ? B : undefined>>,
+              RouteResponse<
+                  EntryOf<R, C> extends { response: infer S extends Type } ? S : undefined
+              >
+          >
+}
+
+/**
+ * `defineWsRoute` for a registry (ADR 0006): the event comes from the contract, the payload and
+ * reply schemas from its registry entry. Middlewares and limits stay settings of the route.
+ */
+export function contractWsRouteDefiner<R extends Readonly<Record<string, SchemaEntry>>>(
+    registry: R,
+) {
+    return function defineWsRoute<C extends AnyContract>(
+        config: WsContractRouteInput<R, C>,
+    ): RouteItem {
+        const { contract, ...rest } = config
+        const key = keyOf(contract)
+        const entry = registry[key]
+        if (contract.kind !== 'ws') {
+            throw new Error(`Route contract ${key} is not a WS contract`)
+        }
+        if (entry === undefined) {
+            throw new Error(`Route contract ${key} has no entry in the schema registry`)
+        }
+        return {
+            ...rest,
+            url: contract.path,
+            method: 'ws',
+            contractPath: contract.path,
+            validator: entry.body !== undefined ? defaultValidator(entry.body) : undefined,
             ResponseSchema: entry.response,
         } as RouteItem
     }

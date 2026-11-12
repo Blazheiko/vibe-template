@@ -1,6 +1,5 @@
 import { CsrfRejectReason } from 'shared/errors'
 import { useEventBus } from './event-bus'
-import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import {
     hasResponseError,
     isUnauthorizedError,
@@ -50,7 +49,6 @@ interface ApiMethods {
         formData: FormData,
         options?: HttpOptions,
     ) => Promise<ApiResponse<T>>
-    ws: <T = HttpResponse>(route: string, body?: Record<string, unknown>) => Promise<T | null>
 }
 
 // `string & {}` keeps editor suggestions for the common methods.
@@ -75,7 +73,6 @@ const normalizeUrl = (url: string): string => {
 const BASE_URL = normalizeUrl(import.meta.env.VITE_BASE_URL ?? '')
 const INIT_ROUTE = apiPath('main/init')
 
-const { websocketApi } = useWebSocketConnection()
 const eventBus = useEventBus()
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
@@ -470,22 +467,6 @@ const api: ApiMethods = {
             options,
             'Upload failed. Please try again later.',
         )
-    },
-
-    ws: async <T = HttpResponse>(
-        route: string,
-        body: Record<string, unknown> = {},
-    ): Promise<T | null> => {
-        try {
-            // console.log('websocketApi ws route', route)
-            // console.log('websocketApi ws body', body)
-            const result = await websocketApi(route, body)
-            console.log({ result })
-            return result as unknown as T
-        } catch (e) {
-            console.error(e)
-            return null
-        }
     },
 }
 

@@ -220,16 +220,14 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 
 ## WebSocket-маршрути: `defineWsRoute`
 
-WS-маршрути визначаються через [`src/app/routing/define-ws-route.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts) і також групуються з `prefix` та `rateLimit`. Поле `url` тут — ім'я події (наприклад `support_chat`), без HTTP-методу. Сокет-ендпоінт один: `/${pathPrefix}/websocket`. Диспетчер подій — [`src/vendor/utils/routing/ws-api-dispatcher.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
+WS-маршрути оголошено через **WS-контракти** ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)) — той самий механізм, що й для HTTP: контракт `wsContract<Payload, Відповідь>()(подія)` у [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts), запис реєстру з ключем `ws <подія>` у [`app/routes/contract-schemas/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/ws.ts) і `defineWsRoute({ contract, handler, … })` з `#app/routes/contract-schemas/index.js`. Шлях контракту — подія під API-префіксом (`/support/support_chat` → подія `api/support/support_chat`), групи дають `prefix`, middleware і `rateLimit`. Сокет-ендпоінт один: `/${pathPrefix}/websocket`. Диспетчер подій — [`src/vendor/utils/routing/ws-api-dispatcher.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
 
 ```ts
 {
   group: [
     defineWsRoute({
-      url: "support_chat",
+      contract: supportWsContracts.chat,
       handler: SupportWsController.chat.bind(SupportWsController),
-      validator: SupportChatInputSchema,
-      ResponseSchema: ResponseSchemas.SupportChatResponseSchema,
       description: "Send a message to the support agent",
     }),
   ],
@@ -237,6 +235,8 @@ WS-маршрути визначаються через [`src/app/routing/define
   rateLimit: { windowMs: 60_000, maxRequests: 60 },
 },
 ```
+
+Фронтенд надсилає запит через `callWs(contract, payload)` ([`utils/ws-client.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-client.ts)). Покроково — [Як додати WS-маршрут](/backend/websocket#як-додати-ws-маршрут).
 
 ## Інтроспекція маршрутів і API Playground
 

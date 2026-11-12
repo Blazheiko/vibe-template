@@ -233,7 +233,7 @@ The frontend looks up the callback by `event`, so the matching Promise is reject
 
 ### WS routes
 
-Defined in [app/routes/ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts), controllers in [controllers/ws/](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws):
+Defined in [app/routes/ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts) through the contracts of [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts) (`adminWsContracts`, `supportWsContracts`), controllers in [controllers/ws/](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws):
 
 | Full event name (`event`)            | Controller                                 | Purpose                                                                                                                           | Group limit |
 | ------------------------------------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------- |
@@ -285,7 +285,7 @@ The frontend client is the singleton composable [useWebSocketConnection.ts](http
 
 - `protocols` — an array `[wsToken, 'app-web']`, mutated before reconnecting;
 - heartbeat from [websocket-heartbeat.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-heartbeat.ts): `ping` every 10 s, close if no `pong` arrives within 5 s. The scheduler is created with `immediate: false` — after the fix "don't start the heartbeat interval before the socket connects", the interval is started by `useWebSocket` itself on connect, not from module load (otherwise the pong timeout could close the socket during the handshake);
-- `websocketApi(route, payload)` sends `event` in the format `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` is `VITE_API_PATH_PREFIX`, `api` by default, slashes at the edges are trimmed) adds a new `id` to the request and waits for the reply with that `id` for up to 10 s; requests of one event do not wait for each other;
+- `websocketApi(route, payload)` (only `callWs` calls it; ESLint forbids string calls outside the client) sends `event` in the format `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` is `VITE_API_PATH_PREFIX`, `api` by default, slashes at the edges are trimmed) adds a new `id` to the request and waits for the reply with that `id` for up to 10 s; requests of one event do not wait for each other;
 - messages are routed by prefix: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → service handlers, a reply with the `id` of a pending request → that request resolves.
 
 Reconnecting (vueuse's built-in `autoReconnect` is commented out, the logic is custom in `handleWebSocketClose`):
@@ -360,21 +360,41 @@ sequenceDiagram
 
 ## How to add a WS route
 
-1. Describe the input and response schema in `packages/shared` (like `SupportChatInputSchema` and `SupportChatResponseSchema`).
-2. Add a method to a controller in `packages/backend/src/app/controllers/ws/`. It receives `WsContext<Input>`; take the payload via `getTypedPayload(context)`, the user from `context.userData`, the socket from `context.ws`. Convert service errors via `appErrorToPayload`. Annotate the result type with the response type from `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` checks it against `ResponseSchema` ([Handler response type](/en/backend/routing#handler-response-type)). All context fields are described in [WsContext in detail](/en/backend/controllers#wscontext-in-detail).
-3. Register the route in `ws-routes.ts` in an existing or new group with `prefix` and `rateLimit`:
+Every WS route is declared through a **contract** ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)), the same as HTTP routes ([Routing](/en/backend/routing#http-routes-defineroute)).
+
+1. Describe the payload and response schema in `packages/shared` (like `SupportChatInputSchema` and `SupportChatResponseSchema`).
+2. Add a contract in [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts): `wsContract<Payload, Response>()('/<group>/<route>')`. The path is the event without the API prefix; a route without a payload is `wsContract<undefined, Response>()`.
+
+```ts
+export const supportWsContracts = {
+    chat: wsContract<typeof SupportChatInputSchema.inferIn, SupportChatResponse>()(
+        '/support/support_chat',
+    ),
+} as const
+```
+
+3. Add an entry to the schema registry [`app/routes/contract-schemas/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/ws.ts) (key `ws <event>`, apart from HTTP); `contractSchemas` checks the schemas against the contract's types:
+
+```ts
+export const supportWsSchemas = contractSchemas(supportWsContracts, {
+    chat: { body: SupportChatInputSchema, response: ResponseSchemas.SupportChatResponseSchema },
+})
+```
+
+4. Add a method to a controller in `packages/backend/src/app/controllers/ws/`. It receives `WsContext<Payload>`; take the payload via `getTypedPayload(context)`, the user from `context.userData`, the socket from `context.ws`. Convert service errors via `appErrorToPayload`. Annotate the result type with the response type from `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` checks it against the response schema ([Handler response type](/en/backend/routing#handler-response-type)). All context fields are described in [WsContext in detail](/en/backend/controllers#wscontext-in-detail).
+5. Register the route in `ws-routes.ts` in the group whose prefix starts the contract's path (otherwise the server does not start). `defineWsRoute` from `#app/routes/contract-schemas/index.js` takes the event from the contract and the schemas from the registry:
 
 ```ts
 defineWsRoute({
-    url: 'support_chat',
+    contract: supportWsContracts.chat,
     handler: SupportWsController.chat.bind(SupportWsController),
-    validator: SupportChatInputSchema,
-    ResponseSchema: ResponseSchemas.SupportChatResponseSchema,
     description: 'Send a message to the support agent',
 })
 ```
 
-4. On the frontend, call `websocketApi('<prefix>/<url>', payload)`; for push, use `broadcastService` on the backend and a handler in `useBroadcastHandler.ts`.
-5. For long-running operations, respond immediately and send the result as a push event to `userData.uuid`, as in the support controller.
+6. On the frontend, send the request through [`callWs`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-client.ts): `await callWs(supportWsContracts.chat, payload)`. A wrong payload is a compile error; a string `websocketApi(...)` outside the client is forbidden by ESLint. For push, use `broadcastService` on the backend and a handler in `useBroadcastHandler.ts`.
+7. For long-running operations, respond immediately and send the result as a push event to `userData.uuid`, as in the support controller.
+
+A route without a contract (`defineRawWsRoute` from `app/routing/define-ws-route.ts`) is left only for the tests of the WS machinery: ESLint forbids importing it outside tests, and `route-contracts.spec.ts` fails if `ws-routes.ts` has a route without a contract or a registry entry.
 
 For the general recipe for a feature, see [How to add a feature](/en/backend/adding-a-feature).

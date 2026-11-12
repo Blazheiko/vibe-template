@@ -7,6 +7,7 @@ import {
     oauthContracts,
     pushSubscriptionContracts,
     supportContracts,
+    supportWsContracts,
 } from 'shared/contracts'
 
 // The typed client (docs/adr/0005-route-contracts.md) over the REAL transport: the fetch double
@@ -383,6 +384,8 @@ describe('contractUrl', () => {
 async function typeChecks(): Promise<void> {
     const { callApi, contractUrl } = await import('../api-client')
 
+    // @ts-expect-error — a WS contract goes over the socket (callWs), not over HTTP
+    await callApi(supportWsContracts.openChat, { body: { language: 'en' } })
     // @ts-expect-error — a navigation contract is never fetched
     await callApi(supportContracts.screenshot, { params: { articleId: '1' } })
     // @ts-expect-error — contractUrl is for navigation contracts only

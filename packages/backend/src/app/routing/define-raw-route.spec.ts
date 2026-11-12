@@ -6,7 +6,7 @@ import { badRequest } from '#app/services/shared/errors.js'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 
 import { defineRawRoute } from './define-raw-route.js'
-import { defineWsRoute } from './define-ws-route.js'
+import { defineRawWsRoute } from './define-ws-route.js'
 
 describe('defineRawRoute', () => {
     it('wraps the input schema with the default validator', () => {
@@ -124,7 +124,7 @@ describe('defineRawRoute body validator typing', () => {
     })
 
     it('accepts only methods registerHttpRoute can register', () => {
-        // @ts-expect-error ws routes go through defineWsRoute
+        // @ts-expect-error ws routes go through defineRawWsRoute
         defineRawRoute({ url: '/items', method: 'ws', handler: () => ({}) })
         // @ts-expect-error options is answered by the CORS preflight handler
         defineRawRoute({ url: '/items', method: 'options', handler: () => ({}) })
@@ -132,13 +132,13 @@ describe('defineRawRoute body validator typing', () => {
     })
 })
 
-describe('defineWsRoute', () => {
+describe('defineRawWsRoute', () => {
     it('wraps websocket route schemas through the same validator wrapper', () => {
         const schema = type({
             roomId: 'string',
         })
 
-        const route = defineWsRoute({
+        const route = defineRawWsRoute({
             url: 'join_room',
             validator: schema,
             handler: () => ({ ok: true }),
@@ -326,34 +326,34 @@ describe('defineRawRoute response typing', () => {
     })
 })
 
-describe('defineWsRoute response typing', () => {
+describe('defineRawWsRoute response typing', () => {
     const OkSchema = type({ status: "'ok'" })
 
     it('checks the handler result against ResponseSchema', () => {
-        defineWsRoute({
+        defineRawWsRoute({
             url: 'ok',
             ResponseSchema: OkSchema,
             handler: () => ({ status: 'ok' as const }),
         })
-        defineWsRoute({
+        defineRawWsRoute({
             url: 'fail',
             ResponseSchema: OkSchema,
             // @ts-expect-error 'fail' is not 'ok'
             handler: () => ({ status: 'fail' as const }),
         })
-        defineWsRoute({
+        defineRawWsRoute({
             url: 'foreign',
             ResponseSchema: type({ ready: 'boolean' }),
             // @ts-expect-error { status: 'ok' } has no `ready`
             handler: (): { status: 'ok' } => ({ status: 'ok' }),
         })
-        defineWsRoute({
+        defineRawWsRoute({
             url: 'not-payload',
             ResponseSchema: type('string[]'),
             // @ts-expect-error no object satisfies a non-Payload schema
             handler: () => ({ responseSchemaIsNotPayload: ['a'] }),
         })
-        defineWsRoute({ url: 'free', handler: () => ({ anything: 1 }) })
+        defineRawWsRoute({ url: 'free', handler: () => ({ anything: 1 }) })
         expect(true).toBe(true)
     })
 })

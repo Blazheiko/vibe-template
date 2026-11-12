@@ -3,8 +3,9 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSupportStore } from '@/stores/support'
 import { useEventBus } from '@/utils/event-bus'
-import { supportContracts } from 'shared/contracts'
+import { supportContracts, supportWsContracts } from 'shared/contracts'
 import { contractUrl } from '@/utils/api-client'
+import { callWs } from '@/utils/ws-client'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { supportLanguage } from '@/composables/useLocale'
 import { getResponseMessage } from '@/utils/response-normalizer'
@@ -18,7 +19,7 @@ const props = defineProps<{
 const { t } = useI18n()
 const store = useSupportStore()
 const eventBus = useEventBus()
-const { websocketApi, isConnected } = useWebSocketConnection()
+const { isConnected } = useWebSocketConnection()
 
 const chatContainer = ref<HTMLElement | null>(null)
 const textInput = ref('')
@@ -122,7 +123,7 @@ async function openChat(): Promise<boolean> {
     store.setError(null)
 
     try {
-        await websocketApi('support/support_open_chat', { language: supportLanguage() })
+        await callWs(supportWsContracts.openChat, { language: supportLanguage() })
         sessionReady.value = true
         return true
     } catch (error) {
@@ -160,7 +161,7 @@ async function sendMessage(textOverride?: string): Promise<void> {
 
     // A lost answer is answered by sending the same request again: the id makes it safe.
     const result = await sendUntilAnswered(() =>
-        websocketApi('support/support_chat', {
+        callWs(supportWsContracts.chat, {
             message: text,
             language: supportLanguage(),
             clientMessageId,

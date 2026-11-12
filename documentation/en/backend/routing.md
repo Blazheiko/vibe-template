@@ -220,16 +220,14 @@ In the repository, for example, the `auth` group has a limit of `{ windowMs: 60_
 
 ## WebSocket routes: `defineWsRoute`
 
-WS routes are defined via [`src/app/routing/define-ws-route.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts) and are also grouped with `prefix` and `rateLimit`. The `url` field here is the event name (for example `support_chat`), without an HTTP method. There is a single socket endpoint: `/${pathPrefix}/websocket`. The event dispatcher is [`src/vendor/utils/routing/ws-api-dispatcher.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
+WS routes are declared through **WS contracts** ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)), the same mechanism as for HTTP: a `wsContract<Payload, Response>()(event)` contract in [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts), a registry entry keyed `ws <event>` in [`app/routes/contract-schemas/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/ws.ts), and `defineWsRoute({ contract, handler, … })` from `#app/routes/contract-schemas/index.js`. The contract path is the event under the API prefix (`/support/support_chat` → event `api/support/support_chat`); groups give `prefix`, middlewares and `rateLimit`. There is a single socket endpoint: `/${pathPrefix}/websocket`. The event dispatcher is [`src/vendor/utils/routing/ws-api-dispatcher.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts).
 
 ```ts
 {
   group: [
     defineWsRoute({
-      url: "support_chat",
+      contract: supportWsContracts.chat,
       handler: SupportWsController.chat.bind(SupportWsController),
-      validator: SupportChatInputSchema,
-      ResponseSchema: ResponseSchemas.SupportChatResponseSchema,
       description: "Send a message to the support agent",
     }),
   ],
@@ -237,6 +235,8 @@ WS routes are defined via [`src/app/routing/define-ws-route.ts`](https://github.
   rateLimit: { windowMs: 60_000, maxRequests: 60 },
 },
 ```
+
+The frontend sends the request through `callWs(contract, payload)` ([`utils/ws-client.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-client.ts)). Step by step: [How to add a WS route](/en/backend/websocket#how-to-add-a-ws-route).
 
 ## Route introspection and API Playground
 

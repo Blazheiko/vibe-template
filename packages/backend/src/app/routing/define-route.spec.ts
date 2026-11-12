@@ -1,6 +1,6 @@
 import { type } from '@arktype/type'
 import { describe, expect, it, vi } from 'vitest'
-import { contract, multipartContract, navigationContract } from 'shared/contracts'
+import { contract, multipartContract, navigationContract, wsContract } from 'shared/contracts'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 
 vi.mock('#logger', () => ({
@@ -10,8 +10,10 @@ vi.mock('#vendor/utils/logger.js', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
 
-const { contractRouteDefiner, contractSchemas } = await import('./contract-registry.js')
+const { contractRouteDefiner, contractSchemas, contractWsRouteDefiner } =
+    await import('./contract-registry.js')
 const { routesHandler } = await import('#vendor/start/router.js')
+const { getTypedPayload } = await import('#vendor/utils/validation/get-typed-payload.js')
 const { default: appConfig } = await import('#config/app.js')
 
 // docs/adr/0005-route-contracts.md: a route declared through a contract takes its method and
@@ -268,5 +270,85 @@ function typeChecks(): void {
 describe('the compile-time checks above', () => {
     it('are compiled with the spec (the function is never called)', () => {
         expect(typeChecks).toBeTypeOf('function')
+    })
+})
+
+// feat-181 (ADR 0006): a WS route through its contract. The event comes from the contract, the
+// payload and reply schemas from the registry entry keyed `ws <event>`.
+describe('defineWsRoute through a WS contract', () => {
+    const MessageSchema = type({ text: '1 <= string <= 200', '+': 'reject' })
+    const ws = {
+        say: wsContract<typeof MessageSchema.inferIn, NoteResponse>()('/notes/say'),
+        ping: wsContract<undefined, NoteResponse>()('/notes/ping'),
+    }
+    const wsSchemas = contractSchemas(ws, {
+        say: { body: MessageSchema, response: NoteResponseSchema },
+        ping: { response: NoteResponseSchema },
+    })
+    const defineWsRoute = contractWsRouteDefiner({ ...wsSchemas, ...noteSchemas })
+
+    it('keys the entries `ws <event>`, apart from HTTP routes', () => {
+        expect(Object.keys(wsSchemas).sort()).toEqual(['ws /notes/ping', 'ws /notes/say'])
+    })
+
+    it('takes the event from the contract and the schemas from the registry', () => {
+        const route = defineWsRoute({ contract: ws.say, handler: answer, middlewares: ['a'] })
+
+        expect(route).toMatchObject({
+            url: '/notes/say',
+            method: 'ws',
+            contractPath: '/notes/say',
+            middlewares: ['a'],
+            ResponseSchema: NoteResponseSchema,
+        })
+        expect(route.validator).toBeDefined()
+        expect(defineWsRoute({ contract: ws.ping, handler: answer }).validator).toBeUndefined()
+    })
+
+    it('refuses at start an HTTP contract', () => {
+        const define = defineWsRoute as (config: unknown) => unknown
+        expect(() => define({ contract: notes.create, handler: answer })).toThrow(
+            'Route contract post /notes is not a WS contract',
+        )
+    })
+
+    it('gets its event inside the group that has its prefix', () => {
+        const route = defineWsRoute({ contract: ws.ping, handler: answer })
+        const [normalized] = routesHandler([{ group: [route], prefix: 'notes' }])
+        expect(normalized?.url).toBe(`${appConfig.pathPrefix}/notes/ping`)
+        expect(() => routesHandler([{ group: [route], prefix: 'admin' }])).toThrow(
+            'the path of a contract has to start with the prefix of its group',
+        )
+    })
+
+    // Compiled, never run.
+    function wsTypeChecks(): void {
+        contractSchemas(ws, {
+            // @ts-expect-error — the payload schema of another event
+            say: { body: type({ title: 'string' }), response: NoteResponseSchema },
+            ping: { response: NoteResponseSchema },
+        })
+
+        defineWsRoute({
+            // @ts-expect-error — an HTTP contract is not a WS route
+            contract: notes.create,
+            handler: answer,
+        })
+
+        defineWsRoute({
+            contract: ws.say,
+            // The payload is what the registry entry's schema hands over.
+            handler: (context) => {
+                const payload = getTypedPayload(context)
+                const text: string = payload.text
+                // @ts-expect-error — the payload has no such field
+                const missing: unknown = payload.title
+                return { status: 'success' as const, id: `${text}${String(missing)}` }
+            },
+        })
+    }
+
+    it('compiles its type checks', () => {
+        expect(wsTypeChecks).toBeTypeOf('function')
     })
 })

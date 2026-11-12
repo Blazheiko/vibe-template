@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { adminWsContracts } from 'shared/contracts'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
+import { callWs } from '@/utils/ws-client'
 
 const router = useRouter()
 const route = useRoute()
-const { websocketApi, statusWebSocket } = useWebSocketConnection()
+const { statusWebSocket } = useWebSocketConnection()
 
 const navItems = [
     { label: 'Knowledge Base', path: '/admin/knowledge-base', icon: 'kb' },
@@ -21,7 +23,7 @@ function goBack() {
 async function subscribeAdminChannel() {
     if (statusWebSocket.value !== 'OPEN') return
     try {
-        await websocketApi('admin/subscribe_online_users')
+        await callWs(adminWsContracts.subscribeOnlineUsers)
     } catch (error) {
         console.error('Failed to subscribe admin channel:', error)
     }
@@ -30,7 +32,7 @@ async function subscribeAdminChannel() {
 async function unsubscribeAdminChannel() {
     if (statusWebSocket.value !== 'OPEN') return
     try {
-        await websocketApi('admin/unsubscribe_online_users')
+        await callWs(adminWsContracts.unsubscribeOnlineUsers)
     } catch (error) {
         console.error('Failed to unsubscribe admin channel:', error)
     }
