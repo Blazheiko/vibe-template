@@ -1,9 +1,10 @@
 import { type } from '@arktype/type'
+import { PasswordSchema } from './password.js'
 
 export const RegisterEmailInputSchema = type({
     name: 'string >= 1 & string <= 100',
     email: 'string.email & string <= 255',
-    password: 'string >= 8 & string <= 32',
+    password: PasswordSchema,
     '+': 'reject',
 })
 

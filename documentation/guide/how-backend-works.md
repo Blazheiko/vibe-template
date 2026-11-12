@@ -109,19 +109,19 @@ flowchart LR
 
 ### API: одна схема — і перевірка, і тип
 
-Ось частина схеми логіну з [`shared/src/schemas/auth/login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts):
+Ось схема логіну з [`shared/src/schemas/auth/login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts):
 
 ```ts
-const IdentifierLoginInputSchema = type({
+export const LoginInputSchema = type({
     identifier: 'string >= 3 & string <= 255',
-    password: 'string >= 8 & string <= 32',
-    token: 'string <= 60',
+    password: PasswordSchema,
     '+': 'reject', // невідомі поля відхиляються
 })
 
-export const LoginInputSchema = type.or(LegacyLoginInputSchema, IdentifierLoginInputSchema)
 export type LoginInput = typeof LoginInputSchema.infer // тип виведено зі схеми
 ```
+
+Межі пароля задає `PasswordSchema` з [`password.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/password.ts): її будують з `PASSWORD_MIN_LENGTH` і `PASSWORD_MAX_LENGTH` з `shared/limits`, тих самих чисел, що перевіряє фронтенд, і всі поля пароля в auth-схемах використовують її.
 
 Цей один файл використовують три місця:
 

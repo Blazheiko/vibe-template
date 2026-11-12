@@ -1,8 +1,9 @@
 import { type } from '@arktype/type'
+import { PasswordSchema } from './password.js'
 
 export const ChangePasswordInputSchema = type({
-    'currentPassword?': 'string >= 8 & string <= 32',
-    newPassword: 'string >= 8 & string <= 32',
+    'currentPassword?': PasswordSchema,
+    newPassword: PasswordSchema,
     '+': 'reject',
 })
 

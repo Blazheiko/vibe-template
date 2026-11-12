@@ -109,19 +109,19 @@ flowchart LR
 
 ### API: one schema is both validation and type
 
-Here is part of the login schema from [`shared/src/schemas/auth/login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts):
+Here is the login schema from [`shared/src/schemas/auth/login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts):
 
 ```ts
-const IdentifierLoginInputSchema = type({
+export const LoginInputSchema = type({
     identifier: 'string >= 3 & string <= 255',
-    password: 'string >= 8 & string <= 32',
-    token: 'string <= 60',
+    password: PasswordSchema,
     '+': 'reject', // unknown fields are rejected
 })
 
-export const LoginInputSchema = type.or(LegacyLoginInputSchema, IdentifierLoginInputSchema)
 export type LoginInput = typeof LoginInputSchema.infer // the type is derived from the schema
 ```
+
+The password bounds come from `PasswordSchema` in [`password.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/password.ts): it is built from `PASSWORD_MIN_LENGTH` and `PASSWORD_MAX_LENGTH` of `shared/limits`, the same numbers the frontend checks, and every password field of the auth schemas uses it.
 
 This single file is used in three places:
 
