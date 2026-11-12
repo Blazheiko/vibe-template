@@ -1841,8 +1841,8 @@
             "owner": "Blazheiko",
             "branch": "fix/review-2026-11-12",
             "dependencies": ["feat-184"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #561 (merge into main): make check passing incl. verify-compose (backend 2686, frontend 515, playground 115, shared 31, docs 26), test:pg 297, test:redis 116, docs:build+verify passing, CI all jobs passing"
         }
     ]
 }
