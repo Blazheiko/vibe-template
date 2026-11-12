@@ -1923,6 +1923,15 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #585 (merge 2ef1419): Vite configs (vite.product.ts, vite.backend.ts, vite.build-meta.ts, api-playground/vite.config.ts) import ../shared/src/<module>/index, ESLint forbids bare shared/* there; shared/api-prefix is the one API_PATH_PREFIX normalizer for backend config and clients (`/` → api on both sides); stale frontend env.d.ts removed; docs uk+en. make check passing (backend 2702, frontend 544, playground 115, shared 39, docs 26), docs:build+verify passing; manual: product name edit in shared/src restarted vite and updated manifest.json/<title> without build:shared, API_PATH_PREFIX=/ → server api / client api, ESLint probe; CI all jobs passing incl. e2e and e2e-live. Details were in progress.md on feat/config-shared-source (removed from main by this PR)."
+        },
+        {
+            "id": "feat-194",
+            "name": "Sentry Spans and Extra Without URL Tokens",
+            "description": "Security review of main at 68789d6: (1, HIGH) with tracing on, the Vue Router integration of @sentry/vue copies every query parameter into a query.<name> span attribute and the URL into url.full/url.query; beforeSend does not see spans (Sentry 11 streams them, beforeSendTransaction is not called), so /reset-password?token=… sent a valid token. Add a beforeSendSpan hook that masks sensitive query parameters and URLs in span name and attributes, with a regression test on the real SDK. (2, MEDIUM) router.onError passed to.fullPath as extra.targetRoute and beforeSend did not clean extra: pass to.path and the route name, clean extra at any depth. Docs uk+en.",
+            "owner": "Blazheiko",
+            "branch": "fix/sentry-span-tokens",
+            "dependencies": [],
+            "status": "in_progress"
         }
     ]
 }
