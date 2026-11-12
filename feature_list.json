@@ -1861,8 +1861,8 @@
             "owner": "Blazheiko",
             "branch": "fix/transport-import-extension",
             "dependencies": ["feat-186"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #567 (merge into main): api-bypass-lint.spec.ts 15 passed (5 new cases RED before), make check passing (frontend 532, backend 2690), lint and docs:build+verify passing, CI all jobs passing"
         }
     ]
 }
