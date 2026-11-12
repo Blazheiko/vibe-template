@@ -46,6 +46,10 @@ describe('ESLint keeps API calls on their contracts', () => {
             'the whole transport module',
             "import * as transport from './base-api'\nexport const used = transport",
         ],
+        // feat-187: the same module with an extension.
+        ['the transport with .ts', "import t from './base-api.ts'\nexport const used = t"],
+        ['the transport with .js', "import t from '@/utils/base-api.js'\nexport const used = t"],
+        ['the transport with .mjs', "import t from './base-api.mjs'\nexport const used = t"],
     ])('refuses %s', async (_name, code) => {
         expect(await brokenRules(code)).toContain('no-restricted-imports')
     })
@@ -63,8 +67,19 @@ describe('ESLint keeps API calls on their contracts', () => {
         ).toBe(true)
     })
 
-    it('refuses a dynamic import of the transport', async () => {
-        expect(await brokenRules("void import('./base-api')")).toContain('no-restricted-syntax')
+    it.each(["'./base-api'", "'./base-api.ts'", "'@/utils/base-api.js'"])(
+        'refuses a dynamic import of the transport, %s',
+        async (source) => {
+            expect(await brokenRules(`void import(${source})`)).toContain('no-restricted-syntax')
+        },
+    )
+
+    it('does not take another module whose name ends alike for the transport', async () => {
+        expect(
+            await brokenRules(
+                "import t from './my-base-api'\nimport u from './base-api-docs.ts'\nexport const used = [t, u]",
+            ),
+        ).not.toContain('no-restricted-imports')
     })
 
     it('lets the named settings of the transport through, and the clients', async () => {
