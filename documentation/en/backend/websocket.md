@@ -175,6 +175,19 @@ There are two kinds of errors:
 
 The response starts with `data: null`: if a middleware stopped the request and wrote nothing, the client gets `null`.
 
+### Envelope type
+
+The envelope is described once, in [`shared/ws-client/envelope.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/ws-client/envelope.ts) (feat-184), and the server, the app and the playground all use it:
+
+| Type                           | Direction       | Fields                                                                                                                                                              |
+| ------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WsRequestEnvelope<Payload>`   | client → server | `event`, `id?`, `timestamp`, `payload`; `WsMessage` on the server                                                                                                   |
+| `WsReplyEnvelope<Data>`        | server → client | `event`, `id?`, `status` (`WsReplyStatus`: the HTTP status as a string, or `'error'`), `timestamp`, `data`, `error` (`WsErrorBody`); `WsResponseData` on the server |
+| `WsBroadcastEnvelope<Payload>` | server → client | `event` (`broadcast:<event>`), `status` (a number), `payload`; no `id` and no `timestamp`                                                                           |
+| `WsConnectionEstablishedData`  | server → client | the `data` of `service:connection_established`: `socket_id`, `activity_timeout`                                                                                     |
+
+Service events come in the reply envelope. `isWsBroadcast(message)` tells a broadcast from a reply; the types of a request's `payload` and a reply's `data` come from the WS contract of the event, and a broadcast's `payload` from `BroadcastContracts`.
+
 ### Dispatcher
 
 [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts):

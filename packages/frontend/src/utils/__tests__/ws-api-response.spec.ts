@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { hasPendingRequest, settleApiResponse, type ApiResolveItem } from '../ws-api-response'
-import type { WebsocketMessage } from '../websocket-types'
+import type { WsReplyEnvelope } from 'shared/ws-client'
 
 const pendingFor = (id: string) => {
     const item: ApiResolveItem = {
@@ -25,7 +25,7 @@ describe('settleApiResponse', () => {
                 code: 'service_unavailable',
                 message: 'Service temporarily unavailable. Try again later.',
             },
-        } as unknown as WebsocketMessage
+        } as unknown as WsReplyEnvelope
 
         settleApiResponse(pending, response)
 
@@ -44,7 +44,7 @@ describe('settleApiResponse', () => {
             status: 'success',
             data: {},
             timestamp: Date.now(),
-        } as unknown as WebsocketMessage
+        } as unknown as WsReplyEnvelope
 
         settleApiResponse(pending, response)
 
@@ -58,12 +58,12 @@ describe('settleApiResponse', () => {
             event: 'api/a',
             id: 'req-b',
             status: 'error',
-        } as unknown as WebsocketMessage)
+        } as unknown as WsReplyEnvelope)
         // feat-180: the same event without the id is not the reply either.
         settleApiResponse(pending, {
             event: 'api/a',
             status: 'error',
-        } as unknown as WebsocketMessage)
+        } as unknown as WsReplyEnvelope)
         expect(item.reject).not.toHaveBeenCalled()
         expect(Object.keys(pending)).toEqual(['req-a'])
     })

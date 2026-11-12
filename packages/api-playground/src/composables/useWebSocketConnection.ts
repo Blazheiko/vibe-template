@@ -2,23 +2,17 @@
 import { useIntervalFn, useWebSocket } from '@vueuse/core'
 import { ref, computed } from 'vue'
 import { useEventBus } from '@/utils/event-bus'
-import { classifyWsMessage } from 'shared/ws-client'
+import {
+    classifyWsMessage,
+    isWsBroadcast,
+    type WsBroadcastEnvelope,
+    type WsIncomingMessage,
+    type WsReplyEnvelope,
+    type WsRequestEnvelope,
+    type WsServiceHandlerName,
+} from 'shared/ws-client'
 
-export type WebsocketPayload = Record<string, unknown>
-
-export interface WebsocketMessage {
-    event: string
-    /** The id of the request this message replies to (ADR 0006); absent on broadcasts. */
-    id?: string
-    /** `'200'` for a reply to a request, `'error'` for a refused one; a number in broadcasts. */
-    status: number | string
-    payload: WebsocketPayload
-    /** The answer of a request. */
-    data?: unknown
-    /** Set on an error reply: the backend's error envelope. */
-    error?: { code?: string; message?: string; details?: unknown } | null
-    timestamp?: number
-}
+// The message envelope is the one the server and the app use (shared/ws-client, feat-184).
 
 /**
  * A WS request that did not succeed (feat-158): the server answered with an error, or nothing
@@ -29,7 +23,7 @@ export class WsRequestError extends Error {
         message: string,
         readonly status: number | string,
         readonly code?: string,
-        readonly reply?: WebsocketMessage,
+        readonly reply?: WsReplyEnvelope,
     ) {
         super(message)
         this.name = 'WsRequestError'
@@ -38,18 +32,12 @@ export class WsRequestError extends Error {
 
 // Interfaces for API resolve
 interface ApiResolveItem {
-    resolve: (data: WebsocketMessage) => void
+    resolve: (data: WsReplyEnvelope) => void
     reject: (error: WsRequestError) => void
     timeout: number
 }
 
-interface SendPayload {
-    event: string
-    /** Request id, echoed by the reply (ADR 0006). */
-    id?: string
-    timestamp: number
-    payload: Record<string, unknown>
-}
+type SendPayload = WsRequestEnvelope<Record<string, unknown>>
 
 // ============================================================================
 // SINGLETON STATE - Created once on first module import
@@ -62,7 +50,7 @@ const pendingWsUrl = ref<string>('')
 const pendingWsToken = ref<string>('')
 const isInitialized = ref(false)
 const connectionError = ref<string | null>(null)
-const lastMessage = ref<WebsocketMessage | null>(null)
+const lastMessage = ref<WsIncomingMessage | null>(null)
 // Mutable array passed to vueuse by reference so token updates are reflected
 // in the next WebSocket() construction without recreating the composable.
 // Empty until a token is given: an empty string is not a valid subprotocol, and
@@ -78,43 +66,40 @@ const TIMEOUT_API = 10000
 // ============================================================================
 
 // Message validation function
-const validateMessage = (message: unknown): message is WebsocketMessage => {
+const validateMessage = (message: unknown): message is WsIncomingMessage => {
     if (typeof message !== 'object' || message === null) return false
     const { event, payload } = message as { event?: unknown; payload?: unknown }
     return typeof event === 'string' && (!payload || typeof payload === 'object')
 }
 
-// Service events handling
-const service = (data: WebsocketMessage): void => {
-    const serviceHandlers: Partial<Record<string, (payload: WebsocketPayload) => void>> = {
-        pong: () => {
-            console.log('Pong received')
-        },
-        connection_established: (payload: WebsocketPayload) => {
-            isInitialized.value = true
-            console.log('connection_established', payload)
-        },
-        connection_closed: () => {
-            console.log('Server requested connection close')
-        },
-    }
+// Service events of the server (shared/ws-client, ADR 0006): one handler for each of them but
+// `service:error`, which handleServiceError takes. The map must name every one.
+const serviceHandlers: Record<WsServiceHandlerName, (message: WsReplyEnvelope) => void> = {
+    connection_established: (message) => {
+        isInitialized.value = true
+        console.log('connection_established', message.data)
+    },
+}
 
-    const handlerName = data.event.split(':')[1] as string | undefined
-    if (handlerName === undefined) return
-    serviceHandlers[handlerName]?.(data.payload)
+const isServiceHandlerName = (name: string): name is WsServiceHandlerName =>
+    Object.prototype.hasOwnProperty.call(serviceHandlers, name)
+
+const service = (data: WsReplyEnvelope): void => {
+    const handlerName = data.event.slice('service:'.length)
+    if (isServiceHandlerName(handlerName)) serviceHandlers[handlerName](data)
 }
 
 // Broadcast events handling
-const processBroadcast = (message: WebsocketMessage): void => {
+const processBroadcast = (message: WsBroadcastEnvelope): void => {
     console.log('processBroadcast', message)
     lastMessage.value = message
     eventBus.emit('broadcast', message)
 }
 
 // Service error handling
-const handleServiceError = (data: WebsocketMessage): void => {
-    if (data.status === 4001) {
-        console.warn('Token expired or invalid:', data.error?.message)
+const handleServiceError = (data: WsReplyEnvelope): void => {
+    if (data.error?.code === 'unauthorized') {
+        console.warn('Token expired or invalid:', data.error.message)
     }
 }
 
@@ -163,7 +148,7 @@ const handleWebSocketClose = (event: CloseEvent): void => {
 }
 
 // API response handling
-const messageHandler = (data: WebsocketMessage): void => {
+const messageHandler = (data: WsReplyEnvelope): void => {
     console.log('message handler')
     if (data.id === undefined) return
     const cb = apiResolve.value[data.id]
@@ -174,8 +159,7 @@ const messageHandler = (data: WebsocketMessage): void => {
 
     lastMessage.value = data
 
-    const statusCode =
-        typeof data.status === 'string' ? Number.parseInt(data.status, 10) : data.status
+    const statusCode = Number.parseInt(data.status, 10)
 
     if (Number.isFinite(statusCode) && statusCode >= 200 && statusCode < 300) {
         cb.resolve(data)
@@ -214,13 +198,18 @@ const handleMessage = async (messageData: string | Blob | ArrayBuffer) => {
             return
         }
 
+        // A broadcast has its own envelope; every other JSON message is a reply envelope.
+        if (isWsBroadcast(data)) {
+            processBroadcast(data)
+            return
+        }
         const isPending = data.id !== undefined && apiResolve.value[data.id] !== undefined
         switch (classifyWsMessage(data.event, isPending)) {
             case 'service-error':
                 handleServiceError(data)
                 break
             case 'broadcast':
-                processBroadcast(data)
+                // Taken above, by its envelope.
                 break
             case 'service':
                 service(data)
@@ -302,7 +291,7 @@ const newRequestId = (): string =>
 const websocketApi = async (
     route: string,
     payload: Record<string, unknown> = {},
-): Promise<WebsocketMessage> => {
+): Promise<WsReplyEnvelope> => {
     return new Promise((resolve, reject) => {
         const isConnected = status.value === 'OPEN'
         if (!isConnected) {

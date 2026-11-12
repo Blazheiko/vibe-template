@@ -1,9 +1,9 @@
 import type { BroadcastEventName } from 'shared/contracts'
+import type { WsBroadcastEnvelope } from 'shared/ws-client'
 
 import { useEventBus, type Events } from '@/utils/event-bus'
 import { reportValidationFailure } from '@/utils/sentry-payload-summary'
 import { broadcastGuards } from '@/utils/ws-payload-guards'
-import type { WebsocketMessage } from '@/utils/websocket-types'
 
 const isBroadcastEvent = (name: string): name is BroadcastEventName =>
     Object.prototype.hasOwnProperty.call(broadcastGuards, name)
@@ -26,7 +26,7 @@ export const useBroadcastHandler = () => {
         eventBus.emit(event, payload as Events[BroadcastEventName])
     }
 
-    const handleBroadcast = (message: WebsocketMessage): void => {
+    const handleBroadcast = (message: WsBroadcastEnvelope): void => {
         const event = message.event.replace(/^broadcast:/, '')
         if (isBroadcastEvent(event)) emitChecked(event, message.payload)
     }

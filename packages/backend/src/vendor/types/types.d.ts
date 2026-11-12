@@ -5,6 +5,7 @@ import type { InferPayload, Validator } from '#vendor/contracts/validator.js'
 import type { BodyKind } from '../utils/network/http-request-handlers.js'
 import type { ResponseCheck } from '../utils/validation/validate-response.js'
 import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
+import type { WsErrorBody, WsReplyEnvelope, WsRequestEnvelope } from 'shared/ws-client'
 
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
@@ -188,30 +189,14 @@ export interface HttpData<TPayload = unknown, TQuery = null> {
     hasFile: (name: string) => boolean
 }
 
-export interface ErrorResponse {
-    code: string
-    message: string
-    reason?: string
-    details?: unknown
-}
+/** The error envelope of a refused request (shared/ws-client, feat-184). */
+export type ErrorResponse = WsErrorBody
 
-export interface WsMessage {
-    payload: Record<string, unknown> | null
-    event: string
-    /** The client's id of the request, echoed by the reply (ADR 0006, feat-180). */
-    id?: string
-    timestamp: number
-}
+/** A WS request as the server receives it: the envelope of shared/ws-client (feat-184). */
+export type WsMessage = WsRequestEnvelope
 
-export interface WsResponseData {
-    data: Payload | null
-    error: ErrorResponse | null
-    event: string
-    /** The `id` of the request this replies to, when it had one. */
-    id?: string
-    status: string
-    timestamp: number
-}
+/** A WS reply as the server sends it: the envelope of shared/ws-client (feat-184). */
+export type WsResponseData = WsReplyEnvelope<Payload>
 
 export interface WsData<TPayload = unknown> {
     ws: MyWebSocket

@@ -175,6 +175,19 @@ const WsMessageSchema = type({
 
 Відповідь починається з `data: null`: якщо middleware зупинив запит і нічого не записав, клієнт отримає `null`.
 
+### Тип конверта
+
+Конверт описано один раз у [`shared/ws-client/envelope.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/ws-client/envelope.ts) (feat-184), і його використовують сервер, застосунок і playground:
+
+| Тип                            | Напрям          | Поля                                                                                                                                                      |
+| ------------------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WsRequestEnvelope<Payload>`   | клієнт → сервер | `event`, `id?`, `timestamp`, `payload`; на сервері — `WsMessage`                                                                                          |
+| `WsReplyEnvelope<Data>`        | сервер → клієнт | `event`, `id?`, `status` (`WsReplyStatus`: HTTP-статус рядком або `'error'`), `timestamp`, `data`, `error` (`WsErrorBody`); на сервері — `WsResponseData` |
+| `WsBroadcastEnvelope<Payload>` | сервер → клієнт | `event` (`broadcast:<подія>`), `status` (число), `payload`; без `id` і `timestamp`                                                                        |
+| `WsConnectionEstablishedData`  | сервер → клієнт | `data` події `service:connection_established`: `socket_id`, `activity_timeout`                                                                            |
+
+Сервісні події приходять у конверті відповіді. `isWsBroadcast(message)` відрізняє broadcast від відповіді; типи `payload` запиту й `data` відповіді задає WS-контракт події, а `payload` broadcast — `BroadcastContracts`.
+
 ### Диспетчер
 
 [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts):

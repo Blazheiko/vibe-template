@@ -3,7 +3,6 @@ import { useWebSocket } from '@vueuse/core'
 import { createHeartbeatOptions } from '@/utils/websocket-heartbeat'
 import { ref, computed, toRaw } from 'vue'
 import { WsDeliveryUnknownError } from '@/utils/websocket-types'
-import type { WebsocketMessage } from '@/utils/websocket-types'
 import {
     getResponseMessage,
     getTransportCode,
@@ -16,7 +15,14 @@ import { useEventBus } from '@/utils/event-bus'
 import { mainApi } from '@/utils/api'
 import { getCurrentAppType } from '@/utils/app-type'
 import { sentryService } from '@/utils/sentry-service'
-import { classifyWsMessage, type WsServiceHandlerName } from 'shared/ws-client'
+import {
+    classifyWsMessage,
+    isWsBroadcast,
+    type WsBroadcastEnvelope,
+    type WsIncomingMessage,
+    type WsReplyEnvelope,
+    type WsServiceHandlerName,
+} from 'shared/ws-client'
 import {
     hasPendingRequest,
     newRequestId,
@@ -63,7 +69,8 @@ const TIMEOUT_API = 10000
 // ============================================================================
 
 // Message validation function
-const validateMessage = (message: unknown): message is WebsocketMessage => {
+// A shallow check: the envelope of shared/ws-client, its payload is checked by the receiver.
+const validateMessage = (message: unknown): message is WsIncomingMessage => {
     if (typeof message !== 'object' || message === null) return false
     const { event, payload } = message as { event?: unknown; payload?: unknown }
     return typeof event === 'string' && (!payload || typeof payload === 'object')
@@ -71,7 +78,7 @@ const validateMessage = (message: unknown): message is WebsocketMessage => {
 
 // Service events of the server (shared/ws-client, ADR 0006): one handler for each of them but
 // `service:error`, which handleServiceError takes. The map must name every one.
-const serviceHandlers: Record<WsServiceHandlerName, (message: WebsocketMessage) => void> = {
+const serviceHandlers: Record<WsServiceHandlerName, (message: WsReplyEnvelope) => void> = {
     connection_established: (message) => {
         isInitialized.value = true
         console.log('connection_established', message)
@@ -81,13 +88,13 @@ const serviceHandlers: Record<WsServiceHandlerName, (message: WebsocketMessage) 
 const isServiceHandlerName = (name: string): name is WsServiceHandlerName =>
     Object.prototype.hasOwnProperty.call(serviceHandlers, name)
 
-const service = (data: WebsocketMessage): void => {
+const service = (data: WsReplyEnvelope): void => {
     const handlerName = data.event.slice('service:'.length)
     if (isServiceHandlerName(handlerName)) serviceHandlers[handlerName](data)
 }
 
 // Broadcast events handling
-const processBroadcast = (message: WebsocketMessage): void => {
+const processBroadcast = (message: WsBroadcastEnvelope): void => {
     console.log('processBroadcast', message)
     // Use lazy-loaded broadcast handler from composable
     const { handleBroadcast } = getBroadcastHandler()
@@ -95,7 +102,7 @@ const processBroadcast = (message: WebsocketMessage): void => {
 }
 
 // Service error handling
-const handleServiceError = (data: WebsocketMessage): void => {
+const handleServiceError = (data: WsReplyEnvelope): void => {
     if (getTransportCode(data) === 4001) {
         console.warn(
             'Token expired or invalid:',
@@ -221,7 +228,7 @@ const handleWebSocketClose = (socket: WebSocket, event: CloseEvent): void => {
 }
 
 // API response handling
-const messageHandler = (data: WebsocketMessage): void => {
+const messageHandler = (data: WsReplyEnvelope): void => {
     console.log('message handler')
     settleApiResponse(apiResolve.value, data)
 }
@@ -249,12 +256,17 @@ const handleMessage = async (messageData: string | Blob | ArrayBuffer) => {
             return
         }
 
+        // A broadcast has its own envelope; every other JSON message is a reply envelope.
+        if (isWsBroadcast(data)) {
+            processBroadcast(data)
+            return
+        }
         switch (classifyWsMessage(data.event, hasPendingRequest(apiResolve.value, data))) {
             case 'service-error':
                 handleServiceError(data)
                 break
             case 'broadcast':
-                processBroadcast(data)
+                // Taken above, by its envelope.
                 break
             case 'service':
                 service(data)
@@ -345,7 +357,7 @@ const sendMessage = (data: SendPayload) => {
 const websocketApi = async (
     route: string,
     payload: Record<string, unknown> = {},
-): Promise<WebsocketMessage> => {
+): Promise<WsReplyEnvelope> => {
     return new Promise((resolve, reject) => {
         const isConnected = status.value === 'OPEN'
         if (!isConnected) {

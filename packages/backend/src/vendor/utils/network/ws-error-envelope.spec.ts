@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createWsErrorEnvelope, setWsError } from './ws-error-envelope.js'
+import type { WsResponseData } from '#vendor/types/types.js'
 
 describe('ws-error-envelope', () => {
     it('adds reason and details only when given', () => {
@@ -14,7 +15,7 @@ describe('ws-error-envelope', () => {
     })
 
     it('setWsError sets status error, data null and the envelope', () => {
-        const responseData = {
+        const responseData: WsResponseData = {
             event: 'api/x',
             timestamp: 1,
             status: '200',

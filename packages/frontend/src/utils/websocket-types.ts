@@ -1,27 +1,11 @@
-// Shapes of WebSocket messages and the client-side API error built from them.
+// The client-side errors of WebSocket requests. The message envelope itself is shared with the
+// server and the playground: `WsReplyEnvelope` / `WsBroadcastEnvelope` of shared/ws-client
+// (feat-184).
+import type { WsReplyEnvelope } from 'shared/ws-client'
 import { normalizeResponseError } from './response-normalizer'
 import type { ErrorCode } from 'shared/errors'
 
-export type WebsocketPayload = Record<string, unknown>
 export type WebsocketErrorMessages = Record<string, unknown> | string[] | string
-
-interface WebsocketErrorPayload {
-    code?: number | ErrorCode
-    message?: string
-    messages?: WebsocketErrorMessages
-}
-
-export interface WebsocketMessage {
-    event: string
-    /** The id of the request this message replies to (ADR 0006): absent on broadcasts. */
-    id?: string
-    status: number | string
-    timestamp: number
-    payload: WebsocketPayload
-    // string covers ErrorCode as well as legacy codes.
-    code?: number | string
-    error?: WebsocketErrorPayload | null
-}
 
 /**
  * A request that got no answer (the client timeout, or the connection dropped while it was
@@ -43,7 +27,7 @@ export interface ApiError {
     messages?: WebsocketErrorMessages
 }
 
-export const buildApiError = (data: WebsocketMessage): ApiError => {
+export const buildApiError = (data: WsReplyEnvelope): ApiError => {
     const normalizedError = normalizeResponseError(data, 'WebSocket request failed')
     return {
         code: normalizedError.code,
