@@ -1,7 +1,7 @@
 import type { AnyContract, BodyOf, KindOf, ResponseOf } from 'shared/contracts'
+import type { WsReplyEnvelope } from 'shared/ws-client'
 
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
-import type { WebsocketMessage } from '@/utils/websocket-types'
 
 // The typed way to send a request over the WebSocket (docs/adr/0006-websocket-contracts.md). A
 // WS contract from `shared/contracts` names the event and the types of the payload and the
@@ -9,8 +9,8 @@ import type { WebsocketMessage } from '@/utils/websocket-types'
 // request's id. It settles as the connection does: it resolves with the reply, a business
 // error included (`data.status === 'error'`), and rejects on a transport error or a timeout.
 
-/** A reply to a WS request: the envelope, with `data` typed by the contract. */
-export type WsReply<TResponse> = Omit<WebsocketMessage, 'payload'> & { data: TResponse | null }
+/** A reply to a WS request: the shared envelope, with `data` typed by the contract. */
+export type WsReply<TResponse> = WsReplyEnvelope<TResponse>
 
 type PayloadArgs<C> = [BodyOf<C>] extends [undefined] ? [payload?: undefined] : [payload: BodyOf<C>]
 
@@ -30,5 +30,6 @@ export const callWs = async <C extends AnyContract>(
         contract.path.replace(/^\/+/, ''),
         payload ?? {},
     )
-    return reply as unknown as WsReply<ResponseOf<C>>
+    // The reply of this contract's event: its `data` is the contract's response (ADR 0006).
+    return reply as WsReply<ResponseOf<C>>
 }

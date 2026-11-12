@@ -216,7 +216,7 @@ The response envelope the dispatcher sends to the client: `{ event, timestamp, s
 | Field                | Description                                                                                                                         |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `event`, `timestamp` | Copied from the incoming message so the client can match the response to the request. Do not change them.                           |
-| `status: string`     | `'200'` by default. Set a string, for example `'403'`, when you return an error.                                                    |
+| `status`             | `WsReplyStatus` (`shared/ws-client`). `'200'` by default. Set a string, for example `'403'`, when you return an error.              |
 | `data`               | The dispatcher puts the value returned by the method here.                                                                          |
 | `error`              | Filled by the dispatcher for system errors (`not_found`, `validation_failed`, `internal_error`, rate limit) with `status: 'error'`. |
 

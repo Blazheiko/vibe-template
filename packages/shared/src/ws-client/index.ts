@@ -35,3 +35,14 @@ export const normalizeApiPrefix = (raw: string | undefined): string => {
     const trimmed = (raw ?? '').trim().replace(/^\/+|\/+$/g, '')
     return trimmed === '' ? 'api' : trimmed
 }
+
+export {
+    isWsBroadcast,
+    type WsBroadcastEnvelope,
+    type WsConnectionEstablishedData,
+    type WsErrorBody,
+    type WsIncomingMessage,
+    type WsReplyEnvelope,
+    type WsReplyStatus,
+    type WsRequestEnvelope,
+} from './envelope.js'
