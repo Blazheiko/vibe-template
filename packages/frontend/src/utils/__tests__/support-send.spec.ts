@@ -6,10 +6,9 @@ import { WsDeliveryUnknownError, buildApiError } from '../websocket-types'
 const refusal = () =>
     buildApiError({
         event: 'api/support/support_chat',
-        status: '429',
+        status: 'error',
         timestamp: 1,
-        payload: {},
-        code: 'rate_limited',
+        data: null,
         error: { code: 'rate_limited', message: 'Too many messages.' },
     })
 const lost = () => new WsDeliveryUnknownError('Request timeout')

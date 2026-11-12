@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BroadcastEventName } from 'shared/contracts'
 
 import type { BroadcastGuards } from '@/utils/ws-payload-guards'
+import type { WsBroadcastEnvelope } from 'shared/ws-client'
 
 // feat-182 (ADR 0006, decision 3): a broadcast event of the server reaches the event bus under its
 // own name with the payload of its contract, once its guard accepted it.
@@ -28,11 +29,10 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     admin_user_online_remove: { id: '42' },
 }
 
-const broadcast = (event: string, payload: unknown) => ({
+const broadcast = (event: string, payload: unknown): WsBroadcastEnvelope => ({
     event: `broadcast:${event}`,
     status: 200,
-    timestamp: 1,
-    payload: payload as Record<string, unknown>,
+    payload,
 })
 
 beforeEach(() => {

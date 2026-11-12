@@ -1,9 +1,11 @@
 import { buildApiError } from '@/utils/websocket-types'
-import type { ApiError, WebsocketMessage } from '@/utils/websocket-types'
+import type { WsReplyEnvelope } from 'shared/ws-client'
+
+import type { ApiError } from '@/utils/websocket-types'
 import { hasResponseError } from '@/utils/response-normalizer'
 
 export interface ApiResolveItem {
-    resolve: (data: WebsocketMessage) => void
+    resolve: (data: WsReplyEnvelope) => void
     reject: (error?: ApiError) => void
     timeout: number
 }
@@ -21,7 +23,7 @@ export const newRequestId = (): string =>
 /** Whether a message is the reply to a pending request: it carries that request's id. */
 export const hasPendingRequest = (
     pending: Partial<Record<string, ApiResolveItem>>,
-    message: Pick<WebsocketMessage, 'id'>,
+    message: Pick<WsReplyEnvelope, 'id'>,
 ): boolean => message.id !== undefined && pending[message.id] !== undefined
 
 /**
@@ -31,7 +33,7 @@ export const hasPendingRequest = (
  */
 export const settleApiResponse = (
     pending: Partial<Record<string, ApiResolveItem>>,
-    data: WebsocketMessage,
+    data: WsReplyEnvelope,
 ): void => {
     if (data.id === undefined) return
     const cb = pending[data.id]

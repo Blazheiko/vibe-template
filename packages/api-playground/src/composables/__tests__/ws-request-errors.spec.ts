@@ -124,3 +124,30 @@ describe('playground websocketApi: correlation by id', () => {
         expect(await two).toEqual({ resolved: expect.objectContaining({ data: { n: 2 } }) })
     })
 })
+
+// feat-184: the messages without a pending request, in the envelope shared with the server.
+describe('server messages', () => {
+    const push = (message: Record<string, unknown>): void => {
+        ;(fake.options as Options).onMessage(null, { data: JSON.stringify(message) })
+    }
+
+    it('keeps a broadcast as the last message', () => {
+        const { lastMessage } = useWebSocketConnection()
+        const broadcast = { event: 'broadcast:chat_message', status: 200, payload: { id: 1 } }
+        push(broadcast)
+        expect(lastMessage.value).toEqual(broadcast)
+    })
+
+    it('takes connection_established with its data, not a payload', () => {
+        const { isInitialized } = useWebSocketConnection()
+        isInitialized.value = false
+        push({
+            event: 'service:connection_established',
+            status: '200',
+            timestamp: 1,
+            error: null,
+            data: { socket_id: 's-1', activity_timeout: 30 },
+        })
+        expect(isInitialized.value).toBe(true)
+    })
+})
