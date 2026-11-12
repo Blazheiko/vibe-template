@@ -1863,6 +1863,16 @@
             "dependencies": ["feat-186"],
             "status": "done",
             "evidence": "PR #567 (merge into main): api-bypass-lint.spec.ts 15 passed (5 new cases RED before), make check passing (frontend 532, backend 2690), lint and docs:build+verify passing, CI all jobs passing"
+        },
+        {
+            "id": "feat-188",
+            "name": "Shared Source In Dev",
+            "description": "DX review: the root dev script builds shared once and then runs only backend and frontend, while consumers import shared from dist, so a schema or contract change is invisible until a manual rebuild. Add a custom export condition pointing every shared subpath at src, enable it in Vite and in the backend tsx watch, keep production (start, Docker, build) on dist, and drop the shared build from the dev loop.",
+            "owner": "Blazheiko",
+            "branch": "feat/shared-source-dev",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
