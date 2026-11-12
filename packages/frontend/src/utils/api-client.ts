@@ -26,17 +26,23 @@ type ParamsPart<C> = [PathParamNames<PathOf<C>>] extends [never]
     ? { params?: undefined }
     : { params: PathParams<PathOf<C>> }
 
+/** The keys of a type that have to be given. */
+type RequiredKeys<T> = { [K in keyof T]-?: undefined extends T[K] ? never : K }[keyof T]
+
+/**
+ * The query is required when one of its keys is (feat-186): a query whose keys are all optional
+ * or have a default on the server may be left out.
+ */
 type QueryPart<C> = [QueryOf<C>] extends [undefined]
     ? { query?: undefined }
-    : { query?: QueryOf<C> }
+    : [RequiredKeys<QueryOf<C>>] extends [never]
+      ? { query?: QueryOf<C> }
+      : { query: QueryOf<C> }
 
 type BodyPart<C> = [BodyOf<C>] extends [undefined] ? { body?: undefined } : { body: BodyOf<C> }
 
 /** What a call of the contract needs: path parameters, a query, a body — those it has. */
 export type CallInput<C> = ParamsPart<C> & QueryPart<C> & BodyPart<C>
-
-/** The keys of a type that have to be given. */
-type RequiredKeys<T> = { [K in keyof T]-?: undefined extends T[K] ? never : K }[keyof T]
 
 /** The input may be left out only when nothing in it is required. */
 type InputArgs<C, TRest extends unknown[]> = [RequiredKeys<CallInput<C>>] extends [never]

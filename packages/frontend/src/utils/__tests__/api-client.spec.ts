@@ -3,6 +3,8 @@ import {
     adminContracts,
     authContracts,
     avatarContracts,
+    contract,
+    navigationContract,
     knowledgeBaseContracts,
     oauthContracts,
     pushSubscriptionContracts,
@@ -417,6 +419,27 @@ async function typeChecks(): Promise<void> {
     await callApi(pushSubscriptionContracts.list, { body: {} })
     // @ts-expect-error — a query key the contract does not have
     await callApi(adminContracts.users, { query: { page: 2 } })
+    // feat-186: a query with a required key has to be given, as the body and the path do.
+    const search = contract<undefined, { email: string }, { status: 'success' }>()(
+        'get',
+        '/admin/users/search',
+    )
+    // @ts-expect-error — the query has a required key
+    await callApi(search)
+    // @ts-expect-error — the query has a required key
+    await callApi(search, {})
+    // @ts-expect-error — the required key is left out
+    await callApi(search, { query: {} })
+    await callApi(search, { query: { email: 'a@example.test' } })
+    // A query whose keys are all optional may still be left out.
+    await callApi(adminContracts.users)
+    const searchPage = navigationContract<{ email: string }, { status: 'success' }>()(
+        '/admin/users/search-page',
+    )
+    // @ts-expect-error — the query of a navigation contract has a required key
+    contractUrl(searchPage)
+    contractUrl(searchPage, { query: { email: 'a@example.test' } })
+
     // @ts-expect-error — the method is the contract's, there is nothing to pass
     await callApi(pushSubscriptionContracts.list, undefined, { method: 'POST' })
 
