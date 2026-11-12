@@ -1881,8 +1881,8 @@
             "owner": "Blazheiko",
             "branch": "feat/password-schema",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #573 (merge into main): contracts.test.js walks every exported schema (RED with one field reverted to its own literal), make check passing (backend 2690, frontend 532, playground 115, shared 33, docs 26), e2e 92, docs:build+verify passing, manual PasswordSchema equals the old literal, CI all jobs passing"
         }
     ]
 }
