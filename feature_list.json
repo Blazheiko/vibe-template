@@ -1833,6 +1833,16 @@
             "dependencies": ["feat-183"],
             "status": "done",
             "evidence": "PR #557 (merge into main): make check passing (backend 2680, frontend 515, playground 115, shared 31, docs 26), docs:build+verify passing, e2e 92 passed, e2e:live 13 passed, CI all jobs passing (test-pg passed on rerun; race fixed in #558)"
+        },
+        {
+            "id": "feat-185",
+            "name": "Review 2026-11-12 Fixes",
+            "description": "Review of cbcc6a1..c05e3ae (REQUEST CHANGES, three MEDIUM findings): (1) the early WS refusal (message budget, concurrent handlers) answers without the request id, so the client waits out its timeout and reports an unknown delivery; (2) the support chat reserves the chat budget before the provider is known to be configured, so an unconfigured adapter that fails before any request leaves the estimate charged, both for the reply and for the greeting (V14.4 edge case); (3) docker-compose passes API_PATH_PREFIX to the app only through env_file, so a shell override reaches the SPA build (docker-build.sh) but not the backend; build and runtime must resolve the same value, with a config check.",
+            "owner": "Blazheiko",
+            "branch": "fix/review-2026-11-12",
+            "dependencies": ["feat-184"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
