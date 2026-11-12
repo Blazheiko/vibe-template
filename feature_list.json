@@ -1873,6 +1873,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #570 (merge into main): exports.test.js 2 passed (RED before), make check passing (backend 2690, frontend 532, playground 115, shared 33, docs 26), e2e 92, pnpm build passing, docs:build+verify passing, manual pnpm dev edit of shared/src gave Vite HMR and tsx restart, CI all jobs passing"
+        },
+        {
+            "id": "feat-189",
+            "name": "Password Bounds From One Schema",
+            "description": "Code review: shared/limits declares PASSWORD_MIN_LENGTH/PASSWORD_MAX_LENGTH, but eight auth schemas repeat the literals 8 and 32 in eleven fields and the contract test covers only four of them; verify-email takes a password of 1..32 under a comment saying 'as in login'. Add one PasswordSchema built from the limits, use it in every password field (verify-email included), and make the contract test check the schema and that every password field uses it. Broadcast guards stay hand-written (feat-049 §4.5) with their parity test.",
+            "owner": "Blazheiko",
+            "branch": "feat/password-schema",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
