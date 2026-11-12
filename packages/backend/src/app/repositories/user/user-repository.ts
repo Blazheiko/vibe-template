@@ -98,6 +98,11 @@ export interface IUserRepository {
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
     findSessionToken(id: bigint): Promise<string | undefined>
     /**
+     * The current sessionToken of these users by id; a user that no longer exists is absent.
+     * Bounded like findSessionToken.
+     */
+    findSessionTokensByIds(ids: bigint[]): Promise<Map<string, string>>
+    /**
      * Sets a new password and rotates the sessionToken only if the stored password is
      * still `currentPassword` (null/'' for an account that has none yet) and the
      * sessionToken is still `expectedSessionToken`, the one the request presented.
@@ -320,6 +325,17 @@ export const userRepository: IUserRepository = {
             .where(eq(users.id, id))
             .limit(1)
         return row?.sessionToken
+    },
+
+    // On the session-check pool: the WS session re-check runs one pass at a time, so a query
+    // that hangs would stop every later pass (feat-195).
+    async findSessionTokensByIds(ids) {
+        if (ids.length === 0) return new Map()
+        const rows = await sessionCheckDb
+            .select({ id: users.id, sessionToken: users.sessionToken })
+            .from(users)
+            .where(inArray(users.id, ids))
+        return new Map(rows.map((row) => [String(row.id), row.sessionToken]))
     },
 
     async changePasswordIfCurrent(id, currentPassword, expectedSessionToken, data, executor = db) {

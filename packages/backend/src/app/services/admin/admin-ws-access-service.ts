@@ -3,6 +3,7 @@ import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-serv
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import websocketConfig from '#config/websocket.js'
 import logger from '#vendor/utils/logger.js'
+import { isClosedSocketError } from '#vendor/utils/network/ws-session-expired.js'
 
 // feat-062: the role of a WebSocket connection is read once, when it is opened, and the
 // admin channel is subscribed once. A connection can stay open for days (pings keep it
@@ -18,11 +19,6 @@ export interface AdminRecheckReport {
     /** Connections that should have been revoked but could not be; the next pass retries. */
     failed: number
 }
-
-// What uWebSockets.js throws on a socket that has already closed. A connection closing
-// while a pass runs is expected; anything else is not, and must not be hidden.
-const isClosedSocketError = (err: unknown): boolean =>
-    err instanceof Error && /Invalid access of closed uWS\.(SSL)?WebSocket/.test(err.message)
 
 type Connection = ReturnType<typeof wsConnectionRegistry.listConnections>[number]
 

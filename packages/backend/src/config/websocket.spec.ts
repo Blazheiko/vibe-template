@@ -4,6 +4,7 @@ import {
     readWsAdminRecheckIntervalMs,
     readWsMaxConcurrentHandlers,
     readWsMessagesPerMinute,
+    readWsSessionRecheckIntervalMs,
 } from './websocket.js'
 
 describe('readWsAdminRecheckIntervalMs (WS_ADMIN_RECHECK_INTERVAL_MS)', () => {
@@ -25,6 +26,27 @@ describe('readWsAdminRecheckIntervalMs (WS_ADMIN_RECHECK_INTERVAL_MS)', () => {
         expect(() => readWsAdminRecheckIntervalMs({ WS_ADMIN_RECHECK_INTERVAL_MS: value })).toThrow(
             /WS_ADMIN_RECHECK_INTERVAL_MS/,
         )
+    })
+})
+
+// feat-195: the session re-check of every connection.
+describe('readWsSessionRecheckIntervalMs (WS_SESSION_RECHECK_INTERVAL_MS)', () => {
+    it('defaults to 30000 ms when unset or empty', () => {
+        expect(readWsSessionRecheckIntervalMs({})).toBe(30_000)
+        expect(readWsSessionRecheckIntervalMs({ WS_SESSION_RECHECK_INTERVAL_MS: '' })).toBe(30_000)
+    })
+
+    it('reads an integer from 100 to 3600000', () => {
+        expect(readWsSessionRecheckIntervalMs({ WS_SESSION_RECHECK_INTERVAL_MS: '100' })).toBe(100)
+        expect(readWsSessionRecheckIntervalMs({ WS_SESSION_RECHECK_INTERVAL_MS: '3600000' })).toBe(
+            3_600_000,
+        )
+    })
+
+    it.each(['0', '99', '-1', '1.5', 'abc', '3600001'])('rejects %s', (value) => {
+        expect(() =>
+            readWsSessionRecheckIntervalMs({ WS_SESSION_RECHECK_INTERVAL_MS: value }),
+        ).toThrow(/WS_SESSION_RECHECK_INTERVAL_MS/)
     })
 })
 

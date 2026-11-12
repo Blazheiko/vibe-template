@@ -64,6 +64,8 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         ip: userData.ip,
         userAgent: userData.userAgent,
         appType: userData.appType,
+        sessionId,
+        userToken: userData.userToken,
     })
     const connectSettled = userOnlineService
         .trackConnected({

@@ -15,6 +15,7 @@ import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
 import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
+import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
 import readinessProbe from '#database/readiness-probe.js'
@@ -56,6 +57,7 @@ const start = async (): Promise<void> => {
         })
 
         adminWsAccessService.start()
+        wsSessionRevocation.start()
 
         process.on('SIGINT', stopSIGINT)
         process.on('SIGHUP', stopSIGHUP)
@@ -84,6 +86,7 @@ const removeListeners = (): void => {
 
 const stopHandler = async (type: string): Promise<void> => {
     adminWsAccessService.stop()
+    wsSessionRevocation.stop()
     await stopServer(type)
 }
 

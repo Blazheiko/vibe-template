@@ -122,3 +122,43 @@ test('"log out everywhere" ends every session, this one included', async ({ brow
     // The account itself is untouched: the password still works.
     expect(await canLogIn(browser, account.email, account.password)).toBe(true)
 })
+
+// feat-195 (M-1): the other browser sends nothing but heartbeats, and a heartbeat is not checked
+// against the session. Its open WebSocket used to stay subscribed after the session was revoked;
+// now the server tells it the session expired and closes it.
+test('"log out everywhere" closes the open WebSocket of the other browser', async ({
+    browser,
+    sink,
+}) => {
+    const account = await createVerifiedAccount(browser, sink)
+    const a = await newBrowser(browser)
+    const b = await newBrowser(browser)
+
+    const sockets: { closed: boolean; sessionExpired: boolean }[] = []
+    b.page.on('websocket', (ws) => {
+        const socket = { closed: false, sessionExpired: false }
+        sockets.push(socket)
+        ws.on('framereceived', ({ payload }) => {
+            if (String(payload).includes('session_expired')) socket.sessionExpired = true
+        })
+        ws.on('close', () => {
+            socket.closed = true
+        })
+    })
+
+    await loginInUi(a.page, account)
+    await loginInUi(b.page, account)
+    // The socket of the signed-in session is open and stays open on its own.
+    await expect.poll(() => sockets.some((socket) => !socket.closed)).toBe(true)
+    const open = sockets.filter((socket) => !socket.closed)
+
+    const response = await session(a.context.request).post('/api/auth/logout-all', {})
+    expect(response.status()).toBe(200)
+
+    // No request from the other browser: the server closes its sockets by itself.
+    await expect
+        .poll(() => open.every((socket) => socket.closed && socket.sessionExpired), {
+            timeout: 5000,
+        })
+        .toBe(true)
+})

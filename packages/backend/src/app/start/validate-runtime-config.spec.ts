@@ -513,6 +513,7 @@ describe('env parsing contract', () => {
         'READINESS_CHECK_TIMEOUT_MS',
         'HTTP_GLOBAL_RATE_LIMIT_MAX',
         'WS_ADMIN_RECHECK_INTERVAL_MS',
+        'WS_SESSION_RECHECK_INTERVAL_MS',
         'SESSION_TOKEN_CHECK_TIMEOUT_MS',
     ]
 

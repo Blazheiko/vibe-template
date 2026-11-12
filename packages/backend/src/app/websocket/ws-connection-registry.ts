@@ -7,6 +7,8 @@ interface StoredConnection {
     ip: string
     userAgent: string
     appType: 'web' | 'pwa'
+    sessionId: string
+    userToken: string | undefined
 }
 
 interface UserConnections {
@@ -24,6 +26,17 @@ export interface ConnectionMeta {
     ip: string
     userAgent: string
     appType: 'web' | 'pwa'
+    /** The session the connection was opened from, and the users.session_token it carried. */
+    sessionId: string
+    userToken: string | undefined
+}
+
+export interface ListedConnection {
+    userId: string
+    uuid: string
+    ws: MyWebSocket
+    sessionId: string
+    userToken: string | undefined
 }
 
 function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa' {
@@ -51,6 +64,8 @@ const registerConnection = (
         ip: meta.ip,
         userAgent: meta.userAgent,
         appType: meta.appType,
+        sessionId: meta.sessionId,
+        userToken: meta.userToken,
     }
     const existing = userStorage.get(userId)
     if (existing !== undefined) {
@@ -155,14 +170,33 @@ const getOnlineUserMeta = (
 }
 
 /** Every open connection of this instance, with the user it belongs to. */
-const listConnections = (): { userId: string; uuid: string; ws: MyWebSocket }[] => {
-    const all: { userId: string; uuid: string; ws: MyWebSocket }[] = []
+const listConnections = (): ListedConnection[] => {
+    const all: ListedConnection[] = []
     for (const [userId, user] of userStorage) {
         for (const [uuid, connection] of user.connections) {
-            all.push({ userId, uuid, ws: connection.ws })
+            all.push({
+                userId,
+                uuid,
+                ws: connection.ws,
+                sessionId: connection.sessionId,
+                userToken: connection.userToken,
+            })
         }
     }
     return all
+}
+
+/** The open connections of one user on this instance. */
+const listUserConnections = (userId: string): ListedConnection[] => {
+    const user = userStorage.get(userId)
+    if (user === undefined) return []
+    return Array.from(user.connections, ([uuid, connection]) => ({
+        userId,
+        uuid,
+        ws: connection.ws,
+        sessionId: connection.sessionId,
+        userToken: connection.userToken,
+    }))
 }
 
 export const wsConnectionRegistry = {
@@ -172,6 +206,7 @@ export const wsConnectionRegistry = {
     findOnlineUsers,
     forEachConnection,
     listConnections,
+    listUserConnections,
     getConnection,
     getOnlineUsers,
     getOnlineUserMeta,
