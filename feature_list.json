@@ -1811,8 +1811,8 @@
             "owner": "Blazheiko",
             "branch": "feat/broadcast-contracts",
             "dependencies": ["feat-181"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #552 (merge commit b0e39d3, all checks green). BroadcastContracts (types only) in shared/contracts; broadcastGuards satisfies BroadcastGuards, so an event without a guard does not compile, and the parity test uses that registry; the event bus takes its broadcast event types from the contract; useBroadcastHandler forwards a guard-checked payload under the event's name instead of five hand-written handlers. No separate onBroadcast: useEventBus().on is the typed subscription. WsServiceEvent/WsServiceHandlerName in shared/ws-client, a complete service handler map, dead pong/connection_closed handlers removed. New useBroadcastHandler.spec.ts (refactor with a type guarantee, not RED at runtime). make check (backend 2680, frontend 515, shared 30, playground 113; bundle graph no schema); frontend test:e2e 92, test:e2e:live 13; docs:build && docs:verify."
         }
     ]
 }
