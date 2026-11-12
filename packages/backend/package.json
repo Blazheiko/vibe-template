@@ -13,7 +13,7 @@
     },
     "scripts": {
         "build": "tsc --build",
-        "dev": "tsx watch src/index.ts",
+        "dev": "tsx watch --conditions=shared-source src/index.ts",
         "start": "node dist/index.js",
         "clean": "rm -rf dist .tsbuildinfo",
         "typecheck": "tsc --noEmit",

@@ -231,7 +231,7 @@ Extension "vector" ensured in database "vibe_template".
 make dev
 ```
 
-Ціль викликає `pnpm dev`: скрипт збирає `shared` і `backend`, а потім паралельно запускає dev-сервери backend і frontend ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Після старту:
+Ціль викликає `pnpm dev`: скрипт збирає `shared` і `backend`, а потім паралельно запускає dev-сервери backend і frontend ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Обидва dev-сервери читають `shared` із `src/`, тому зміни в `packages/shared/src` підхоплюються без перезбирання (див. [Структура проєкту](/guide/project-structure)). Після старту:
 
 | Сервіс                     | URL                                                                     | Джерело                                                                                                  |
 | -------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |

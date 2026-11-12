@@ -69,7 +69,7 @@ The root `Makefile` is the single entry point: `make` (or `make help`) lists eve
 The pnpm scripts below remain the implementation and can be run directly:
 
 - `pnpm install`: install workspace dependencies. Requires Node `^24.22.2` (Node 24 LTS; see `.nvmrc`) and pnpm `>=9`.
-- `pnpm dev`: build `shared`, build `backend`, then run backend and frontend dev servers in parallel.
+- `pnpm dev`: build `shared`, build `backend`, then run backend and frontend dev servers in parallel. Both dev servers read `shared` from `src/` through the `shared-source` export condition, so a change there needs no rebuild; typecheck, tests, `vite build`, `start` and Docker read `dist/`.
 - `pnpm dev:frontend` / `pnpm dev:backend`: run one package locally.
 - `pnpm build`: build all packages recursively.
 - `pnpm typecheck`: run TypeScript checks across packages.

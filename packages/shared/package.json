@@ -7,50 +7,62 @@
     "types": "./dist/index.d.ts",
     "exports": {
         ".": {
+            "shared-source": "./src/index.ts",
             "types": "./dist/index.d.ts",
             "import": "./dist/index.js"
         },
         "./brands": {
+            "shared-source": "./src/brands/index.ts",
             "types": "./dist/brands/index.d.ts",
             "import": "./dist/brands/index.js"
         },
         "./schemas": {
+            "shared-source": "./src/schemas/index.ts",
             "types": "./dist/schemas/index.d.ts",
             "import": "./dist/schemas/index.js"
         },
         "./responses": {
+            "shared-source": "./src/responses/index.ts",
             "types": "./dist/responses/index.d.ts",
             "import": "./dist/responses/index.js"
         },
         "./errors": {
+            "shared-source": "./src/errors/index.ts",
             "types": "./dist/errors/index.d.ts",
             "import": "./dist/errors/index.js"
         },
         "./enums": {
+            "shared-source": "./src/enums/index.ts",
             "types": "./dist/enums/index.d.ts",
             "import": "./dist/enums/index.js"
         },
         "./utils": {
+            "shared-source": "./src/utils/index.ts",
             "types": "./dist/utils/index.d.ts",
             "import": "./dist/utils/index.js"
         },
         "./guards": {
+            "shared-source": "./src/guards/index.ts",
             "types": "./dist/guards/index.d.ts",
             "import": "./dist/guards/index.js"
         },
         "./ws-client": {
+            "shared-source": "./src/ws-client/index.ts",
             "types": "./dist/ws-client/index.d.ts",
             "import": "./dist/ws-client/index.js"
         },
         "./patterns": {
+            "shared-source": "./src/patterns/index.ts",
             "types": "./dist/patterns/index.d.ts",
             "import": "./dist/patterns/index.js"
         },
         "./limits": {
+            "shared-source": "./src/limits/index.ts",
             "types": "./dist/limits/index.d.ts",
             "import": "./dist/limits/index.js"
         },
         "./contracts": {
+            "shared-source": "./src/contracts/index.ts",
             "types": "./dist/contracts/index.d.ts",
             "import": "./dist/contracts/index.js"
         }

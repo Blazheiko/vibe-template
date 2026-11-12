@@ -76,7 +76,7 @@ export type HelloResponse = typeof HelloResponseSchema.infer
 export * from './hello-controller.js'
 ```
 
-Бекенд читає `shared` із зібраного `dist/`, тож після змін перезберіть пакет:
+Dev-сервер бекенду (`pnpm dev`) бачить зміни в `packages/shared/src` одразу, але `typecheck`, тести й `start` читають зібраний `dist/`, тож перед ними перезберіть пакет:
 
 ```bash
 pnpm --filter shared build
