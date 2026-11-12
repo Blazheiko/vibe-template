@@ -9,8 +9,8 @@
 | Node.js                         | `^24.22.2` (engines), `24.22.2` (`.nvmrc`) | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) `engines.node`, [`.nvmrc`](https://github.com/Blazheiko/vibe-template/blob/main/.nvmrc)                                                                                                                                                   |
 | pnpm                            | `>=9.0.0` (engines), `pnpm@9.15.0`         | `engines.pnpm` і `packageManager` у [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)                                                                                                                                                                                                       |
 | TypeScript                      | `6.0.3` (точно)                            | корінь, [`backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json), [`frontend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json), [`documentation`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json) та інші пакети |
-| ESLint                          | `^10.13.0`                                 | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)                                                                                                                                                                                                                                           |
-| typescript-eslint               | `^8.71.2`                                  | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) + `pnpm.overrides`                                                                                                                                                                                                                        |
+| ESLint                          | `^10.14.0`                                 | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)                                                                                                                                                                                                                                           |
+| typescript-eslint               | `^8.72.1`                                  | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) + `pnpm.overrides`                                                                                                                                                                                                                        |
 | Prettier                        | `^3.9.10`                                  | [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)                                                                                                                                                                                                                                           |
 | drizzle-orm / drizzle-kit       | `1.0.0-rc.5` (точно)                       | [`packages/backend/package.json`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json)                                                                                                                                                                                                         |
 | Vitest                          | `^5.0.5`                                   | [`backend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json), [`frontend`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json)                                                                                                                            |
@@ -28,7 +28,7 @@
 
 ## `pnpm.overrides`
 
-Корінь [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) примусово ставить `@typescript-eslint/utils`, `typescript-estree`, `project-service` і `tsconfig-utils` на `^8.71.2`. Так транзитивні залежності тримаються на лінії, сумісній з TypeScript 6. За правилом `AGENTS.md` ці overrides оновлюють разом із `typescript-eslint`.
+Корінь [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) примусово ставить `@typescript-eslint/utils`, `typescript-estree`, `project-service` і `tsconfig-utils` на `^8.72.1`. Так транзитивні залежності тримаються на лінії, сумісній з TypeScript 6. За правилом `AGENTS.md` ці overrides оновлюють разом із `typescript-eslint`.
 
 ## TypeScript
 
@@ -64,10 +64,6 @@ Path aliases бекенду в [`packages/backend/tsconfig.json`](https://github
 - [`.prettierignore`](https://github.com/Blazheiko/vibe-template/blob/main/.prettierignore): `node_modules`, `dist`, `coverage`, звіти Playwright, міграції Drizzle, кеш і dist VitePress, `pnpm-lock.yaml`, `graphify-out`.
 - Кореневі `pnpm format` / `pnpm format:check` обробляють `**/*.{ts,tsx,js,mjs,vue,json,md,css}` — зокрема `.vue` frontend і playground, `.js`/`.mjs` скриптів документації й тестів shared, CSS; CI перевіряє все це через `format:check`. Пакетні `format` у frontend і playground форматують лише `src/`: для всього репозиторію запускайте кореневий `pnpm format`.
 - Масове форматування (feat-010 і feat-038) записано в [`.git-blame-ignore-revs`](https://github.com/Blazheiko/vibe-template/blob/main/.git-blame-ignore-revs). Щоб `git blame` його пропускав: `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
-
-::: warning Відома проблема
-Glob `format:check` не охоплює `.vue`, `.js`, `.mjs` і `.css`, тож ці файли не перевіряються (п. 71 у [`code-issues-found-during-docs.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)). Пакетні `pnpm --filter frontend format` і `pnpm --filter api-playground format` форматують `src/` за кореневим конфігом.
-:::
 
 ## Drizzle
 

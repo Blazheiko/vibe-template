@@ -14,7 +14,7 @@ According to [`package.json`](https://github.com/Blazheiko/vibe-template/blob/ma
 - TypeScript `6.0.3`, type checking via `vue-tsc`;
 - the workspace dependency `shared`.
 
-Scripts: `dev`, `build` (`type-check` together with `vite build`), `preview`, `typecheck`, `lint`, `lint:check`, `format`. There is no `test` script.
+Scripts: `dev`, `build` (`type-check` together with `vite build`), `preview`, `typecheck`, `lint`, `lint:check`, `format`, `test` (`vitest run`).
 
 ## Running
 
@@ -104,7 +104,7 @@ There is no special logic for authentication or CSRF: the CSRF token is not obta
 
 - connecting by URL and token. The token is passed as a subprotocol (`Sec-WebSocket-Protocol`);
 - autofill: if an HTTP response contains `wsUrl` and `wsToken`, they are substituted into the connection form;
-- sending messages in the format `{ event, timestamp, payload }`, where `event` is the full path of the WS route. The response is matched to the request by `event`, and a timeout applies. A parallel request with the same `event` is rejected;
+- sending messages in the format `{ event, id, timestamp, payload }`, where `event` is the full path of the WS route and `id` is a new UUID of each request. The response is matched to the request by `id`, and a timeout applies. Several requests with the same `event` can be in flight at once;
 - request errors: a server reply with `status: "error"` is shown at once as an error with `error.code`, `error.message` and `details`; no reply at all is a timeout after 10 s. Neither is shown as a successful response;
 - handling connection close: the code `4001` is treated as unauthorized access, and for the codes `4000–4099` no reconnection is performed.
 
@@ -116,13 +116,13 @@ There is no request history and no saved requests: the form state is not stored 
 
 ## Common problems
 
-| Symptom                                                           | What to check                                                                                                                                                                                                                 |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| routes do not load, `Failed to fetch` or 404 on `/api/doc/routes` | the backend is running on `:3000`; `packages/backend/.env` has `APP_ENV=manual-test`, `DOC_PAGE=true`, `SERVE_STATIC=true` (without all three the endpoint is not registered); `API_PATH_PREFIX` is `api` (see "Limitations") |
-| HTTP requests go to the wrong place                               | `VITE_API_BASE_URL` and `baseUrl` / override in the settings: an empty value means "through the Vite proxy"; `VITE_API_BASE_URL` of the current build wins over a saved `baseUrl`                                             |
-| WebSocket does not connect                                        | the URL and token in the connection form; the token is taken from a response that contains `wsUrl` and `wsToken`; closing with code `4001` means the token is invalid                                                         |
-| CORS errors in the console                                        | requests bypass the proxy (`baseUrl` set to another origin); then the playground origin must be in the backend CORS whitelist ([Security](/en/backend/security#cors))                                                         |
-| `POST` returns `403` with `code: csrf_invalid`                    | `reason: origin_mismatch` — the playground origin (`http://localhost:5174`) is not in `CSRF_ALLOWED_ORIGINS`; `reason: token_mismatch` — `x-csrf-token` is missing or stale (take a new one from `GET /api/main/init`)        |
+| Symptom                                                           | What to check                                                                                                                                                                                                                                                                                  |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| routes do not load, `Failed to fetch` or 404 on `/api/doc/routes` | the backend is running on `:3000`; `packages/backend/.env` has `APP_ENV=manual-test`, `DOC_PAGE=true`, `SERVE_STATIC=true` (without all three the endpoint is not registered); the playground's `VITE_API_PATH_PREFIX` matches the backend's `API_PATH_PREFIX` (see [Vite proxy](#vite-proxy)) |
+| HTTP requests go to the wrong place                               | `VITE_API_BASE_URL` and `baseUrl` / override in the settings: an empty value means "through the Vite proxy"; `VITE_API_BASE_URL` of the current build wins over a saved `baseUrl`                                                                                                              |
+| WebSocket does not connect                                        | the URL and token in the connection form; the token is taken from a response that contains `wsUrl` and `wsToken`; closing with code `4001` means the token is invalid                                                                                                                          |
+| CORS errors in the console                                        | requests bypass the proxy (`baseUrl` set to another origin); then the playground origin must be in the backend CORS whitelist ([Security](/en/backend/security#cors))                                                                                                                          |
+| `POST` returns `403` with `code: csrf_invalid`                    | `reason: origin_mismatch` — the playground origin (`http://localhost:5174`) is not in `CSRF_ALLOWED_ORIGINS`; `reason: token_mismatch` — `x-csrf-token` is missing or stale (take a new one from `GET /api/main/init`)                                                                         |
 
 The **Test Connection** button in the settings does `GET <baseUrl>/<prefix>/ping` — the backend liveness route (earlier it hit the non-existent `/health`); with an empty `baseUrl` the check goes through the Vite proxy. The request body is not written to the console (it can carry passwords and tokens); the Network tab shows it. An empty WS token is not sent as a subprotocol. The WS address by default is derived from `baseUrl`: `http://` → `ws://`, `https://` → `wss://`. Messages are not queued: without an open connection `sendMessage` sends nothing, writes an error to the console and returns `false`.
 

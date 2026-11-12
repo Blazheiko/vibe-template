@@ -11,7 +11,7 @@ This page describes the workflow in the template repository. How to rename the t
 1. Open [`feature_list.json`](https://github.com/Blazheiko/vibe-template/blob/main/feature_list.json) and find the feature whose `owner` matches you and whose `status` is `in_progress`. This is your active feature.
 2. Switch to the branch from the `branch` field. The feature's `progress.md` and `session-handoff.md` files live **on its branch**, not in `main`: the "Mark feat-XXX done" PR, which flips the feature to `done`, deletes them from `main`, and the evidence stays in the `evidence` field of `feature_list.json`.
 3. Read `progress.md`: last session's state, blockers, "Notes for Next Session". If the session is resuming, also read `session-handoff.md`.
-4. Run [`./init.sh`](https://github.com/Blazheiko/vibe-template/blob/main/init.sh). It is a wrapper around `make init`: `pnpm install`, building `shared`, `make check` (`format:check`, `typecheck`, `lint`, `test`, the same steps as in CI) and `pnpm build`. It stops at the first error. If it fails, do not continue. The remaining commands: [make commands](/en/reference/make).
+4. Run [`./init.sh`](https://github.com/Blazheiko/vibe-template/blob/main/init.sh). It is a wrapper around `make init`: `pnpm install`, building `shared`, `make check` (`verify-makefile`, `verify-compose`, `format:check`, `typecheck`, `lint`, `check-bundle-graph`, `test`, the same steps as in CI) and `pnpm build`. It stops at the first error. If it fails, do not continue. The remaining commands: [make commands](/en/reference/make).
 5. Each owner works on one feature at a time. New work is recorded as a new entry in `feature_list.json` via a PR to `main`, not by expanding the current feature.
 
 ## `feature_list.json`
@@ -73,17 +73,13 @@ Before ending the session, commit and push the feature branch with an updated `p
 - Commits are written concisely, intent first. Useful trailers: `Tested: pnpm test` or `Not-tested: requires production credentials`.
 - A PR describes the change, the verification performed and related issues, and for visible frontend changes adds screenshots or a screen recording.
 
-::: warning
-The Commit & Pull Request Guidelines section of `AGENTS.md` still says that "checkout does not include .git history". For the current repository this is no longer true: the history exists, and PRs are merged on GitHub.
-:::
-
 ## Documentation
 
 The site in `documentation/` is published to GitHub Pages from `main` via [`.github/workflows/docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml).
 
 - If public backend behaviour changes (a route, an environment variable, a middleware, a migration or the DB schema), the matching page in `documentation/backend/` is updated in the same PR. For example: [Routing](/en/backend/routing), [Configuration](/en/backend/configuration), [Database](/en/backend/database).
 - Pages are written from the code, with links to sources on GitHub. Things that are not implemented yet are marked with `::: warning Plan`. Use placeholders for secrets.
-- A new page is added to the sidebar in [`documentation/.vitepress/config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/.vitepress/config.ts) and to `KEY_PAGES` in [`documentation/scripts/verify-dist.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/scripts/verify-dist.mjs).
+- The site is bilingual: the Ukrainian page `documentation/<path>.md` and the English `documentation/en/<path>.md` change in one PR. A new page is added to the sidebars of both locales in [`documentation/.vitepress/config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/.vitepress/config.ts) and to `KEY_PAGES` and `EN_KEY_PAGES` in [`documentation/scripts/verify-dist.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/scripts/verify-dist.mjs).
 - If a page uses `<!--@include-->`, the source path must be in `paths` in `docs.yml`.
 - Before merging, run `pnpm docs:build && pnpm docs:verify`.
 

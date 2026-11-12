@@ -11,7 +11,7 @@
 1. Відкрити [`feature_list.json`](https://github.com/Blazheiko/vibe-template/blob/main/feature_list.json) і знайти фічу, у якої `owner` збігається з вами, а `status` дорівнює `in_progress`. Це ваша активна фіча.
 2. Перейти на гілку з поля `branch`. Файли `progress.md` і `session-handoff.md` цієї фічі лежать **на її гілці**, а не в `main`: PR «Mark feat-XXX done», який перемикає фічу в `done`, видаляє їх з `main`, а докази лишаються в полі `evidence` у `feature_list.json`.
 3. Прочитати `progress.md`: стан минулої сесії, блокери, «Notes for Next Session». Якщо сесія продовжується, прочитати також `session-handoff.md`.
-4. Запустити [`./init.sh`](https://github.com/Blazheiko/vibe-template/blob/main/init.sh). Це обгортка над `make init`: `pnpm install`, збірка `shared`, `make check` (`format:check`, `typecheck`, `lint`, `test`, ті самі кроки, що в CI) і `pnpm build`. Зупиняється на першій помилці. Якщо він падає, далі не працюємо. Решта команд: [Команди make](/reference/make).
+4. Запустити [`./init.sh`](https://github.com/Blazheiko/vibe-template/blob/main/init.sh). Це обгортка над `make init`: `pnpm install`, збірка `shared`, `make check` (`verify-makefile`, `verify-compose`, `format:check`, `typecheck`, `lint`, `check-bundle-graph`, `test`, ті самі кроки, що в CI) і `pnpm build`. Зупиняється на першій помилці. Якщо він падає, далі не працюємо. Решта команд: [Команди make](/reference/make).
 5. Кожен owner веде одну фічу за раз. Нова робота оформлюється новим записом у `feature_list.json` через PR у `main`, а не розширенням поточної фічі.
 
 ## `feature_list.json`
@@ -73,17 +73,13 @@ stateDiagram-v2
 - Коміти пишуться коротко, із наміром на першому місці. Корисні трейлери: `Tested: pnpm test` або `Not-tested: requires production credentials`.
 - PR описує зміну, виконану перевірку, пов'язані issue, а для видимих змін фронтенду додає скриншоти або запис екрана.
 
-::: warning
-У розділі Commit & Pull Request Guidelines файлу `AGENTS.md` досі сказано, що «checkout does not include .git history». Для поточного репозиторію це вже неправда: історія є, а PR зливаються на GitHub.
-:::
-
 ## Документація
 
 Сайт у `documentation/` публікується на GitHub Pages з `main` через [`.github/workflows/docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml).
 
 - Якщо змінюється публічна поведінка бекенду (маршрут, змінна оточення, middleware, міграція або схема БД), відповідну сторінку в `documentation/backend/` оновлюють у тому ж PR. Наприклад: [Маршрутизація](/backend/routing), [Конфігурація](/backend/configuration), [База даних](/backend/database).
 - Сторінки пишуться з коду, з посиланнями на джерела на GitHub. Те, що ще не реалізовано, позначають `::: warning План`. Для секретів використовують плейсхолдери.
-- Нову сторінку додають у sidebar у [`documentation/.vitepress/config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/.vitepress/config.ts) і в `KEY_PAGES` у [`documentation/scripts/verify-dist.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/scripts/verify-dist.mjs).
+- Сайт двомовний: українська сторінка `documentation/<path>.md` і англійська `documentation/en/<path>.md` змінюються в одному PR. Нову сторінку додають у sidebar обох локалей у [`documentation/.vitepress/config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/.vitepress/config.ts) і в `KEY_PAGES` та `EN_KEY_PAGES` у [`documentation/scripts/verify-dist.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/documentation/scripts/verify-dist.mjs).
 - Якщо сторінка використовує `<!--@include-->`, шлях до джерела має бути в `paths` у `docs.yml`.
 - Перед merge запускають `pnpm docs:build && pnpm docs:verify`.
 

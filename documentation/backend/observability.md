@@ -10,11 +10,7 @@
 - **Формат.** Якщо `APP_ENV` дорівнює `prod` або `production`, логи йдуть у stdout як JSON-рядки (`destination({ sync: false })`). В інших оточеннях використовується `pino-pretty` з кольорами; пакет імпортується динамічно лише поза production.
 - **Потоки.** `multistream` має два потоки: основний (stdout) і `sentryStream` рівня `error`, який пересилає помилки в Sentry (див. нижче).
 - **Серіалізатори.** `bigint` → рядок; `err` і `error` — стандартний серіалізатор pino поверх безпечної копії помилки (див. [Помилки БД у логах](#помилки-бд-у-логах)).
-- **Redaction.** Опції pino `redact` немає. Маскування робиться вручну: хелпери `maskEmailForLogs` / маскування телефону в [mask-sensitive.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/mask-sensitive.ts). Правило для нового запису логу — не класти в нього те, що написав чи надав користувач, і те, що діє як секрет: текст звернення до підтримки логується лише довжиною (`originalLength`), адреси отримувачів листа — замасковані, збій push — зі `statusCode` та ім'ям помилки без об'єкта `WebPushError` (він містить endpoint підписки, заголовки й тіло відповіді push-сервісу), OAuth-редирект — лише з провайдером, без URL зі `state`.
-
-::: danger Токени в логах
-Оскільки автоматичного redact немає, усе, що передано в об'єкт логу, пишеться як є. Відома проблема №3 у [code-issues-found-during-docs.md](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md) — токени потрапляють у логи. Не логуйте `httpData`, заголовки чи тіла запитів цілком.
-:::
+- **Redaction.** Опції pino `redact` немає. Маскування робиться вручну: хелпери `maskEmailForLogs`, `maskPhoneForLogs` і `maskTokenForLogs` у [mask-sensitive.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/mask-sensitive.ts). Правило для нового запису логу — не класти в нього те, що написав чи надав користувач, і те, що діє як секрет: текст звернення до підтримки логується лише довжиною (`originalLength`), адреси отримувачів листа — замасковані, токен сесії — лише перші 4 символи (`maskTokenForLogs` у `session-handler.ts` і `ws-session-auth.ts`), збій push — зі `statusCode` та ім'ям помилки без об'єкта `WebPushError` (він містить endpoint підписки, заголовки й тіло відповіді push-сервісу), OAuth-редирект — лише з провайдером, без URL зі `state`.
 
 ### Помилки БД у логах
 

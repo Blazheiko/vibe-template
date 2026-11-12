@@ -148,16 +148,20 @@ export default {
 
 Залишилось сказати серверу, що `GET /api/hello` обробляє наш контролер. Кожен HTTP-маршрут шаблону оголошено через **контракт** ([Маршрутизація](/backend/routing#http-маршрути-defineroute)), тож тут три невеликі зміни.
 
-**Контракт.** Метод, повний шлях під префіксом `api` і типи query й відповіді. Схеми імпортуються лише як типи, тому фронтенд може імпортувати контракт без них:
+**Контракт.** Метод, повний шлях під префіксом `api` і типи query й відповіді. Схеми імпортуються лише як типи, тому фронтенд може імпортувати контракт без них. Тип query, як і в наявних контрактах, виводить [`QueryInputOf`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts): те, що клієнт може передати в рядку запиту:
 
 ```ts
 // packages/shared/src/contracts/hello.ts
 import type { HelloQuerySchema } from '../schemas/hello/hello-query.js'
+import type { QueryInputOf } from '../schemas/query/types.js'
 import type { HelloResponse } from '../responses/hello-controller.js'
 import { contract } from './core.js'
 
 export const helloContracts = {
-    hello: contract<undefined, typeof HelloQuerySchema.inferIn, HelloResponse>()('get', '/hello'),
+    hello: contract<undefined, QueryInputOf<typeof HelloQuerySchema>, HelloResponse>()(
+        'get',
+        '/hello',
+    ),
 } as const
 ```
 
@@ -181,15 +185,17 @@ export const helloSchemas = contractSchemas(helloContracts, {
 })
 ```
 
-Розгорніть його в `contractSchemaRegistry` у `packages/backend/src/app/routes/contract-schemas/index.ts`:
+Додайте його аргументом `mergeContractSchemas` у [`contract-schemas/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts): два контракти з тим самим методом і шляхом зупинять запуск сервера:
 
 ```ts
 import { helloSchemas } from './hello.js'
 // ...
-export const contractSchemaRegistry = {
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
     // ...
-    ...helloSchemas,
-}
+    supportWsSchemas,
+    helloSchemas,
+)
 ```
 
 **Маршрут.** Відкрийте [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). `defineRoute` там уже імпортовано з `#app/routes/contract-schemas/index.js`; додайте імпорт контролера і `helloContracts` до наявного імпорту з `shared/contracts`:

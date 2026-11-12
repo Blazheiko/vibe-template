@@ -344,16 +344,20 @@ export const noteSchemas = contractSchemas(noteContracts, {
 })
 ```
 
-Розгорніть групу в `contractSchemaRegistry` у [contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts):
+Додайте групу до `mergeContractSchemas(...)` у [contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts):
 
 ```ts
 import { noteSchemas } from './notes.js'
 // ...
-export const contractSchemaRegistry = {
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
     // ...
-    ...noteSchemas,
-}
+    supportWsSchemas,
+    noteSchemas,
+)
 ```
+
+`mergeContractSchemas` ([contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)) на відміну від spread не дає пізнішій групі тихо перезаписати запис попередньої: два контракти з однаковим `<method> <path>` зупиняють імпорт модуля, тож не стартують ні сервер, ні тести.
 
 **Маршрути.** У [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) `defineRoute` уже імпортовано з `#app/routes/contract-schemas/index.js`. Додайте імпорт контролера (поруч з іншими) і допишіть `noteContracts` до наявного імпорту з `shared/contracts`:
 

@@ -22,7 +22,7 @@ hero:
 features:
     - icon: 🔐
       title: Accounts and sign-in
-      details: Registration by email and phone, email confirmation, sign-in via Google, GitHub and Facebook, password reset, sign-out from all devices.
+      details: Registration by email and phone, email confirmation, sign-in via Google, GitHub, GitLab and Facebook, password reset, sign-out from all devices.
       link: /en/backend/auth
     - icon: ⚡
       title: Fast backend on uWebSockets.js
@@ -53,8 +53,8 @@ features:
       details: A list of users, who is online now, online history and a knowledge base editor for the AI chat. A separate layout and access for administrators only.
       link: /en/frontend/
     - icon: 🌍
-      title: 18 languages and themes
-      details: The interface is translated with vue-i18n into 18 languages. Light and dark themes and the Ocean, Mint, Lavender, Rose, Sunset and Monochrome color palettes.
+      title: Languages and themes
+      details: The interface is translated with vue-i18n into English, Ukrainian and Polish; the support AI recognizes 18 languages. Light and dark themes and the Ocean, Mint, Lavender, Rose, Sunset and Monochrome color palettes.
       link: /en/frontend/#i18n
     - icon: 📁
       title: Files and mail
@@ -173,10 +173,20 @@ The support chat works over two transports: messages go over WebSocket ([ws/supp
 
 ```ts
 // WebSocket: a new message in the chat
-void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid, context.signal)
+const admission = await supportService.admitChat(userId, payload.message)
+if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+void supportService.runChat(
+    admission.value,
+    userId,
+    payload.message,
+    userData.uuid,
+    context.signal,
+    payload.language,
+    payload.clientMessageId,
+)
 
 // HTTP: chat history
-const result = await supportService.getChatHistory(userId)
+const result = await supportService.getChatHistory(userId, { before, limit })
 ```
 
 The chat rules (limits, history storage, calls to AI) live in one place. If you change them, the behavior of both transports changes.
@@ -205,17 +215,17 @@ Below is the functionality you can use right away. The API prefix by default is 
 
 ### Authentication and account
 
-| Capability                        | How it works                                                                   | More details                                               |
-| --------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| Registration by email             | `POST /auth/register/email`, an email with a confirmation link                 | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Email confirmation                | `POST /auth/verify-email`, resend via `resend-verification-email`              | [Mail](/en/backend/mail)                                   |
-| Registration and sign-in by phone | SMS code: `register/phone/start` → `confirm` → `complete-profile`              | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Social login (OAuth)              | Google, GitHub, Facebook: `auth/oauth/:provider/redirect` and `/callback`      | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Login / logout                    | `POST /auth/login`, `/logout`, `/logout-all` (sign out on all devices)         | [Authentication](/en/backend/auth)                         |
-| Password change and reset         | `change-password`, `forgot-password` → email → `reset-password`; reset via SMS | [Authentication](/en/backend/auth)                         |
-| Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                   | [Authentication](/en/backend/auth)                         |
-| User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                             | [File storage](/en/backend/storage)                        |
-| Roles                             | A regular user and an administrator, the `auth_guard` and `admin_guard` guards | [Roles and capabilities](/en/reference/roles-capabilities) |
+| Capability                        | How it works                                                                      | More details                                               |
+| --------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Registration by email             | `POST /auth/register/email`, an email with a confirmation link                    | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Email confirmation                | `POST /auth/verify-email`, resend via `resend-verification-email`                 | [Mail](/en/backend/mail)                                   |
+| Registration and sign-in by phone | SMS code: `register/phone/start` → `confirm` → `complete-profile`                 | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Social login (OAuth)              | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` and `/callback` | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Login / logout                    | `POST /auth/login`, `/logout`, `/logout-all` (sign out on all devices)            | [Authentication](/en/backend/auth)                         |
+| Password change and reset         | `change-password`, `forgot-password` → email → `reset-password`; reset via SMS    | [Authentication](/en/backend/auth)                         |
+| Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                      | [Authentication](/en/backend/auth)                         |
+| User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                | [File storage](/en/backend/storage)                        |
+| Roles                             | A regular user and an administrator, the `auth_guard` and `admin_guard` guards    | [Roles and capabilities](/en/reference/roles-capabilities) |
 
 ### Security
 
@@ -276,7 +286,7 @@ Access only for the administrator role — [Roles and capabilities](/en/referenc
 
 - Vue 3 + Pinia + vue-router, route guards for authorized and admin pages.
 - Ready pages: login/registration, email confirmation, password reset, account, support chat, admin panel, legal pages (Privacy, Terms, Cookies, AI Policy).
-- **18 languages** of the interface (vue-i18n), including Ukrainian and English.
+- **3 interface languages** (vue-i18n): English, Ukrainian and Polish ([`SHIPPED_LOCALE_CODES`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/enums/languages.ts)); the support AI uses the 18 `APP_LOCALE_CODES` to recognize the language of messages.
 - **PWA:** installation on a device, offline mode, push notifications.
 - An HTTP client that adds the CSRF token itself and handles the session; a WebSocket client with reconnection.
 - Unit tests (Vitest) and e2e (Playwright).

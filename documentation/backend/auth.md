@@ -6,7 +6,7 @@
 
 Цей ланцюжок можна пройти в браузері (DevTools → Network) або через curl, див. [Перший сценарій](/guide/getting-started#_6-першии-сценаріи-від-входу-до-виходу).
 
-1. **`GET /api/main/init`** без cookie. Сервер створює гостьову сесію в Redis, ставить cookie `uapi` і повертає `401` з `csrfToken`.
+1. **`GET /api/main/init`** без cookie. Сервер створює гостьову сесію (без запису в Redis, вона живе в підписаній cookie), ставить cookie `uapi` і повертає `401` з `csrfToken`.
 2. **`POST /api/auth/login`** з email, паролем і заголовком `x-csrf-token`. Сервер перевіряє пароль, прив'язує сесію до користувача і оновлює cookie:
 
     ```text

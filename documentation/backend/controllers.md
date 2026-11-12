@@ -46,13 +46,14 @@ Id з параметра шляху чи query (`:id`, `:subscriptionId`, `:arti
 Типи визначені у [vendor/types/types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts):
 
 ```ts
-export interface HttpContext<TPayload = unknown, TQuery = null> {
+export interface HttpContext<TPayload = unknown, TQuery = null, TParams = Params> {
     requestId: string
     logger: Logger
-    httpData: HttpData<TPayload, TQuery>
+    httpData: HttpData<TPayload, TQuery, TParams>
     responseData: ResponseData
     session: Session
     auth: Auth
+    signal: AbortSignal
 }
 export interface WsContext<TPayload = unknown> {
     requestId: string
@@ -63,6 +64,7 @@ export interface WsContext<TPayload = unknown> {
     session: null
     auth: null
     logger: Logger
+    signal: AbortSignal
 }
 ```
 

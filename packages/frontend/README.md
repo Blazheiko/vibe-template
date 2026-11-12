@@ -30,7 +30,9 @@ workspace package.
   gated by an admin route guard (`views/admin/*`)
 - **Policy pages** — privacy, terms, cookies, and AI/content policy
 - **Real-time** — WebSocket connection with a live connection-status indicator
-- **Internationalization** — 18 locales under `src/locales`
+- **Internationalization** — 3 shipped UI locales (`en`, `uk`, `pl`) under
+  `src/locales`; the wider `APP_LOCALE_CODES` (18 codes) drive language
+  detection and Support AI replies
 - **PWA** — installable app with offline-capable service worker and in-app
   update notifications
 - **Theming & responsive layout** — light/dark themes, mobile-friendly UI
@@ -39,13 +41,13 @@ workspace package.
 
 ```
 src/
-├── components/      # UI components (header, modals, toasts, admin, icons, …)
-├── composables/     # useWebSocketConnection, useSessionLifecycle, useLocale, useSentry, useToast, …
-├── locales/         # vue-i18n message files (en, ru, de, fr, … 18 total)
+├── components/      # UI components (header, auth modals, menu, admin, …)
+├── composables/     # useWebSocketConnection, useSessionLifecycle, useLocale, useModalDialog, …
+├── locales/         # vue-i18n message files (en, uk, pl)
 ├── plugins/         # i18n setup
 ├── router/          # routes + auth/admin navigation guards
-├── stores/          # Pinia stores (user, state, support, toast, …)
-├── utils/           # api/base-api, csrf-token, websocket-types, ws-event, sentry-*, pwa-install, …
+├── stores/          # Pinia stores (user, state, support, push)
+├── utils/           # api-client (callApi), ws-client (callWs), api, base-api, csrf-token, ws-event, sentry-*, …
 ├── views/           # routed pages (auth, account, support, admin, policies)
 ├── App.vue          # root component
 ├── main.ts          # app bootstrap (Pinia, router, i18n, Sentry, PWA)
@@ -74,7 +76,13 @@ this package directory:
 
 Copy `.env.example` to `.env` and set the `VITE_*` variables as needed:
 
-- `VITE_BASE_URL` — base URL the app is served from
+- `VITE_BASE_URL` — API origin; leave empty for same-origin requests (the Vite
+  proxy in dev, the backend that serves the SPA in production). Set it only
+  when the API lives on another origin (the backend CORS must allow it)
+- `VITE_API_PATH_PREFIX` — must match the backend `API_PATH_PREFIX` (default
+  `api`); HTTP paths, WS events and the dev proxy key are built from it
+- `VITE_AUTH_PHONE_ENABLED` — `'true'` enables sign-in and registration by
+  phone
 - `VITE_SENTRY_DSN` / `VITE_SENTRY_ENABLED` — enable frontend Sentry (disabled
   unless a DSN is set and `VITE_SENTRY_ENABLED` is not `false`)
 - `VITE_SENTRY_ENVIRONMENT` / `VITE_SENTRY_RELEASE` — environment and release
@@ -105,8 +113,8 @@ The service worker (`src/service-worker.ts`, rules in `src/utils/sw-request-poli
 
 - `src/utils/sentry-service.ts` is the only module that should import the Sentry
   SDK directly.
-- Components and composables should report through `useSentry()` rather than
-  importing Sentry directly.
+- Components and composables should report through `sentryService` (from
+  `src/utils/sentry-service.ts`) rather than importing Sentry directly.
 
 ## Toolchain notes
 

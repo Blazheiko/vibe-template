@@ -7,7 +7,7 @@ This page describes how the backend protects HTTP and WebSocket traffic: rate li
 Limits work on two levels, and each has a different job.
 
 - **The limit protects the process from frequent heavy operations** (body parsing, middleware, DB queries, AI) → `rateLimit` on a route or group, or the global limit in [`config/rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/rate-limit.ts). The counter lives in process memory, and each instance counts separately.
-- **The limit applies to a sensitive action** (login, registration, SMS, password reset and change) and must be shared across all instances → a policy in [`config/throttle-policies.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts) and an `enforceThrottle(policy, key, { unavailable, rejected })` step in the service ([`enforce-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/enforce-throttle.ts)): it consumes one attempt through `consumeAuthThrottle` and returns `ok`, a `rejected` error when the counter is exhausted, or an internal error with the `unavailable` message when Redis did not respond (fail-closed: `500`, and `503` when Redis is unreachable). The counter lives in Redis.
+- **The limit applies to a sensitive action** (login, registration, SMS, password reset and change) and must be shared across all instances → a policy in [`config/throttle-policies.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/throttle-policies.ts) and an `enforceThrottle(policy, key, rejected)` step in the service ([`enforce-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/enforce-throttle.ts)): it consumes one attempt through `consumeAuthThrottle` and returns `ok`, or the `rejected` error when the counter is exhausted (services pass `rateLimited(...)`, that is `429`). When Redis does not respond, the exception is not wrapped and reaches the transport, which answers `503` (fail-closed). The counter lives in Redis.
 
 ```
 HTTP API:  L1 (memory) → route limit (memory) → handler → auth policies (Redis)
@@ -51,6 +51,7 @@ All shared limits are described in the [`config/throttle-policies.ts`](https://g
 | `forgotPasswordEmail`     | password reset email                                         | email         | fixed-window | 1 h / 3                                | `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_EMAIL_PER_HOUR`        | generic response, email is not sent        | —             |
 | `resetPasswordIp`         | password reset by token                                      | IP            | fixed-window | 1 h / 20                               | `AUTH_RESET_PASSWORD_MAX_ATTEMPTS_PER_IP_PER_HOUR`            | reject                                     | —             |
 | `verifyEmailIp`           | email verification                                           | IP            | fixed-window | 1 h / 20                               | `AUTH_VERIFY_EMAIL_MAX_ATTEMPTS_PER_IP_PER_HOUR`              | reject                                     | —             |
+| `verifyEmailPasswordUser` | password on a registration confirmation link (feat-097)      | user          | fixed-window | 1 h / 5                                | `AUTH_VERIFY_EMAIL_PASSWORD_MAX_ATTEMPTS_PER_HOUR`            | reject                                     | —             |
 | `resendVerificationUser`  | resending the verification email                             | user          | fixed-window | 1 h / 3                                | `AUTH_RESEND_VERIFICATION_MAX_PER_USER_PER_HOUR`              | reject                                     | —             |
 | `loginUnverifiedResend`   | verification email after login to an unverified account      | user          | fixed-window | 5 min / 1                              | `AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS`                    | do not send the email (login is still 401) | —             |
 | `registerEmailIp`         | email registration                                           | IP            | fixed-window | 1 h / 10                               | `AUTH_EMAIL_REGISTER_MAX_ATTEMPTS_PER_IP_PER_HOUR`            | reject                                     | —             |
@@ -66,6 +67,8 @@ All shared limits are described in the [`config/throttle-policies.ts`](https://g
 | `linkEmailTarget`         | email linking, OAuth-linking emails and first-address emails | email         | fixed-window | 1 h / 3                                | `AUTH_EMAIL_LINK_MAX_ATTEMPTS_PER_TARGET_PER_HOUR`            | reject                                     | —             |
 | `linkEmailUser`           | email linking, OAuth-linking emails and first-address emails | user          | fixed-window | 1 h / 3                                | `AUTH_EMAIL_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR`              | reject                                     | —             |
 | `linkEmailUserCooldown`   | pause between linking emails                                 | user          | fixed-window | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS` / 1 | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS`                            | reject                                     | —             |
+| `supportOpenChatUser`     | opening the support chat (AI greeting)                       | user          | fixed-window | 60 s / 5                               | `SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_*`                         | reject                                     | —             |
+| `supportChatUser`         | support chat message (feat-063)                              | user          | fixed-window | 60 s / 20                              | `SUPPORT_CHAT_USER_RATE_LIMIT_*`                              | reject                                     | —             |
 | `wsUpgradeShared`         | WS upgrade, level 2                                          | IP            | sliding-log  | 60 s / 60                              | `WS_UPGRADE_SHARED_RATE_LIMIT_*`                              | pass through, level 1 applies              | —             |
 
 `0` in an auth policy variable is a config error at startup: protection of a sensitive action cannot be disabled. Only `wsUpgradeShared` (`disableable`) can be disabled with a variable (`MAX=0`), e.g. for a single instance.
@@ -124,10 +127,11 @@ exportReportUser: fixedWindow(
 ),
 
 // service
-const throttle = await enforceThrottle(throttlePolicies.exportReportUser, String(userId), {
-  unavailable: 'Failed to enforce export throttle',
-  rejected: badRequest('Too many export requests. Please try again later.'),
-})
+const throttle = await enforceThrottle(
+  throttlePolicies.exportReportUser,
+  String(userId),
+  rateLimited('Too many export requests. Please try again later.'),
+)
 if (Result.isError(throttle)) return Result.err(throttle.error)
 ```
 

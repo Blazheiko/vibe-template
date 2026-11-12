@@ -204,10 +204,15 @@ done
 
 ## CI/CD
 
-У `.github/workflows` є лише [`docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml), який збирає і деплоїть цей сайт документації.
+У `.github/workflows` чотири workflow:
+
+- [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml) — на кожен PR і push у `main`: job `quality` (`make check` і coverage), `e2e` (Playwright) і `e2e-live` (SPA проти справжнього бекенду, PostgreSQL і Redis).
+- [`pg-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/pg-tests.yml) — інтеграційні тести `*.pg.test.ts` проти PostgreSQL з pgvector (`pnpm --filter backend test:pg`), коли змінюється бекенд або `shared`.
+- [`redis-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/redis-tests.yml) — інтеграційні тести `*.redis.test.ts` проти Redis (`pnpm --filter backend test:redis`), за тими самими шляхами.
+- [`docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml) — збирає і деплоїть цей сайт документації.
 
 ::: warning
-Workflow для збірки, тестів або деплою самого застосунку немає. Docker-образ збирається і публікується вручну.
+Workflow для збірки й публікації Docker-образу або деплою застосунку немає. Образ збирається і публікується вручну.
 :::
 
 ## Чекліст

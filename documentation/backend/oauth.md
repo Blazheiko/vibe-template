@@ -214,7 +214,7 @@ function createDiscordClient(): Discord {
 
 // 3. профіль користувача → OAuthUserInfo
 async function fetchDiscordUserInfo(accessToken: string): Promise<OAuthUserInfo> {
-    const data = await fetchJson('https://discord.com/api/users/@me', {
+    const data = await fetchJson<JsonObject>('https://discord.com/api/users/@me', {
         Authorization: `Bearer ${accessToken}`,
     })
     const id = typeof data['id'] === 'string' ? data['id'] : ''
@@ -232,13 +232,14 @@ async function fetchDiscordUserInfo(accessToken: string): Promise<OAuthUserInfo>
             avatarHash !== null
                 ? `https://cdn.discordapp.com/avatars/${id}/${avatarHash}.png`
                 : null,
-        // Discord повертає `verified`: чи підтверджено email. Без цього поля ставте false.
-        emailVerified: data['verified'] === true,
+        // `verified` у Discord каже, що адресу колись перевірили, а не що скринька його:
+        // адресу підтверджує лист (feat-097).
+        emailTrust: 'unverified',
     }
 }
 ```
 
-Поле `emailVerified` обов'язкове: воно вирішує, чи можна прив'язати вхід до наявного користувача з тим самим email (див. [Прив'язка за email](#прив-язка-за-email)). Якщо провайдер не дає надійної ознаки, ставте `false`, як для Facebook.
+Поле `emailTrust` обов'язкове: воно вирішує, чи можна одразу прив'язати вхід до наявного користувача з тим самим email, чи лише через лист підтвердження (див. [Прив'язка за email](#прив-язка-за-email)). `authoritative` ставте, лише коли провайдер сам є власником скриньки (як Google для Gmail і Workspace); ознаки «email підтверджено» для цього замало, тож для решти — `unverified`, як для GitHub, GitLab і Facebook.
 
 У `getAuthorizationUrl` додайте гілку перед GitLab (вона йде останньою як «інакше»):
 
@@ -249,12 +250,17 @@ if (provider === 'discord') {
 }
 ```
 
-У `handleCallback` — гілку обміну коду:
+У `handleCallback` — гілку обміну коду перед GitLab; обмін, як і в інших провайдерів, обгорнутий у `withinProviderDeadline`, щоб завислий провайдер не тримав запит:
 
 ```ts
 } else if (provider === 'discord') {
-    const tokens = await createDiscordClient().validateAuthorizationCode(code, null)
+    logger.info('provider discord')
+    const tokens = await withinProviderDeadline(
+        createDiscordClient().validateAuthorizationCode(code, null),
+    )
     userInfo = await fetchDiscordUserInfo(tokens.accessToken())
+} else {
+    // gitlab
 }
 ```
 
