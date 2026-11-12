@@ -1901,8 +1901,8 @@
             "owner": "Blazheiko",
             "branch": "feat/product-name",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #579 (merge c759775): shared/product is the one source of the product name; vite.product.ts fills index.html and generates manifest.json and robots.txt; components, locales, emails and AI prompts read PRODUCT; email file snapshots byte-identical; new tests (auth mails with another name, fail 3/3 with the old header; vite-product.spec.ts 7); make check passing (backend 2693, frontend 539, playground 115, shared 33, docs 26), e2e 92, docs:build+verify passing, manual vite build and dev server check; CI all jobs passing. Details were in progress.md on feat/product-name (removed from main by this PR)."
         }
     ]
 }
