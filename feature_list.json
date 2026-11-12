@@ -1951,8 +1951,8 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-one-time-token",
             "dependencies": ["feat-195"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #598 (merge 33e1094): verifyUpgradeToken reads auth:ws:<token> with GETDEL, so one token opens one connection and of two upgrades racing with one token exactly one opens; onRefreshToken/onRevokeToken, wsSessionAuth.refreshToken/revokeToken and userData.token removed (a message or heartbeat costs no Redis command for the token, a close revokes nothing); the frontend takes a new token before every reconnect; docs uk+en (backend/websocket, auth, request-lifecycle). make check passing (backend 2735, frontend 549, playground 115), test:pg 305 and test:redis 116 passing on real services, docs:build+verify passing; RED: with GET instead of GETDEL both new cases of ws-registry-lifecycle.pg.test.ts fail on the real uWS server; whole e2e-live suite 14 of 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Not changed: the api-playground client retries with the old token after a drop, as before. Details were in progress.md on fix/ws-one-time-token (removed from main by this PR)."
         },
         {
             "id": "feat-197",
