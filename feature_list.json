@@ -1791,8 +1791,8 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-request-correlation",
             "dependencies": ["feat-171"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "Merged in #548 (merge commit d6e0ff6, all checks green). The WS request envelope accepts an optional id (0 < string <= 64); the server echoes it in every reply to the request (reply, not_found, exception, rate-limit refusal, invalid envelope, service_unavailable). The frontend and the playground send a new id per request and wait under it, so several requests of one event can be in flight; 'Request already in progress' is gone, the timeout is unchanged. RED: 16 new tests (frontend 6, backend 8, playground 2) failed on the old code. make check (backend 2673, frontend 504, shared 30, playground 112); backend test:redis 116; frontend test:e2e 92, test:e2e:live 13; websocket.md and playground pages in both locales; docs:build && docs:verify."
         },
         {
             "id": "feat-181",
@@ -1801,7 +1801,7 @@
             "owner": "Blazheiko",
             "branch": "feat/ws-request-contracts",
             "dependencies": ["feat-180"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
