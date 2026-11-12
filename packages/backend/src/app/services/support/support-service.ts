@@ -331,7 +331,10 @@ export const supportService = {
                 const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
 
                 let fullReply = ''
-                admission.budget.begin(BUDGET_CALLS.chat)
+                // Charged only when a call will be made (feat-185): see the answer below.
+                if (supportLlmService.isConfigured('SUPPORT_FIRST_CHAT')) {
+                    admission.budget.begin(BUDGET_CALLS.chat)
+                }
                 for await (const token of supportLlmService.openChatStream(
                     langNative,
                     llmUsageService.textUsageRecorder(
@@ -442,7 +445,11 @@ export const supportService = {
             const promptId = promptService.get('SUPPORT_SYSTEM')?.id ?? null
 
             let fullReply = ''
-            admission.budget.begin(BUDGET_CALLS.chat)
+            // Like the translation and the search: an adapter that is not configured fails
+            // before any request, and its estimate goes back at settlement (feat-185).
+            if (supportLlmService.isConfigured('SUPPORT_SYSTEM')) {
+                admission.budget.begin(BUDGET_CALLS.chat)
+            }
             for await (const token of supportLlmService.chatStream(
                 message,
                 knowledgeContext,

@@ -22,6 +22,7 @@ const supportEmbeddingServiceMock = {
 const supportLlmServiceMock = {
     openChatStream: vi.fn(),
     chatStream: vi.fn(),
+    isConfigured: vi.fn((_stage: string) => true),
 }
 
 const supportQueryTranslationServiceMock = {
@@ -164,6 +165,7 @@ beforeEach(() => {
     supportRepositoryMock.addUserMessageOnce.mockResolvedValue({ stored: true, id: 900n })
     supportEmbeddingServiceMock.isConfigured.mockReturnValue(true)
     supportQueryTranslationServiceMock.isConfigured.mockReturnValue(true)
+    supportLlmServiceMock.isConfigured.mockReturnValue(true)
     reserveDailyTokensMock.mockResolvedValue({ allowed: true, reservation: reservationOf() })
 })
 
@@ -485,6 +487,49 @@ describe('supportService', () => {
 
             // The translation was already running next to the history read; nothing after it.
             expect(admission.budget.begin.mock.calls).toEqual([['translation']])
+        })
+
+        // Review 2026-11-12 (feat-185, V14.4): an adapter that is not configured fails before any
+        // request, so the answer is not charged either; the reserve goes back at settlement.
+        it('does not mark the answer as started when its provider is not configured', async () => {
+            const order: string[] = []
+            happyPath()
+            supportLlmServiceMock.isConfigured.mockReturnValue(false)
+            supportLlmServiceMock.chatStream.mockImplementation(
+                // eslint-disable-next-line require-yield -- fails before the first token
+                async function* () {
+                    throw new Error('OpenAI is not configured')
+                },
+            )
+
+            const { supportService } = await loadSupportService()
+            await supportService.runChat(
+                admissionOf(order, undefined, { trackBegin: true }),
+                7n,
+                'hello',
+                'conn-1',
+            )
+
+            expect(supportLlmServiceMock.isConfigured).toHaveBeenCalledWith('SUPPORT_SYSTEM')
+            expect(order).not.toContain('begin:chat')
+        })
+
+        it('does not mark the greeting as started when its provider is not configured', async () => {
+            supportRepositoryMock.hasChatHistory.mockResolvedValue(false)
+            supportLlmServiceMock.isConfigured.mockReturnValue(false)
+            supportLlmServiceMock.openChatStream.mockImplementation(
+                // eslint-disable-next-line require-yield -- fails before the first token
+                async function* () {
+                    throw new Error('OpenAI is not configured')
+                },
+            )
+            const admission = admissionOf()
+
+            const { supportService } = await loadSupportService()
+            await supportService.runOpenChat(admission, 7n, 'conn-1')
+
+            expect(supportLlmServiceMock.isConfigured).toHaveBeenCalledWith('SUPPORT_FIRST_CHAT')
+            expect(admission.budget.begin).not.toHaveBeenCalled()
         })
 
         it('marks the greeting as one started answer', async () => {

@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest'
+
+import type { SupportChatStage } from './support-llm-service.js'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { getFreePort } from '../../../test-support/raw-http.js'
@@ -167,6 +169,8 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             | undefined
         if (llm.usage !== null) onComplete?.(reported(llm.usage.chat), 'model', 'prompt')
     }
+    // Whether the chat adapter is configured (feat-185): yes, unless a test says otherwise.
+    let chatConfigured: MockInstance<(stage: SupportChatStage) => boolean> | undefined
     const today = (): string => new Date().toISOString().slice(0, 10)
     const spentBy = async (userId: bigint): Promise<number> =>
         Number((await admin.get(`llm:budget:${String(userId)}:${today()}`)) ?? 0)
@@ -252,6 +256,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
         // as started only when one will be made (feat-160).
         vi.spyOn(supportQueryTranslationService, 'isConfigured').mockReturnValue(true)
         vi.spyOn(supportEmbeddingService, 'isConfigured').mockReturnValue(true)
+        chatConfigured = vi.spyOn(supportLlmService, 'isConfigured').mockReturnValue(true)
         vi.spyOn(supportQueryTranslationService, 'translateToEnglish').mockImplementation(
             (message: string, options) => {
                 if (llm.usage !== null) options?.onUsage?.(reported(llm.usage.translation))
@@ -269,6 +274,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
     })
 
     afterEach(() => {
+        chatConfigured?.mockReturnValue(true)
         llm.mode = 'finish'
         llm.release()
         llm.started = 0
@@ -533,6 +539,31 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             // translation 10 + embedding 5 + the estimate of the answer that failed
             // (allowance 8000 + 3 tokens of the message + 2048 of output).
             expect(await spentBy(user.id)).toBe(10 + 5 + 8_000 + 3 + 2_048)
+        })
+
+        // Review 2026-11-12 (feat-185): a chat adapter that is not configured fails before any
+        // request; its estimate is not kept, for the answer and for the greeting.
+        it('gives the reserve of the answer back when the chat provider is not configured', async () => {
+            const { user, client } = await connectedUser()
+            llm.usage = { translation: 10, embedding: 5, chat: 0 }
+            llm.mode = 'fail'
+            chatConfigured?.mockReturnValue(false)
+
+            expect(verdict(await client.chat('hello'))).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_ERROR)
+
+            expect(await spentBy(user.id)).toBe(10 + 5)
+        })
+
+        it('gives the reserve of the greeting back when the chat provider is not configured', async () => {
+            const { user, client } = await connectedUser()
+            llm.mode = 'fail'
+            chatConfigured?.mockReturnValue(false)
+
+            expect(verdict(await client.openChat())).toBe('ok')
+            await client.waitFor((frame) => frame.event === BROADCAST_ERROR)
+
+            expect(await spentBy(user.id)).toBe(0)
         })
 
         it('gives the reserve back for a message it did not answer (a resend)', async () => {
