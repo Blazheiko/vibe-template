@@ -1911,8 +1911,8 @@
             "owner": "Blazheiko",
             "branch": "feat/dev-backend-address",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #582 (merge 445646f): shared/dev-backend resolves PORT/HOST/API_PATH_PREFIX (shell, then packages/backend/.env, then 3000/api); frontend and api-playground Vite proxies and the compiled VITE_API_PATH_PREFIX follow it, a different hand-set value fails the config; Docker build-arg API_PATH_PREFIX; empty API_PATH_PREFIX means api in the backend; docs uk+en (backend/configuration one-source section). make check passing (backend 2697, frontend 544, playground 115, shared 39, docs 26), docs:build+verify passing, manual dev proxy/build check with PORT=4100 API_PATH_PREFIX=v1; CI all jobs passing incl. e2e and e2e-live. Details were in progress.md on feat/dev-backend-address (removed from main by this PR)."
         }
     ]
 }
