@@ -32,9 +32,11 @@ async function bootstrap() {
             return
         }
 
+        // `to.path` and the route name only: `fullPath` carries the query (`?token=…`).
         sentry.captureException(error, {
             extra: {
-                targetRoute: to.fullPath || to.path || '',
+                targetRoute: to.path || '',
+                targetRouteName: to.name === undefined ? '' : String(to.name),
             },
         })
     })

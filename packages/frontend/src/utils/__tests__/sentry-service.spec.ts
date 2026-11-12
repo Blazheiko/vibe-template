@@ -311,6 +311,84 @@ describe('sentry service', () => {
         })
     })
 
+    // Security review of main at 68789d6 (MEDIUM): beforeSend cleaned request and breadcrumbs
+    // but sent `extra` as is, so `extra.targetRoute` carried `?token=…` of a failed navigation.
+    it('masks URLs and sensitive keys in event extra', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const beforeSend = sentryMocks.init.mock.calls[0]?.[0].beforeSend as (
+            event: Record<string, unknown>,
+        ) => Record<string, unknown>
+
+        const event = beforeSend({
+            extra: {
+                targetRoute: '/reset-password?token=secret&lang=uk',
+                nested: { note: 'see https://x.test/cb?code=abc', resetToken: 'raw' },
+                plain: '/account',
+                count: 3,
+            },
+        })
+
+        expect(event.extra).toEqual({
+            targetRoute: expect.stringContaining('token=%5BFiltered%5D'),
+            nested: {
+                note: 'see https://x.test/cb?code=%5BFiltered%5D',
+                resetToken: '[Filtered]',
+            },
+            plain: '/account',
+            count: 3,
+        })
+        expect(JSON.stringify(event)).not.toContain('secret')
+        expect(JSON.stringify(event)).toContain('lang=uk')
+    })
+
+    // Security review of main at 68789d6 (HIGH): the Vue router integration copies query
+    // parameters into span attributes; beforeSend does not run on spans.
+    it('masks query tokens and URLs in span attributes before send', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const beforeSendSpan = sentryMocks.init.mock.calls[0]?.[0].beforeSendSpan as (
+            span: Record<string, unknown>,
+        ) => Record<string, unknown>
+        expect(beforeSendSpan).toBeTypeOf('function')
+
+        const span = beforeSendSpan({
+            name: '/reset-password',
+            attributes: {
+                'query.token': 'secret',
+                'query.state': 'xyz',
+                'query.lang': 'uk',
+                'url.full': 'https://app.test/reset-password?token=secret&lang=uk',
+                'url.query': 'token=secret&lang=uk',
+                'http.request.header.authorization': 'Bearer abc',
+                'sentry.op': 'navigation',
+                typed: { value: 'https://app.test/?access_token=secret', type: 'string' },
+                count: 2,
+            },
+        })
+
+        expect(span.name).toBe('/reset-password')
+        expect(span.attributes).toEqual({
+            'query.token': '[Filtered]',
+            'query.state': '[Filtered]',
+            'query.lang': 'uk',
+            'url.full': 'https://app.test/reset-password?token=%5BFiltered%5D&lang=uk',
+            'url.query': 'token=%5BFiltered%5D&lang=uk',
+            'http.request.header.authorization': '[Filtered]',
+            'sentry.op': 'navigation',
+            typed: { value: 'https://app.test/?access_token=%5BFiltered%5D', type: 'string' },
+            count: 2,
+        })
+    })
+
     it('forwards only the user id when setting user context', async () => {
         vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/5')
         vi.stubEnv('VITE_SENTRY_ENABLED', 'true')

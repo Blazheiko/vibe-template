@@ -26,6 +26,12 @@ interface SentryEventLike extends Record<string, unknown> {
         url?: unknown
     }
     breadcrumbs?: (Record<string, unknown> | null)[]
+    extra?: unknown
+}
+
+interface SentrySpanLike extends Record<string, unknown> {
+    name?: unknown
+    attributes?: Record<string, unknown>
 }
 
 interface SentryBreadcrumbLike extends Record<string, unknown> {
@@ -53,17 +59,41 @@ const getRouteName = (): string => {
 
 const getLocale = (): string => unref(i18n.global.locale)
 
+const SENSITIVE_QUERY_PARAMS = new Set([
+    'token',
+    'code',
+    'state',
+    'access_token',
+    'id_token',
+    'secret',
+])
+
+const isSensitiveQueryParam = (name: string): boolean =>
+    SENSITIVE_QUERY_PARAMS.has(name.toLowerCase()) || SENSITIVE_KEY_RE.test(name)
+
+/** Replaces the sensitive values of a `URLSearchParams`; true when one was replaced. */
+const filterSearchParams = (params: URLSearchParams): boolean => {
+    let filtered = false
+    for (const name of new Set(params.keys())) {
+        if (isSensitiveQueryParam(name)) {
+            params.set(name, '[Filtered]')
+            filtered = true
+        }
+    }
+    return filtered
+}
+
+/** A raw query string without the leading `?` (the span attribute `url.query`). */
+const maskQueryString = (value: string): string => {
+    const params = new URLSearchParams(value)
+    return filterSearchParams(params) ? params.toString() : value
+}
+
 const maskUrl = (value: string): string => {
     try {
         const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
         const url = new URL(value, base)
-        const params = ['token', 'code', 'state', 'access_token', 'id_token', 'secret']
-        for (const param of params) {
-            if (url.searchParams.has(param)) {
-                url.searchParams.set(param, '[Filtered]')
-            }
-        }
-        return url.toString()
+        return filterSearchParams(url.searchParams) ? url.toString() : value
     } catch {
         return value
     }
@@ -107,9 +137,13 @@ const sanitizeHeaders = (headers: unknown): unknown => {
  * looks sensitive (password, token, cookie, authorization…) is dropped from request data
  * (`drop`) and kept with the value `[Filtered]` in breadcrumb data (`filter`), where the
  * breadcrumb is more useful knowing the key was there; headers and URL-like strings are
- * masked the same way in both.
+ * masked the same way in both, and a URL inside any other string (`extra.targetRoute`) too.
  */
 const sanitizeTree = (value: unknown, sensitive: 'drop' | 'filter'): unknown => {
+    if (typeof value === 'string') {
+        return maskUrlsInText(value)
+    }
+
     if (typeof value !== 'object' || value === null) {
         return value
     }
@@ -215,6 +249,10 @@ const beforeSend = (event: SentryEventLike) => {
         }
     }
 
+    if (sanitizedEvent.extra) {
+        sanitizedEvent.extra = sanitizeTree(sanitizedEvent.extra, 'filter')
+    }
+
     if (Array.isArray(sanitizedEvent.breadcrumbs)) {
         sanitizedEvent.breadcrumbs = sanitizedEvent.breadcrumbs.map(
             (breadcrumb: Record<string, unknown> | null) => {
@@ -246,6 +284,65 @@ const beforeBreadcrumb = (breadcrumb: SentryBreadcrumbLike | null) => {
 
     if (sanitized.category === 'navigation' && sanitized.data) {
         sanitized.data = sanitizeTree(sanitized.data, 'filter')
+    }
+
+    return sanitized
+}
+
+const QUERY_PARAM_ATTRIBUTE_RE = /^query\.(.+)$/
+const QUERY_STRING_ATTRIBUTE_RE = /^(url|http)\.query$/
+
+const maskSpanString = (key: string, value: string): string => {
+    const param = QUERY_PARAM_ATTRIBUTE_RE.exec(key)?.[1]
+    if ((param !== undefined && isSensitiveQueryParam(param)) || SENSITIVE_KEY_RE.test(key)) {
+        return '[Filtered]'
+    }
+
+    return QUERY_STRING_ATTRIBUTE_RE.test(key) ? maskQueryString(value) : maskUrlsInText(value)
+}
+
+const sanitizeSpanAttribute = (key: string, value: unknown): unknown => {
+    if (typeof value === 'string') {
+        return maskSpanString(key, value)
+    }
+
+    if (Array.isArray(value)) {
+        return value.map((item) => (typeof item === 'string' ? maskSpanString(key, item) : item))
+    }
+
+    // A typed attribute `{ value, type }`.
+    if (
+        value &&
+        typeof value === 'object' &&
+        typeof (value as { value?: unknown }).value === 'string'
+    ) {
+        const typed = value as { value: string }
+        return { ...typed, value: maskSpanString(key, typed.value) }
+    }
+
+    return value
+}
+
+/**
+ * `beforeSend` does not see tracing: spans leave through `beforeSendSpan` (Sentry 11 streams
+ * them by default, so `beforeSendTransaction` is not called). The Vue router integration copies
+ * every query parameter into a `query.<name>` attribute and the URL into `url.full`, so an open
+ * `/reset-password?token=…` would send the token; both are masked here.
+ */
+const beforeSendSpan = (span: SentrySpanLike): SentrySpanLike => {
+    const sanitized: SentrySpanLike = { ...span }
+
+    if (typeof sanitized.name === 'string') {
+        sanitized.name = maskUrlsInText(sanitized.name)
+    }
+
+    if (sanitized.attributes && typeof sanitized.attributes === 'object') {
+        sanitized.attributes = Object.fromEntries(
+            Object.entries(sanitized.attributes).map(([key, value]) => [
+                key,
+                sanitizeSpanAttribute(key, value),
+            ]),
+        )
     }
 
     return sanitized
@@ -288,6 +385,7 @@ export const sentryService = {
                     [...defaultIntegrations, ...integrations] as never,
                 beforeSend: beforeSend as never,
                 beforeBreadcrumb: beforeBreadcrumb as never,
+                beforeSendSpan: beforeSendSpan as never,
             })
 
             initialized = true
