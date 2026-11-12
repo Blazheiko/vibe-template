@@ -1891,8 +1891,8 @@
             "owner": "Blazheiko",
             "branch": "docs/match-code",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #576 (merge into main): ~75 doc/code discrepancies fixed in uk+en and package READMEs, make check passing, docs:build+verify passing, every new GitHub link target exists, manual check of each fix against the cited source, CI all jobs passing"
         }
     ]
 }
