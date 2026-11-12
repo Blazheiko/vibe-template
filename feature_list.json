@@ -1903,6 +1903,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #579 (merge c759775): shared/product is the one source of the product name; vite.product.ts fills index.html and generates manifest.json and robots.txt; components, locales, emails and AI prompts read PRODUCT; email file snapshots byte-identical; new tests (auth mails with another name, fail 3/3 with the old header; vite-product.spec.ts 7); make check passing (backend 2693, frontend 539, playground 115, shared 33, docs 26), e2e 92, docs:build+verify passing, manual vite build and dev server check; CI all jobs passing. Details were in progress.md on feat/product-name (removed from main by this PR)."
+        },
+        {
+            "id": "feat-192",
+            "name": "Local Backend Address From One Place",
+            "description": "Code review: the backend reads PORT and API_PATH_PREFIX, while the frontend and api-playground Vite proxies hard-code 127.0.0.1:3000 and take the prefix from a separate VITE_API_PATH_PREFIX that must be kept equal by hand. Make packages/backend/.env (shell variables first, as dotenv does) the one source: shared/dev-backend resolves the backend address and prefix, both Vite configs proxy to it and compile the prefix into the bundle themselves, a conflicting VITE_API_PATH_PREFIX fails the config; the Docker build takes API_PATH_PREFIX instead of VITE_API_PATH_PREFIX; an empty API_PATH_PREFIX means api in the backend too. Document the rule in documentation/ (uk+en).",
+            "owner": "Blazheiko",
+            "branch": "feat/dev-backend-address",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
