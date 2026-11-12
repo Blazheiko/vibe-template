@@ -22,6 +22,24 @@ export const readWsAdminRecheckIntervalMs = (source: NodeJS.ProcessEnv = env): n
     return value
 }
 
+// feat-195: how often a server instance compares the users.session_token every WebSocket
+// connection was opened with against the current one, and closes those that differ. The flow
+// that revokes a session closes the connections of its own instance at once; this re-check is
+// what closes the ones held by another instance, and it bounds how long a revoked session
+// keeps receiving broadcasts.
+const SESSION_RECHECK_DEFAULT_MS = 30_000
+
+export const readWsSessionRecheckIntervalMs = (source: NodeJS.ProcessEnv = env): number => {
+    const { value, error } = parseInteger(
+        'WS_SESSION_RECHECK_INTERVAL_MS',
+        source['WS_SESSION_RECHECK_INTERVAL_MS'],
+        SESSION_RECHECK_DEFAULT_MS,
+        { min: ADMIN_RECHECK_MIN_MS, max: ADMIN_RECHECK_MAX_MS },
+    )
+    if (error !== null) throw new Error(error)
+    return value
+}
+
 // feat-149: the budget of one connection, checked before a message costs a Redis command or a
 // PostgreSQL query (vendor/utils/rate-limit/ws-message-budget.ts). The defaults leave room for
 // the support chat and the admin channel; a heartbeat is counted apart.
@@ -53,6 +71,8 @@ export const readWsMaxConcurrentHandlers = (source: NodeJS.ProcessEnv = env): nu
 export default Object.freeze({
     /** Re-check period of admin WebSocket connections, in ms (WS_ADMIN_RECHECK_INTERVAL_MS, default 30000). */
     adminRecheckIntervalMs: readWsAdminRecheckIntervalMs(),
+    /** Re-check period of the session of every WebSocket connection, in ms (WS_SESSION_RECHECK_INTERVAL_MS, default 30000). */
+    sessionRecheckIntervalMs: readWsSessionRecheckIntervalMs(),
     /** Messages one connection may send in a minute, heartbeats apart (WS_MESSAGES_PER_MINUTE, default 120). */
     messagesPerMinute: readWsMessagesPerMinute(),
     /** Handlers of one connection that may run at once (WS_MAX_CONCURRENT_HANDLERS, default 8). */

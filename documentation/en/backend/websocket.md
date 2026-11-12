@@ -316,7 +316,7 @@ WS route keys on the server are `<API_PATH_PREFIX>/<route>`. The frontend takes 
 
 - **Message size**: `maxPayloadLength` of 1 MB at the uWS level; there is no separate setting for WS (see [Request lifecycle](/en/backend/request-lifecycle)).
 - **Message rate limit**: per-route/per-group via `checkRateLimitWs`, with the counter in process memory (the connection lives on a single instance), keyed by IP + route URL — by IP, not by connection, so that the budget is not multiplied by new connections. A group limit applies to each route of the group separately, not to the whole group together. If the check fails, the request is denied (`allowed: false`, `retryAfter: 1`).
-- **Route authorization**: all WS routes require a valid session (checked in `onMessage`); revoking a session (a password change, "log out everywhere", ADR 0002) does **not** close an already open connection immediately: it is closed by `closeExpiredSession` on the client's next request, while new connections are rejected by the check during upgrade (as observed by `e2e-live`: another browser's open socket stays open until it sends a request); the `admin` role for the `admin/*` group is checked by `ws_admin_guard`, and for the channel by the channel service, both by the connection's role (see [Revoking admin access](#revoking-admin-access)). More details — [Authentication](/en/backend/auth#websocket-authorization).
+- **Route authorization**: all WS routes require a valid session (checked in `onMessage`); revoking a session (a logout, "log out everywhere", a password change or reset, ADR 0002) **closes** the open connections of that session with code `4001` (see [Revoking a session](#revoking-a-session)), while new connections are rejected by the check during upgrade; the `admin` role for the `admin/*` group is checked by `ws_admin_guard`, and for the channel by the channel service, both by the connection's role (see [Revoking admin access](#revoking-admin-access)). More details — [Authentication](/en/backend/auth#websocket-authorization).
 
 - **Upgrade rate limit, two levels**, both per IP and independent of HTTP L1: level 1 in process memory (`WS_UPGRADE_RATE_LIMIT_*`, 120/min) cuts off floods before any I/O; level 2 in Redis (`WS_UPGRADE_SHARED_RATE_LIMIT_*`, 60/min) is a shared budget for all instances. Both are checked before the token format and the session lookup, so invalid tokens spend the budget too. If Redis for limits is unavailable, level 2 is skipped and only level 1 applies. Regular HTTP requests to `/<pathPrefix>/websocket` are counted in HTTP L1. Details — [Rate limiting](/en/backend/security#rate-limiting).
 - **`ping`/`pong`** (heartbeat) is handled in `onMessage` before the dispatcher and is not subject to the message rate limit.
@@ -343,6 +343,23 @@ Limits worth knowing about:
 - **DB unavailable or the query hangs.** The query is cancelled after `SESSION_TOKEN_CHECK_TIMEOUT_MS` (2 s), the pass throws an error (it is logged), nothing changes, and the next pass tries again. While the DB does not respond, a demotion cannot be noticed; meanwhile the session check rejects all WS messages ([Session revocation](/en/backend/auth#revoking-sessions)), but the broadcast subscription stays until the first successful pass.
 - **Revocation failure.** A connection that closed during the pass is skipped silently (an expected race). Any other revocation or role-read error is logged with `userId` and `socketUuid` (`error`), counted in `failed` of the pass report, and does not stop the remaining connections; the connection stays admin, and the next pass tries it again.
 - **Background timer.** One pass at a time: a slow DB does not pile up passes. The timer does not keep the process alive and stops on graceful shutdown.
+
+## Revoking a session
+
+A WS route message is checked against the session; a heartbeat (`ping`) is not. Without a separate mechanism, a connection that only pings would stay open after its session was revoked and would keep receiving broadcasts: the `admin` channel, support chat replies. So the server closes such connections itself ([`ws-session-revocation.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/ws-session-revocation.ts)):
+
+- **At once, on the instance that handled the request.** The connection registry keeps, for every socket, the `sessionId` and the `users.session_token` it was opened with. A logout closes the sockets of that session; "log out everywhere", a password change, a password reset (email and phone) and an account claim close every socket of the user. The client gets `service:error` with `reason: session_expired` and close code `4001`.
+- **Periodically, on every instance.** Once per `WS_SESSION_RECHECK_INTERVAL_MS` (30 s by default, see [Configuration](/en/backend/configuration)) an instance reads, with **one query per 1000 users**, the current `users.session_token` of the owners of its connections and closes the connections whose token is no longer the same (or whose user was deleted). This closes the sockets held by an instance other than the one that revoked the session. The query goes through the same bounded pool as the session check.
+
+**Guarantee:** after a session is revoked, the connections opened from it are closed at once on the same instance, and no later than `WS_SESSION_RECHECK_INTERVAL_MS` plus the duration of one pass on the others.
+
+Limits worth knowing:
+
+- **A password change also closes the socket of the current tab.** Its token has just been rotated; the client reconnects with the WS token of the renewed session (the password change response returns it).
+- **A logout of one session on another instance.** `logout` does not rotate `users.session_token`, so the periodic check does not see such a socket: on another instance it is closed by `closeExpiredSession` on the client's next request. "Log out everywhere" and a password change do not have this limit.
+- **The DB is unavailable.** The pass throws (the error is logged), nothing is closed, the next pass tries again.
+- **A failed close.** A connection that has already closed is skipped silently. Any other error is logged with `userId` and `socketUuid`, counted in `failed`, and does not stop the rest; the next pass tries again.
+- **Background timer.** One pass at a time; the timer does not keep the process alive and stops on graceful shutdown.
 
 ## Sequence diagram
 

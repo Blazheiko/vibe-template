@@ -46,6 +46,7 @@ import {
     type ClassifiedError,
 } from '#vendor/utils/network/errors/classify-error.js'
 import { createWsErrorEnvelope } from '#vendor/utils/network/ws-error-envelope.js'
+import { endSessionExpired } from '#vendor/utils/network/ws-session-expired.js'
 import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 
 // ---------------------------------------------------------------------------
@@ -141,16 +142,6 @@ const sendJson = (ws: MyWebSocket, data: WsResponseData, userData?: UserConnecti
     }
 }
 
-const unAuthorizedMessage = (): WsResponseData => ({
-    event: 'service:error',
-    status: 'error',
-    data: null,
-    timestamp: Date.now(),
-    error: createWsErrorEnvelope('unauthorized', `Session expired. Please login again.`, {
-        reason: 'session_expired',
-    }),
-})
-
 // Redis is down: the connection stays open, only this request fails. Same shape
 // as createWsRateLimitErrorResponse, with the request's event so the client
 // rejects the matching promise at once.
@@ -170,14 +161,11 @@ const closeExpiredSession = (ws: MyWebSocket, userData: UserConnection): void =>
     // feat-128: the session lookup before this is awaited; a socket that closed meanwhile is
     // gone already, and touching it would throw.
     if (userData.closed === true) return
-    ws.cork(() => {
-        try {
-            ws.send(makeJson(unAuthorizedMessage()))
-            ws.end(4001)
-        } catch (e) {
-            logger.error({ err: e }, 'Error ws send unAuthorizedMessage')
-        }
-    })
+    try {
+        endSessionExpired(ws)
+    } catch (e) {
+        logger.error({ err: e }, 'Error ws send unAuthorizedMessage')
+    }
 }
 
 const checkToken = (token: string): boolean =>
@@ -487,15 +475,11 @@ const onOpen = (ws: MyWebSocket): void => {
                 { userId: userData.userId, sessionId: userData.sessionId },
                 'Closing WS connection: missing auth data',
             )
-            const errorMessage = unAuthorizedMessage()
-            ws.cork(() => {
-                try {
-                    ws.send(makeJson(errorMessage))
-                    ws.end(4001)
-                } catch (e) {
-                    logger.error({ err: e }, 'Error sending unauthorized message:')
-                }
-            })
+            try {
+                endSessionExpired(ws)
+            } catch (e) {
+                logger.error({ err: e }, 'Error sending unauthorized message:')
+            }
             return
         }
 

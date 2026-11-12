@@ -493,6 +493,177 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
         })
     })
 
+    // feat-195 (M-1): a WebSocket connection that only pings is never checked against the
+    // session, so a revoked session kept its sockets and the broadcasts sent to them. The real
+    // registry holds fake sockets here; everything else runs unchanged.
+    describe('WebSocket connections of a revoked session', async () => {
+        const { wsConnectionRegistry } = await import('#app/websocket/ws-connection-registry.js')
+        const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
+        const { passwordResetService } =
+            await import('#app/services/auth/password-reset-service.js')
+        const { passwordResetRepository } = await import('#app/repositories/index.js')
+        const { hashToken } = await import('#app/services/auth/one-time-token.js')
+
+        let socketCounter = 0
+        const opened: { userId: string; uuid: string }[] = []
+
+        // A connection opened from a signed-in session, as handleConnected registers it.
+        const openSocket = (userId: bigint, sessionId: string, userToken: string) => {
+            socketCounter += 1
+            const uuid = `rev-socket-${String(socketCounter)}`
+            const closedWith: number[] = []
+            const sent: string[] = []
+            const ws = {
+                cork: (fn: () => void): void => {
+                    fn()
+                },
+                send: (message: string): void => {
+                    sent.push(message)
+                },
+                end: (code: number): void => {
+                    closedWith.push(code)
+                    // What uWS does next: the close handler takes it out of the registry.
+                    wsConnectionRegistry.unregisterConnection(String(userId), uuid)
+                },
+            }
+            wsConnectionRegistry.registerConnection(String(userId), uuid, ws as never, {
+                ip: '203.0.113.9',
+                userAgent: 'test',
+                appType: 'web',
+                sessionId,
+                userToken,
+            })
+            opened.push({ userId: String(userId), uuid })
+            return { closedWith, sent }
+        }
+
+        afterEach(() => {
+            for (const { userId, uuid } of opened.splice(0)) {
+                wsConnectionRegistry.unregisterConnection(userId, uuid)
+            }
+        })
+
+        it('logout closes the sockets of that session and leaves the other sessions alone', async () => {
+            const user = await insertUser('rev-ws-logout')
+            const a = await signIn(user)
+            const b = await signIn(user)
+            const socketA = openSocket(user.id, a.sessionId, user.sessionToken)
+            const socketB = openSocket(user.id, b.sessionId, user.sessionToken)
+
+            const { context } = await requestWith(a.cookie)
+            const result = await authService.logout(context.auth, context.session)
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(socketA.closedWith).toEqual([4001])
+            expect(JSON.parse(String(socketA.sent[0]))).toMatchObject({
+                event: 'service:error',
+                error: { code: 'unauthorized' },
+            })
+            expect(socketB.closedWith).toEqual([])
+            expect(wsConnectionRegistry.isUserOnline(String(user.id))).toBe(true)
+        })
+
+        it('logout everywhere closes every socket of the user and no one else', async () => {
+            const user = await insertUser('rev-ws-logout-all')
+            const bystander = await insertUser('rev-ws-bystander')
+            const a = await signIn(user)
+            const b = await signIn(user)
+            const c = await signIn(bystander)
+            const socketA = openSocket(user.id, a.sessionId, user.sessionToken)
+            const socketB = openSocket(user.id, b.sessionId, user.sessionToken)
+            const socketC = openSocket(bystander.id, c.sessionId, bystander.sessionToken)
+
+            const { context } = await requestWith(a.cookie)
+            const result = await authService.logoutAll(context.auth, context.session)
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(socketA.closedWith).toEqual([4001])
+            expect(socketB.closedWith).toEqual([4001])
+            expect(socketC.closedWith).toEqual([])
+            expect(wsConnectionRegistry.isUserOnline(String(user.id))).toBe(false)
+        })
+
+        it('a password change closes every socket of the user', async () => {
+            const user = await insertUser('rev-ws-change')
+            const a = await signIn(user)
+            const b = await signIn(user)
+            const socketA = openSocket(user.id, a.sessionId, user.sessionToken)
+            const socketB = openSocket(user.id, b.sessionId, user.sessionToken)
+
+            const { context } = await requestWith(a.cookie)
+            const changed = await authService.changePassword(
+                user.id,
+                { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                context.auth.getPresentedUserToken(),
+                sessionStillStored,
+            )
+
+            expect(Result.isOk(changed)).toBe(true)
+            expect(socketA.closedWith).toEqual([4001])
+            expect(socketB.closedWith).toEqual([4001])
+        })
+
+        it('a password reset by email closes every socket of the user', async () => {
+            const user = await insertUser('rev-ws-reset')
+            const a = await signIn(user)
+            const socketA = openSocket(user.id, a.sessionId, user.sessionToken)
+            const token = `reset-${crypto.randomUUID()}`
+            await passwordResetRepository.create({
+                userId: user.id,
+                tokenHash: hashToken(token),
+                targetEmail: user.email,
+                expiresAt: new Date(Date.now() + 600_000),
+            })
+
+            const result = await passwordResetService.resetPassword(
+                token,
+                'reset-secret-789',
+                'reset-secret-789',
+                { ipAddress: '203.0.113.9' },
+            )
+
+            expect(Result.isError(result) ? result.error : null).toBeNull()
+            expect(socketA.closedWith).toEqual([4001])
+        })
+
+        it('the re-check closes a socket whose token was rotated by another instance', async () => {
+            const user = await insertUser('rev-ws-recheck')
+            const bystander = await insertUser('rev-ws-recheck-bystander')
+            const a = await signIn(user)
+            const c = await signIn(bystander)
+            const stale = openSocket(user.id, a.sessionId, user.sessionToken)
+            const current = openSocket(bystander.id, c.sessionId, bystander.sessionToken)
+
+            // Nothing rotated yet: the pass keeps both.
+            await wsSessionRevocation.recheckSessions()
+            expect(stale.closedWith).toEqual([])
+
+            // Another instance revoked the session: only the database knows.
+            await db
+                .update(users)
+                .set({ sessionToken: 'rotated-elsewhere-0001' })
+                .where(eq(users.id, user.id))
+
+            const report = await wsSessionRevocation.recheckSessions()
+
+            expect(report.closed).toBe(1)
+            expect(report.failed).toBe(0)
+            expect(stale.closedWith).toEqual([4001])
+            expect(current.closedWith).toEqual([])
+        })
+
+        it('the re-check closes the sockets of a deleted user', async () => {
+            const user = await insertUser('rev-ws-deleted')
+            const a = await signIn(user)
+            const socket = openSocket(user.id, a.sessionId, user.sessionToken)
+            await db.delete(users).where(eq(users.id, user.id))
+
+            await wsSessionRevocation.recheckSessions()
+
+            expect(socket.closedWith).toEqual([4001])
+        })
+    })
+
     describe('when the database cannot answer', () => {
         it('refuses a request instead of trusting the Redis record', async () => {
             const user = await insertUser('rev-db-down')

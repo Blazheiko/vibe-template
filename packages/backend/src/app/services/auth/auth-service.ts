@@ -65,6 +65,7 @@ import type { Logger } from 'pino'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 
 interface AuthSuccessPayload {
     status: 'success'
@@ -1014,7 +1015,14 @@ export const authService = {
         auth: Auth,
         session: Session,
     ): Promise<AppResult<{ status: 'success'; csrfToken: string }>> {
+        // feat-195: the WebSocket connections opened from this session close with it; the
+        // other sessions of the user keep theirs.
+        const userId = auth.getUserId()
+        const sessionId = session.sessionInfo?.id
         const result = await auth.logout()
+        if (userId !== null && sessionId !== undefined) {
+            wsSessionRevocation.closeUserConnections(userId, { sessionId })
+        }
 
         if (!result) {
             return Result.err(internalMessage('Failed to log out user'))
@@ -1106,6 +1114,8 @@ export const authService = {
                 )
             }
         }
+        // feat-195: every session is revoked, so every WebSocket connection of the user closes.
+        if (userId !== null) wsSessionRevocation.closeUserConnections(userId)
         // The sessions are revoked by now; what follows is memory cleanup and must not turn
         // the answer into an error. auth.logoutAll() issues the anonymous session either way.
         let deletedCount = 0
@@ -1240,6 +1250,11 @@ export const authService = {
             String(userId),
             'Change password',
         )
+
+        // feat-195: the connections of every session close, this one's too: its socket carries
+        // the token that was just rotated, and the client reconnects with the WS token of the
+        // renewed session.
+        wsSessionRevocation.closeUserConnections(String(userId))
 
         // Memory cleanup, not the revocation: a failure leaves records that are already
         // rejected, so it is logged and the password change still succeeds.

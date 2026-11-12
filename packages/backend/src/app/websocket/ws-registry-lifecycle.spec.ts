@@ -145,6 +145,55 @@ describe('connection registry lifecycle (feat-107)', () => {
 })
 
 // feat-124: the user_online row of a connection is completed only after its INSERT settled.
+describe('the session of a registered connection (feat-195)', () => {
+    it('keeps the session id and the user token the connection was opened with', async () => {
+        const first = connection('9104')
+        first.userData.sessionId = 'session-a'
+        first.userData.userToken = 'token-a'
+        const second = connection('9104')
+        second.userData.sessionId = 'session-b'
+        second.userData.userToken = 'token-a'
+        const other = connection('9105')
+        await connect(first)
+        await connect(second)
+        await connect(other)
+
+        // A stored socket is never read for this (it throws once closed).
+        const dead = () => {
+            throw new Error('Invalid access of closed uWS.WebSocket/SSLWebSocket.')
+        }
+        ;(first.ws as unknown as { getUserData: () => never }).getUserData = dead
+
+        expect(wsConnectionRegistry.listUserConnections('9104')).toEqual([
+            {
+                userId: '9104',
+                uuid: first.userData.uuid,
+                ws: first.ws,
+                sessionId: 'session-a',
+                userToken: 'token-a',
+            },
+            {
+                userId: '9104',
+                uuid: second.userData.uuid,
+                ws: second.ws,
+                sessionId: 'session-b',
+                userToken: 'token-a',
+            },
+        ])
+        expect(
+            wsConnectionRegistry
+                .listConnections()
+                .filter((c) => c.userId === '9104' || c.userId === '9105')
+                .map((c) => [c.userId, c.sessionId, c.userToken]),
+        ).toEqual([
+            ['9104', 'session-a', 'token-a'],
+            ['9104', 'session-b', 'token-a'],
+            ['9105', 's1', 'u1'],
+        ])
+        expect(wsConnectionRegistry.listUserConnections('9199')).toEqual([])
+    })
+})
+
 describe('user_online rows (feat-124)', () => {
     const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
 

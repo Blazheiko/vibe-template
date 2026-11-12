@@ -83,6 +83,12 @@ const moduleLogger = vi.hoisted(() => {
 })
 vi.mock('#vendor/utils/logger.js', () => ({ default: moduleLogger }))
 
+// feat-195: the WebSocket connections of a revoked session are closed by the flow that revokes it.
+const closeUserConnections = vi.hoisted(() => vi.fn(() => 0))
+vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
+    wsSessionRevocation: { closeUserConnections },
+}))
+
 vi.mock('#app/repositories/index.js', () => ({
     // feat-109: change-password and logout-all retire the pending reset links.
     passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
@@ -1040,6 +1046,112 @@ describe('authService', () => {
                 csrfToken: ROTATED_LOGOUT_CSRF_TOKEN,
             })
         }
+    })
+
+    describe('WebSocket connections close with the session (feat-195)', () => {
+        it('logout closes the connections of the session that logged out, not the others', async () => {
+            authMock.logout.mockImplementation(async () => {
+                sessionMock.sessionInfo = {
+                    id: 'anonymous-session-id',
+                    data: { csrfToken: ROTATED_LOGOUT_CSRF_TOKEN },
+                }
+                return true
+            })
+            const signedInSessionId = sessionMock.sessionInfo.id
+
+            const { authService } = await loadAuthService()
+            await authService.logout(authMock as any, sessionMock as any)
+
+            expect(closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(closeUserConnections).toHaveBeenCalledWith('7', {
+                sessionId: signedInSessionId,
+            })
+        })
+
+        it('logout of an anonymous session closes nothing', async () => {
+            authMock.getUserId.mockReturnValueOnce(null as any)
+            authMock.logout.mockResolvedValue(true)
+
+            const { authService } = await loadAuthService()
+            await authService.logout(authMock as any, sessionMock as any)
+
+            expect(closeUserConnections).not.toHaveBeenCalled()
+        })
+
+        it('logoutAll closes every connection of the user, after the rotation', async () => {
+            const order: string[] = []
+            userRepositoryMock.updateIfSessionToken.mockImplementation(async () => {
+                order.push('rotate')
+                return { id: 7n }
+            })
+            closeUserConnections.mockImplementation(() => {
+                order.push('close sockets')
+                return 1
+            })
+
+            const { authService } = await loadAuthService()
+            await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(order).toEqual(['rotate', 'close sockets'])
+            expect(closeUserConnections).toHaveBeenCalledWith('7')
+        })
+
+        it('logoutAll that lost to another revocation closes nothing', async () => {
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+            userRepositoryMock.findSessionToken.mockResolvedValue('rotated-elsewhere')
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            expect(closeUserConnections).not.toHaveBeenCalled()
+        })
+
+        it('changePassword closes every connection of the user once the password is written', async () => {
+            userRepositoryMock.findById.mockResolvedValue({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            validatePasswordMock.mockResolvedValue(true)
+            hashPasswordMock.mockResolvedValue('new-hash')
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
+            destroyAllSessionsMock.mockResolvedValue({ deleted: 2, complete: true })
+
+            const { authService } = await loadAuthService()
+            const result = await authService.changePassword(
+                7n,
+                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                'previous-session-token',
+                sessionStillStored,
+            )
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(closeUserConnections).toHaveBeenCalledWith('7')
+        })
+
+        it('changePassword that changed nothing closes nothing', async () => {
+            userRepositoryMock.findById.mockResolvedValue({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            validatePasswordMock.mockResolvedValue(true)
+            hashPasswordMock.mockResolvedValue('new-hash')
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
+
+            const { authService } = await loadAuthService()
+            const result = await authService.changePassword(
+                7n,
+                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                'previous-session-token',
+                sessionStillStored,
+            )
+
+            expect(Result.isError(result)).toBe(true)
+            expect(closeUserConnections).not.toHaveBeenCalled()
+        })
     })
 
     it('returns the rotated CSRF token after logoutAll mutates the session', async () => {
