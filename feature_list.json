@@ -1883,6 +1883,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #573 (merge into main): contracts.test.js walks every exported schema (RED with one field reverted to its own literal), make check passing (backend 2690, frontend 532, playground 115, shared 33, docs 26), e2e 92, docs:build+verify passing, manual PasswordSchema equals the old literal, CI all jobs passing"
+        },
+        {
+            "id": "feat-190",
+            "name": "Docs Match The Code",
+            "description": "Docs audit: the VitePress pages (both locales) and the package READMEs contradict the current code in ~60 places: fixed issues still described as open (frontend HTTP prefix, CSP, SERVE_STATIC, app CI, tokens in logs), broken links (result-helpers.ts, user-storage.ts), stale examples (websocketApi from a component instead of callWs, defineRoute/validator instead of contract, enforceThrottle options, OAuth emailVerified, contractSchemaRegistry spread), wrong numbers and lists (tests, throttle policies, migrations, repositories, locales). Fix every verified discrepancy in uk and en together and the REDIS_PREFIX comment in .env.example; no code behaviour changes.",
+            "owner": "Blazheiko",
+            "branch": "docs/match-code",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
