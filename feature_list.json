@@ -1913,6 +1913,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #582 (merge 445646f): shared/dev-backend resolves PORT/HOST/API_PATH_PREFIX (shell, then packages/backend/.env, then 3000/api); frontend and api-playground Vite proxies and the compiled VITE_API_PATH_PREFIX follow it, a different hand-set value fails the config; Docker build-arg API_PATH_PREFIX; empty API_PATH_PREFIX means api in the backend; docs uk+en (backend/configuration one-source section). make check passing (backend 2697, frontend 544, playground 115, shared 39, docs 26), docs:build+verify passing, manual dev proxy/build check with PORT=4100 API_PATH_PREFIX=v1; CI all jobs passing incl. e2e and e2e-live. Details were in progress.md on feat/dev-backend-address (removed from main by this PR)."
+        },
+        {
+            "id": "feat-193",
+            "name": "Config-Time Shared Source and One API Prefix Rule",
+            "description": "Review of main at 81e27b8: (1) vite.product.ts, frontend/vite.backend.ts and api-playground/vite.config.ts import shared/* by package name, which resolves to shared/dist at config load (the shared-source condition only applies inside Vite), so index.html, manifest.json and robots.txt keep stale product values until shared is rebuilt; import the shared sources by relative path (Vite then restarts on change) and forbid bare shared/* imports in Vite configs via ESLint. (2) API_PATH_PREFIX=/ gives '' in the backend and api in the client: one normalizer (shared/api-prefix) for backend config, frontend, playground, dev-backend and build-meta; anything that normalizes to empty means api. (3) Remove the stale duplicate packages/frontend/env.d.ts (ImportMetaEnv lives in src/env.d.ts). Docs uk+en.",
+            "owner": "Blazheiko",
+            "branch": "feat/config-shared-source",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
