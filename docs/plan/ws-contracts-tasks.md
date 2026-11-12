@@ -1,6 +1,6 @@
 # Task list: контракти WebSocket (ADR 0006)
 
-**Статус: у роботі.** Рішення Д-WS1…Д-WS3 прийнято 2026-11-11 — рекомендовані варіанти ([ADR 0006](../adr/0006-websocket-contracts.md#рішення-власника-2026-11-11)).
+**Статус: виконано 2026-11-12** (W1 #548, W2 #550, W3 #552). У W3.2 окремого `onBroadcast` немає: типізованою підпискою є `useEventBus().on`. Рішення Д-WS1…Д-WS3 прийнято 2026-11-11 — рекомендовані варіанти ([ADR 0006](../adr/0006-websocket-contracts.md#рішення-власника-2026-11-11)).
 
 Фічі: W1 `feat-180`, W2 `feat-181`, W3 `feat-182`. Порядок — W1 → W2 → W3. Шаблони S / D / E / X — як у [code-review-2026-11-10-tasks.md](./code-review-2026-11-10-tasks.md): S — статус-PR і гілка, D — документація в обох мовах, E — повний набір перевірок і evidence, X — PR зі статусом `done`.
 
@@ -34,16 +34,16 @@
 
 ## W3 Broadcast Contracts · → W2 · e2e
 
-- [ ] **W3.S** Шаблон S.
-- [ ] **W3.1** `shared/contracts/ws/broadcast.ts`: `BroadcastContracts` (лише типи з `BroadcastEventSchemas`).
+- [x] **W3.S** Шаблон S.
+- [x] **W3.1** `shared/contracts/ws/broadcast.ts`: `BroadcastContracts` (лише типи з `BroadcastEventSchemas`).
       **AC:** `check:bundle-graph` без схем.
-- [ ] **W3.2** Реєстр guard'ів `satisfies { [E in BroadcastEventName]: Guard<BroadcastPayload<E>> }`; `onBroadcast(event, handler)`; події event bus для broadcast виводяться з `BroadcastContracts`, ручне копіювання полів у `useBroadcastHandler` зникає.
+- [x] **W3.2** Реєстр guard'ів `satisfies { [E in BroadcastEventName]: Guard<BroadcastPayload<E>> }`; `onBroadcast(event, handler)`; події event bus для broadcast виводяться з `BroadcastContracts`, ручне копіювання полів у `useBroadcastHandler` зникає.
       **AC:** тест типів: подія в `BroadcastEventSchemas` без guard'а не компілюється; тест паритету guard ↔ схема зелений; наявні тести чату й адмінки зелені.
-- [ ] **W3.3** `WsServiceMessage` у `shared/ws-client`; мертві обробники `pong` і `connection_closed` прибрано.
+- [x] **W3.3** `WsServiceMessage` у `shared/ws-client`; мертві обробники `pong` і `connection_closed` прибрано.
       **AC:** тест `classifyWsMessage` з типом; e2e зелені.
-- [ ] **W3.D** Шаблон D: `backend/websocket.md` («Контракт подій»), сторінка фронтенду. **W3.E** Шаблон E (e2e). **W3.X** Шаблон X.
+- [x] **W3.D** Шаблон D: `backend/websocket.md` («Контракт подій»), сторінка фронтенду. **W3.E** Шаблон E (e2e). **W3.X** Шаблон X.
 
 ## Контроль завершення
 
-- [ ] У `ws-routes.ts` немає маршруту без контракту; поза `utils/ws-client.ts` немає рядкових WS-викликів.
-- [ ] Кожна broadcast-подія має контракт типів і guard; ADR 0006 у статусі «прийнято»; цей файл і план code review оновлено.
+- [x] У `ws-routes.ts` немає маршруту без контракту; поза `utils/ws-client.ts` немає рядкових WS-викликів.
+- [x] Кожна broadcast-подія має контракт типів і guard; ADR 0006 у статусі «прийнято»; цей файл і план code review оновлено.
