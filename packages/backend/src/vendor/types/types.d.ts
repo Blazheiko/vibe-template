@@ -17,7 +17,6 @@ export interface UserConnection extends Record<string, unknown> {
     ip: string
     userAgent: string
     ip2: string
-    token: string
     user: unknown
     role?: 'user' | 'admin'
     appType: 'web' | 'pwa'

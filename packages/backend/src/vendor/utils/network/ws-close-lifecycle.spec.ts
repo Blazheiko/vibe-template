@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-107 (R04): a uWS socket is dead once its close handler runs. onClose reads the socket
 // and starts onDisconnected (which takes it out of the registry) before its first await, so
-// nothing can find the socket while the Redis revoke is still running.
+// nothing can find the socket while the rest of the close is still running. feat-196: there is
+// no WS token left to revoke at close, the upgrade consumed it.
 const logger = vi.hoisted(() => ({ debug: vi.fn(), error: vi.fn(), warn: vi.fn(), info: vi.fn() }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#database/redis-rate-limit.js', () => ({ default: { eval: vi.fn() } }))
@@ -12,21 +13,16 @@ const wsSessionHandler = vi.hoisted(() => vi.fn())
 vi.mock('../session/session-handler.js', () => ({ wsSessionHandler }))
 
 const order: string[] = []
-let releaseRevoke: () => void = () => undefined
+let releaseDisconnect: () => void = () => undefined
 const hooks = {
     onUpgrade: vi.fn(),
     onConnected: vi.fn(),
-    onDisconnected: vi.fn(() => {
-        order.push('disconnected')
-        return Promise.resolve()
-    }),
-    onRefreshToken: vi.fn().mockResolvedValue(undefined),
-    onRevokeToken: vi.fn(
+    onDisconnected: vi.fn(
         () =>
             new Promise<void>((resolve) => {
-                order.push('revoke started')
-                releaseRevoke = () => {
-                    order.push('revoke done')
+                order.push('disconnect started')
+                releaseDisconnect = () => {
+                    order.push('disconnect done')
                     resolve()
                 }
             }),
@@ -43,7 +39,6 @@ handlers.registerWsMessageValidator({
 const createWs = (sendResult = 1) => {
     let dead = false
     const userData: Record<string, unknown> = {
-        token: 'wstoken',
         sessionId: 's1',
         userToken: 'u1',
         userId: '1',
@@ -82,7 +77,7 @@ beforeEach(() => {
 })
 
 describe('onClose (feat-107)', () => {
-    it('marks the socket closed and disconnects it before awaiting the token revoke', async () => {
+    it('marks the socket closed and disconnects it before its first await', async () => {
         const ws = createWs()
 
         const closing = handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
@@ -90,16 +85,16 @@ describe('onClose (feat-107)', () => {
         ws.kill()
 
         expect(ws.userData['closed']).toBe(true)
-        expect(order).toEqual(['disconnected', 'revoke started'])
+        expect(order).toEqual(['disconnect started'])
         expect(hooks.onDisconnected).toHaveBeenCalledWith(ws, ws.userData, 1001)
 
-        releaseRevoke()
+        releaseDisconnect()
         await closing
-        expect(order).toEqual(['disconnected', 'revoke started', 'revoke done'])
+        expect(order).toEqual(['disconnect started', 'disconnect done'])
         expect(logger.error).not.toHaveBeenCalled()
     })
 
-    it('still revokes the token when onDisconnected fails', async () => {
+    it('logs a failing onDisconnected and still finishes the close', async () => {
         hooks.onDisconnected.mockImplementationOnce(() =>
             Promise.reject(new Error('presence down')),
         )
@@ -107,10 +102,8 @@ describe('onClose (feat-107)', () => {
 
         const closing = handlers.onClose(ws as never, 1000, new ArrayBuffer(0))
         ws.kill()
-        releaseRevoke()
-        await closing
+        await expect(closing).resolves.toBeUndefined()
 
-        expect(hooks.onRevokeToken).toHaveBeenCalledWith('wstoken')
         expect(logger.error).toHaveBeenCalledWith(
             expect.objectContaining({ err: expect.any(Error) }),
             'Error in onDisconnected hook',
@@ -162,7 +155,7 @@ describe('a reply after the socket closed (feat-124)', () => {
             // The close handler runs while the handler awaits.
             void handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
             ws.kill()
-            releaseRevoke()
+            releaseDisconnect()
             return Promise.resolve({ event: 'main:ping', status: 'success', data: {} })
         })
         wsSessionHandler.mockResolvedValue({ kind: 'ok', session: {} })
@@ -187,7 +180,7 @@ describe('an expired session after the socket closed (feat-128)', () => {
         wsSessionHandler.mockImplementation(() => {
             void handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
             ws.kill()
-            releaseRevoke()
+            releaseDisconnect()
             return Promise.resolve({ kind: 'missing' })
         })
 
@@ -223,7 +216,7 @@ describe('a failed onConnected hook (feat-133)', () => {
         hooks.onConnected.mockImplementationOnce(() => {
             void handlers.onClose(ws as never, 1001, new ArrayBuffer(0))
             ws.kill()
-            releaseRevoke()
+            releaseDisconnect()
             return Promise.reject(new Error('connection terminated'))
         })
 

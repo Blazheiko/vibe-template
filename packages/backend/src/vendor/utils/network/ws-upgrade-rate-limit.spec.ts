@@ -28,8 +28,6 @@ const load = async () => {
         onUpgrade,
         onConnected: vi.fn(),
         onDisconnected: vi.fn(),
-        onRefreshToken: vi.fn(),
-        onRevokeToken: vi.fn(),
     })
     return handlers.handleUpgrade
 }

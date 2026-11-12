@@ -1,406 +1,378 @@
 {
-  "type": "diff",
-  "version": "9",
-  "dialect": "postgres",
-  "id": "bed65f1f-336a-4bb0-8e35-0329732cf678",
-  "prevIds": [
-    "676fcf78-39af-48e4-b1f8-9af3169ce912"
-  ],
-  "footprints": [
-    {
-      "statementType": "create_table",
-      "statementTarget": [
-        "table",
-        "public",
-        "oauth_link_verifications"
-      ],
-      "writes": [
-        "s|tbl|public.oauth_link_verifications",
-        "n|tbl|public.oauth_link_verifications",
-        "e|tbl|public.oauth_link_verifications",
-        "n|rel|public.oauth_link_verifications",
-        "n|type|public.oauth_link_verifications",
-        "n|rel|public.oauth_link_verifications_pkey",
-        "n|rel|public.oauth_link_verifications_token_hash_key"
-      ],
-      "reads": [
-        "n|sch|public"
-      ]
-    },
-    {
-      "statementType": "add_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "password_reset_tokens",
-        "target_email"
-      ],
-      "writes": [
-        "s|col|public.password_reset_tokens.target_email",
-        "n|col|public.password_reset_tokens.target_email",
-        "e|col|public.password_reset_tokens.target_email"
-      ],
-      "reads": [
-        "n|tbl|public.password_reset_tokens",
-        "n|sch|public"
-      ]
-    },
-    {
-      "statementType": "create_index",
-      "statementTarget": [
-        "index",
-        "public",
-        "oauth_link_verifications",
-        "oauth_link_verifications_user_id_provider_idx"
-      ],
-      "writes": [
-        "s|idx|public.oauth_link_verifications_user_id_provider_idx",
-        "n|idx|public.oauth_link_verifications_user_id_provider_idx",
-        "e|idx|public.oauth_link_verifications_user_id_provider_idx",
-        "n|rel|public.oauth_link_verifications_user_id_provider_idx"
-      ],
-      "reads": [
-        "n|tbl|public.oauth_link_verifications",
-        "n|sch|public",
-        "n|col|public.oauth_link_verifications.user_id",
-        "n|col|public.oauth_link_verifications.provider"
-      ]
-    },
-    {
-      "statementType": "create_fk",
-      "statementTarget": [
-        "table",
-        "public",
-        "oauth_link_verifications"
-      ],
-      "writes": [
-        "s|fk|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey",
-        "n|fk|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey",
-        "e|fk|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey",
-        "n|con|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey"
-      ],
-      "reads": [
-        "n|tbl|public.oauth_link_verifications",
-        "n|sch|public",
-        "n|tbl|public.users",
-        "n|sch|public",
-        "n|col|public.oauth_link_verifications.user_id",
-        "n|col|public.users.id",
-        "e|uniqueness|public.users.id"
-      ]
-    }
-  ],
-  "deltas": [
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "name": "oauth_link_verifications",
-        "isRlsEnabled": false,
-        "entityType": "tables"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "id",
-        "type": "bigserial",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "user_id",
-        "type": "bigint",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "provider",
-        "type": "varchar(50)",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "provider_user_id",
-        "type": "varchar(255)",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "provider_email",
-        "type": "varchar(255)",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "provider_name",
-        "type": "varchar(255)",
-        "typeSchema": null,
-        "notNull": false,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "provider_avatar",
-        "type": "varchar(500)",
-        "typeSchema": null,
-        "notNull": false,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "target_email",
-        "type": "varchar(255)",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "session_binding_hash",
-        "type": "varchar(64)",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "token_hash",
-        "type": "varchar(64)",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "expires_at",
-        "type": "timestamp",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "used_at",
-        "type": "timestamp",
-        "typeSchema": null,
-        "notNull": false,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "created_at",
-        "type": "timestamp",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": "now()",
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "password_reset_tokens",
-        "name": "target_email",
-        "type": "varchar(255)",
-        "typeSchema": null,
-        "notNull": false,
-        "dimensions": 0,
-        "default": null,
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "oauth_link_verifications_user_id_provider_idx",
-        "nameExplicit": true,
-        "columns": [
-          {
-            "value": "user_id",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          },
-          {
-            "value": "provider",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          }
-        ],
-        "isUnique": false,
-        "where": null,
-        "with": "",
-        "method": "btree",
-        "concurrently": false,
-        "entityType": "indexes"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "oauth_link_verifications_user_id_users_id_fkey",
-        "nameExplicit": false,
-        "columns": [
-          "user_id"
-        ],
-        "schemaTo": "public",
-        "tableTo": "users",
-        "columnsTo": [
-          "id"
-        ],
-        "onUpdate": "NO ACTION",
-        "onDelete": "CASCADE",
-        "entityType": "fks"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "oauth_link_verifications_pkey",
-        "columns": [
-          "id"
-        ],
-        "nameExplicit": false,
-        "entityType": "pks"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "oauth_link_verifications_token_hash_key",
-        "nameExplicit": true,
-        "columns": [
-          "token_hash"
-        ],
-        "nullsNotDistinct": false,
-        "entityType": "uniques"
-      }
-    }
-  ]
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "bed65f1f-336a-4bb0-8e35-0329732cf678",
+    "prevIds": ["676fcf78-39af-48e4-b1f8-9af3169ce912"],
+    "footprints": [
+        {
+            "statementType": "create_table",
+            "statementTarget": ["table", "public", "oauth_link_verifications"],
+            "writes": [
+                "s|tbl|public.oauth_link_verifications",
+                "n|tbl|public.oauth_link_verifications",
+                "e|tbl|public.oauth_link_verifications",
+                "n|rel|public.oauth_link_verifications",
+                "n|type|public.oauth_link_verifications",
+                "n|rel|public.oauth_link_verifications_pkey",
+                "n|rel|public.oauth_link_verifications_token_hash_key"
+            ],
+            "reads": ["n|sch|public"]
+        },
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "public", "password_reset_tokens", "target_email"],
+            "writes": [
+                "s|col|public.password_reset_tokens.target_email",
+                "n|col|public.password_reset_tokens.target_email",
+                "e|col|public.password_reset_tokens.target_email"
+            ],
+            "reads": ["n|tbl|public.password_reset_tokens", "n|sch|public"]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": [
+                "index",
+                "public",
+                "oauth_link_verifications",
+                "oauth_link_verifications_user_id_provider_idx"
+            ],
+            "writes": [
+                "s|idx|public.oauth_link_verifications_user_id_provider_idx",
+                "n|idx|public.oauth_link_verifications_user_id_provider_idx",
+                "e|idx|public.oauth_link_verifications_user_id_provider_idx",
+                "n|rel|public.oauth_link_verifications_user_id_provider_idx"
+            ],
+            "reads": [
+                "n|tbl|public.oauth_link_verifications",
+                "n|sch|public",
+                "n|col|public.oauth_link_verifications.user_id",
+                "n|col|public.oauth_link_verifications.provider"
+            ]
+        },
+        {
+            "statementType": "create_fk",
+            "statementTarget": ["table", "public", "oauth_link_verifications"],
+            "writes": [
+                "s|fk|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey",
+                "n|fk|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey",
+                "e|fk|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey",
+                "n|con|public.oauth_link_verifications.oauth_link_verifications_user_id_users_id_fkey"
+            ],
+            "reads": [
+                "n|tbl|public.oauth_link_verifications",
+                "n|sch|public",
+                "n|tbl|public.users",
+                "n|sch|public",
+                "n|col|public.oauth_link_verifications.user_id",
+                "n|col|public.users.id",
+                "e|uniqueness|public.users.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "name": "oauth_link_verifications",
+                "isRlsEnabled": false,
+                "entityType": "tables"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "id",
+                "type": "bigserial",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "user_id",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "provider",
+                "type": "varchar(50)",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "provider_user_id",
+                "type": "varchar(255)",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "provider_email",
+                "type": "varchar(255)",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "provider_name",
+                "type": "varchar(255)",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "provider_avatar",
+                "type": "varchar(500)",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "target_email",
+                "type": "varchar(255)",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "session_binding_hash",
+                "type": "varchar(64)",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "token_hash",
+                "type": "varchar(64)",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "expires_at",
+                "type": "timestamp",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "used_at",
+                "type": "timestamp",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "created_at",
+                "type": "timestamp",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "now()",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "password_reset_tokens",
+                "name": "target_email",
+                "type": "varchar(255)",
+                "typeSchema": null,
+                "notNull": false,
+                "dimensions": 0,
+                "default": null,
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "oauth_link_verifications_user_id_provider_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "user_id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "provider",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "concurrently": false,
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "oauth_link_verifications_user_id_users_id_fkey",
+                "nameExplicit": false,
+                "columns": ["user_id"],
+                "schemaTo": "public",
+                "tableTo": "users",
+                "columnsTo": ["id"],
+                "onUpdate": "NO ACTION",
+                "onDelete": "CASCADE",
+                "entityType": "fks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "oauth_link_verifications_pkey",
+                "columns": ["id"],
+                "nameExplicit": false,
+                "entityType": "pks"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "oauth_link_verifications_token_hash_key",
+                "nameExplicit": true,
+                "columns": ["token_hash"],
+                "nullsNotDistinct": false,
+                "entityType": "uniques"
+            }
+        }
+    ]
 }

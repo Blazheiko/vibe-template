@@ -196,17 +196,29 @@ describe('useWebSocketConnection: a socket closed on purpose', () => {
 })
 
 describe('useWebSocketConnection: a lost connection', () => {
-    it('reconnects after 5 seconds when the current socket drops', async () => {
+    // feat-196: a WS token opens one connection. The token of the lost socket is spent, so a
+    // reconnect asks for a new one instead of trying the old one again.
+    const newToken = () => {
+        updateWsToken.mockResolvedValue({
+            data: { status: 'ok', wsUrl: URL, wsToken: 'token-2' },
+            error: null,
+        })
+    }
+
+    it('reconnects after 5 seconds with a new token when the current socket drops', async () => {
         const { websocketOpen } = await load()
         await websocketOpen(URL, 'token-1')
         const socket = currentSocket()
         connect(socket)
+        newToken()
 
         options().onDisconnected(socket, closeEvent(1006))
         await vi.advanceTimersByTimeAsync(4999)
         expect(fake.opens).toBe(1)
+        expect(updateWsToken).not.toHaveBeenCalled()
         await vi.advanceTimersByTimeAsync(1)
 
+        expect(updateWsToken).toHaveBeenCalledTimes(1)
         expect(fake.opens).toBe(2)
     })
 
@@ -215,6 +227,7 @@ describe('useWebSocketConnection: a lost connection', () => {
         await websocketOpen(URL, 'token-1')
         const socket = currentSocket()
         connect(socket)
+        newToken()
 
         // vueuse's heartbeat calls its own close(): the current socket is dropped, then its
         // close event arrives.
@@ -223,7 +236,22 @@ describe('useWebSocketConnection: a lost connection', () => {
         options().onDisconnected(socket, closeEvent(1000))
         await vi.advanceTimersByTimeAsync(5000)
 
+        expect(updateWsToken).toHaveBeenCalledTimes(1)
         expect(fake.opens).toBe(2)
+    })
+
+    it('does not try the spent token again when no new one can be taken', async () => {
+        const { websocketOpen } = await load()
+        await websocketOpen(URL, 'token-1')
+        const socket = currentSocket()
+        connect(socket)
+        // The session is gone: the token request answers 401.
+
+        options().onDisconnected(socket, closeEvent(1006))
+        await vi.advanceTimersByTimeAsync(5000)
+
+        expect(updateWsToken).toHaveBeenCalledTimes(1)
+        expect(fake.opens).toBe(1)
     })
 
     it('rejects pending requests when the connection is lost', async () => {

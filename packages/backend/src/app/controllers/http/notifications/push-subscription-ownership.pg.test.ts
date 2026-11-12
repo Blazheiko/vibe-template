@@ -182,8 +182,6 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             onUpgrade: () => Promise.resolve({ kind: 'missing' as const }),
             onConnected: () => Promise.resolve(),
             onDisconnected: () => Promise.resolve(),
-            onRefreshToken: () => Promise.resolve(),
-            onRevokeToken: () => Promise.resolve(),
         })
         const { routesHandler } = await import('#vendor/start/router.js')
         const { default: httpRoutes } = await import('#app/routes/http-routes.js')

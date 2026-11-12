@@ -176,7 +176,6 @@ sequenceDiagram
   Hooks-->>U: sessionId, userId, userToken or null
   U-->>Client: res.upgrade(userData)
   Client->>M: JSON message
-  M->>Hooks: onRefreshToken(token)
   M->>M: validate envelope, wsSessionHandler
   M->>D: message, session
   D->>D: rate limit, validator, middlewares, handler

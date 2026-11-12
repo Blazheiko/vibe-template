@@ -16,8 +16,6 @@ handlers.registerWsAppHooks({
     onUpgrade: vi.fn(),
     onConnected: vi.fn(),
     onDisconnected: vi.fn(),
-    onRefreshToken: vi.fn().mockResolvedValue(undefined),
-    onRevokeToken: vi.fn(),
 })
 handlers.registerWsMessageValidator({ validate: (value: unknown) => validate(value) as never })
 

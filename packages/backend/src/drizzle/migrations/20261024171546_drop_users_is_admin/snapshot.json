@@ -1,35 +1,25 @@
 {
-  "type": "diff",
-  "version": "9",
-  "dialect": "postgres",
-  "id": "a40ded0d-779e-4808-a6e4-6ddd7648b80b",
-  "prevIds": [
-    "7746ae13-fcf9-4d99-b9ca-f6caa3bca89c"
-  ],
-  "footprints": [
-    {
-      "statementType": "drop_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "users",
-        "is_admin"
-      ],
-      "writes": [
-        "s|col|public.users.is_admin",
-        "n|col|public.users.is_admin",
-        "e|col|public.users.is_admin"
-      ],
-      "reads": [
-        "n|tbl|public.users",
-        "n|sch|public"
-      ]
-    }
-  ],
-  "deltas": [
-    {
-      "op": "drop",
-      "key": "columns\u0000[\"public\",\"users\",\"is_admin\"]"
-    }
-  ]
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "a40ded0d-779e-4808-a6e4-6ddd7648b80b",
+    "prevIds": ["7746ae13-fcf9-4d99-b9ca-f6caa3bca89c"],
+    "footprints": [
+        {
+            "statementType": "drop_column",
+            "statementTarget": ["column", "public", "users", "is_admin"],
+            "writes": [
+                "s|col|public.users.is_admin",
+                "n|col|public.users.is_admin",
+                "e|col|public.users.is_admin"
+            ],
+            "reads": ["n|tbl|public.users", "n|sch|public"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "drop",
+            "key": "columns\u0000[\"public\",\"users\",\"is_admin\"]"
+        }
+    ]
 }

@@ -7,11 +7,10 @@ import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavai
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 
-const WS_TOKEN_TTL = 120
-
 const MISSING: UpgradeTokenResult = { kind: 'missing' }
 
 /**
+ * The token is consumed whatever the answer: a refused upgrade asks for a new one.
  * `unavailable` when Redis is down: the first failed command stops the check,
  * the session lookup is not attempted, and the upgrade is answered with 503. The same
  * answer when the sessionToken lookup (database) fails: no access on the Redis
@@ -20,7 +19,10 @@ const MISSING: UpgradeTokenResult = { kind: 'missing' }
 const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> => {
     if (token === '') return MISSING
     try {
-        const tokenData = await withRedis(() => redis.get(`auth:ws:${token}`))
+        // feat-196: read and deleted in one command, so a token opens one connection. Whoever
+        // saw it (it travels in Sec-WebSocket-Protocol) cannot open another with it, and of two
+        // upgrades racing with one token exactly one gets the record.
+        const tokenData = await withRedis(() => redis.getdel(`auth:ws:${token}`))
         if (tokenData === null) {
             logger.warn(
                 { token: maskTokenForLogs(token) },
@@ -101,18 +103,6 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
     }
 }
 
-const refreshToken = async (token: string): Promise<void> => {
-    if (token === '') return
-    await withRedis(() => redis.expire(`auth:ws:${token}`, WS_TOKEN_TTL))
-}
-
-const revokeToken = async (token: string): Promise<void> => {
-    if (token === '') return
-    await withRedis(() => redis.del(`auth:ws:${token}`))
-}
-
 export const wsSessionAuth = {
     verifyUpgradeToken,
-    refreshToken,
-    revokeToken,
 }

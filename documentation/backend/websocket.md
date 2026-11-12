@@ -78,7 +78,7 @@ const appType = normalizeAppTypeProtocol(protocols[1] ?? '')
 
 Якщо `verifyUpgradeToken` не знайшов живої сесії для токена правильного формату, upgrade відхиляється **до** `res.upgrade` відповіддю `401 Session expired`: з'єднання не відкривається. Браузер бачить це як невдалий handshake (close `1006`), і клієнт оновлює токен через HTTP (див. нижче). Якщо дані є, клієнт отримує `service:connection_established` з `socket_id` (UUID з'єднання) і `activity_timeout: 30`.
 
-Під час кожного вхідного повідомлення `onRefreshToken` продовжує TTL `auth:ws:<token>` до 120 с, а в `onClose` і `closeAllWs` (graceful shutdown, код `4201`) токен видаляється через `onRevokeToken`. `closeAllWs` спершу закриває кожне з'єднання кодом `4201`, а токени відкликає вже потім, паралельно: збій Redis на відкликанні лише логується і не лишає з'єднань відкритими (feat-112). Після `closeAllWs` сервер більше не апгрейдить: upgrade, що ще чекав перевірки токена, отримує `503 Server is shutting down` (feat-138). Отже токен одноразовий щодо з'єднання: для нового підключення потрібен новий виклик `update-ws-token`.
+Токен **одноразовий**: `verifyUpgradeToken` читає `auth:ws:<token>` командою `GETDEL`, тож запис зникає з Redis тим самим кроком, яким його прочитано (feat-196). Другий upgrade з тим самим токеном отримує `401`, а з двох одночасних upgrade з одним токеном відкривається рівно один. Токен споживається за будь-якої відповіді (зокрема `503`, коли БД не відповіла): клієнт після невдалого handshake бере новий через `update-ws-token`. `sessionId` і `userToken` далі живуть лише в `userData` з'єднання, тому повідомлення й heartbeat не коштують команди Redis для токена, а під час закриття відкликати нічого. `closeAllWs` (graceful shutdown) закриває кожне з'єднання кодом `4201`. Після `closeAllWs` сервер більше не апгрейдить: upgrade, що ще чекав перевірки токена, отримує `503 Server is shutting down` (feat-138).
 
 ## Структура на сервері
 
@@ -100,8 +100,6 @@ registerWsAppHooks({
     onConnected: (ws, userData) => websocketCoordinator.handleConnected(ws, userData),
     onDisconnected: (ws, userData, code) =>
         websocketCoordinator.handleDisconnected(ws, userData, code),
-    onRefreshToken: (token) => wsSessionAuth.refreshToken(token),
-    onRevokeToken: (token) => wsSessionAuth.revokeToken(token),
 })
 ```
 
@@ -119,7 +117,7 @@ registerWsAppHooks({
 1. читає `userData` і ставить `userData.closed = true`;
 2. прибирає сокет з `wsStorage`;
 3. запускає `onDisconnected`, синхронна частина якого знімає з'єднання з реєстру;
-4. лише потім чекає Redis (`onRevokeToken`) і завершення `onDisconnected`.
+4. лише потім чекає завершення `onDisconnected`.
 
 `handleConnected` після `await findRole(...)` перевіряє `userData.closed`. Сокет, закритий поки читалася роль, у реєстр не потрапляє: його `close` уже відпрацював і більше не викличеться. Якщо `onConnected` падає (наприклад, помилка БД під час читання ролі), з'єднання закривається кодом `1011` (feat-133): клієнт уже отримав `connection_established`, але поза реєстром до нього не доходять broadcast, а push ішов би так, ніби користувач офлайн. Клієнт перепідключається на будь-якому коді поза 4000–4099 і реєструється заново. Так само відповідь обробника повідомлення (`sendJson`) перевіряє `userData.closed`: якщо клієнт пішов, поки обробник працював (відповідь AI, повільний запит), нічого не надсилається й не логується як помилка (feat-124). Те саме для закриття `4001`, коли сесію не знайдено після `await` пошуку сесії (feat-128). Подія `admin_user_online_upsert` надсилається лише тоді, коли користувач досі в реєстрі: знімок для неї читається з БД, і відключення за цей час уже надіслало `remove`, тож запізнілий upsert лишив би «привида» в списку адміна. Рядок `user_online` закривається (`UPDATE` за uuid сокета) лише після того, як `INSERT` підключення завершився, і за будь-якого його результату: невдалий `INSERT` міг закомітитися (timeout чи обрив з'єднання після `COMMIT`), тож без `UPDATE` рядок лишився б відкритим. Якщо рядка справді немає, `UPDATE` нічого не знаходить і пише `warn` (feat-128).
 
@@ -207,7 +205,7 @@ const WsMessageSchema = type({
 
 ### Бюджет повідомлень з'єднання
 
-Ліміт маршруту перевіряється в диспетчері, тобто вже після того, як повідомлення коштувало команду Redis (продовження TTL токена) і, для валідного повідомлення, читання сесії із запитом до PostgreSQL; для невідомої події він не перевіряється взагалі. Тому `onMessage` першим кроком звіряється з бюджетом з'єднання ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). Стан бюджету лежить у `userData` з'єднання: без Redis, у пам'яті процесу, зникає разом із сокетом.
+Ліміт маршруту перевіряється в диспетчері, тобто вже після того, як валідне повідомлення коштувало читання сесії: команду Redis і запит до PostgreSQL; для невідомої події він не перевіряється взагалі. Тому `onMessage` першим кроком звіряється з бюджетом з'єднання ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). Стан бюджету лежить у `userData` з'єднання: без Redis, у пам'яті процесу, зникає разом із сокетом.
 
 | Що рахується                                     | Межа                                    | Понад межу                                                               |
 | ------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------ |
@@ -223,7 +221,7 @@ const WsMessageSchema = type({
 
 Перед диспетчером `onMessage` перевіряє сесію через `wsSessionHandler` ([session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts)) на **кожне** повідомлення, тож вихід із сесії по HTTP рве WS при наступному повідомленні.
 
-Якщо основний Redis-клієнт недоступний (refresh токена або читання сесії дали `RedisUnavailableError`), з'єднання **не закривається**, а у відповідь на це повідомлення приходить помилка з початковими `event` і `id`, у тому ж форматі, що й `rate_limited`:
+Якщо основний Redis-клієнт недоступний (читання сесії дало `RedisUnavailableError`), з'єднання **не закривається**, а у відповідь на це повідомлення приходить помилка з початковими `event` і `id`, у тому ж форматі, що й `rate_limited`:
 
 ```json
 {
@@ -306,7 +304,7 @@ Presence публікується лише якщо в каналі `admin` є �
 - код `4001` → `unauthorized()`: новий `mainApi.updateWsToken()` і `websocketOpen(wsUrl, wsToken)`; якщо HTTP теж каже «не автентифіковано» — подія `unauthorized` в event bus і закриття; інші помилки — повтор через 5 с;
 - `1006`, коли з'єднання так і не відкрилося (сервер відхилив upgrade з `401` або недоступний), → так само `unauthorized()`: перший раз одразу, наступні поспіль — через 5 с, щоб недоступний WS-ендпоінт при робочому HTTP не давав швидкого циклу оновлень токена;
 - коди `4000–4099` (крім `4001`) → без перепідключення; сюди належить `4029` (з'єднання перевищило [бюджет повідомлень](#бюджет-повідомлень-з-єднання));
-- інші коди (зокрема `4201` при зупинці сервера) → `open()` через 5 с. Оскільки токен на сервері вже відкликано, такий повтор, найімовірніше, отримає `4001` і піде гілкою оновлення токена.
+- інші коди (зокрема `4201` при зупинці сервера) → через 5 с клієнт бере новий токен (`update-ws-token`) і відкриває з'єднання з ним: токен попереднього з'єднання вже спожито (feat-196).
 
 ::: tip Нестандартний `API_PATH_PREFIX`
 Ключі WS-маршрутів на сервері — `<API_PATH_PREFIX>/<route>`. Фронтенд бере той самий префікс: Vite-конфіг читає `API_PATH_PREFIX` зі shell або `packages/backend/.env` і вшиває його як `VITE_API_PATH_PREFIX` ([одне джерело](/backend/configuration#одне-джерело-адреси-и-префікса-api)), тож формує ті самі події; з іншим префіксом сервер відповідає `not_found`. Той самий префікс задає й HTTP-шляхи фронтенду ([api-path.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-path.ts): `/<prefix>/<route>`), dev-проксі Vite ([vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts): `/<prefix>`, разом із `/<prefix>/websocket`) і префікс, запити під яким service worker не кешує ([service-worker.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts)). Тож для нестандартного префікса досить змінити `API_PATH_PREFIX` бекенду і перезапустити або перезібрати фронтенд.
@@ -376,10 +374,10 @@ sequenceDiagram
   H->>R: SETEX auth:ws:token 60
   H-->>C: wsUrl, wsToken
   C->>W: Upgrade, Sec-WebSocket-Protocol: token, app-web
-  W->>R: GET auth:ws:token, GET session
+  W->>R: GETDEL auth:ws:token, GET session
   W-->>C: service:connection_established
   C->>W: event api/support/support_chat
-  W->>R: EXPIRE token 120, перевірка сесії
+  W->>R: перевірка сесії
   W->>D: message
   D->>S: handler(context)
   D-->>C: відповідь з тим самим event
