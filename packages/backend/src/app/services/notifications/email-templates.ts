@@ -1,3 +1,5 @@
+import { PRODUCT } from 'shared/product'
+
 // Email clients do not support app CSS variables reliably, so this palette stays inline on purpose.
 export const EMAIL_BRAND = {
     accent: '#A8627A',
@@ -124,7 +126,7 @@ ${preheader}    <table role="presentation" width="100%" cellspacing="0" cellpadd
             <tr>
               <td style="padding-bottom:16px;">
                 <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:${EMAIL_BRAND.accentSoft};border:1px solid ${EMAIL_BRAND.accentLine};color:${EMAIL_BRAND.accent};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
-                  Vibe Template
+                  ${escapeHtml(PRODUCT.name)}
                 </div>
               </td>
             </tr>

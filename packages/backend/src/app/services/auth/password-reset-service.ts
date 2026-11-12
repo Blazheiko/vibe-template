@@ -59,6 +59,7 @@ import {
 } from '#app/services/shared/errors.js'
 import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { PRODUCT } from 'shared/product'
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 export const GENERIC_RESET_MESSAGE =
@@ -76,11 +77,11 @@ function createBlindVerificationCodeHash(): string {
 function buildResetEmailContent(name: string, resetUrl: string): RenderedEmail {
     return renderBrandedEmail({
         subject: 'Reset your password',
-        preheader: 'Reset your Vibe Template password.',
+        preheader: `Reset your ${PRODUCT.name} password.`,
         eyebrow: 'Password reset',
         title: 'Choose a new password',
         name,
-        intro: 'We received a request to reset your Vibe Template password. Use the button below to set a new one.',
+        intro: `We received a request to reset your ${PRODUCT.name} password. Use the button below to set a new one.`,
         action: { kind: 'button', label: 'Reset password', url: resetUrl },
         footer: 'This link will expire in 1 hour. If you did not request a password reset, you can safely ignore this email.',
         textLines: [

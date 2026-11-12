@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 import { buildMeta } from './vite.build-meta'
+import { productBranding } from './vite.product'
 import { stripConsoleLogs } from './vite.console'
 import { sharedSource } from './vite.shared-source'
 
@@ -27,6 +28,7 @@ export default defineConfig({
         }),
         vueDevTools(),
         buildMeta(),
+        productBranding(),
         sharedSource(),
     ],
     esbuild: stripConsoleLogs,

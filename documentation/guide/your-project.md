@@ -41,27 +41,34 @@
 
 ## 1. Перейменувати
 
-Назва шаблону зашита в кількох місцях. Нижче список, зібраний пошуком `Vibe Template`, `VIBE` і `vibe-template` по `packages/` (без тестів і `node_modules`):
+Назва продукту і тексти про нього зібрані в одному файлі: [`packages/shared/src/product/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/product/index.ts). Змініть у ньому `PRODUCT`:
 
-| Що                                           | Де                                                                                                  |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Назва workspace                              | `package.json` (`"name": "vibe-template"`)                                                          |
-| Заголовок і опис сторінки                    | `packages/frontend/index.html` (`<title>`, `meta`)                                                  |
-| PWA: назва, іконки, кольори                  | `packages/frontend/public/manifest.json`, `public/icons/`, `public/splash/`, `public/favicon.svg`   |
-| Логотип на сторінці входу                    | `packages/frontend/src/views/Login.vue` (`'VIBE'`), `src/assets/logo.svg`                           |
-| Назва в PWA-кнопці встановлення              | `packages/frontend/src/components/MenuButton.vue`                                                   |
-| Тексти головної сторінки                     | `packages/frontend/src/locales/*.ts` (`heroTitle`, `mobileTitle` та ін.)                            |
-| Кеш service worker                           | `packages/frontend/src/service-worker.ts` (`__vibe_template_sw_error_queue__`)                      |
-| Листи (скидання пароля, підтвердження email) | `packages/backend/src/app/services/auth/password-reset-service.ts`, `email-verification-service.ts` |
-| Промпти AI-підтримки                         | `packages/backend/src/config/support.ts`; у базу їх кладе `db:seed`                                 |
-| Назва БД за замовчуванням                    | `packages/backend/src/config/database.ts` (`vibe_template`)                                         |
-| `robots.txt`                                 | `packages/frontend/public/robots.txt`                                                               |
+| Поле           | Де з'являється                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| `name`         | `<title>`, `meta`, JSON-LD, PWA manifest, кнопка встановлення PWA, сторінка входу, листи, AI-промпти |
+| `shortName`    | підпис під іконкою PWA (до 12 символів)                                                              |
+| `logoText`     | логотип, який друкується на сторінці входу                                                           |
+| `tagline`      | `<title>`: `<name> — <tagline>`                                                                      |
+| `description`  | `meta description`, Open Graph, Twitter, manifest, кнопка встановлення PWA, сторінка About           |
+| `siteUrl`      | `canonical`, `og:url`, JSON-LD, `Sitemap` у `robots.txt`                                             |
+| `supportEmail` | AI-промпт підтримки: куди відправляти користувача, якщо відповіді немає                              |
+
+`index.html` містить плейсхолдери `%PRODUCT_*%`, а `manifest.json` і `robots.txt` генеруються: усе це робить Vite-плагін [`vite.product.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.product.ts) і в `pnpm dev`, і в `vite build`. Невідомий плейсхолдер зупиняє збірку.
+
+Вручну лишається замінити те, що не є текстом, і технічні ідентифікатори:
+
+| Що                               | Де                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Іконки, splash, favicon, логотип | `packages/frontend/public/icons/`, `public/splash/`, `public/favicon.svg`, `src/assets/logo.svg`      |
+| Кольори PWA                      | `packages/frontend/vite.product.ts` (`theme_color`, `background_color`), `index.html` (`theme-color`) |
+| Назва workspace                  | `package.json` (`"name": "vibe-template"`)                                                            |
+| Назва БД за замовчуванням        | `packages/backend/src/config/database.ts` (`vibe_template`) і `PGSQL_DB_NAME` нижче                   |
 
 У `.env` змініть:
 
 | Змінна                              | Значення в `.env.example`  | Навіщо                                                            |
 | ----------------------------------- | -------------------------- | ----------------------------------------------------------------- |
-| `APP_NAME`                          | `uwebsockets-api`          | Назва застосунку в логах і конфігурації                           |
+| `APP_NAME`                          | `uwebsockets-api`          | Назва процесу (`process.title`); назву продукту бере `PRODUCT`    |
 | `REDIS_PREFIX`                      | `uwebsocket:`              | Префікс ключів Redis; різні проєкти на одному Redis не змішаються |
 | `PGSQL_DB_NAME`                     | `vibe_template`            | Своя база даних                                                   |
 | `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL` | —                          | Від кого приходять листи                                          |

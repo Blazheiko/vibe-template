@@ -41,6 +41,7 @@ import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { PRODUCT } from 'shared/product'
 
 type JsonObject = Record<string, unknown>
 
@@ -683,12 +684,12 @@ async function startMailedLink(
         eyebrow: 'Sign-in method',
         title: `Link ${providerTitle} to your account`,
         name: user.name,
-        intro: `Somebody signed in with the ${providerTitle} account "${identity.providerName}" that uses this email address. Open the link in the same browser to link it to your Vibe Template account.`,
+        intro: `Somebody signed in with the ${providerTitle} account "${identity.providerName}" that uses this email address. Open the link in the same browser to link it to your ${PRODUCT.name} account.`,
         action: { kind: 'button', label: `Link ${providerTitle}`, url },
         footer: 'This link expires in 30 minutes and works only in the browser where the sign-in started. If it was not you, ignore this email: nothing is linked without it.',
         textLines: [
             `Somebody signed in with the ${providerTitle} account "${identity.providerName}" that uses this email address.`,
-            'To link it to your Vibe Template account, open this link in the same browser:',
+            `To link it to your ${PRODUCT.name} account, open this link in the same browser:`,
             url,
             '',
             'This link expires in 30 minutes. If it was not you, ignore this email.',

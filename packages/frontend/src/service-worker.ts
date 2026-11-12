@@ -16,8 +16,8 @@ declare const self: ServiceWorkerGlobalScope
 
 const cacheName = typeof BUILD_TIMESTAMP !== 'undefined' ? BUILD_TIMESTAMP : `now: ${Date.now()}`
 
-const serviceWorkerErrorQueueCacheName = '__vibe_template_sw_error_queue__'
-const serviceWorkerErrorQueueRequestPrefix = '/__vibe_template_sw_error_queue__/'
+const serviceWorkerErrorQueueCacheName = '__app_sw_error_queue__'
+const serviceWorkerErrorQueueRequestPrefix = '/__app_sw_error_queue__/'
 const serviceWorkerErrorQueueMaxItems = 20
 const serviceWorkerErrorQueueTtlMs = 24 * 60 * 60 * 1000
 

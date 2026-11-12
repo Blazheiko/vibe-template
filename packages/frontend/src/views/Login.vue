@@ -5,6 +5,7 @@ import AuthModals from '../components/AuthModals.vue'
 import { useStateStore } from '@/stores/state'
 import { useRouter, useRoute } from 'vue-router'
 import { useEventBus } from '@/utils/event-bus'
+import { PRODUCT } from 'shared/product'
 
 defineComponent({
     name: 'LoginView',
@@ -27,7 +28,7 @@ const OAUTH_ERROR_REASONS = {
     too_many_attempts: 'login.socialLoginTooManyAttempts',
 } as const
 const isRegisterModalVisible = ref(false)
-const logoText = ref('VIBE')
+const logoText = ref(PRODUCT.logoText)
 const typingComplete = ref(false)
 // const showAuthModals = ref(false)
 const showLoginModal = () => {
@@ -117,7 +118,7 @@ onMounted(() => {
         void router.replace({ query: {} })
     }
 
-    const text = 'VIBE'
+    const text = PRODUCT.logoText
     let i = 0
     logoText.value = ' '
 
@@ -148,7 +149,7 @@ onMounted(() => {
             </div>
 
             <div class="welcome-message">
-                <h1>{{ t('login.heroTitle') }}</h1>
+                <h1>{{ PRODUCT.name }}</h1>
                 <p>{{ t('login.heroSubtitle') }}</p>
             </div>
 
@@ -232,7 +233,7 @@ onMounted(() => {
         <!-- Mobile version - minimalistic -->
         <div v-else class="auth-container auth-container-mobile">
             <div class="welcome-message">
-                <h1>{{ t('login.mobileTitle') }}</h1>
+                <h1>{{ t('login.mobileTitle', { name: PRODUCT.name }) }}</h1>
                 <p>{{ t('login.mobileSubtitle') }}</p>
             </div>
             <div v-if="oauthError" class="oauth-error" role="alert">{{ oauthError }}</div>

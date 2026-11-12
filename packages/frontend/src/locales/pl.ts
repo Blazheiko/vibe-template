@@ -55,7 +55,6 @@ const pl: typeof en = {
     },
 
     login: {
-        heroTitle: 'Vibe Template',
         heroSubtitle: 'Poznaj strukturę projektu full-stack w Vue 3 i TypeScript.',
         featureSupportTitle: 'Pomoc',
         featureSupportDesc:
@@ -68,7 +67,7 @@ const pl: typeof en = {
         signIn: 'Zaloguj się',
         createAccount: 'Utwórz konto',
         about: 'O projekcie',
-        mobileTitle: 'Witamy w Vibe Template',
+        mobileTitle: 'Witamy w {name}',
         mobileSubtitle: 'Poznaj edukacyjny szablon aplikacji full-stack',
         socialLoginFailed:
             'Logowanie przez media społecznościowe nie powiodło się. Spróbuj ponownie.',

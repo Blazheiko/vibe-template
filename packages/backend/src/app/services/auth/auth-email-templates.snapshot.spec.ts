@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type * as SharedProduct from 'shared/product'
 
 // feat-069 (G1): the three auth mails — password reset, email verification and email linking —
 // are frozen as files before they are moved into one shared template module (H3). The
@@ -172,5 +173,47 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
         await expect(render(sentMail())).toMatchFileSnapshot(
             `./__snapshots__/email-link.${slug}.txt`,
         )
+    })
+})
+
+// feat-191: the product name comes from shared/product only. With another name every mail
+// carries it in the HTML (escaped) and no trace of the template's own anywhere.
+describe('auth mails with another product name', () => {
+    const NAME = `Acme <Notes> & Co`
+    const send = {
+        'password reset': async () => {
+            const { passwordResetService } = await import('./password-reset-service.js')
+            return passwordResetService.sendPasswordResetEmail(7n)
+        },
+        'email verification': async () => {
+            const { emailVerificationService } = await import('./email-verification-service.js')
+            return emailVerificationService.sendVerificationEmail(7n)
+        },
+        'email linking': async () => {
+            const { emailVerificationService } = await import('./email-verification-service.js')
+            return emailVerificationService.sendLinkVerificationEmail(
+                7n,
+                'new@example.com',
+                SESSION,
+            )
+        },
+    }
+
+    afterEach(() => {
+        vi.doUnmock('shared/product')
+    })
+
+    it.each(Object.keys(send) as (keyof typeof send)[])('%s', async (kind) => {
+        vi.doMock('shared/product', async (importOriginal) => {
+            const actual = await importOriginal<typeof SharedProduct>()
+            return { PRODUCT: { ...actual.PRODUCT, name: NAME } }
+        })
+        arrange('Jane Doe', kind === 'email linking' ? { email: null } : {})
+        configure()
+        expect(Result.isOk(await send[kind]())).toBe(true)
+        const mail = sentMail()
+        expect(mail.html).toContain('Acme &lt;Notes&gt; &amp; Co')
+        expect(mail.html).not.toContain(NAME)
+        expect(render(mail)).not.toMatch(/vibe/i)
     })
 })
