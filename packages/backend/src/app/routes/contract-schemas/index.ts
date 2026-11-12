@@ -1,4 +1,8 @@
-import { contractRouteDefiner, contractWsRouteDefiner } from '#app/routing/contract-registry.js'
+import {
+    contractRouteDefiner,
+    contractWsRouteDefiner,
+    mergeContractSchemas,
+} from '#app/routing/contract-registry.js'
 import { adminSchemas } from './admin.js'
 import { avatarSchemas } from './avatar.js'
 import { authSchemas } from './auth.js'
@@ -12,20 +16,21 @@ import { adminWsSchemas, supportWsSchemas } from './ws.js'
 
 // The schemas of every route declared through a contract, by `<method> <path>` of the contract
 // (docs/adr/0005-route-contracts.md). One file per group of contracts in shared/contracts; a
-// group's file names every contract of the group, or it does not compile.
-export const contractSchemaRegistry = {
-    ...adminSchemas,
-    ...avatarSchemas,
-    ...authSchemas,
-    ...knowledgeBaseSchemas,
-    ...mainSchemas,
-    ...oauthSchemas,
-    ...promptSchemas,
-    ...pushSubscriptionSchemas,
-    ...supportSchemas,
-    ...adminWsSchemas,
-    ...supportWsSchemas,
-}
+// group's file names every contract of the group, or it does not compile. Two contracts with one
+// `<method> <path>` stop the import (feat-186).
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
+    avatarSchemas,
+    authSchemas,
+    knowledgeBaseSchemas,
+    mainSchemas,
+    oauthSchemas,
+    promptSchemas,
+    pushSubscriptionSchemas,
+    supportSchemas,
+    adminWsSchemas,
+    supportWsSchemas,
+)
 
 /**
  * The one way to declare a route of the application: its contract, its handler and its server

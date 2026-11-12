@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { contract, multipartContract, navigationContract, wsContract } from 'shared/contracts'
 import { CanonicalErrorResponseSchema } from 'shared/responses'
 
+import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from './contract-registry.js'
+
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
@@ -10,7 +13,7 @@ vi.mock('#vendor/utils/logger.js', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
 
-const { contractRouteDefiner, contractSchemas, contractWsRouteDefiner } =
+const { contractRouteDefiner, contractSchemas, contractWsRouteDefiner, mergeContractSchemas } =
     await import('./contract-registry.js')
 const { routesHandler } = await import('#vendor/start/router.js')
 const { getTypedPayload } = await import('#vendor/utils/validation/get-typed-payload.js')
@@ -47,6 +50,32 @@ const noteSchemas = contractSchemas(notes, {
 const defineRoute = contractRouteDefiner(noteSchemas)
 
 describe('contractSchemas', () => {
+    // feat-186: a second contract with the same method and path would overwrite the first entry.
+    it('refuses two contracts of a group with one method and path', () => {
+        const twice = {
+            list: contract<undefined, undefined, NoteResponse>()('get', '/notes'),
+            again: contract<undefined, undefined, NoteResponse>()('get', '/notes'),
+        }
+        expect(() =>
+            contractSchemas(twice, {
+                list: { response: NoteResponseSchema },
+                again: { response: NoteResponseSchema },
+            }),
+        ).toThrow('Route contract get /notes is declared twice')
+    })
+
+    it('refuses two groups that share a method and path when they are merged', () => {
+        const other = contractSchemas(
+            { list: contract<undefined, undefined, NoteResponse>()('get', '/notes') },
+            { list: { response: NoteResponseSchema } },
+        )
+        expect(() => mergeContractSchemas(noteSchemas, other)).toThrow(
+            'Route contract get /notes is declared twice',
+        )
+        const merged = mergeContractSchemas(noteSchemas, {})
+        expect(Object.keys(merged).sort()).toEqual(Object.keys(noteSchemas).sort())
+    })
+
     it('keys the entries by the method and the path of their contracts', () => {
         expect(Object.keys(noteSchemas).sort()).toEqual([
             'delete /notes/:noteId',
@@ -269,6 +298,35 @@ function typeChecks(): void {
         contract: notes.create,
         // @ts-expect-error — the handler answers something the response schema does not allow
         handler: () => ({ status: 'success' as const, id: 7 }),
+    })
+
+    // feat-186: the path parameters are the contract's.
+    defineRoute({
+        contract: notes.remove,
+        handler: (context) => {
+            const noteId: string = context.httpData.params.noteId
+            // @ts-expect-error — the contract has no `:id` segment
+            const id: unknown = context.httpData.params.id
+            return { status: 'success' as const, id: `${noteId}${String(id)}` }
+        },
+    })
+
+    /** A controller method that reads `:noteId`, declared apart from the route. */
+    const removeNote = (
+        context: HttpContext<unknown, null, ParamsOf<typeof notes.remove>>,
+    ): NoteResponse => ({ status: 'success', id: context.httpData.params.noteId })
+    defineRoute({ contract: notes.remove, handler: removeNote })
+    // The same method on a contract whose segment is named otherwise.
+    const byId = {
+        remove: contract<undefined, undefined, NoteResponse>()('delete', '/notes/:id'),
+    }
+    const defineByIdRoute = contractRouteDefiner(
+        contractSchemas(byId, { remove: { response: NoteResponseSchema } }),
+    )
+    defineByIdRoute({
+        contract: byId.remove,
+        // @ts-expect-error — the handler reads `:noteId`, the contract has `:id`
+        handler: removeNote,
     })
 
     defineRoute({

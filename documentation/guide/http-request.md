@@ -247,7 +247,7 @@ async updateSubscription(
 
 | Хочу дізнатися              | Звідки взяти                                                         |
 | --------------------------- | -------------------------------------------------------------------- |
-| Id з адреси (`/:id`)        | `context.httpData.params['id']` (рядок)                              |
+| Id з адреси (`/:id`)        | `context.httpData.params.id` (рядок; тип — `ParamsOf` контракту)     |
 | Параметр після `?`          | `context.httpData.query.name` (лише якщо є `queryValidator`)         |
 | Дані з тіла                 | `getTypedPayload(context)` (лише якщо є `validator`)                 |
 | Хто увійшов                 | `requireUserId(context)` або `context.auth.getUserId()`              |

@@ -9,7 +9,16 @@ import type {
     WsContext,
 } from '#vendor/types/types.js'
 import type { RouteResponse } from '#app/routing/route-response.js'
-import type { AnyContract, BodyOf, FieldsOf, KindOf, QueryOf, ResponseOf } from 'shared/contracts'
+import type {
+    AnyContract,
+    BodyOf,
+    FieldsOf,
+    KindOf,
+    PathOf,
+    PathParams,
+    QueryOf,
+    ResponseOf,
+} from 'shared/contracts'
 import type { QueryInputOf } from 'shared/schemas'
 
 // The schemas of the routes declared through a contract (docs/adr/0005-route-contracts.md,
@@ -108,15 +117,52 @@ export function contractSchemas<
         const contract = group[name]
         const entry = (entries as Record<string, SchemaEntry | undefined>)[name]
         if (contract === undefined || entry === undefined) continue
-        registry[keyOf(contract)] = entry
+        addEntry(registry, keyOf(contract), entry)
     }
     return registry as GroupSchemas<G, E>
+}
+
+/** A key the registry already has would be overwritten: two contracts would share one route. */
+const addEntry = (registry: Record<string, SchemaEntry>, key: string, entry: SchemaEntry): void => {
+    if (Object.prototype.hasOwnProperty.call(registry, key)) {
+        throw new Error(`Route contract ${key} is declared twice`)
+    }
+    registry[key] = entry
+}
+
+type Merged<G extends readonly object[]> = G extends readonly [
+    infer Head,
+    ...infer Tail extends readonly object[],
+]
+    ? Head & Merged<Tail>
+    : unknown
+
+/**
+ * The registry of the application from the parts of its groups (feat-186). A spread would let a
+ * later group overwrite an entry of an earlier one; this refuses a key two groups share, at
+ * import, so neither the server nor a test starts with it.
+ */
+export function mergeContractSchemas<
+    const G extends readonly Readonly<Record<string, SchemaEntry>>[],
+>(...groups: G): Merged<G> {
+    const registry: Record<string, SchemaEntry> = {}
+    for (const group of groups) {
+        for (const [key, entry] of Object.entries(group)) addEntry(registry, key, entry)
+    }
+    return registry as Merged<G>
 }
 
 /** The payload a handler sees: the output of the body schema. */
 type PayloadOf<TSchema> = TSchema extends { infer: infer T } ? T : unknown
 /** The query a handler sees: the output of the query schema, or null without one (as at run time). */
 type QueryOutputOf<TSchema> = TSchema extends { infer: infer T } ? T : null
+
+/**
+ * The path parameters of a contract, as its handler reads them (feat-186): a controller method
+ * declares `HttpContext<Payload, Query, ParamsOf<typeof contracts.get>>`, and a parameter renamed
+ * in the contract stops the build.
+ */
+export type ParamsOf<C extends AnyContract> = PathParams<PathOf<C>>
 
 type EntryOf<R, C extends AnyContract> = ContractKey<C> extends keyof R ? R[ContractKey<C>] : never
 
@@ -132,15 +178,20 @@ type ContractRouteInput<R, C extends AnyContract> = Omit<
     queryAllowExtra?: boolean
     queryArrays?: readonly string[]
     // Without an entry the contract above is already the error; the handler is not checked.
+    // NoInfer: the contract is what fixes `C`; a handler declared for another contract is an
+    // error here, not a second guess at `C`.
     handler: [EntryOf<R, C>] extends [never]
         ? (...args: never[]) => unknown
-        : TypedHandler<
-              HttpContext<
-                  PayloadOf<EntryOf<R, C> extends { body: infer B } ? B : undefined>,
-                  QueryOutputOf<EntryOf<R, C> extends { query: infer Q } ? Q : undefined>
-              >,
-              RouteResponse<
-                  EntryOf<R, C> extends { response: infer S extends Type } ? S : undefined
+        : NoInfer<
+              TypedHandler<
+                  HttpContext<
+                      PayloadOf<EntryOf<R, C> extends { body: infer B } ? B : undefined>,
+                      QueryOutputOf<EntryOf<R, C> extends { query: infer Q } ? Q : undefined>,
+                      ParamsOf<C>
+                  >,
+                  RouteResponse<
+                      EntryOf<R, C> extends { response: infer S extends Type } ? S : undefined
+                  >
               >
           >
 }

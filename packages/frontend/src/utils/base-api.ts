@@ -1,3 +1,4 @@
+import { buildUrl, mainContracts } from 'shared/contracts'
 import { CsrfRejectReason } from 'shared/errors'
 import { useEventBus } from './event-bus'
 import {
@@ -71,7 +72,10 @@ const normalizeUrl = (url: string): string => {
 // Empty by default: requests stay same-origin (the Vite proxy in dev, the backend
 // that serves the SPA in production) instead of an example domain (code-issues item 59).
 const BASE_URL = normalizeUrl(import.meta.env.VITE_BASE_URL ?? '')
-const INIT_ROUTE = apiPath('main/init')
+// The transport calls main/init itself: the session refresh is what callApi's transport waits
+// for, so it cannot go through callApi. Its path and method are still the contract's (feat-186).
+const INIT_ROUTE = apiPath(buildUrl(mainContracts.init))
+const INIT_METHOD = mainContracts.init.method.toUpperCase()
 
 const eventBus = useEventBus()
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete'])
@@ -133,7 +137,7 @@ const refreshSession = (): Promise<RefreshResult> => {
     refreshInFlight = (async (): Promise<RefreshResult> => {
         try {
             const response = await fetch(`${BASE_URL}${INIT_ROUTE}`, {
-                method: 'GET',
+                method: INIT_METHOD,
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 signal: AbortSignal.timeout(refreshTimeoutMs),
@@ -284,7 +288,7 @@ const send = async <T>(
         const failed = !response.ok || hasResponseError(responseData)
         const csrfToken = isRecord(responseData) ? responseData.csrfToken : undefined
 
-        if (route === INIT_ROUTE && method.toUpperCase() === 'GET') {
+        if (route === INIT_ROUTE && method.toUpperCase() === INIT_METHOD) {
             // init says whose session it is: 401 → anonymous, 200 → its user.
             if (response.status === 401) {
                 confirmCsrfToken(csrfToken, null)

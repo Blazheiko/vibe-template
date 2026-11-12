@@ -69,7 +69,7 @@ export interface WsContext<TPayload = unknown> {
 | What you need    | HTTP                                                               | WS                                     |
 | ---------------- | ------------------------------------------------------------------ | -------------------------------------- |
 | Validated body   | `getTypedPayload(context)`                                         | `getTypedPayload(context)`             |
-| Path parameters  | `context.httpData.params['id']` (strings)                          | —                                      |
+| Path parameters  | `context.httpData.params.id` (strings, typed by the contract)      | —                                      |
 | Query            | `context.httpData.query` (typed if there is a `queryValidator`)    | —                                      |
 | Current user     | `context.auth.getUserId()` (`string \| null`)                      | `context.userData?.userId`             |
 | Session          | `context.session.sessionInfo`, `updateSessionData(...)`            | `session: null`                        |
@@ -98,23 +98,23 @@ Do not log passwords, tokens or full request bodies.
 
 Everything that came from the client. A read-only object.
 
-| Field         | Type                                | Description                                                                                                                                                                |
-| ------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `method`      | `Method`                            | The route's HTTP method (`'get'`, `'post'`, …).                                                                                                                            |
-| `ip`          | `string \| null \| undefined`       | Client IP (taking trusted proxies into account).                                                                                                                           |
-| `params`      | `Record<string, string>`            | Path parameters (`:id` → `params['id']`). Always strings: convert numbers and `bigint` yourself.                                                                           |
-| `payload`     | `TPayload \| null`                  | Request body after the route validator. Read it through `getTypedPayload(context)`, not directly.                                                                          |
-| `query`       | `TQuery`                            | The validated query object, **not** `URLSearchParams`. Without a `queryValidator` it is `null` (accessing fields is a TS error). See [Validation](/en/backend/validation). |
-| `headers`     | `Map<string, string>`               | Request headers, names in lowercase: `headers.get('user-agent')`.                                                                                                          |
-| `contentType` | `string \| undefined`               | The request `Content-Type`.                                                                                                                                                |
-| `cookies`     | `Map<string, string>`               | Request cookies: `cookies.get('name')`.                                                                                                                                    |
-| `isJson`      | `boolean`                           | Whether the body arrived as JSON.                                                                                                                                          |
-| `files`       | `Map<string, UploadedFile> \| null` | Files from `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null` if there are no files.                                                             |
-| `hasFile`     | `(name: string) => boolean`         | Whether there is a file with this field name.                                                                                                                              |
+| Field         | Type                                            | Description                                                                                                                                                                                        |
+| ------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`      | `Method`                                        | The route's HTTP method (`'get'`, `'post'`, …).                                                                                                                                                    |
+| `ip`          | `string \| null \| undefined`                   | Client IP (taking trusted proxies into account).                                                                                                                                                   |
+| `params`      | `TParams` (`Record<string, string>` by default) | Path parameters (`:id` → `params.id`): the third type parameter of `HttpContext`, `ParamsOf<typeof contracts.get>` of the route's contract. Always strings: convert numbers and `bigint` yourself. |
+| `payload`     | `TPayload \| null`                              | Request body after the route validator. Read it through `getTypedPayload(context)`, not directly.                                                                                                  |
+| `query`       | `TQuery`                                        | The validated query object, **not** `URLSearchParams`. Without a `queryValidator` it is `null` (accessing fields is a TS error). See [Validation](/en/backend/validation).                         |
+| `headers`     | `Map<string, string>`                           | Request headers, names in lowercase: `headers.get('user-agent')`.                                                                                                                                  |
+| `contentType` | `string \| undefined`                           | The request `Content-Type`.                                                                                                                                                                        |
+| `cookies`     | `Map<string, string>`                           | Request cookies: `cookies.get('name')`.                                                                                                                                                            |
+| `isJson`      | `boolean`                                       | Whether the body arrived as JSON.                                                                                                                                                                  |
+| `files`       | `Map<string, UploadedFile> \| null`             | Files from `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null` if there are no files.                                                                                     |
+| `hasFile`     | `(name: string) => boolean`                     | Whether there is a file with this field name.                                                                                                                                                      |
 
 ```ts
-async getItem(context: HttpContext<unknown, ListQuery>) {
-    const id = context.httpData.params['id'] ?? ''
+async getItem(context: HttpContext<unknown, ListQuery, ParamsOf<typeof itemContracts.get>>) {
+    const id = context.httpData.params.id // `:id` of the contract; renamed there, this stops compiling
     const { page, limit } = context.httpData.query
     const lang = context.httpData.headers.get('accept-language')
     if (!context.httpData.hasFile('avatar')) { /* ... */ }

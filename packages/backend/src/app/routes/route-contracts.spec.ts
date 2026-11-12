@@ -61,6 +61,36 @@ describe('every route of the application has a contract', () => {
         expect(contractProblems(httpRoutes)).toEqual([])
     })
 
+    // feat-186: a duplicate is not lost in a Set. Two contracts with one `<method> <path>` would
+    // share one registry entry and one route; two routes with one key would shadow each other.
+    it('every contract of shared/contracts has its own method and path, and an entry', async () => {
+        const exported: unknown[] = Object.values(await import('shared/contracts'))
+        const groups = exported.filter(
+            // A group: an object of contracts, each `{ method, path }` at run time.
+            (value): value is Record<string, { method: string; path: string }> =>
+                typeof value === 'object' &&
+                value !== null &&
+                Object.values(value).every(
+                    (item: unknown) =>
+                        typeof item === 'object' &&
+                        item !== null &&
+                        typeof (item as { method?: unknown }).method === 'string' &&
+                        typeof (item as { path?: unknown }).path === 'string',
+                ),
+        )
+        const keys = groups.flatMap((group) =>
+            Object.values(group).map((c) => `${c.method} ${c.path}`),
+        )
+        expect(keys.length).toBeGreaterThan(0)
+        expect(keys.filter((key, index) => keys.indexOf(key) !== index)).toEqual([])
+        expect([...keys].sort()).toEqual(Object.keys(registry).sort())
+    })
+
+    it('no two routes share a method and path', () => {
+        const keys = [...flatten(httpRoutes), ...flatten(wsRoutes)].map(keyOf)
+        expect(keys.filter((key, index) => keys.indexOf(key) !== index)).toEqual([])
+    })
+
     it('the registry has no entry without a route', () => {
         const declared = new Set([...flatten(httpRoutes), ...flatten(wsRoutes)].map(keyOf))
         expect(Object.keys(registry).filter((key) => !declared.has(key))).toEqual([])
