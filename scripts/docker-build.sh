@@ -10,9 +10,10 @@
 # image talks to nothing outside the compose stack. Extra arguments go to `docker build`,
 # for example --no-cache or --build-arg VITE_SENTRY_ENABLED=true.
 #
-# The API prefix is compiled into the SPA, and the container reads API_PATH_PREFIX from
-# packages/backend/.env at run time (docker-compose.yml: env_file). The two must be the same,
-# so the build takes it from the same file (or from API_PATH_PREFIX in the environment).
+# The API prefix is compiled into the SPA, and the container reads API_PATH_PREFIX at run time.
+# The two must be the same, so the build resolves it like docker-compose.yml does: from
+# API_PATH_PREFIX in the environment, else from packages/backend/.env, else `api`
+# (scripts/verify-compose.mjs checks the compose side).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

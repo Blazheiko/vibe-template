@@ -53,13 +53,14 @@
 
 `make check` — те саме, що крок перевірки в job `quality` у [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml): CI після `pnpm install --frozen-lockfile` викликає саме `make check`. Тому зелений `make check` локально означає зелений `quality` у CI (покриття CI рахує окремим кроком).
 
-| Ціль                      | Що робить                                                                                                              |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `check`                   | по черзі `build-shared`, `verify-makefile`, `format-check`, `typecheck`, `lint`, `test`; зупиняється на першій помилці |
-| `verify-makefile`         | перевіряє сам Makefile (див. вище)                                                                                     |
-| `typecheck`               | `pnpm typecheck`                                                                                                       |
-| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                          |
-| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                    |
+| Ціль                      | Що робить                                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check`                   | по черзі `build-shared`, `verify-makefile`, `verify-compose`, `format-check`, `typecheck`, `lint`, `check-bundle-graph`, `test`; зупиняється на першій помилці                                                                                                                                                                           |
+| `verify-makefile`         | перевіряє сам Makefile (див. вище)                                                                                                                                                                                                                                                                                                       |
+| `verify-compose`          | [`scripts/verify-compose.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/verify-compose.mjs): `docker compose config` дає `app` і `migrate` той самий `API_PATH_PREFIX`, що й `docker-build.sh` (shell → `packages/backend/.env` → `api`), а healthcheck питає `/<префікс>/ready`; без `docker compose` пропускається |
+| `typecheck`               | `pnpm typecheck`                                                                                                                                                                                                                                                                                                                         |
+| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                                                                                                                                                                                                                                            |
+| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                                                                                                                                                                                                                                      |
 
 ## Тести
 
