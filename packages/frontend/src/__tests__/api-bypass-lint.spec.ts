@@ -13,9 +13,12 @@ const packageDir = fileURLToPath(new URL('../..', import.meta.url))
 const sampleFile = fileURLToPath(new URL('../utils/api-path.ts', import.meta.url))
 
 let eslint: ESLint
-beforeAll(() => {
+// The first lint builds the TypeScript program of the package (type-aware rules): seconds on a
+// busy machine. Done once here, with its own timeout, so the cases below stay quick.
+beforeAll(async () => {
     eslint = new ESLint({ cwd: packageDir })
-})
+    await eslint.lintText('export {}\n', { filePath: sampleFile })
+}, 60_000)
 
 /** The ids of the rules a sample breaks. */
 const brokenRules = async (code: string): Promise<string[]> => {

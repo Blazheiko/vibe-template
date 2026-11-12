@@ -245,16 +245,16 @@ The core validates the returned object against the route's `ResponseSchema` and 
 
 ## Where to find what in `context`
 
-| I want to know                   | Where to get it                                                      |
-| -------------------------------- | -------------------------------------------------------------------- |
-| The id from the address (`/:id`) | `context.httpData.params['id']` (a string)                           |
-| A parameter after `?`            | `context.httpData.query.name` (only if there is a `queryValidator`)  |
-| Data from the body               | `getTypedPayload(context)` (only if there is a `validator`)          |
-| Who is logged in                 | `requireUserId(context)` or `context.auth.getUserId()`               |
-| A header                         | `context.httpData.headers.get('lowercase-name')`                     |
-| An uploaded file                 | `context.httpData.files` (a `multipart/form-data` request)           |
-| Set a status or cookie           | `context.responseData.status`, `context.responseData.setCookie(...)` |
-| Write to the log                 | `context.logger.info(...)`                                           |
+| I want to know                   | Where to get it                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| The id from the address (`/:id`) | `context.httpData.params.id` (a string; typed by `ParamsOf` of the contract) |
+| A parameter after `?`            | `context.httpData.query.name` (only if there is a `queryValidator`)          |
+| Data from the body               | `getTypedPayload(context)` (only if there is a `validator`)                  |
+| Who is logged in                 | `requireUserId(context)` or `context.auth.getUserId()`                       |
+| A header                         | `context.httpData.headers.get('lowercase-name')`                             |
+| An uploaded file                 | `context.httpData.files` (a `multipart/form-data` request)                   |
+| Set a status or cookie           | `context.responseData.status`, `context.responseData.setCookie(...)`         |
+| Write to the log                 | `context.logger.info(...)`                                                   |
 
 ## What next
 

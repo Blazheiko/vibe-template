@@ -164,3 +164,13 @@ export const pushSubscriptionSchemas = contractSchemas(pushSubscriptionContracts
 - Нова фіча бекенду додає контракт у `shared/contracts`; сторінки `documentation/backend/` про маршрути й додавання фічі оновлюються в пілоті.
 - Усі HTTP-маршрути оголошено через контракти, усі виклики фронтенду йдуть через `callApi` / `contractUrl`. Прямий `baseApi.http` / `baseApi.upload` поза `utils/api-client.ts` — помилка `pnpm lint`, маршрут без контракту — падіння `route-contracts.spec.ts`. Перший прогін цього тесту знайшов `POST /auth/oauth/email/resend` без схеми тіла: тепер у нього схема порожньої форми, як в інших POST без даних.
 - WebSocket (запити, відповіді, broadcast-події, кореляція) — окремий дизайн (C6).
+
+## Доповнення 2026-11-12 (feat-186)
+
+Рев'ю `main` 4b65696 знайшло п'ять прогалин у захисті від дрейфу. Їх закрито так:
+
+1. Оновлення сесії в `base-api.ts` бере шлях і метод з `mainContracts.init`, а не з рядка. Прямий `fetch` лишається, бо на це оновлення чекає `callApi`.
+2. `callApi` і `contractUrl` вимагають query, коли в ньому є обов'язковий ключ.
+3. На сервері параметри шляху типізовано з контракту: `HttpContext<Payload, Query, ParamsOf<C>>`, `defineRoute` передає `PathParams` контракту.
+4. Реєстр відмовляє дублікату `<метод> <шлях>` всередині групи (`contractSchemas`) і між групами (`mergeContractSchemas`). Тест повноти звіряє списки, а не `Set`.
+5. ESLint не дає взяти default-експорт `base-api` під іншим ім'ям, через `import()` чи `import *`, а також викликати `fetch` поза транспортом і service worker'ом.
