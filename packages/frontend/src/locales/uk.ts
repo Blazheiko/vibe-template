@@ -55,7 +55,6 @@ const uk: typeof en = {
     },
 
     login: {
-        heroTitle: 'Vibe Template',
         heroSubtitle: 'Вивчайте структуру full-stack проєкту на Vue 3 і TypeScript.',
         featureSupportTitle: 'Підтримка',
         featureSupportDesc: 'Відкрийте розмову з підтримкою та отримайте допомогу з акаунтом.',
@@ -66,7 +65,7 @@ const uk: typeof en = {
         signIn: 'Увійти',
         createAccount: 'Створити акаунт',
         about: 'Про проєкт',
-        mobileTitle: 'Ласкаво просимо до Vibe Template',
+        mobileTitle: 'Ласкаво просимо до {name}',
         mobileSubtitle: 'Дослідіть навчальний шаблон full-stack застосунку',
         socialLoginFailed: 'Не вдалося увійти через соцмережу. Спробуйте ще раз.',
         socialLoginLinkPending:

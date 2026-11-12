@@ -6,45 +6,30 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
         <!-- Primary SEO Meta Tags -->
-        <title>Vibe Template — Educational Vue 3 and TypeScript Template</title>
-        <meta name="title" content="Vibe Template — Educational Vue 3 and TypeScript Template" />
-        <meta
-            name="description"
-            content="Vibe Template is an educational project template for learning how to build a Vue 3 and TypeScript application with frontend, backend, shared packages, tests, and build tooling."
-        />
+        <title>%PRODUCT_TITLE%</title>
+        <meta name="title" content="%PRODUCT_TITLE%" />
+        <meta name="description" content="%PRODUCT_DESCRIPTION%" />
         <meta
             name="keywords"
             content="vue 3 template, typescript template, educational project template, full-stack template, pnpm workspace, vite template, backend template, shared package template, testing template"
         />
         <meta name="robots" content="index, follow" />
-        <meta name="author" content="Vibe Template" />
-        <link rel="canonical" href="https://vibe-template.example/" />
+        <meta name="author" content="%PRODUCT_NAME%" />
+        <link rel="canonical" href="%PRODUCT_SITE_URL%" />
 
         <!-- Open Graph / Facebook -->
         <meta property="og:type" content="website" />
-        <meta property="og:site_name" content="Vibe Template" />
-        <meta
-            property="og:title"
-            content="Vibe Template — Educational Vue 3 and TypeScript Template"
-        />
-        <meta
-            property="og:description"
-            content="An educational Vue 3 and TypeScript project template with frontend, backend, shared packages, tests, and build tooling."
-        />
-        <meta property="og:url" content="https://vibe-template.example/" />
+        <meta property="og:site_name" content="%PRODUCT_NAME%" />
+        <meta property="og:title" content="%PRODUCT_TITLE%" />
+        <meta property="og:description" content="%PRODUCT_DESCRIPTION%" />
+        <meta property="og:url" content="%PRODUCT_SITE_URL%" />
         <meta property="og:image" content="/icons/icon_512x512.png" />
         <meta property="og:locale" content="en_US" />
 
         <!-- Twitter Card -->
         <meta name="twitter:card" content="summary_large_image" />
-        <meta
-            name="twitter:title"
-            content="Vibe Template — Educational Vue 3 and TypeScript Template"
-        />
-        <meta
-            name="twitter:description"
-            content="An educational Vue 3 and TypeScript project template for learning full-stack workspace structure."
-        />
+        <meta name="twitter:title" content="%PRODUCT_TITLE%" />
+        <meta name="twitter:description" content="%PRODUCT_DESCRIPTION%" />
         <meta name="twitter:image" content="/icons/icon_512x512.png" />
 
         <!-- PWA and Theme Configuration: static OS/browser brand colors, not the in-app selectable theme. -->
@@ -55,7 +40,7 @@
         <!-- Apple-specific PWA meta tags -->
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Vibe Template" />
+        <meta name="apple-mobile-web-app-title" content="%PRODUCT_NAME%" />
         <link rel="apple-touch-icon" sizes="120x120" href="/icons/apple-touch-icon-120x120.png" />
         <link rel="apple-touch-icon" sizes="152x152" href="/icons/apple-touch-icon-152x152.png" />
         <link rel="apple-touch-icon" sizes="167x167" href="/icons/apple-touch-icon-167x167.png" />
@@ -90,27 +75,7 @@
 
         <!-- Structured Data (JSON-LD) -->
         <script type="application/ld+json">
-            {
-                "@context": "https://schema.org",
-                "@type": "WebApplication",
-                "name": "Vibe Template",
-                "url": "https://vibe-template.example/",
-                "description": "Educational project template for learning how to build a Vue 3 and TypeScript application with frontend, backend, shared packages, tests, and build tooling.",
-                "applicationCategory": "BusinessApplication",
-                "operatingSystem": "Web",
-                "offers": {
-                    "@type": "Offer",
-                    "price": "0",
-                    "priceCurrency": "USD"
-                },
-                "featureList": [
-                    "Vue 3 frontend workspace",
-                    "TypeScript backend workspace",
-                    "Shared schema and utility package",
-                    "Pnpm workspace configuration",
-                    "Typecheck, lint, test, and build scripts"
-                ]
-            }
+            %PRODUCT_JSON_LD%
         </script>
     </head>
     <body>

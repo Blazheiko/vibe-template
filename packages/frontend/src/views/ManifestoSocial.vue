@@ -1,11 +1,12 @@
+<script setup lang="ts">
+import { PRODUCT } from 'shared/product'
+</script>
+
 <template>
     <main class="static-view">
         <section class="static-section">
             <h1>About</h1>
-            <p>
-                Vibe Template is an educational project template for learning a Vue 3 and TypeScript
-                full-stack workspace.
-            </p>
+            <p>{{ PRODUCT.description }}</p>
         </section>
     </main>
 </template>

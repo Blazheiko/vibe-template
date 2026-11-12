@@ -6,6 +6,7 @@ import {
     userRepository,
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
+import { PRODUCT } from 'shared/product'
 import { Result } from 'better-result'
 import { validatePassword } from 'metautil'
 import {
@@ -47,11 +48,11 @@ function buildLinkEmailContent(name: string, verificationUrl: string): RenderedE
         eyebrow: 'Email linking',
         title: 'Confirm your new email address',
         name,
-        intro: 'Confirm this email to finish linking it to your Vibe Template account. Open the link in the browser where you are signed in to that account.',
+        intro: `Confirm this email to finish linking it to your ${PRODUCT.name} account. Open the link in the browser where you are signed in to that account.`,
         action: { kind: 'link', url: verificationUrl },
         footer: 'This link will expire in 24 hours. If you did not request this, ignore this email: the link does nothing unless you are signed in to the account that asked for it.',
         textLines: [
-            'Please confirm this new email address for your Vibe Template account by opening this link',
+            `Please confirm this new email address for your ${PRODUCT.name} account by opening this link`,
             'in the browser where you are signed in to that account:',
             verificationUrl,
             '',
@@ -64,11 +65,11 @@ function buildLinkEmailContent(name: string, verificationUrl: string): RenderedE
 function buildEmailContent(name: string, verificationUrl: string): RenderedEmail {
     return renderBrandedEmail({
         subject: 'Confirm your email',
-        preheader: 'Confirm your Vibe Template email address.',
+        preheader: `Confirm your ${PRODUCT.name} email address.`,
         eyebrow: 'Email verification',
         title: 'Confirm your email address',
         name,
-        intro: 'Finish setting up your Vibe Template account by confirming this email address. You will be asked for the password you chose when you signed up.',
+        intro: `Finish setting up your ${PRODUCT.name} account by confirming this email address. You will be asked for the password you chose when you signed up.`,
         action: { kind: 'button', label: 'Confirm email', url: verificationUrl },
         footer: 'This link will expire in 24 hours. If you did not create an account, ignore this email: without the account password the link confirms nothing.',
         textLines: [

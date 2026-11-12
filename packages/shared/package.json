@@ -61,6 +61,11 @@
             "types": "./dist/limits/index.d.ts",
             "import": "./dist/limits/index.js"
         },
+        "./product": {
+            "shared-source": "./src/product/index.ts",
+            "types": "./dist/product/index.d.ts",
+            "import": "./dist/product/index.js"
+        },
         "./contracts": {
             "shared-source": "./src/contracts/index.ts",
             "types": "./dist/contracts/index.d.ts",

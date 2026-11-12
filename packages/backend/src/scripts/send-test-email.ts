@@ -1,11 +1,12 @@
 import 'dotenv/config'
 import process from 'node:process'
 import { Result } from 'better-result'
+import { PRODUCT } from 'shared/product'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { appErrorMessage } from '#app/services/shared/errors.js'
 
 const recipient = process.argv[2]?.trim() ?? ''
-const subject = process.argv[3]?.trim() ?? 'Vibe Template test email'
+const subject = process.argv[3]?.trim() ?? `${PRODUCT.name} test email`
 
 if (recipient === '') {
     console.error('Usage: pnpm --filter backend mail:test <recipient@example.com> [subject]')
