@@ -2073,6 +2073,16 @@
             "dependencies": [],
             "status": "not-started",
             "evidence": ""
+        },
+        {
+            "id": "feat-209",
+            "name": "WS Revocation Race At Connect",
+            "description": "Follow-up to feat-195 (security review 2026-11-12, M-1), found by its own e2e-live test failing on PR #593: a WebSocket connection that is still being opened when its session is revoked (upgrade passed, the role read in handleConnected still awaited) enters the registry after closeUserConnections ran, so it stays open until the periodic re-check (up to WS_SESSION_RECHECK_INTERVAL_MS). handleConnected reads users.session_token together with the role and closes a connection whose token is no longer current with 4001 instead of registering it. Make the e2e-live test wait for connection_established before the revocation. Docs uk+en. Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/ws-revocation-race-at-connect",
+            "dependencies": ["feat-195"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
