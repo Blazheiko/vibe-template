@@ -1,5 +1,4 @@
 import { type } from '@arktype/type'
-import type { DateString, PositiveIntInput } from './types.js'
 
 const positiveIntFromString = type('string.integer.parse').pipe(type('number > 0'))
 
@@ -27,13 +26,3 @@ export const DateRangeFields = {
     'dateFrom?': dateFromString,
     'dateTo?': dateFromString,
 } as const
-
-export interface PaginationQueryInput {
-    page?: PositiveIntInput
-    limit?: PositiveIntInput
-}
-
-export interface DateRangeQueryInput {
-    dateFrom?: DateString
-    dateTo?: DateString
-}

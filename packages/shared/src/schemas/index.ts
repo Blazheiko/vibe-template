@@ -65,7 +65,7 @@ export {
     DateFromString,
     MAX_PAGE_LIMIT,
 } from './query/common.js'
-export type { DateString, PositiveIntInput } from './query/types.js'
+export type { DateString, PositiveIntInput, QueryInputOf, QueryWireValue } from './query/types.js'
 export {
     AdminUserSearchQuerySchema,
     OAuthRedirectQuerySchema,
@@ -91,8 +91,6 @@ export {
 export {
     LlmTextUsageQuerySchema,
     type LlmTextUsageFeature,
-    type BaseUsageQuery,
-    type BaseUsageQueryInput,
     type LlmTextUsageQuery,
     type LlmTextUsageQueryInput,
 } from './query/usage.js'
