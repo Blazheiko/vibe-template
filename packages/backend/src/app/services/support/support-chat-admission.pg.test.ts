@@ -366,7 +366,11 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             const { client } = await connectedUser()
             hold()
             expect(verdict(await client.chat('first'))).toBe('ok')
-            await sleep(100)
+            // The answer holds the lock once its LLM call has started: wait for a call, not a
+            // fixed pause, which a slow CI runner outlasts.
+            await vi.waitFor(() => {
+                expect(llm.started).toBeGreaterThan(0)
+            })
 
             const busy = await client.chat('second')
 
@@ -386,7 +390,11 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             const { client } = await connectedUser()
             hold()
             expect(verdict(await client.chat('first'))).toBe('ok')
-            await sleep(100)
+            // The answer holds the lock once its LLM call has started: wait for a call, not a
+            // fixed pause, which a slow CI runner outlasts.
+            await vi.waitFor(() => {
+                expect(llm.started).toBeGreaterThan(0)
+            })
 
             expect(verdict(await client.openChat())).toBe('429:support_busy')
         })
@@ -396,7 +404,11 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             const other = await connectedUser()
             hold()
             expect(verdict(await busy.client.chat('first'))).toBe('ok')
-            await sleep(100)
+            // The answer holds the lock once its LLM call has started: wait for a call, not a
+            // fixed pause, which a slow CI runner outlasts.
+            await vi.waitFor(() => {
+                expect(llm.started).toBeGreaterThan(0)
+            })
 
             expect(verdict(await other.client.chat('hello'))).toBe('ok')
         })
