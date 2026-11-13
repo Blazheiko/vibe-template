@@ -39,6 +39,36 @@ describe('stripUrlTokenFromLocation', () => {
         },
     )
 
+    // feat-211: every spelling the router opens the page with. Compared by the exact path,
+    // these kept their token in the address.
+    it.each([
+        ['/reset-password/', '/reset-password'],
+        ['/Reset-Password', '/reset-password'],
+        ['/RESET-PASSWORD/', '/reset-password'],
+        ['/reset%2Dpassword', '/reset-password'],
+        ['/reset-password//', '/reset-password'],
+        ['/Verify-Email/', '/verify-email'],
+        ['/OAuth/Link/Confirm/', '/oauth/link/confirm'],
+        ['/App/Reset-Password/', '/reset-password'],
+    ])('takes the token out of %s too', (spelling, routePath) => {
+        visit(`${spelling}?token=canary-v&lang=uk`)
+
+        expect(stripUrlTokenFromLocation()).toBe(true)
+
+        expect(window.location.href).not.toContain('canary-v')
+        expect(window.location.search).toBe('?lang=uk')
+        // The page reads it by its own path, whatever the spelling in the address.
+        expect(readUrlToken(routePath)).toBe('canary-v')
+        expect(readUrlToken(spelling)).toBe('canary-v')
+    })
+
+    it('still leaves a page whose name only resembles a token page alone', () => {
+        visit('/reset-password-help?token=canary-n')
+
+        expect(stripUrlTokenFromLocation()).toBe(false)
+        expect(window.location.search).toBe('?token=canary-n')
+    })
+
     it('keeps the other query parameters, the hash and the history state', () => {
         visit('/reset-password?lang=uk&token=canary-2&ref=mail#form')
 
@@ -147,6 +177,22 @@ describe('redirectWithoutUrlToken', () => {
         router.beforeEach((to) => redirectWithoutUrlToken(to) as never)
         return router
     }
+
+    // feat-211: the router serves these spellings of the route, so the guard must know them.
+    it.each(['/reset-password/', '/Reset-Password', '/RESET-PASSWORD/'])(
+        'takes the token out of a navigation to %s',
+        async (spelling) => {
+            const router = newRouter()
+            await router.push('/')
+
+            await router.push(`${spelling}?token=canary-g&lang=uk`)
+
+            expect(router.currentRoute.value.matched).toHaveLength(1)
+            expect(router.currentRoute.value.fullPath).not.toContain('canary-g')
+            expect(router.currentRoute.value.query).toEqual({ lang: 'uk' })
+            expect(readUrlToken(router.currentRoute.value.path)).toBe('canary-g')
+        },
+    )
 
     it('keeps the token and goes on to the same page without it', async () => {
         const router = newRouter()

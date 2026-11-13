@@ -1,6 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PASSWORD_MAX_LENGTH } from 'shared/limits'
 
 import VerifyEmailView from '../VerifyEmailView.vue'
 import en from '../../locales/en'
@@ -80,6 +81,24 @@ describe('VerifyEmailView', () => {
 
         expect(verifyEmailMock).toHaveBeenLastCalledWith({ token: 'tok', password: 'secret-pass' })
         expect(wrapper.find('h1').text()).toBe(en.emailVerification.successTitle)
+    })
+
+    // feat-211 (I-7): the field had maxlength="32" after the limit became 128, so a longer
+    // password could not be typed here and the address could not be confirmed.
+    it('takes a password as long as the server does', async () => {
+        verifyEmailMock
+            .mockResolvedValueOnce(fail(403, 'password_required'))
+            .mockResolvedValueOnce(ok())
+        const wrapper = await mountView()
+        const longest = 'p'.repeat(PASSWORD_MAX_LENGTH)
+
+        const input = wrapper.find('input[type="password"]')
+        expect(input.attributes('maxlength')).toBe(String(PASSWORD_MAX_LENGTH))
+        await input.setValue(longest)
+        await wrapper.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(verifyEmailMock).toHaveBeenLastCalledWith({ token: 'tok', password: longest })
     })
 
     it('says the password is incorrect on 400 invalid_password and keeps the form', async () => {

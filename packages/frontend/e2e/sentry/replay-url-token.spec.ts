@@ -72,6 +72,45 @@ test('a replay of a page opened from a mailed link carries no token', async ({ p
     await expect(page.locator('#reset-password')).toBeVisible()
 })
 
+// feat-211: Vue Router opens the page for these spellings of its path too. The token was taken
+// out only for the exact spelling, so for these it stayed in the address, the form worked (the
+// page read the query), and the token was in the replay.
+for (const [name, path] of [
+    ['a trailing slash', '/reset-password/'],
+    ['another case', '/Reset-Password'],
+    ['another case and a trailing slash', '/RESET-PASSWORD/'],
+] as const) {
+    test(`a replay of the page opened with ${name} in its path carries no token`, async ({
+        page,
+    }) => {
+        const bodies = await collectEnvelopes(page)
+
+        await page.goto(`${path}?token=${TOKEN}&lang=uk`)
+
+        await expect(page.locator('#reset-password')).toBeVisible()
+        expect(page.url()).not.toContain(TOKEN)
+        expect(page.url()).toContain('lang=uk')
+        const sent = await replaySent(page, bodies)
+        expect(sent).toContain('replay_event')
+        expect(sent).not.toContain(TOKEN)
+    })
+}
+
+// The router does not open the page for a percent-encoded spelling of the path (the visitor
+// gets "not found"), but the address is still that of a mailed link, and its token leaves it.
+test('a percent-encoded spelling of the path keeps no token in the address or the replay', async ({
+    page,
+}) => {
+    const bodies = await collectEnvelopes(page)
+
+    await page.goto(`/reset%2Dpassword?token=${TOKEN}&lang=uk`)
+
+    await expect.poll(() => page.url()).not.toContain(TOKEN)
+    const sent = await replaySent(page, bodies)
+    expect(sent).toContain('replay_event')
+    expect(sent).not.toContain(TOKEN)
+})
+
 test('the page keeps the token over a reload', async ({ page }) => {
     await collectEnvelopes(page)
     await page.goto(`/reset-password?token=${TOKEN}`)

@@ -2,6 +2,7 @@
 // Главный компонент приложения
 import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
 import { takePostSignInTarget } from '@/utils/post-sign-in-target'
+import { normalizeRoutePath } from '@/utils/route-path'
 import { safeRedirectTarget } from '@/utils/safe-redirect'
 import { useI18n } from 'vue-i18n'
 import { usePushStore } from '@/stores/push'
@@ -134,7 +135,9 @@ const initializeApp = async () => {
         const { data, error } = await mainApi.init()
         const url = window.location.href
         const routePath = new URL(url).pathname
-        const isPublicPath = PUBLIC_PATHS.has(routePath)
+        // feat-211: by the normalized path. `/Reset-Password/` is the public reset page too;
+        // compared by the exact spelling it was taken for a private one and sent to /login.
+        const isPublicPath = PUBLIC_PATHS.has(normalizeRoutePath(routePath))
 
         if (error) {
             console.error('Error in initialization:', error)
