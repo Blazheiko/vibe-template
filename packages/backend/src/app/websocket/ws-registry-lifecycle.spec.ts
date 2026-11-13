@@ -28,6 +28,15 @@ vi.mock('#app/services/user/user-role-service.js', () => ({
         ),
     },
 }))
+// feat-210: the stored session of the connection (a logout of one session deletes it). Answers
+// at once unless a test holds it.
+const sessionExists = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
+    sessionExists,
+    sessionsExist: vi.fn(),
+}))
+vi.mock('#app/repositories/index.js', () => ({ userRepository: {} }))
+vi.mock('#config/websocket.js', () => ({ default: { sessionRecheckIntervalMs: 30_000 } }))
 const online = vi.hoisted(() => ({
     trackConnected: vi.fn(() => Promise.resolve()),
     trackDisconnected: vi.fn(() => Promise.resolve()),
@@ -272,6 +281,82 @@ describe('a session revoked while the connection is being opened (feat-209)', ()
             conn.userData.uuid,
         ])
         await conn.close()
+    })
+})
+
+// feat-210: a logout of one session rotates no token, so the check of feat-209 does not see it.
+describe('a logout while the connection is being opened (feat-210)', () => {
+    it('closes a connection whose stored session is gone: the logout ran before the read', async () => {
+        const conn = connection('9110')
+        sessionExists.mockResolvedValueOnce(false)
+
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(sessionExists).toHaveBeenCalledWith('s1', 'u1')
+        expect(conn.endedWith).toEqual([4001])
+        expect(wsConnectionRegistry.isUserOnline('9110')).toBe(false)
+        expect(online.trackConnected).not.toHaveBeenCalled()
+    })
+
+    it('closes a connection the logout marked while its reads were awaited', async () => {
+        const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
+        const conn = connection('9111')
+
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        // The session was still stored when it was read; the logout lands now, finds nothing
+        // in the registry to close, and the token stays the same.
+        expect(wsSessionRevocation.closeUserConnections('9111', { sessionId: 's1' })).toBe(0)
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(conn.endedWith).toEqual([4001])
+        expect(wsConnectionRegistry.isUserOnline('9111')).toBe(false)
+    })
+
+    it('keeps a connection of another session of the same user', async () => {
+        const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
+        const conn = connection('9112')
+
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        wsSessionRevocation.closeUserConnections('9112', { sessionId: 'another-session' })
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(conn.endedWith).toEqual([])
+        expect(wsConnectionRegistry.isUserOnline('9112')).toBe(true)
+        await conn.close()
+    })
+
+    it('forgets the mark once the connection is settled: the next one is not closed by it', async () => {
+        const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
+        const first = connection('9113')
+        const opening = websocketCoordinator.handleConnected(first.ws, first.userData)
+        wsSessionRevocation.closeUserConnections('9113')
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await opening
+        expect(first.endedWith).toEqual([4001])
+
+        const second = connection('9113')
+        const reopening = websocketCoordinator.handleConnected(second.ws, second.userData)
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await reopening
+
+        expect(second.endedWith).toEqual([])
+        await second.close()
+    })
+
+    it('does not register when the session read fails, and leaves no mark behind', async () => {
+        const conn = connection('9114')
+        sessionExists.mockRejectedValueOnce(new Error('redis down'))
+
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+
+        await expect(connected).rejects.toThrow('redis down')
+        expect(wsConnectionRegistry.isUserOnline('9114')).toBe(false)
+        expect(wsConnectionRegistry.revokeConnecting('9114')).toBe(0)
     })
 })
 

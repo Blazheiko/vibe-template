@@ -652,6 +652,31 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             expect(current.closedWith).toEqual([])
         })
 
+        // feat-210: a logout of one session deletes its stored record and rotates nothing, so
+        // the token comparison above does not see it.
+        it('the re-check closes the sockets of a session that another instance logged out', async () => {
+            const { destroySession } =
+                await import('#vendor/utils/session/redis-session-storage.js')
+            const user = await insertUser('rev-ws-logout-elsewhere')
+            const a = await signIn(user)
+            const b = await signIn(user)
+            const loggedOut = openSocket(user.id, a.sessionId, user.sessionToken)
+            const loggedOutToo = openSocket(user.id, a.sessionId, user.sessionToken)
+            const other = openSocket(user.id, b.sessionId, user.sessionToken)
+
+            // What the logout does on the instance that handled it. This instance's registry
+            // was not touched, and users.session_token is the same.
+            await destroySession(a.sessionId, user.sessionToken)
+
+            const report = await wsSessionRevocation.recheckSessions()
+
+            expect(report.closed).toBe(2)
+            expect(report.failed).toBe(0)
+            expect(loggedOut.closedWith).toEqual([4001])
+            expect(loggedOutToo.closedWith).toEqual([4001])
+            expect(other.closedWith).toEqual([])
+        })
+
         it('the re-check closes the sockets of a deleted user', async () => {
             const user = await insertUser('rev-ws-deleted')
             const a = await signIn(user)

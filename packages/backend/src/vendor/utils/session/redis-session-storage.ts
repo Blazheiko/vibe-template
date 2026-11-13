@@ -83,6 +83,28 @@ export const sessionExists = async (sessionId: string, userToken: string): Promi
     return (await withRedis(() => redis.exists(key))) === 1
 }
 
+/**
+ * feat-210: which of these stored sessions still exist, in the order given. One round trip
+ * per call; a failed command throws, so the caller decides nothing on half an answer.
+ */
+export const sessionsExist = async (
+    sessions: readonly { sessionId: string; userToken: string }[],
+): Promise<boolean[]> => {
+    if (sessions.length === 0) return []
+    const pipeline = redis.pipeline()
+    for (const { sessionId, userToken } of sessions) {
+        pipeline.exists(sanitizeRedisKey(`session:${userToken}:${sessionId}`))
+    }
+    const replies = await withRedis(() => pipeline.exec())
+    if (replies?.length !== sessions.length) {
+        throw new Error('Session existence check returned an incomplete answer')
+    }
+    return replies.map(([err, count]) => {
+        if (err !== null) throw err
+        return count === 1
+    })
+}
+
 export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     // Authenticated sessions use the user's nanoid token; anonymous sessions use shared prefix
     const userToken =
