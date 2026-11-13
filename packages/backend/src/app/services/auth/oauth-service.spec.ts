@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type * as Arctic from 'arctic'
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -132,7 +133,7 @@ vi.mock('#vendor/utils/logger.js', () => ({
 
 // The real generic client, to build the authorization URL the way the library does: the PKCE
 // tests read the challenge from it.
-const realArctic = await vi.importActual<typeof import('arctic')>('arctic')
+const realArctic = await vi.importActual<typeof Arctic>('arctic')
 
 vi.mock('arctic', () => ({
     Google: class {

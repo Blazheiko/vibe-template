@@ -32,7 +32,9 @@ Done, in review.
 
 ## Evidence of Completion
 
-- `make check`: passing (backend 2861, frontend 558, playground 115).
+- `make check`: passing (backend 2863, frontend 558, playground 115). The first push of this
+  branch failed `quality` in CI on a lint error in a spec line added after the last local
+  `make check`; fixed, and the whole check was run again before the next push.
 - `pnpm docs:build && pnpm docs:verify`: passing.
 - `pnpm --filter backend test:pg` (32 files, 312 passed) and `test:redis` (11 files, 117
   passed) on real services. On a real Redis: a state stored for another provider is refused
