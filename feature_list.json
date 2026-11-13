@@ -1971,8 +1971,8 @@
             "owner": "Blazheiko",
             "branch": "fix/sign-in-method-added-notice",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #604 (merge 569eacd): confirmLink and linkTrusted announce a link to a verified account with the new sign_in_method_added push and a mail to the account address naming the provider (sign-in-method-notice.ts), after the link is committed, fire-and-forget, also when the session could not be created; mailSafeDisplayName quotes the provider profile name only when it has no URL or address shape and no control characters; a claim stays account_claimed with no mail; docs uk+en (backend/oauth, web-push-notification). make check passing (backend 2803, frontend 549, playground 115), test:pg 307 and test:redis 116 passing on real services, docs:build+verify passing; RED: with oauth-service.ts as on main six cases of oauth-service.spec.ts fail; manual: the notice sent through the real emailService to a local Mailpit arrived at the account address, a profile name with a link was not quoted (OAuth was not run against a real provider); CI all jobs passing incl. e2e-live, test-pg, test-redis. The mail tells the owner to contact support until feat-199 adds unlinking. Details were in progress.md on fix/sign-in-method-added-notice (removed from main by this PR)."
         },
         {
             "id": "feat-199",
