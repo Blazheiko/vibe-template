@@ -2061,8 +2061,8 @@
             "owner": "Blazheiko",
             "branch": "chore/supply-chain-pinning",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #631 (merge ea3f496): L-18: both Dockerfile stages use ubuntu:24.04@sha256:2198e4c6…, Node is installed from the NodeSource apt repository the Dockerfile adds itself (signing key checked against NODESOURCE_ASC_SHA256, packages checked by apt against the key), no curl | bash, Dependabot docker moves the digest; L-19: pnpm.onlyBuiltDependencies [esbuild] (the only package with a lifecycle script; uWebSockets.js has none), Dependabot npm for security updates only, weekly audit.yml (pnpm audit --prod, fails on high or critical); I-5: public-test is not copied into the production image; I-4: the uWebSockets.js tarball without an integrity hash recorded as accepted in dependency-upgrade-plan.md; docker-hardening-plan.md and docs uk+en (backend/deployment, caching-etag, routing) updated. make check passing (backend 2967, frontend 577, playground 115), docs:build + docs:verify, pnpm install --frozen-lockfile without ignored-script warnings; CI on 8b00aa0: quality, e2e, e2e-live green. Docker: pnpm app:build passes (base image resolved by digest, nodesource.asc: OK), pnpm app:up makes the container healthy, /api/ready answers {\"status\":\"ok\"}, node v24.22.2 from the signed repository, public-test absent, user app. Negative control: a wrong key hash stops the build at sha256sum -c. Not verified: audit.yml has not run in GitHub Actions (schedule and manual trigger only; its commands were run locally, 6 moderate and 1 low advisory in hono through @mistralai/mistralai do not fail it); Dependabot npm security pull requests need the repository setting."
         },
         {
             "id": "feat-208",
