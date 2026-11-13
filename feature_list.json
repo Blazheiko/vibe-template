@@ -2051,8 +2051,8 @@
             "owner": "Blazheiko",
             "branch": "fix/http-core-cookie-lows",
             "dependencies": ["feat-202"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #628 (merge bf478ab): L-5: SESSION_COOKIE_HOST_PREFIX=false is commented out in .env.example, validateRuntimeConfig refuses a production-like start with the prefix off (the message names the variable) or without Secure, and cookie.secure is true whenever isProductionLike; L-14: one debug line per request for refused headers (count and up to three names), Rate limit exceeded once per key and window with a suppressed count (log-throttle.ts, bounded to 10 000 keys); L-15: getAssetCspKind answers document for .html, .htm and /, so HTML streamed from disk has a CSP; L-16: the per-route key is route:<ip>:<method>:<url>; docs uk+en (backend/auth, configuration, routing, caching-etag, security). make check passing (backend 2967, frontend 577, playground 115), test:pg 319, test:redis 117, docs:build + docs:verify, live e2e 14 passed; CI on 32cc0c0: quality, e2e, e2e-live, test-pg, test-redis green. Negative control: with the source reverted 15 new tests fail. Manual check on the real stack (prod-local, port 3101): APP_IS_PRODUCTION=true with the prefix off exits with the error; a 1.2 MB HTML file streamed from disk carries content-security-policy; 90 headers with invalid names give one debug line; 25 logins give one Rate limit exceeded line with key route:127.0.0.1:post:api/auth/login. Note: uWebSockets.js answers 400 above about 100 headers, so the live check used 90; a UTF-8 header value was not counted as invalid on the live stack, which the fix does not depend on."
         },
         {
             "id": "feat-207",
