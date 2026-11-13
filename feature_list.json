@@ -2111,8 +2111,8 @@
             "owner": "Blazheiko",
             "branch": "fix/sms-budget-refused-start",
             "dependencies": ["feat-204"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #643 (merge 424ec46): openSessionChallenge takes spendBudget, called under the advisory lock of the number after the resend cooldown and the capacity are checked; startPhonePasswordReset passes the smsSendPhone throttle there instead of spending it before the lock, so of a burst of parallel starts only the one that opens a challenge pays; docs uk+en (backend/auth); follow-ups note item 8 records the same order in the register and link phone starts, not changed here. make check passing (backend 2978, frontend 607, playground 115), test:pg 325 (new reset-phone-sms-budget.pg.test.ts), test:redis 117, live e2e 16, docs:build + docs:verify; CI on 6dc3521: quality, e2e, e2e-live, test-pg, test-redis green. RED first: the new PG test on the old code got expected 8 to be 1 (8 parallel starts, 1 challenge, 8 units spent). Manual check on the real stack (phone auth with the fake SMS provider, AUTH_SMS_MAX_SENDS_PER_PHONE_PER_HOUR=3): 8 sessions start a reset for one number at once, one 200 with a challenge and seven 429 resend_cooldown_active, the Redis counter auth:throttle:sms_send_phone of the number is 1."
         }
     ]
 }
