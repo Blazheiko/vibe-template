@@ -56,7 +56,7 @@
 | `APP_MAX_MULTIPART_BODY_SIZE` | 50 MiB  | політика сумісності: зміна не дає вигоди; фактична потреба — файлові ліміти сервісів (10 MB, 5 MB) плюс невелика multipart-обгортка |
 | `APP_MAX_OCTET_BODY_SIZE`     | 50 MiB  | `octet`-маршрутів немає; 100 MiB з плану не має обґрунтування                                                                       |
 
-`src/docs/HTTP_BODY_LIMITS_PLAN.md` отримує примітку, що defaults 1 / 50 / 100 / 1 MB замінено цим рішенням (посилання на цей план). Застереження про проксі (`client_max_body_size` ≥ ліміту) і **приблизну оцінку буферів** `≈ concurrent × maxMultipartBodySize × 2` переносимо. Це оцінка лише буферів тіла, а не верхня межа пам'яті процесу: парсери ще створюють рядки, об'єкти й копії даних. Переносимо в `documentation/backend/configuration.md`, якщо їх там ще немає.
+`src/docs/HTTP_BODY_LIMITS_PLAN.md` отримує примітку, що defaults 1 / 50 / 100 / 1 MB замінено цим рішенням (посилання на цей план). Застереження про проксі (`client_max_body_size` ≥ ліміту) і **приблизну оцінку буферів** `≈ concurrent × maxMultipartBodySize × 2` переносимо. Це оцінка лише буферів тіла, а не верхня межа пам'яті процесу: парсери ще створюють рядки, об'єкти й копії даних. **Оновлення 2026-11-13 (feat-201, security review M-3):** кількість одночасних запитів нічим не обмежувалась, а тіло читається до автентифікації; тепер буфери тіл обмежує бюджет «у польоті» (`APP_MAX_INFLIGHT_BODY_BYTES`, `APP_MAX_INFLIGHT_BODY_BYTES_PER_IP`), тож оцінка стала `≤ APP_MAX_INFLIGHT_BODY_BYTES × 2`. Переносимо в `documentation/backend/configuration.md`, якщо їх там ще немає.
 
 ### `parseSize`
 

@@ -193,7 +193,16 @@ describe('avatar upload body limit (10 MiB file + framing)', () => {
 
         for (const result of results) {
             const { bytesWritten } = result
-            expectRefused(result)
+            // feat-201: 20 uploads of one address are also over its in-flight budget (64 MiB),
+            // so some are refused by it (429) before they reach the route limit (413).
+            if (result.response === null) {
+                expect(result.reset).toBe(true)
+            } else {
+                expect([
+                    'HTTP/1.1 413 Payload Too Large',
+                    'HTTP/1.1 429 Too Many Requests',
+                ]).toContain(result.response.statusLine)
+            }
             // Without the route limit the answer came only after the global 50 MiB. Here it
             // arrives well before that; the rest is what the socket buffers already held
             // (20 clients write much faster than the server answers).
@@ -203,6 +212,11 @@ describe('avatar upload body limit (10 MiB file + framing)', () => {
         // 20 x 50 MiB held in memory would be a gigabyte; here at most the limit each.
         const grownMib = (process.memoryUsage().rss - rssBefore) / MIB
         expect(grownMib).toBeLessThan(20 * 12)
+        // feat-201: every refused upload gave its bytes back.
+        const { bodyBytesInFlight } = await import('#vendor/utils/network/body-budget.js')
+        await vi.waitFor(() => {
+            expect(bodyBytesInFlight()).toBe(0)
+        })
     })
 })
 

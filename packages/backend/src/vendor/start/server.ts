@@ -44,6 +44,7 @@ import {
 } from '#vendor/utils/network/http-response-handlers.js'
 import executeMiddlewares from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
 import checkRateLimit, { checkGlobalRateLimit } from '#vendor/utils/rate-limit/http-rate-limit.js'
+import { clientKey } from '#vendor/utils/rate-limit/rate-limit-store.js'
 import type {
     Cookie,
     HttpContext,
@@ -262,7 +263,14 @@ export const readAndParseBody = async (
         throw new PayloadTooLargeError(limit, meta.contentType)
     }
 
-    const result = await getData(res, meta.contentType, meta.headers, limit, abortSignal)
+    const result = await getData(
+        res,
+        meta.contentType,
+        meta.headers,
+        limit,
+        abortSignal,
+        clientKey(meta.ip),
+    )
 
     if (route.validator !== undefined && result.payload !== null) {
         return {
@@ -352,6 +360,8 @@ interface ErrorResponseExtras {
     cookies?: ReadonlyMap<string, Cookie> | undefined
     /** Request Origin, for the CORS headers a browser needs to read the error. */
     origin?: string | undefined
+    /** Close the connection with the answer: the rest of the request body is not read. */
+    closeConnection?: boolean | undefined
 }
 
 const sendErrorResponse = (
@@ -373,7 +383,9 @@ const sendErrorResponse = (
         }
         if (corsConfig.enabled) setCorsHeader(res, extras.origin)
         res.writeHeader('content-type', 'application/json')
-        res.end(makeJson(body))
+        // uWS adds `Connection: close` itself and closes the socket once the answer is out.
+        if (extras.closeConnection === true) res.end(makeJson(body), true)
+        else res.end(makeJson(body))
     })
 }
 
@@ -406,7 +418,7 @@ export const handleError = (
         classified.status,
         { status: 'error', ...classifiedErrorBody(classified) },
         classified.headers,
-        extras,
+        classified.closeConnection === true ? { ...extras, closeConnection: true } : extras,
     )
 }
 
