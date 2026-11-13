@@ -49,12 +49,22 @@ export async function findPendingChallenge(
  * checked again inside it. Two starts that both passed `findPendingChallenge` used to both retire
  * and create, and could leave two live challenges (two SMS, a double budget of tries); now the
  * second waits for the first, sees its challenge and answers the resend cooldown.
+ *
+ * feat-214: the budget of the start is spent here (`spendBudget`), after the cooldown, as in
+ * `openSessionChallenge` (feat-212). Spent by the caller before the lock, a start the cooldown
+ * refused had paid: refused starts used up the budget of somebody else's number.
  */
 export async function openChallenge(options: {
     phone: string
     flow: SmsVerificationFlow
     codeHash?: string
     metadata: Metadata
+    /**
+     * feat-214: what a start that will really open a challenge pays (the hourly SMS budget of
+     * the number). Called under the lock after the cooldown check; an error here opens nothing
+     * and is the answer.
+     */
+    spendBudget?: () => Promise<AppResult<void>>
 }): Promise<AppResult<SmsAuthChallengeRow>> {
     return await withTransaction(async (tx) => {
         await smsAuthChallengeRepository.lockPhoneFlow(options.phone, options.flow, tx)
@@ -65,6 +75,10 @@ export async function openChallenge(options: {
         )
         if (pending !== undefined && pending.resendAvailableAt.getTime() > Date.now()) {
             return Result.err(buildResendCooldownError(pending.resendAvailableAt))
+        }
+        if (options.spendBudget !== undefined) {
+            const spent = await options.spendBudget()
+            if (Result.isError(spent)) return Result.err(spent.error)
         }
         await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(
             options.phone,
@@ -228,11 +242,14 @@ export async function issueSmsChallenge(options: {
     flow: SmsVerificationFlow
     metadata: Metadata
     noLongerValid: string
+    /** feat-214: the hourly SMS budget of the number, spent under the lock (`openChallenge`). */
+    spendBudget: () => Promise<AppResult<void>>
 }): Promise<AppResult<SmsAuthChallengeRow>> {
     const opened = await openChallenge({
         phone: options.phone,
         flow: options.flow,
         metadata: options.metadata,
+        spendBudget: options.spendBudget,
     })
     if (Result.isError(opened)) return Result.err(opened.error)
 

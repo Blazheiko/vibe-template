@@ -123,6 +123,15 @@ export function resolveLoginKey(identifier: string): LoginKey | null {
     return Result.isError(phone) ? null : { kind: 'phone', value: phone.value }
 }
 
+/** The hourly SMS budget of a number, for the start that opens its challenge (feat-214). */
+function spendSmsBudget(phone: string): Promise<AppResult<void>> {
+    return enforceThrottle(
+        throttlePolicies.smsSendPhone,
+        phone,
+        rateLimited('Too many verification attempts. Please try again later.'),
+    )
+}
+
 // A correct password resets the per-account budget. Best effort: a failure here must not
 // fail the sign-in or the password change that already succeeded.
 async function resetThrottleQuietly(
@@ -479,15 +488,6 @@ export const authService = {
             return Result.err(ipThrottle.error)
         }
 
-        const phoneThrottle = await enforceThrottle(
-            throttlePolicies.smsSendPhone,
-            phone,
-            rateLimited('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(phoneThrottle)) {
-            return Result.err(phoneThrottle.error)
-        }
-
         const existingUser = await userRepository.findByPhone(phone)
         const collisionDetected = existingUser !== undefined
 
@@ -498,6 +498,9 @@ export const authService = {
 
         const issuedChallengeResult = await issueSmsChallenge({
             phone,
+            // feat-214: the hourly SMS budget of the number, spent under the lock by the start
+            // that opens a challenge. Spent before it, a start the cooldown refused paid too.
+            spendBudget: () => spendSmsBudget(phone),
             flow: REGISTER_PHONE_FLOW,
             metadata: {
                 ipAddress: requestMeta.ipAddress,
@@ -722,15 +725,6 @@ export const authService = {
             return Result.err(userThrottle.error)
         }
 
-        const phoneThrottle = await enforceThrottle(
-            throttlePolicies.smsSendPhone,
-            phone,
-            rateLimited('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(phoneThrottle)) {
-            return Result.err(phoneThrottle.error)
-        }
-
         const phoneExists = await userRepository.phoneExistsForOtherUser(phone, userId)
         if (phoneExists) {
             return Result.err(conflict('Phone is already linked to another account'))
@@ -753,6 +747,9 @@ export const authService = {
         }
         const issuedChallengeResult = await issueSmsChallenge({
             phone,
+            // feat-214: the hourly SMS budget of the number, spent under the lock by the start
+            // that opens a challenge. Spent before it, a start the cooldown refused paid too.
+            spendBudget: () => spendSmsBudget(phone),
             flow: LINK_PHONE_FLOW,
             metadata: linkMetadata,
             noLongerValid: 'Phone linking challenge is no longer valid',
