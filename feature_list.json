@@ -2001,8 +2001,8 @@
             "owner": "Blazheiko",
             "branch": "fix/in-flight-body-budget",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #613 (merge b6dc800): body-budget.ts counts the bytes of request bodies being buffered, in total and per client address; readData charges every chunk and gives the bytes back once however the read ends; over the per-address limit 429, over the total 503, both with Retry-After and the connection closed with the answer; APP_MAX_INFLIGHT_BODY_BYTES (256 MiB) and APP_MAX_INFLIGHT_BODY_BYTES_PER_IP (64 MiB, not the planned 16 MiB: it must cover the largest body a route takes), 0 = off; docs uk+en (backend/configuration, request-lifecycle), http-body-limits-plan updated. make check passing (backend 2887, frontend 558, playground 115), test:pg 312 and test:redis 117 passing on real services, docs:build+verify passing; on a real uWS server with raw sockets a stalled upload holds its bytes, the next body over the budget gets 429 and a closed connection, the bytes come back when the client goes away; RED: without the charge in readData 10 new cases fail; upload-limits.transport.spec accepts 413 or 429 for 20 parallel uploads of one address; measured on uWS 20.71: a stalled upload and one sending a byte every 5 s are closed by the server after about 12 s, so no body read timeout was added; whole e2e-live 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Details were in progress.md on fix/in-flight-body-budget (removed from main by this PR)."
         },
         {
             "id": "feat-202",
