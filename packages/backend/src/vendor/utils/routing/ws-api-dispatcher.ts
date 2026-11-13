@@ -20,6 +20,7 @@ import {
 } from '#vendor/utils/network/errors/classify-error.js'
 import { validateRoutePayload } from '#vendor/utils/validation/validate-route-payload.js'
 import logger from '#vendor/utils/logger.js'
+import { findWsRoute } from './ws-route-lookup.js'
 import { isEmptyPayload } from '#vendor/utils/network/response-body.js'
 import { createWsErrorEnvelope, setWsError } from '#vendor/utils/network/ws-error-envelope.js'
 
@@ -44,14 +45,7 @@ export default async (
     let userId: string | undefined
     let routePath: string | undefined
     try {
-        const event = message.event
-        const nameRoute = event.split(':')[0]
-        if (nameRoute === undefined) {
-            throw new Error('Invalid event')
-        }
-        // Own properties only: a map built as a plain object would answer `constructor` with
-        // Object itself (feat-149).
-        const route = Object.hasOwn(wsRoutesByUrl, nameRoute) ? wsRoutesByUrl[nameRoute] : undefined
+        const route = findWsRoute(wsRoutesByUrl, message.event)
         if (route !== undefined) {
             routePath = route.url
             // Check rate limit before processing

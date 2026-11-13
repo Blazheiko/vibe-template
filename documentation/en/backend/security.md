@@ -27,7 +27,7 @@ WebSocket: upgrade level 1 (memory) → level 2 (Redis) → auth (onUpgrade) →
 - **The route limit** takes priority over the group limit. The response contains `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`; exceeding the limit gives `429 rate_limited` with `Retry-After`; a counter failure gives `503 rate_limit_unavailable` (fail-closed).
 - **Why synchronous and in memory.** In [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts) both HTTP checks run **before** `res.onData()` is registered: if there were an `await` there, uWS could deliver the body of a small POST before anyone starts reading it, and the request would hang. Redis is asynchronous, so it does not fit these limits. Besides, their job is to protect the process, not to hold an exact budget across the cluster.
 - **The budget with N instances** equals N × the maximum. This is a deliberate choice: each process protects itself. If needed, a limit at the edge is provided by the reverse proxy, see [Deployment](/en/backend/deployment#rate-limit-at-the-edge).
-- **WS messages** are counted per IP, not per connection: otherwise the budget could be multiplied by opening new connections.
+- **WS messages** are counted per user, not per connection or IP: otherwise the budget could be multiplied by opening new connections, and users behind one NAT would share it. The number of simultaneous connections is limited separately, per user and per IP ([WebSocket](/en/backend/websocket#limits-and-security)).
 
 **The counter** ([`rate-limit-store.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/rate-limit-store.ts)):
 

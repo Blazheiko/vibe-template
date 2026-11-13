@@ -4,6 +4,8 @@ import {
     readWsAdminRecheckIntervalMs,
     readWsMaxConcurrentHandlers,
     readWsMessagesPerMinute,
+    readWsMaxConnectionsPerIp,
+    readWsMaxConnectionsPerUser,
     readWsSessionRecheckIntervalMs,
 } from './websocket.js'
 
@@ -83,6 +85,31 @@ describe('readWsMaxConcurrentHandlers (WS_MAX_CONCURRENT_HANDLERS)', () => {
     it.each(['0', '-1', '1.5', 'abc', '1001'])('rejects %s', (value) => {
         expect(() => readWsMaxConcurrentHandlers({ WS_MAX_CONCURRENT_HANDLERS: value })).toThrow(
             /WS_MAX_CONCURRENT_HANDLERS/,
+        )
+    })
+})
+
+// feat-197: the limits of simultaneous connections.
+describe('readWsMaxConnectionsPerUser / readWsMaxConnectionsPerIp', () => {
+    it('default to 10 per user and 50 per address', () => {
+        expect(readWsMaxConnectionsPerUser({})).toBe(10)
+        expect(readWsMaxConnectionsPerIp({})).toBe(50)
+        expect(readWsMaxConnectionsPerUser({ WS_MAX_CONNECTIONS_PER_USER: '' })).toBe(10)
+    })
+
+    it('read an integer; 0 switches the limit off', () => {
+        expect(readWsMaxConnectionsPerUser({ WS_MAX_CONNECTIONS_PER_USER: '0' })).toBe(0)
+        expect(readWsMaxConnectionsPerUser({ WS_MAX_CONNECTIONS_PER_USER: '25' })).toBe(25)
+        expect(readWsMaxConnectionsPerIp({ WS_MAX_CONNECTIONS_PER_IP: '0' })).toBe(0)
+        expect(readWsMaxConnectionsPerIp({ WS_MAX_CONNECTIONS_PER_IP: '500' })).toBe(500)
+    })
+
+    it.each(['-1', '1.5', 'abc', '1e3'])('reject %s', (value) => {
+        expect(() => readWsMaxConnectionsPerUser({ WS_MAX_CONNECTIONS_PER_USER: value })).toThrow(
+            /WS_MAX_CONNECTIONS_PER_USER/,
+        )
+        expect(() => readWsMaxConnectionsPerIp({ WS_MAX_CONNECTIONS_PER_IP: value })).toThrow(
+            /WS_MAX_CONNECTIONS_PER_IP/,
         )
     })
 })

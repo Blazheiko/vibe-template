@@ -31,6 +31,8 @@ export interface UserConnection extends Record<string, unknown> {
      * every access to it throws. Work that awaited before touching the socket checks it (feat-107).
      */
     closed?: boolean
+    /** feat-197: the place among the connections of its user and address; freed on close. */
+    connectionSlot?: { userId: string; ipKey: string } | undefined
     /** feat-149: what the connection sent this minute; created with its first message. */
     messageBudget?: WsMessageBudgetState
 }

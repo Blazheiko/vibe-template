@@ -27,7 +27,7 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 - **Ліміт маршруту** має пріоритет над лімітом групи. Відповідь містить `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`; перевищення — `429 rate_limited` з `Retry-After`; помилка лічильника — `503 rate_limit_unavailable` (fail-closed).
 - **Чому синхронно і в пам'яті.** У [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts) обидві HTTP-перевірки стоять **до** реєстрації `res.onData()`: якщо там буде `await`, uWS може доставити тіло малого POST раніше, ніж його почнуть читати, і запит зависне. Redis асинхронний, тому для цих лімітів не підходить. До того ж їхня задача — захистити процес, а не тримати точний бюджет у кластері.
 - **Бюджет при N інстансах** дорівнює N × максимум. Це свідомий вибір: кожен процес захищає себе сам. Ліміт на вході за потреби дає reverse proxy, див. [Розгортання](/backend/deployment#rate-limit-на-edge).
-- **WS-повідомлення** рахуються за IP, а не за з'єднанням: інакше бюджет можна множити, відкриваючи нові з'єднання.
+- **WS-повідомлення** рахуються за користувачем, а не за з'єднанням чи IP: інакше бюджет можна множити, відкриваючи нові з'єднання, а користувачі за одним NAT ділили б його. Кількість одночасних з'єднань обмежена окремо, на користувача і на IP ([WebSocket](/backend/websocket#обмеження-та-безпека)).
 
 **Лічильник** ([`rate-limit-store.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/rate-limit-store.ts)):
 

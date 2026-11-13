@@ -514,6 +514,8 @@ describe('env parsing contract', () => {
         'HTTP_GLOBAL_RATE_LIMIT_MAX',
         'WS_ADMIN_RECHECK_INTERVAL_MS',
         'WS_SESSION_RECHECK_INTERVAL_MS',
+        'WS_MAX_CONNECTIONS_PER_USER',
+        'WS_MAX_CONNECTIONS_PER_IP',
         'SESSION_TOKEN_CHECK_TIMEOUT_MS',
     ]
 

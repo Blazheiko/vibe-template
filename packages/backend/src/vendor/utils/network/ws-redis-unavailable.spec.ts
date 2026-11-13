@@ -21,6 +21,16 @@ vi.mock('./get-ip.js', () => ({ default: () => '10.9.0.1' }))
 const onUpgrade = vi.fn()
 
 const handlers = await import('./ws-handlers.js')
+
+// feat-197: an event no route answers is refused before the session is read, so the events of
+// these tests need a route. The dispatcher is mocked: only the names matter.
+const ROUTES = {
+    main: {},
+    support: {},
+    user: {},
+    'api/user/me': {},
+    'some/route': {},
+} as never
 handlers.registerWsAppHooks({
     onUpgrade,
     onConnected: vi.fn(),
@@ -70,7 +80,7 @@ describe('onMessage heartbeat', () => {
     it('answers pong without reading the session or touching Redis', async () => {
         const ws = createWs()
 
-        await handlers.onMessage(ws as never, message('ping'), false, {})
+        await handlers.onMessage(ws as never, message('ping'), false, ROUTES)
 
         expect(ws.order).toEqual(['send:pong'])
         expect(ws.end).not.toHaveBeenCalled()
@@ -98,7 +108,7 @@ describe('onMessage application requests', () => {
         const ws = createWs()
         wsSessionHandler.mockResolvedValue({ kind: 'unavailable' })
 
-        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, {})
+        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, ROUTES)
 
         expectServiceUnavailable(ws)
         expect(wsApiHandler).not.toHaveBeenCalled()
@@ -108,7 +118,7 @@ describe('onMessage application requests', () => {
         const ws = createWs()
         wsSessionHandler.mockResolvedValue({ kind: 'missing' })
 
-        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, {})
+        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, ROUTES)
 
         expect(ws.end).toHaveBeenCalledWith(4001)
     })
@@ -119,14 +129,14 @@ describe('onMessage application requests', () => {
         wsSessionHandler.mockResolvedValue({ kind: 'ok', session })
         wsApiHandler.mockResolvedValue({ status: 'success', event: 'api/user/me' })
 
-        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, {})
+        await handlers.onMessage(ws as never, message(APP_MESSAGE), false, ROUTES)
 
         expect(wsApiHandler).toHaveBeenCalledWith(
             expect.anything(),
             ws,
             expect.anything(),
             session,
-            {},
+            ROUTES,
         )
     })
 })

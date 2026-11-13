@@ -265,6 +265,50 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
         expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['fulfilled', 'rejected'])
     })
 
+    // feat-197 (M-4): the message budget is per connection, so one account multiplied it by
+    // opening sockets without end. The real server, the default limit of 10 per user.
+    it('the eleventh connection of a user is refused, and accepted once one closes', async () => {
+        const user = await insertUser()
+        const userId = String(user.id)
+        const open: Client[] = []
+        for (let n = 0; n < 10; n += 1) open.push(await Client.connect(await wsTokenFor(user)))
+        await sleep(100)
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(10)
+
+        await expect(Client.connect(await wsTokenFor(user))).rejects.toThrow(
+            'websocket failed to open',
+        )
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(10)
+
+        // Another user is not affected by this one's limit.
+        const other = await insertUser()
+        const otherClient = await Client.connect(await wsTokenFor(other))
+
+        open[0]?.ws.close()
+        await sleep(100)
+        await Client.connect(await wsTokenFor(user))
+        await sleep(100)
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(10)
+
+        for (const client of [...open, otherClient]) client.ws.close()
+        await sleep(100)
+    })
+
+    // feat-197 (L-11): a binary frame used to be dropped before the budget, at any rate.
+    it('a binary frame closes the connection with 1003', async () => {
+        const user = await insertUser()
+        const client = await Client.connect(await wsTokenFor(user))
+        const closed = new Promise<number>((resolve) => {
+            client.ws.addEventListener('close', (event) => {
+                resolve(event.code)
+            })
+        })
+
+        client.ws.send(new Uint8Array([1, 2, 3]))
+
+        await expect(closed).resolves.toBe(1003)
+    })
+
     // feat-112 (R08): the last case, it stops the server. Every socket gets 4201 and the listen
     // socket is closed before.
     it('stopServer closes every socket with 4201', async () => {

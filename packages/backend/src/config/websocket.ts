@@ -68,6 +68,34 @@ export const readWsMaxConcurrentHandlers = (source: NodeJS.ProcessEnv = env): nu
     return value
 }
 
+// feat-197: how many connections one user and one IP address may hold on an instance at the
+// same time. 0 switches a limit off. The address limit counts everyone behind one NAT: raise
+// it for an office or a campus.
+const MAX_CONNECTIONS_PER_USER_DEFAULT = 10
+const MAX_CONNECTIONS_PER_IP_DEFAULT = 50
+
+export const readWsMaxConnectionsPerUser = (source: NodeJS.ProcessEnv = env): number => {
+    const { value, error } = parseInteger(
+        'WS_MAX_CONNECTIONS_PER_USER',
+        source['WS_MAX_CONNECTIONS_PER_USER'],
+        MAX_CONNECTIONS_PER_USER_DEFAULT,
+        { min: 0, max: 100_000 },
+    )
+    if (error !== null) throw new Error(error)
+    return value
+}
+
+export const readWsMaxConnectionsPerIp = (source: NodeJS.ProcessEnv = env): number => {
+    const { value, error } = parseInteger(
+        'WS_MAX_CONNECTIONS_PER_IP',
+        source['WS_MAX_CONNECTIONS_PER_IP'],
+        MAX_CONNECTIONS_PER_IP_DEFAULT,
+        { min: 0, max: 1_000_000 },
+    )
+    if (error !== null) throw new Error(error)
+    return value
+}
+
 export default Object.freeze({
     /** Re-check period of admin WebSocket connections, in ms (WS_ADMIN_RECHECK_INTERVAL_MS, default 30000). */
     adminRecheckIntervalMs: readWsAdminRecheckIntervalMs(),
@@ -77,4 +105,8 @@ export default Object.freeze({
     messagesPerMinute: readWsMessagesPerMinute(),
     /** Handlers of one connection that may run at once (WS_MAX_CONCURRENT_HANDLERS, default 8). */
     maxConcurrentHandlers: readWsMaxConcurrentHandlers(),
+    /** Open connections one user may hold on an instance, 0 = no limit (WS_MAX_CONNECTIONS_PER_USER, default 10). */
+    maxConnectionsPerUser: readWsMaxConnectionsPerUser(),
+    /** Open connections one IP address may hold on an instance, 0 = no limit (WS_MAX_CONNECTIONS_PER_IP, default 50). */
+    maxConnectionsPerIp: readWsMaxConnectionsPerIp(),
 })

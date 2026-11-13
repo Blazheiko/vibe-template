@@ -125,7 +125,7 @@ registerWsAppHooks({
 
 ## Протокол повідомлень
 
-Клієнт надсилає текстовий JSON (бінарні повідомлення ігноруються з логом помилки). Форму перевіряє [ws-message-validator.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/ws-message-validator.ts) (ArkType через адаптер `defaultValidator`):
+Клієнт надсилає текстовий JSON (бінарний фрейм закриває з'єднання кодом `1003` з одним рядком `warn`, feat-197). Форму перевіряє [ws-message-validator.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/ws-message-validator.ts) (ArkType через адаптер `defaultValidator`):
 
 ```ts
 const WsMessageSchema = type({
@@ -187,7 +187,7 @@ const WsMessageSchema = type({
 [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts):
 
 1. Ім'я маршруту — частина `event` до першого `:`; шукається **точним збігом** у `wsRoutesByUrl` ([router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts), `createWsRoutesByUrl`). Ключі — повний URL з `pathPrefix`, групою і `url`, наприклад `api/support/support_chat`.
-2. `checkRateLimitWs` ([ws-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-rate-limit.ts)) — ліміт маршруту або групи, ключ IP + URL.
+2. `checkRateLimitWs` ([ws-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-rate-limit.ts)) — ліміт маршруту або групи, ключ користувач + URL.
 3. `validateRoutePayload`, якщо в маршруту є `validator`; payload заморожується (`Object.freeze`).
 4. `createWsContext` → middleware маршруту (якщо є) → `handler(context)`; результат кладеться в `responseData.data`.
 
@@ -205,7 +205,7 @@ const WsMessageSchema = type({
 
 ### Бюджет повідомлень з'єднання
 
-Ліміт маршруту перевіряється в диспетчері, тобто вже після того, як валідне повідомлення коштувало читання сесії: команду Redis і запит до PostgreSQL; для невідомої події він не перевіряється взагалі. Тому `onMessage` першим кроком звіряється з бюджетом з'єднання ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). Стан бюджету лежить у `userData` з'єднання: без Redis, у пам'яті процесу, зникає разом із сокетом.
+Ліміт маршруту перевіряється в диспетчері, тобто вже після того, як валідне повідомлення коштувало читання сесії: команду Redis і запит до PostgreSQL. Подія, якій не відповідає жоден маршрут, до читання сесії не доходить: `onMessage` відповідає `not_found` з пам'яті (feat-197), тож вона коштує лише місце в бюджеті з'єднання. Тому `onMessage` першим кроком звіряється з бюджетом з'єднання ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). Стан бюджету лежить у `userData` з'єднання: без Redis, у пам'яті процесу, зникає разом із сокетом.
 
 | Що рахується                                     | Межа                                    | Понад межу                                                               |
 | ------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------ |
@@ -313,9 +313,10 @@ Presence публікується лише якщо в каналі `admin` є �
 ## Обмеження та безпека
 
 - **Розмір повідомлення**: `maxPayloadLength` 1 MB на рівні uWS; окремого налаштування для WS немає (див. [Життєвий цикл запиту](/backend/request-lifecycle)).
-- **Rate limit повідомлень**: per-route/per-group через `checkRateLimitWs`, лічильник у пам'яті процесу (з'єднання живе на одному інстансі), ключ IP + URL маршруту — за IP, а не за з'єднанням, щоб бюджет не множився новими з'єднаннями. Ліміт групи діє на кожен маршрут групи окремо, а не на всю групу разом. При збої перевірки — відмова (`allowed: false`, `retryAfter: 1`).
+- **Rate limit повідомлень**: per-route/per-group через `checkRateLimitWs`, лічильник у пам'яті процесу (з'єднання живе на одному інстансі), ключ користувач + URL маршруту — за користувачем, а не за з'єднанням чи IP (feat-197): бюджет не множиться новими з'єднаннями чи адресами, а користувачі за одним NAT не ділять його між собою. Ліміт групи діє на кожен маршрут групи окремо, а не на всю групу разом. При збої перевірки — відмова (`allowed: false`, `retryAfter: 1`).
 - **Авторизація маршрутів**: усі WS-маршрути вимагають валідну сесію (перевірка в `onMessage`); відкликання сесії (вихід, «вийти всюди», зміна чи скидання пароля, ADR 0002) **закриває** відкриті з'єднання цієї сесії кодом `4001` (див. [Відкликання сесії](#відкликання-сесіі)), а нові з'єднання відхиляє перевірка під час upgrade; роль `admin` для групи `admin/*` перевіряє `ws_admin_guard`, а для каналу — сервіс каналу, обидва за роллю з'єднання (див. [Відкликання admin-доступу](#відкликання-admin-доступу)). Детальніше — [Автентифікація](/backend/auth#авторизація-websocket).
 
+- **Ліміт одночасних з'єднань** (feat-197, [ws-connection-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-connection-limit.ts)): не більше `WS_MAX_CONNECTIONS_PER_USER` (типово 10) відкритих з'єднань на користувача і `WS_MAX_CONNECTIONS_PER_IP` (типово 50) на IP-адресу; `0` вимикає ліміт. Перевірка і зайняття місця — один синхронний крок безпосередньо перед `res.upgrade`, тож паралельні upgrade не займуть останнє місце разом; місце звільняє `onClose`. Зайвий upgrade отримує `429` з `Retry-After: 5` (браузер бачить невдалий handshake, клієнт повторює спробу з новим токеном не частіше ніж раз на 5 с). Без цього ліміту бюджет повідомлень, який рахується на з'єднання, множився кількістю сокетів одного акаунта. Лічильники в пам'яті процесу: з кількома інстансами ліміт діє на кожен окремо. Ліміт на IP рахує всіх за одним NAT — для офісу чи кампусу його варто підняти; за реверс-проксі без правильного `TRUST_PROXY` усі клієнти мають адресу проксі й ділять ці 50 з'єднань ([Безпека](/backend/security)).
 - **Rate limit upgrade, два рівні**, обидва за IP і незалежні від HTTP L1: рівень 1 у пам'яті процесу (`WS_UPGRADE_RATE_LIMIT_*`, 120/хв) відсікає флуд до будь-якого I/O; рівень 2 у Redis (`WS_UPGRADE_SHARED_RATE_LIMIT_*`, 60/хв) — спільний бюджет на всі інстанси. Обидва перевіряються до формату токена і до пошуку сесії, тож невалідні токени теж витрачають бюджет. Якщо Redis для лімітів недоступний, рівень 2 пропускається, і діє лише рівень 1. Звичайні HTTP-запити на `/<pathPrefix>/websocket` рахуються в HTTP L1. Деталі — [Обмеження частоти запитів](/backend/security#обмеження-частоти-запитів).
 - **`ping`/`pong`** (heartbeat) обробляється в `onMessage` до диспетчера і під rate limit повідомлень не потрапляє.
 
