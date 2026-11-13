@@ -41,7 +41,11 @@ import {
     runTokenTransaction,
 } from '#app/services/auth/one-time-token.js'
 import { emailService } from '#app/services/notifications/email-service.js'
-import { renderBrandedEmail } from '#app/services/notifications/email-templates.js'
+import {
+    mailAddresseeName,
+    mailSafeDisplayName,
+    renderBrandedEmail,
+} from '#app/services/notifications/email-templates.js'
 import type { Auth } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
@@ -766,16 +770,23 @@ async function startMailedLink(
     const { rawToken, user } = issued.value
     const linkProviderTitle = providerTitle(identity.provider)
     const url = buildOAuthLinkUrl(rawToken)
+    // feat-203 (L-1): the profile name is the provider's user's own text; it is quoted only
+    // when it cannot pass for a link or an address.
+    const profileName = mailSafeDisplayName(identity.providerName)
+    const whose =
+        profileName === null
+            ? `a ${linkProviderTitle} account`
+            : `the ${linkProviderTitle} account "${profileName}"`
     const content = renderBrandedEmail({
         subject: `Link ${linkProviderTitle} to your account`,
         eyebrow: 'Sign-in method',
         title: `Link ${linkProviderTitle} to your account`,
-        name: user.name,
-        intro: `Somebody signed in with the ${linkProviderTitle} account "${identity.providerName}" that uses this email address. Open the link in the same browser to link it to your ${PRODUCT.name} account.`,
+        name: mailAddresseeName(user),
+        intro: `Somebody signed in with ${whose} that uses this email address. Open the link in the same browser to link it to your ${PRODUCT.name} account.`,
         action: { kind: 'button', label: `Link ${linkProviderTitle}`, url },
         footer: 'This link expires in 30 minutes and works only in the browser where the sign-in started. If it was not you, ignore this email: nothing is linked without it.',
         textLines: [
-            `Somebody signed in with the ${linkProviderTitle} account "${identity.providerName}" that uses this email address.`,
+            `Somebody signed in with ${whose} that uses this email address.`,
             `To link it to your ${PRODUCT.name} account, open this link in the same browser:`,
             url,
             '',

@@ -752,6 +752,69 @@ describe('authService', () => {
             expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
         })
 
+        // feat-203 (security review 2026-11-12, L-2): the interval alone let somebody who
+        // registered another person's address have it mailed 12 times an hour, 288 a day.
+        it('spends the hourly and the daily budget of the resend button, in that order', async () => {
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            await login()
+            await settle()
+
+            const resendScopes = consumeAuthThrottleMock.mock.calls
+                .map(([policy, key]) => [(policy as { scope: string }).scope, key])
+                .filter(([scope]) =>
+                    [
+                        'login_unverified_resend',
+                        'resend_verification_user',
+                        'verification_mail_user_daily',
+                    ].includes(String(scope)),
+                )
+            expect(resendScopes).toEqual([
+                ['login_unverified_resend', '7'],
+                ['resend_verification_user', '7'],
+                ['verification_mail_user_daily', '7'],
+            ])
+            expect(sendVerificationEmailInBackgroundMock).toHaveBeenCalledTimes(1)
+        })
+
+        it.each(['resend_verification_user', 'verification_mail_user_daily'])(
+            'sends no mail once the %s budget is spent, and still answers 401',
+            async (spent) => {
+                consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                    Promise.resolve({ allowed: policy.scope !== spent, count: 9 }),
+                )
+                userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+                validatePasswordMock.mockResolvedValue(true)
+
+                const result = await login()
+                await settle()
+
+                expect(Result.isError(result) && result.error._tag).toBe('Unauthorized')
+                expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
+            },
+        )
+
+        it('does not touch the hourly or daily budget inside the interval', async () => {
+            consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                Promise.resolve({
+                    allowed: policy.scope !== 'login_unverified_resend',
+                    count: 1,
+                }),
+            )
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            await login()
+            await settle()
+
+            const scopes = consumeAuthThrottleMock.mock.calls.map(
+                ([policy]) => (policy as { scope: string }).scope,
+            )
+            expect(scopes).not.toContain('resend_verification_user')
+            expect(scopes).not.toContain('verification_mail_user_daily')
+        })
+
         it('answers 401 even when the resend cannot be arranged (Redis down)', async () => {
             consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
                 policy.scope === 'login_unverified_resend'

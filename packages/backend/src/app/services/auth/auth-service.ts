@@ -329,6 +329,15 @@ async function resendVerificationAfterUnverifiedLogin(userId: bigint): Promise<v
             String(userId),
         )
         if (!throttle.allowed) return
+        // feat-203 (L-2): the interval alone allowed 12 mails an hour, 288 a day, to an address
+        // somebody else may have registered. This path spends the same hourly budget as the
+        // resend button, and the daily one.
+        for (const policy of [
+            throttlePolicies.resendVerificationUser,
+            throttlePolicies.verificationMailUserDaily,
+        ]) {
+            if (!(await consumeAuthThrottle(policy, String(userId))).allowed) return
+        }
         await emailVerificationService.sendVerificationEmailInBackground(userId, 'unverified login')
     } catch (err) {
         logger.warn({ err, userId: String(userId) }, 'Could not resend the verification mail')

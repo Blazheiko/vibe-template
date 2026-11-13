@@ -1,7 +1,7 @@
 to: new@example.com
 subject: Confirm your new email
 --- text ---
-Hello, Jane Doe.
+Hello.
 
 Please confirm this new email address for your Vibe Template account by opening this link
 in the browser where you are signed in to that account:
@@ -40,7 +40,7 @@ If you did not request this, ignore this email.
                   <tr>
                     <td style="padding:32px 40px 40px;">
                       <p style="margin:0 0 18px;font-size:18px;line-height:1.65;color:#2C3440;">
-                        Hello, Jane Doe.
+                        Hello.
                       </p>
                       <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:#5E6977;">
                         Confirm this email to finish linking it to your Vibe Template account. Open the link in the browser where you are signed in to that account.

@@ -68,6 +68,8 @@ describe('throttlePolicies registry', () => {
             support_chat_user: [20, 60_000, 'user'],
             support_open_chat_user: [5, 60_000, 'user'],
             login_unverified_resend: [1, 300_000, 'user'],
+            // feat-203: every verification mail sent again to one account in a day.
+            verification_mail_user_daily: [5, 24 * HOUR, 'user'],
         })
     })
 
