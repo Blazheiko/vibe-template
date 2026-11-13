@@ -6,6 +6,10 @@
 Пройдіть вправу [Перший маршрут](/guide/first-endpoint): там ті самі шари (схема → service → controller → route) показано без бази даних. Цей туторіал додає до них таблицю, міграцію, repository, transformer і захист маршруту сесією.
 :::
 
+::: tip Скіл для агента
+Claude Code може пройти ці кроки сам: у репозиторії є скіл [`backend-feature`](https://github.com/Blazheiko/vibe-template/blob/main/.claude/skills/backend-feature/SKILL.md) (`.claude/skills/backend-feature/`). Джерело правди — ця сторінка: якщо скіл і туторіал розходяться, правильний туторіал. Агенти без підтримки скілів читають цю сторінку напряму.
+:::
+
 Загальну картину шарів описано в [Архітектурі](/backend/architecture), роутинг і middleware — у [Маршрутизації](/backend/routing) і [Middleware](/backend/middlewares), роботу з БД — у [Базі даних](/backend/database), а шлях запиту — у [Життєвому циклі запиту](/backend/request-lifecycle).
 
 ::: tip Перевірено на практиці

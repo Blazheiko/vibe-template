@@ -6,6 +6,10 @@ This tutorial adds a new **`notes`** resource (the current user's notes) step by
 Work through the [First route](/en/guide/first-endpoint) exercise: it shows the same layers (schema → service → controller → route) without a database. This tutorial adds a table, a migration, a repository, a transformer and session protection for the route.
 :::
 
+::: tip A skill for the agent
+Claude Code can walk these steps itself: the repository has the skill [`backend-feature`](https://github.com/Blazheiko/vibe-template/blob/main/.claude/skills/backend-feature/SKILL.md) (`.claude/skills/backend-feature/`). This page is the source of truth: if the skill and the tutorial disagree, the tutorial is right. Agents without skill support read this page directly.
+:::
+
 The overall picture of the layers is described in [Architecture](/en/backend/architecture), routing and middleware in [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares), working with the DB in [Database](/en/backend/database), and the path of a request in [Request lifecycle](/en/backend/request-lifecycle).
 
 ::: tip Verified in practice
