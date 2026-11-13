@@ -43,6 +43,13 @@ The VitePress site in `documentation/` is published to GitHub Pages (https://bla
 - When a page uses `<!--@include-->`, the source path must be covered by `paths` in `docs.yml`.
 - Before merging, run `pnpm docs:build && pnpm docs:verify`.
 
+## Agent Skills
+
+Shared agent skills live in `.claude/skills/<name>/SKILL.md` and are versioned with the code; the rest of `.claude/` (local settings, worktrees) stays git-ignored. Personal skills belong in `~/.claude/skills/`, not here.
+
+- `backend-feature` scaffolds a backend resource through every layer. Its source of truth is `documentation/en/backend/adding-a-feature.md`; agents without skill support read that tutorial directly.
+- A change to the backend layering or route patterns (`AppResult` and the error helpers, the controller helpers, transformers, contracts and the schema registry, `layering.spec.ts`) updates the tutorial (both locales) and `backend-feature` in the same PR.
+
 ## End of Session
 
 Before ending, commit + push the feature branch with an updated `progress.md` (current state, files modified, next step) and, if work is unfinished, fill `session-handoff.md` so the next session can restart cleanly.
