@@ -2021,8 +2021,8 @@
             "owner": "Blazheiko",
             "branch": "fix/verification-mail-abuse",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #619 (merge 3fd3b2c): a mail to an address nobody has confirmed greets nobody by name (email verification, linking a new address); the password reset and OAuth link mails greet by name only when the account address is confirmed (mailAddresseeName); the OAuth link mail quotes the provider profile name only when mailSafeDisplayName accepts it, and renderBrandedEmail applies the same check to the greeting; the verification mail a sign-in to an unverified account sends spends the hourly budget of the resend button and a new daily one (verificationMailUserDaily, 5 per day, AUTH_VERIFICATION_MAIL_MAX_PER_USER_PER_DAY), which the button spends too; docs uk+en (backend/mail, auth, security, configuration). make check passing (backend 2933, frontend 558, playground 115), test:pg 313 and test:redis 117 passing on real services, docs:build+verify passing; RED: with the five service files as on main 15 cases of four specs fail; mail snapshots reviewed (verification and link mails lost the name, the reset snapshot is rendered for a confirmed account); manual on the real stack: an account registered with a hostile name got a verification mail greeting Hello. with no part of that name; whole e2e-live 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Wider than the plan: the reset mail had the same hole and is covered. Details were in progress.md on fix/verification-mail-abuse (removed from main by this PR)."
         },
         {
             "id": "feat-204",
