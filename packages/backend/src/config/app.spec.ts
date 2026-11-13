@@ -36,6 +36,50 @@ describe('parseSize via APP_MAX_JSON_BODY_SIZE', () => {
     )
 })
 
+// feat-201: the in-flight body budget. Unlike the size limits, `0` is a value: it switches
+// the limit off.
+describe('APP_MAX_INFLIGHT_BODY_BYTES and APP_MAX_INFLIGHT_BODY_BYTES_PER_IP', () => {
+    const names = ['APP_MAX_INFLIGHT_BODY_BYTES', 'APP_MAX_INFLIGHT_BODY_BYTES_PER_IP'] as const
+    const originals = names.map((name) => process.env[name])
+
+    const load = async (total: string | undefined, perIp: string | undefined) => {
+        for (const [name, value] of [
+            [names[0], total],
+            [names[1], perIp],
+        ] as const) {
+            if (value === undefined) delete process.env[name]
+            else process.env[name] = value
+        }
+        vi.resetModules()
+        const { default: config } = await import('./app.js')
+        return [config.maxInFlightBodyBytes, config.maxInFlightBodyBytesPerIp]
+    }
+
+    afterEach(() => {
+        names.forEach((name, index) => {
+            const value = originals[index]
+            if (value === undefined) delete process.env[name]
+            else process.env[name] = value
+        })
+    })
+
+    it('default to 256 MiB in total and 64 MiB per address', async () => {
+        expect(await load(undefined, undefined)).toEqual([268_435_456, 67_108_864])
+    })
+
+    it('read a number of bytes', async () => {
+        expect(await load('1000', ' 200 ')).toEqual([1000, 200])
+    })
+
+    it('0 switches a limit off', async () => {
+        expect(await load('0', '00')).toEqual([0, 0])
+    })
+
+    it.each(['abc', '', '-1', '1.5', '1e6'])('fall back to the default for %j', async (value) => {
+        expect(await load(value, value)).toEqual([268_435_456, 67_108_864])
+    })
+})
+
 describe('APP_UNIX_PATH', () => {
     const originalUnixPath = process.env['APP_UNIX_PATH']
 
