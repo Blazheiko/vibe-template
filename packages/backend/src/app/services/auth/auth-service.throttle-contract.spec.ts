@@ -146,6 +146,11 @@ interface Row {
     /** What the caller gets when the last counter is spent. */
     blocked: { status: number; code: string; message: string }
     /** What the caller gets when Redis fails on the last counter. */
+    /**
+     * feat-214: the last counter is the SMS budget of the number, spent under the lock of the
+     * challenge: the lookups of the number (taken? another account's?) have run before it.
+     */
+    underLock?: true
 }
 
 const login = (identifier: string) => (service: Service) =>
@@ -206,6 +211,7 @@ const ROWS: readonly Row[] = [
             ['sms_send_phone', PHONE],
         ],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
+        underLock: true,
     },
     {
         method: 'confirmPhoneRegistration · ip',
@@ -302,6 +308,7 @@ const ROWS: readonly Row[] = [
             ['sms_send_phone', PHONE],
         ],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
+        underLock: true,
     },
     {
         method: 'confirmPhoneLink · ip',
@@ -424,12 +431,15 @@ function arrange(row: Row, mode: 'blocked' | 'unavailable'): void {
     })
 }
 
-function untouchedDownstream(): void {
+function untouchedDownstream(row: Row): void {
     expect(userRepositoryMock.create).not.toHaveBeenCalled()
     expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
-    expect(userRepositoryMock.findByPhone).not.toHaveBeenCalled()
+    if (row.underLock !== true) {
+        expect(userRepositoryMock.findByPhone).not.toHaveBeenCalled()
+        expect(userRepositoryMock.phoneExistsForOtherUser).not.toHaveBeenCalled()
+    }
     expect(userRepositoryMock.emailExistsForOtherUser).not.toHaveBeenCalled()
-    expect(userRepositoryMock.phoneExistsForOtherUser).not.toHaveBeenCalled()
+    expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
     expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
     expect(smsAuthChallengeRepositoryMock.findById).not.toHaveBeenCalled()
     expect(issueVerificationCodeMock).not.toHaveBeenCalled()
@@ -459,7 +469,7 @@ describe.each(ROWS)('authService throttle: $method', (row) => {
         const result = (await row.call(authService)) as Result<unknown, AppError>
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.blocked)
-        untouchedDownstream()
+        untouchedDownstream(row)
     })
 
     // ADR 0004: a Redis failure is not an AppError; the call rejects (fail closed) and the
@@ -468,7 +478,7 @@ describe.each(ROWS)('authService throttle: $method', (row) => {
         arrange(row, 'unavailable')
         const { authService } = await import('./auth-service.js')
         await expect(row.call(authService)).rejects.toThrow()
-        untouchedDownstream()
+        untouchedDownstream(row)
     })
 
     it('a Redis outage becomes 503 at the transport, not 500', async () => {

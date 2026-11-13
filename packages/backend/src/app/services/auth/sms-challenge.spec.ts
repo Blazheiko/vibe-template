@@ -160,6 +160,57 @@ describe('openChallenge', () => {
     })
 })
 
+// feat-214: the hourly SMS budget of the number is spent under the lock, after the cooldown, and
+// only by a start that will open a challenge.
+describe('openChallenge: spendBudget', () => {
+    const spent = () => vi.fn(() => Promise.resolve(Result.ok(undefined)))
+
+    it('a start the cooldown refuses spends nothing', async () => {
+        repo.findLatestPendingForPhoneFlow.mockResolvedValue(
+            row({ resendAvailableAt: new Date(Date.now() + 30_000) }),
+        )
+        const spendBudget = spent()
+        const { openChallenge } = await load()
+        const result = await openChallenge({
+            phone: PHONE,
+            flow: 'register_phone',
+            metadata: {},
+            spendBudget,
+        })
+        expect(Result.isError(result) && result.error).toMatchObject({
+            reason: 'resend_cooldown_active',
+        })
+        expect(spendBudget).not.toHaveBeenCalled()
+        expect(repo.create).not.toHaveBeenCalled()
+    })
+
+    it('spends under the lock, after the cooldown check and before anything is retired', async () => {
+        repo.create.mockResolvedValue(row())
+        const spendBudget = spent()
+        const { openChallenge } = await load()
+        await openChallenge({ phone: PHONE, flow: 'register_phone', metadata: {}, spendBudget })
+        const order = (mock: { mock: { invocationCallOrder: number[] } }) =>
+            mock.mock.invocationCallOrder[0]!
+        expect(order(repo.lockPhoneFlow)).toBeLessThan(order(spendBudget))
+        expect(order(repo.findLatestPendingForPhoneFlow)).toBeLessThan(order(spendBudget))
+        expect(order(spendBudget)).toBeLessThan(order(repo.invalidatePendingForPhoneFlow))
+    })
+
+    it('a spent budget is the answer: nothing is retired, nothing stored', async () => {
+        const refused = { _tag: 'RateLimited', message: 'Too many' } as never
+        const { openChallenge } = await load()
+        const result = await openChallenge({
+            phone: PHONE,
+            flow: 'link_phone',
+            metadata: {},
+            spendBudget: () => Promise.resolve(Result.err(refused)),
+        })
+        expect(Result.isError(result) && result.error).toBe(refused)
+        expect(repo.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
+        expect(repo.create).not.toHaveBeenCalled()
+    })
+})
+
 describe('deliverChallenge and issueSmsChallenge: a start that fails half way leaves no live challenge', () => {
     const options = {
         phone: PHONE,
@@ -224,6 +275,7 @@ describe('deliverChallenge and issueSmsChallenge: a start that fails half way le
                 flow: 'link_phone',
                 metadata: {},
                 noLongerValid: 'no longer valid',
+                spendBudget: () => Promise.resolve(Result.ok(undefined)),
             }),
         ).rejects.toBe(dbError)
         expect(issueMock).not.toHaveBeenCalled()
