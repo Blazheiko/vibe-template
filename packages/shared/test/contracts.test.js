@@ -129,7 +129,7 @@ test('the password limits are what every auth schema enforces', async () => {
     const schemas = await import('../dist/schemas/index.js')
     const { PasswordSchema, VerifyEmailInputSchema } = schemas
     assert.equal(PASSWORD_MIN_LENGTH, 8)
-    assert.equal(PASSWORD_MAX_LENGTH, 32)
+    assert.equal(PASSWORD_MAX_LENGTH, 128)
 
     const ok = (length) => 'p'.repeat(length)
     assert.ok(!(PasswordSchema(ok(PASSWORD_MIN_LENGTH)) instanceof type.errors), 'min')

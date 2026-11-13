@@ -60,6 +60,28 @@ test('register by e-mail, confirm the link, sign in', async ({ browser, sink }) 
     expect(await session(page.context().request).whoAmI()).toBe(account.email)
 })
 
+// feat-208 (I-7): the limit was 32 characters, which a password manager's default exceeds.
+test('a password of 100 characters registers, confirms the address and signs in', async ({
+    browser,
+    sink,
+}) => {
+    const password = `Aa1-${'x'.repeat(96)}`
+    expect(password).toHaveLength(100)
+    const account = await createVerifiedAccount(browser, sink, password)
+    const { page } = await newBrowser(browser)
+
+    await loginInUi(page, account)
+
+    expect(await session(page.context().request).whoAmI()).toBe(account.email)
+    // One character less is another password.
+    const stranger = await newBrowser(browser)
+    const wrong = await session(stranger.context.request).post('/api/auth/login', {
+        identifier: account.email,
+        password: password.slice(0, 99),
+    })
+    expect(wrong.status()).toBe(401)
+})
+
 test('the registration counter per address is real: the fourth try in an hour is refused', async ({
     browser,
 }) => {

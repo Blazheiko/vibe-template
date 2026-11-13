@@ -620,6 +620,50 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             expect(result.status).toBe(422)
         })
 
+        // feat-208 (L-10): 400 Cyrillic letters pass the schema (under 500 characters), but the
+        // stored form percent-encodes them into about 2400, and the INSERT failed with a 500.
+        it('answers 400 for an endpoint whose canonical form is longer than the column', async () => {
+            const cyrillic = `https://fcm.googleapis.com/${'ж'.repeat(400)}`
+            expect(cyrillic.length).toBeLessThan(500)
+
+            const result = await call('POST', '', {
+                user,
+                body: { ...valid('cyrillic'), endpoint: cyrillic },
+            })
+
+            expect(result.status).toBe(400)
+            expect(result.body).toMatchObject({ reason: 'push_endpoint_too_long' })
+            const rows = await db
+                .select({ id: pushSubscriptions.id })
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.userId, user))
+            expect(rows).toEqual([])
+        })
+
+        // feat-208 (I-3): the owner gets the subscription back without its keys and address.
+        it('answers a created, listed and read subscription without keys and address', async () => {
+            const created = await call('POST', '', { user, body: valid('no-keys') })
+            const row = await stored('no-keys')
+            if (row === undefined) throw new Error('subscription missing')
+            const listed = await call('GET', '', { user })
+            const read = await call('GET', `/${String(row.id)}`, { user })
+
+            expect([created.status, listed.status, read.status]).toEqual([200, 200, 200])
+            const text = JSON.stringify([created.body, listed.body, read.body])
+            expect(text).toContain(row.endpoint)
+            for (const secret of [
+                'p256dhKey',
+                'authKey',
+                'ipAddress',
+                row.p256dhKey,
+                row.authKey,
+            ]) {
+                expect(text).not.toContain(secret)
+            }
+            // The server still has them: a push is encrypted with these keys.
+            expect(row.p256dhKey).toBe('p'.repeat(87))
+        })
+
         it('answers 422 for more notification types than there are', async () => {
             const result = await call('POST', '', {
                 user,

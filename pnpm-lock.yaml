@@ -257,9 +257,6 @@ importers:
       '@vueuse/core':
         specifier: ^15.0.0
         version: 15.0.0(vue@3.5.44(typescript@6.0.3))
-      dompurify:
-        specifier: ^3.4.17
-        version: 3.4.17
       mitt:
         specifier: ^3.0.1
         version: 3.0.1

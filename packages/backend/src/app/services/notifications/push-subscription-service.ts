@@ -1,4 +1,5 @@
 import type { CreateSubscriptionInput, UpdateSubscriptionInput } from 'shared/schemas'
+import { PUSH_ENDPOINT_MAX_LENGTH } from 'shared/limits'
 import { Result } from 'better-result'
 import { pushSubscriptionRepository } from '#app/repositories/index.js'
 import type { SerializedPushSubscription } from '#app/transformers/push-subscription-transformer.js'
@@ -203,6 +204,12 @@ async function upsertSubscription(
     const endpoint = canonicalPushEndpoint(payload.endpoint)
     if (endpoint === null) {
         return Result.err(badRequest('Push endpoint is not allowed', 'push_endpoint_not_allowed'))
+    }
+    // feat-208: the schema checks the length of what the client sent, but the stored form is
+    // the canonical one, and `new URL()` percent-encodes a non-ASCII path: 400 Cyrillic letters
+    // become 2400 characters, and the INSERT into varchar(500) failed with a 500.
+    if (endpoint.length > PUSH_ENDPOINT_MAX_LENGTH) {
+        return Result.err(badRequest('Push endpoint is too long', 'push_endpoint_too_long'))
     }
 
     const existingSubscription = await pushSubscriptionRepository.findByEndpoint(endpoint, tx)

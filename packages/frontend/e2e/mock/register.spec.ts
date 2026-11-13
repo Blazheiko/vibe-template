@@ -199,15 +199,16 @@ test.describe('register by e-mail', () => {
             expect(api.calls).toEqual([])
         })
 
-        // feat-075 (I): the form used to let a password longer than the server takes (32) go out
-        // and be refused there; it now says so before it sends anything.
-        test('a password of 33 characters is refused on the client', async ({ page, api }) => {
+        // feat-075 (I): the form used to let a password longer than the server takes go out
+        // and be refused there; it now says so before it sends anything. feat-208: the limit
+        // is 128, so a password manager's long password fits.
+        test('a password of 129 characters is refused on the client', async ({ page, api }) => {
             const modal = await openEmailForm(page)
-            await fillEmailForm(modal, { password: 'p'.repeat(33), confirm: 'p'.repeat(33) })
+            await fillEmailForm(modal, { password: 'p'.repeat(129), confirm: 'p'.repeat(129) })
             await submit(modal).click()
 
             await expect(fieldError(modal, 'register-password')).toHaveText(
-                'Password must be at most 32 characters long',
+                'Password must be at most 128 characters long',
             )
             expect(api.calls).toEqual([])
         })
