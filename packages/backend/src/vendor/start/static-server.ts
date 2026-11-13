@@ -207,8 +207,14 @@ const cacheStaticSource = async (): Promise<Map<string, StaticEntry> | null> => 
 // The service worker script's own CSP would govern the worker (and its fetches), so it gets none.
 const SERVICE_WORKER_PATH = '/service-worker.js'
 
+// feat-206: an HTML file is a document wherever its bytes come from. One over
+// STATIC_MAX_MEMORY_FILE_SIZE, or cached after the memory budget ran out, is streamed from
+// disk and used to leave without a Content-Security-Policy. `''` is `/`, the index.
+const HTML_EXTENSIONS: ReadonlySet<string> = new Set(['', 'html', 'htm'])
+
 const getAssetCspKind = (url: string, ext: string): CspKind | null => {
     if (url === SERVICE_WORKER_PATH) return null
+    if (HTML_EXTENSIONS.has(ext)) return 'document'
     return ext === 'svg' ? 'svg' : null
 }
 

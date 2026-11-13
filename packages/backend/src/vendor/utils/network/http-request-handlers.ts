@@ -58,8 +58,14 @@ export const resolveMaxBodySize = (kind: BodyKind, routeLimit?: number): number 
 
 // ─── Headers ─────────────────────────────────────────────────────────────────
 
+// How many names of refused headers one log line carries, and how much of each.
+const INVALID_HEADER_NAMES_LOGGED = 3
+const INVALID_HEADER_NAME_LENGTH = 64
+
 const getHeaders = (req: HttpRequest): Map<string, string> => {
     const headers: Map<string, string> = new Map<string, string>()
+    let invalid = 0
+    const invalidNames: string[] = []
     req.forEach((key, value) => {
         // The raw `cookie` header carries session/csrf/ws secrets and is parsed
         // separately into `httpData.cookies`. Keeping it out of the headers map
@@ -69,9 +75,17 @@ const getHeaders = (req: HttpRequest): Map<string, string> => {
         if (validateHeader(key, value)) {
             headers.set(key, value.trim())
         } else {
-            logger.warn(`Invalid header detected and skipped: ${key}`)
+            invalid += 1
+            if (invalidNames.length < INVALID_HEADER_NAMES_LOGGED) {
+                invalidNames.push(key.slice(0, INVALID_HEADER_NAME_LENGTH))
+            }
         }
     })
+    // feat-206: this runs before the rate limit, for requests that end in a 429 too. One
+    // debug line per request with a count, not a warning per header: anyone can send them.
+    if (invalid > 0) {
+        logger.debug({ invalid, names: invalidNames }, 'Invalid headers skipped')
+    }
 
     return headers
 }

@@ -25,6 +25,8 @@ WebSocket: upgrade level 1 (memory) → level 2 (Redis) → auth (onUpgrade) →
 
 - **L1** ([`http-rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/http-rate-limit.ts)) counts every API request exactly once: routes, API 404s, `OPTIONS` preflight, and plain HTTP requests to `/<API_PATH_PREFIX>/websocket`. Static files are not counted. On a successful response L1 writes no headers; on 429 it returns `X-RateLimit-*` and `Retry-After`, and the route limit is not checked.
 - **The route limit** takes priority over the group limit. The response contains `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`; exceeding the limit gives `429 rate_limited` with `Retry-After`; a counter failure gives `503 rate_limit_unavailable` (fail-closed).
+- **The route limit key** is IP + method + URL: `GET` and `POST` of one URL have separate counters, and a cheap route does not use up the budget of a stricter one.
+- **The log of rejections.** `Rate limit exceeded` (`warn`) is written at most once per key and limit window; the next line carries `suppressed`, the number of rejections left out ([`log-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/log-throttle.ts)). Invalid request headers, which are read before the limit, give one `debug` line per request with a count, not a line per header.
 - **Why synchronous and in memory.** In [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts) both HTTP checks run **before** `res.onData()` is registered: if there were an `await` there, uWS could deliver the body of a small POST before anyone starts reading it, and the request would hang. Redis is asynchronous, so it does not fit these limits. Besides, their job is to protect the process, not to hold an exact budget across the cluster.
 - **The budget with N instances** equals N × the maximum. This is a deliberate choice: each process protects itself. If needed, a limit at the edge is provided by the reverse proxy, see [Deployment](/en/backend/deployment#rate-limit-at-the-edge).
 - **WS messages** are counted per user, not per connection or IP: otherwise the budget could be multiplied by opening new connections, and users behind one NAT would share it. The number of simultaneous connections is limited separately, per user and per IP ([WebSocket](/en/backend/websocket#limits-and-security)).
@@ -175,13 +177,13 @@ Static files ([`static-server.ts`](https://github.com/Blazheiko/vibe-template/bl
 
 The policy is built by [`config/csp.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/csp.ts) from the functions in [`vendor/utils/network/csp.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/csp.ts). The header values are computed **once at startup**.
 
-| Response                                                 | Policy                                                                  |
-| -------------------------------------------------------- | ----------------------------------------------------------------------- |
-| HTML: `/`, `/index.html`, SPA fallback, both 200 and 304 | the full document policy (below)                                        |
-| SVG from static files, 200 and 304                       | `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'` |
-| `/service-worker.js`                                     | **no CSP**                                                              |
-| other JS, CSS, fonts, images                             | no CSP (the browser ignores it for subresources)                        |
-| API JSON, errors, static 400/404, CORS `OPTIONS`         | `default-src 'none'; frame-ancestors 'none'`                            |
+| Response                                                                                                     | Policy                                                                  |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| HTML: `/`, `/index.html`, SPA fallback, other `.html` / `.htm` (from memory and from disk), both 200 and 304 | the full document policy (below)                                        |
+| SVG from static files, 200 and 304                                                                           | `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'` |
+| `/service-worker.js`                                                                                         | **no CSP**                                                              |
+| other JS, CSS, fonts, images                                                                                 | no CSP (the browser ignores it for subresources)                        |
+| API JSON, errors, static 400/404, CORS `OPTIONS`                                                             | `default-src 'none'; frame-ancestors 'none'`                            |
 
 The document policy:
 
@@ -260,7 +262,7 @@ The checklist is compiled from the configuration code (see also [Configuration](
 
 - `APP_KEY`: a random string of at least 32 characters, for example `APP_KEY=<openssl rand -hex 32>`. Without it the server does not start.
 - `APP_ENV` must not equal `local`, because otherwise cookies lose `Secure`, and 500 error text includes details.
-- `APP_URL=https://...`. Keep `SESSION_COOKIE_HOST_PREFIX` enabled (it is by default with `APP_ENV=production`/`prod` or `APP_IS_PRODUCTION=true`).
+- `APP_URL=https://...`. Do not set `SESSION_COOKIE_HOST_PREFIX`: with `APP_ENV=production`/`prod` or `APP_IS_PRODUCTION=true` the `__Host-` prefix is on, and `false` stops the start.
 - `CSRF_ALLOWED_ORIGINS=https://app.example.com` — required, otherwise the server does not start. Leave `CSRF_ENFORCE` and `CSRF_STRICT_ORIGIN` at their defaults (`true`).
 - CORS: either `ENABLED_CORS=false` or an explicit `CORS_ALLOWED_ORIGINS`. Enable `CREDENTIONALS_CORS=true` only if needed.
 - Behind a reverse proxy: `TRUST_PROXY=true` and an exact `TRUSTED_PROXY_CIDRS`.

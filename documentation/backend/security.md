@@ -25,6 +25,8 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 
 - **L1** ([`http-rate-limit.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/http-rate-limit.ts)) рахує кожен API-запит рівно один раз: маршрути, API-404, preflight `OPTIONS` і звичайні HTTP-запити на `/<API_PATH_PREFIX>/websocket`. Статика не рахується. На успішній відповіді L1 заголовків не пише; на 429 віддає `X-RateLimit-*` і `Retry-After`, і ліміт маршруту тоді не перевіряється.
 - **Ліміт маршруту** має пріоритет над лімітом групи. Відповідь містить `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`; перевищення — `429 rate_limited` з `Retry-After`; помилка лічильника — `503 rate_limit_unavailable` (fail-closed).
+- **Ключ ліміту маршруту** — IP + метод + URL: `GET` і `POST` одного URL мають окремі лічильники, і дешевий маршрут не витрачає бюджет суворішого.
+- **Лог відмов.** `Rate limit exceeded` (`warn`) пишеться не частіше одного рядка на ключ за вікно ліміту; наступний рядок містить `suppressed` — скільки відмов пропущено ([`log-throttle.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/log-throttle.ts)). Невалідні заголовки запиту, які читаються ще до ліміту, дають один рядок `debug` на запит з лічильником, а не рядок на заголовок.
 - **Чому синхронно і в пам'яті.** У [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts) обидві HTTP-перевірки стоять **до** реєстрації `res.onData()`: якщо там буде `await`, uWS може доставити тіло малого POST раніше, ніж його почнуть читати, і запит зависне. Redis асинхронний, тому для цих лімітів не підходить. До того ж їхня задача — захистити процес, а не тримати точний бюджет у кластері.
 - **Бюджет при N інстансах** дорівнює N × максимум. Це свідомий вибір: кожен процес захищає себе сам. Ліміт на вході за потреби дає reverse proxy, див. [Розгортання](/backend/deployment#rate-limit-на-edge).
 - **WS-повідомлення** рахуються за користувачем, а не за з'єднанням чи IP: інакше бюджет можна множити, відкриваючи нові з'єднання, а користувачі за одним NAT ділили б його. Кількість одночасних з'єднань обмежена окремо, на користувача і на IP ([WebSocket](/backend/websocket#обмеження-та-безпека)).
@@ -175,13 +177,13 @@ if (Result.isError(throttle)) return Result.err(throttle.error)
 
 Політику будує [`config/csp.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/csp.ts) з функцій [`vendor/utils/network/csp.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/csp.ts). Значення заголовків обчислюються **один раз на старті**.
 
-| Відповідь                                            | Політика                                                                |
-| ---------------------------------------------------- | ----------------------------------------------------------------------- |
-| HTML: `/`, `/index.html`, SPA fallback, і 200, і 304 | повна політика документа (нижче)                                        |
-| SVG зі статики, 200 і 304                            | `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'` |
-| `/service-worker.js`                                 | **без CSP**                                                             |
-| інші JS, CSS, шрифти, картинки                       | без CSP (для підресурсів браузер її ігнорує)                            |
-| API JSON, помилки, статичні 400/404, CORS `OPTIONS`  | `default-src 'none'; frame-ancestors 'none'`                            |
+| Відповідь                                                                                            | Політика                                                                |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| HTML: `/`, `/index.html`, SPA fallback, інші `.html` / `.htm` (і з пам'яті, і з диска), і 200, і 304 | повна політика документа (нижче)                                        |
+| SVG зі статики, 200 і 304                                                                            | `default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'` |
+| `/service-worker.js`                                                                                 | **без CSP**                                                             |
+| інші JS, CSS, шрифти, картинки                                                                       | без CSP (для підресурсів браузер її ігнорує)                            |
+| API JSON, помилки, статичні 400/404, CORS `OPTIONS`                                                  | `default-src 'none'; frame-ancestors 'none'`                            |
 
 Політика документа:
 
@@ -260,7 +262,7 @@ Claim виконується в одній транзакції під блок�
 
 - `APP_KEY`: випадковий рядок довжиною щонайменше 32 символи, наприклад `APP_KEY=<openssl rand -hex 32>`. Без нього сервер не стартує.
 - `APP_ENV` не має дорівнювати `local`, бо інакше cookie втрачають `Secure`, а в тексті 500-помилок з'являються деталі.
-- `APP_URL=https://...`. Залиште `SESSION_COOKIE_HOST_PREFIX` увімкненим (за замовчуванням так і є при `APP_ENV=production`/`prod` або `APP_IS_PRODUCTION=true`).
+- `APP_URL=https://...`. Не задавайте `SESSION_COOKIE_HOST_PREFIX`: при `APP_ENV=production`/`prod` або `APP_IS_PRODUCTION=true` префікс `__Host-` увімкнено, а значення `false` зупиняє старт.
 - `CSRF_ALLOWED_ORIGINS=https://app.example.com` — обов'язково, інакше сервер не стартує. `CSRF_ENFORCE` і `CSRF_STRICT_ORIGIN` залиште за замовчуванням (`true`).
 - CORS: або `ENABLED_CORS=false`, або явний `CORS_ALLOWED_ORIGINS`. `CREDENTIONALS_CORS=true` вмикайте лише за потреби.
 - За реверс-проксі: `TRUST_PROXY=true` і точний `TRUSTED_PROXY_CIDRS`.

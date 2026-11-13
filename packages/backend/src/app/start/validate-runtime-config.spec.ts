@@ -79,7 +79,7 @@ describe('validateRuntimeConfig', () => {
         process.env['AUTH_SMS_PROVIDER_ALLOW_FAKE'] = 'true'
         process.env['AUTH_FAKE_SMS_CODE'] = '654321'
         process.env['APP_ENV'] = 'prod'
-        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
+        process.env['APP_URL'] = 'https://app.example.com'
         const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
         expect(() => {
             validateRuntimeConfig()
@@ -115,7 +115,7 @@ describe('validateRuntimeConfig', () => {
         process.env['AUTH_FAKE_SMS_CODE'] = '654321'
         process.env['APP_ENV'] = 'dev'
         process.env['APP_IS_PRODUCTION'] = 'true'
-        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
+        process.env['APP_URL'] = 'https://app.example.com'
         const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
         expect(() => {
             validateRuntimeConfig()
@@ -142,6 +142,50 @@ describe('validateRuntimeConfig', () => {
         expect(() => {
             validateRuntimeConfig()
         }).toThrow('SESSION_COOKIE_HOST_PREFIX=true requires APP_URL to use https://')
+    })
+
+    // feat-206 (L-5)
+    it.each([
+        ['APP_IS_PRODUCTION=true', { APP_ENV: 'local', APP_IS_PRODUCTION: 'true' }],
+        ['APP_ENV=prod', { APP_ENV: 'prod' }],
+    ])('refuses to start with SESSION_COOKIE_HOST_PREFIX=false when %s', async (_label, vars) => {
+        Object.assign(process.env, vars)
+        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
+        process.env['APP_URL'] = 'https://app.example.com'
+        delete process.env['AUTH_SMS_PROVIDER']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow('SESSION_COOKIE_HOST_PREFIX=false is forbidden in production-like environments')
+    })
+
+    it('serves a Secure __Host- cookie when APP_IS_PRODUCTION=true and APP_ENV=local', async () => {
+        process.env['APP_ENV'] = 'local'
+        process.env['APP_IS_PRODUCTION'] = 'true'
+        delete process.env['SESSION_COOKIE_HOST_PREFIX']
+        process.env['APP_URL'] = 'https://app.example.com'
+        delete process.env['AUTH_SMS_PROVIDER']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        const { default: sessionConfig } = await import('#config/session.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).not.toThrow()
+        expect(sessionConfig.cookie.secure).toBe(true)
+        expect(sessionConfig.cookieName).toBe('__Host-uapi')
+    })
+
+    it('keeps the plain cookie outside production-like environments', async () => {
+        process.env['APP_ENV'] = 'local'
+        process.env['APP_IS_PRODUCTION'] = 'false'
+        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
+        delete process.env['AUTH_SMS_PROVIDER']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        const { default: sessionConfig } = await import('#config/session.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).not.toThrow()
+        expect(sessionConfig.cookie.secure).toBe(false)
+        expect(sessionConfig.cookieName).toBe('uapi')
     })
 
     it('allows SESSION_COOKIE_HOST_PREFIX=true with Secure cookie and https APP_URL', async () => {
@@ -345,7 +389,7 @@ describe('CSRF startup checks', () => {
     it('rejects a production-like start without CSRF_ALLOWED_ORIGINS', async () => {
         delete process.env['CSRF_ALLOWED_ORIGINS']
         process.env['APP_IS_PRODUCTION'] = 'true'
-        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
+        process.env['APP_URL'] = 'https://app.example.com'
         await expect(run()).rejects.toThrow(
             'Invalid CSRF configuration: CSRF_ALLOWED_ORIGINS must be set in production-like environments',
         )
@@ -353,7 +397,7 @@ describe('CSRF startup checks', () => {
 
     it('warns when production-like runs with CSRF_ENFORCE=false', async () => {
         process.env['APP_IS_PRODUCTION'] = 'true'
-        process.env['SESSION_COOKIE_HOST_PREFIX'] = 'false'
+        process.env['APP_URL'] = 'https://app.example.com'
         process.env['CSRF_ENFORCE'] = 'false'
         expect(await run()).toContain(
             'CSRF_ENFORCE=false: CSRF protection is off, violations are only logged, not rejected',

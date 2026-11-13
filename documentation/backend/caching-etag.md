@@ -50,7 +50,7 @@ MIME-тип береться з [`MIME_TYPES`](https://github.com/Blazheiko/vibe
 - URL **без крапки** отримує `index.html` через той самий `handleHtmlRequest`, тобто з ETag і `must-revalidate`.
 - URL із крапкою, якого немає в кеші, отримує `404` з порожнім тілом.
 
-HTML-оболонка (і `index.html` для SPA fallback) отримує CSP `document`, SVG — CSP `svg`, `/service-worker.js` та інші файли — без CSP (`setSecurityHeaders(res, [], cspKind)` у `static-server.ts`). Правила — у [Безпеці](/backend/security#content-security-policy).
+HTML-оболонка (і `index.html` для SPA fallback) та будь-який інший файл `.html` / `.htm`, зокрема той, що віддається стрімінгом з диска, отримує CSP `document`, SVG — CSP `svg`, `/service-worker.js` та інші файли — без CSP (`setSecurityHeaders(res, [], cspKind)` у `static-server.ts`). Правила — у [Безпеці](/backend/security#content-security-policy).
 
 ## API-відповіді
 
