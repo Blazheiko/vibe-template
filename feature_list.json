@@ -1981,7 +1981,7 @@
             "owner": "Blazheiko",
             "branch": "feat/linked-sign-in-methods",
             "dependencies": ["feat-198"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
