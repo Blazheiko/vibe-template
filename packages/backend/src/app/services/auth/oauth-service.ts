@@ -42,6 +42,7 @@ import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { notifySignInMethodAdded } from '#app/services/auth/sign-in-method-notice.js'
+import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import { PRODUCT } from 'shared/product'
 
 type JsonObject = Record<string, unknown>
@@ -123,13 +124,6 @@ const OAUTH_LINK_TTL_MS = 30 * 60 * 1000
 
 function buildOAuthLinkUrl(token: string): string {
     return `${appConfig.frontendUrl}/oauth/link/confirm?token=${encodeURIComponent(token)}`
-}
-
-const PROVIDER_TITLES: Record<string, string> = {
-    google: 'Google',
-    facebook: 'Facebook',
-    github: 'GitHub',
-    gitlab: 'GitLab',
 }
 
 function createGoogleClient(): Google {
@@ -591,7 +585,7 @@ const announceLink = (
         userId,
         email: linked.account.email,
         name: linked.account.name,
-        providerTitle: PROVIDER_TITLES[provider] ?? provider,
+        providerTitle: providerTitle(provider),
         providerName,
     })
 }
@@ -706,18 +700,18 @@ async function startMailedLink(
     if (Result.isError(issued)) return Result.err(issued.error)
 
     const { rawToken, user } = issued.value
-    const providerTitle = PROVIDER_TITLES[identity.provider] ?? identity.provider
+    const linkProviderTitle = providerTitle(identity.provider)
     const url = buildOAuthLinkUrl(rawToken)
     const content = renderBrandedEmail({
-        subject: `Link ${providerTitle} to your account`,
+        subject: `Link ${linkProviderTitle} to your account`,
         eyebrow: 'Sign-in method',
-        title: `Link ${providerTitle} to your account`,
+        title: `Link ${linkProviderTitle} to your account`,
         name: user.name,
-        intro: `Somebody signed in with the ${providerTitle} account "${identity.providerName}" that uses this email address. Open the link in the same browser to link it to your ${PRODUCT.name} account.`,
-        action: { kind: 'button', label: `Link ${providerTitle}`, url },
+        intro: `Somebody signed in with the ${linkProviderTitle} account "${identity.providerName}" that uses this email address. Open the link in the same browser to link it to your ${PRODUCT.name} account.`,
+        action: { kind: 'button', label: `Link ${linkProviderTitle}`, url },
         footer: 'This link expires in 30 minutes and works only in the browser where the sign-in started. If it was not you, ignore this email: nothing is linked without it.',
         textLines: [
-            `Somebody signed in with the ${providerTitle} account "${identity.providerName}" that uses this email address.`,
+            `Somebody signed in with the ${linkProviderTitle} account "${identity.providerName}" that uses this email address.`,
             `To link it to your ${PRODUCT.name} account, open this link in the same browser:`,
             url,
             '',

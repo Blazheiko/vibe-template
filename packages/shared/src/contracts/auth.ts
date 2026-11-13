@@ -12,10 +12,12 @@ import type { ResetPasswordInputSchema } from '../schemas/auth/reset-password.js
 import type { LinkPhoneStartInputSchema } from '../schemas/auth/link-phone-start.js'
 import type { LinkPhoneConfirmInputSchema } from '../schemas/auth/link-phone-confirm.js'
 import type { LinkEmailStartInputSchema } from '../schemas/auth/link-email-start.js'
+import type { UnlinkSignInMethodInputSchema } from '../schemas/auth/unlink-sign-in-method.js'
 import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
 import type {
     ChangePasswordResponse,
     ForgotPasswordResponse,
+    GetSignInMethodsResponse,
     LinkEmailStartResponse,
     LinkPhoneConfirmResponse,
     LinkPhoneStartResponse,
@@ -30,6 +32,7 @@ import type {
     ResetPasswordResponse,
     ResetPhoneCompleteResponse,
     ResetPhoneStartResponse,
+    UnlinkSignInMethodResponse,
     VerifyEmailResponse,
 } from '../responses/auth-controller.js'
 import { contract } from './core.js'
@@ -113,4 +116,13 @@ export const authContracts = {
         undefined,
         LinkEmailStartResponse
     >()('post', '/auth/link-email/start'),
+    signInMethods: contract<undefined, undefined, GetSignInMethodsResponse>()(
+        'get',
+        '/auth/sign-in-methods',
+    ),
+    unlinkSignInMethod: contract<
+        typeof UnlinkSignInMethodInputSchema.inferIn,
+        undefined,
+        UnlinkSignInMethodResponse
+    >()('post', '/auth/sign-in-methods/unlink'),
 } as const

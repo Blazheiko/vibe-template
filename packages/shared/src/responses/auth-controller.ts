@@ -95,7 +95,7 @@ export const ResetPhoneStartResponseSchema = type.or(
 export type ResetPhoneStartResponse = typeof ResetPhoneStartResponseSchema.infer
 
 export const ResetPhoneCompleteResponseSchema = type.or(
-    { status: "'success'", 'message?': 'string' },
+    { status: "'success'", 'message?': 'string', 'signInMethods?': 'string[]' },
     CanonicalErrorResponseSchema,
 )
 export type ResetPhoneCompleteResponse = typeof ResetPhoneCompleteResponseSchema.infer
@@ -156,11 +156,16 @@ type ResetPasswordReason =
 // ResetPasswordReason enum would overlap it, and an overlapping union cannot get the
 // undeclared-key strip (feat-046). The exact reason stays in ResetPasswordResponse.
 export const ResetPasswordResponseSchema = type.or(
-    { status: "'success'", 'message?': 'string' },
+    {
+        status: "'success'",
+        'message?': 'string',
+        // feat-199: the OAuth providers still linked to the account after the reset.
+        'signInMethods?': 'string[]',
+    },
     CanonicalErrorResponseSchema,
 )
 export type ResetPasswordResponse =
-    | { status: 'success'; message?: string }
+    | { status: 'success'; message?: string; signInMethods?: string[] }
     | CanonicalErrorResponse
     | {
           status: 'error'
@@ -181,3 +186,28 @@ export const ResendVerificationEmailResponseSchema = type.or(
     CanonicalErrorResponseSchema,
 )
 export type ResendVerificationEmailResponse = typeof ResendVerificationEmailResponseSchema.infer
+
+// feat-199: the sign-in methods linked to the account (identities of OAuth providers).
+const SignInMethodSchema = type({
+    id: 'string',
+    provider: 'string',
+    /** The profile name the provider reported, when it is safe to show; null otherwise. */
+    name: 'string | null',
+    linkedAt: 'string',
+})
+export const GetSignInMethodsResponseSchema = type.or(
+    {
+        status: "'success'",
+        /** True: unlinking asks for the current password. False: for a recent sign-in. */
+        hasPassword: 'boolean',
+        methods: SignInMethodSchema.array(),
+    },
+    CanonicalErrorResponseSchema,
+)
+export type GetSignInMethodsResponse = typeof GetSignInMethodsResponseSchema.infer
+
+export const UnlinkSignInMethodResponseSchema = type.or(
+    { status: "'success'", 'message?': 'string' },
+    CanonicalErrorResponseSchema,
+)
+export type UnlinkSignInMethodResponse = typeof UnlinkSignInMethodResponseSchema.infer

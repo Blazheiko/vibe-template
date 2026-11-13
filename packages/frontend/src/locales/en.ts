@@ -110,6 +110,8 @@ export default {
         resetPasswordSuccessTitle: 'Password updated',
         resetPasswordSuccess:
             'Your password has been updated. You can now sign in with the new password.',
+        resetPasswordLinkedMethods:
+            'These sign-in methods are still linked to your account and keep working: {methods}. If you do not recognise one, sign in and remove it on the account page.',
         invalidResetToken: 'This password reset link is invalid or has expired.',
         signingIn: 'Signing In...',
         orContinueWith: 'or continue with',
@@ -208,6 +210,23 @@ export default {
             errorMismatch: 'Passwords do not match',
             errorUpdate: 'Could not update password',
             successUpdate: 'Password updated',
+        },
+        signInMethods: {
+            title: 'Sign-in methods',
+            help: 'Accounts of other services linked to this account. Each of them signs in to it, also after a password change.',
+            empty: 'No other service is linked.',
+            linkedAt: 'linked {date}',
+            unlink: 'Remove',
+            currentPassword: 'Current password',
+            noPasswordHint:
+                'This account has no password: removing a sign-in method needs a sign-in within the last 10 minutes, and the last method cannot be removed.',
+            unlinked: '{provider} was removed',
+            errorLoad: 'Could not load sign-in methods',
+            errorUnlink: 'Could not remove the sign-in method',
+            errorPasswordRequired: 'Enter your current password to remove a sign-in method',
+            errorPasswordIncorrect: 'Current password is incorrect',
+            errorRecentSignIn: 'Sign out and sign in again, then remove the sign-in method',
+            errorLastMethod: 'Set a password before removing your last sign-in method',
         },
         contactMethods: {
             title: 'Contact methods',

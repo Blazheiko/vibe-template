@@ -59,6 +59,7 @@ import {
 } from '#app/services/shared/errors.js'
 import { maskEmailForLogs, maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { announcePasswordReset } from '#app/services/auth/password-reset-notice.js'
 import { PRODUCT } from 'shared/product'
 
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
@@ -322,7 +323,7 @@ export const passwordResetService = {
         password: string,
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
-    ): Promise<AppResult<{ status: 'success' }>> {
+    ): Promise<AppResult<{ status: 'success'; signInMethods: string[] }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.resetPasswordIp,
             requestMeta.ipAddress,
@@ -383,6 +384,8 @@ export const passwordResetService = {
                     userId: user.id,
                     previousSessionToken: outcome.previousSessionToken,
                     claimed: outcome.claimed,
+                    email: outcome.user.email,
+                    name: outcome.user.name,
                 }
             },
             invalidate: [passwordResetRepository],
@@ -411,7 +414,9 @@ export const passwordResetService = {
             user.userId,
             user.claimed ? 'account_claimed' : 'password_reset',
         )
-        return Result.ok({ status: 'success' })
+        // feat-199: the reset leaves the linked sign-in methods in place; say which.
+        const signInMethods = await announcePasswordReset(user)
+        return Result.ok({ status: 'success', signInMethods })
     },
 
     async completePhonePasswordReset(
@@ -420,7 +425,7 @@ export const passwordResetService = {
         password: string,
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
-    ): Promise<AppResult<{ status: 'success' }>> {
+    ): Promise<AppResult<{ status: 'success'; signInMethods: string[] }>> {
         if (!authConfig.phoneAuthEnabled) {
             return Result.err(badRequest('Phone authentication is disabled'))
         }
@@ -511,7 +516,13 @@ export const passwordResetService = {
         await destroySessionsQuietly(previousSessionToken, updatedUser.id)
 
         userNotificationService.security(updatedUser.id, 'password_reset')
-        return Result.ok({ status: 'success' })
+        // feat-199: a phone-only account has no address to mail; the page still shows the list.
+        const signInMethods = await announcePasswordReset({
+            userId: updatedUser.id,
+            email: updatedUser.email,
+            name: updatedUser.name,
+        })
+        return Result.ok({ status: 'success', signInMethods })
     },
 
     async sendPasswordResetEmailInBackground(

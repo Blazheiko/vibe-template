@@ -107,6 +107,26 @@ WHERE o.provider <> 'google' AND (u.email_verified_at IS NULL OR o.created_at < 
 For a confirmed candidate: delete the suspicious link, reset `email_verified_at`, rotate `session_token`, notify the owner and advise them to reset the password.
 :::
 
+## Managing sign-in methods
+
+A linked identity signs in to the account whatever happens to the password: neither a password change, nor a reset, nor "log out everywhere" removes it. So the owner sees the links and can remove one (feat-199, [`sign-in-methods-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/sign-in-methods-service.ts)); on the frontend this is the "Sign-in methods" block on the account page.
+
+| Route                                   | What it does                                                                                                                  |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/auth/sign-in-methods`         | the account's links: `id`, `provider`, `name` (the profile name, only when it is safe to show), `linkedAt`; and `hasPassword` |
+| `POST /api/auth/sign-in-methods/unlink` | removes the link `{ id, currentPassword? }`                                                                                   |
+
+Both routes are in the `auth` web group (`session_web`, `csrf_guard`, `auth_guard`). Unlinking checks:
+
+- **Who is asking.** An account with a password sends the current one; the check first spends the shared `change_password_user` budget (like `change-password`). Without it or with a wrong one: `400` (`current_password_required`, `current_password_incorrect`). An account without a password must have signed in within the last 10 minutes: a sign-in always creates a new session, so the age of the session is the age of the sign-in. An older session gets `403` with `reason: recent_sign_in_required`.
+- **Whose link it is.** The link is looked up among this user's links; another account's `id` gives `404`, like one that does not exist.
+- **Whether it is the last one.** An account without a password cannot remove its last link: `409` with `reason: last_sign_in_method`. The decision is made on the user row under a lock (`FOR UPDATE`), so two requests at once cannot remove both links. A phone or an email without a password does not count as a way to sign in: set a password first.
+- **Whether the session is still valid.** A revoked session (`users.session_token` is already different) or a deleted session record gets `401`.
+
+After a link is removed the owner gets the `sign_in_method_removed` push.
+
+**A password reset** does not remove links. The answer of `reset-password` and `reset-phone/complete` carries `signInMethods`, the providers still linked; the page after the reset shows them. The account's address gets a "password was reset" email with the same list and a link to the account page ([`password-reset-notice.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/password-reset-notice.ts)). The email is sent without waiting; its failure does not undo the reset.
+
 ## What you need to make it work
 
 ### 1. Register the application with the provider

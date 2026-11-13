@@ -59,6 +59,11 @@ const claimRepositoryMocks = vi.hoisted(() => ({
     oauthAccountRepository: { deleteByUserId: vi.fn() },
     pushSubscriptionRepository: { deleteByUserId: vi.fn() },
 }))
+// feat-199: what the reset says about the sign-in methods still linked (own spec).
+const announcePasswordResetMock = vi.hoisted(() => vi.fn(() => Promise.resolve(['github'])))
+vi.mock('#app/services/auth/password-reset-notice.js', () => ({
+    announcePasswordReset: announcePasswordResetMock,
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     passwordResetRepository: passwordResetRepositoryMock,
@@ -417,7 +422,11 @@ describe('passwordResetService', () => {
         )
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
-            expect(result.value).toEqual({ status: 'success' })
+            expect(result.value).toEqual({ status: 'success', signInMethods: ['github'] })
+            // feat-199: the notice gets the account as it is after the reset.
+            expect(announcePasswordResetMock).toHaveBeenCalledWith(
+                expect.objectContaining({ userId: expect.any(BigInt) as bigint }),
+            )
         }
     })
 

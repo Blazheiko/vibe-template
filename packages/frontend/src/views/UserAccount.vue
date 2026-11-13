@@ -11,6 +11,7 @@ import { getErrorReason, getResponseMessage, hasResponseError } from '@/utils/re
 import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
+import { oauthProviderLabel } from '@/utils/oauth-provider-label'
 
 defineOptions({
     name: 'UserAccount',
@@ -382,7 +383,79 @@ async function sendTestPush(): Promise<void> {
     }
 }
 
+// feat-199: the OAuth identities linked to the account. Each of them signs in whatever happens
+// to the password, so the owner sees them here and can remove one. An account with a password
+// confirms with it; one without must have signed in recently and keeps its last method.
+interface SignInMethod {
+    id: string
+    provider: string
+    name: string | null
+    linkedAt: string
+}
+const signInMethods = ref<SignInMethod[]>([])
+const signInMethodsLoaded = ref(false)
+const accountHasPassword = ref(false)
+const unlinkPassword = ref('')
+const unlinkingId = ref<string | null>(null)
+const signInMethodsMessage = ref('')
+
+const UNLINK_ERRORS = new Map<string, string>([
+    ['current_password_required', 'account.signInMethods.errorPasswordRequired'],
+    ['current_password_incorrect', 'account.signInMethods.errorPasswordIncorrect'],
+    ['recent_sign_in_required', 'account.signInMethods.errorRecentSignIn'],
+    ['last_sign_in_method', 'account.signInMethods.errorLastMethod'],
+])
+
+async function loadSignInMethods(): Promise<void> {
+    const { data, error } = await authApi.signInMethods()
+    if (error || hasResponseError(data) || data?.status !== 'success') {
+        signInMethodsMessage.value = getResponseMessage(
+            data,
+            error?.message ?? t('account.signInMethods.errorLoad'),
+        )
+        return
+    }
+    signInMethods.value = data.methods
+    accountHasPassword.value = data.hasPassword
+    signInMethodsLoaded.value = true
+}
+
+async function unlinkSignInMethod(method: SignInMethod): Promise<void> {
+    signInMethodsMessage.value = ''
+    if (accountHasPassword.value && unlinkPassword.value === '') {
+        signInMethodsMessage.value = t('account.signInMethods.errorPasswordRequired')
+        return
+    }
+
+    unlinkingId.value = method.id
+    try {
+        const { data, error } = await authApi.unlinkSignInMethod({
+            id: method.id,
+            ...(accountHasPassword.value ? { currentPassword: unlinkPassword.value } : {}),
+        })
+        if (error || hasResponseError(data) || data?.status !== 'success') {
+            const known = UNLINK_ERRORS.get(getErrorReason(data) ?? '')
+            signInMethodsMessage.value =
+                known !== undefined
+                    ? t(known)
+                    : getResponseMessage(
+                          data,
+                          error?.message ?? t('account.signInMethods.errorUnlink'),
+                      )
+            return
+        }
+        unlinkPassword.value = ''
+        signInMethodsMessage.value = t('account.signInMethods.unlinked', {
+            provider: oauthProviderLabel(method.provider),
+        })
+        await loadSignInMethods()
+    } finally {
+        unlinkingId.value = null
+    }
+}
+
 void pushStore.ensurePushSubscriptionsLoaded()
+void loadSignInMethods()
 
 watch(
     () => pushStore.isSubscribedToPush,
@@ -463,6 +536,59 @@ watch(
                 {{ t('account.security.updatePassword') }}
             </button>
             <p v-if="passwordMessage" class="form-message">{{ passwordMessage }}</p>
+        </section>
+
+        <section class="panel" data-testid="sign-in-methods">
+            <h2>{{ t('account.signInMethods.title') }}</h2>
+            <p class="form-message">{{ t('account.signInMethods.help') }}</p>
+            <p v-if="signInMethodsLoaded && signInMethods.length === 0" class="form-message">
+                {{ t('account.signInMethods.empty') }}
+            </p>
+            <ul v-if="signInMethods.length > 0" class="sign-in-methods">
+                <li
+                    v-for="method in signInMethods"
+                    :key="method.id"
+                    class="sign-in-method"
+                    :data-provider="method.provider"
+                >
+                    <span class="sign-in-method-name">
+                        <strong>{{ oauthProviderLabel(method.provider) }}</strong>
+                        <span v-if="method.name"> · {{ method.name }}</span>
+                    </span>
+                    <span class="sign-in-method-date">
+                        {{
+                            t('account.signInMethods.linkedAt', {
+                                date: new Date(method.linkedAt).toLocaleDateString(),
+                            })
+                        }}
+                    </span>
+                    <button
+                        class="secondary-button"
+                        :disabled="unlinkingId !== null"
+                        @click="unlinkSignInMethod(method)"
+                    >
+                        {{ t('account.signInMethods.unlink') }}
+                    </button>
+                </li>
+            </ul>
+            <div v-if="signInMethods.length > 0 && accountHasPassword" class="form-grid">
+                <input
+                    v-model="unlinkPassword"
+                    type="password"
+                    name="unlink-current-password"
+                    autocomplete="current-password"
+                    :placeholder="t('account.signInMethods.currentPassword')"
+                />
+            </div>
+            <p
+                v-if="signInMethods.length > 0 && signInMethodsLoaded && !accountHasPassword"
+                class="form-message"
+            >
+                {{ t('account.signInMethods.noPasswordHint') }}
+            </p>
+            <p v-if="signInMethodsMessage" class="form-message" role="status">
+                {{ signInMethodsMessage }}
+            </p>
         </section>
 
         <section class="panel">
@@ -648,6 +774,31 @@ watch(
 
 .file-input-hidden {
     display: none;
+}
+
+.sign-in-methods {
+    list-style: none;
+    margin: 12px 0;
+    padding: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.sign-in-method {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+}
+
+.sign-in-method-name {
+    flex: 1 1 200px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.sign-in-method-date {
+    color: var(--text-secondary);
 }
 
 .form-grid {

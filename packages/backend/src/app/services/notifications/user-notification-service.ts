@@ -10,6 +10,7 @@ import {
 export type SecurityEvent =
     | 'new_sign_in'
     | 'sign_in_method_added'
+    | 'sign_in_method_removed'
     | 'password_changed'
     | 'password_reset'
     | 'logout_all'
@@ -25,7 +26,14 @@ const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
     // feat-198: another provider's identity was linked. It signs in after a password change too.
     sign_in_method_added: {
         title: 'New sign-in method',
-        body: 'A new way to sign in was added to your account. If it was not you, contact support.',
+        body: 'A new way to sign in was added to your account. If it was not you, remove it on the account page.',
+        url: '/account',
+        tag: 'security-sign-in-method',
+    },
+    // feat-199: a linked identity was removed on the account page.
+    sign_in_method_removed: {
+        title: 'Sign-in method removed',
+        body: 'A way to sign in was removed from your account. If it was not you, change your password.',
         url: '/account',
         tag: 'security-sign-in-method',
     },
