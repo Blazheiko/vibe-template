@@ -8,7 +8,12 @@ import {
 // failure or slow push service never changes or delays the response that triggered it.
 
 export type SecurityEvent =
-    'new_sign_in' | 'password_changed' | 'password_reset' | 'logout_all' | 'account_claimed'
+    | 'new_sign_in'
+    | 'sign_in_method_added'
+    | 'password_changed'
+    | 'password_reset'
+    | 'logout_all'
+    | 'account_claimed'
 
 const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
     new_sign_in: {
@@ -16,6 +21,13 @@ const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
         body: 'Your account was just signed in to. If it was not you, change your password.',
         url: '/account',
         tag: 'security-sign-in',
+    },
+    // feat-198: another provider's identity was linked. It signs in after a password change too.
+    sign_in_method_added: {
+        title: 'New sign-in method',
+        body: 'A new way to sign in was added to your account. If it was not you, contact support.',
+        url: '/account',
+        tag: 'security-sign-in-method',
     },
     password_changed: {
         title: 'Password changed',

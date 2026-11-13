@@ -543,11 +543,36 @@ describe('oauthService.handleCallback', () => {
             expect(order(claimLockedMock)).toBeLessThan(order(oauthAccountRepositoryMock.create))
             expect(destroySessionsQuietlyMock).not.toHaveBeenCalled()
             expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token')
+            // feat-198: announced as a new sign-in method, not as an ordinary sign-in.
             expect(securityMock).toHaveBeenCalledTimes(1)
-            expect(securityMock).toHaveBeenCalledWith(5n, 'new_sign_in')
-            // Nothing is mailed: Google proved the mailbox.
+            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+            // No confirmation link is mailed: Google proved the mailbox. The notice is.
             expect(oauthLinkVerificationRepositoryMock.create).not.toHaveBeenCalled()
-            expect(emailServiceMock.send).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
+            const notice = emailServiceMock.send.mock.calls[0]![0] as {
+                to: string
+                subject: string
+                text: string
+            }
+            expect(notice.to).toBe('user@gmail.com')
+            expect(notice.subject).toBe('A new sign-in method was added to your account')
+            expect(notice.text).toContain('The Google account "Jane" was linked')
+            expect(notice.text).toContain('keeps working after a password change')
+        })
+
+        it('announces the link even when the session cannot be created', async () => {
+            stubGoogle({ email: 'User@Gmail.com' })
+            givenExistingUserByEmail({ email: 'user@gmail.com' })
+            userRepositoryMock.findByEmail.mockResolvedValue(account({ email: 'user@gmail.com' }))
+            authMock.login.mockResolvedValue(false)
+
+            const result = await callback('google')
+
+            expect(Result.isError(result)).toBe(true)
+            // The link is committed whatever the sign-in answers.
+            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+            expect(securityMock).not.toHaveBeenCalledWith(5n, 'new_sign_in')
+            expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
         })
 
         it('reads hd from the Google profile: a Workspace address links directly', async () => {
@@ -1390,7 +1415,55 @@ describe('oauthService.confirmLink', () => {
         expect(order(claimLockedMock)).toBeLessThan(order(oauthAccountRepositoryMock.create))
         expect(destroySessionsQuietlyMock).not.toHaveBeenCalled()
         expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token')
-        expect(securityMock).toHaveBeenCalledWith(5n, 'new_sign_in')
+        // feat-198 (M-2): this used to be announced as an ordinary "new sign-in", by push only.
+        expect(securityMock).toHaveBeenCalledTimes(1)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
+        const notice = emailServiceMock.send.mock.calls[0]![0] as {
+            to: string
+            subject: string
+            text: string
+            html: string
+        }
+        expect(notice.to).toBe('user@example.com')
+        expect(notice.subject).toBe('A new sign-in method was added to your account')
+        expect(notice.text).toContain('The GitHub account "Jane" was linked')
+        expect(notice.html).toContain('GitHub was linked to your account')
+    })
+
+    it('does not quote a profile name that carries a link or a line break', async () => {
+        arrange()
+        oauthLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue(
+            linkRow({ providerName: 'Your account is locked. Sign in at https://evil.example/x' }),
+        )
+
+        await confirm()
+
+        const notice = emailServiceMock.send.mock.calls[0]![0] as { text: string; html: string }
+        expect(notice.text).toContain('A GitHub account was linked')
+        expect(notice.text).not.toContain('evil.example')
+        expect(notice.html).not.toContain('evil.example')
+    })
+
+    it('a mail that cannot be sent does not fail the link', async () => {
+        arrange()
+        emailServiceMock.send.mockRejectedValue(new Error('smtp down'))
+
+        const result = await confirm()
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+    })
+
+    it('a claim is announced as a claim and mails no notice', async () => {
+        arrange({ emailVerifiedAt: null })
+        claimAnswers(true)
+
+        await confirm()
+
+        expect(securityMock).toHaveBeenCalledTimes(1)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'account_claimed')
+        expect(emailServiceMock.send).not.toHaveBeenCalled()
     })
 
     it('claims an unverified account: old sessions go, the new token signs in', async () => {
@@ -1546,14 +1619,15 @@ describe('oauthService.confirmLink', () => {
         expectNoSignIn()
     })
 
-    it('the session cannot be created: 400, no notice', async () => {
+    it('the session cannot be created: 400, and the committed link is still announced', async () => {
         arrange()
         authMock.login.mockResolvedValue(false)
 
         const result = await confirm()
 
         expectError(result, { _tag: 'BadRequest', message: 'Failed to sign in' })
-        expect(securityMock).not.toHaveBeenCalled()
+        expect(securityMock).toHaveBeenCalledTimes(1)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
     })
 })
 

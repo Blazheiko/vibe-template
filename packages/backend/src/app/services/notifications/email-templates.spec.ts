@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { escapeHtml, renderBrandedEmail, type BrandedEmail } from './email-templates.js'
+import {
+    escapeHtml,
+    mailSafeDisplayName,
+    renderBrandedEmail,
+    type BrandedEmail,
+} from './email-templates.js'
 
 // feat-072 (H3): the three real mails are frozen byte for byte in
 // auth/auth-email-templates.snapshot.spec.ts; this pins the layout function on its own.
@@ -101,5 +106,42 @@ describe('renderBrandedEmail escapes every field', () => {
     it('keeps the plain-text body as text', () => {
         const mail = renderBrandedEmail({ ...base, textLines: [payload] })
         expect(mail.text.endsWith(payload)).toBe(true)
+    })
+})
+
+// feat-198: a name from outside quoted in a mail the product signs.
+describe('mailSafeDisplayName', () => {
+    it.each([
+        ['Jane Doe', 'Jane Doe'],
+        ['  Jane   Doe  ', 'Jane Doe'],
+        ['Олена Петренко', 'Олена Петренко'],
+        ["O'Brien-Smith Jr.", "O'Brien-Smith Jr."],
+        ['J. R. R. Tolkien', 'J. R. R. Tolkien'],
+    ])('keeps an ordinary name: %j', (value, expected) => {
+        expect(mailSafeDisplayName(value)).toBe(expected)
+    })
+
+    it.each([
+        'https://evil.example/x',
+        'Sign in at evil.example',
+        'evil.example',
+        'www.evil.example',
+        'help@evil.example',
+        'a/b',
+        'key: value',
+        'back\\slash',
+        'Jane\nLocked',
+        'Jane\r\nLocked',
+        'Jane\tDoe',
+        'Jane\u2028Doe',
+        'Jane\u0000',
+        '',
+        '   ',
+    ])('refuses %j', (value) => {
+        expect(mailSafeDisplayName(value)).toBeNull()
+    })
+
+    it('cuts a long name to 60 characters', () => {
+        expect(mailSafeDisplayName('a'.repeat(200))).toBe('a'.repeat(60))
     })
 })
