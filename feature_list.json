@@ -2101,8 +2101,8 @@
             "owner": "Blazheiko",
             "branch": "fix/url-token-path-variants",
             "dependencies": ["feat-205", "feat-208"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #641 (merge 4c9cd35): L-17: new utils/route-path.ts normalizeRoutePath (percent-decoding, lower case, no trailing slashes), the form Vue Router compares; one-time-url-token.ts matches it, so /Reset-Password and /reset-password/ lose their token before Sentry starts; the public-path check of App.vue matches it too (a signed-out visitor at /Reset-Password/ was sent to /login); I-7: the password field of VerifyEmailView takes PASSWORD_MAX_LENGTH instead of 32; docs uk+en (backend/observability). make check passing (backend 2978, frontend 607, playground 115), frontend e2e 99 (Playwright sentry project on the real SDK: 7 passed, 4 new), live e2e 16 (new: a verification link opened as /Verify-Email/ by a signed-out browser shows no token, takes a 100-character password and confirms), docs:build + docs:verify; CI on 5bc91c9: quality, e2e, e2e-live green. Negative control: with the source reverted the 4 new sentry tests fail (the token is in the address and in the envelope) and 17 unit tests fail. Manual check on the real stack: a real reset link opened as /Reset-Password/ shows the form, the address has no token, a new 100-character password is saved and signs in. Note: the router does not open the page for a percent-encoded spelling (/reset%2Dpassword); the token still leaves the address."
         },
         {
             "id": "feat-212",
@@ -2111,7 +2111,7 @@
             "owner": "Blazheiko",
             "branch": "fix/sms-budget-refused-start",
             "dependencies": ["feat-204"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
