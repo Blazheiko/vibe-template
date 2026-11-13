@@ -41,6 +41,7 @@ import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { notifySignInMethodAdded } from '#app/services/auth/sign-in-method-notice.js'
 import { PRODUCT } from 'shared/product'
 
 type JsonObject = Record<string, unknown>
@@ -492,6 +493,7 @@ export const oauthService = {
                         claimed: claim.claimed,
                         sessionToken: claim.user.sessionToken,
                         previousSessionToken: claim.previousSessionToken,
+                        account: { email: claim.user.email, name: claim.user.name },
                     }
                 },
             })
@@ -515,12 +517,10 @@ export const oauthService = {
         if (linked.claimed) {
             await destroySessionsQuietly(linked.previousSessionToken, verification.userId)
         }
+        // The link is committed: announced whatever the sign-in below answers.
+        announceLink(verification.userId, linked, verification.provider, verification.providerName)
         const loggedIn = await auth.login(String(verification.userId), linked.sessionToken)
         if (!loggedIn) return Result.err(badRequest('Failed to sign in'))
-        userNotificationService.security(
-            verification.userId,
-            linked.claimed ? 'account_claimed' : 'new_sign_in',
-        )
         return Result.ok({ status: 'success' })
     },
 
@@ -570,6 +570,30 @@ interface ClaimedLink {
     claimed: boolean
     sessionToken: string
     previousSessionToken: string
+    /** The account after the link, for the notice (feat-198). */
+    account: { email: string | null; name: string }
+}
+
+// feat-198: a link to an account that was the owner's already is announced as a new sign-in
+// method. A claim is not: there the mailbox owner takes the account, and everything set up
+// before goes away (account_claimed).
+const announceLink = (
+    userId: bigint,
+    linked: ClaimedLink,
+    provider: string,
+    providerName: string | null,
+): void => {
+    if (linked.claimed) {
+        userNotificationService.security(userId, 'account_claimed')
+        return
+    }
+    notifySignInMethodAdded({
+        userId,
+        email: linked.account.email,
+        name: linked.account.name,
+        providerTitle: PROVIDER_TITLES[provider] ?? provider,
+        providerName,
+    })
 }
 
 const emailChanged = (): AppError =>
@@ -583,10 +607,12 @@ async function finishSignIn(
     auth: Auth,
     userId: bigint,
     sessionToken: string,
+    // False when the caller announced something more specific (a link, a claim).
+    announce = true,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     const loggedIn = await auth.login(String(userId), sessionToken)
     if (!loggedIn) return Result.err(badRequest('Failed to sign in'))
-    userNotificationService.security(userId, 'new_sign_in')
+    if (announce) userNotificationService.security(userId, 'new_sign_in')
     return Result.ok({ redirectUrl: oauthConfig.frontendSuccessUrl })
 }
 
@@ -613,6 +639,7 @@ async function linkTrusted(
                 claimed: claim.claimed,
                 sessionToken: claim.user.sessionToken,
                 previousSessionToken: claim.previousSessionToken,
+                account: { email: claim.user.email, name: claim.user.name },
             }
         })
     } catch (err: unknown) {
@@ -624,9 +651,11 @@ async function linkTrusted(
 
     if (linked.claimed) {
         await destroySessionsQuietly(linked.previousSessionToken, userId)
-        userNotificationService.security(userId, 'account_claimed')
     }
-    return await finishSignIn(auth, userId, linked.sessionToken)
+    // The link is committed: announced whatever the sign-in below answers.
+    announceLink(userId, linked, identity.provider, identity.providerName)
+    // A claim is followed by the ordinary sign-in notice, as before.
+    return await finishSignIn(auth, userId, linked.sessionToken, linked.claimed)
 }
 
 /**

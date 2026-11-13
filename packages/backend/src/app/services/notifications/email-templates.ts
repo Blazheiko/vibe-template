@@ -28,6 +28,25 @@ export interface RenderedEmail {
     html: string
 }
 
+const DISPLAY_NAME_MAX_LENGTH = 60
+
+/**
+ * A name from outside (a provider's profile name, a name typed at registration) as it may be
+ * quoted in a mail, or null when it may not. Escaping keeps it from being markup, but mail
+ * clients turn anything that looks like an address into a link, and the plain-text part keeps
+ * line breaks: a "name" could carry a sentence and a link of its author's choice into a mail
+ * the product signs. So a name with a URL or e-mail shape, or a control character, is not
+ * quoted at all; the rest is one line, trimmed and cut short.
+ */
+export function mailSafeDisplayName(value: string): string | null {
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f\u007f\u2028\u2029]/.test(value)) return null
+    const name = value.replace(/\s+/g, ' ').trim()
+    if (name === '') return null
+    if (/[/:@\\]|www\.|\.[a-z]{2,}(\s|$)/i.test(name)) return null
+    return name.slice(0, DISPLAY_NAME_MAX_LENGTH)
+}
+
 /** What the mail asks the reader to open. */
 export type EmailAction =
     /** A button, and the same address again in a box for readers whose client drops buttons. */
