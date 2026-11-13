@@ -10,11 +10,11 @@ The frontend shows buttons **only for configured** providers: the [`SocialAuthBu
 
 The routes live in the `auth/oauth` group with the `session_web` and `csrf_guard` middleware (CSRF is not checked on `GET`, so redirects from the provider go through).
 
-| Route                                    | What it does                                                                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/auth/oauth/providers`          | list of configured providers: `{ status: 'ok', providers: ['google', …] }`; no login required                             |
-| `GET /api/auth/oauth/:provider/redirect` | generates `state` (and a PKCE `codeVerifier` for Google), stores them in the session, `302` to the provider page          |
-| `GET /api/auth/oauth/:provider/callback` | the provider sends the user back here with `code` and `state`; the backend logs them in and sends a `302` to the frontend |
+| Route                                    | What it does                                                                                                                                                                                                                                                     |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/auth/oauth/providers`          | list of configured providers: `{ status: 'ok', providers: ['google', …] }`; no login required                                                                                                                                                                    |
+| `GET /api/auth/oauth/:provider/redirect` | generates `state` and a PKCE `codeVerifier` (Google, GitHub, GitLab; Facebook has no PKCE), stores them in the session with the provider's name, `302` to the provider page; a navigation from another site (`Sec-Fetch-Site: cross-site`) is refused with `403` |
+| `GET /api/auth/oauth/:provider/callback` | the provider sends the user back here with `code` and `state`; the backend logs them in and sends a `302` to the frontend                                                                                                                                        |
 
 ```mermaid
 sequenceDiagram
@@ -34,7 +34,7 @@ sequenceDiagram
     API-->>B: 302 → OAUTH_FRONTEND_SUCCESS_URL
 ```
 
-First the controller compares the `state` from the query with the stored one in constant time (`safeEqual`, feat-123). A mismatch is an `OAuth state mismatch` redirect **without** consuming: a navigation that another site makes to the callback with a forged `state` (SameSite=Lax sends the cookie on navigation) does not break a login that is already in progress. Only then, before doing anything on behalf of the callback, the controller **consumes** `oauthState` and `oauthCodeVerifier` with a single atomic `consumeSessionData` operation ([`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts), feat-119/120). It removes them only if the stored record still holds the **same** `state` that this request read (compare-and-set; after a conflict the check is repeated on the fresh record). There are three possible outcomes:
+First the controller compares the `state` from the query with the stored one in constant time (`safeEqual`, feat-123). A mismatch is an `OAuth state mismatch` redirect **without** consuming: a navigation that another site makes to the callback with a forged `state` (SameSite=Lax sends the cookie on navigation) does not break a login that is already in progress. Only then, before doing anything on behalf of the callback, the controller compares the provider of the URL with the `oauthProvider` stored with the `state` (feat-200: a `state` issued for one provider is not accepted on the callback of another; a mismatch is the same `OAuth state mismatch`, with nothing consumed) and **consumes** `oauthState`, `oauthCodeVerifier` and `oauthProvider` with a single atomic `consumeSessionData` operation ([`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts), feat-119/120). It removes them only if the stored record still holds the **same** `state` that this request read (compare-and-set; after a conflict the check is repeated on the fresh record). There are three possible outcomes:
 
 - **no session** (logout in another tab after the read) → redirect to the `session_revoked` error, `handleCallback` is not called: no accounts, no emails, no new session;
 - **`state` is already different**: another callback consumed the same `state` (a double request), or a new OAuth start wrote its own → redirect to the `OAuth state was already used or replaced` error; the new `state` stays in place;
@@ -59,7 +59,7 @@ What happens in the callback ([`oauthService.handleCallback`](https://github.com
 
 ## What is stored
 
-The `oauth_accounts` table holds `provider`, `provider_user_id`, `provider_email`, `provider_name`, `provider_avatar` and the creation/update time. The `provider` + `provider_user_id` pair is unique. The name of a new account (`users.name`, 100 characters) is the name from the provider's profile cut to the length of the column; `oauth_accounts.provider_name` keeps it whole (feat-161). When `users.avatar` holds the provider's picture URL rather than a storage key, replacing or deleting the avatar makes no storage request for that value. **Provider tokens (`access_token`, `refresh_token`) are not stored**: no code ever read them, and a plain-text token in the DB is a risk with no benefit (a leaked backup or dump gives access to accounts at the providers). The columns were removed by the `drop_oauth_tokens` migration; they were nullable, so the rollback is `ADD COLUMN access_token text, ADD COLUMN refresh_token text` (the data that was there is not restored).
+The `oauth_accounts` table holds `provider`, `provider_user_id`, `provider_email`, `provider_name`, `provider_avatar` and the creation/update time. The `provider` + `provider_user_id` pair is unique. The name of a new account (`users.name`, 100 characters) is the name from the provider's profile cut to the length of the column; in `oauth_accounts.provider_name` it is cut to 255 characters (feat-200). The profile picture is stored only as an `https://` URL of at most 500 characters; anything else (a longer address, `http://`, a relative path) becomes `null`: a value that was too long used to fail the INSERT, and with it every sign-in of that person. When `users.avatar` holds the provider's picture URL rather than a storage key, replacing or deleting the avatar makes no storage request for that value. **Provider tokens (`access_token`, `refresh_token`) are not stored**: no code ever read them, and a plain-text token in the DB is a risk with no benefit (a leaked backup or dump gives access to accounts at the providers). The columns were removed by the `drop_oauth_tokens` migration; they were nullable, so the rollback is `ADD COLUMN access_token text, ADD COLUMN refresh_token text` (the data that was there is not restored).
 
 If you need access to the provider API on behalf of the user (offline), the tokens must be stored **encrypted** with a key separate from `APP_KEY`, and only when there is code that reads them.
 
@@ -73,12 +73,12 @@ Protection against account pre-hijacking ([plan](https://github.com/Blazheiko/vi
 
 ### Trust in the address
 
-| Provider | `emailTrust`                                                                                                                                                                                                                                                                                              |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Google   | `authoritative` only for `@gmail.com` / `@googlemail.com` with `verified_email: true` or for Google Workspace (`hd` equals the address domain) with `verified_email: true` ([Google documentation](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)); otherwise `unverified` |
-| GitHub   | `unverified`; the address is taken from `/user/emails` (primary and verified) only as an address to send an email to                                                                                                                                                                                      |
-| GitLab   | `unverified`; the address comes from OpenID Connect `/oauth/userinfo` (if it has `email_verified`), otherwise from `/api/v4/user`                                                                                                                                                                         |
-| Facebook | `unverified`: the Graph API has no "email verified" flag                                                                                                                                                                                                                                                  |
+| Provider | `emailTrust`                                                                                                                                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google   | `authoritative` only for `@gmail.com` / `@googlemail.com` with `verified_email: true` or for Google Workspace (`hd` equals the address domain) with `verified_email: true` ([Google documentation](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)); otherwise `unverified`      |
+| GitHub   | `unverified`; the address is taken from `/user/emails` (primary and verified) only as an address to send an email to                                                                                                                                                                                           |
+| GitLab   | `unverified`; the address comes only from OpenID Connect `/oauth/userinfo` and only with `email_verified: true`; without it there is no address and the sign-in ends with "Could not retrieve email from provider" (feat-200: the address of `/api/v4/user`, not marked as verified, used to be taken instead) |
+| Facebook | `unverified`: the Graph API has no "email verified" flag                                                                                                                                                                                                                                                       |
 
 ### What happens
 
@@ -133,12 +133,12 @@ After a link is removed the owner gets the `sign_in_method_removed` push.
 
 In each provider's developer console, create an OAuth application and get a **Client ID** and **Client Secret**.
 
-| Provider | Where to create it                                                                                              | Scopes the backend requests           |
-| -------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| Google   | [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials), type "Web application" | `openid`, `profile`, `email` (+ PKCE) |
-| Facebook | [Meta for Developers](https://developers.facebook.com/apps/), product "Facebook Login"                          | `email`, `public_profile`             |
-| GitHub   | [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)                   | `user:email`                          |
-| GitLab   | [GitLab → Preferences → Applications](https://gitlab.com/-/user_settings/applications)                          | `openid`, `email`, `read_user`        |
+| Provider | Where to create it                                                                                              | Scopes the backend requests             |
+| -------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Google   | [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials), type "Web application" | `openid`, `profile`, `email` (+ PKCE)   |
+| Facebook | [Meta for Developers](https://developers.facebook.com/apps/), product "Facebook Login"                          | `email`, `public_profile`               |
+| GitHub   | [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)                   | `user:email` (+ PKCE)                   |
+| GitLab   | [GitLab → Preferences → Applications](https://gitlab.com/-/user_settings/applications)                          | `openid`, `email`, `read_user` (+ PKCE) |
 
 GitLab is connected to `https://gitlab.com`. For a self-hosted GitLab instance, change the address in `createGitLabClient()` and `fetchGitLabUserInfo()`.
 
@@ -188,7 +188,7 @@ All callback errors lead to `OAUTH_FRONTEND_ERROR_URL` (status `302`); the cause
 
 | Log message                           | Cause                                                                                                                                                                                                                       |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Missing OAuth parameters`            | the callback has no `code`/`state` or the session has no `oauthState` (different domain, different browser, session expired, the user cancelled the login)                                                                  |
+| `Missing OAuth parameters`            | the callback has no `code`/`state`, the session has no `oauthState` (different domain, different browser, session expired, the user cancelled the login), or a provider with PKCE has no `oauthCodeVerifier`                |
 | `OAuth state mismatch`                | `state` did not match: an old link or a callback from someone else's session                                                                                                                                                |
 | `OAuth code exchange failed`          | wrong Client Secret, Redirect URI does not match the registered one, `code` already used                                                                                                                                    |
 | `oauth provider returned empty email` | the user did not grant access to the email or has no verified address                                                                                                                                                       |
@@ -285,7 +285,7 @@ In `handleCallback`, add the code exchange branch before GitLab; as for the othe
 }
 ```
 
-The signatures of `createAuthorizationURL` and `validateAuthorizationCode` differ between providers: some require PKCE (`codeVerifier`, like Google), others do not (GitHub), and for a third kind it can be passed or `null` (Discord). See the provider's page in the `arctic` documentation. If the provider requires PKCE, generate a `codeVerifier` with `generateCodeVerifier()` and return it from `getAuthorizationUrl`: the controller will store it in the session, as for Google.
+The signatures of `createAuthorizationURL` and `validateAuthorizationCode` differ between providers: some require PKCE (`codeVerifier`, like Google), others do not take it (Facebook), and for a third kind it can be passed or `null` (Discord). For GitHub and GitLab the ready-made `arctic` classes do not send PKCE, so the service uses the generic `OAuth2Client` of the same library (`createAuthorizationURLWithPKCE`, `validateAuthorizationCode` with the verifier). See the provider's page in the `arctic` documentation. If the provider requires PKCE, generate a `codeVerifier` with `generateCodeVerifier()` and return it from `getAuthorizationUrl`: the controller will store it in the session, as for Google.
 
 The shared code does the rest: finding or creating the user, writing to `oauth_accounts` with `provider = 'discord'`, `auth.login` and the redirect. The `provider` column is 50 characters long, so no DB migration is needed.
 
