@@ -25,7 +25,8 @@ const sentryMocks = vi.hoisted(() => {
         flush: vi.fn().mockResolvedValue(true),
         withScope: vi.fn((callback: (scope: ScopeMock) => unknown) => callback(scope)),
         browserTracingIntegration: vi.fn(() => ({ name: 'browserTracingIntegration' })),
-        replayIntegration: vi.fn(() => ({ name: 'replayIntegration' })),
+        replayIntegration: vi.fn((...args: unknown[]) => ({ name: 'replayIntegration', args })),
+        addEventProcessor: vi.fn((...args: unknown[]) => args.length),
     }
 })
 
@@ -398,6 +399,68 @@ describe('sentry service', () => {
         sentryService.setUser({ id: '123' })
 
         expect(sentryMocks.setUser).toHaveBeenCalledWith({ id: '123' })
+    })
+
+    // feat-205 (security review 2026-11-12, L-17): beforeSend, beforeBreadcrumb and
+    // beforeSendSpan are not called for a replay.
+    describe('Session Replay', () => {
+        const initWithReplay = async () => {
+            vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/7')
+            vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+            vi.stubEnv('VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE', '1')
+            const sentryService = await loadService()
+            sentryService.init(createAppMock(), createRouterMock())
+        }
+
+        it('masks the URLs of the recording events the integration adds', async () => {
+            await initWithReplay()
+            const options = sentryMocks.replayIntegration.mock.calls[0]?.[0] as {
+                beforeAddRecordingEvent: (event: unknown) => unknown
+            }
+
+            const masked = options.beforeAddRecordingEvent({
+                type: 5,
+                timestamp: 1,
+                data: {
+                    tag: 'performanceSpan',
+                    payload: {
+                        op: 'navigation.push',
+                        description: 'https://app.example.com/reset-password?token=canary&lang=uk',
+                        data: { previous: '/login', url: '/verify-email?token=canary' },
+                    },
+                },
+            })
+
+            const text = JSON.stringify(masked)
+            expect(text).not.toContain('canary')
+            expect(text).toContain('lang=uk')
+            expect(masked).toMatchObject({
+                type: 5,
+                timestamp: 1,
+                data: { tag: 'performanceSpan', payload: { op: 'navigation.push' } },
+            })
+        })
+
+        it('masks the URLs in the header of a replay segment and leaves other events alone', async () => {
+            await initWithReplay()
+            const processor = sentryMocks.addEventProcessor.mock.calls[0]?.[0] as (
+                event: Record<string, unknown>,
+            ) => Record<string, unknown>
+            expect(processor).toBeTypeOf('function')
+
+            const replay = processor({
+                type: 'replay_event',
+                replay_id: 'r1',
+                urls: ['https://app.example.com/reset-password?token=canary', '/account'],
+                request: { url: 'https://app.example.com/verify-email?token=canary&x=1' },
+            })
+            expect(JSON.stringify(replay)).not.toContain('canary')
+            expect(replay).toMatchObject({ type: 'replay_event', replay_id: 'r1' })
+            expect((replay.urls as string[])[1]).toBe('/account')
+
+            const error = { message: 'x', request: { url: '/reset-password?token=canary' } }
+            expect(processor(error)).toBe(error)
+        })
     })
 
     it('emits replay integration only when replay sample rates are enabled', async () => {

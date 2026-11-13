@@ -221,11 +221,44 @@ const buildInitOptions = () => {
         const replay = Sentry.replayIntegration({
             maskAllText: true,
             maskAllInputs: true,
+            // feat-205: the hooks that mask events, breadcrumbs and spans do not run for a
+            // replay; its own events (navigation and network breadcrumbs, spans) pass here.
+            beforeAddRecordingEvent: maskReplayRecordingEvent,
         })
         integrations.push(replay)
     }
 
     return integrations
+}
+
+/**
+ * feat-205 (security review 2026-11-12, L-17): a custom recording event of Session Replay
+ * (a breadcrumb or a span the integration adds) with every URL in it masked. The events of
+ * the DOM recorder itself, the page address among them, never pass through this hook: the
+ * address is clean because the one-time token is taken out of it before Sentry starts
+ * (one-time-url-token.ts). This is the second line.
+ */
+const maskReplayRecordingEvent = <T extends { data?: unknown }>(event: T): T => ({
+    ...event,
+    data: sanitizeTree(event.data, 'filter'),
+})
+
+/**
+ * The envelope header of a replay segment lists the URLs the user visited (`urls`) and the
+ * current one (`request.url`); `beforeSend` is not called for it, an event processor is.
+ */
+const maskReplayEvent = (event: SentryEventLike): SentryEventLike => {
+    if (event.type !== 'replay_event') return event
+    const masked: SentryEventLike = { ...event }
+    if (Array.isArray(event.urls)) {
+        masked.urls = event.urls.map((url: unknown) =>
+            typeof url === 'string' ? maskUrl(url) : url,
+        )
+    }
+    if (event.request && typeof event.request.url === 'string') {
+        masked.request = { ...event.request, url: maskUrl(event.request.url) }
+    }
+    return masked
 }
 
 const beforeSend = (event: SentryEventLike) => {
@@ -387,6 +420,8 @@ export const sentryService = {
                 beforeBreadcrumb: beforeBreadcrumb as never,
                 beforeSendSpan: beforeSendSpan as never,
             })
+            // feat-205: the only hook a replay event passes through.
+            Sentry.addEventProcessor(maskReplayEvent as never)
 
             initialized = true
             enabled = true

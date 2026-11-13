@@ -1,3 +1,6 @@
+// First, before the router and Sentry are loaded: takes ?token= of a mailed link out of
+// the address (feat-205).
+import '@/utils/strip-url-token'
 import './assets/main.css'
 import './styles.css'
 import './shared-components.css'

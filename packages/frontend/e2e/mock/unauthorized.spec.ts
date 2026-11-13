@@ -19,7 +19,9 @@ test.describe('a 401 that is an answer, not a lost session', () => {
         await expect(
             page.getByText('Your session has ended. Sign in again, then open the link again.'),
         ).toBeVisible()
-        await expect(page).toHaveURL(/\/verify-email\?token=mailed-token$/)
+        // Still on that page, not sent to the sign-in page. The token is no longer in the
+        // address (feat-205): it is taken out of it and kept for the page.
+        await expect(page).toHaveURL(/\/verify-email$/)
         expect(api.callsTo('auth/verify-email')).toHaveLength(1)
     })
 })
