@@ -2113,6 +2113,36 @@
             "dependencies": ["feat-204"],
             "status": "done",
             "evidence": "PR #643 (merge 424ec46): openSessionChallenge takes spendBudget, called under the advisory lock of the number after the resend cooldown and the capacity are checked; startPhonePasswordReset passes the smsSendPhone throttle there instead of spending it before the lock, so of a burst of parallel starts only the one that opens a challenge pays; docs uk+en (backend/auth); follow-ups note item 8 records the same order in the register and link phone starts, not changed here. make check passing (backend 2978, frontend 607, playground 115), test:pg 325 (new reset-phone-sms-budget.pg.test.ts), test:redis 117, live e2e 16, docs:build + docs:verify; CI on 6dc3521: quality, e2e, e2e-live, test-pg, test-redis green. RED first: the new PG test on the old code got expected 8 to be 1 (8 parallel starts, 1 challenge, 8 units spent). Manual check on the real stack (phone auth with the fake SMS provider, AUTH_SMS_MAX_SENDS_PER_PHONE_PER_HOUR=3): 8 sessions start a reset for one number at once, one 200 with a challenge and seven 429 resend_cooldown_active, the Redis counter auth:throttle:sms_send_phone of the number is 1."
+        },
+        {
+            "id": "feat-213",
+            "name": "Dependabot Digest Only And Hono Overrides",
+            "description": "docs/plan/security-review-2026-11-12-follow-ups-plan.md F01 (follow-ups items 1, 2, 4): an ignore rule on the docker entry of dependabot.yml so Dependabot moves only the ubuntu:24.04 digest, not the tag (decision D7; PR #633 to 25.10 was closed); pnpm.overrides for hono <4.13.16 and @hono/node-server >=2.0.0 <2.1.6, which come through @mistralai/mistralai > @modelcontextprotocol/sdk (Mistral 3.5.0 pulls the same range, so it stays on 3.4.0). pnpm audit --prod reports none. After merge, confirm on the next Dependabot run that no tag PR opens; Dependabot security updates were enabled 2026-11-13.",
+            "owner": "Blazheiko",
+            "branch": "chore/dependabot-digest-hono-overrides",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-214",
+            "name": "SMS Budget Of Refused Register And Link Starts",
+            "description": "docs/plan/security-review-2026-11-12-follow-ups-plan.md F02 (follow-ups item 8): register/phone/start and link-phone/start spend the hourly SMS budget of the number (smsSendPhone) before issueSmsChallenge checks the resend cooldown under the advisory lock, so refused starts, sequential or in a parallel burst, use up the budget of somebody else's number. openChallenge/issueSmsChallenge take spendBudget and call it under the lock after the cooldown check, as openSessionChallenge does since feat-212; the IP and per-account budgets stay before the lock. Reproduce with PG tests first (RED). Docs uk+en (backend/auth). Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/sms-budget-register-link",
+            "dependencies": ["feat-212"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-215",
+            "name": "Header Value Check On The Live Server",
+            "description": "docs/plan/security-review-2026-11-12-follow-ups-plan.md F03 (follow-ups item 6, L-14): a test on a real uWebSockets.js server with a raw socket request carrying a UTF-8 header value (x-utf: cafe with e-acute) and an invalid name (x.bad) checks that both are kept out of httpData.headers and one debug line with invalid: 2 is logged. If it passes, the earlier mismatch came from the check method (log level or curl) and the report gets a note; if it fails, find how req.forEach hands the value over and fix the check.",
+            "owner": "Blazheiko",
+            "branch": "test/header-value-live",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
