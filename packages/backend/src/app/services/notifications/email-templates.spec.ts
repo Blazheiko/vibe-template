@@ -47,11 +47,28 @@ describe('renderBrandedEmail', () => {
     })
 
     it('escapes the name and the address in html, and leaves the text as it is', () => {
-        const mail = renderBrandedEmail({ ...base, name: '<b>"J"</b>' })
-        expect(mail.html).toContain('Hello, &lt;b&gt;&quot;J&quot;&lt;/b&gt;.')
-        expect(mail.html).not.toContain('<b>"J"</b>')
+        const mail = renderBrandedEmail({ ...base, name: '<b>"J" & Co' })
+        expect(mail.html).toContain('Hello, &lt;b&gt;&quot;J&quot; &amp; Co.')
+        expect(mail.html).not.toContain('<b>"J"')
         expect(mail.html).toContain('href="https://app.example.com/x?token=a&amp;b=&lt;c&gt;"')
         expect(mail.text).toContain('token=a&b=<c>')
+    })
+
+    // feat-203 (L-1): the renderer itself refuses a name that could pass for a link or carry
+    // a second line, whoever the caller is.
+    it.each([
+        'Your account is locked. Sign in at https://evil.example/x',
+        'evil.example',
+        'Jane\nYour account is locked',
+        'help@evil.example',
+    ])('greets nobody when the name is %j', (name) => {
+        const mail = renderBrandedEmail({ ...base, name })
+
+        expect(mail.text.startsWith('Hello.')).toBe(true)
+        expect(mail.text).not.toContain('evil.example')
+        expect(mail.text).not.toContain('locked')
+        expect(mail.html).not.toContain('evil.example')
+        expect(mail.html).not.toContain('locked')
     })
 
     it('a button action shows the button and the alternative link box', () => {

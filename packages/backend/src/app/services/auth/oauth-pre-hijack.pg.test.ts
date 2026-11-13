@@ -710,7 +710,39 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             expect(Result.isOk(result) && result.value.redirectUrl).toBe('/?oauth=link_pending')
             const sent = mail.sent.find((m) => m.to === email)
             expect(sent?.html).not.toContain('<a href="https://evil.example">')
-            expect(sent?.html).toContain('&lt;a href=&quot;https://evil.example&quot;&gt;')
+            // feat-203: a profile name that carries a link is not quoted at all, escaped or
+            // not: a mail client would make the address clickable again.
+            expect(sent?.html).not.toContain('evil.example')
+            expect(sent?.text).not.toContain('evil.example')
+            expect(sent?.text).toContain('Somebody signed in with a Google account')
+        })
+
+        it('quotes a profile name with markup characters but no link as escaped text', async () => {
+            const email = address('markup-plain', 'company.test')
+            await insertUser({ email })
+            vi.stubGlobal(
+                'fetch',
+                vi.fn(() =>
+                    Promise.resolve({
+                        ok: true,
+                        status: 200,
+                        json: () =>
+                            Promise.resolve({
+                                id: `g-markup-plain-${String(now)}`,
+                                email,
+                                name: '<b>"Jane" & Co',
+                                verified_email: true,
+                            }),
+                    }),
+                ),
+            )
+            const { auth } = fakeAuth()
+
+            await callback('google', auth)
+
+            const sent = mail.sent.find((m) => m.to === email)
+            expect(sent?.html).not.toContain('<b>"Jane"')
+            expect(sent?.html).toContain('&lt;b&gt;&quot;Jane&quot; &amp; Co')
         })
     })
 })

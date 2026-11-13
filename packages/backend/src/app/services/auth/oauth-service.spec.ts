@@ -887,6 +887,63 @@ describe('oauthService.handleCallback', () => {
             expectNoSignIn()
         })
 
+        // feat-203 (security review 2026-11-12, L-1): the link mail quoted the profile name of
+        // the provider account as it came, and greeted by the account's name even when the
+        // account's address had never been confirmed.
+        describe('what the link mail quotes', () => {
+            const mailFor = async (
+                profileName: string,
+                account: Record<string, unknown> = {},
+            ): Promise<{ text: string; html: string }> => {
+                githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('token'))
+                stubFetch({
+                    'https://api.github.com/user/emails': [
+                        { email: 'user@example.com', primary: true, verified: true },
+                    ],
+                    'https://api.github.com/user': { id: 1, name: profileName },
+                })
+                givenExistingUserByEmail(account)
+                await callback('github')
+                return emailServiceMock.send.mock.calls[0]![0] as { text: string; html: string }
+            }
+
+            it('quotes an ordinary profile name and greets the owner of a confirmed account', async () => {
+                const mail = await mailFor('Jane Doe')
+
+                expect(mail.text.startsWith('Hello, Account Owner.')).toBe(true)
+                expect(mail.text).toContain(
+                    'Somebody signed in with the GitHub account "Jane Doe" that uses this email address.',
+                )
+            })
+
+            it.each([
+                'Your account is locked. Sign in at https://evil.example/x',
+                'evil.example',
+                'Jane\nYour account is locked',
+            ])('does not quote the profile name %j', async (profileName) => {
+                const mail = await mailFor(profileName)
+
+                expect(mail.text).toContain(
+                    'Somebody signed in with a GitHub account that uses this email address.',
+                )
+                expect(mail.text).not.toContain('evil.example')
+                expect(mail.text).not.toContain('locked')
+                expect(mail.html).not.toContain('evil.example')
+                expect(mail.html).not.toContain('locked')
+            })
+
+            it('greets nobody by name when the account address was never confirmed', async () => {
+                const mail = await mailFor('Jane Doe', {
+                    emailVerifiedAt: null,
+                    name: 'Your account is locked, call 555 0100',
+                })
+
+                expect(mail.text.startsWith('Hello.')).toBe(true)
+                expect(mail.text).not.toContain('locked')
+                expect(mail.html).not.toContain('locked')
+            })
+        })
+
         it('refuses without a browser session: 400, no token, no mail', async () => {
             stubGitHub()
             givenExistingUserByEmail()

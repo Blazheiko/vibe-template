@@ -47,6 +47,17 @@ export function mailSafeDisplayName(value: string): string | null {
     return name.slice(0, DISPLAY_NAME_MAX_LENGTH)
 }
 
+/**
+ * The name to greet in a mail to an account's own address (feat-203, security review
+ * 2026-11-12, L-1): the account's name once its address is verified, nothing before that.
+ * Until then the name is whatever the person who typed the address chose, and that person
+ * need not be the owner of the mailbox: registering somebody else's address with a "name"
+ * like "your account is locked, call ..." made the product mail that sentence to them.
+ */
+export function mailAddresseeName(account: { name: string; emailVerifiedAt: Date | null }): string {
+    return account.emailVerifiedAt === null ? '' : account.name
+}
+
 /** What the mail asks the reader to open. */
 export type EmailAction =
     /** A button, and the same address again in a box for readers whose client drops buttons. */
@@ -79,7 +90,9 @@ export interface BrandedEmail {
  * mail quotes the provider's profile name in `intro`) cannot turn it into markup (feat-108).
  */
 export function renderBrandedEmail(mail: BrandedEmail): RenderedEmail {
-    const trimmedName = mail.name.trim()
+    // feat-203: whoever calls, a name that could pass for a link or carry a second line is not
+    // quoted (see mailSafeDisplayName).
+    const trimmedName = mailSafeDisplayName(mail.name) ?? ''
     const safeName = trimmedName === '' ? '' : `, ${trimmedName}`
     const escapedGreeting = trimmedName === '' ? '' : `, ${escapeHtml(trimmedName)}`
     const escapedUrl = escapeHtml(mail.action.url)

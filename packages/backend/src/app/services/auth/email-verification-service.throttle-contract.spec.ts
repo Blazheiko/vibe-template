@@ -95,6 +95,21 @@ const ROWS: readonly Row[] = [
             message: 'Too many verification emails requested. Please try again later.',
         },
     },
+    // feat-203 (L-2): the hourly budget renews every hour; the daily one is shared with the
+    // mail a sign-in to an unverified account sends.
+    {
+        method: 'queueVerificationEmail · user per day',
+        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
+        consumed: [
+            ['resend_verification_user', '7'],
+            ['verification_mail_user_daily', '7'],
+        ],
+        blocked: {
+            status: 429,
+            code: 'rate_limited',
+            message: 'Too many verification emails requested. Please try again later.',
+        },
+    },
 ]
 
 function describeError(error: AppError): { status: number; code: string; message: string } {

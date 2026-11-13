@@ -31,6 +31,7 @@ import {
     runTokenTransaction,
 } from '#app/services/auth/one-time-token.js'
 import {
+    mailAddresseeName,
     renderBrandedEmail,
     type RenderedEmail,
 } from '#app/services/notifications/email-templates.js'
@@ -173,7 +174,8 @@ export const passwordResetService = {
         }
 
         const resetUrl = buildResetUrl(rawToken)
-        const emailContent = buildResetEmailContent(user.name, resetUrl)
+        // feat-203: the name only of an account whose address was confirmed.
+        const emailContent = buildResetEmailContent(mailAddresseeName(user), resetUrl)
         const sendResult = await emailService.send({
             to: user.email,
             subject: emailContent.subject,

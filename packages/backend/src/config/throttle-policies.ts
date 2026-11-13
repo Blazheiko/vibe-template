@@ -164,8 +164,21 @@ export const throttlePolicies = {
         HOUR_MS,
     ),
     /**
+     * feat-203 (L-2): every verification mail sent again to one account in a day, whichever way
+     * it was asked for (the resend button, a sign-in to an unverified account). The hourly
+     * budget above renews every hour; without this one an address somebody else registered
+     * could be mailed around the clock.
+     */
+    verificationMailUserDaily: fixedWindow(
+        'verification_mail_user_daily',
+        'user',
+        readInt('AUTH_VERIFICATION_MAIL_MAX_PER_USER_PER_DAY', 5),
+        24 * HOUR_MS,
+    ),
+    /**
      * The verification mail sent again when the owner of an unverified account signs in with
-     * the right password (the login itself answers 401). One per interval per account.
+     * the right password (the login itself answers 401). One per interval per account; it
+     * also spends the hourly and daily budgets of the resend button (feat-203).
      */
     loginUnverifiedResend: fixedWindow(
         'login_unverified_resend',
