@@ -1,4 +1,11 @@
-import { Google, Facebook, GitHub, GitLab, generateState, generateCodeVerifier } from 'arctic'
+import {
+    CodeChallengeMethod,
+    Facebook,
+    Google,
+    OAuth2Client,
+    generateCodeVerifier,
+    generateState,
+} from 'arctic'
 import oauthConfig from '#config/oauth.js'
 import appConfig from '#config/app.js'
 import {
@@ -116,6 +123,8 @@ function getConfiguredProviders(): OAuthProvider[] {
 export const OAUTH_LINK_REVOKED = 'oauth_link_revoked'
 export const OAUTH_LINK_WRONG_SESSION = 'oauth_link_wrong_session'
 export const OAUTH_ALREADY_LINKED = 'oauth_already_linked'
+/** feat-200: another site navigated the browser to the start of a sign-in. */
+export const OAUTH_CROSS_SITE_START = 'oauth_cross_site_start'
 export const EMAIL_CHANGED = 'email_changed'
 // feat-098: a mail budget of the address or the account is spent.
 export const TOO_MANY_ATTEMPTS = 'too_many_attempts'
@@ -142,21 +151,49 @@ function createFacebookClient(): Facebook {
     )
 }
 
-function createGitHubClient(): GitHub {
-    return new GitHub(
+// feat-200 (L-7): GitHub and GitLab take PKCE (S256), but the ready-made clients of the library
+// do not send it. The library's generic client does: the same requests, with the challenge on
+// the way out and the verifier with the code.
+const GITHUB_AUTHORIZATION_ENDPOINT = 'https://github.com/login/oauth/authorize'
+const GITHUB_TOKEN_ENDPOINT = 'https://github.com/login/oauth/access_token'
+const GITLAB_AUTHORIZATION_ENDPOINT = 'https://gitlab.com/oauth/authorize'
+const GITLAB_TOKEN_ENDPOINT = 'https://gitlab.com/oauth/token'
+
+function createGitHubClient(): OAuth2Client {
+    return new OAuth2Client(
         oauthConfig.github.clientId,
         oauthConfig.github.clientSecret,
         oauthConfig.github.redirectUri,
     )
 }
 
-function createGitLabClient(): GitLab {
-    return new GitLab(
-        'https://gitlab.com',
+function createGitLabClient(): OAuth2Client {
+    return new OAuth2Client(
         oauthConfig.gitlab.clientId,
         oauthConfig.gitlab.clientSecret,
         oauthConfig.gitlab.redirectUri,
     )
+}
+
+// The columns a provider's profile name and picture go into (oauth_accounts,
+// oauth_link_verifications, users.avatar).
+const PROVIDER_NAME_MAX_LENGTH = 255
+const PROVIDER_AVATAR_MAX_LENGTH = 500
+
+/**
+ * A provider's profile picture as it may be stored, or null (feat-200, L-9 and I-2). Only an
+ * https URL that fits the column: a longer one used to fail the INSERT, and with it every
+ * sign-in of that person; anything that is not an absolute URL would later be read as the key
+ * of an uploaded avatar.
+ */
+export function providerAvatarUrl(value: string | null): string | null {
+    if (value === null || value.length > PROVIDER_AVATAR_MAX_LENGTH) return null
+    if (!value.startsWith('https://')) return null
+    try {
+        return new URL(value).protocol === 'https:' ? value : null
+    } catch {
+        return null
+    }
 }
 
 interface OAuthUserInfo {
@@ -270,11 +307,13 @@ async function fetchGitLabUserInfo(accessToken: string): Promise<OAuthUserInfo> 
     // /api/v4/user has no verification flag; the OIDC userinfo endpoint does (needs the
     // `openid email` scopes). The address GitLab verified is the one to mail, when there is one.
     const userinfo = await fetchJson<JsonObject>('https://gitlab.com/oauth/userinfo', headers)
-    const profileEmail = typeof data['email'] === 'string' ? data['email'] : ''
+    // feat-200 (L-8): an address GitLab does not call verified is no address, as for GitHub. The
+    // profile's `email` used to be taken instead: it got a mail in the product's name and was
+    // used to look an account up.
     const email =
         userinfo['email_verified'] === true && typeof userinfo['email'] === 'string'
             ? userinfo['email']
-            : profileEmail
+            : ''
     return {
         id:
             typeof data['id'] === 'string' || typeof data['id'] === 'number'
@@ -326,17 +365,27 @@ export const oauthService = {
         }
 
         if (provider === 'github') {
-            const url = createGitHubClient().createAuthorizationURL(state, ['user:email'])
-            return Result.ok({ url: url.toString(), state, codeVerifier: null })
+            const codeVerifier = generateCodeVerifier()
+            const url = createGitHubClient().createAuthorizationURLWithPKCE(
+                GITHUB_AUTHORIZATION_ENDPOINT,
+                state,
+                CodeChallengeMethod.S256,
+                codeVerifier,
+                ['user:email'],
+            )
+            return Result.ok({ url: url.toString(), state, codeVerifier })
         }
 
         // gitlab
-        const url = createGitLabClient().createAuthorizationURL(state, [
-            'openid',
-            'email',
-            'read_user',
-        ])
-        return Result.ok({ url: url.toString(), state, codeVerifier: null })
+        const codeVerifier = generateCodeVerifier()
+        const url = createGitLabClient().createAuthorizationURLWithPKCE(
+            GITLAB_AUTHORIZATION_ENDPOINT,
+            state,
+            CodeChallengeMethod.S256,
+            codeVerifier,
+            ['openid', 'email', 'read_user'],
+        )
+        return Result.ok({ url: url.toString(), state, codeVerifier })
     },
 
     async handleCallback(
@@ -360,6 +409,12 @@ export const oauthService = {
             return Result.err(badRequest('OAuth state mismatch'))
         }
 
+        // feat-200 (L-7): the redirect sent a PKCE challenge for these providers, so the code is
+        // worth nothing without the verifier of the same session.
+        if (provider !== 'facebook' && (codeVerifier === null || codeVerifier === '')) {
+            return Result.err(badRequest('Missing OAuth parameters'))
+        }
+
         // The provider's tokens are used once, to read the profile, and are not kept: nothing
         // reads them afterwards, and a token at rest is a liability.
         let userInfo: OAuthUserInfo
@@ -380,13 +435,21 @@ export const oauthService = {
             } else if (provider === 'github') {
                 logger.info('provider github')
                 const tokens = await withinProviderDeadline(
-                    createGitHubClient().validateAuthorizationCode(code),
+                    createGitHubClient().validateAuthorizationCode(
+                        GITHUB_TOKEN_ENDPOINT,
+                        code,
+                        codeVerifier,
+                    ),
                 )
                 userInfo = await fetchGitHubUserInfo(tokens.accessToken())
             } else {
                 logger.info('provider gitlab')
                 const tokens = await withinProviderDeadline(
-                    createGitLabClient().validateAuthorizationCode(code),
+                    createGitLabClient().validateAuthorizationCode(
+                        GITLAB_TOKEN_ENDPOINT,
+                        code,
+                        codeVerifier,
+                    ),
                 )
                 userInfo = await fetchGitLabUserInfo(tokens.accessToken())
             }
@@ -420,8 +483,9 @@ export const oauthService = {
             provider,
             providerUserId: userInfo.id,
             providerEmail: userInfo.email,
-            providerName: userInfo.name,
-            providerAvatar: userInfo.avatar,
+            // feat-200 (L-9): cut to the columns here, once, for every path that stores them.
+            providerName: userInfo.name.slice(0, PROVIDER_NAME_MAX_LENGTH),
+            providerAvatar: providerAvatarUrl(userInfo.avatar),
         }
 
         return await signInWithIdentity(auth, identity, userInfo.emailTrust, sessionId)

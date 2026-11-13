@@ -10,11 +10,11 @@
 
 Маршрути лежать у групі `auth/oauth` з middleware `session_web` і `csrf_guard` (на `GET` CSRF не перевіряється, тож редиректи від провайдера проходять).
 
-| Маршрут                                  | Що робить                                                                                          |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET /api/auth/oauth/providers`          | список налаштованих провайдерів: `{ status: 'ok', providers: ['google', …] }`; без входу           |
-| `GET /api/auth/oauth/:provider/redirect` | генерує `state` (і PKCE-`codeVerifier` для Google), кладе їх у сесію, `302` на сторінку провайдера |
-| `GET /api/auth/oauth/:provider/callback` | сюди провайдер повертає користувача з `code` і `state`; бекенд логінить і робить `302` на фронтенд |
+| Маршрут                                  | Що робить                                                                                                                                                                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/auth/oauth/providers`          | список налаштованих провайдерів: `{ status: 'ok', providers: ['google', …] }`; без входу                                                                                                                                                 |
+| `GET /api/auth/oauth/:provider/redirect` | генерує `state` і PKCE-`codeVerifier` (Google, GitHub, GitLab; Facebook PKCE не має), кладе їх у сесію разом з назвою провайдера, `302` на сторінку провайдера; навігацію з іншого сайту (`Sec-Fetch-Site: cross-site`) відхиляє з `403` |
+| `GET /api/auth/oauth/:provider/callback` | сюди провайдер повертає користувача з `code` і `state`; бекенд логінить і робить `302` на фронтенд                                                                                                                                       |
 
 ```mermaid
 sequenceDiagram
@@ -34,7 +34,7 @@ sequenceDiagram
     API-->>B: 302 → OAUTH_FRONTEND_SUCCESS_URL
 ```
 
-Спершу контролер порівнює `state` з query зі збереженим за сталий час (`safeEqual`, feat-123). Розбіжність — редірект `OAuth state mismatch` **без** споживання: навігація, яку інший сайт робить на callback із вигаданим `state` (SameSite=Lax надсилає cookie на навігацію), не зриває вхід, що вже триває. Лише тоді, перш ніж щось зробити від імені callback, контролер **споживає** `oauthState` і `oauthCodeVerifier` однією атомарною операцією `consumeSessionData` ([`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts), feat-119/120). Вона видаляє їх лише тоді, коли в збереженому записі досі лежить **той самий** `state`, який прочитав цей запит (compare-and-set; після конфлікту перевірка повторюється на свіжому записі). Можливі три результати:
+Спершу контролер порівнює `state` з query зі збереженим за сталий час (`safeEqual`, feat-123). Розбіжність — редірект `OAuth state mismatch` **без** споживання: навігація, яку інший сайт робить на callback із вигаданим `state` (SameSite=Lax надсилає cookie на навігацію), не зриває вхід, що вже триває. Лише тоді, перш ніж щось зробити від імені callback, контролер звіряє провайдера з URL з `oauthProvider`, збереженим разом зі `state` (feat-200: `state`, виданий для одного провайдера, не приймається на callback іншого; розбіжність — той самий `OAuth state mismatch` без споживання), і **споживає** `oauthState`, `oauthCodeVerifier` та `oauthProvider` однією атомарною операцією `consumeSessionData` ([`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts), feat-119/120). Вона видаляє їх лише тоді, коли в збереженому записі досі лежить **той самий** `state`, який прочитав цей запит (compare-and-set; після конфлікту перевірка повторюється на свіжому записі). Можливі три результати:
 
 - **сесії немає** (logout в іншій вкладці після читання) → редірект на помилку `session_revoked`, `handleCallback` не викликається: ні акаунтів, ні листів, ні нової сесії;
 - **`state` уже інший**: той самий `state` спожив інший callback (подвійний запит), або новий OAuth-старт записав свій → редірект на помилку `OAuth state was already used or replaced`; новий `state` лишається на місці;
@@ -59,7 +59,7 @@ sequenceDiagram
 
 ## Що зберігається
 
-Таблиця `oauth_accounts` тримає `provider`, `provider_user_id`, `provider_email`, `provider_name`, `provider_avatar` і час створення/зміни. Пара `provider` + `provider_user_id` унікальна. Імʼя нового акаунта (`users.name`, 100 символів) — це імʼя з профілю провайдера, обрізане до довжини колонки; у `oauth_accounts.provider_name` воно зберігається повністю (feat-161). Якщо `users.avatar` містить URL картинки провайдера, а не ключ сховища, заміна чи видалення аватара не робить запиту до сховища для цього значення. **Токени провайдера (`access_token`, `refresh_token`) не зберігаються**: жоден код їх не читав, а токен у відкритому вигляді в БД — це ризик без користі (витік бекапу чи дампу віддає доступ до акаунтів у провайдерів). Колонки видалено міграцією `drop_oauth_tokens`; вони були nullable, тож відкат — `ADD COLUMN access_token text, ADD COLUMN refresh_token text` (дані, що там були, не відновлюються).
+Таблиця `oauth_accounts` тримає `provider`, `provider_user_id`, `provider_email`, `provider_name`, `provider_avatar` і час створення/зміни. Пара `provider` + `provider_user_id` унікальна. Імʼя нового акаунта (`users.name`, 100 символів) — це імʼя з профілю провайдера, обрізане до довжини колонки; у `oauth_accounts.provider_name` воно обрізається до 255 символів (feat-200). Картинка профілю зберігається лише як `https://`-URL не довший за 500 символів; усе інше (задовга адреса, `http://`, відносний шлях) стає `null`: раніше задовге значення зривало INSERT, а з ним кожен вхід цієї людини. Якщо `users.avatar` містить URL картинки провайдера, а не ключ сховища, заміна чи видалення аватара не робить запиту до сховища для цього значення. **Токени провайдера (`access_token`, `refresh_token`) не зберігаються**: жоден код їх не читав, а токен у відкритому вигляді в БД — це ризик без користі (витік бекапу чи дампу віддає доступ до акаунтів у провайдерів). Колонки видалено міграцією `drop_oauth_tokens`; вони були nullable, тож відкат — `ADD COLUMN access_token text, ADD COLUMN refresh_token text` (дані, що там були, не відновлюються).
 
 Якщо вам потрібен доступ до API провайдера від імені користувача (офлайн), токени треба зберігати **зашифрованими** ключем, окремим від `APP_KEY`, і лише тоді, коли для цього є код, що їх читає.
 
@@ -77,7 +77,7 @@ Email і ім'я з профілю — персональні дані. Журн
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Google    | `authoritative` лише для `@gmail.com` / `@googlemail.com` з `verified_email: true` або для Google Workspace (`hd` дорівнює домену адреси) з `verified_email: true` ([документація Google](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token)); інакше `unverified` |
 | GitHub    | `unverified`; адреса береться з `/user/emails` (основна й підтверджена) лише як адреса для листа                                                                                                                                                                                              |
-| GitLab    | `unverified`; адреса з OpenID Connect `/oauth/userinfo` (якщо там `email_verified`), інакше з `/api/v4/user`                                                                                                                                                                                  |
+| GitLab    | `unverified`; адреса лише з OpenID Connect `/oauth/userinfo` і лише з `email_verified: true`; без цього адреси немає, і вхід завершується помилкою «Could not retrieve email from provider» (feat-200: раніше бралася адреса з `/api/v4/user`, не позначена як підтверджена)                  |
 | Facebook  | `unverified`: Graph API не має ознаки «email підтверджено»                                                                                                                                                                                                                                    |
 
 ### Що відбувається
@@ -133,12 +133,12 @@ WHERE o.provider <> 'google' AND (u.email_verified_at IS NULL OR o.created_at < 
 
 У консолі розробника кожного провайдера створіть OAuth-застосунок і отримайте **Client ID** і **Client Secret**.
 
-| Провайдер | Де створити                                                                                                    | Які дозволи запитує бекенд            |
-| --------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| Google    | [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials), тип «Web application» | `openid`, `profile`, `email` (+ PKCE) |
-| Facebook  | [Meta for Developers](https://developers.facebook.com/apps/), продукт «Facebook Login»                         | `email`, `public_profile`             |
-| GitHub    | [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)                  | `user:email`                          |
-| GitLab    | [GitLab → Preferences → Applications](https://gitlab.com/-/user_settings/applications)                         | `openid`, `email`, `read_user`        |
+| Провайдер | Де створити                                                                                                    | Які дозволи запитує бекенд              |
+| --------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Google    | [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials), тип «Web application» | `openid`, `profile`, `email` (+ PKCE)   |
+| Facebook  | [Meta for Developers](https://developers.facebook.com/apps/), продукт «Facebook Login»                         | `email`, `public_profile`               |
+| GitHub    | [GitHub → Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)                  | `user:email` (+ PKCE)                   |
+| GitLab    | [GitLab → Preferences → Applications](https://gitlab.com/-/user_settings/applications)                         | `openid`, `email`, `read_user` (+ PKCE) |
 
 GitLab підключено до `https://gitlab.com`. Для власного інстансу GitLab змініть адресу в `createGitLabClient()` і `fetchGitLabUserInfo()`.
 
@@ -188,7 +188,7 @@ OAUTH_FRONTEND_ERROR_URL=/?error=oauth_failed
 
 | Повідомлення в логах                  | Причина                                                                                                                                                                                                            |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Missing OAuth parameters`            | у callback немає `code`/`state` або в сесії немає `oauthState` (інший домен, інший браузер, сесія протермінувалась, користувач скасував вхід)                                                                      |
+| `Missing OAuth parameters`            | у callback немає `code`/`state`, у сесії немає `oauthState` (інший домен, інший браузер, сесія протермінувалась, користувач скасував вхід) або для провайдера з PKCE немає `oauthCodeVerifier`                     |
 | `OAuth state mismatch`                | `state` не збігся: старе посилання або callback з чужої сесії                                                                                                                                                      |
 | `OAuth code exchange failed`          | невірний Client Secret, Redirect URI не збігається з зареєстрованим, `code` уже використаний                                                                                                                       |
 | `oauth provider returned empty email` | користувач не дав доступу до email або в нього немає підтвердженої адреси                                                                                                                                          |
@@ -285,7 +285,7 @@ if (provider === 'discord') {
 }
 ```
 
-Сигнатури `createAuthorizationURL` і `validateAuthorizationCode` у різних провайдерів відрізняються: одні вимагають PKCE (`codeVerifier`, як Google), інші ні (GitHub), у треті його можна передати або `null` (Discord). Дивіться сторінку провайдера в документації `arctic`. Якщо провайдер вимагає PKCE, згенеруйте `codeVerifier` через `generateCodeVerifier()` і поверніть його з `getAuthorizationUrl` — контролер збереже його в сесії, як для Google.
+Сигнатури `createAuthorizationURL` і `validateAuthorizationCode` у різних провайдерів відрізняються: одні вимагають PKCE (`codeVerifier`, як Google), інші його не приймають (Facebook), у треті його можна передати або `null` (Discord). Для GitHub і GitLab готові класи `arctic` PKCE не надсилають, тому сервіс бере загальний `OAuth2Client` тієї ж бібліотеки (`createAuthorizationURLWithPKCE`, `validateAuthorizationCode` з verifier). Дивіться сторінку провайдера в документації `arctic`. Якщо провайдер вимагає PKCE, згенеруйте `codeVerifier` через `generateCodeVerifier()` і поверніть його з `getAuthorizationUrl` — контролер збереже його в сесії, як для Google.
 
 Решту робить спільний код: пошук або створення користувача, запис у `oauth_accounts` з `provider = 'discord'`, `auth.login` і редирект. Колонка `provider` має довжину 50 символів, тож міграція БД не потрібна.
 
