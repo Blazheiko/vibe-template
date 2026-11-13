@@ -1,0 +1,23 @@
+{
+    "skill_name": "backend-feature",
+    "evals": [
+        {
+            "id": 1,
+            "prompt": "Add a 'bookmarks' feature to the backend. Users should be able to bookmark messages. I need endpoints to add a bookmark, remove it, and list all bookmarks for the current user. The DB table doesn't exist yet.",
+            "expected_output": "All layers generated: shared input schema (CreateBookmarkInput, @arktype/type, '+': 'reject'), shared responses (type.or with CanonicalErrorResponseSchema), bookmarks table + `db:generate --name add_bookmarks`, repository in a domain subfolder with I…Repository interface exported via barrel, transformer (string ids, toISOString), service returning AppResult, controller using requireUserId/parseEntityId/respond, contract in shared/contracts + registry passed to mergeContractSchemas + defineRoute group with session_web/csrf_guard/auth_guard, service spec mocking #app/repositories/index.js, docs update reminder.",
+            "files": []
+        },
+        {
+            "id": 2,
+            "prompt": "I need to add an 'events' feature — basically a calendar-like thing but simpler. Just create and list events. Auth required. The schema for events table already exists in schema.ts.",
+            "expected_output": "Generates: shared input schema (CreateEventInput), responses, repository, transformer, service (AppResult), controller with getEvents/createEvent handlers, contract + registry + route group, service spec. Since the table already exists, no schema or migration steps.",
+            "files": []
+        },
+        {
+            "id": 3,
+            "prompt": "Add a comments feature to the backend. Comments belong to notes (noteId foreign key). Need full CRUD. HTTP only.",
+            "expected_output": "All layers generated with noteId foreign key in the DB schema, repository queries filtered by both commentId and userId (ownership), transformer serializes ids (incl. noteId) as strings, service has getComments(userId, noteId), createComment, updateComment, deleteComment returning AppResult with notFound(...). Contracts use ':commentId' params read via ParamsOf + parseEntityId; update is 'patch', delete has no body.",
+            "files": []
+        }
+    ]
+}
