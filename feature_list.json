@@ -2143,6 +2143,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #650 (merge 2185dcf): no production code change. A test on a live uWebSockets.js server with raw socket bytes (vendor/utils/network/header-values.live.spec.ts) shows uWS 20.71.0 trims bytes above 0x7F at both ends of a header value as it trims spaces (café -> caf, écafe -> cafe, éé -> empty), which is why x-utf: café passed on the live stack; a byte above 0x7E inside the value reaches getHeaders and is refused with the one debug line. The test pins both behaviours for the next uWS upgrade; report note 2 (L-14), follow-ups item 6 and the follow-ups plan updated (plan marked done). The first version of the test (expecting café refused) failed with expected true to be false; a probe showed uWS hands over \"caf\". make check passing (backend 2983, frontend 607, playground 115); CI on 283282f: quality, build, e2e, e2e-live, test-pg, test-redis green."
+        },
+        {
+            "id": "feat-216",
+            "name": "Backend Feature Skill In The Repository",
+            "description": "Move the backend-feature agent skill from the owner's ~/.claude/skills into .claude/skills/backend-feature so every contributor's agent gets it from the repo: open .claude/skills/ in .gitignore (local Claude files stay ignored), bring SKILL.md up to date with the code (AppResult, controller helpers, string ids, mergeContractSchemas, withCurrentSession, layering rules) with documentation/en/backend/adding-a-feature.md as its source of truth, and add an AGENTS.md rule that a change to the backend layering or route patterns updates the skill in the same PR.",
+            "owner": "Blazheiko",
+            "branch": "chore/backend-feature-skill",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
