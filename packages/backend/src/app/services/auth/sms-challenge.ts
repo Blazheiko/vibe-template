@@ -105,6 +105,10 @@ export const SESSION_CHALLENGES_FULL = 'full' as const
  *
  * Like `openChallenge`: one transaction under the advisory lock of the phone and flow, with
  * the resend cooldown (of the newest challenge, whoever started it) checked inside.
+ *
+ * feat-212: the budget of the start is spent here too (`spendBudget`), after those checks. It
+ * used to be spent by the caller before the lock, on the word of a check made outside it: of
+ * a burst of parallel starts all passed that check and all paid, though the lock let one in.
  */
 export async function openSessionChallenge(options: {
     phone: string
@@ -114,6 +118,12 @@ export async function openSessionChallenge(options: {
     /** The session that starts; null owns nothing and can replace nothing. */
     sessionId: string | null
     maxLive: number
+    /**
+     * feat-212: what a start that will really open a challenge pays (the hourly SMS budget of
+     * the number). Called under the lock, after the cooldown and the capacity were checked, so
+     * a start those refuse pays nothing; an error here opens nothing and is the answer.
+     */
+    spendBudget?: () => Promise<AppResult<void>>
 }): Promise<AppResult<SmsAuthChallengeRow | typeof SESSION_CHALLENGES_FULL>> {
     return await withTransaction(async (tx) => {
         await smsAuthChallengeRepository.lockPhoneFlow(options.phone, options.flow, tx)
@@ -130,6 +140,11 @@ export async function openSessionChallenge(options: {
 
         const { own, others, expired } = splitSessionChallenges(pending, options.sessionId, now)
         if (others.length + 1 > options.maxLive) return Result.ok(SESSION_CHALLENGES_FULL)
+
+        if (options.spendBudget !== undefined) {
+            const spent = await options.spendBudget()
+            if (Result.isError(spent)) return Result.err(spent.error)
+        }
 
         await smsAuthChallengeRepository.invalidatePendingByIds(
             [...own, ...expired].map((challenge) => challenge.id),

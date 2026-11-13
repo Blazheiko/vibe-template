@@ -251,15 +251,6 @@ export const passwordResetService = {
             return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })
         }
 
-        const phoneThrottle = await enforceThrottle(
-            throttlePolicies.smsSendPhone,
-            normalizedPhone,
-            rateLimited('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(phoneThrottle)) {
-            return Result.err(phoneThrottle.error)
-        }
-
         // Caught on purpose, like the e-mail flow: the answer stays the generic one.
         const lookup = await userRepository.findByPhone(normalizedPhone).then(
             (found) => ({ ok: true as const, user: found }),
@@ -295,6 +286,15 @@ export const passwordResetService = {
             metadata,
             sessionId: requestMeta.sessionId,
             maxLive: MAX_LIVE_RESET_CHALLENGES,
+            // feat-212: the hourly SMS budget of the number, spent under the lock by the start
+            // that opens a challenge. Spent before the lock, every start of a parallel burst
+            // paid, though the cooldown checked under the lock refused all but one.
+            spendBudget: () =>
+                enforceThrottle(
+                    throttlePolicies.smsSendPhone,
+                    normalizedPhone,
+                    rateLimited('Too many verification attempts. Please try again later.'),
+                ),
         })
         if (Result.isError(opened)) return Result.err(opened.error)
         // Lost a race for the last place to another session's start.

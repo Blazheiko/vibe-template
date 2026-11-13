@@ -92,6 +92,8 @@ beforeEach(() => {
             : { ...found, attemptCount: (found.attemptCount ?? 0) + 1 }
     })
     smsAuthChallengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([])
+    // feat-212: the number is looked up before its SMS budget is spent (under the lock).
+    userRepositoryMock.findByPhone.mockResolvedValue(undefined)
     process.env['AUTH_PHONE_ENABLED'] = 'true'
     process.env['APP_KEY'] = 'a'.repeat(32)
     process.env['FRONTEND_URL'] = 'https://app.example.com'
@@ -120,6 +122,12 @@ interface Row {
     call: (service: Service) => Promise<unknown>
     consumed: readonly (readonly [string, string])[]
     blocked: { status: number; code: string; message: string }
+    /**
+     * feat-212: the last counter is spent under the advisory lock of the number, after the
+     * resend cooldown and the capacity were checked there, so the account lookup comes before
+     * it. Nothing is stored or sent when it is spent, as for the others.
+     */
+    spentUnderLock?: true
 }
 const rateLimited = (message: string) => ({ status: 429, code: 'rate_limited', message })
 
@@ -138,6 +146,7 @@ const ROWS: readonly Row[] = [
             ['sms_send_phone', PHONE],
         ],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
+        spentUnderLock: true,
     },
     {
         method: 'resetPassword · ip',
@@ -170,9 +179,14 @@ function arrange(target: string, mode: 'blocked' | 'unavailable' | 'timeout'): v
     })
 }
 
-function untouchedDownstream(): void {
+function untouchedDownstream(row?: Row): void {
     expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
-    expect(userRepositoryMock.findByPhone).not.toHaveBeenCalled()
+    if (row?.spentUnderLock === true) {
+        expect(smsAuthChallengeRepositoryMock.lockPhoneFlow).toHaveBeenCalledTimes(1)
+        expect(smsAuthChallengeRepositoryMock.invalidatePendingByIds).not.toHaveBeenCalled()
+    } else {
+        expect(userRepositoryMock.findByPhone).not.toHaveBeenCalled()
+    }
     expect(userRepositoryMock.update).not.toHaveBeenCalled()
     expect(userRepositoryMock.lockById).not.toHaveBeenCalled()
     expect(passwordResetRepositoryMock.findByTokenHash).not.toHaveBeenCalled()
@@ -207,7 +221,7 @@ describe.each(ROWS)('passwordResetService throttle: $method', (row) => {
         const result = (await row.call(passwordResetService)) as Result<unknown, AppError>
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) expect(describeError(result.error)).toEqual(row.blocked)
-        untouchedDownstream()
+        untouchedDownstream(row)
     })
 
     // ADR 0004: a Redis failure is not an AppError; the call rejects (fail closed) and the
@@ -216,7 +230,7 @@ describe.each(ROWS)('passwordResetService throttle: $method', (row) => {
         arrange(target, 'unavailable')
         const { passwordResetService } = await import('./password-reset-service.js')
         await expect(row.call(passwordResetService)).rejects.toThrow()
-        untouchedDownstream()
+        untouchedDownstream(row)
     })
 
     it('a Redis outage becomes 503 at the transport, not 500', async () => {
