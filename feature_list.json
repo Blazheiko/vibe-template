@@ -2121,7 +2121,7 @@
             "owner": "Blazheiko",
             "branch": "chore/dependabot-digest-hono-overrides",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
@@ -2131,8 +2131,8 @@
             "owner": "Blazheiko",
             "branch": "fix/sms-budget-register-link",
             "dependencies": ["feat-212"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #646 (merge ca9fb22): openChallenge takes spendBudget, called under the advisory lock of the number after the resend cooldown check; issueSmsChallenge requires it, and startPhoneRegistration and startPhoneLink pass the smsSendPhone throttle there instead of spending it before the lookups (registerPhoneIp, linkPhoneIp, linkPhoneUser stay before the lock); docs uk+en (backend/auth); follow-ups item 8 marked fixed. make check passing (backend 2981, frontend 607, playground 115), test:pg 331 (new register-link-phone-sms-budget.pg.test.ts), test:redis 117, docs:build + docs:verify; CI on cdeb2bb: quality, build, e2e, e2e-live, test-pg, test-redis green. RED first: the new PG test on the old code got expected 8 to be 1 (8 parallel starts) and expected 2 to be 1 (a start refused by the cooldown) for both flows. Manual check on the real stack (fake SMS provider, AUTH_SMS_MAX_SENDS_PER_PHONE_PER_HOUR=3): 8 sessions start register/phone/start for one number at once, one 200 with a challenge and seven 429; the Redis counter auth:throttle:sms_send_phone of the number is 1 and stays 1 after another burst during the cooldown."
         },
         {
             "id": "feat-215",
