@@ -242,7 +242,7 @@ The frontend sends the request through `callWs(contract, payload)` ([`utils/ws-c
 
 [`src/vendor/utils/routing/serialize-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/serialize-routes.ts) serializes the source HTTP and WS routes (URL, method, middleware, description, schemas). The server serves them at `GET /${pathPrefix}/doc/routes` as JSON `{ httpRoutes, wsRoutes, pathPrefix }`, but **only** if all of these hold at once:
 
-- `APP_ENV=manual-test`;
+- `APP_ENV=manual-test` (a local development mode: the Docker image has no `public-test` directory);
 - `DOC_PAGE=true` (`configApp.docPage`, default `false`);
 - `SERVE_STATIC=true`.
 

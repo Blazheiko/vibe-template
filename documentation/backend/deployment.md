@@ -53,7 +53,7 @@ flowchart LR
 
 **Етап `builder`**
 
-1. Образ `ubuntu:24.04`. Node.js 24 ставиться з NodeSource, pnpm `9.15.0` вмикається через corepack.
+1. Образ `ubuntu:24.04`, закріплений за digest (`ubuntu:24.04@sha256:…`); digest оновлює Dependabot. Node.js 24 ставиться з apt-репозиторію NodeSource, який [`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) додає сам: ключ підпису завантажується і звіряється з хешем `NODESOURCE_ASC_SHA256`, а пакети apt перевіряє за цим ключем. Скрипт `setup_24.x` через `curl | bash` не виконується. Коли NodeSource змінить ключ, збірка зупиниться на перевірці хеша: звірте новий ключ з їхнім оголошенням і оновіть значення. pnpm `9.15.0` вмикається через corepack.
 2. Спочатку копіюються лише `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` і `package.json` трьох пакетів, далі виконується `pnpm install --frozen-lockfile`. Так шар із залежностями кешується.
 3. `COPY . .` копіює проєкт без того, що виключає [`.dockerignore`](https://github.com/Blazheiko/vibe-template/blob/main/.dockerignore): `.git`, `node_modules`, `dist`, `coverage`, звіти тестів, кеш VitePress і всі `.env`/`.env.*`, крім `.env.example`. Тому локальні секрети не потрапляють ні в build context, ні в шари builder-етапу, а локальний `packages/frontend/.env` не вшивається у фронтенд-бандл — Vite бачить лише `VITE_SENTRY_*` з build-аргументів.
 4. Build-аргументи `API_PATH_PREFIX`, `VITE_BASE_URL`, `VITE_AUTH_PHONE_ENABLED` і `VITE_SENTRY_*` (DSN, ENABLED, ENVIRONMENT, RELEASE, sample rates) стають `ENV`, бо Vite вшиває їх у бандл під час збірки. `VITE_API_PATH_PREFIX` Vite-конфіг виводить з `API_PATH_PREFIX` сам ([одне джерело](/backend/configuration#одне-джерело-адреси-и-префікса-api)).
@@ -61,10 +61,10 @@ flowchart LR
 
 **Етап `production`**
 
-1. Знову `ubuntu:24.04` + Node 24 + pnpm. `COREPACK_HOME=/opt/corepack` (доступний на читання всім), щоб користувач `app` запускав уже підготовлений pnpm без мережі. Створюється системний користувач `app` (uid < 1000) з домашнім каталогом `/home/app` — його потребує pnpm при one-shot запусках.
+1. Знову `ubuntu:24.04` за тим самим digest + Node 24 (так само, як у `builder`) + pnpm. `COREPACK_HOME=/opt/corepack` (доступний на читання всім), щоб користувач `app` запускав уже підготовлений pnpm без мережі. Створюється системний користувач `app` (uid < 1000) з домашнім каталогом `/home/app` — його потребує pnpm при one-shot запусках.
 2. `pnpm install --frozen-lockfile --prod --filter backend...` ставить лише production-залежності бекенду та його workspace-залежностей. `drizzle-kit` міститься в `dependencies` бекенду, тому потрапляє в образ.
 3. `ENV NODE_ENV=production`.
-4. З `builder` копіюються `packages/backend/dist`, `packages/shared/dist`, `packages/backend/public`, `packages/backend/public-test`, `drizzle.config.ts` разом з `src/config/database.ts`, `src/drizzle/migrations` і `docs/support-knowledge-base` (його читає [`knowledge-base-init-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-init-service.ts)).
+4. З `builder` копіюються `packages/backend/dist`, `packages/shared/dist`, `packages/backend/public`, `drizzle.config.ts` разом з `src/config/database.ts`, `src/drizzle/migrations` і `docs/support-knowledge-base` (його читає [`knowledge-base-init-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-init-service.ts)). `packages/backend/public-test` в образ не копіюється: режим `APP_ENV=manual-test` — лише для локальної розробки.
 5. `EXPOSE 3000`, `WORKDIR /app/packages/backend`, `USER app`. Файли застосунку належать root і лише читаються: у рантаймі застосунок нічого не пише на диск.
 6. `HEALTHCHECK` (interval 30 с, timeout 5 с, start-period 20 с, retries 3): `curl -fsS http://127.0.0.1:${PORT:-3000}/api/ready | grep -q '"status":"ok"'` — readiness: контейнер `healthy`, лише коли відповідають PostgreSQL і Redis (див. [Observability](/backend/observability#health-check)). Перевіряється тіло, а не лише код: із `SERVE_STATIC=true` будь-який невідомий шлях повертає `index.html` зі статусом 200 (SPA fallback), тож перевірка лише статусу проходила б і при неправильному шляху.
 7. `CMD ["node", "dist/index.js"]` — PID 1 є Node, тож `SIGTERM` від `docker stop` доходить до `stopGracefully`. Міграції на старті **не** запускаються.
@@ -204,12 +204,15 @@ done
 
 ## CI/CD
 
-У `.github/workflows` чотири workflow:
+У `.github/workflows` п'ять workflow:
 
 - [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml) — на кожен PR і push у `main`: job `quality` (`make check` і coverage), `e2e` (Playwright) і `e2e-live` (SPA проти справжнього бекенду, PostgreSQL і Redis).
 - [`pg-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/pg-tests.yml) — інтеграційні тести `*.pg.test.ts` проти PostgreSQL з pgvector (`pnpm --filter backend test:pg`), коли змінюється бекенд або `shared`.
 - [`redis-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/redis-tests.yml) — інтеграційні тести `*.redis.test.ts` проти Redis (`pnpm --filter backend test:redis`), за тими самими шляхами.
 - [`docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml) — збирає і деплоїть цей сайт документації.
+- [`audit.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/audit.yml) — раз на тиждень і вручну: `pnpm audit --prod` друкує повний звіт і падає на advisory рівня high або critical. Читає лише `pnpm-lock.yaml`, залежності не встановлює.
+
+**Залежності.** [`dependabot.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/dependabot.yml) оновлює GitHub Actions (закріплені за SHA), digest базового образу в `Dockerfile` (`docker`) і відкриває PR лише для вразливих npm-пакетів (`npm` з `open-pull-requests-limit: 0`; потрібне ввімкнене «Dependabot security updates» у налаштуваннях репозиторію). `pnpm.onlyBuiltDependencies` у кореневому [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) дозволяє lifecycle-скрипти лише `esbuild`: `postinstall` будь-якої іншої залежності pnpm не виконує. Якщо нова залежність потребує збірки під час встановлення, додайте її до цього списку свідомо.
 
 ::: warning
 Workflow для збірки й публікації Docker-образу або деплою застосунку немає. Образ збирається і публікується вручну.
