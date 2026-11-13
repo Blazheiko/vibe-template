@@ -2083,6 +2083,36 @@
             "dependencies": ["feat-195"],
             "status": "done",
             "evidence": "PR #595 (merge b9692b8): handleConnected reads users.session_token together with the role (userRoleService.findAccess) and closes with 4001, without registering it, a connection whose token is no longer current or whose user is gone; nothing is awaited between the read and the registration; the e2e-live test waits for connection_established before the revocation; docs uk+en (backend/websocket \"Revoking a session\"). make check passing (backend 2738, frontend 548, playground 115), test:pg 303 and test:redis 116 passing on real services, docs:build+verify passing; RED: without the token comparison ws-registry-lifecycle.spec \"closes the connection with 4001 instead of registering it\" fails; e2e-live session-revocation and ws-close-after-logout with --repeat-each 5: 25 of 25 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Found by the e2e-live job failing on PR #593, which was merged with that non-required job red. Details were in progress.md on fix/ws-revocation-race-at-connect (removed from main by this PR)."
+        },
+        {
+            "id": "feat-210",
+            "name": "WS Closes On Single-Session Logout",
+            "description": "Follow-up to feat-195 and feat-209 (security review 2026-11-12, M-1), found by a review of main @ 76c18a7: a logout of one session deletes its Redis record but does not rotate users.session_token, which is all the periodic WS re-check and the check in handleConnected compare. A socket of that session held by another instance is never closed and keeps receiving broadcasts; on the same instance a logout that lands while handleConnected awaits its read finds nothing in the registry, and the socket is registered afterwards. The re-check and handleConnected also verify that the stored session of the connection still exists. Docs uk+en. Suites: PG, Redis, e2e-live.",
+            "owner": "Blazheiko",
+            "branch": "fix/ws-closes-on-session-logout",
+            "dependencies": ["feat-195", "feat-209"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-211",
+            "name": "URL Token Path Variants And Verify-Email Password Limit",
+            "description": "Follow-up to feat-205 and feat-208 (security review 2026-11-12, L-17 and I-7), found by a review of main @ 76c18a7. L-17: one-time-url-token.ts matches the exact spelling of the route path, while Vue Router also serves /reset-password/ and /Reset-Password; for those the token stays in the address and reaches Sentry Session Replay. Normalize the path (case, trailing slashes) before matching; cover both variants in the Playwright sentry project. I-7: the password field of VerifyEmailView still has maxlength=32 while PASSWORD_MAX_LENGTH is 128; take the limit from shared/limits. Suites: e2e.",
+            "owner": "Blazheiko",
+            "branch": "fix/url-token-path-variants",
+            "dependencies": ["feat-205", "feat-208"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-212",
+            "name": "SMS Budget Of A Refused Parallel Reset Start",
+            "description": "Follow-up to feat-204 (security review 2026-11-12, L-3), found by a review of main @ 76c18a7 by reading the code: startPhoneReset spends the hourly SMS budget of the number (smsSendPhone) after a cooldown and capacity pre-check made outside the advisory lock, and openSessionChallenge checks them again under the lock. Two parallel starts both pass the pre-check and both spend the budget; one is refused. A burst of parallel starts can use up the budget of somebody else's number in seconds. Reproduce with a PG test first (RED); then a start refused under the lock gives its budget back, or the budget is spent after the checks under the lock. Suites: PG, Redis.",
+            "owner": "Blazheiko",
+            "branch": "fix/sms-budget-refused-start",
+            "dependencies": ["feat-204"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
