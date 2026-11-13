@@ -1,6 +1,7 @@
 import type { RateLimit, ResponseData, RouteItem } from '#vendor/types/types.js'
 import rateLimitConfig from '#config/rate-limit.js'
 import logger from '#vendor/utils/logger.js'
+import { createLogThrottle } from './log-throttle.js'
 import {
     clientKey,
     rateLimitStore,
@@ -8,6 +9,11 @@ import {
     type ConsumeOptions,
     type RateLimitDecision,
 } from './rate-limit-store.js'
+
+// feat-206: a client over its limit is refused on every request, and a log line for each
+// of them is the flood the limit exists to stop. One line per key and window; the next one
+// says how many were left out.
+const rejectionLog = createLogThrottle()
 
 function determineRateLimit(route: RouteItem, groupRateLimit?: RateLimit): RateLimit | null {
     // Route limits override group limits
@@ -73,10 +79,18 @@ const consumeOrReject = (
             writeRateLimitHeaders(responseData, decision)
         }
         if (!decision.allowed) {
-            logger.warn(
-                { key, limit: decision.limit, retryAfterMs: decision.retryAfterMs },
-                'Rate limit exceeded',
-            )
+            const suppressed = rejectionLog.shouldLog(key, options.windowMs)
+            if (suppressed !== null) {
+                logger.warn(
+                    {
+                        key,
+                        limit: decision.limit,
+                        retryAfterMs: decision.retryAfterMs,
+                        ...(suppressed > 0 && { suppressed }),
+                    },
+                    'Rate limit exceeded',
+                )
+            }
             rejectRateLimited(responseData, decision.retryAfterMs)
             return false
         }
@@ -118,8 +132,10 @@ export default function checkRateLimit(
         return true
     }
 
+    // feat-206: the method is part of the key. GET and POST of one URL are two routes with
+    // two limits; in one bucket the cheap one could use up the budget of the strict one.
     return consumeOrReject(
-        `route:${clientKey(ip)}:${route.url}`,
+        `route:${clientKey(ip)}:${route.method}:${route.url}`,
         { windowMs: rateLimit.windowMs, max: rateLimit.maxRequests },
         responseData,
         'always',

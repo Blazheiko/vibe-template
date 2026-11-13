@@ -140,12 +140,12 @@ The cookie name and attributes are set by [`config/session.ts`](https://github.c
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Name                         | `__Host-uapi` if `SESSION_COOKIE_HOST_PREFIX` is enabled (enabled by default when `appConfig.isProductionLike`), otherwise `uapi` |
 | `path` / `httpOnly`          | `/` / `true`                                                                                                                      |
-| `secure`                     | `true` for any `APP_ENV` except `local`                                                                                           |
+| `secure`                     | `true` for any `APP_ENV` except `local`, and always `true` when `appConfig.isProductionLike`                                      |
 | `sameSite`                   | `Lax`                                                                                                                             |
 | TTL (`age`, `maxAge`, Redis) | 24 hours (`duration('24h')`) for a user session                                                                                   |
 | Anonymous session TTL        | `SESSION_ANON_TTL` (`anonAge`), `2h` by default: for both the cookie and the anonymous session in Redis                           |
 
-`session_web` reads the cookie only under the active name; a cookie under another name (for example `uapi` when the `__Host-` prefix is enabled) is ignored, and the request gets a new anonymous session. At startup, [`validate-runtime-config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/validate-runtime-config.ts) checks that with the `__Host-` prefix the cookie has `Secure=true` and `APP_URL` starts with `https://`.
+`session_web` reads the cookie only under the active name; a cookie under another name (for example `uapi` when the `__Host-` prefix is enabled) is ignored, and the request gets a new anonymous session. At startup, [`validate-runtime-config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/validate-runtime-config.ts) checks that with the `__Host-` prefix the cookie has `Secure=true` and `APP_URL` starts with `https://`. In a production-like environment the prefix is mandatory: `SESSION_COOKIE_HOST_PREFIX=false` stops the start, because a `uapi` cookie without the prefix can be overwritten by a sibling subdomain (`Domain=<parent domain>`).
 
 ### Anonymous session
 

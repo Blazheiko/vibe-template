@@ -140,6 +140,23 @@ export function validateRuntimeConfig(): void {
         logger.warn(databaseSslWarning)
     }
 
+    // feat-206: `.env.example` used to ship SESSION_COOKIE_HOST_PREFIX=false, and a copy of it
+    // with APP_IS_PRODUCTION=true started with a plain `uapi` cookie, which a sibling
+    // subdomain can overwrite (Domain=<parent>). Production-like means the prefix, always.
+    if (appConfig.isProductionLike) {
+        if (!sessionConfig.useHostPrefix) {
+            throw new Error(
+                'SESSION_COOKIE_HOST_PREFIX=false is forbidden in production-like environments: ' +
+                    'remove the variable (the __Host- prefix is then on) and serve the app over https',
+            )
+        }
+        if (!sessionConfig.cookie.secure) {
+            throw new Error(
+                'The session cookie must be served with Secure=true in production-like environments',
+            )
+        }
+    }
+
     if (sessionConfig.useHostPrefix) {
         if (!sessionConfig.cookie.secure) {
             throw new Error(

@@ -70,7 +70,9 @@ export default Object.freeze({
     cookie: {
         path: '/',
         httpOnly: true,
-        secure: env['APP_ENV'] !== 'local',
+        // feat-206: a production-like start (APP_IS_PRODUCTION=true) is Secure whatever
+        // APP_ENV says: the name of the environment is free text, the flag is the policy.
+        secure: appConfig.isProductionLike || env['APP_ENV'] !== 'local',
         sameSite: 'Lax', // 'Strict' || 'Lax' . 'None' is not secure use only for CSRF protection
     },
 

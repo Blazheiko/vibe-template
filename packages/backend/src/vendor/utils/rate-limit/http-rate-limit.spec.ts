@@ -19,10 +19,10 @@ vi.mock('#config/rate-limit.js', () => ({
     },
 }))
 
-const createRoute = (rateLimit?: RouteItem['rateLimit']): RouteItem =>
+const createRoute = (rateLimit?: RouteItem['rateLimit'], method = 'post'): RouteItem =>
     ({
         url: '/login',
-        method: 'post',
+        method,
         rateLimit,
         handler: vi.fn(),
     }) as unknown as RouteItem
@@ -111,6 +111,59 @@ describe('checkRateLimit', () => {
         expect(responseData.status).toBe(429)
         expect(headerValues(responseData, 'retry-after')).toEqual(['60'])
         expect(headerValues(responseData, 'x-ratelimit-limit')).toEqual(['1'])
+    })
+})
+
+// feat-206
+describe('per-route key and the log of rejections', () => {
+    it('counts GET and POST of one URL apart (L-16)', async () => {
+        const limiter = await load()
+        const post = createRoute({ windowMs: 60_000, maxRequests: 1 }, 'post')
+        const get = createRoute({ windowMs: 60_000, maxRequests: 1 }, 'get')
+        const responseData = createResponseData()
+
+        expect(limiter.default('10.0.1.1', responseData, post)).toBe(true)
+        // The POST budget is used up; the GET of the same URL has its own.
+        expect(limiter.default('10.0.1.1', responseData, get)).toBe(true)
+        expect(limiter.default('10.0.1.1', responseData, post)).toBe(false)
+        expect(limiter.default('10.0.1.1', responseData, get)).toBe(false)
+    })
+
+    it('logs one "Rate limit exceeded" per key and window, then the number left out (L-14)', async () => {
+        vi.useFakeTimers()
+        try {
+            const limiter = await load()
+            const { default: logger } = await import('#vendor/utils/logger.js')
+            const route = createRoute({ windowMs: 60_000, maxRequests: 1 })
+            const responseData = createResponseData()
+
+            limiter.default('10.0.1.2', responseData, route)
+            for (let index = 0; index < 100; index += 1) {
+                expect(limiter.default('10.0.1.2', createResponseData(), route)).toBe(false)
+            }
+            expect(logger.warn).toHaveBeenCalledTimes(1)
+            expect(logger.warn).toHaveBeenCalledWith(
+                { key: 'route:10.0.1.2:post:/login', limit: 1, retryAfterMs: 60_000 },
+                'Rate limit exceeded',
+            )
+
+            // Another address is another key: its own line.
+            limiter.default('10.0.1.3', createResponseData(), route)
+            limiter.default('10.0.1.3', createResponseData(), route)
+            expect(logger.warn).toHaveBeenCalledTimes(2)
+
+            // The next window: one request passes, the second is refused and logged again.
+            vi.advanceTimersByTime(60_000)
+            limiter.default('10.0.1.2', createResponseData(), route)
+            limiter.default('10.0.1.2', createResponseData(), route)
+            expect(logger.warn).toHaveBeenCalledTimes(3)
+            expect(logger.warn).toHaveBeenLastCalledWith(
+                expect.objectContaining({ key: 'route:10.0.1.2:post:/login', suppressed: 99 }),
+                'Rate limit exceeded',
+            )
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })
 

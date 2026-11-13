@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -73,6 +74,11 @@ const createRes = () => {
         },
         end: (): void => {},
         endWithoutBody: (): void => {},
+        // What a file streamed from disk needs: the first chunk ends the response.
+        onAborted: (): void => {},
+        getWriteOffset: (): number => 0,
+        tryEnd: (): [boolean, boolean] => [true, true],
+        close: (): void => {},
     }
     return { res, captured }
 }
@@ -100,6 +106,23 @@ const viaFallback = async (server: StaticServer, url: string): Promise<CapturedR
     return captured
 }
 
+// feat-206 (L-15): a file over STATIC_MAX_MEMORY_FILE_SIZE, or cached after the memory budget
+// ran out, is a `disk` entry. The file on disk here is the index; the URL decides the type.
+const viaDisk = async (
+    server: StaticServer,
+    url: string,
+    ifNoneMatch = '',
+): Promise<CapturedResponse> => {
+    const { res, captured } = createRes()
+    await server.staticCacheHandler(res as never, createReq(url, ifNoneMatch) as never, {
+        kind: 'disk',
+        filePath: INDEX_PATH,
+        size: statSync(INDEX_PATH).size,
+        etag: '"disk-etag"',
+    })
+    return captured
+}
+
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg"></svg>'
 
 /** Each case returns the response and the policy kind it must carry when CSP is on. */
@@ -119,6 +142,11 @@ const CASES: [
         'document',
     ],
     ['SPA fallback', (s) => viaFallback(s, '/settings/profile'), 'document'],
+    ['HTML from disk 200', (s) => viaDisk(s, '/report.html'), 'document'],
+    ['HTML from disk 304', (s) => viaDisk(s, '/report.html', '"disk-etag"'), 'document'],
+    ['.htm from disk 200', (s) => viaDisk(s, '/legacy.htm'), 'document'],
+    ['index from disk 200', (s) => viaDisk(s, '/'), 'document'],
+    ['JS from disk 200', (s) => viaDisk(s, '/assets/big.js'), null],
     ['SVG 200', (s) => viaCache(s, '/favicon.svg', SVG), 'svg'],
     [
         'SVG 304',

@@ -50,7 +50,7 @@ Requests that did not match any cached path go to `server.any('/*')`. If it is a
 - A URL **without a dot** gets `index.html` through the same `handleHtmlRequest`, that is, with ETag and `must-revalidate`.
 - A URL with a dot that is not in the cache gets `404` with an empty body.
 
-The HTML shell (and `index.html` for the SPA fallback) gets the `document` CSP, SVG gets the `svg` CSP, `/service-worker.js` and other files get no CSP (`setSecurityHeaders(res, [], cspKind)` in `static-server.ts`). The rules are in [Security](/en/backend/security#content-security-policy).
+The HTML shell (and `index.html` for the SPA fallback) and any other `.html` / `.htm` file, including one streamed from disk, gets the `document` CSP, SVG gets the `svg` CSP, `/service-worker.js` and other files get no CSP (`setSecurityHeaders(res, [], cspKind)` in `static-server.ts`). The rules are in [Security](/en/backend/security#content-security-policy).
 
 ## API responses
 
