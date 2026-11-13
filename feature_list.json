@@ -2071,8 +2071,8 @@
             "owner": "Blazheiko",
             "branch": "fix/push-and-cleanup-lows",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #635 (merge 077a730): L-10: upsertSubscription checks the canonical endpoint against PUSH_ENDPOINT_MAX_LENGTH (500, shared/limits) and answers 400 push_endpoint_too_long instead of a 500 from the INSERT; I-3: push subscription responses (create, list, read, update) carry no p256dhKey, authKey or ipAddress; I-6: dompurify removed from the frontend dependencies; I-7: PASSWORD_MAX_LENGTH = 128, locale texts en/uk/pl name the new limit and a spec ties them to shared/limits; I-1: docs (backend/ai uk+en) say the support system prompt and active knowledge-base articles are visible to the user; docs uk+en (backend/auth, web-push-notification). make check passing (backend 2969, frontend 583, playground 115), test:pg 321, test:redis 117, frontend e2e 95, live e2e 15 (new: a 100-character password registers, confirms the address and signs in), docs:build + docs:verify; CI on 0046e3d: quality, e2e, e2e-live, test-pg, test-redis green. Negative control: with the source reverted the Cyrillic endpoint answers 500 (the finding reproduced), the responses contain the keys, 7 new tests fail. Manual check on the real stack: POST /api/push-subscriptions with 400 Cyrillic letters answers 400 push_endpoint_too_long; created and listed subscriptions have no keys or address. Note: one mock e2e test (login.spec.ts:153, a timing test not touched here) failed in the first whole local run and passed in every rerun and in CI."
         },
         {
             "id": "feat-209",
