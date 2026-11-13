@@ -19,6 +19,15 @@ import { defineConfig, devices } from '@playwright/test'
 const MOCK_PORT = 4174
 const MOCK_ORIGIN = `http://localhost:${String(MOCK_PORT)}`
 
+// feat-205: Sentry Session Replay only records in a real browser, and it is off in every other
+// build. The specs in e2e/sentry/ get a build with replay on and a DSN on the page's own
+// origin; they answer the envelopes themselves (page.route) and read what the SDK sends.
+const SENTRY_PORT = 4175
+const SENTRY_ORIGIN = `http://localhost:${String(SENTRY_PORT)}`
+
+/** Specs that run against a build of their own, not the dev/preview server. */
+const OWN_BUILD_SPECS = ['mock/**', 'sentry/**']
+
 export default defineConfig({
     testDir: './e2e',
     /* Maximum time one test can run for. */
@@ -56,21 +65,21 @@ export default defineConfig({
     projects: [
         {
             name: 'chromium',
-            testIgnore: 'mock/**',
+            testIgnore: OWN_BUILD_SPECS,
             use: {
                 ...devices['Desktop Chrome'],
             },
         },
         {
             name: 'firefox',
-            testIgnore: 'mock/**',
+            testIgnore: OWN_BUILD_SPECS,
             use: {
                 ...devices['Desktop Firefox'],
             },
         },
         {
             name: 'webkit',
-            testIgnore: 'mock/**',
+            testIgnore: OWN_BUILD_SPECS,
             use: {
                 ...devices['Desktop Safari'],
             },
@@ -78,7 +87,7 @@ export default defineConfig({
 
         {
             name: 'Mobile Safari',
-            testIgnore: 'mock/**',
+            testIgnore: OWN_BUILD_SPECS,
             use: {
                 ...devices['iPhone 12'],
             },
@@ -95,6 +104,17 @@ export default defineConfig({
                 ...devices['Desktop Chrome'],
                 baseURL: MOCK_ORIGIN,
                 actionTimeout: 5 * 1000,
+            },
+        },
+
+        // What Sentry Session Replay sends (feat-205). One browser: the point is the SDK.
+        {
+            name: 'sentry',
+            testMatch: 'sentry/**/*.spec.ts',
+            timeout: 60 * 1000,
+            use: {
+                ...devices['Desktop Chrome'],
+                baseURL: SENTRY_ORIGIN,
             },
         },
 
@@ -137,6 +157,23 @@ export default defineConfig({
                 VITE_AUTH_PHONE_ENABLED: 'true',
                 VITE_BASE_URL: MOCK_ORIGIN,
                 VITE_SENTRY_ENABLED: 'false',
+            },
+            reuseExistingServer: false,
+            timeout: 180 * 1000,
+        },
+        {
+            command:
+                'pnpm exec vite build --outDir dist-e2e-sentry --emptyOutDir && ' +
+                `pnpm exec vite preview --outDir dist-e2e-sentry --port ${String(SENTRY_PORT)} --strictPort`,
+            port: SENTRY_PORT,
+            env: {
+                VITE_BASE_URL: SENTRY_ORIGIN,
+                VITE_SENTRY_ENABLED: 'true',
+                // No such project: the spec answers the envelope requests itself.
+                VITE_SENTRY_DSN: `http://public@localhost:${String(SENTRY_PORT)}/1`,
+                VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
+                VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0',
+                VITE_SENTRY_TRACES_SAMPLE_RATE: '1',
             },
             reuseExistingServer: false,
             timeout: 180 * 1000,

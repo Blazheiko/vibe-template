@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { authApi, mainApi } from '@/utils/api'
+import { clearUrlToken, readUrlToken } from '@/utils/one-time-url-token'
 import { getErrorReason } from '@/utils/response-normalizer'
 import { useUserStore } from '@/stores/user'
 
@@ -23,7 +24,11 @@ const password = ref('')
 const passwordError = ref('')
 const isSubmitting = ref(false)
 
+// feat-205: the token of the mailed link is taken out of the address before this page is
+// shown and kept for it; the query is only what a caller that bypassed the router left.
 const token = computed(() => {
+    const kept = readUrlToken(route.path)
+    if (kept !== '') return kept
     const rawToken = route.query.token
     return typeof rawToken === 'string' ? rawToken.trim() : ''
 })
@@ -82,6 +87,8 @@ async function verifyEmail(withPassword?: string): Promise<void> {
         return
     }
 
+    // The link is spent: nothing of it stays in the browser.
+    clearUrlToken(route.path)
     status.value = 'success'
     message.value = data.message || t('emailVerification.success')
     password.value = ''

@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 dist/
 dist-e2e-mock/
+dist-e2e-sentry/
 coverage/
 *.tsbuildinfo
 

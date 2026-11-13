@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { authApi } from '@/utils/api'
+import { clearUrlToken, readUrlToken } from '@/utils/one-time-url-token'
 import { getResponseMessage, hasErrorCode, hasResponseError } from '@/utils/response-normalizer'
 import { ErrorCode } from 'shared/errors'
 import { oauthProviderLabel } from '@/utils/oauth-provider-label'
@@ -26,7 +27,11 @@ const passwordConfirmError = ref('')
 const message = ref('')
 const linkedMethods = ref<string[]>([])
 
+// feat-205: the token of the mailed link is taken out of the address before this page is
+// shown and kept for it; the query is only what a caller that bypassed the router left.
 const token = computed(() => {
+    const kept = readUrlToken(route.path)
+    if (kept !== '') return kept
     const rawToken = route.query.token
     return typeof rawToken === 'string' ? rawToken.trim() : ''
 })
@@ -98,6 +103,8 @@ async function submitResetPassword(): Promise<void> {
         return
     }
 
+    // The link is spent: nothing of it stays in the browser.
+    clearUrlToken(route.path)
     status.value = 'success'
     message.value = t('auth.resetPasswordSuccess')
     // feat-199: a reset does not remove the linked sign-in methods; say which are still there.

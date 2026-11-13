@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { redirectWithoutUrlToken } from '@/utils/one-time-url-token'
 import type { RouteRecordRaw } from 'vue-router'
 import Login from '@/views/Login.vue'
 import UserAccount from '@/views/UserAccount.vue'
@@ -136,6 +137,11 @@ const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes,
 })
+
+// feat-205: the one-time token of a mailed link does not stay in the address. main.ts takes it
+// out before the first navigation (strip-url-token.ts); this guard does the same for a
+// navigation that carries one inside the application. The page reads it with readUrlToken.
+router.beforeEach((to) => redirectWithoutUrlToken(to) as never)
 
 // Ждём initializeApp только для защищённых маршрутов, чтобы публичные token-flow
 // страницы не зависали до инициализации auth.

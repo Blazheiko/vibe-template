@@ -9,6 +9,7 @@ export default tseslint.config(
         ignores: [
             '**/dist/**',
             '**/dist-e2e-mock/**',
+            '**/dist-e2e-sentry/**',
             '**/node_modules/**',
             // the SPA copied into the backend by scripts/prod-local.sh and the Dockerfile
             'packages/backend/public/**',

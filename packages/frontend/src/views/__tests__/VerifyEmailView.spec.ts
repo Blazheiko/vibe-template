@@ -23,7 +23,7 @@ vi.mock('@/utils/api', () => ({
 }))
 vi.mock('@/stores/user', () => ({ useUserStore: () => store }))
 vi.mock('vue-router', () => ({
-    useRoute: () => ({ query: routeQuery.value }),
+    useRoute: () => ({ path: '/verify-email', query: routeQuery.value }),
     useRouter: () => ({ push: vi.fn() }),
 }))
 
