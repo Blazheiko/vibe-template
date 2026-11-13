@@ -1991,8 +1991,8 @@
             "owner": "Blazheiko",
             "branch": "fix/oauth-flow-hardening",
             "dependencies": ["feat-199"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #610 (merge 5f8790b): GET /auth/oauth/:provider/redirect refuses Sec-Fetch-Site: cross-site (403 oauth_cross_site_start); the provider is stored with the state and compared on the callback before the state is consumed; GitHub and GitLab send a PKCE S256 challenge and the verifier through the generic OAuth2Client of arctic (its ready-made clients take no verifier), a callback without the verifier is refused; a GitLab address without email_verified: true is no address; the profile name is cut to 255 and the picture kept only as an https URL of at most 500 characters; docs uk+en (backend/oauth). make check passing (backend 2863, frontend 558, playground 115), test:pg 312 and test:redis 117 passing on real services (incl. a state stored for another provider on a real Redis), docs:build+verify passing; RED: with the old service and controller 56 cases of the two specs fail; the authorization URL in the spec is built by the real library (challenge = base64url(SHA-256(verifier))); manual on the real server: a cross-site start answers 403, the others reach the provider check; whole e2e-live 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis (the first push failed quality on a lint error in a spec line, fixed). Not run: a sign-in against real GitHub, GitLab or Google (no provider application configured); PKCE support is taken from the providers documentation. Details were in progress.md on fix/oauth-flow-hardening (removed from main by this PR)."
         },
         {
             "id": "feat-201",
