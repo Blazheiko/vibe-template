@@ -1,6 +1,7 @@
 import {
     createVerifiedAccount,
     expect,
+    linkFromMail,
     linkIn,
     loginInUi,
     newAccount,
@@ -80,6 +81,37 @@ test('a password of 100 characters registers, confirms the address and signs in'
         password: password.slice(0, 99),
     })
     expect(wrong.status()).toBe(401)
+})
+
+// feat-211: the router opens a mailed link under another spelling of its path too. The token
+// used to stay in the address for it, a signed-out visitor was sent to /login (the page was not
+// in the list of public paths under that spelling), and the password field took 32 characters.
+test('a verification link opened as /Verify-Email/ shows no token, takes a 100-character password and confirms', async ({
+    browser,
+    sink,
+}) => {
+    const account = { ...newAccount(), password: `Cc3-${'z'.repeat(96)}` }
+    const registered = await session((await newBrowser(browser)).context.request).post(
+        '/api/auth/register/email',
+        { name: 'Live E2E', email: account.email, password: account.password },
+    )
+    expect(registered.status()).toBe(200)
+    const link = new URL(await linkFromMail(sink, account.email, '/verify-email'))
+    const token = link.searchParams.get('token') ?? ''
+    expect(token).not.toBe('')
+    link.pathname = '/Verify-Email/'
+
+    // Another browser, nobody signed in: the link asks for the password of the account.
+    const { page } = await newBrowser(browser)
+    await page.goto(link.toString())
+    const field = page.getByLabel('Password')
+    await expect(field).toBeVisible()
+    expect(page.url()).not.toContain(token)
+    await field.fill(account.password)
+    expect(await field.inputValue()).toHaveLength(100)
+    await page.getByRole('button', { name: 'Confirm email' }).click()
+
+    await expect(page.getByRole('heading', { name: 'Email confirmed' })).toBeVisible()
 })
 
 test('the registration counter per address is real: the fourth try in an hour is refused', async ({

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { PASSWORD_MAX_LENGTH } from 'shared/limits'
 import { authApi, mainApi } from '@/utils/api'
 import { clearUrlToken, readUrlToken } from '@/utils/one-time-url-token'
 import { getErrorReason } from '@/utils/response-normalizer'
@@ -157,7 +158,7 @@ onMounted(() => {
                     type="password"
                     name="password"
                     autocomplete="current-password"
-                    maxlength="32"
+                    :maxlength="PASSWORD_MAX_LENGTH"
                     :aria-invalid="passwordError !== ''"
                     :aria-describedby="passwordError ? 'verify-email-password-error' : undefined"
                 />

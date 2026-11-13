@@ -12,6 +12,8 @@
 // link into "invalid link". It lives until the page has used it (clearUrlToken) or the tab
 // closes. A browser without sessionStorage keeps it in memory for the life of the page.
 
+import { normalizeRoutePath } from './route-path'
+
 /** The pages a mailed link opens, by the path of their route. */
 export const TOKEN_ROUTE_PATHS = [
     '/reset-password',
@@ -23,9 +25,14 @@ const QUERY_PARAM = 'token'
 const STORAGE_PREFIX = 'one-time-url-token:'
 const memory = new Map<string, string>()
 
-const routePathOf = (pathname: string): string | undefined =>
+// feat-211: by the normalized path, so every spelling the router opens the page with counts:
+// `/Reset-Password`, `/reset-password/`. Compared by the exact spelling, those kept their
+// token in the address, and it reached Session Replay.
+const routePathOf = (pathname: string): string | undefined => {
+    const normalized = normalizeRoutePath(pathname)
     // The application may be served under a base path: the route path is the end of it.
-    TOKEN_ROUTE_PATHS.find((path) => pathname === path || pathname.endsWith(path))
+    return TOKEN_ROUTE_PATHS.find((path) => normalized === path || normalized.endsWith(path))
+}
 
 const store = (path: string, token: string): void => {
     memory.set(path, token)
