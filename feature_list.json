@@ -2011,8 +2011,8 @@
             "owner": "Blazheiko",
             "branch": "fix/pre-auth-body-limits",
             "dependencies": ["feat-201"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #616 (merge 34038ed): a JSON route without its own limit takes APP_DEFAULT_JSON_BODY_SIZE (100 KB), APP_MAX_JSON_BODY_SIZE (2 MiB) stays the ceiling for routes that ask for more with maxBodySize (knowledge base article create/update, prompt update; jsonBodyLimit = 6 bytes per character + 16 KiB); a route with signedInBeforeBody answers 401 and closes the connection before the body is read when the request has no well-signed cookie of a signed-in session (signed-in-cookie.ts, one HMAC, no I/O), set on the avatar and knowledge base screenshot uploads; the screenshot upload is limited to 10 per minute; docs uk+en (backend/configuration, request-lifecycle). make check passing (backend 2912, frontend 558, playground 115), test:pg 312 and test:redis 117 passing on real services, docs:build+verify passing; on a real uWS server with raw sockets: 100 KB JSON taken and one byte more 413, an upload with no cookie, a made-up cookie or an anonymous cookie gets 401 from the headers alone with the connection closed and nothing buffered, with a signed-in cookie the body is read; RED: with the old server.ts and http-request-handlers.ts 7 cases fail; manual on the real stack: a signed-in avatar upload stored the file, the same upload without a signed-in cookie answered 401, a 150 KB JSON to /auth/login answered 413; whole e2e-live 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Details were in progress.md on fix/pre-auth-body-limits (removed from main by this PR)."
         },
         {
             "id": "feat-203",
