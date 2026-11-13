@@ -2041,8 +2041,8 @@
             "owner": "Blazheiko",
             "branch": "fix/sentry-replay-url-tokens",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #625 (merge 1d22661): the token of a mailed link (/reset-password, /verify-email, /oauth/link/confirm) is taken out of the address before Sentry starts (strip-url-token.ts, first import of main.ts) and by a router guard for a navigation inside the application; the pages read it from one-time-url-token.ts (sessionStorage, survives a reload) and erase it after use; second line: beforeAddRecordingEvent masks the replay's own events and an event processor masks urls and request.url of a replay_event; new Playwright project sentry with replay on; docs uk+en (backend/observability, testing). Masking alone, as the review proposed, was not enough: the replay records the page address in DOM recorder events the SDK does not pass to the hook. make check passing (backend 2940, frontend 577, playground 115), docs:build+verify passing; real SDK in a real browser (--project=sentry, 3 passed): a page opened from /reset-password?token=<canary> shows a clean address at once, no envelope carries the canary, the form works, the token survives a reload; control: a canary left in the address of another page is in the replay with the hooks in place; --project=chromium --project=mock passing (one mock test updated); whole e2e-live 14 passed incl. reset and verification through mailed links; CI all jobs passing incl. e2e with the sentry project and e2e-live. A real replay cannot run under Vitest (the SDK switches it off outside a browser). Details were in progress.md on fix/sentry-replay-url-tokens (removed from main by this PR)."
         },
         {
             "id": "feat-206",
