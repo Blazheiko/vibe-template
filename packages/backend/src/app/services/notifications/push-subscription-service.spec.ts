@@ -257,6 +257,27 @@ describe('pushSubscriptionService', () => {
             expect(pushSubscriptionRepositoryMock.create).not.toHaveBeenCalled()
         })
 
+        // feat-208 (L-10)
+        it('rejects an endpoint whose canonical form does not fit the column', async () => {
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            const endpoint = `https://fcm.googleapis.com/${'ж'.repeat(400)}`
+            expect(endpoint.length).toBeLessThan(500)
+
+            const result = await pushSubscriptionService.createSubscription(
+                7n,
+                payload(endpoint),
+                'token',
+            )
+
+            expect(Result.isError(result) && result.error).toEqual({
+                _tag: 'BadRequest',
+                message: 'Push endpoint is too long',
+                reason: 'push_endpoint_too_long',
+            })
+            expect(pushSubscriptionRepositoryMock.findByEndpoint).not.toHaveBeenCalled()
+            expect(pushSubscriptionRepositoryMock.create).not.toHaveBeenCalled()
+        })
+
         it('refuses a new subscription once the user has the maximum', async () => {
             pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(undefined)
             pushSubscriptionRepositoryMock.countByUserId.mockResolvedValueOnce(20)

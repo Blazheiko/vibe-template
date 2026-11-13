@@ -153,7 +153,7 @@ const pl: typeof en = {
         errorEmailInvalid: 'Wpisz prawidłowy adres e-mail',
         errorPassword: 'Podaj hasło',
         errorPasswordLength: 'Hasło musi mieć co najmniej 8 znaków',
-        errorPasswordMaxLength: 'Hasło może mieć najwyżej 32 znaki',
+        errorPasswordMaxLength: 'Hasło może mieć najwyżej 128 znaków',
         errorName: 'Podaj imię',
         errorPasswordsMismatch: 'Hasła nie są takie same',
         errorTooManyResetRequests:
@@ -213,7 +213,7 @@ const pl: typeof en = {
             newPassword: 'Nowe hasło',
             confirmPassword: 'Potwierdź nowe hasło',
             updatePassword: 'Zmień hasło',
-            errorNewPasswordLength: 'Nowe hasło musi mieć od 8 do 32 znaków',
+            errorNewPasswordLength: 'Nowe hasło musi mieć od 8 do 128 znaków',
             errorMismatch: 'Hasła nie są takie same',
             errorUpdate: 'Nie udało się zmienić hasła',
             successUpdate: 'Hasło zostało zmienione',

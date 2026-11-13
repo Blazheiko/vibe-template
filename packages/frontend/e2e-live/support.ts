@@ -135,8 +135,12 @@ export const newAccount = (): Account => ({
  * A registered and verified account, made the way a user does it but through the API of a
  * browser of its own: register, read the mail, confirm the link. Nothing is signed in afterwards.
  */
-export async function createVerifiedAccount(browser: Browser, sink: MailSink): Promise<Account> {
-    const account = newAccount()
+export async function createVerifiedAccount(
+    browser: Browser,
+    sink: MailSink,
+    password?: string,
+): Promise<Account> {
+    const account = { ...newAccount(), ...(password !== undefined && { password }) }
     const { context } = await newBrowser(browser)
     try {
         const tab = session(context.request)
