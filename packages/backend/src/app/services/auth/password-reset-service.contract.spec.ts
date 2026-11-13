@@ -71,6 +71,10 @@ vi.mock('#app/services/notifications/email-service.js', () => ({ emailService: e
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: securityNotice, supportReply: vi.fn() },
 }))
+// feat-199: what the reset says about the sign-in methods still linked (own spec).
+vi.mock('#app/services/auth/password-reset-notice.js', () => ({
+    announcePasswordReset: () => Promise.resolve(['github']),
+}))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: destroyAllSessionsMock,
 }))
@@ -526,7 +530,7 @@ const ROWS: readonly Row[] = [
             destroyAllSessionsMock.mockRejectedValue(new Error('redis'))
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(loggerMock.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: '7' }),
@@ -541,7 +545,7 @@ const ROWS: readonly Row[] = [
             arrangeResetOk({ phone: PHONE })
         },
         call: reset({ token: ' tok ' }),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(withTransactionMock).toHaveBeenCalledTimes(1)
             expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
@@ -612,7 +616,7 @@ const ROWS: readonly Row[] = [
             )
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
     },
     {
         // feat-097: the first proof of the mailbox on an unverified account hands it to the
@@ -622,7 +626,7 @@ const ROWS: readonly Row[] = [
             arrangeResetOk({ emailVerifiedAt: null, phone: PHONE })
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(withTransactionMock).toHaveBeenCalledTimes(1)
             expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
@@ -675,7 +679,7 @@ const ROWS: readonly Row[] = [
             arrangeResetOk({ phone: PHONE })
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(
                 claimRepositoryMocks.oauthAccountRepository.deleteByUserId,
@@ -1019,7 +1023,7 @@ const ROWS: readonly Row[] = [
             destroyAllSessionsMock.mockRejectedValue(new Error('redis'))
         },
         call: completePhone(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(loggerMock.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: '7' }),
@@ -1032,7 +1036,7 @@ const ROWS: readonly Row[] = [
         name: 'completePhonePasswordReset · ok rotates the session token and drops the old sessions',
         arrange: arrangePhoneOk,
         call: completePhone(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(userRepositoryMock.update).toHaveBeenCalledWith(
                 7n,

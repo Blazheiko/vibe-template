@@ -32,6 +32,8 @@ import type {
     LinkEmailStartResponse,
     ResetPhoneStartResponse,
     ResetPhoneCompleteResponse,
+    GetSignInMethodsResponse,
+    UnlinkSignInMethodResponse,
 } from 'shared/responses'
 import type {
     CreateSubscriptionInput,
@@ -153,6 +155,16 @@ export const authApi = {
 
     startEmailLink: (body: LinkEmailStartInput): Promise<ApiResponse<LinkEmailStartResponse>> =>
         callApi(authContracts.linkEmailStart, { body }),
+
+    // feat-199: the OAuth identities linked to the account.
+    signInMethods: (): Promise<ApiResponse<GetSignInMethodsResponse>> =>
+        callApi(authContracts.signInMethods, {}),
+
+    unlinkSignInMethod: (body: {
+        id: string
+        currentPassword?: string
+    }): Promise<ApiResponse<UnlinkSignInMethodResponse>> =>
+        callApi(authContracts.unlinkSignInMethod, { body }),
 }
 
 export const mainApi = {

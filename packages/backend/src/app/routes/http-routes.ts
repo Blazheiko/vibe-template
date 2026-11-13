@@ -1,5 +1,6 @@
 import MainController from '#app/controllers/http/core/main-controller.js'
 import AuthController from '#app/controllers/http/auth/auth-controller.js'
+import SignInMethodsController from '#app/controllers/http/auth/sign-in-methods-controller.js'
 import AdminUserController from '#app/controllers/http/admin/admin-user-controller.js'
 import AdminOnlineUserController from '#app/controllers/http/admin/admin-online-user-controller.js'
 import AdminOnlineHistoryController from '#app/controllers/http/admin/admin-online-history-controller.js'
@@ -138,6 +139,18 @@ export default [
                 handler: AuthController.startEmailLink.bind(AuthController),
                 description:
                     'Send an email verification link for adding an email to the current account',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
+                contract: authContracts.signInMethods,
+                handler: SignInMethodsController.list.bind(SignInMethodsController),
+                description: 'List the sign-in methods linked to the current account',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
+                contract: authContracts.unlinkSignInMethod,
+                handler: SignInMethodsController.unlink.bind(SignInMethodsController),
+                description: 'Remove a linked sign-in method from the current account',
                 middlewares: ['auth_guard'],
             }),
         ],

@@ -15,6 +15,10 @@ export {
 } from './auth/register-phone-complete.js'
 export { LinkPhoneStartInputSchema, type LinkPhoneStartInput } from './auth/link-phone-start.js'
 export {
+    UnlinkSignInMethodInputSchema,
+    type UnlinkSignInMethodInput,
+} from './auth/unlink-sign-in-method.js'
+export {
     LinkPhoneConfirmInputSchema,
     type LinkPhoneConfirmInput,
 } from './auth/link-phone-confirm.js'

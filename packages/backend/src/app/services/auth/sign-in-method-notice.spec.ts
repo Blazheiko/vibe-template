@@ -90,11 +90,11 @@ describe('renderSignInMethodAddedEmail', () => {
         expect(mail.text).toContain('Account Owner')
         expect(mail.text).toContain('The GitHub account "Jane Doe" was linked to your')
         expect(mail.text).toContain(
-            'If it was not you, contact support right away: this sign-in method keeps working after a password change.',
+            'If it was not you, remove it on the account page right away: this sign-in method keeps working after a password change.',
         )
-        expect(mail.text).toContain('https://app.example.com/support')
+        expect(mail.text).toContain('https://app.example.com/account')
         expect(mail.html).toContain('GitHub was linked to your account')
-        expect(mail.html).toContain('https://app.example.com/support')
+        expect(mail.html).toContain('https://app.example.com/account')
     })
 
     it.each([

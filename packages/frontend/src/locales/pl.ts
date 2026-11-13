@@ -117,6 +117,8 @@ const pl: typeof en = {
         resetPasswordSuccessTitle: 'Hasło zostało zmienione',
         resetPasswordSuccess:
             'Twoje hasło zostało zmienione. Możesz się teraz zalogować nowym hasłem.',
+        resetPasswordLinkedMethods:
+            'Te metody logowania są nadal powiązane z Twoim kontem i dalej działają: {methods}. Jeśli którejś nie rozpoznajesz, zaloguj się i usuń ją na stronie konta.',
         invalidResetToken: 'Ten link do resetowania hasła jest nieprawidłowy lub wygasł.',
         signingIn: 'Logowanie...',
         orContinueWith: 'lub kontynuuj przez',
@@ -215,6 +217,23 @@ const pl: typeof en = {
             errorMismatch: 'Hasła nie są takie same',
             errorUpdate: 'Nie udało się zmienić hasła',
             successUpdate: 'Hasło zostało zmienione',
+        },
+        signInMethods: {
+            title: 'Metody logowania',
+            help: 'Konta innych serwisów powiązane z tym kontem. Każde z nich loguje się do niego, także po zmianie hasła.',
+            empty: 'Żaden inny serwis nie jest powiązany.',
+            linkedAt: 'powiązano {date}',
+            unlink: 'Usuń',
+            currentPassword: 'Obecne hasło',
+            noPasswordHint:
+                'To konto nie ma hasła: usunięcie metody logowania wymaga zalogowania w ciągu ostatnich 10 minut, a ostatniej metody nie można usunąć.',
+            unlinked: 'Usunięto: {provider}',
+            errorLoad: 'Nie udało się wczytać metod logowania',
+            errorUnlink: 'Nie udało się usunąć metody logowania',
+            errorPasswordRequired: 'Podaj obecne hasło, aby usunąć metodę logowania',
+            errorPasswordIncorrect: 'Obecne hasło jest nieprawidłowe',
+            errorRecentSignIn: 'Wyloguj się i zaloguj ponownie, a potem usuń metodę logowania',
+            errorLastMethod: 'Ustaw hasło, zanim usuniesz ostatnią metodę logowania',
         },
         contactMethods: {
             title: 'Metody kontaktu',

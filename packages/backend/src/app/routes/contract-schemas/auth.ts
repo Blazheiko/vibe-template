@@ -13,6 +13,7 @@ import {
     ResetPasswordInputSchema,
     ResetPhoneCompleteInputSchema,
     ResetPhoneStartInputSchema,
+    UnlinkSignInMethodInputSchema,
     VerifyEmailInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
@@ -78,5 +79,10 @@ export const authSchemas = contractSchemas(authContracts, {
     linkEmailStart: {
         body: LinkEmailStartInputSchema,
         response: ResponseSchemas.LinkEmailStartResponseSchema,
+    },
+    signInMethods: { response: ResponseSchemas.GetSignInMethodsResponseSchema },
+    unlinkSignInMethod: {
+        body: UnlinkSignInMethodInputSchema,
+        response: ResponseSchemas.UnlinkSignInMethodResponseSchema,
     },
 })

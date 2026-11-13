@@ -37,8 +37,8 @@ export function renderSignInMethodAddedEmail(
             ? `A ${providerTitle} account`
             : `The ${providerTitle} account "${profile}"`
     const what = `${who} was linked to your ${PRODUCT.name} account. It can now be used to sign in.`
-    const warning = `If it was not you, contact support right away: this sign-in method keeps working after a password change.`
-    const url = `${appConfig.frontendUrl}/support`
+    const warning = `If it was not you, remove it on the account page right away: this sign-in method keeps working after a password change.`
+    const url = `${appConfig.frontendUrl}/account`
     return renderBrandedEmail({
         subject: `A new sign-in method was added to your account`,
         eyebrow: 'Security notice',
