@@ -45,6 +45,56 @@
 | I-6  | інфо    | Фронтенд   | `dompurify` оголошено, але не використовується                           |
 | I-7  | інфо    | Паролі     | `PASSWORD_MAX_LENGTH = 32`                                               |
 
+## Стан виправлень (2026-11-13)
+
+План: [`docs/plan/security-review-2026-11-12-plan.md`](../plan/security-review-2026-11-12-plan.md). Усі 29 знахідок закрито: 27 виправлено, 2 прийнято й задокументовано (I-1, I-4). Опис кожної знахідки нижче лишено таким, яким він був на момент огляду; свідчення перевірки — у полі `evidence` відповідної фічі в `feature_list.json`.
+
+Шляхи тестів без префікса `packages/` подано відносно `packages/backend/src/`.
+
+| ID   | Фіча               | PR         | Стан                      | Тест                                                                                                                                                                     |
+| ---- | ------------------ | ---------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M-1  | feat-195, feat-209 | #592, #595 | виправлено                | `app/services/auth/ws-session-revocation.spec.ts`, `session-revocation.pg.test.ts`, `app/websocket/ws-registry-lifecycle.spec.ts`; live e2e `session-revocation.spec.ts` |
+| M-2  | feat-198, feat-199 | #604, #607 | виправлено                | `app/services/auth/sign-in-method-notice.spec.ts`, `sign-in-methods-service.spec.ts`, `sign-in-methods.pg.test.ts`                                                       |
+| M-3  | feat-201, feat-202 | #613, #616 | виправлено                | `vendor/start/in-flight-body-budget.transport.spec.ts`, `pre-auth-body-limits.transport.spec.ts`, `vendor/utils/network/body-budget.spec.ts`                             |
+| M-4  | feat-197           | #601       | виправлено                | `vendor/utils/rate-limit/ws-connection-limit.spec.ts`, `vendor/utils/network/ws-upgrade-connection-limit.spec.ts`                                                        |
+| L-1  | feat-203           | #619       | виправлено                | `app/services/notifications/email-templates.spec.ts`, `app/services/auth/auth-email-templates.snapshot.spec.ts`                                                          |
+| L-2  | feat-203           | #619       | виправлено                | `app/services/auth/auth-service.spec.ts`                                                                                                                                 |
+| L-3  | feat-204           | #622       | виправлено                | `app/services/auth/reset-phone-session-challenges.pg.test.ts`                                                                                                            |
+| L-4  | feat-204           | #622       | виправлено                | `app/services/auth/password-reset-service.spec.ts`                                                                                                                       |
+| L-5  | feat-206           | #628       | виправлено                | `app/start/validate-runtime-config.spec.ts`                                                                                                                              |
+| L-6  | feat-200           | #610       | виправлено ¹              | `app/controllers/http/auth/oauth-controller.spec.ts`                                                                                                                     |
+| L-7  | feat-200           | #610       | виправлено ¹              | `app/services/auth/oauth-service.spec.ts`, `vendor/utils/session/session-store.redis.test.ts`                                                                            |
+| L-8  | feat-200           | #610       | виправлено ¹              | `app/services/auth/oauth-service.spec.ts`                                                                                                                                |
+| L-9  | feat-200           | #610       | виправлено ¹              | `app/services/auth/oauth-service.spec.ts`                                                                                                                                |
+| L-10 | feat-208           | #635       | виправлено                | `app/controllers/http/notifications/push-subscription-ownership.pg.test.ts`, `app/services/notifications/push-subscription-service.spec.ts`                              |
+| L-11 | feat-197           | #601       | виправлено                | `vendor/utils/network/ws-message-budget.spec.ts`                                                                                                                         |
+| L-12 | feat-196           | #598       | виправлено                | `app/websocket/ws-session-auth.spec.ts`, `ws-registry-lifecycle.pg.test.ts`                                                                                              |
+| L-13 | feat-197           | #601       | виправлено                | `vendor/utils/rate-limit/ws-rate-limit.spec.ts`                                                                                                                          |
+| L-14 | feat-206           | #628       | виправлено ²              | `vendor/utils/network/invalid-headers-logging.spec.ts`, `vendor/utils/rate-limit/log-throttle.spec.ts`, `http-rate-limit.spec.ts`                                        |
+| L-15 | feat-206           | #628       | виправлено                | `vendor/start/static-server-csp.spec.ts`                                                                                                                                 |
+| L-16 | feat-206           | #628       | виправлено                | `vendor/utils/rate-limit/http-rate-limit.spec.ts`                                                                                                                        |
+| L-17 | feat-205           | #625       | виправлено ³              | `packages/frontend/e2e/sentry/replay-url-token.spec.ts`, `packages/frontend/src/utils/__tests__/one-time-url-token.spec.ts`                                              |
+| L-18 | feat-207           | #631       | виправлено                | тесту немає; перевірено збіркою образу, запуском контейнера і збіркою з неправильним хешем ключа                                                                         |
+| L-19 | feat-207           | #631       | виправлено ⁴              | тесту немає; `.github/workflows/audit.yml`, `pnpm install --frozen-lockfile`                                                                                             |
+| I-1  | feat-208           | #635       | прийнято, задокументовано | — (`documentation/backend/ai.md`)                                                                                                                                        |
+| I-2  | feat-200           | #610       | виправлено ¹              | `app/services/auth/oauth-service.spec.ts`                                                                                                                                |
+| I-3  | feat-208           | #635       | виправлено                | `app/transformers/push-subscription-transformer.spec.ts`, `push-subscription-ownership.pg.test.ts`                                                                       |
+| I-4  | feat-207           | #631       | прийнято, записано        | — (`docs/plan/dependency-upgrade-plan.md`, «Прийняті ризики»)                                                                                                            |
+| I-5  | feat-207           | #631       | виправлено                | тесту немає; у контейнері каталогу `public-test` немає                                                                                                                   |
+| I-6  | feat-208           | #635       | виправлено                | — (залежність видалено)                                                                                                                                                  |
+| I-7  | feat-208           | #635       | виправлено                | `packages/shared/test/contracts.test.js`, `packages/frontend/src/locales/__tests__/password-limits.spec.ts`; live e2e `registration.spec.ts`                             |
+
+Примітки:
+
+1. **OAuth (feat-200).** Перевірено тестами з підставним клієнтом провайдера; на справжніх Google, GitHub і GitLab потік не запускався.
+2. **L-14.** Звіт каже «будь-який байт понад 0x7E у значенні». На живому стеку значення з UTF-8 (`café`) невалідним не вважалося, невалідне ім'я заголовка — вважалося. Виправлення від цього не залежить: рядок логу тепер один на запит для будь-яких відхилених заголовків.
+3. **L-17.** Запропонованого у звіті маскування виявилося замало: replay записує адресу сторінки в подіях DOM-рекордера, які SDK не передає в hook. Тому токен прибирається з адреси ще до старту Sentry, а маскування лишилося другою лінією.
+4. **L-19.** `audit.yml` запускається за розкладом і вручну; у GitHub Actions він ще не виконувався, обидві його команди запускалися локально. PR від Dependabot для npm потребують увімкненого «Dependabot security updates» у налаштуваннях репозиторію.
+
+Після огляду з'явилося нове: `pnpm audit --prod` станом на 2026-11-13 показує 6 moderate і 1 low advisory у `hono` та `@hono/node-server` (транзитивно через `@mistralai/mistralai@3.4.0`). На момент огляду відомих вразливостей не було. У план це не входило і не виправлялося.
+
+Під час feat-195 знайдено гонку, якої у звіті не було: сесію могли відкликати, поки WebSocket ще відкривався. Її закрито окремою фічею feat-209 (#595).
+
 ## Середні
 
 ### M-1. Відкликана сесія не закриває відкритий WebSocket
