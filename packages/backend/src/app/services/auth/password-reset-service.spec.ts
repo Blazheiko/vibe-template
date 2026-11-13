@@ -22,6 +22,9 @@ const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    // feat-204: the waiting challenges of a number; a start retires only its session's own.
+    findPendingForPhoneFlow: vi.fn(),
+    invalidatePendingByIds: vi.fn(),
     lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
@@ -133,6 +136,9 @@ function hashOtp(code: string): string {
 }
 
 beforeEach(() => {
+    // feat-204: no waiting challenge unless a test says otherwise.
+    smsAuthChallengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([])
+    smsAuthChallengeRepositoryMock.invalidatePendingByIds.mockResolvedValue(0)
     // feat-103: every code check spends a try first; by default the try succeeds on the row
     // findById returns.
     smsAuthChallengeRepositoryMock.consumeAttempt.mockImplementation(async (id: string) => {
@@ -500,7 +506,9 @@ describe('passwordResetService', () => {
         })
     })
 
-    it('fails phone reset start when challenge expires before markIssued', async () => {
+    // feat-204 (L-4): the code is sent after the answer, so a send that fails no longer
+    // changes the answer; the challenge it leaves behind is invalidated.
+    it('answers the start as usual when the challenge expires before markIssued, and invalidates it', async () => {
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
         userRepositoryMock.findByPhone.mockResolvedValue({
             id: 8n,
@@ -539,7 +547,8 @@ describe('passwordResetService', () => {
             sessionId: 'session-id',
         })
 
-        expect(Result.isError(result)).toBe(true)
+        expect(Result.isOk(result) && result.value.challengeId).toBe('reset-challenge-1')
+        await new Promise((resolve) => setImmediate(resolve))
         expect(smsAuthChallengeRepositoryMock.markInvalidated).toHaveBeenCalledWith(
             'reset-challenge-1',
         )
@@ -1080,7 +1089,7 @@ it('sends a new code to the session that started the reset once the cooldown has
         email: null,
         phone: '+14155550123',
     })
-    smsAuthChallengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue({
+    const existing = {
         id: 'reset-challenge-existing',
         flow: 'reset_phone',
         phone: '+14155550123',
@@ -1094,7 +1103,9 @@ it('sends a new code to the session that started the reset once the cooldown has
         invalidatedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-    })
+    }
+    smsAuthChallengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(existing)
+    smsAuthChallengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([existing])
 
     const fresh = {
         id: 'reset-challenge-new',
@@ -1129,25 +1140,33 @@ it('sends a new code to the session that started the reset once the cooldown has
     if (Result.isOk(result)) {
         expect(result.value.challengeId).toBe('reset-challenge-new')
     }
-    expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).toHaveBeenCalledTimes(1)
+    // feat-204: only the session's own waiting challenge is retired.
+    expect(smsAuthChallengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+        ['reset-challenge-existing'],
+        expect.anything(),
+    )
+    expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
     expect(smsAuthChallengeRepositoryMock.create).toHaveBeenCalledTimes(1)
     expect(issueVerificationCodeMock).toHaveBeenCalledTimes(1)
 })
 
-it('does not reveal an existing pending reset challenge to a different session', async () => {
+// feat-204 (security review 2026-11-12, L-3): the first to start a phone reset used to hold
+// the only challenge of the number. Another session, the owner's included, got the generic
+// answer with no challenge, and the codes that reached the phone could not be used.
+it('gives a different session a challenge of its own and leaves the waiting one in place', async () => {
     consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
     userRepositoryMock.findByPhone.mockResolvedValue({
         id: 8n,
         email: null,
         phone: '+14155550123',
     })
-    smsAuthChallengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue({
+    const existing = {
         id: 'reset-challenge-existing',
         flow: 'reset_phone',
         phone: '+14155550123',
         codeHash: 'hashed-code',
         providerRequestId: 'fake-reset-1',
-        metadata: { userId: '8', sessionId: 'owner-session' },
+        metadata: { userId: '8', sessionId: 'first-session' },
         attemptCount: 0,
         resendAvailableAt: new Date(Date.now() - 1_000),
         expiresAt: new Date(Date.now() + 10 * 60_000),
@@ -1155,23 +1174,70 @@ it('does not reveal an existing pending reset challenge to a different session',
         invalidatedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
-    })
+    }
+    smsAuthChallengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(existing)
+    smsAuthChallengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([existing])
+    const fresh = {
+        ...existing,
+        id: 'reset-challenge-own',
+        metadata: { userId: '8', sessionId: 'other-session' },
+    }
+    smsAuthChallengeRepositoryMock.create.mockResolvedValue(fresh)
+    issueVerificationCodeMock.mockResolvedValue({ code: '123456', providerRequestId: 'p-2' })
+    smsAuthChallengeRepositoryMock.markIssued.mockResolvedValue(fresh)
 
     const { passwordResetService } = await loadPasswordResetService()
     const result = await passwordResetService.startPhonePasswordReset('+1 415 555 0123', 'US', {
         ipAddress: '127.0.0.1',
-        sessionId: 'attacker-session',
+        sessionId: 'other-session',
     })
 
-    expect(Result.isOk(result)).toBe(true)
-    if (Result.isOk(result)) {
-        expect(result.value).toEqual({
-            message:
-                'If the phone number can be used for password reset, verification instructions will be sent shortly.',
-        })
-    }
+    expect(Result.isOk(result) && result.value.challengeId).toBe('reset-challenge-own')
+    // The challenge that was waiting is neither revealed nor retired (feat-160).
+    expect(smsAuthChallengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+        [],
+        expect.anything(),
+    )
     expect(smsAuthChallengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
+    expect(smsAuthChallengeRepositoryMock.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+            metadata: expect.objectContaining({ sessionId: 'other-session' }),
+        }),
+        expect.anything(),
+    )
+    expect(issueVerificationCodeMock).toHaveBeenCalledTimes(1)
+})
+
+it('opens nothing for a third session while two challenges of the number are live', async () => {
+    consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+    userRepositoryMock.findByPhone.mockResolvedValue({ id: 8n, email: null, phone: '+14155550123' })
+    const live = (id: string, sessionId: string) => ({
+        id,
+        flow: 'reset_phone',
+        phone: '+14155550123',
+        metadata: { userId: '8', sessionId },
+        resendAvailableAt: new Date(Date.now() - 1_000),
+        expiresAt: new Date(Date.now() + 10 * 60_000),
+        confirmedAt: null,
+        invalidatedAt: null,
+    })
+    smsAuthChallengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([
+        live('a', 'session-a'),
+        live('b', 'session-b'),
+    ])
+
+    const { passwordResetService } = await loadPasswordResetService()
+    const result = await passwordResetService.startPhonePasswordReset('+1 415 555 0123', 'US', {
+        ipAddress: '127.0.0.1',
+        sessionId: 'session-c',
+    })
+
+    expect(Result.isOk(result) && result.value).toEqual({
+        message:
+            'If the phone number can be used for password reset, verification instructions will be sent shortly.',
+    })
     expect(smsAuthChallengeRepositoryMock.create).not.toHaveBeenCalled()
+    expect(smsAuthChallengeRepositoryMock.invalidatePendingByIds).not.toHaveBeenCalled()
     expect(issueVerificationCodeMock).not.toHaveBeenCalled()
 })
 

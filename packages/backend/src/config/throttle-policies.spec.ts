@@ -49,6 +49,8 @@ describe('throttlePolicies registry', () => {
             confirm_phone_ip: [20, HOUR, 'ip'],
             reset_phone_ip: [10, HOUR, 'ip'],
             confirm_reset_phone_ip: [20, HOUR, 'ip'],
+            // feat-204: the codes tried against one number in a phone reset, in a day.
+            reset_phone_code_attempts_phone: [10, 24 * HOUR, 'phone'],
             link_phone_ip: [10, HOUR, 'ip'],
             link_phone_user: [3, HOUR, 'user'],
             confirm_link_phone_ip: [20, HOUR, 'ip'],

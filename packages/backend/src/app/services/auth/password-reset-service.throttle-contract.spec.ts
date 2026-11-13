@@ -32,6 +32,9 @@ const smsAuthChallengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    // feat-204: read before the SMS budget is spent, to refuse a third waiting session.
+    findPendingForPhoneFlow: vi.fn(),
+    invalidatePendingByIds: vi.fn(),
     lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
@@ -88,6 +91,7 @@ beforeEach(() => {
             ? undefined
             : { ...found, attemptCount: (found.attemptCount ?? 0) + 1 }
     })
+    smsAuthChallengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([])
     process.env['AUTH_PHONE_ENABLED'] = 'true'
     process.env['APP_KEY'] = 'a'.repeat(32)
     process.env['FRONTEND_URL'] = 'https://app.example.com'

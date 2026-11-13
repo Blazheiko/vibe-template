@@ -76,6 +76,18 @@ export const throttlePolicies = {
         HOUR_MS,
     ),
     resetPhoneIp: fixedWindow('reset_phone_ip', 'ip', authConfig.smsMaxSendsPerIpPerHour, HOUR_MS),
+    /**
+     * feat-204 (L-4): the codes tried against one number in a phone password reset, in a day.
+     * A challenge allows a few wrong codes and a number gets a few challenges an hour, which
+     * renews for ever: hundreds of guesses a day at a 6-digit code. This budget does not renew
+     * with a new challenge; a completed reset clears it.
+     */
+    resetPhoneCodeAttemptsPhone: fixedWindow(
+        'reset_phone_code_attempts_phone',
+        'phone',
+        readInt('AUTH_RESET_PHONE_MAX_CODE_ATTEMPTS_PER_DAY', 10),
+        24 * HOUR_MS,
+    ),
     confirmResetPhoneIp: fixedWindow(
         'confirm_reset_phone_ip',
         'ip',

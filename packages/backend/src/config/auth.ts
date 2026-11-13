@@ -17,6 +17,9 @@ export const authConfig = {
         20,
         { min: 0 },
     ),
+    // feat-204 (accepted risk): anyone who knows a number spends this budget, and three starts
+    // lock the owner out of SMS flows for the hour. It is what keeps SMS to a number, and their
+    // cost, bounded; see documentation/backend/auth.md.
     smsMaxSendsPerPhonePerHour: reader.int('AUTH_SMS_MAX_SENDS_PER_PHONE_PER_HOUR', 3, { min: 0 }),
     smsMaxSendsPerIpPerHour: reader.int('AUTH_SMS_MAX_SENDS_PER_IP_PER_HOUR', 10, { min: 0 }),
     emailRegisterMaxAttemptsPerEmailPerHour: reader.int(

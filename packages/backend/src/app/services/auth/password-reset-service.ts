@@ -15,13 +15,15 @@ import {
     invalidatePendingPhoneChallenges,
 } from '#app/services/auth/account-claim-service.js'
 import { emailService } from '#app/services/notifications/email-service.js'
-import { consumeAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
+import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import {
     confirmChallenge,
+    deliverChallenge,
     findPendingChallenge,
-    issueSmsChallenge,
-    openChallenge,
+    openSessionChallenge,
+    SESSION_CHALLENGES_FULL,
+    splitSessionChallenges,
     verifySmsCode,
 } from '#app/services/auth/sms-challenge.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
@@ -43,10 +45,7 @@ import {
 } from '#app/services/auth/auth-normalize.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { authConfig } from '#config/auth.js'
-import {
-    extractChallengeSessionId,
-    extractChallengeUserId,
-} from '#app/services/auth/sms-auth-challenge-metadata.js'
+import { extractChallengeUserId } from '#app/services/auth/sms-auth-challenge-metadata.js'
 import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-hash.js'
 import { Result } from 'better-result'
 import {
@@ -66,6 +65,9 @@ import { PRODUCT } from 'shared/product'
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
 export const GENERIC_RESET_MESSAGE =
     'If an account with that email exists, a reset link will be sent shortly.'
+/** feat-204: live reset challenges one number may have at once, one per browser session. */
+const MAX_LIVE_RESET_CHALLENGES = 2
+
 export const GENERIC_PHONE_RESET_MESSAGE =
     'If the phone number can be used for password reset, verification instructions will be sent shortly.'
 function buildResetUrl(token: string): string {
@@ -230,20 +232,23 @@ export const passwordResetService = {
             return Result.err(pendingChallengeResult.error)
         }
 
-        // A challenge that is still alive belongs to the session that started it. Only that
-        // session may replace it (below); a start from another session gets the generic answer
-        // and changes nothing — otherwise anyone who knows the number could cancel the owner's
-        // reset once a minute. Nothing is sent, so the SMS budget is not spent here either.
-        const waiting = pendingChallengeResult.value
-        if (waiting !== undefined && waiting.expiresAt.getTime() > Date.now()) {
-            const ownerSessionId = extractChallengeSessionId(waiting.metadata)
-            const sameSession =
-                ownerSessionId !== null &&
-                requestMeta.sessionId !== null &&
-                ownerSessionId === requestMeta.sessionId
-            if (!sameSession) {
-                return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })
-            }
+        // feat-204 (L-3): a live challenge belongs to the session that started it, and only
+        // that session replaces it (feat-160). Another session used to get the generic answer
+        // with no challenge at all, so whoever started first held the only one: the owner got
+        // the codes by SMS and no `challengeId` to use them with. Now another session opens a
+        // challenge of its own next to it, up to MAX_LIVE_RESET_CHALLENGES per number; nobody
+        // can cancel a reset they did not start. One more session than that gets the generic
+        // answer here, before anything is sent or spent.
+        const { others } = splitSessionChallenges(
+            await smsAuthChallengeRepository.findPendingForPhoneFlow(
+                normalizedPhone,
+                RESET_PHONE_FLOW,
+            ),
+            requestMeta.sessionId,
+            Date.now(),
+        )
+        if (others.length + 1 > MAX_LIVE_RESET_CHALLENGES) {
+            return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })
         }
 
         const phoneThrottle = await enforceThrottle(
@@ -272,9 +277,7 @@ export const passwordResetService = {
         const shouldSendSms = user?.email === null
 
         // After the cooldown the session that started the reset gets a new code (feat-160,
-        // decision Д5): `openChallenge` retires the challenge that was waiting. It used to hand
-        // the old challenge back without sending anything, so a user whose SMS never arrived had
-        // no way to get another one while the first challenge was alive.
+        // decision Д5): its waiting challenge is retired and a new one opened.
         const metadata = {
             ...(shouldSendSms ? { userId: String(user.id) } : { blind: true }),
             ipAddress: requestMeta.ipAddress,
@@ -282,35 +285,51 @@ export const passwordResetService = {
             ...(requestMeta.sessionId !== null ? { sessionId: requestMeta.sessionId } : {}),
         }
 
+        // The challenge is stored the same way for a number that gets an SMS and for one that
+        // does not (unknown, or an account with an e-mail): the latter with a code hash nobody
+        // can match, so the answer looks the same.
+        const opened = await openSessionChallenge({
+            phone: normalizedPhone,
+            flow: RESET_PHONE_FLOW,
+            ...(shouldSendSms ? {} : { codeHash: createBlindVerificationCodeHash() }),
+            metadata,
+            sessionId: requestMeta.sessionId,
+            maxLive: MAX_LIVE_RESET_CHALLENGES,
+        })
+        if (Result.isError(opened)) return Result.err(opened.error)
+        // Lost a race for the last place to another session's start.
+        if (opened.value === SESSION_CHALLENGES_FULL) {
+            return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })
+        }
+        const created = opened.value
+
+        // feat-204 (L-4): the code is sent after the answer, as the reset mail is. Waiting
+        // for the SMS provider here made a number that gets an SMS answer later than one that
+        // does not, which told which numbers are phone-only accounts. A failed send leaves
+        // no live challenge (deliverChallenge invalidates it) and is logged.
         if (shouldSendSms) {
-            const issuedResult = await issueSmsChallenge({
+            void deliverChallenge(created, {
                 phone: normalizedPhone,
                 flow: RESET_PHONE_FLOW,
                 metadata,
                 noLongerValid: 'Phone reset challenge is no longer valid',
-            })
-            if (Result.isError(issuedResult)) {
-                return Result.err(issuedResult.error)
-            }
-
-            return Result.ok({
-                message: GENERIC_PHONE_RESET_MESSAGE,
-                challengeId: issuedResult.value.id,
-                expiresAt: issuedResult.value.expiresAt.toISOString(),
-                resendAvailableAt: issuedResult.value.resendAvailableAt.toISOString(),
-            })
+            }).then(
+                (delivered) => {
+                    if (Result.isError(delivered)) {
+                        logger.warn(
+                            { phoneMasked: maskPhoneForLogs(normalizedPhone) },
+                            'Phone reset code was not recorded: the challenge is no longer valid',
+                        )
+                    }
+                },
+                (err: unknown) => {
+                    logger.error(
+                        { err, phoneMasked: maskPhoneForLogs(normalizedPhone) },
+                        'Phone reset code was not sent',
+                    )
+                },
+            )
         }
-
-        // Nothing to send: the number is unknown or the account has an e-mail. The challenge is
-        // stored all the same, with a code hash nobody can match, so the answer looks the same.
-        const opened = await openChallenge({
-            phone: normalizedPhone,
-            flow: RESET_PHONE_FLOW,
-            codeHash: createBlindVerificationCodeHash(),
-            metadata,
-        })
-        if (Result.isError(opened)) return Result.err(opened.error)
-        const created = opened.value
 
         return Result.ok({
             message: GENERIC_PHONE_RESET_MESSAGE,
@@ -460,6 +479,17 @@ export const passwordResetService = {
             return Result.err(badRequest('Phone reset challenge is no longer valid'))
         }
 
+        // feat-204 (L-4): every code tried against this number spends a daily budget that a
+        // new challenge does not renew. Spent before the comparison, like every other budget.
+        const attempts = await enforceThrottle(
+            throttlePolicies.resetPhoneCodeAttemptsPhone,
+            challenge.phone,
+            rateLimited('Too many verification attempts. Please try again later.'),
+        )
+        if (Result.isError(attempts)) {
+            return Result.err(attempts.error)
+        }
+
         const codeResult = await verifySmsCode(challenge, code, {
             noLongerValid: 'Phone reset challenge is no longer valid',
         })
@@ -516,6 +546,13 @@ export const passwordResetService = {
 
         // ADR 0002: best-effort memory cleanup, see the email reset above.
         await destroySessionsQuietly(previousSessionToken, updatedUser.id)
+
+        // feat-204: the owner proved the number; the day's budget of code attempts starts anew.
+        try {
+            await resetAuthThrottle(throttlePolicies.resetPhoneCodeAttemptsPhone, challenge.phone)
+        } catch (err: unknown) {
+            logger.warn({ err }, 'Phone reset code attempts budget was not cleared')
+        }
 
         userNotificationService.security(updatedUser.id, 'password_reset')
         // feat-199: a phone-only account has no address to mail; the page still shows the list.
