@@ -311,6 +311,13 @@ export interface RouteConfig<
      * tighten it. For a multipart upload it is the whole body: the file plus its framing.
      */
     maxBodySize?: number | undefined
+    /**
+     * The body is read only when the request carries the cookie of a signed-in session
+     * (feat-202); otherwise 401 before a byte is buffered. For routes behind `auth_guard`
+     * that take a large body: the body is read before the middlewares run, so without this
+     * an anonymous client makes the server buffer the whole upload to answer 401.
+     */
+    signedInBeforeBody?: boolean | undefined
 }
 
 // RouteItem with handler - uses function overload pattern for type erasure

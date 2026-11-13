@@ -6,7 +6,9 @@ import { detectBodyKind, resolveMaxBodySize } from './http-request-handlers.js'
 vi.mock('#config/app.js', () => ({
     default: {
         maxBodySize: 1,
-        maxJsonBodySize: 2,
+        maxJsonBodySize: 20,
+        // feat-202: what a JSON route gets without a limit of its own.
+        defaultJsonBodySize: 2,
         maxMultipartBodySize: 3,
         maxOctetStreamBodySize: 4,
     },
@@ -55,5 +57,24 @@ describe('resolveMaxBodySize with a route limit', () => {
 
     it('is the limit of the kind without a route limit', () => {
         expect(resolveMaxBodySize('multipart', undefined)).toBe(3)
+    })
+})
+
+// feat-202 (M-3): a body is read before authentication, and almost no route needs megabytes
+// of JSON; the ceiling used to be the limit of every JSON route.
+describe('resolveMaxBodySize for JSON', () => {
+    it('gives a route without a limit of its own the default, not the ceiling', () => {
+        expect(resolveMaxBodySize('json')).toBe(2)
+        expect(resolveMaxBodySize('json', undefined)).toBe(2)
+    })
+
+    it('lets a route ask for more than the default, up to the ceiling', () => {
+        expect(resolveMaxBodySize('json', 10)).toBe(10)
+        expect(resolveMaxBodySize('json', 20)).toBe(20)
+        expect(resolveMaxBodySize('json', 999)).toBe(20)
+    })
+
+    it('lets a route ask for less than the default', () => {
+        expect(resolveMaxBodySize('json', 1)).toBe(1)
     })
 })

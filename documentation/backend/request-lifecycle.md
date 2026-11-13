@@ -74,13 +74,14 @@ sequenceDiagram
 | `application/octet-stream…`                               | `octet`                         | `maxOctetStreamBodySize` | `APP_MAX_OCTET_BODY_SIZE`     | 52 428 800       |
 | `application/x-www-form-urlencoded…`, `text/plain…`, інше | `urlencoded` / `text` / `other` | `maxBodySize`            | `APP_MAX_BODY_SIZE`           | 2 097 152        |
 
-Це глобальні ліміти за типом. Маршрут може **звузити** їх опцією `maxBodySize` (байти, ціле число > 0; діє найменше з двох, розширити не можна; для multipart це все тіло, тобто файл плюс обгортка): так аватар обмежений 10 MiB + 64 KiB, скриншот KB — 5 MiB + 64 KiB. `maxBodySize` на маршруті методу без тіла або з некоректним значенням — помилка на старті (`routesHandler`).
+Це глобальні ліміти за типом. Для JSON маршрут без власного ліміту отримує не всю стелю, а `APP_DEFAULT_JSON_BODY_SIZE` (100 KB, feat-202); маршрут з `maxBodySize` може взяти більше, але не понад стелю. Маршрут може **звузити** ліміт свого типу опцією `maxBodySize` (байти, ціле число > 0; діє найменше з двох, розширити понад глобальний ліміт типу не можна; для multipart це все тіло, тобто файл плюс обгортка): так аватар обмежений 10 MiB + 64 KiB, скриншот KB — 5 MiB + 64 KiB. `maxBodySize` на маршруті методу без тіла або з некоректним значенням — помилка на старті (`routesHandler`).
 
 Значення читаються через `parseSize` у [config/app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts): лише додатне безпечне ціле число байт, інакше default (див. [Конфігурація](/backend/configuration#ліміти-тіла-запиту)). Ліміти маршрутів видно в playground (`bodyLimits`). JSON визначається регулярним виразом, тож `application/json; charset=utf-8` — це `json`, а `application/json-patch+json` — `other`.
 
 Порядок у `readAndParseBody`:
 
 1. Метод без тіла (`hasBody === false`) — тіло не читається, `payload = null`.
+    - Маршрут з `signedInBeforeBody: true` (завантаження аватара і скриншота бази знань, feat-202) спершу перевіряє cookie сесії: один HMAC, без I/O ([signed-in-cookie.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/signed-in-cookie.ts)). Без коректно підписаної cookie **залогіненої** сесії (анонімна не рахується) відповідь — `401` із закриттям з'єднання, і жоден байт тіла не буферизується. Чи сесія ще існує, вирішує `session_web` уже після читання тіла. Без цього анонімний клієнт змушував сервер прочитати все завантаження, щоб відповісти `401`.
 2. Немає `Content-Type`:
     - маршрут без `validator` — тіло не читається, `payload = null`;
     - маршрут з `validator`, є framing тіла (`Transfer-Encoding` або `Content-Length` не нуль; `0`, `00` тощо означають нуль байтів, [RFC 9110 §8.6](https://www.rfc-editor.org/rfc/rfc9110.html#section-8.6), а некоректне значення вважається тілом) — `UnsupportedMediaTypeError` з `receivedContentType: null` → **415** до читання тіла;

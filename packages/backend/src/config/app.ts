@@ -72,6 +72,9 @@ const config = Object.freeze({
     staticMaxMemoryTotal: parseSize(env['STATIC_MAX_MEMORY_TOTAL'], 67_108_864),
     maxBodySize: parseSize(env['APP_MAX_BODY_SIZE'], 2_097_152),
     maxJsonBodySize: parseSize(env['APP_MAX_JSON_BODY_SIZE'], 2_097_152),
+    // feat-202: the JSON limit of a route that sets none of its own (100 KB). A route raises
+    // it with `maxBodySize`, up to maxJsonBodySize.
+    defaultJsonBodySize: parseSize(env['APP_DEFAULT_JSON_BODY_SIZE'], 102_400),
     maxMultipartBodySize: parseSize(env['APP_MAX_MULTIPART_BODY_SIZE'], 52_428_800),
     maxOctetStreamBodySize: parseSize(env['APP_MAX_OCTET_BODY_SIZE'], 52_428_800),
     // feat-201: bytes of request bodies buffered at once, in total and per client address.

@@ -294,7 +294,8 @@ describe('serializeRoutes with non-ArkType describe()', () => {
 
 describe('serializeRoutes bodyLimits', () => {
     const handler = () => ({})
-    const json = { kind: 'json', maxBytes: appConfig.maxJsonBodySize }
+    // feat-202: a JSON route without a limit of its own gets the default, not the ceiling.
+    const json = { kind: 'json', maxBytes: appConfig.defaultJsonBodySize }
     const multipart = { kind: 'multipart', maxBytes: appConfig.maxMultipartBodySize }
     const bodyLimitsOf = (route: unknown): unknown =>
         (serializeRoutes([route])[0] as Record<string, unknown>)['bodyLimits']

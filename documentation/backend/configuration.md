@@ -99,6 +99,7 @@ DOMAIN=127.0.0.1:4000
 | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ | --------------------- | ---------------------- | ------------------------------------------------------------------------------------------------- |
 | `APP_MAX_BODY_SIZE`                  | Загальний ліміт тіла                                                                                                     | `2097152` (2 MiB)     | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | `APP_MAX_JSON_BODY_SIZE`             | Ліміт для JSON                                                                                                           | `2097152` (2 MiB)     | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
+| `APP_DEFAULT_JSON_BODY_SIZE`         | Ліміт JSON для маршруту без власного `maxBodySize`; маршрут може попросити більше, до `APP_MAX_JSON_BODY_SIZE`           | `102400` (100 KB)     | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | `APP_MAX_MULTIPART_BODY_SIZE`        | Ліміт для multipart                                                                                                      | `52428800` (50 MiB)   | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | `APP_MAX_OCTET_BODY_SIZE`            | Ліміт для `application/octet-stream`                                                                                     | `52428800` (50 MiB)   | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | `APP_MAX_INFLIGHT_BODY_BYTES`        | Скільки байтів тіл запитів процес буферизує одночасно, усього; понад це — `503`; `0` вимикає                             | `268435456` (256 MiB) | Ні                     | [app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
@@ -106,7 +107,7 @@ DOMAIN=127.0.0.1:4000
 
 Чому такі defaults:
 
-- **2 MiB для JSON і решти типів.** Реальні JSON-тіла значно менші, а зниження до 1 MiB змінило б поведінку без вигоди.
+- **2 MiB для JSON і решти типів** — це стеля. Тіло читається до автентифікації, тому маршрут без власного ліміту приймає лише `APP_DEFAULT_JSON_BODY_SIZE` (100 KB, feat-202): реальні JSON-тіла значно менші. Більше приймають лише маршрути, що прямо це оголосили: статті бази знань (30 000 символів тексту) і промпти (50 000). Їхній ліміт рахує `jsonBodyLimit` ([upload-limits.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/upload-limits.ts)): 6 байтів на символ (найгірший випадок — символ, екранований як `\uXXXX`) плюс 16 KiB на решту полів.
 - **50 MiB для multipart** — політика сумісності. Фактична потреба менша: файлові ліміти сервісів — 10 MB для аватара (`avatar-service.ts`) і 5 MB для скриншота бази знань (`knowledge-base-service.ts`), плюс невелика multipart-обгортка. Тож ліміт тіла можна знизити, не зачепивши наявні маршрути.
 - **50 MiB для octet.** `octet`-маршрутів у шаблоні немає.
 

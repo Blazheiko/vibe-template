@@ -26,6 +26,8 @@ import {
 } from '../utils/network/http-request-handlers.js'
 import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'
+import { SignInRequiredBeforeBodyError } from '#vendor/utils/network/errors/sign-in-required-before-body-error.js'
+import { isSignedInSessionCookie } from '#vendor/utils/session/signed-in-cookie.js'
 import { UnsupportedMediaTypeError } from '#vendor/utils/network/errors/unsupported-media-type-error.js'
 import {
     classifiedErrorBody,
@@ -215,6 +217,16 @@ export const readAndParseBody = async (
 }> => {
     if (!meta.hasBody) {
         return { payload: null, files: null }
+    }
+
+    // feat-202 (M-3): a route that takes its body only from a signed-in user refuses an
+    // anonymous request here, before a byte is buffered. One HMAC over the cookie, no I/O; the
+    // session middleware still decides whether that session exists.
+    if (
+        route.signedInBeforeBody === true &&
+        !isSignedInSessionCookie(meta.cookies.get(sessionConfig.cookieName))
+    ) {
+        throw new SignInRequiredBeforeBodyError()
     }
 
     const allowed: BodyKind[] = route.allowedContentTypes ?? ['json']

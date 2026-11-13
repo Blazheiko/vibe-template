@@ -45,10 +45,15 @@ const resolveKindLimit = (kind: BodyKind): number => {
 /**
  * The body limit of a request: the global limit of its kind, tightened by the route's
  * own `maxBodySize` when it has one (never loosened).
+ *
+ * feat-202: a JSON route without a limit of its own gets `defaultJsonBodySize` (100 KB), not
+ * the whole `maxJsonBodySize`: a body is read before authentication, and almost no route needs
+ * megabytes of JSON. A route that does says so with `maxBodySize`, up to `maxJsonBodySize`.
  */
 export const resolveMaxBodySize = (kind: BodyKind, routeLimit?: number): number => {
     const kindLimit = resolveKindLimit(kind)
-    return routeLimit === undefined ? kindLimit : Math.min(kindLimit, routeLimit)
+    if (routeLimit !== undefined) return Math.min(kindLimit, routeLimit)
+    return kind === 'json' ? Math.min(kindLimit, config.defaultJsonBodySize) : kindLimit
 }
 
 // ─── Headers ─────────────────────────────────────────────────────────────────

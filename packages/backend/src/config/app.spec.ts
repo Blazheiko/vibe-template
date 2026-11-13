@@ -36,6 +36,32 @@ describe('parseSize via APP_MAX_JSON_BODY_SIZE', () => {
     )
 })
 
+// feat-202: what a JSON route takes without a limit of its own.
+describe('APP_DEFAULT_JSON_BODY_SIZE', () => {
+    const original = process.env['APP_DEFAULT_JSON_BODY_SIZE']
+    const load = async (value: string | undefined): Promise<number> => {
+        if (value === undefined) delete process.env['APP_DEFAULT_JSON_BODY_SIZE']
+        else process.env['APP_DEFAULT_JSON_BODY_SIZE'] = value
+        vi.resetModules()
+        const { default: config } = await import('./app.js')
+        return config.defaultJsonBodySize
+    }
+    afterEach(() => {
+        if (original === undefined) delete process.env['APP_DEFAULT_JSON_BODY_SIZE']
+        else process.env['APP_DEFAULT_JSON_BODY_SIZE'] = original
+    })
+
+    it('defaults to 100 KB', async () => {
+        expect(await load(undefined)).toBe(102_400)
+    })
+
+    it('reads a number of bytes and falls back to the default for anything else', async () => {
+        expect(await load('4096')).toBe(4096)
+        expect(await load('0')).toBe(102_400)
+        expect(await load('abc')).toBe(102_400)
+    })
+})
+
 // feat-201: the in-flight body budget. Unlike the size limits, `0` is a value: it switches
 // the limit off.
 describe('APP_MAX_INFLIGHT_BODY_BYTES and APP_MAX_INFLIGHT_BODY_BYTES_PER_IP', () => {

@@ -42,6 +42,7 @@ const createRoute = (
         description: route.description,
         allowedContentTypes: route.allowedContentTypes,
         maxBodySize: route.maxBodySize,
+        signedInBeforeBody: route.signedInBeforeBody,
         ...(responseSchema !== undefined ? { ResponseSchema: responseSchema } : {}),
         // Built once here; null only for a route without a ResponseSchema.
         responseCheck: createResponseCheck(responseSchema, responseValidationConfig),
@@ -70,6 +71,12 @@ const routeHandler = (route: RouteItem, groupRateLimit?: RateLimit): NormalizedR
                 `Route ${route.method.toUpperCase()} ${route.url}: maxBodySize must be a positive integer (bytes), got ${String(route.maxBodySize)}.`,
             )
         }
+    }
+    if (route.signedInBeforeBody === true && isNoBodyMethod(method)) {
+        throw new Error(
+            `Route ${route.method.toUpperCase()} ${route.url} sets signedInBeforeBody, ` +
+                `but ${route.method.toUpperCase()} requests never read a body.`,
+        )
     }
     return createRoute(method, route, groupRateLimit)
 }
