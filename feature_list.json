@@ -2091,8 +2091,8 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-closes-on-session-logout",
             "dependencies": ["feat-195", "feat-209"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #639 (merge 1a0c3a5): recheckSessions also asks Redis (sessionsExist, one pipeline per 1000 sessions) whether the stored session of every connection exists and closes the connections of those that do not; the registry keeps the connections being opened (beginConnecting / revokeConnecting), closeUserConnections marks them, and handleConnected closes a connection that was marked, whose stored session is gone, or whose token was rotated; docs uk+en (backend/websocket, configuration). make check passing (backend 2978, frontend 583, playground 115), test:pg 322, test:redis 117, live e2e 15, docs:build + docs:verify; CI on 0a53a19: quality, e2e, e2e-live, test-pg, test-redis green. Negative control: with the source reverted the PG test of a logout handled by another instance gets expected 0 to be 2 and 7 unit tests fail. Manual check on two real instances (ports 3100 and 3102, one PostgreSQL and Redis, WS_SESSION_RECHECK_INTERVAL_MS=2000 on the second): a WebSocket opened on instance B stays open through 5 s of re-checks and is closed with 4001 by B's re-check about 3 s after POST /api/auth/logout on instance A."
         },
         {
             "id": "feat-211",
@@ -2101,7 +2101,7 @@
             "owner": "Blazheiko",
             "branch": "fix/url-token-path-variants",
             "dependencies": ["feat-205", "feat-208"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
