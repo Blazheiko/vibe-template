@@ -2031,8 +2031,8 @@
             "owner": "Blazheiko",
             "branch": "fix/phone-reset-hardening",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #622 (merge c6ebf3b): a phone reset challenge belongs to a browser session; a start from another session opens its own challenge next to the waiting one (openSessionChallenge) instead of getting none, a start retires only its session's own challenges and expired leftovers, at most two live per number, a third session gets the generic answer with nothing sent and no SMS budget spent; every code tried against a number in reset-phone/complete spends a daily budget (resetPhoneCodeAttemptsPhone, 10 per day, AUTH_RESET_PHONE_MAX_CODE_ATTEMPTS_PER_DAY) that a new challenge does not renew and a completed reset clears; the SMS is sent after the answer and a failed send no longer changes it; accepted risk documented (the hourly SMS budget of a number can be spent by anyone who knows it; ten wrong codes block the reset for the day); docs uk+en (backend/auth, security, configuration). make check passing (backend 2940, frontend 558, playground 115), test:pg 319 and test:redis 117 passing on real services (reset-phone-session-challenges.pg.test.ts incl. three sessions starting at once), docs:build+verify passing; RED: with password-reset-service.ts as on main 15 cases fail; manual on the real stack with the fake SMS provider: an attacker session started first, the owner session still got its own challenge and completed the reset, a third session got none, the attacker challenge was dead afterwards, sign-in with the new password worked; whole e2e-live 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. Not measured: the response time for a known and an unknown number. Details were in progress.md on fix/phone-reset-hardening (removed from main by this PR)."
         },
         {
             "id": "feat-205",
