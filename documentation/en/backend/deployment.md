@@ -53,7 +53,7 @@ flowchart LR
 
 **The `builder` stage**
 
-1. The `ubuntu:24.04` image. Node.js 24 is installed from NodeSource, pnpm `9.15.0` is enabled via corepack.
+1. The `ubuntu:24.04` image, pinned by digest (`ubuntu:24.04@sha256:…`); Dependabot updates the digest. Node.js 24 is installed from the NodeSource apt repository, which the [`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) adds itself: the signing key is downloaded and checked against the `NODESOURCE_ASC_SHA256` hash, and apt checks the packages against that key. The `setup_24.x` script is not run through `curl | bash`. When NodeSource replaces the key, the build stops at the hash check: compare the new key with their announcement and update the value. pnpm `9.15.0` is enabled via corepack.
 2. First only `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml` and the `package.json` files of the three packages are copied, then `pnpm install --frozen-lockfile` runs. This way the dependency layer is cached.
 3. `COPY . .` copies the project without what [`.dockerignore`](https://github.com/Blazheiko/vibe-template/blob/main/.dockerignore) excludes: `.git`, `node_modules`, `dist`, `coverage`, test reports, the VitePress cache and all `.env`/`.env.*` except `.env.example`. So local secrets end up neither in the build context nor in the builder stage layers, and the local `packages/frontend/.env` is not baked into the frontend bundle — Vite sees only `VITE_SENTRY_*` from the build arguments.
 4. The `API_PATH_PREFIX`, `VITE_BASE_URL`, `VITE_AUTH_PHONE_ENABLED` and `VITE_SENTRY_*` build arguments (DSN, ENABLED, ENVIRONMENT, RELEASE, sample rates) become `ENV`, because Vite bakes them into the bundle at build time. The Vite config derives `VITE_API_PATH_PREFIX` from `API_PATH_PREFIX` itself ([one source](/en/backend/configuration#one-source-for-the-api-address-and-prefix)).
@@ -61,10 +61,10 @@ flowchart LR
 
 **The `production` stage**
 
-1. `ubuntu:24.04` + Node 24 + pnpm again. `COREPACK_HOME=/opt/corepack` (readable by everyone), so that the `app` user runs the already prepared pnpm without a network. A system user `app` (uid < 1000) is created with the home directory `/home/app` — pnpm needs it for one-shot runs.
+1. `ubuntu:24.04` by the same digest + Node 24 (the same way as in `builder`) + pnpm again. `COREPACK_HOME=/opt/corepack` (readable by everyone), so that the `app` user runs the already prepared pnpm without a network. A system user `app` (uid < 1000) is created with the home directory `/home/app` — pnpm needs it for one-shot runs.
 2. `pnpm install --frozen-lockfile --prod --filter backend...` installs only the production dependencies of the backend and its workspace dependencies. `drizzle-kit` is in the backend's `dependencies`, so it ends up in the image.
 3. `ENV NODE_ENV=production`.
-4. From `builder` the following are copied: `packages/backend/dist`, `packages/shared/dist`, `packages/backend/public`, `packages/backend/public-test`, `drizzle.config.ts` together with `src/config/database.ts`, `src/drizzle/migrations` and `docs/support-knowledge-base` (read by [`knowledge-base-init-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-init-service.ts)).
+4. From `builder` the following are copied: `packages/backend/dist`, `packages/shared/dist`, `packages/backend/public`, `drizzle.config.ts` together with `src/config/database.ts`, `src/drizzle/migrations` and `docs/support-knowledge-base` (read by [`knowledge-base-init-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-init-service.ts)). `packages/backend/public-test` is not copied into the image: the `APP_ENV=manual-test` mode is for local development only.
 5. `EXPOSE 3000`, `WORKDIR /app/packages/backend`, `USER app`. The application files belong to root and are read-only: at runtime the application writes nothing to disk.
 6. `HEALTHCHECK` (interval 30 s, timeout 5 s, start-period 20 s, retries 3): `curl -fsS http://127.0.0.1:${PORT:-3000}/api/ready | grep -q '"status":"ok"'` — readiness: the container is `healthy` only when PostgreSQL and Redis respond (see [Observability](/en/backend/observability#health-check)). The body is checked, not just the code: with `SERVE_STATIC=true` any unknown path returns `index.html` with status 200 (SPA fallback), so a status-only check would pass even with a wrong path.
 7. `CMD ["node", "dist/index.js"]` — PID 1 is Node, so `SIGTERM` from `docker stop` reaches `stopGracefully`. Migrations are **not** run at startup.
@@ -204,12 +204,15 @@ done
 
 ## CI/CD
 
-There are four workflows in `.github/workflows`:
+There are five workflows in `.github/workflows`:
 
 - [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml) — on every PR and push to `main`: the `quality` job (`make check` and coverage), `e2e` (Playwright) and `e2e-live` (the SPA against the real backend, PostgreSQL and Redis).
 - [`pg-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/pg-tests.yml) — the `*.pg.test.ts` integration tests against PostgreSQL with pgvector (`pnpm --filter backend test:pg`), when the backend or `shared` changes.
 - [`redis-tests.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/redis-tests.yml) — the `*.redis.test.ts` integration tests against Redis (`pnpm --filter backend test:redis`), on the same paths.
 - [`docs.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/docs.yml) — builds and deploys this documentation site.
+- [`audit.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/audit.yml) — once a week and on demand: `pnpm audit --prod` prints the full report and fails on a high or critical advisory. It reads only `pnpm-lock.yaml` and installs no dependencies.
+
+**Dependencies.** [`dependabot.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/dependabot.yml) updates GitHub Actions (pinned to SHAs), the base image digest in the `Dockerfile` (`docker`), and opens PRs only for vulnerable npm packages (`npm` with `open-pull-requests-limit: 0`; "Dependabot security updates" must be enabled in the repository settings). `pnpm.onlyBuiltDependencies` in the root [`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json) allows lifecycle scripts only for `esbuild`: pnpm does not run the `postinstall` of any other dependency. If a new dependency needs a build at install time, add it to this list deliberately.
 
 ::: warning
 There is no workflow that builds and publishes the Docker image or deploys the application. The image is built and published manually.

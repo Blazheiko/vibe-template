@@ -48,6 +48,9 @@
         "typescript-eslint": "^8.72.1"
     },
     "pnpm": {
+        "onlyBuiltDependencies": [
+            "esbuild"
+        ],
         "overrides": {
             "@typescript-eslint/utils": "^8.72.1",
             "@typescript-eslint/typescript-estree": "^8.72.1",

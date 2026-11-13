@@ -1,7 +1,24 @@
 version: 2
 updates:
-  # Actions are pinned to commit SHAs (with the version in a comment); Dependabot bumps both.
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
+    # Actions are pinned to commit SHAs (with the version in a comment); Dependabot bumps both.
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+
+    # feat-207 (L-18): both stages of the Dockerfile pin ubuntu:24.04 by digest; this moves it.
+    - package-ecosystem: docker
+      directory: /
+      schedule:
+          interval: weekly
+
+    # feat-207 (L-19): security updates only. The limit of 0 switches version updates off (the
+    # toolchain is pinned on purpose: TypeScript, drizzle rc, see AGENTS.md) and leaves the pull
+    # requests Dependabot opens for an advisory. They need "Dependabot security updates" to be
+    # enabled in the repository settings. The weekly audit.yml reports the same advisories
+    # without that setting.
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: weekly
+      open-pull-requests-limit: 0

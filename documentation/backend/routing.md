@@ -242,7 +242,7 @@ WS-маршрути оголошено через **WS-контракти** ([AD
 
 [`src/vendor/utils/routing/serialize-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/serialize-routes.ts) серіалізує вихідні HTTP- і WS-маршрути (URL, метод, middleware, опис, схеми). Сервер віддає їх на `GET /${pathPrefix}/doc/routes` як JSON `{ httpRoutes, wsRoutes, pathPrefix }`, але **лише** якщо одночасно:
 
-- `APP_ENV=manual-test`;
+- `APP_ENV=manual-test` (локальний режим розробки: каталогу `public-test` у Docker-образі немає);
 - `DOC_PAGE=true` (`configApp.docPage`, за замовчуванням `false`);
 - `SERVE_STATIC=true`.
 
