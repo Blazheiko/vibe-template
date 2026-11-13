@@ -1961,8 +1961,8 @@
             "owner": "Blazheiko",
             "branch": "fix/ws-connection-limits",
             "dependencies": ["feat-196"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #601 (merge a92be3a): the upgrade takes a place among the open connections of its user (WS_MAX_CONNECTIONS_PER_USER, 10) and of its IP address (WS_MAX_CONNECTIONS_PER_IP, 50) right before res.upgrade and onClose gives it back, an upgrade over a limit gets 429 with Retry-After (per process, 0 = off); an event no route answers is answered not_found before the session read; the first binary frame closes the connection with 1003 and one warn line; the per-route WS limit is keyed by user, not by IP; docs uk+en (backend/websocket, security, configuration). make check passing (backend 2764, frontend 549, playground 115), test:pg 307 and test:redis 116 passing on real services incl. the real uWS server (eleventh connection refused and accepted once one closes, binary frame closes with 1003), docs:build+verify passing; RED: with ws-handlers.ts and ws-rate-limit.ts as on main 11 of the new unit tests fail; whole e2e-live suite 14 of 14 passed; CI all jobs passing incl. e2e-live, test-pg, test-redis. The message budget stays per connection (decision Д1). Details were in progress.md on fix/ws-connection-limits (removed from main by this PR)."
         },
         {
             "id": "feat-198",
