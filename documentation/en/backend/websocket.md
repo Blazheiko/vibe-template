@@ -125,7 +125,7 @@ All these structures live in the memory of a single process: with several instan
 
 ## Message protocol
 
-The client sends text JSON (binary messages are ignored with an error log). The shape is checked by [ws-message-validator.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/ws-message-validator.ts) (ArkType via the `defaultValidator` adapter):
+The client sends text JSON (a binary frame closes the connection with code `1003` and one `warn` line, feat-197). The shape is checked by [ws-message-validator.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/ws-message-validator.ts) (ArkType via the `defaultValidator` adapter):
 
 ```ts
 const WsMessageSchema = type({
@@ -187,7 +187,7 @@ Service events come in the reply envelope. `isWsBroadcast(message)` tells a broa
 [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts):
 
 1. The route name is the part of `event` up to the first `:`; it is looked up by an **exact match** in `wsRoutesByUrl` ([router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts), `createWsRoutesByUrl`). The keys are the full URL with `pathPrefix`, group and `url`, for example `api/support/support_chat`.
-2. `checkRateLimitWs` ([ws-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-rate-limit.ts)) — the route or group limit, keyed by IP + URL.
+2. `checkRateLimitWs` ([ws-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-rate-limit.ts)) — the route or group limit, keyed by user + URL.
 3. `validateRoutePayload`, if the route has a `validator`; the payload is frozen (`Object.freeze`).
 4. `createWsContext` → the route middleware (if any) → `handler(context)`; the result is put into `responseData.data`.
 
@@ -205,7 +205,7 @@ Service events come in the reply envelope. `isWsBroadcast(message)` tells a broa
 
 ### Connection message budget
 
-The route limit is checked in the dispatcher, that is after a valid message has already cost a session read: a Redis command and a PostgreSQL query; for an unknown event it is not checked at all. So the first thing `onMessage` does is check the connection's budget ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). The budget state lives in the connection's `userData`: no Redis, in process memory, gone with the socket.
+The route limit is checked in the dispatcher, that is after a valid message has already cost a session read: a Redis command and a PostgreSQL query. An event no route answers never reaches the session read: `onMessage` answers `not_found` from memory (feat-197), so it costs only a place in the connection's budget. So the first thing `onMessage` does is check the connection's budget ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). The budget state lives in the connection's `userData`: no Redis, in process memory, gone with the socket.
 
 | What is counted                                   | Limit                                       | Over the limit                                                                |
 | ------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -313,9 +313,10 @@ WS route keys on the server are `<API_PATH_PREFIX>/<route>`. The frontend takes 
 ## Limits and security
 
 - **Message size**: `maxPayloadLength` of 1 MB at the uWS level; there is no separate setting for WS (see [Request lifecycle](/en/backend/request-lifecycle)).
-- **Message rate limit**: per-route/per-group via `checkRateLimitWs`, with the counter in process memory (the connection lives on a single instance), keyed by IP + route URL — by IP, not by connection, so that the budget is not multiplied by new connections. A group limit applies to each route of the group separately, not to the whole group together. If the check fails, the request is denied (`allowed: false`, `retryAfter: 1`).
+- **Message rate limit**: per-route/per-group via `checkRateLimitWs`, with the counter in process memory (the connection lives on a single instance), keyed by user + route URL — by user, not by connection or IP (feat-197): the budget is not multiplied by new connections or addresses, and users behind one NAT do not share it. A group limit applies to each route of the group separately, not to the whole group together. If the check fails, the request is denied (`allowed: false`, `retryAfter: 1`).
 - **Route authorization**: all WS routes require a valid session (checked in `onMessage`); revoking a session (a logout, "log out everywhere", a password change or reset, ADR 0002) **closes** the open connections of that session with code `4001` (see [Revoking a session](#revoking-a-session)), while new connections are rejected by the check during upgrade; the `admin` role for the `admin/*` group is checked by `ws_admin_guard`, and for the channel by the channel service, both by the connection's role (see [Revoking admin access](#revoking-admin-access)). More details — [Authentication](/en/backend/auth#websocket-authorization).
 
+- **Limit of simultaneous connections** (feat-197, [ws-connection-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-connection-limit.ts)): at most `WS_MAX_CONNECTIONS_PER_USER` (10 by default) open connections per user and `WS_MAX_CONNECTIONS_PER_IP` (50 by default) per IP address; `0` switches a limit off. The check and taking the place are one synchronous step right before `res.upgrade`, so parallel upgrades cannot take the last place together; `onClose` gives the place back. An extra upgrade gets `429` with `Retry-After: 5` (the browser sees a failed handshake, the client retries with a new token at most once per 5 s). Without this limit the message budget, which is counted per connection, was multiplied by the number of sockets of one account. The counters live in process memory: with several instances the limit applies to each one. The IP limit counts everyone behind one NAT — raise it for an office or a campus; behind a reverse proxy without a correct `TRUST_PROXY` all clients have the proxy's address and share these 50 connections ([Security](/en/backend/security)).
 - **Upgrade rate limit, two levels**, both per IP and independent of HTTP L1: level 1 in process memory (`WS_UPGRADE_RATE_LIMIT_*`, 120/min) cuts off floods before any I/O; level 2 in Redis (`WS_UPGRADE_SHARED_RATE_LIMIT_*`, 60/min) is a shared budget for all instances. Both are checked before the token format and the session lookup, so invalid tokens spend the budget too. If Redis for limits is unavailable, level 2 is skipped and only level 1 applies. Regular HTTP requests to `/<pathPrefix>/websocket` are counted in HTTP L1. Details — [Rate limiting](/en/backend/security#rate-limiting).
 - **`ping`/`pong`** (heartbeat) is handled in `onMessage` before the dispatcher and is not subject to the message rate limit.
 

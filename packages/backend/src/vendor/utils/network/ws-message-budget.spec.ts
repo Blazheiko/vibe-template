@@ -16,6 +16,16 @@ const wsSessionHandler = vi.hoisted(() => vi.fn())
 vi.mock('../session/session-handler.js', () => ({ wsSessionHandler }))
 
 const handlers = await import('./ws-handlers.js')
+
+// feat-197: an event no route answers is refused before the session is read, so the events of
+// these tests need a route. The dispatcher is mocked: only the names matter.
+const ROUTES = {
+    main: {},
+    support: {},
+    user: {},
+    'api/user/me': {},
+    'some/route': {},
+} as never
 const { WS_PINGS_PER_MINUTE, WS_CLOSE_MESSAGE_FLOOD } =
     await import('../rate-limit/ws-message-budget.js')
 handlers.registerWsAppHooks({
@@ -55,7 +65,7 @@ const createConnection = () => {
             ws as never,
             bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
             false,
-            {},
+            ROUTES,
         )
     }
     const replies = (): Record<string, unknown>[] =>
@@ -64,7 +74,7 @@ const createConnection = () => {
 }
 
 const unknownEvent = (n: number): string =>
-    JSON.stringify({ event: 'no/such/route', timestamp: n, payload: null })
+    JSON.stringify({ event: 'some/route', timestamp: n, payload: null })
 
 beforeEach(() => {
     vi.clearAllMocks()
@@ -81,6 +91,82 @@ beforeEach(() => {
     )
 })
 
+// feat-197 (M-4): an event no route answers cost a session read (a Redis command and a query on
+// the pool the HTTP session checks share) and no route limit applied to it.
+describe('an event no route answers', () => {
+    const noSuchRoute = (n: number, id?: string): string =>
+        JSON.stringify({
+            event: 'no/such/route:x',
+            timestamp: n,
+            payload: null,
+            ...(id !== undefined ? { id } : {}),
+        })
+
+    it('is answered not_found without reading the session or reaching the dispatcher', async () => {
+        const { ws, send, replies } = createConnection()
+
+        await send(noSuchRoute(7, 'req-7'))
+
+        expect(wsSessionHandler).not.toHaveBeenCalled()
+        expect(wsApiHandler).not.toHaveBeenCalled()
+        expect(replies()).toEqual([
+            {
+                event: 'no/such/route:x',
+                id: 'req-7',
+                status: 'error',
+                data: null,
+                timestamp: 7,
+                error: expect.objectContaining({ code: 'not_found' }),
+            },
+        ])
+        expect(ws.end).not.toHaveBeenCalled()
+    })
+
+    it('does not treat an inherited property as a route', async () => {
+        const { send, replies } = createConnection()
+
+        await send(JSON.stringify({ event: 'constructor', timestamp: 1, payload: null }))
+
+        expect(wsSessionHandler).not.toHaveBeenCalled()
+        expect(replies()[0]).toMatchObject({ error: { code: 'not_found' } })
+    })
+
+    it('still counts against the message budget', async () => {
+        const { send, replies } = createConnection()
+
+        for (let n = 1; n <= BUDGET + 1; n += 1) await send(noSuchRoute(n))
+
+        expect(wsSessionHandler).not.toHaveBeenCalled()
+        expect(replies()[BUDGET]).toMatchObject({ error: { code: 'rate_limited' } })
+    })
+})
+
+// feat-197 (L-11): binary frames used to return before the budget was looked at.
+describe('a binary frame', () => {
+    it('closes the connection with 1003 on the first frame, with one warn line', async () => {
+        const { ws } = createConnection()
+
+        await handlers.onMessage(ws as never, new ArrayBuffer(8), true, ROUTES)
+
+        expect(ws.end).toHaveBeenCalledTimes(1)
+        expect(ws.end).toHaveBeenCalledWith(1003, 'Binary frames are not supported')
+        expect(logger.warn).toHaveBeenCalledTimes(1)
+        expect(logger.error).not.toHaveBeenCalled()
+        expect(wsSessionHandler).not.toHaveBeenCalled()
+        expect(ws.send).not.toHaveBeenCalled()
+    })
+
+    it('touches nothing when the socket has closed already', async () => {
+        const { ws } = createConnection()
+        ;(ws.getUserData() as { closed?: boolean }).closed = true
+
+        await handlers.onMessage(ws as never, new ArrayBuffer(8), true, ROUTES)
+
+        expect(ws.end).not.toHaveBeenCalled()
+        expect(logger.warn).not.toHaveBeenCalled()
+    })
+})
+
 describe('WS message budget of a connection', () => {
     it('checks the session for valid messages only until the budget is used up', async () => {
         const { send, replies } = createConnection()
@@ -92,7 +178,7 @@ describe('WS message budget of a connection', () => {
         expect(replies()[BUDGET]).toMatchObject({
             status: 'error',
             data: null,
-            event: 'no/such/route',
+            event: 'some/route',
             error: { code: 'rate_limited' },
         })
     })
@@ -146,7 +232,7 @@ describe('WS message budget of a connection', () => {
 // reply (ADR 0006, feat-180); without it the client cannot match it and waits for its timeout.
 describe('early refusal keeps the request id', () => {
     const withId = (n: number, id: unknown): string =>
-        JSON.stringify({ event: 'no/such/route', id, timestamp: n, payload: null })
+        JSON.stringify({ event: 'some/route', id, timestamp: n, payload: null })
 
     it('over the message budget', async () => {
         const { send, replies } = createConnection()
@@ -155,7 +241,7 @@ describe('early refusal keeps the request id', () => {
         await send(withId(BUDGET + 1, 'req-over-budget'))
 
         expect(replies()[BUDGET]).toMatchObject({
-            event: 'no/such/route',
+            event: 'some/route',
             id: 'req-over-budget',
             error: { code: 'rate_limited' },
         })

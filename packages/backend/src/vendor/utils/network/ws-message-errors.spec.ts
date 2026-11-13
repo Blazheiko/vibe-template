@@ -12,6 +12,16 @@ vi.mock('../session/session-handler.js', () => ({ wsSessionHandler }))
 
 const validate = vi.fn()
 const handlers = await import('./ws-handlers.js')
+
+// feat-197: an event no route answers is refused before the session is read, so the events of
+// these tests need a route. The dispatcher is mocked: only the names matter.
+const ROUTES = {
+    main: {},
+    support: {},
+    user: {},
+    'api/user/me': {},
+    'some/route': {},
+} as never
 handlers.registerWsAppHooks({
     onUpgrade: vi.fn(),
     onConnected: vi.fn(),
@@ -40,7 +50,7 @@ const message = (text: string): ArrayBuffer => {
 
 const send = async (text: string) => {
     const ws = createWs()
-    await handlers.onMessage(ws as never, message(text), false, {})
+    await handlers.onMessage(ws as never, message(text), false, ROUTES)
     expect(ws.sent).toHaveLength(1)
     return JSON.parse(ws.sent[0] ?? '') as Record<string, unknown>
 }

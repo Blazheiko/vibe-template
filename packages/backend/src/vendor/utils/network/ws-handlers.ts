@@ -35,6 +35,12 @@ import {
     type WsMessageBudgetState,
 } from '#vendor/utils/rate-limit/ws-message-budget.js'
 import { createWsRateLimitErrorResponse } from '#vendor/utils/rate-limit/ws-rate-limit.js'
+import {
+    acquireWsConnection,
+    releaseWsConnection,
+} from '#vendor/utils/rate-limit/ws-connection-limit.js'
+import { clientKey } from '#vendor/utils/rate-limit/rate-limit-store.js'
+import { findWsRoute } from '#vendor/utils/routing/ws-route-lookup.js'
 import type { Validator } from '#vendor/contracts/validator.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
@@ -154,6 +160,15 @@ const serviceUnavailableMessage = (event: string, id: string | undefined): WsRes
     ),
 })
 
+const routeNotFoundMessage = (message: WsMessage): WsResponseData => ({
+    event: message.event,
+    ...(message.id !== undefined ? { id: message.id } : {}),
+    status: 'error',
+    data: null,
+    timestamp: message.timestamp,
+    error: createWsErrorEnvelope('not_found', 'Route not found'),
+})
+
 const closeExpiredSession = (ws: MyWebSocket, userData: UserConnection): void => {
     // feat-128: the session lookup before this is awaited; a socket that closed meanwhile is
     // gone already, and touching it would throw.
@@ -234,6 +249,19 @@ const closeFloodingConnection = (ws: MyWebSocket, userData: UserConnection): voi
     }
 }
 
+/** 1003: the endpoint received a type of data it cannot accept (RFC 6455). */
+const WS_CLOSE_UNSUPPORTED_DATA = 1003
+
+const closeBinaryConnection = (ws: MyWebSocket, userData: UserConnection): void => {
+    if (userData.closed === true) return
+    logger.warn({ userId: userData.userId }, 'WebSocket closed: binary frames are not supported')
+    try {
+        ws.end(WS_CLOSE_UNSUPPORTED_DATA, 'Binary frames are not supported')
+    } catch (e) {
+        logger.error({ err: e }, 'Error closing a WebSocket after a binary frame')
+    }
+}
+
 // A message over the budget (or over the running handlers) is answered with the request's event
 // and id when they can be read, so the client rejects the matching promise at once (ADR 0006:
 // a reply is matched by its id, feat-185); nothing else runs for it: no Redis, no session.
@@ -270,12 +298,15 @@ const onMessage = async (
     isBinary: boolean,
     wsRoutesByUrl: Readonly<WsRoutes>,
 ): Promise<void> => {
+    const userData = ws.getUserData()
+    // feat-197 (L-11): the protocol is text only. A binary frame used to be dropped before the
+    // message budget saw it, with an error line each, so a client could send them (up to
+    // maxPayloadLength) at any rate. The first one closes the connection.
     if (isBinary) {
-        logger.error('onMessage isBinary is not supported')
+        closeBinaryConnection(ws, userData)
         return
     }
     const jsonMessage = ab2str(wsMessage)
-    const userData = ws.getUserData()
 
     const now = Date.now()
     const budget = messageBudgetOf(userData, now)
@@ -351,6 +382,15 @@ const handleAdmittedMessage = async (
         }
         const message = validatedMessage.value
 
+        // feat-197 (M-4): an event no route answers is refused here, from memory. It used to
+        // cost a session read (a Redis command and a PostgreSQL query on the pool the HTTP
+        // session checks share) before the dispatcher said not_found, and no route limit
+        // applies to it.
+        if (findWsRoute(wsRoutesByUrl, message.event) === undefined) {
+            sendJson(ws, routeNotFoundMessage(message), userData)
+            return
+        }
+
         const { sessionId, userToken } = userData
         const sessionResult =
             sessionId !== undefined && userToken !== undefined
@@ -362,7 +402,7 @@ const handleAdmittedMessage = async (
         } else if (sessionResult.kind === 'missing') {
             closeExpiredSession(ws, userData)
         } else {
-            // The dispatcher always answers, an unknown route included (not_found).
+            // The dispatcher always answers.
             const result = await wsApiHandler(
                 message,
                 ws,
@@ -513,6 +553,13 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
     }
     wsStorage.delete(ws)
 
+    // feat-197: the place this connection took at upgrade is free again.
+    const slot = userData.connectionSlot
+    if (slot !== undefined) {
+        userData.connectionSlot = undefined
+        releaseWsConnection(slot)
+    }
+
     const { userId, sessionId } = userData
     let disconnected: Promise<void> | undefined
     if (userId !== undefined && sessionId !== undefined) {
@@ -531,6 +578,9 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
         }
     }
 }
+
+// A place frees when one of the open connections closes; nothing says when.
+const WS_CONNECTION_LIMIT_RETRY_AFTER_SECONDS = 5
 
 const rejectUpgrade = (
     res: HttpResponse,
@@ -658,6 +708,23 @@ const upgradeConnection = async (
     }
 
     const dataAccess = tokenResult
+
+    // feat-197 (M-4): a place among the connections of this user and of this address. Taken
+    // here, with nothing awaited between the check and res.upgrade, and given back in onClose.
+    const admission = acquireWsConnection(dataAccess.userId, clientKey(ip), configWebsocket)
+    if (admission.kind === 'limited') {
+        logger.warn(
+            { userId: dataAccess.userId, ip, by: admission.by },
+            'WebSocket upgrade refused: too many open connections',
+        )
+        res.cork(() => {
+            res.writeStatus('429 Too Many Requests')
+                .writeHeader('Retry-After', String(WS_CONNECTION_LIMIT_RETRY_AFTER_SECONDS))
+                .end('Too many open WebSocket connections')
+        })
+        return
+    }
+
     res.cork(() => {
         const userData: UserData = {
             ip,
@@ -670,8 +737,15 @@ const upgradeConnection = async (
             timeStart: Date.now(),
             userAgent,
             appType,
+            connectionSlot: admission.slot,
         }
-        res.upgrade(userData, secWebsocketKey, token, secWebsocketExtensions, context)
+        try {
+            res.upgrade(userData, secWebsocketKey, token, secWebsocketExtensions, context)
+        } catch (err) {
+            // No connection, so no close handler will give the place back.
+            releaseWsConnection(admission.slot)
+            throw err
+        }
     })
 }
 

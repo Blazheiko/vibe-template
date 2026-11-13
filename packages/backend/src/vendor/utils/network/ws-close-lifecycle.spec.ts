@@ -30,6 +30,16 @@ const hooks = {
 }
 
 const handlers = await import('./ws-handlers.js')
+
+// feat-197: an event no route answers is refused before the session is read, so the events of
+// these tests need a route. The dispatcher is mocked: only the names matter.
+const ROUTES = {
+    main: {},
+    support: {},
+    user: {},
+    'api/user/me': {},
+    'some/route': {},
+} as never
 handlers.registerWsAppHooks(hooks)
 handlers.registerWsMessageValidator({
     validate: (value: unknown) => ({ ok: true, value }) as never,
@@ -120,7 +130,7 @@ describe('sendJson backpressure (feat-107)', () => {
             ws as never,
             message(JSON.stringify({ event: 'main:ping', payload: {}, timestamp: Date.now() })),
             false,
-            {},
+            ROUTES,
         )
 
         expect(ws.send).toHaveBeenCalledTimes(1)
@@ -139,7 +149,7 @@ describe('sendJson backpressure (feat-107)', () => {
                 ws as never,
                 message(JSON.stringify({ event: 'main:ping', payload: {}, timestamp: Date.now() })),
                 false,
-                {},
+                ROUTES,
             )
             expect(ws.send).toHaveBeenCalledTimes(1)
             expect(ws.end).not.toHaveBeenCalled()
@@ -164,7 +174,7 @@ describe('a reply after the socket closed (feat-124)', () => {
             ws as never,
             message(JSON.stringify({ event: 'main:ping', payload: {}, timestamp: Date.now() })),
             false,
-            {},
+            ROUTES,
         )
 
         expect(ws.send).not.toHaveBeenCalled()
@@ -188,7 +198,7 @@ describe('an expired session after the socket closed (feat-128)', () => {
             ws as never,
             message(JSON.stringify({ event: 'main:ping', payload: {}, timestamp: Date.now() })),
             false,
-            {},
+            ROUTES,
         )
 
         expect(ws.send).not.toHaveBeenCalled()
