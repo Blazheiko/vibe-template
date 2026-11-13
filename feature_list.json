@@ -2121,8 +2121,8 @@
             "owner": "Blazheiko",
             "branch": "chore/dependabot-digest-hono-overrides",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #648 (merge c3ab0e3): the docker entry of dependabot.yml ignores semver-major and semver-minor updates of ubuntu, so only the 24.04 digest moves (D7; PR #633 to 25.10 closed 2026-11-13); pnpm.overrides hono@<4.13.16 -> ^4.13.16 and @hono/node-server@>=2.0.0 <2.1.6 -> ^2.1.6 (lockfile: hono 4.13.14 -> 4.13.18, node-server 2.1.5 -> 2.1.8, nothing else); follow-ups items 1-4 marked done. pnpm audit --prod: 7 (6 moderate, 1 low) -> none. make check passing (backend 2981, frontend 607, playground 115); CI on 0e82de2: quality, build, e2e, e2e-live, test-pg, test-redis green. Manual: the Mistral SDK loads and builds a client with the new versions. Repository settings: Dependabot alerts and security updates enabled 2026-11-13; audit.yml run 43462205330 green. Not yet verified: Dependabot's behaviour under the ignore rule, visible on its next weekly run."
         },
         {
             "id": "feat-214",
@@ -2141,7 +2141,7 @@
             "owner": "Blazheiko",
             "branch": "test/header-value-live",
             "dependencies": [],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
