@@ -27,7 +27,9 @@ import {
 
 import {
     AVATAR_MAX_FILE_BYTES,
+    KB_ARTICLE_MAX_BODY_BYTES,
     KB_SCREENSHOT_MAX_FILE_BYTES,
+    PROMPT_MAX_BODY_BYTES,
     multipartBodyLimit,
 } from '#app/services/shared/upload-limits.js'
 
@@ -297,6 +299,8 @@ export default [
                 contract: avatarContracts.upload,
                 handler: AvatarController.uploadAvatar.bind(AvatarController),
                 maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
+                // feat-202: no upload is buffered for a request without a signed-in cookie.
+                signedInBeforeBody: true,
                 description: 'Upload user avatar',
             }),
             defineRoute({
@@ -348,11 +352,13 @@ export default [
             defineRoute({
                 contract: knowledgeBaseContracts.create,
                 handler: AdminKnowledgeBaseController.create.bind(AdminKnowledgeBaseController),
+                maxBodySize: KB_ARTICLE_MAX_BODY_BYTES,
                 description: 'Create a knowledge base article',
             }),
             defineRoute({
                 contract: knowledgeBaseContracts.update,
                 handler: AdminKnowledgeBaseController.update.bind(AdminKnowledgeBaseController),
+                maxBodySize: KB_ARTICLE_MAX_BODY_BYTES,
                 description: 'Update a knowledge base article',
             }),
             defineRoute({
@@ -366,6 +372,10 @@ export default [
                     AdminKnowledgeBaseController,
                 ),
                 maxBodySize: multipartBodyLimit(KB_SCREENSHOT_MAX_FILE_BYTES),
+                // feat-202: this group had no rate limit, and the body is read before the
+                // session and admin checks.
+                signedInBeforeBody: true,
+                rateLimit: { windowMs: 60_000, maxRequests: 10 },
                 description: 'Upload screenshot for a knowledge base article',
             }),
             defineRoute({
@@ -417,6 +427,7 @@ export default [
             defineRoute({
                 contract: promptContracts.update,
                 handler: PromptController.update.bind(PromptController),
+                maxBodySize: PROMPT_MAX_BODY_BYTES,
                 description: 'Update a retained Support AI prompt by type',
             }),
             defineRoute({
