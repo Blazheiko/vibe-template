@@ -49,6 +49,41 @@ function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa
     return 'web'
 }
 
+// feat-210: connections whose upgrade was let in and whose handleConnected still awaits its
+// reads. They are not in `userStorage` yet, so a revocation that closes the user's connections
+// would miss them; it marks them here instead, and handleConnected closes a marked one.
+interface ConnectingEntry {
+    userId: string
+    sessionId: string
+    revoked: boolean
+}
+const connecting = new Map<string, ConnectingEntry>()
+
+/**
+ * Notes a connection that is being opened. The returned function ends the wait and answers
+ * whether the session was revoked meanwhile; it must be called exactly once.
+ */
+const beginConnecting = (userId: string, uuid: string, sessionId: string): (() => boolean) => {
+    const entry: ConnectingEntry = { userId, sessionId, revoked: false }
+    connecting.set(uuid, entry)
+    return () => {
+        connecting.delete(uuid)
+        return entry.revoked
+    }
+}
+
+/** Marks the user's connections that are being opened: all, or those of one session. */
+const revokeConnecting = (userId: string, sessionId?: string): number => {
+    let marked = 0
+    for (const entry of connecting.values()) {
+        if (entry.userId !== userId) continue
+        if (sessionId !== undefined && entry.sessionId !== sessionId) continue
+        entry.revoked = true
+        marked += 1
+    }
+    return marked
+}
+
 /**
  * Registers a new WS connection for a user.
  * Returns true if this is the user's first connection (no prior active connections).
@@ -201,6 +236,8 @@ const listUserConnections = (userId: string): ListedConnection[] => {
 
 export const wsConnectionRegistry = {
     registerConnection,
+    beginConnecting,
+    revokeConnecting,
     unregisterConnection,
     isUserOnline,
     findOnlineUsers,

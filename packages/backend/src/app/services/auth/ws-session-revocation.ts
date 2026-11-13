@@ -6,6 +6,7 @@ import {
 import websocketConfig from '#config/websocket.js'
 import logger from '#vendor/utils/logger.js'
 import { endSessionExpired, isClosedSocketError } from '#vendor/utils/network/ws-session-expired.js'
+import { sessionExists, sessionsExist } from '#vendor/utils/session/redis-session-storage.js'
 
 // feat-195: a WebSocket message is checked against the session, but a heartbeat is not, and a
 // connection that only pings stays open for days. So a session that was revoked (logout,
@@ -15,6 +16,13 @@ import { endSessionExpired, isClosedSocketError } from '#vendor/utils/network/ws
 // - every instance compares, from the database, the users.session_token each connection was
 //   opened with against the current one, and closes those that differ. That covers the
 //   connections held by another instance; the delay is bounded by the interval.
+//
+// feat-210: a logout of one session does not rotate users.session_token, it only deletes the
+// stored session. So the same pass also asks Redis whether the session of each connection is
+// still stored, and closes the connections of those that are not: a logout handled by another
+// instance, or a session that expired while its socket only pinged. And a connection that is
+// still being opened when its session is revoked is marked in the registry
+// (`revokeConnecting`), because it is not among the connections to close yet.
 
 export interface SessionRecheckReport {
     checked: number
@@ -74,6 +82,9 @@ export const wsSessionRevocation = {
     closeUserConnections(userId: string, options: { sessionId?: string } = {}): number {
         try {
             const { sessionId } = options
+            // feat-210: before the close, so a connection that registers in between is either
+            // marked here or found below.
+            wsConnectionRegistry.revokeConnecting(userId, sessionId)
             const connections = wsConnectionRegistry
                 .listUserConnections(userId)
                 .filter(
@@ -87,8 +98,8 @@ export const wsSessionRevocation = {
     },
 
     /**
-     * One pass over every connection of this instance. A database failure throws and changes
-     * nothing, the next pass tries again (every message is refused meanwhile by the session
+     * One pass over every connection of this instance. A database or Redis failure throws and
+     * changes nothing, the next pass tries again (every message is refused meanwhile by the session
      * check). A user that no longer exists has no session at all.
      */
     async recheckSessions(): Promise<SessionRecheckReport> {
@@ -105,10 +116,34 @@ export const wsSessionRevocation = {
             for (const [id, token] of tokens) current.set(id, token)
         }
 
+        const rotated = (connection: ListedConnection): boolean =>
+            connection.userToken === undefined ||
+            current.get(connection.userId) !== connection.userToken
+
+        // feat-210: the stored session of every connection whose token is still current.
+        const sessions = new Map<string, { sessionId: string; userToken: string }>()
+        for (const connection of connections) {
+            if (rotated(connection) || connection.userToken === undefined) continue
+            sessions.set(`${connection.userToken}:${connection.sessionId}`, {
+                sessionId: connection.sessionId,
+                userToken: connection.userToken,
+            })
+        }
+        const gone = new Set<string>()
+        const keys = [...sessions.keys()]
+        const pairs = [...sessions.values()]
+        for (let from = 0; from < pairs.length; from += RECHECK_BATCH_SIZE) {
+            const stored = await sessionsExist(pairs.slice(from, from + RECHECK_BATCH_SIZE))
+            stored.forEach((exists, index) => {
+                const key = keys[from + index]
+                if (!exists && key !== undefined) gone.add(key)
+            })
+        }
+
         const revoked = connections.filter(
             (connection) =>
-                connection.userToken === undefined ||
-                current.get(connection.userId) !== connection.userToken,
+                rotated(connection) ||
+                gone.has(`${String(connection.userToken)}:${connection.sessionId}`),
         )
         let closed = 0
         let failed = 0
@@ -118,6 +153,11 @@ export const wsSessionRevocation = {
             failed += result.failed
         }
         return { checked: connections.length, closed, failed }
+    },
+
+    /** feat-210: whether the session a connection is being opened from is still stored. */
+    isSessionStored(sessionId: string, userToken: string): Promise<boolean> {
+        return sessionExists(sessionId, userToken)
     },
 
     start(intervalMs: number = websocketConfig.sessionRecheckIntervalMs): void {

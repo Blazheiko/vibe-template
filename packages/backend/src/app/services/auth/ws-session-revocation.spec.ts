@@ -6,9 +6,17 @@ const listUserConnections = vi.hoisted(() => vi.fn())
 const findSessionTokensByIds = vi.hoisted(() => vi.fn())
 const logger = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }))
 
+const revokeConnecting = vi.hoisted(() => vi.fn())
+// feat-210: the stored sessions; by default every session asked about is still there.
+const sessionsExist = vi.hoisted(() =>
+    vi.fn((sessions: readonly unknown[]) => Promise.resolve(sessions.map(() => true))),
+)
+const sessionExists = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+
 vi.mock('#app/websocket/ws-connection-registry.js', () => ({
-    wsConnectionRegistry: { listConnections, listUserConnections },
+    wsConnectionRegistry: { listConnections, listUserConnections, revokeConnecting },
 }))
+vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({ sessionExists, sessionsExist }))
 vi.mock('#app/repositories/index.js', () => ({ userRepository: { findSessionTokensByIds } }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#config/websocket.js', () => ({ default: { sessionRecheckIntervalMs: 30_000 } }))
@@ -119,6 +127,81 @@ describe('closeUserConnections', () => {
 
         expect(wsSessionRevocation.closeUserConnections('1')).toBe(0)
         expect(logger.error).toHaveBeenCalledTimes(1)
+    })
+})
+
+// feat-210: a logout of one session deletes the stored session and rotates nothing.
+describe('recheckSessions: stored sessions (feat-210)', () => {
+    const tokens = (): void => {
+        findSessionTokensByIds.mockResolvedValue(
+            new Map([
+                ['1', 't1'],
+                ['2', 't2'],
+            ]),
+        )
+    }
+
+    it('closes the connections whose stored session is gone and keeps the others', async () => {
+        const loggedOut = connection('1', 'a', 's1', 't1')
+        const sameSession = connection('1', 'b', 's1', 't1')
+        const otherSession = connection('1', 'c', 's2', 't1')
+        const otherUser = connection('2', 'd', 's3', 't2')
+        listConnections.mockReturnValue([loggedOut, sameSession, otherSession, otherUser])
+        tokens()
+        sessionsExist.mockResolvedValueOnce([false, true, true])
+
+        const report = await wsSessionRevocation.recheckSessions()
+
+        // One question per session, not per connection.
+        expect(sessionsExist).toHaveBeenCalledTimes(1)
+        expect(sessionsExist).toHaveBeenCalledWith([
+            { sessionId: 's1', userToken: 't1' },
+            { sessionId: 's2', userToken: 't1' },
+            { sessionId: 's3', userToken: 't2' },
+        ])
+        expect(report).toEqual({ checked: 4, closed: 2, failed: 0 })
+        expect(loggedOut.end).toHaveBeenCalledWith(4001)
+        expect(sameSession.end).toHaveBeenCalledWith(4001)
+        expect(otherSession.end).not.toHaveBeenCalled()
+        expect(otherUser.end).not.toHaveBeenCalled()
+    })
+
+    it('does not ask about a connection whose token was rotated: it is closed anyway', async () => {
+        const stale = connection('1', 'a', 's1', 'old')
+        listConnections.mockReturnValue([stale])
+        tokens()
+
+        const report = await wsSessionRevocation.recheckSessions()
+
+        expect(sessionsExist).not.toHaveBeenCalled()
+        expect(report).toEqual({ checked: 1, closed: 1, failed: 0 })
+    })
+
+    it('closes nothing when Redis does not answer: the next pass decides', async () => {
+        const open = connection('1', 'a', 's1', 't1')
+        listConnections.mockReturnValue([open])
+        tokens()
+        sessionsExist.mockRejectedValueOnce(new Error('redis down'))
+
+        await expect(wsSessionRevocation.recheckSessions()).rejects.toThrow('redis down')
+        expect(open.end).not.toHaveBeenCalled()
+    })
+})
+
+describe('closeUserConnections: connections being opened (feat-210)', () => {
+    it('marks them before it closes the registered ones, for the session or for the user', () => {
+        listUserConnections.mockReturnValue([])
+
+        wsSessionRevocation.closeUserConnections('1', { sessionId: 's1' })
+        wsSessionRevocation.closeUserConnections('1')
+
+        expect(revokeConnecting.mock.calls).toEqual([
+            ['1', 's1'],
+            ['1', undefined],
+        ])
+        expect(revokeConnecting.mock.invocationCallOrder[0]).toBeLessThan(
+            listUserConnections.mock.invocationCallOrder[0] ?? 0,
+        )
     })
 })
 

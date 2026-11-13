@@ -4,6 +4,7 @@ import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-serv
 import { userOnlineService } from '#app/services/communication/user-online-service.js'
 import { wsPresenceService } from '#app/services/communication/ws-presence-service.js'
 import { userRoleService } from '#app/services/user/user-role-service.js'
+import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import logger from '#vendor/utils/logger.js'
 import { endSessionExpired } from '#vendor/utils/network/ws-session-expired.js'
 
@@ -53,7 +54,24 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     if (userId === undefined || sessionId === undefined) return
     const connectedAt = new Date()
 
-    const access = await userRoleService.findAccess(BigInt(userId))
+    // feat-210: until the reads below answer, the connection is in no list a revocation closes.
+    // It is noted as "being opened" first, so a logout or a rotation that runs meanwhile marks
+    // it; one that ran before this line is seen by the reads themselves.
+    const settle = wsConnectionRegistry.beginConnecting(userId, userData.uuid, sessionId)
+    let access: Awaited<ReturnType<typeof userRoleService.findAccess>>
+    let sessionStored: boolean
+    let revokedMeanwhile: boolean
+    try {
+        ;[access, sessionStored] = await Promise.all([
+            userRoleService.findAccess(BigInt(userId)),
+            // A logout of one session deletes its stored record and rotates nothing.
+            userData.userToken === undefined
+                ? Promise.resolve(false)
+                : wsSessionRevocation.isSessionStored(sessionId, userData.userToken),
+        ])
+    } finally {
+        revokedMeanwhile = settle()
+    }
     // feat-107: the socket may have closed while the role was read. A closed socket must not
     // enter the registry; its close handler has already run and will not take it out again.
     if (userData.closed === true) return
@@ -61,8 +79,14 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     // read. The flow that revoked it closed the connections in the registry, and this one was
     // not there yet: registered now, it would stay open until the periodic re-check. From here
     // to the registration nothing is awaited, so a revocation committed after this read finds
-    // the connection in the registry.
-    if (access === undefined || access.sessionToken !== userData.userToken) {
+    // the connection in the registry. feat-210: the same for a logout of one session, which
+    // rotates nothing: its stored session is gone, or the logout marked this connection.
+    if (
+        revokedMeanwhile ||
+        !sessionStored ||
+        access === undefined ||
+        access.sessionToken !== userData.userToken
+    ) {
         logger.info(
             { userId, socketUuid: userData.uuid },
             'WS connection closed at connect: its session was revoked meanwhile',
