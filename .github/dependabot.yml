@@ -7,10 +7,15 @@ updates:
           interval: weekly
 
     # feat-207 (L-18): both stages of the Dockerfile pin ubuntu:24.04 by digest; this moves it.
+    # feat-213: the digest only. Decision D7 keeps the 24.04 LTS tag; a new release (PR #633
+    # offered 25.10, not LTS) needs re-checking with uWebSockets.js and NodeSource first.
     - package-ecosystem: docker
       directory: /
       schedule:
           interval: weekly
+      ignore:
+          - dependency-name: ubuntu
+            update-types: ['version-update:semver-major', 'version-update:semver-minor']
 
     # feat-207 (L-19): security updates only. The limit of 0 switches version updates off (the
     # toolchain is pinned on purpose: TypeScript, drizzle rc, see AGENTS.md) and leaves the pull
