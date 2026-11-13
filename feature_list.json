@@ -1981,8 +1981,8 @@
             "owner": "Blazheiko",
             "branch": "feat/linked-sign-in-methods",
             "dependencies": ["feat-198"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #607 (merge b77e18c): GET /auth/sign-in-methods lists the linked OAuth identities and POST /auth/sign-in-methods/unlink removes one (web group auth, auth_guard, route contracts); re-authentication by the current password (shared change_password_user budget) or, for an account without one, a sign-in within 10 minutes (the age of the session); an account without a password keeps its last link, decided on the user row under FOR UPDATE; another account's link answers 404; sign_in_method_removed push; a password reset keeps the links, answers with signInMethods, the page after the reset shows them and the account address gets a mail listing them; a Sign-in methods block on the account page (en, uk, pl); docs uk+en (backend/oauth new section, auth, web-push-notification). make check passing (backend 2837, frontend 558, playground 115), test:pg 312 and test:redis 116 passing on real services (sign-in-methods.pg.test.ts: ownership and two removals at once), docs:build+verify passing; RED: without the last-method rule two PG cases fail; frontend e2e (chromium, mock) 83 passed, whole e2e-live 14 passed; manual on the real stack with a temporary browser scenario: list, wrong password refused, 404 for another account's link, removal, 409 for the last method, the list after a reset and the mail; CI all jobs passing incl. e2e-live, test-pg, test-redis. Stricter than the plan: a phone or email without a password is not a remaining way in; a wrong or missing current password answers 400, 403 only for a stale session without a password. Not run: an OAuth sign-in against a real provider. Details were in progress.md on feat/linked-sign-in-methods (removed from main by this PR)."
         },
         {
             "id": "feat-200",
