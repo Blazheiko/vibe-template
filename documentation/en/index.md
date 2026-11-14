@@ -68,6 +68,18 @@ features:
       title: AI support chat
       details: A chat that answers from a knowledge base (pgvector), a prompt admin panel, token accounting, OpenAI, xAI and Mistral providers.
       link: /en/backend/ai
+    - icon: 🚀
+      title: Landing page for search engines
+      details: A separate package with a static product page in three languages, no JavaScript, with canonical, hreflang and a sitemap. Its buttons lead to the app's sign-in and sign-up, and the page ships as its own nginx image.
+      link: /en/landing/
+    - icon: 🐳
+      title: Docker and deployment
+      details: A production image that runs as a non-root user with a healthcheck, migrations as a separate step, and a graceful shutdown. The whole stack (services, the app and the landing) starts in Docker Compose with one command.
+      link: /en/backend/deployment
+    - icon: 🧭
+      title: Rules for AI agents
+      details: AGENTS.md, feature_list.json and the Definition of Done give the agent its working order. The backend-feature skill takes a new feature through every layer, and make check runs the same checks as CI.
+      link: /en/guide/workflow
 ---
 
 ## What this template is
@@ -76,13 +88,14 @@ features:
 
 This is not an empty "skeleton" but a **working application** from which you start your product. The first weeks of a new project usually go to the same things: registration, login, password reset, sessions, CSRF, file uploads, emails, push, an admin panel, deployment. In this template all of that is already written, covered by tests and documented. You clone the repository, configure `.env` and immediately write **your own** business logic.
 
-The template consists of three packages in one repository (pnpm workspace):
+The template's main packages in one repository (pnpm workspace):
 
 | Package    | What it is                                                                   | Documentation                     |
 | ---------- | ---------------------------------------------------------------------------- | --------------------------------- |
 | `backend`  | API server and WebSocket in TypeScript + uWebSockets.js                      | [Backend overview](/en/backend/)  |
 | `frontend` | SPA/PWA on Vue 3 with Pinia, vue-router and vue-i18n                         | [Frontend](/en/frontend/)         |
 | `shared`   | Schemas, types and enums that both the frontend and the backend import alike | [The shared package](/en/shared/) |
+| `landing`  | A static product page for search engines with Log in and Sign up buttons     | [Landing page](/en/landing/)      |
 
 ::: tip New to the project?
 Start with the [Introduction](/en/guide/introduction), then the [Quick start](/en/guide/getting-started) — a local launch in 10 minutes. Then read [How the backend works](/en/guide/how-backend-works): it explains in simple words what happens to a request and why each layer exists.
@@ -305,6 +318,7 @@ More details: [Frontend](/en/frontend/).
 | Caching         | Static serving with ETag and `Cache-Control`, process caches                                               | [Caching and ETag](/en/backend/caching-etag) |
 | Tests           | Vitest for the backend, a test that watches the architecture layer rules                                   | [Testing](/en/backend/testing)               |
 | API Playground  | A separate dev app for manually calling HTTP and WS routes without Postman                                 | [API Playground](/en/playground/)            |
+| Landing page    | Static pages in three languages with no JavaScript, a sitemap, its own nginx image                         | [Landing page](/en/landing/)                 |
 | Deployment      | A build into `dist`, graceful shutdown, working behind a proxy, serving the frontend from the same process | [Deployment](/en/backend/deployment)         |
 
 ## Author
