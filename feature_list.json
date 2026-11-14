@@ -2191,8 +2191,8 @@
             "owner": "Blazheiko",
             "branch": "fix/landing-address-rule",
             "dependencies": ["feat-219"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #663 (merge 5ab1702): the P2 finding of the #660 review. The shell deploy check cut the host at the first ':' and did not normalize it while build/urls.ts used a WHATWG URL parser; reproduced for [::1], 2130706433, 0x7f000001, local%68ost, full-width localhost and a backslash host. Both validators adopt one rule, step by step and message by message: no backslash, whitespace or control characters; https; the host as written (userinfo and port stripped, lowercased, trailing dots dropped) must be non-empty with a valid port, no IP literal (bracketed IPv6 or a last label that is a number or 0x...), only [a-z0-9.-], not local, not RFC 2606. verify-landing-deploy.sh gains --check-address; address-rule.spec.ts runs 37 cases through both and expects identical answers. make check passing (landing 103 tests); with the old shell host parsing 9 of the 37 cases fail (mutation check); strict landing build passes with public https hosts and refuses https://2130706433; docs:build + docs:verify green. CI on 27e4cbb: quality, build, e2e, e2e-live green."
         }
     ]
 }
