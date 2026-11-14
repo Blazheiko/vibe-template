@@ -29,7 +29,9 @@ Both landing variables are origins: no path, no trailing `/`. [`build/urls.ts`](
 
 - does not use `https`;
 - points to `localhost`, `127.0.0.1` or `*.localhost`;
-- is an RFC 2606 placeholder domain (`example.com`, `.example` and so on).
+- is a domain reserved by RFC 2606: `example.com`, `.net`, `.org`, `.example`, `.test`, `.invalid`.
+
+A trailing DNS dot (`example.com.`) does not get past the check: it is dropped before comparing.
 
 `LANDING_STRICT=false` or no variable gives an ordinary local build. Any other value is an error.
 
@@ -48,7 +50,7 @@ Before the landing, `.env.example` set `LANDING_URL=http://localhost:5173`, whic
 
 In development, CSS changes apply without a page reload. A text or component change reloads the page, which renders again: the plugin [`build/landing-plugin.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/build/landing-plugin.ts) watches the SSR modules.
 
-`make prod-local` builds the landing with buttons pointing at `http://localhost:<PORT>` and stops it together with the backend. The frontend e2e runs call the script without the landing: only `PROD_LOCAL_LANDING=true`, set by `pnpm prod:local`, turns it on.
+`make prod-local` builds the landing with buttons pointing at `http://localhost:<PORT>`. The backend starts only once the preview on `127.0.0.1:4174` serves this very landing. A busy port, or a landing built for another app address, stops the run with an explanation. When either of the two processes exits, the script stops the other. The frontend e2e runs call the script without the landing: only `PROD_LOCAL_LANDING=true`, set by `pnpm prod:local`, turns it on.
 
 In compose the landing is the `landing` service of the `app` profile. Its image is built by [`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) with buttons pointing at `http://localhost:APP_PORT`. So change `APP_PORT` and `LANDING_PORT` before `make app-build`, not after.
 
@@ -112,7 +114,7 @@ The script checks:
 - the sitemap and robots;
 - `<app>/login` answers 200.
 
-Without `--allow-local`, every published address must be a public `https` one.
+Without `--allow-local`, every published address (`canonical`, `hreflang`, `og:url`, `og:image`, the buttons) must be a public `https` one, whatever origin it points to. `--resolve HOST:PORT:ADDR` (as in curl) checks a new server before DNS points at it, for example `--resolve example.com:443:203.0.113.10`.
 
 ::: warning Planned
 Deploying the whole application with the landing to Hetzner through Dokploy (`docker-compose-prod.yml`, Traefik, domains, variables) is feature `feat-218`. Until it lands, deploy the landing image behind any reverse proxy with TLS.

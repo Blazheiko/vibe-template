@@ -60,10 +60,58 @@ if [ "$LANDING" != "true" ]; then
     exec node dist/index.js
 fi
 
-# The landing runs next to the backend and stops with it (Ctrl+C reaches both, the trap covers
-# the backend exiting on its own).
-(cd ../landing && exec pnpm exec vite preview --port "$LANDING_PREVIEW_PORT" --strictPort) &
+# The landing runs next to the backend, and the two live and die together: the backend starts
+# only once the preview answers, and whichever exits first stops the other. A busy port 4174 or
+# a broken preview then stops the run instead of leaving the backend up without its landing.
+# A loop, not `wait -n`: macOS ships bash 3.2.
+# Bound to 127.0.0.1 explicitly: on `localhost` Vite may take [::1] while another process holds
+# 127.0.0.1 on the same port, and --strictPort would not notice.
+(cd ../landing && exec ./node_modules/.bin/vite preview --host 127.0.0.1 --port "$LANDING_PREVIEW_PORT" --strictPort) &
 LANDING_PID=$!
-trap 'kill "$LANDING_PID" 2>/dev/null || true' EXIT
-echo "Landing: http://localhost:${LANDING_PREVIEW_PORT}  App: ${ORIGIN}"
-node dist/index.js
+BACKEND_PID=""
+stop_all() {
+    kill "$LANDING_PID" ${BACKEND_PID:+"$BACKEND_PID"} 2>/dev/null || true
+    wait 2>/dev/null || true
+}
+trap stop_all EXIT
+trap 'exit 130' INT TERM
+
+LANDING_URL_LOCAL="http://localhost:${LANDING_PREVIEW_PORT}/"
+LANDING_PROBE="http://127.0.0.1:${LANDING_PREVIEW_PORT}/"
+ready=false
+for _ in $(seq 1 60); do
+    if ! kill -0 "$LANDING_PID" 2>/dev/null; then
+        echo "The landing preview exited before it answered (is port ${LANDING_PREVIEW_PORT} busy? LANDING_PREVIEW_PORT changes it)" >&2
+        exit 1
+    fi
+    # Ready means this landing answers: its page with a button to this backend, not just any
+    # server on the port.
+    if page="$(curl -fsS "$LANDING_PROBE" 2>/dev/null)"; then
+        if printf '%s' "$page" | grep -qF "href=\"${ORIGIN}/register\""; then
+            ready=true
+            break
+        fi
+        echo "The landing on ${LANDING_URL_LOCAL} was built for another app address, not ${ORIGIN}: run without PROD_LOCAL_SKIP_BUILD to rebuild it" >&2
+        exit 1
+    fi
+    sleep 0.5
+done
+if [ "$ready" != "true" ]; then
+    echo "The landing preview did not answer on ${LANDING_URL_LOCAL} in 30 s" >&2
+    exit 1
+fi
+
+echo "Landing: ${LANDING_URL_LOCAL}  App: ${ORIGIN}"
+node dist/index.js &
+BACKEND_PID=$!
+while kill -0 "$LANDING_PID" 2>/dev/null && kill -0 "$BACKEND_PID" 2>/dev/null; do
+    sleep 1
+done
+if kill -0 "$BACKEND_PID" 2>/dev/null; then
+    echo "The landing preview exited: stopping the backend" >&2
+    exit 1
+fi
+status=0
+wait "$BACKEND_PID" || status=$?
+echo "The backend exited (status ${status}): stopping the landing preview" >&2
+exit "$status"
