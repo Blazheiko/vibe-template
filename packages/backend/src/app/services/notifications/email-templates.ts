@@ -1,3 +1,5 @@
+import { PRODUCT } from 'shared/product'
+
 // Email clients do not support app CSS variables reliably, so this palette stays inline on purpose.
 export const EMAIL_BRAND = {
     accent: '#A8627A',
@@ -24,6 +26,36 @@ export interface RenderedEmail {
     subject: string
     text: string
     html: string
+}
+
+const DISPLAY_NAME_MAX_LENGTH = 60
+
+/**
+ * A name from outside (a provider's profile name, a name typed at registration) as it may be
+ * quoted in a mail, or null when it may not. Escaping keeps it from being markup, but mail
+ * clients turn anything that looks like an address into a link, and the plain-text part keeps
+ * line breaks: a "name" could carry a sentence and a link of its author's choice into a mail
+ * the product signs. So a name with a URL or e-mail shape, or a control character, is not
+ * quoted at all; the rest is one line, trimmed and cut short.
+ */
+export function mailSafeDisplayName(value: string): string | null {
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001f\u007f\u2028\u2029]/.test(value)) return null
+    const name = value.replace(/\s+/g, ' ').trim()
+    if (name === '') return null
+    if (/[/:@\\]|www\.|\.[a-z]{2,}(\s|$)/i.test(name)) return null
+    return name.slice(0, DISPLAY_NAME_MAX_LENGTH)
+}
+
+/**
+ * The name to greet in a mail to an account's own address (feat-203, security review
+ * 2026-11-12, L-1): the account's name once its address is verified, nothing before that.
+ * Until then the name is whatever the person who typed the address chose, and that person
+ * need not be the owner of the mailbox: registering somebody else's address with a "name"
+ * like "your account is locked, call ..." made the product mail that sentence to them.
+ */
+export function mailAddresseeName(account: { name: string; emailVerifiedAt: Date | null }): string {
+    return account.emailVerifiedAt === null ? '' : account.name
 }
 
 /** What the mail asks the reader to open. */
@@ -58,7 +90,9 @@ export interface BrandedEmail {
  * mail quotes the provider's profile name in `intro`) cannot turn it into markup (feat-108).
  */
 export function renderBrandedEmail(mail: BrandedEmail): RenderedEmail {
-    const trimmedName = mail.name.trim()
+    // feat-203: whoever calls, a name that could pass for a link or carry a second line is not
+    // quoted (see mailSafeDisplayName).
+    const trimmedName = mailSafeDisplayName(mail.name) ?? ''
     const safeName = trimmedName === '' ? '' : `, ${trimmedName}`
     const escapedGreeting = trimmedName === '' ? '' : `, ${escapeHtml(trimmedName)}`
     const escapedUrl = escapeHtml(mail.action.url)
@@ -124,7 +158,7 @@ ${preheader}    <table role="presentation" width="100%" cellspacing="0" cellpadd
             <tr>
               <td style="padding-bottom:16px;">
                 <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:${EMAIL_BRAND.accentSoft};border:1px solid ${EMAIL_BRAND.accentLine};color:${EMAIL_BRAND.accent};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;">
-                  Vibe Template
+                  ${escapeHtml(PRODUCT.name)}
                 </div>
               </td>
             </tr>

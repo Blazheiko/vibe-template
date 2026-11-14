@@ -55,7 +55,6 @@ const pl: typeof en = {
     },
 
     login: {
-        heroTitle: 'Vibe Template',
         heroSubtitle: 'Poznaj strukturę projektu full-stack w Vue 3 i TypeScript.',
         featureSupportTitle: 'Pomoc',
         featureSupportDesc:
@@ -68,7 +67,7 @@ const pl: typeof en = {
         signIn: 'Zaloguj się',
         createAccount: 'Utwórz konto',
         about: 'O projekcie',
-        mobileTitle: 'Witamy w Vibe Template',
+        mobileTitle: 'Witamy w {name}',
         mobileSubtitle: 'Poznaj edukacyjny szablon aplikacji full-stack',
         socialLoginFailed:
             'Logowanie przez media społecznościowe nie powiodło się. Spróbuj ponownie.',
@@ -118,6 +117,8 @@ const pl: typeof en = {
         resetPasswordSuccessTitle: 'Hasło zostało zmienione',
         resetPasswordSuccess:
             'Twoje hasło zostało zmienione. Możesz się teraz zalogować nowym hasłem.',
+        resetPasswordLinkedMethods:
+            'Te metody logowania są nadal powiązane z Twoim kontem i dalej działają: {methods}. Jeśli którejś nie rozpoznajesz, zaloguj się i usuń ją na stronie konta.',
         invalidResetToken: 'Ten link do resetowania hasła jest nieprawidłowy lub wygasł.',
         signingIn: 'Logowanie...',
         orContinueWith: 'lub kontynuuj przez',
@@ -152,7 +153,7 @@ const pl: typeof en = {
         errorEmailInvalid: 'Wpisz prawidłowy adres e-mail',
         errorPassword: 'Podaj hasło',
         errorPasswordLength: 'Hasło musi mieć co najmniej 8 znaków',
-        errorPasswordMaxLength: 'Hasło może mieć najwyżej 32 znaki',
+        errorPasswordMaxLength: 'Hasło może mieć najwyżej 128 znaków',
         errorName: 'Podaj imię',
         errorPasswordsMismatch: 'Hasła nie są takie same',
         errorTooManyResetRequests:
@@ -185,11 +186,14 @@ const pl: typeof en = {
         loadEarlier: 'Pokaż wcześniejsze wiadomości',
         loadingEarlier: 'Ładowanie...',
         inputPlaceholder: 'Wpisz wiadomość...',
+        send: 'Wyślij wiadomość',
+        connectionLost: 'Połączenie zostało utracone. Rozmowa odświeży się po jego przywróceniu.',
     },
 
     account: {
         avatar: {
             delete: 'Usuń awatar',
+            closeEditor: 'Zamknij edytor awatara',
             errorFileSize: 'Plik musi być mniejszy niż 10 MB',
             errorFileType: 'Wybierz plik graficzny',
         },
@@ -209,10 +213,27 @@ const pl: typeof en = {
             newPassword: 'Nowe hasło',
             confirmPassword: 'Potwierdź nowe hasło',
             updatePassword: 'Zmień hasło',
-            errorNewPasswordLength: 'Nowe hasło musi mieć od 8 do 32 znaków',
+            errorNewPasswordLength: 'Nowe hasło musi mieć od 8 do 128 znaków',
             errorMismatch: 'Hasła nie są takie same',
             errorUpdate: 'Nie udało się zmienić hasła',
             successUpdate: 'Hasło zostało zmienione',
+        },
+        signInMethods: {
+            title: 'Metody logowania',
+            help: 'Konta innych serwisów powiązane z tym kontem. Każde z nich loguje się do niego, także po zmianie hasła.',
+            empty: 'Żaden inny serwis nie jest powiązany.',
+            linkedAt: 'powiązano {date}',
+            unlink: 'Usuń',
+            currentPassword: 'Obecne hasło',
+            noPasswordHint:
+                'To konto nie ma hasła: usunięcie metody logowania wymaga zalogowania w ciągu ostatnich 10 minut, a ostatniej metody nie można usunąć.',
+            unlinked: 'Usunięto: {provider}',
+            errorLoad: 'Nie udało się wczytać metod logowania',
+            errorUnlink: 'Nie udało się usunąć metody logowania',
+            errorPasswordRequired: 'Podaj obecne hasło, aby usunąć metodę logowania',
+            errorPasswordIncorrect: 'Obecne hasło jest nieprawidłowe',
+            errorRecentSignIn: 'Wyloguj się i zaloguj ponownie, a potem usuń metodę logowania',
+            errorLastMethod: 'Ustaw hasło, zanim usuniesz ostatnią metodę logowania',
         },
         contactMethods: {
             title: 'Metody kontaktu',

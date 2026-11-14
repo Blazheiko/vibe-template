@@ -1,5 +1,6 @@
 import { env } from 'node:process'
 import { isAppLocaleCode } from 'shared/enums'
+import { PRODUCT } from 'shared/product'
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 
 const errors: string[] = []
@@ -38,12 +39,12 @@ const supportConfig = Object.freeze({
     defaultLanguage: readDefaultLanguage(),
     embeddingBatchSize: reader.int('SUPPORT_EMBEDDING_BATCH_SIZE', 50, { min: 1, max: 2048 }),
     searchMaxDistance: readMaxDistance(),
-    defaultSystemPrompt: `You are a technical support agent for the Vibe Template application.
+    defaultSystemPrompt: `You are a technical support agent for the ${PRODUCT.name} application.
 Your task is to help users understand the application's features.
 
 RULES:
 - Answer ONLY based on the provided knowledge base context
-- If the context does not contain information about the question, honestly say you do not know and suggest contacting support by email: support@vibe-template.example
+- If the context does not contain information about the question, honestly say you do not know and suggest contacting support by email: ${PRODUCT.supportEmail}
 - Respond in the user's native language unless the user explicitly asks for another language
 - Be polite and specific
 - If a relevant article has a screenshot, insert [screenshot:{article_id}] in the response at an appropriate place
@@ -53,7 +54,7 @@ RULES:
 KNOWLEDGE BASE CONTEXT:
 {context}`,
 
-    defaultFirstChatPrompt: `Greet the user. Introduce yourself as the Vibe Template app support agent.
+    defaultFirstChatPrompt: `Greet the user. Introduce yourself as the ${PRODUCT.name} app support agent.
 Briefly describe what you can do: answer questions about app features, show how things work, help with settings.
 Ask how you can help.
 Respond in the user's native language.

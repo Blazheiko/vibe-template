@@ -31,7 +31,7 @@ describe('rate-limit Redis client', () => {
             enableOfflineQueue: false,
             maxRetriesPerRequest: 0,
             autoResendUnfulfilledCommands: false,
-            commandTimeout: 50,
+            commandTimeout: 500,
         })
         expect(rateLimitRedisOptions.host).toBeTypeOf('string')
         expect(rateLimitRedisOptions.retryStrategy(1)).toBe(200)

@@ -60,7 +60,7 @@ flowchart LR
 
 ### 4. CSRF-токен: секрет, якого немає в зловмисника
 
-Головний шар. Для кожної сесії сервер генерує випадковий **CSRF-токен** і зберігає його поруч із сесією в Redis. Фронтенд додає цей токен до кожного запиту, що змінює дані, у заголовку `X-CSRF-Token`. Сервер порівнює: токен у заголовку має збігатися з токеном сесії.
+Головний шар. Для кожної сесії сервер генерує випадковий **CSRF-токен** і зберігає його разом із сесією: у гостьової сесії (до входу) — у підписаній cookie сесії, бо сама така сесія в Redis не пишеться, а після входу — у записі сесії в Redis. Фронтенд додає цей токен до кожного запиту, що змінює дані, у заголовку `X-CSRF-Token`. Сервер порівнює: токен у заголовку має збігатися з токеном сесії.
 
 Чужий сайт не може дізнатися токен: він не може прочитати відповідь вашого сервера (це забороняє браузер), тож і токен підставити не може. Невідповідний токен — `403` з причиною `token_mismatch`.
 
@@ -101,7 +101,7 @@ sequenceDiagram
 
 ### Новий маршрут, що змінює дані
 
-Додавайте його в групу маршрутів, де є `session_web` і `csrf_guard` — так влаштовані всі групи в [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). Тоді захист працює автоматично. Фронтенд підставить токен сам, якщо ви викликаєте API через `baseApi.http` або `baseApi.upload`.
+Додавайте його в групу маршрутів, де є `session_web` і `csrf_guard` — так влаштовані всі групи в [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). Тоді захист працює автоматично. Фронтенд підставить токен сам: усі виклики API йдуть через `callApi` ([api-client.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts)), який передає їх у `baseApi.http` або `baseApi.upload`.
 
 Це правило для маршрутів, які викликає наш фронтенд. Маршрут публічного API для інших серверів і застосунків бере облікові дані із заголовка, а не з cookie, тому CSRF йому не загрожує: його кладуть в окрему групу без `session_web` і `csrf_guard`. Див. [Веб-маршрути і публічний API](/backend/web-and-api-routes).
 
@@ -128,7 +128,7 @@ B=http://127.0.0.1:3000/api
 O='origin: http://localhost:5173'
 CSRF=$(curl -s -c cookies.txt -b cookies.txt $B/main/init | sed -E 's/.*"csrfToken":"([^"]+)".*/\1/')
 curl -s -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json' \
-  -H "x-csrf-token: $CSRF" -d '{"email":"user@example.com","password":"<user-password>","token":""}' \
+  -H "x-csrf-token: $CSRF" -d '{"identifier":"user@example.com","password":"<user-password>"}' \
   $B/auth/login
 ```
 
@@ -149,5 +149,5 @@ curl -s -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json
 - [Як влаштований бекенд](/guide/how-backend-works) — де `csrf_guard` стоїть серед інших middleware.
 
 ::: tip Перевірити самому
-Запустіть проєкт за [Швидким стартом](/guide/getting-started) і надішліть `POST /api/auth/logout` через curl без заголовка `origin`. Сервер відповість `403` з `reason: origin_mismatch`. Додайте `-H 'origin: http://localhost:5173'` — тепер `403` буде з `token_mismatch`. Додайте ще й `x-csrf-token` — запит пройде.
+Запустіть проєкт за [Швидким стартом](/guide/getting-started) і надішліть `POST /api/auth/logout` через curl без заголовка `origin`. Сервер відповість `403` з `reason: origin_mismatch`. Додайте `-H 'origin: http://localhost:5173'` — тепер `403` буде з `token_mismatch`. Додайте ще й cookie сесії та `x-csrf-token` з відповіді `GET /api/main/init` — CSRF-перевірку пройдено, але гість отримає `401 unauthorized`: на маршруті після `csrf_guard` стоїть ще `auth_guard`, а вийти може лише залогінений користувач.
 :::

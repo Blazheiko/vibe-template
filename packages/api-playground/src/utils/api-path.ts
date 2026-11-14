@@ -1,7 +1,7 @@
 // The playground talks to a backend whose routes live under API_PATH_PREFIX.
-// VITE_API_PATH_PREFIX mirrors it (default "api"), so the route list, the health
+// vite.config.ts compiles it in as VITE_API_PATH_PREFIX (default "api"), so the route list, the health
 // check and the dev proxy no longer assume /api (code-issues item 62).
-import { normalizeApiPrefix } from 'shared/ws-client'
+import { normalizeApiPrefix } from 'shared/api-prefix'
 
 export { normalizeApiPrefix }
 

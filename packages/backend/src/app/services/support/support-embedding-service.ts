@@ -62,25 +62,43 @@ export const supportEmbeddingService = {
         return storeVector(article, vector)
     },
 
-    async reindexAll(): Promise<number> {
+    /**
+     * Indexes every active article. A batch the provider refuses (one article longer than the
+     * model's input, a 5xx) does not stop the run: its articles are reported in `failed` and the
+     * later batches are still indexed (feat-160). It used to throw out of the loop, so one
+     * article kept every article after it unindexed, run after run.
+     */
+    async reindexAll(): Promise<{ indexed: number; failed: string[] }> {
         if (!openaiEmbeddingAdapter.isConfigured()) {
             logger.warn('OpenAI Embedding not configured, skipping reindex')
-            return 0
+            return { indexed: 0, failed: [] }
         }
 
         const allRows = await supportKnowledgeRepository.findActiveAll()
-        if (allRows.length === 0) return 0
+        if (allRows.length === 0) return { indexed: 0, failed: [] }
 
         // In batches of SUPPORT_EMBEDDING_BATCH_SIZE (code-issues item 54): one huge
         // request could exceed the provider's input limits.
         const batchSize = supportConfig.embeddingBatchSize
         let stored = 0
+        const failed: string[] = []
         for (let start = 0; start < allRows.length; start += batchSize) {
             const batch = allRows.slice(start, start + batchSize)
-            const vectors = await openaiEmbeddingAdapter.embedBatch(
-                batch.map((a) => `${a.title}\n\n${a.content}`),
-                { onComplete: llmUsageService.textUsageRecorder('SUPPORT_EMBEDDING', null) },
-            )
+            let vectors: number[][]
+            try {
+                vectors = await openaiEmbeddingAdapter.embedBatch(
+                    batch.map((a) => `${a.title}\n\n${a.content}`),
+                    { onComplete: llmUsageService.textUsageRecorder('SUPPORT_EMBEDDING', null) },
+                )
+            } catch (err) {
+                const articleIds = batch.map((a) => String(a.id))
+                logger.error(
+                    { err, articleIds },
+                    'Support KB reindex: a batch was not embedded, the run goes on',
+                )
+                failed.push(...articleIds)
+                continue
+            }
             for (let i = 0; i < batch.length; i++) {
                 const article = batch[i]
                 const vector = vectors[i]
@@ -91,7 +109,12 @@ export const supportEmbeddingService = {
 
         // feat-119 (F5): the vectors written, not the rows read: an article edited meanwhile is
         // indexed by the indexing of its edit, not by this run.
-        return stored
+        return { indexed: stored, failed }
+    },
+
+    /** Whether `search` will call the provider (it answers nothing without one). */
+    isConfigured(): boolean {
+        return openaiEmbeddingAdapter.isConfigured()
     },
 
     async search(

@@ -109,25 +109,25 @@ flowchart LR
 
 ### API: one schema is both validation and type
 
-Here is part of the login schema from [`shared/src/schemas/auth/login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts):
+Here is the login schema from [`shared/src/schemas/auth/login.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/login.ts):
 
 ```ts
-const IdentifierLoginInputSchema = type({
+export const LoginInputSchema = type({
     identifier: 'string >= 3 & string <= 255',
-    password: 'string >= 8 & string <= 32',
-    token: 'string <= 60',
+    password: PasswordSchema,
     '+': 'reject', // unknown fields are rejected
 })
 
-export const LoginInputSchema = type.or(LegacyLoginInputSchema, IdentifierLoginInputSchema)
 export type LoginInput = typeof LoginInputSchema.infer // the type is derived from the schema
 ```
 
+The password bounds come from `PasswordSchema` in [`password.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/password.ts): it is built from `PASSWORD_MIN_LENGTH` and `PASSWORD_MAX_LENGTH` of `shared/limits`, the same numbers the frontend checks, and every password field of the auth schemas uses it.
+
 This single file is used in three places:
 
-- **the route** `POST /api/auth/login` validates the request body: `validator: LoginInputSchema` in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts);
+- **the route** `POST /api/auth/login` validates the request body: `body: LoginInputSchema` in the registry entry [`contract-schemas/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/auth.ts) for the contract `authContracts.login`, and the contract itself is checked against the schema's type;
 - **the controller** receives already typed data: `login(context: HttpContext<LoginInput>)`;
-- **the frontend** sends a request of the same type: `login: async (body: LoginInput)` in [`api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api.ts).
+- **the frontend** sends a request of the same type: `login: (body: LoginInput) => callApi(authContracts.login, { body }, …)` in [`api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api.ts).
 
 What this gives: rename `identifier` to `login` in the schema, rebuild `shared` and run `pnpm typecheck`. Errors appear on both sides at once (output shortened):
 
@@ -167,7 +167,7 @@ Then the type goes down the chain: [`user-transformer.ts`](https://github.com/Bl
 
 - **API and DB are different contracts, and this is deliberate.** The response type is not derived from the table automatically: between them stands a transformer that removes secrets and turns dates and `bigint` into strings.
 - **The protection works where the type is actually imported.** If a component declares its own type instead of importing from `shared`, TypeScript will not notice a schema change in it. There is only one exception inside `shared` itself: in `CanonicalErrorResponse` the `details` field has a more precise TypeScript type than the schema can describe ([error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts)).
-- **Runtime response validation depends on the mode.** Besides TypeScript at compile time, the server can validate the controller response against `ResponseSchema`: by default `strict` outside production (a mismatch → `500`) and `off` in production. The object is checked before serialization, and the check does not catch extra fields. See [Response validation](/en/backend/response-validation).
+- **Runtime response validation depends on the mode.** Besides TypeScript at compile time, the server validates the response of every route against its response schema (`ResponseSchema`; for HTTP, `response` of the registry entry). Outside production the mode is `strict`: a schema mismatch or an extra field gives a `500`. In production the default is `log`: extra fields are stripped with a warning in the log, a schema mismatch still gives a `500`. The check cannot be turned off; a route without a `ResponseSchema` is not checked. See [Response validation](/en/backend/response-validation).
 
 More in [Validation](/en/backend/validation), [The shared package](/en/shared/), [Database](/en/backend/database).
 

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
         smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn() },
         destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+        closeUserConnections: vi.fn(() => 0),
     }
 })
 
@@ -32,6 +33,9 @@ vi.mock('#app/repositories/index.js', () => ({
 }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: mocks.destroyAllSessions,
+}))
+vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
+    wsSessionRevocation: { closeUserConnections: mocks.closeUserConnections },
 }))
 vi.mock('nanoid', () => ({ nanoid: () => 'rotated-token' }))
 vi.mock('#logger', () => ({ default: mocks.logger }))
@@ -235,6 +239,32 @@ describe('destroySessionsQuietly', () => {
 
         expect(mocks.destroyAllSessions).toHaveBeenCalledWith('old-token')
         expect(mocks.logger.warn).not.toHaveBeenCalled()
+    })
+
+    // feat-195: every caller has just rotated the sessionToken of this user.
+    it('closes the WebSocket connections of the user, before the records are deleted', async () => {
+        const order: string[] = []
+        mocks.closeUserConnections.mockImplementation(() => {
+            order.push('close sockets')
+            return 1
+        })
+        mocks.destroyAllSessions.mockImplementation(() => {
+            order.push('delete records')
+            return Promise.resolve({ deleted: 1, complete: true })
+        })
+
+        await destroySessionsQuietly('old-token', 5n)
+
+        expect(mocks.closeUserConnections).toHaveBeenCalledWith('5')
+        expect(order).toEqual(['close sockets', 'delete records'])
+    })
+
+    it('closes the connections even when the records cannot be deleted', async () => {
+        mocks.destroyAllSessions.mockRejectedValue(new Error('redis down'))
+
+        await destroySessionsQuietly('old-token', 5n)
+
+        expect(mocks.closeUserConnections).toHaveBeenCalledWith('5')
     })
 
     it('only logs a failure: the committed operation stands', async () => {

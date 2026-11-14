@@ -1,0 +1,128 @@
+import type { LoginInputSchema } from '../schemas/auth/login.js'
+import type { RegisterEmailInputSchema } from '../schemas/auth/register-email.js'
+import type { RegisterPhoneStartInputSchema } from '../schemas/auth/register-phone-start.js'
+import type { RegisterPhoneConfirmInputSchema } from '../schemas/auth/register-phone-confirm.js'
+import type { RegisterPhoneCompleteInputSchema } from '../schemas/auth/register-phone-complete.js'
+import type { ChangePasswordInputSchema } from '../schemas/auth/change-password.js'
+import type { VerifyEmailInputSchema } from '../schemas/auth/verify-email.js'
+import type { ForgotPasswordInputSchema } from '../schemas/auth/forgot-password.js'
+import type { ResetPhoneStartInputSchema } from '../schemas/auth/reset-phone-start.js'
+import type { ResetPhoneCompleteInputSchema } from '../schemas/auth/reset-phone-complete.js'
+import type { ResetPasswordInputSchema } from '../schemas/auth/reset-password.js'
+import type { LinkPhoneStartInputSchema } from '../schemas/auth/link-phone-start.js'
+import type { LinkPhoneConfirmInputSchema } from '../schemas/auth/link-phone-confirm.js'
+import type { LinkEmailStartInputSchema } from '../schemas/auth/link-email-start.js'
+import type { UnlinkSignInMethodInputSchema } from '../schemas/auth/unlink-sign-in-method.js'
+import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
+import type {
+    ChangePasswordResponse,
+    ForgotPasswordResponse,
+    GetSignInMethodsResponse,
+    LinkEmailStartResponse,
+    LinkPhoneConfirmResponse,
+    LinkPhoneStartResponse,
+    LoginResponse,
+    LogoutAllResponse,
+    LogoutResponse,
+    RegisterEmailResponse,
+    RegisterPhoneCompleteResponse,
+    RegisterPhoneConfirmResponse,
+    RegisterPhoneStartResponse,
+    ResendVerificationEmailResponse,
+    ResetPasswordResponse,
+    ResetPhoneCompleteResponse,
+    ResetPhoneStartResponse,
+    UnlinkSignInMethodResponse,
+    VerifyEmailResponse,
+} from '../responses/auth-controller.js'
+import { contract } from './core.js'
+
+type EmptyBody = typeof EmptyFormInputSchema.inferIn
+
+// Which session a call runs in (csrfRecovery, sessionAfter) is the caller's: utils/api.ts on the
+// frontend. A contract says what is sent and what comes back.
+export const authContracts = {
+    login: contract<typeof LoginInputSchema.inferIn, undefined, LoginResponse>()(
+        'post',
+        '/auth/login',
+    ),
+    registerEmail: contract<
+        typeof RegisterEmailInputSchema.inferIn,
+        undefined,
+        RegisterEmailResponse
+    >()('post', '/auth/register/email'),
+    registerPhoneStart: contract<
+        typeof RegisterPhoneStartInputSchema.inferIn,
+        undefined,
+        RegisterPhoneStartResponse
+    >()('post', '/auth/register/phone/start'),
+    registerPhoneConfirm: contract<
+        typeof RegisterPhoneConfirmInputSchema.inferIn,
+        undefined,
+        RegisterPhoneConfirmResponse
+    >()('post', '/auth/register/phone/confirm'),
+    registerPhoneComplete: contract<
+        typeof RegisterPhoneCompleteInputSchema.inferIn,
+        undefined,
+        RegisterPhoneCompleteResponse
+    >()('post', '/auth/register/phone/complete-profile'),
+    logout: contract<EmptyBody, undefined, LogoutResponse>()('post', '/auth/logout'),
+    logoutAll: contract<EmptyBody, undefined, LogoutAllResponse>()('post', '/auth/logout-all'),
+    changePassword: contract<
+        typeof ChangePasswordInputSchema.inferIn,
+        undefined,
+        ChangePasswordResponse
+    >()('post', '/auth/change-password'),
+    verifyEmail: contract<typeof VerifyEmailInputSchema.inferIn, undefined, VerifyEmailResponse>()(
+        'post',
+        '/auth/verify-email',
+    ),
+    resendVerificationEmail: contract<EmptyBody, undefined, ResendVerificationEmailResponse>()(
+        'post',
+        '/auth/resend-verification-email',
+    ),
+    forgotPassword: contract<
+        typeof ForgotPasswordInputSchema.inferIn,
+        undefined,
+        ForgotPasswordResponse
+    >()('post', '/auth/forgot-password'),
+    resetPhoneStart: contract<
+        typeof ResetPhoneStartInputSchema.inferIn,
+        undefined,
+        ResetPhoneStartResponse
+    >()('post', '/auth/reset-phone/start'),
+    resetPhoneComplete: contract<
+        typeof ResetPhoneCompleteInputSchema.inferIn,
+        undefined,
+        ResetPhoneCompleteResponse
+    >()('post', '/auth/reset-phone/complete'),
+    resetPassword: contract<
+        typeof ResetPasswordInputSchema.inferIn,
+        undefined,
+        ResetPasswordResponse
+    >()('post', '/auth/reset-password'),
+    linkPhoneStart: contract<
+        typeof LinkPhoneStartInputSchema.inferIn,
+        undefined,
+        LinkPhoneStartResponse
+    >()('post', '/auth/link-phone/start'),
+    linkPhoneConfirm: contract<
+        typeof LinkPhoneConfirmInputSchema.inferIn,
+        undefined,
+        LinkPhoneConfirmResponse
+    >()('post', '/auth/link-phone/confirm'),
+    linkEmailStart: contract<
+        typeof LinkEmailStartInputSchema.inferIn,
+        undefined,
+        LinkEmailStartResponse
+    >()('post', '/auth/link-email/start'),
+    signInMethods: contract<undefined, undefined, GetSignInMethodsResponse>()(
+        'get',
+        '/auth/sign-in-methods',
+    ),
+    unlinkSignInMethod: contract<
+        typeof UnlinkSignInMethodInputSchema.inferIn,
+        undefined,
+        UnlinkSignInMethodResponse
+    >()('post', '/auth/sign-in-methods/unlink'),
+} as const

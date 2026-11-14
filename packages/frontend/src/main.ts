@@ -1,3 +1,6 @@
+// First, before the router and Sentry are loaded: takes ?token= of a mailed link out of
+// the address (feat-205).
+import '@/utils/strip-url-token'
 import './assets/main.css'
 import './styles.css'
 import './shared-components.css'
@@ -32,9 +35,11 @@ async function bootstrap() {
             return
         }
 
+        // `to.path` and the route name only: `fullPath` carries the query (`?token=…`).
         sentry.captureException(error, {
             extra: {
-                targetRoute: to.fullPath || to.path || '',
+                targetRoute: to.path || '',
+                targetRouteName: to.name === undefined ? '' : String(to.name),
             },
         })
     })

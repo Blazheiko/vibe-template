@@ -10,15 +10,16 @@ packages:
 
 ## Workspace packages
 
-| Package          | Path                      | Purpose                                                                                                                                                                                                                                       |
-| ---------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend`        | `packages/backend`        | HTTP/WebSocket server on uWebSockets.js, Drizzle, Redis, S3, email, AI ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json))                                                                   |
-| `frontend`       | `packages/frontend`       | Vue 3 + Vite application: PWA, i18n, Pinia, Vitest, Playwright e2e ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json))                                                                      |
-| `shared`         | `packages/shared`         | Shared contracts: `brands`, `schemas`, `responses`, `errors`, `enums`, `utils`, `guards`, `limits`, `patterns` — separate subpath exports ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)) |
-| `api-playground` | `packages/api-playground` | Vue developer tool for manually testing the HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                                                    |
-| `documentation`  | `documentation`           | This documentation site on VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                                        |
+| Package          | Path                      | Purpose                                                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend`        | `packages/backend`        | HTTP/WebSocket server on uWebSockets.js, Drizzle, Redis, S3, email, AI ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/package.json))                                                                                             |
+| `frontend`       | `packages/frontend`       | Vue 3 + Vite application: PWA, i18n, Pinia, Vitest, Playwright e2e ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json))                                                                                                |
+| `shared`         | `packages/shared`         | Shared contracts: `brands`, `schemas`, `responses`, `errors`, `enums`, `utils`, `guards`, `limits`, `patterns`, `contracts`, `ws-client` — separate subpath exports ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)) |
+| `api-playground` | `packages/api-playground` | Vue developer tool for manually testing the HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                                                                              |
+| `landing`        | `packages/landing`        | The template's static landing page with Log in and Sign up buttons: Vue 3 + Vite, prerendered without JavaScript, an nginx image ([Landing page](/en/landing/), [package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/package.json))     |
+| `documentation`  | `documentation`           | This documentation site on VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                                                                  |
 
-`frontend`, `backend` and `api-playground` depend on `shared` via `workspace:*`, so `shared` must be built first (`pnpm build:shared`).
+`frontend`, `backend`, `api-playground` and `landing` depend on `shared` via `workspace:*`, so `shared` must be built first (`pnpm build:shared`). The dev servers (`vite` and the backend's `tsx watch`) read `shared` straight from `src/` through the `shared-source` export condition ([packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), so a change in `packages/shared/src` reaches HMR and the backend restart without a rebuild. `typecheck`, tests, `vite build`, `start` and Docker have no such condition and read `dist/`.
 
 ## Key directories
 
@@ -39,8 +40,9 @@ packages:
 │   │   │   └── index.ts    # entry point
 │   │   └── drizzle.config.ts
 │   ├── frontend/           # src/, public/, e2e/ (Playwright), vite.sw.config.ts
-│   ├── shared/             # src/{brands,enums,errors,guards,responses,schemas,utils}, test/
-│   └── api-playground/     # src/{components,composables,router,stores,views}
+│   ├── shared/             # src/{brands,contracts,enums,errors,guards,limits,patterns,responses,schemas,utils,ws-client}, test/
+│   ├── api-playground/     # src/{components,composables,router,stores,views}
+│   └── landing/            # src/{components,content,styles}, build/ (addresses, prerender, checks), nginx/
 ├── documentation/          # VitePress
 ├── Dockerfile
 ├── init.sh                 # install + typecheck + lint + test + build
@@ -71,7 +73,7 @@ When adding a new alias, update both places at the same time. Targets in `paths`
 
 According to [AGENTS.md](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md):
 
-- **TypeScript `6.0.3`** — pinned in the root ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)) and in the packages (`backend`, `frontend`, `shared`, `api-playground`, `documentation`). Versions should be kept aligned.
+- **TypeScript `6.0.3`** — pinned in the root ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)) and in the packages (`backend`, `frontend`, `shared`, `api-playground`, `landing`, `documentation`). Versions should be kept aligned.
 - **`@typescript-eslint/*`** are kept on a TS 6-compatible line via `pnpm.overrides` in the root `package.json`; update them together with `typescript-eslint`.
 - **No `baseUrl`** in the backend `tsconfig`: it is deprecated in TypeScript 6 and will stop working in TypeScript 7.
 - **`drizzle-orm` and `drizzle-kit` `1.0.0-rc.5`** — a release candidate; upgrade both together to the same exact version. Relations use Relational Queries v2 (`defineRelations` in [relations.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/relations.ts)), migrations use the 1.0 "folder per migration" format ([migrations](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations)).

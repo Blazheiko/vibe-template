@@ -152,8 +152,17 @@ export function isValidCidrEntry(entry: string): boolean {
 
 export function isIpInCidr(ip: string, cidr: string): boolean {
     if (!cidr.includes('/')) {
-        const normalizedIp = normalizeIp(ip)
-        return normalizedIp !== null && normalizedIp === normalizeIp(cidr)
+        // One address. Compared as numbers, not as text: an IPv6 address has many spellings
+        // (`::1`, `0:0:0:0:0:0:0:1`, the full form uWS reports), and the entry of
+        // TRUSTED_PROXY_CIDRS is written by hand (feat-159).
+        const address = parseIp(ip)
+        const entry = parseIp(cidr)
+        return (
+            address !== null &&
+            entry !== null &&
+            address.family === entry.family &&
+            address.value === entry.value
+        )
     }
 
     const parsedCidr = parseCidr(cidr)

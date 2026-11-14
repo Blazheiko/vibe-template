@@ -7,6 +7,8 @@ interface StoredConnection {
     ip: string
     userAgent: string
     appType: 'web' | 'pwa'
+    sessionId: string
+    userToken: string | undefined
 }
 
 interface UserConnections {
@@ -24,6 +26,17 @@ export interface ConnectionMeta {
     ip: string
     userAgent: string
     appType: 'web' | 'pwa'
+    /** The session the connection was opened from, and the users.session_token it carried. */
+    sessionId: string
+    userToken: string | undefined
+}
+
+export interface ListedConnection {
+    userId: string
+    uuid: string
+    ws: MyWebSocket
+    sessionId: string
+    userToken: string | undefined
 }
 
 function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa' {
@@ -34,6 +47,41 @@ function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa
     }
 
     return 'web'
+}
+
+// feat-210: connections whose upgrade was let in and whose handleConnected still awaits its
+// reads. They are not in `userStorage` yet, so a revocation that closes the user's connections
+// would miss them; it marks them here instead, and handleConnected closes a marked one.
+interface ConnectingEntry {
+    userId: string
+    sessionId: string
+    revoked: boolean
+}
+const connecting = new Map<string, ConnectingEntry>()
+
+/**
+ * Notes a connection that is being opened. The returned function ends the wait and answers
+ * whether the session was revoked meanwhile; it must be called exactly once.
+ */
+const beginConnecting = (userId: string, uuid: string, sessionId: string): (() => boolean) => {
+    const entry: ConnectingEntry = { userId, sessionId, revoked: false }
+    connecting.set(uuid, entry)
+    return () => {
+        connecting.delete(uuid)
+        return entry.revoked
+    }
+}
+
+/** Marks the user's connections that are being opened: all, or those of one session. */
+const revokeConnecting = (userId: string, sessionId?: string): number => {
+    let marked = 0
+    for (const entry of connecting.values()) {
+        if (entry.userId !== userId) continue
+        if (sessionId !== undefined && entry.sessionId !== sessionId) continue
+        entry.revoked = true
+        marked += 1
+    }
+    return marked
 }
 
 /**
@@ -51,6 +99,8 @@ const registerConnection = (
         ip: meta.ip,
         userAgent: meta.userAgent,
         appType: meta.appType,
+        sessionId: meta.sessionId,
+        userToken: meta.userToken,
     }
     const existing = userStorage.get(userId)
     if (existing !== undefined) {
@@ -155,23 +205,45 @@ const getOnlineUserMeta = (
 }
 
 /** Every open connection of this instance, with the user it belongs to. */
-const listConnections = (): { userId: string; uuid: string; ws: MyWebSocket }[] => {
-    const all: { userId: string; uuid: string; ws: MyWebSocket }[] = []
+const listConnections = (): ListedConnection[] => {
+    const all: ListedConnection[] = []
     for (const [userId, user] of userStorage) {
         for (const [uuid, connection] of user.connections) {
-            all.push({ userId, uuid, ws: connection.ws })
+            all.push({
+                userId,
+                uuid,
+                ws: connection.ws,
+                sessionId: connection.sessionId,
+                userToken: connection.userToken,
+            })
         }
     }
     return all
 }
 
+/** The open connections of one user on this instance. */
+const listUserConnections = (userId: string): ListedConnection[] => {
+    const user = userStorage.get(userId)
+    if (user === undefined) return []
+    return Array.from(user.connections, ([uuid, connection]) => ({
+        userId,
+        uuid,
+        ws: connection.ws,
+        sessionId: connection.sessionId,
+        userToken: connection.userToken,
+    }))
+}
+
 export const wsConnectionRegistry = {
     registerConnection,
+    beginConnecting,
+    revokeConnecting,
     unregisterConnection,
     isUserOnline,
     findOnlineUsers,
     forEachConnection,
     listConnections,
+    listUserConnections,
     getConnection,
     getOnlineUsers,
     getOnlineUserMeta,

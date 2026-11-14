@@ -7,8 +7,9 @@
 #   docker compose down -v  # stop and delete the volumes
 #
 # The whole application in containers, as built for production (backend serves the SPA):
-#   pnpm app:build        # scripts/docker-build.sh: the local image vibe-template:local
+#   pnpm app:build        # scripts/docker-build.sh: vibe-template:local and vibe-template-landing:local
 #   pnpm app:up           # services + migrate (db:create, db:migrate) + app on http://localhost:3000
+#                         # and the landing (packages/landing, nginx) on http://localhost:8080
 #   pnpm app:seed         # optional: reference data and the demo accounts (SEED_* in .env)
 #
 # Stop `pnpm dev` first, or set APP_PORT: both use port 3000.
@@ -16,7 +17,7 @@
 # Credentials and host ports come from packages/backend/.env (the same PGSQL_*, REDIS_*, S3_*
 # variables the backend reads), so both sides always agree. Without a value the defaults below
 # match packages/backend/.env.example. Host ports: PGSQL_PORT, REDIS_PORT, S3_HOST_PORT (8333),
-# SMTP_PORT (1025), MAILPIT_UI_PORT (8025), APP_PORT (3000). Every port is bound to 127.0.0.1:
+# SMTP_PORT (1025), MAILPIT_UI_PORT (8025), APP_PORT (3000), LANDING_PORT (8080). Every port is bound to 127.0.0.1:
 # these are dev credentials, not for a shared network. Not for production; see
 # documentation/backend/deployment.md.
 
@@ -36,9 +37,13 @@ x-app-environment: &app-environment
     APP_UNIX_PATH: ''
     APP_URL: http://localhost:${APP_PORT:-3000}
     FRONTEND_URL: http://localhost:${APP_PORT:-3000}
-    LANDING_URL: http://localhost:${APP_PORT:-3000}
     DOMAIN: localhost:${APP_PORT:-3000}
     SERVE_STATIC: 'true'
+    # The prefix the SPA in the image was built for. scripts/docker-build.sh takes it from the
+    # shell, else from packages/backend/.env, and so does this line (compose reads that file
+    # through --env-file in `pnpm app:up`), so the build and the server cannot differ (feat-185).
+    # Without --env-file only the shell counts; start the stack with `pnpm app:up`.
+    API_PATH_PREFIX: ${API_PATH_PREFIX:-api}
     DOC_PAGE: 'false'
     # Empty → derived from APP_URL / FRONTEND_URL / DOMAIN above, not from a host-dev .env value.
     CSRF_ALLOWED_ORIGINS: ''
@@ -93,7 +98,12 @@ services:
         image: redis:7-alpine
         restart: unless-stopped
         # REDIS_PASSWORD empty (as in .env.example) → no password; set → requirepass.
-        command: ['sh', '-c', 'exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}']
+        command:
+            [
+                'sh',
+                '-c',
+                'exec redis-server --appendonly yes $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}',
+            ]
         environment:
             REDIS_PASSWORD: ${REDIS_PASSWORD:-}
             REDISCLI_AUTH: ${REDIS_PASSWORD:-}
@@ -178,7 +188,33 @@ services:
                 condition: service_healthy
             mailpit:
                 condition: service_started
-        # The image HEALTHCHECK (/api/ready: PostgreSQL and Redis answer) is what `up --wait` waits for.
+        # What `up --wait` waits for: the image HEALTHCHECK (PostgreSQL and Redis answer), under the
+        # same prefix as the server; the image's own check knows only `api` (feat-185).
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - curl -fsS "http://127.0.0.1:3000/${API_PATH_PREFIX:-api}/ready" | grep -q '"status":"ok"' || exit 1
+            interval: 30s
+            timeout: 5s
+            start_period: 20s
+            retries: 3
+
+    # The landing page (packages/landing/Dockerfile): static files on nginx. Its buttons lead to
+    # http://localhost:APP_PORT; scripts/docker-build.sh compiles that address in, so change
+    # APP_PORT or LANDING_PORT before `pnpm app:build`, not after.
+    landing:
+        profiles: [app]
+        image: ${LANDING_IMAGE:-vibe-template-landing:local}
+        pull_policy: never
+        restart: unless-stopped
+        ports:
+            - '127.0.0.1:${LANDING_PORT:-8080}:8080'
+        healthcheck:
+            test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+            interval: 30s
+            timeout: 5s
+            start_period: 5s
+            retries: 3
 
 volumes:
     postgres-data:

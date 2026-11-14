@@ -13,9 +13,15 @@ interface UserFilters {
     dateTo: string
 }
 
+const PAGE_LIMIT = 100
+
 const users = ref<AdminUserListItem[]>([])
 const total = ref(0)
+// feat-155: the list is paged by the id of the last user shown.
+const nextCursor = ref<string | null>(null)
+const hasMore = ref(false)
 const loading = ref(false)
+const loadingMore = ref(false)
 const error = ref<string | null>(null)
 const { isModalOpen, selectedUser, detailLoading, detailError, openUserModal, closeModal } =
     useAdminUserDetailModal()
@@ -26,27 +32,42 @@ const filters = ref<UserFilters>({
     dateTo: '',
 })
 
-async function loadUsers() {
-    loading.value = true
+/** The first page (`reset`), or the next one after what is shown. */
+async function loadUsers(reset = true) {
+    if (reset) {
+        loading.value = true
+    } else {
+        loadingMore.value = true
+    }
     error.value = null
 
+    const cursor = reset ? undefined : (nextCursor.value ?? undefined)
     const res = await adminUsersApi.list({
-        limit: 100,
+        limit: PAGE_LIMIT,
+        ...(cursor !== undefined ? { cursor } : {}),
         userId: filters.value.userId,
         dateFrom: filters.value.dateFrom,
         dateTo: filters.value.dateTo,
     })
 
     loading.value = false
+    loadingMore.value = false
 
     if (res.data?.status === 'success') {
-        users.value = res.data.items
+        users.value = reset ? res.data.items : [...users.value, ...res.data.items]
         total.value = res.data.total
+        nextCursor.value = res.data.nextCursor
+        hasMore.value = res.data.hasMore
         return
     }
 
-    users.value = []
-    total.value = 0
+    // A failed next page keeps what is shown; a failed first page shows nothing.
+    if (reset) {
+        users.value = []
+        total.value = 0
+        nextCursor.value = null
+        hasMore.value = false
+    }
     error.value = getResponseMessage(res.data, res.error?.message ?? 'Failed to load users')
 }
 
@@ -89,12 +110,14 @@ onMounted(() => {
             from-label="Registered from"
             to-label="Registered to"
             :loading="loading"
-            @submit="loadUsers"
+            @submit="loadUsers()"
             @reset="resetFilters"
         />
 
         <div v-if="loading" class="admin-users__loading">Loading users...</div>
-        <div v-else-if="error !== null" class="admin-users__error">{{ error }}</div>
+        <div v-else-if="error !== null && users.length === 0" class="admin-users__error">
+            {{ error }}
+        </div>
 
         <div v-else class="table-wrap">
             <table class="users-table">
@@ -123,6 +146,19 @@ onMounted(() => {
                     </tr>
                 </tbody>
             </table>
+
+            <div v-if="error !== null" class="admin-users__error">{{ error }}</div>
+
+            <div v-if="hasMore" class="load-more-wrap">
+                <button
+                    class="load-more-btn"
+                    type="button"
+                    :disabled="loadingMore"
+                    @click="loadUsers(false)"
+                >
+                    {{ loadingMore ? 'Loading...' : 'Load more' }}
+                </button>
+            </div>
         </div>
 
         <AdminUserDetailModal
@@ -222,5 +258,31 @@ onMounted(() => {
     .filters-actions .btn {
         flex: 1;
     }
+}
+.load-more-wrap {
+    display: flex;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+.load-more-btn {
+    appearance: none;
+    border: 1px solid var(--accent-color);
+    background: var(--accent-color);
+    color: white;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.load-more-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-color) 88%, black);
+}
+
+.load-more-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 </style>

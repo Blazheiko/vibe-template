@@ -41,7 +41,7 @@ The backend keeps a single WebSocket endpoint `/<pathPrefix>/websocket` (by defa
     }
     ```
 
-1. On the frontend, events with the `broadcast:` prefix are handled by [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts): add a `payload` guard in [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts) and a `note_created` handler in `handlers`, following the `support_chat_token` example, and pass the event on through the event bus. The parity test `ws-payload-guards.spec.ts` requires a guard for every registry event.
+1. On the frontend, add a payload guard in [ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts) and put it in `broadcastGuards` under the event's name. The registry is typed `satisfies BroadcastGuards`, so an event of `BroadcastEventSchemas` without a guard does not compile ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)). [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts) passes the event to the event bus under the same name with the payload of its contract (`BroadcastContracts` from `shared/contracts`); subscribe with `useEventBus().on('note_created', …)`. The parity test `ws-payload-guards.spec.ts` checks the guard against the registry schema.
 
 ::: warning Service tests
 `broadcast-service.ts` imports the server, and the server requires `APP_KEY` at startup. Without a mock, a service unit test will fail with `APP_KEY must be set...`. Add this to the test:
@@ -69,7 +69,7 @@ A browser `WebSocket` cannot pass a cookie session as an authorization header, s
 
 ### Upgrade
 
-`handleUpgrade` in [ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts) first checks the per-IP upgrade limit ([upgrade-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/upgrade-rate-limit.ts), 60 per minute by default): exceeding it gives `429` with `Retry-After`, and a counter failure gives `503`. It then parses `Sec-WebSocket-Protocol` by comma: the first element is the token, the second is the application type (`app-web` → `web`, `app-pwa` → `pwa`, anything else → `web` with a warning). The token is checked by format (`accessTokenLength` = 16, only `[a-zA-Z0-9]`), otherwise `401 Invalid token format`. Next the `onUpgrade` hook is called, that is `wsSessionAuth.verifyUpgradeToken` from [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts), and the server returns the token itself to the client as the selected subprotocol. If the main Redis client is unavailable, the upgrade is rejected **before** `res.upgrade` with a `503 Service Unavailable` response with `Retry-After: 1` (no `4001`); after the first unavailable command, the second one (the session `get`) is not executed.
+`handleUpgrade` in [ws-handlers.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-handlers.ts) first checks the per-IP upgrade limit ([upgrade-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/upgrade-rate-limit.ts), by default 120 per minute in process memory and 60 in the shared Redis counter, see [below](#limits-and-security)): exceeding it gives `429` with `Retry-After`, and a counter failure gives `503`. It then parses `Sec-WebSocket-Protocol` by comma: the first element is the token, the second is the application type (`app-web` → `web`, `app-pwa` → `pwa`, anything else → `web` with a warning). The token is checked by format (`accessTokenLength` = 16, only `[a-zA-Z0-9]`), otherwise `401 Invalid token format`. Next the `onUpgrade` hook is called, that is `wsSessionAuth.verifyUpgradeToken` from [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts), and the server returns the token itself to the client as the selected subprotocol. If the main Redis client is unavailable, the upgrade is rejected **before** `res.upgrade` with a `503 Service Unavailable` response with `Retry-After: 1` (no `4001`); after the first unavailable command, the second one (the session `get`) is not executed.
 
 ```ts
 const token = protocols[0] ?? ''
@@ -78,7 +78,7 @@ const appType = normalizeAppTypeProtocol(protocols[1] ?? '')
 
 If `verifyUpgradeToken` did not find a live session for a token of the correct format, the upgrade is rejected **before** `res.upgrade` with a `401 Session expired` response: the connection does not open. The browser sees this as a failed handshake (close `1006`), and the client refreshes the token over HTTP (see below). If the data exists, the client receives `service:connection_established` with `socket_id` (the connection UUID) and `activity_timeout: 30`.
 
-On every incoming message, `onRefreshToken` extends the TTL of `auth:ws:<token>` to 120 s, and in `onClose` and `closeAllWs` (graceful shutdown, code `4201`) the token is deleted via `onRevokeToken`. `closeAllWs` first closes every connection with code `4201` and revokes the tokens only afterwards, in parallel: a Redis failure during revocation is only logged and does not leave connections open (feat-112). After `closeAllWs` the server no longer upgrades: an upgrade that was still waiting for token verification gets `503 Server is shutting down` (feat-138). So a token is single-use per connection: a new connection requires a new `update-ws-token` call.
+The token is **single-use**: `verifyUpgradeToken` reads `auth:ws:<token>` with `GETDEL`, so the record leaves Redis in the same step that reads it (feat-196). A second upgrade with the same token gets `401`, and of two simultaneous upgrades with one token exactly one opens. The token is consumed whatever the answer (including `503` when the DB did not respond): after a failed handshake the client takes a new one through `update-ws-token`. From then on `sessionId` and `userToken` live only in the connection's `userData`, so a message or a heartbeat costs no Redis command for the token, and there is nothing to revoke on close. `closeAllWs` (graceful shutdown) closes every connection with code `4201`. After `closeAllWs` the server no longer upgrades: an upgrade that was still waiting for token verification gets `503 Server is shutting down` (feat-138).
 
 ## Server structure
 
@@ -100,8 +100,6 @@ registerWsAppHooks({
     onConnected: (ws, userData) => websocketCoordinator.handleConnected(ws, userData),
     onDisconnected: (ws, userData, code) =>
         websocketCoordinator.handleDisconnected(ws, userData, code),
-    onRefreshToken: (token) => wsSessionAuth.refreshToken(token),
-    onRevokeToken: (token) => wsSessionAuth.revokeToken(token),
 })
 ```
 
@@ -119,24 +117,21 @@ A socket is dead from the moment uWS calls the `close` handler: after that any a
 1. reads `userData` and sets `userData.closed = true`;
 2. removes the socket from `wsStorage`;
 3. starts `onDisconnected`, whose synchronous part removes the connection from the registry;
-4. only then waits for Redis (`onRevokeToken`) and for `onDisconnected` to finish.
+4. only then waits for `onDisconnected` to finish.
 
 After `await findRole(...)`, `handleConnected` checks `userData.closed`. A socket closed while the role was being read does not get into the registry: its `close` has already run and will not be called again. If `onConnected` fails (for example, a DB error while reading the role), the connection is closed with code `1011` (feat-133): the client has already received `connection_established`, but outside the registry it gets no broadcasts, and push would behave as if the user were offline. The client reconnects on any code outside 4000–4099 and registers again. Likewise, the message handler's response (`sendJson`) checks `userData.closed`: if the client left while the handler was working (an AI reply, a slow query), nothing is sent and nothing is logged as an error (feat-124). The same applies to the `4001` close when the session was not found after the `await` of the session lookup (feat-128). The `admin_user_online_upsert` event is sent only if the user is still in the registry: its snapshot is read from the DB, and a disconnect in the meantime has already sent `remove`, so a late upsert would leave a "ghost" in the admin list. The `user_online` row is closed (`UPDATE` by socket uuid) only after the connection `INSERT` has finished, and regardless of its outcome: a failed `INSERT` might have committed (a timeout or a dropped connection after `COMMIT`), so without the `UPDATE` the row would stay open. If the row truly does not exist, the `UPDATE` finds nothing and writes a `warn` (feat-128).
-
-::: warning `app/state/user-storage.ts`
-[user-storage.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/state/user-storage.ts) (`getUserByToken`/`setUserByToken`/`deleteToken` on a `Map`) is not imported anywhere in the current code. The real connection state lives in `ws-connection-registry.ts`.
-:::
 
 All these structures live in the memory of a single process: with several instances, the registry, channels and presence are not shared.
 
 ## Message protocol
 
-The client sends text JSON (binary messages are ignored with an error log). The shape is checked by [ws-message-validator.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/ws-message-validator.ts) (ArkType via the `defaultValidator` adapter):
+The client sends text JSON (a binary frame closes the connection with code `1003` and one `warn` line, feat-197). The shape is checked by [ws-message-validator.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/ws-message-validator.ts) (ArkType via the `defaultValidator` adapter):
 
 ```ts
 const WsMessageSchema = type({
     payload: 'Record<string, unknown> | null',
     event: 'string',
+    'id?': '0 < string <= 64',
     timestamp: 'number',
 })
 ```
@@ -144,14 +139,22 @@ const WsMessageSchema = type({
 An example request from the client:
 
 ```json
-{ "event": "api/support/support_chat", "timestamp": 1760000000000, "payload": { "message": "..." } }
+{
+    "event": "api/support/support_chat",
+    "id": "3f2c9a4e-…",
+    "timestamp": 1760000000000,
+    "payload": { "message": "..." }
+}
 ```
 
-The response (`WsResponseData`) repeats the request's `event` and `timestamp`, so the client matches it to the request:
+`id` is the client's id of the request (a non-empty string of up to 64 characters; the clients use `crypto.randomUUID()`). The server does not interpret it, it only echoes it in **every** reply to that request: success, validation failure, `not_found`, rate limit, `service_unavailable`, an exception ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md), feat-180). The client waits for the reply by that `id`, so several requests of one event can be in flight at once. A message without an `id` is accepted too (manual requests in the playground), and then the reply has none either.
+
+The response (`WsResponseData`) repeats the request's `event`, `id` and `timestamp`:
 
 ```json
 {
     "event": "api/support/support_chat",
+    "id": "3f2c9a4e-…",
     "timestamp": 1760000000000,
     "status": "200",
     "error": null,
@@ -166,12 +169,25 @@ There are two kinds of errors:
 
 The response starts with `data: null`: if a middleware stopped the request and wrote nothing, the client gets `null`.
 
+### Envelope type
+
+The envelope is described once, in [`shared/ws-client/envelope.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/ws-client/envelope.ts) (feat-184), and the server, the app and the playground all use it:
+
+| Type                           | Direction       | Fields                                                                                                                                                              |
+| ------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WsRequestEnvelope<Payload>`   | client → server | `event`, `id?`, `timestamp`, `payload`; `WsMessage` on the server                                                                                                   |
+| `WsReplyEnvelope<Data>`        | server → client | `event`, `id?`, `status` (`WsReplyStatus`: the HTTP status as a string, or `'error'`), `timestamp`, `data`, `error` (`WsErrorBody`); `WsResponseData` on the server |
+| `WsBroadcastEnvelope<Payload>` | server → client | `event` (`broadcast:<event>`), `status` (a number), `payload`; no `id` and no `timestamp`                                                                           |
+| `WsConnectionEstablishedData`  | server → client | the `data` of `service:connection_established`: `socket_id`, `activity_timeout`                                                                                     |
+
+Service events come in the reply envelope. `isWsBroadcast(message)` tells a broadcast from a reply; the types of a request's `payload` and a reply's `data` come from the WS contract of the event, and a broadcast's `payload` from `BroadcastContracts`.
+
 ### Dispatcher
 
 [ws-api-dispatcher.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts):
 
 1. The route name is the part of `event` up to the first `:`; it is looked up by an **exact match** in `wsRoutesByUrl` ([router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts), `createWsRoutesByUrl`). The keys are the full URL with `pathPrefix`, group and `url`, for example `api/support/support_chat`.
-2. `checkRateLimitWs` ([ws-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-rate-limit.ts)) — the route or group limit, keyed by IP + URL.
+2. `checkRateLimitWs` ([ws-rate-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-rate-limit.ts)) — the route or group limit, keyed by user + URL.
 3. `validateRoutePayload`, if the route has a `validator`; the payload is frozen (`Object.freeze`).
 4. `createWsContext` → the route middleware (if any) → `handler(context)`; the result is put into `responseData.data`.
 
@@ -181,21 +197,37 @@ The response starts with `data: null`: if a middleware stopped the request and w
 | invalid message shape or payload       | `validation_failed` (`details.kind: "validation"`), `event` and `timestamp` from the request if they are a string and a number |
 | route not found                        | `not_found` ("Route not found")                                                                                                |
 | limit exceeded                         | `rate_limited` (`reason: rate_limit_exceeded`)                                                                                 |
+| connection budget exceeded             | `rate_limited` with the request's `event` (empty when the message is not JSON); close `4029` when it goes on                   |
 | `RedisUnavailableError` in the handler | `service_unavailable`                                                                                                          |
 | other exception in the handler         | `internal_error`                                                                                                               |
 | session gone (already open connection) | `service:error` `unauthorized` + close `4001`                                                                                  |
 | Redis unavailable                      | `service_unavailable`, the connection is not closed                                                                            |
 
+### Connection message budget
+
+The route limit is checked in the dispatcher, that is after a valid message has already cost a session read: a Redis command and a PostgreSQL query. An event no route answers never reaches the session read: `onMessage` answers `not_found` from memory (feat-197), so it costs only a place in the connection's budget. So the first thing `onMessage` does is check the connection's budget ([ws-message-budget.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-message-budget.ts)). The budget state lives in the connection's `userData`: no Redis, in process memory, gone with the socket.
+
+| What is counted                                   | Limit                                       | Over the limit                                                                |
+| ------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------- |
+| text messages other than `ping`, per minute       | `WS_MESSAGES_PER_MINUTE` (120 by default)   | a `rate_limited` reply; the token is not extended, the session is not checked |
+| handlers of one connection that have not finished | `WS_MAX_CONCURRENT_HANDLERS` (8 by default) | the same, until one of the handlers ends                                      |
+| `ping` per minute                                 | 60 (the client sends one every 10 s)        | `pong` is sent, the token is not extended                                     |
+
+The connection is closed with code `4029` when more messages were refused within one minute than the budget itself (that is, more than twice the budget was sent), or when the budget is exceeded for the third minute in a row. The code is in the `4000–4099` range, so the client does not reconnect. `ping` and invalid JSON never reach the session check.
+
+The WS route map has no prototype, and the dispatcher looks up own properties only: the event `constructor` or `toString` is `not_found`, not a route.
+
 Exceptions in the dispatcher and `onMessage` are classified by the same [`classifyError`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/errors/classify-error.ts) as the HTTP `handleError` (see [Error handling](/en/backend/request-lifecycle#error-handling-handleerror)): the same `code`, `message`, `details` and log levels. Business errors returned by a controller still go into `data` (feat-048).
 
 Before the dispatcher, `onMessage` checks the session via `wsSessionHandler` ([session-handler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-handler.ts)) on **every** message, so logging out over HTTP breaks the WS on the next message.
 
-If the main Redis client is unavailable (a token refresh or a session read gave `RedisUnavailableError`), the connection is **not closed**, and the response to this message is an error with the original `event`, in the same format as `rate_limited`:
+If the main Redis client is unavailable (a session read gave `RedisUnavailableError`), the connection is **not closed**, and the response to this message is an error with the original `event` and `id`, in the same format as `rate_limited`:
 
 ```json
 {
     "status": "error",
     "event": "api/<route>",
+    "id": "3f2c9a4e-…",
     "error": {
         "code": "service_unavailable",
         "message": "Service temporarily unavailable. Try again later."
@@ -205,11 +237,11 @@ If the main Redis client is unavailable (a token refresh or a session read gave 
 }
 ```
 
-The frontend looks up the callback by `event`, so the matching Promise is rejected right away instead of waiting for the client timeout. After the first unavailable command the second one is not executed.
+The frontend looks up the pending request by `id` ([ws-api-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-api-response.ts)), so the matching Promise is rejected right away instead of waiting for the client timeout. After the first unavailable command the second one is not executed.
 
 ### WS routes
 
-Defined in [app/routes/ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts), controllers in [controllers/ws/](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws):
+Defined in [app/routes/ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts) through the contracts of [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts) (`adminWsContracts`, `supportWsContracts`), controllers in [controllers/ws/](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws):
 
 | Full event name (`event`)            | Controller                                 | Purpose                                                                                                                           | Group limit |
 | ------------------------------------ | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- | ----------- |
@@ -241,7 +273,7 @@ At runtime every event goes **once**, before serialization and before the loop o
 | has extra keys     | **not sent**, `error` | sent without them, `warn` with paths |
 | breaks the schema  | **not sent**, `error` | **not sent**, `error`                |
 
-There is nobody to answer 500 to here, so an invalid event is only written to the log (`Broadcast event dropped: payload breaks its schema`) and the method returns `0` / `false`. The frontend checks the payload with its own guards without ArkType ([ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts)); their match with the registry schemas is verified by the parity test.
+There is nobody to answer 500 to here, so an invalid event is only written to the log (`Broadcast event dropped: payload breaks its schema`) and the method returns `0` / `false`. The frontend checks the payload with its own guards without ArkType ([ws-payload-guards.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-payload-guards.ts)): the `broadcastGuards` registry must have a guard for every event (`satisfies BroadcastGuards`), and their match with the registry schemas is verified by the parity test. An event its guard accepts goes to the event bus under its name, typed `BroadcastContracts[event]`; a refused one goes to `reportValidationFailure` and no further.
 
 Events that are actually sent:
 
@@ -251,7 +283,7 @@ Events that are actually sent:
 | `broadcast:admin_user_online_remove`                                                                                                    | `ws-presence-service.ts`, the last connection closed                                                                                                                               | the `admin` channel                                                             |
 | `broadcast:support_chat_token`, `support_chat_complete`, `support_chat_error` (with the `clientMessageId` of the message it replies to) | [support-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-service.ts)                                            | the connection the request came from (fallback — all of the user's connections) |
 
-Presence is published only if the `admin` channel has subscribers (`adminWsChannelService.hasSubscribers()`). Transport service events: `service:connection_established`, `service:error`.
+Presence is published only if the `admin` channel has subscribers (`adminWsChannelService.hasSubscribers()`). Transport service events: `service:connection_established`, `service:error`: the `WsServiceEvent` type in `shared/ws-client` (the heartbeat is not an event but the text `ping` / `pong`).
 
 ## Heartbeat, timeouts, client
 
@@ -261,28 +293,30 @@ The frontend client is the singleton composable [useWebSocketConnection.ts](http
 
 - `protocols` — an array `[wsToken, 'app-web']`, mutated before reconnecting;
 - heartbeat from [websocket-heartbeat.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-heartbeat.ts): `ping` every 10 s, close if no `pong` arrives within 5 s. The scheduler is created with `immediate: false` — after the fix "don't start the heartbeat interval before the socket connects", the interval is started by `useWebSocket` itself on connect, not from module load (otherwise the pong timeout could close the socket during the handshake);
-- `websocketApi(route, payload)` sends `event` in the format `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` is `VITE_API_PATH_PREFIX`, `api` by default, slashes at the edges are trimmed) and waits for a response with the same `event` for up to 10 s. Only one request can wait for a given event at a time: the second gets `Request already in progress`;
-- messages are routed by prefix: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → service handlers, `api` → request resolve.
+- `websocketApi(route, payload)` (only `callWs` calls it; ESLint forbids string calls outside the client) sends `event` in the format `<prefix>/<route>` ([`ws-event.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-event.ts): `prefix` is `VITE_API_PATH_PREFIX`, which the Vite config takes from the backend `API_PATH_PREFIX`, `api` by default, slashes at the edges are trimmed) adds a new `id` to the request and waits for the reply with that `id` for up to 10 s; requests of one event do not wait for each other;
+- messages are routed by prefix: `broadcast:` → [useBroadcastHandler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useBroadcastHandler.ts), `service:` → service handlers, a reply with the `id` of a pending request → that request resolves.
 
 Reconnecting (vueuse's built-in `autoReconnect` is commented out, the logic is custom in `handleWebSocketClose`):
 
 The decision is made by the pure function [`resolveWebSocketCloseAction`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/websocket-close.ts) (covered by tests):
 
+- a socket the client closed itself (a sign-out through `websocketClose()`, or a socket replaced in `websocketOpen()` when the token is refreshed over a live connection) → the `close` event is ignored, whatever the code. vueuse reports the close of every socket, also when another one is current by then; such a socket is marked at the moment it is closed and its requests are rejected then, so the late event touches neither the requests of the new socket nor the reconnect timer. A close by the heartbeat (no `pong`) is not one of these — it is a lost connection;
 - code `4001` → `unauthorized()`: a new `mainApi.updateWsToken()` and `websocketOpen(wsUrl, wsToken)`; if HTTP also says "not authenticated" — the `unauthorized` event on the event bus and a close; other errors — retry after 5 s;
 - `1006` when the connection never opened (the server rejected the upgrade with `401` or is unavailable) → also `unauthorized()`: the first time immediately, subsequent ones in a row after 5 s, so that an unavailable WS endpoint with a working HTTP does not cause a fast loop of token refreshes;
-- codes `4000–4099` (except `4001`) → no reconnect;
-- other codes (including `4201` on server shutdown) → `open()` after 5 s. Since the token on the server has already been revoked, such a retry will most likely get `4001` and take the token refresh branch.
+- codes `4000–4099` (except `4001`) → no reconnect; `4029` belongs here (the connection went over its [message budget](#connection-message-budget));
+- other codes (including `4201` on server shutdown) → after 5 s the client takes a new token (`update-ws-token`) and opens a connection with it: the token of the previous connection has been consumed (feat-196).
 
 ::: tip Non-standard `API_PATH_PREFIX`
-WS route keys on the server are `<API_PATH_PREFIX>/<route>`. A frontend built with the same `VITE_API_PATH_PREFIX` produces the same events; with a different prefix the server responds `not_found`. The frontend's HTTP calls still go to `/api/...` regardless of this variable (item 73 in [code-issues](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)), so a completely different prefix also needs HTTP redirection on the proxy.
+WS route keys on the server are `<API_PATH_PREFIX>/<route>`. The frontend takes the same prefix: the Vite config reads `API_PATH_PREFIX` from the shell or `packages/backend/.env` and compiles it in as `VITE_API_PATH_PREFIX` ([one source](/en/backend/configuration#one-source-for-the-api-address-and-prefix)), so it produces the same events; with a different prefix the server responds `not_found`. The same prefix also sets the frontend's HTTP paths ([api-path.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-path.ts): `/<prefix>/<route>`), the Vite dev proxy ([vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts): `/<prefix>`, including `/<prefix>/websocket`) and the prefix whose requests the service worker never caches ([service-worker.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts)). So for a non-standard prefix it is enough to change the backend's `API_PATH_PREFIX` and restart or rebuild the frontend.
 :::
 
 ## Limits and security
 
 - **Message size**: `maxPayloadLength` of 1 MB at the uWS level; there is no separate setting for WS (see [Request lifecycle](/en/backend/request-lifecycle)).
-- **Message rate limit**: per-route/per-group via `checkRateLimitWs`, with the counter in process memory (the connection lives on a single instance), keyed by IP + route URL — by IP, not by connection, so that the budget is not multiplied by new connections. A group limit applies to each route of the group separately, not to the whole group together. If the check fails, the request is denied (`allowed: false`, `retryAfter: 1`).
-- **Route authorization**: all WS routes require a valid session (checked in `onMessage`); revoking a session (a password change, "log out everywhere", ADR 0002) does **not** close an already open connection immediately: it is closed by `closeExpiredSession` on the client's next request, while new connections are rejected by the check during upgrade (as observed by `e2e-live`: another browser's open socket stays open until it sends a request); the `admin` role for the `admin/*` group is checked by `ws_admin_guard`, and for the channel by the channel service, both by the connection's role (see [Revoking admin access](#revoking-admin-access)). More details — [Authentication](/en/backend/auth#websocket-authorization).
+- **Message rate limit**: per-route/per-group via `checkRateLimitWs`, with the counter in process memory (the connection lives on a single instance), keyed by user + route URL — by user, not by connection or IP (feat-197): the budget is not multiplied by new connections or addresses, and users behind one NAT do not share it. A group limit applies to each route of the group separately, not to the whole group together. If the check fails, the request is denied (`allowed: false`, `retryAfter: 1`).
+- **Route authorization**: all WS routes require a valid session (checked in `onMessage`); revoking a session (a logout, "log out everywhere", a password change or reset, ADR 0002) **closes** the open connections of that session with code `4001` (see [Revoking a session](#revoking-a-session)), while new connections are rejected by the check during upgrade; the `admin` role for the `admin/*` group is checked by `ws_admin_guard`, and for the channel by the channel service, both by the connection's role (see [Revoking admin access](#revoking-admin-access)). More details — [Authentication](/en/backend/auth#websocket-authorization).
 
+- **Limit of simultaneous connections** (feat-197, [ws-connection-limit.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/rate-limit/ws-connection-limit.ts)): at most `WS_MAX_CONNECTIONS_PER_USER` (10 by default) open connections per user and `WS_MAX_CONNECTIONS_PER_IP` (50 by default) per IP address; `0` switches a limit off. The check and taking the place are one synchronous step right before `res.upgrade`, so parallel upgrades cannot take the last place together; `onClose` gives the place back. An extra upgrade gets `429` with `Retry-After: 5` (the browser sees a failed handshake, the client retries with a new token at most once per 5 s). Without this limit the message budget, which is counted per connection, was multiplied by the number of sockets of one account. The counters live in process memory: with several instances the limit applies to each one. The IP limit counts everyone behind one NAT — raise it for an office or a campus; behind a reverse proxy without a correct `TRUST_PROXY` all clients have the proxy's address and share these 50 connections ([Security](/en/backend/security)).
 - **Upgrade rate limit, two levels**, both per IP and independent of HTTP L1: level 1 in process memory (`WS_UPGRADE_RATE_LIMIT_*`, 120/min) cuts off floods before any I/O; level 2 in Redis (`WS_UPGRADE_SHARED_RATE_LIMIT_*`, 60/min) is a shared budget for all instances. Both are checked before the token format and the session lookup, so invalid tokens spend the budget too. If Redis for limits is unavailable, level 2 is skipped and only level 1 applies. Regular HTTP requests to `/<pathPrefix>/websocket` are counted in HTTP L1. Details — [Rate limiting](/en/backend/security#rate-limiting).
 - **`ping`/`pong`** (heartbeat) is handled in `onMessage` before the dispatcher and is not subject to the message rate limit.
 
@@ -309,6 +343,24 @@ Limits worth knowing about:
 - **Revocation failure.** A connection that closed during the pass is skipped silently (an expected race). Any other revocation or role-read error is logged with `userId` and `socketUuid` (`error`), counted in `failed` of the pass report, and does not stop the remaining connections; the connection stays admin, and the next pass tries it again.
 - **Background timer.** One pass at a time: a slow DB does not pile up passes. The timer does not keep the process alive and stops on graceful shutdown.
 
+## Revoking a session
+
+A WS route message is checked against the session; a heartbeat (`ping`) is not. Without a separate mechanism, a connection that only pings would stay open after its session was revoked and would keep receiving broadcasts: the `admin` channel, support chat replies. So the server closes such connections itself ([`ws-session-revocation.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/ws-session-revocation.ts)):
+
+- **At once, on the instance that handled the request.** The connection registry keeps, for every socket, the `sessionId` and the `users.session_token` it was opened with. A logout closes the sockets of that session; "log out everywhere", a password change, a password reset (email and phone) and an account claim close every socket of the user. The client gets `service:error` with `reason: session_expired` and close code `4001`.
+- **While a connection is being opened.** Between the upgrade and the registration of a connection the server reads the user's role from the DB; with the same read it takes the current `users.session_token`. If the session was revoked in that interval (the token is no longer the same, or the user was deleted), the connection is closed with code `4001` and never enters the registry ([`ws-coordinator.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-coordinator.ts)). Without this it would be registered after the others were closed and would wait for the periodic check. A sign-out of one session (`logout`) does not rotate the token, so at the same point the server checks two more things: whether the stored session of the connection is still in Redis, and whether a sign-out that happened while the connection was being opened marked it (the registry keeps a list of such connections, `beginConnecting` / `revokeConnecting`).
+- **Periodically, on every instance.** Once per `WS_SESSION_RECHECK_INTERVAL_MS` (30 s by default, see [Configuration](/en/backend/configuration)) an instance reads, with **one query per 1000 users**, the current `users.session_token` of the owners of its connections and closes the connections whose token is no longer the same (or whose user was deleted). In the same pass it checks, with **one Redis request per 1000 sessions**, whether the stored session of each connection still exists, and closes the connections of those that do not: a `logout` of one session only deletes its record and does not change the token. A socket of a session that expired while it sent nothing but heartbeats is closed the same way. This closes the sockets held by an instance other than the one that revoked the session. The database query goes through the same bounded pool as the session check; when the database or Redis does not answer, the pass closes nothing and the next one tries again.
+
+**Guarantee:** after a session is revoked, the connections opened from it are closed at once on the same instance, and no later than `WS_SESSION_RECHECK_INTERVAL_MS` plus the duration of one pass on the others.
+
+Limits worth knowing:
+
+- **A password change also closes the socket of the current tab.** Its token has just been rotated; the client reconnects with the WS token of the renewed session (the password change response returns it).
+- **A logout of one session on another instance.** `logout` does not rotate `users.session_token`, so the periodic check does not see such a socket: on another instance it is closed by `closeExpiredSession` on the client's next request. "Log out everywhere" and a password change do not have this limit.
+- **The DB is unavailable.** The pass throws (the error is logged), nothing is closed, the next pass tries again.
+- **A failed close.** A connection that has already closed is skipped silently. Any other error is logged with `userId` and `socketUuid`, counted in `failed`, and does not stop the rest; the next pass tries again.
+- **Background timer.** One pass at a time; the timer does not keep the process alive and stops on graceful shutdown.
+
 ## Sequence diagram
 
 ```mermaid
@@ -323,10 +375,10 @@ sequenceDiagram
   H->>R: SETEX auth:ws:token 60
   H-->>C: wsUrl, wsToken
   C->>W: Upgrade, Sec-WebSocket-Protocol: token, app-web
-  W->>R: GET auth:ws:token, GET session
+  W->>R: GETDEL auth:ws:token, GET session
   W-->>C: service:connection_established
   C->>W: event api/support/support_chat
-  W->>R: EXPIRE token 120, session check
+  W->>R: session check
   W->>D: message
   D->>S: handler(context)
   D-->>C: response with the same event
@@ -335,21 +387,41 @@ sequenceDiagram
 
 ## How to add a WS route
 
-1. Describe the input and response schema in `packages/shared` (like `SupportChatInputSchema` and `SupportChatResponseSchema`).
-2. Add a method to a controller in `packages/backend/src/app/controllers/ws/`. It receives `WsContext<Input>`; take the payload via `getTypedPayload(context)`, the user from `context.userData`, the socket from `context.ws`. Convert service errors via `appErrorToPayload`. Annotate the result type with the response type from `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` checks it against `ResponseSchema` ([Handler response type](/en/backend/routing#handler-response-type)). All context fields are described in [WsContext in detail](/en/backend/controllers#wscontext-in-detail).
-3. Register the route in `ws-routes.ts` in an existing or new group with `prefix` and `rateLimit`:
+Every WS route is declared through a **contract** ([ADR 0006](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0006-websocket-contracts.md)), the same as HTTP routes ([Routing](/en/backend/routing#http-routes-defineroute)).
+
+1. Describe the payload and response schema in `packages/shared` (like `SupportChatInputSchema` and `SupportChatResponseSchema`).
+2. Add a contract in [`shared/contracts/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/ws.ts): `wsContract<Payload, Response>()('/<group>/<route>')`. The path is the event without the API prefix; a route without a payload is `wsContract<undefined, Response>()`.
+
+```ts
+export const supportWsContracts = {
+    chat: wsContract<typeof SupportChatInputSchema.inferIn, SupportChatResponse>()(
+        '/support/support_chat',
+    ),
+} as const
+```
+
+3. Add an entry to the schema registry [`app/routes/contract-schemas/ws.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/ws.ts) (key `ws <event>`, apart from HTTP); `contractSchemas` checks the schemas against the contract's types:
+
+```ts
+export const supportWsSchemas = contractSchemas(supportWsContracts, {
+    chat: { body: SupportChatInputSchema, response: ResponseSchemas.SupportChatResponseSchema },
+})
+```
+
+4. Add a method to a controller in `packages/backend/src/app/controllers/ws/`. It receives `WsContext<Payload>`; take the payload via `getTypedPayload(context)`, the user from `context.userData`, the socket from `context.ws`. Convert service errors via `appErrorToPayload`. Annotate the result type with the response type from `shared` (`Promise<SupportChatResponse>`): `defineWsRoute` checks it against the response schema ([Handler response type](/en/backend/routing#handler-response-type)). All context fields are described in [WsContext in detail](/en/backend/controllers#wscontext-in-detail).
+5. Register the route in `ws-routes.ts` in the group whose prefix starts the contract's path (otherwise the server does not start). `defineWsRoute` from `#app/routes/contract-schemas/index.js` takes the event from the contract and the schemas from the registry:
 
 ```ts
 defineWsRoute({
-    url: 'support_chat',
+    contract: supportWsContracts.chat,
     handler: SupportWsController.chat.bind(SupportWsController),
-    validator: SupportChatInputSchema,
-    ResponseSchema: ResponseSchemas.SupportChatResponseSchema,
     description: 'Send a message to the support agent',
 })
 ```
 
-4. On the frontend, call `websocketApi('<prefix>/<url>', payload)`; for push, use `broadcastService` on the backend and a handler in `useBroadcastHandler.ts`.
-5. For long-running operations, respond immediately and send the result as a push event to `userData.uuid`, as in the support controller.
+6. On the frontend, send the request through [`callWs`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/ws-client.ts): `await callWs(supportWsContracts.chat, payload)`. A wrong payload is a compile error; a string `websocketApi(...)` outside the client is forbidden by ESLint. For push, use `broadcastService` on the backend and a handler in `useBroadcastHandler.ts`.
+7. For long-running operations, respond immediately and send the result as a push event to `userData.uuid`, as in the support controller.
+
+A route without a contract (`defineRawWsRoute` from `app/routing/define-ws-route.ts`) is left only for the tests of the WS machinery: ESLint forbids importing it outside tests, and `route-contracts.spec.ts` fails if `ws-routes.ts` has a route without a contract or a registry entry.
 
 For the general recipe for a feature, see [How to add a feature](/en/backend/adding-a-feature).

@@ -12,6 +12,7 @@ vi.mock('#logger', () => ({ default: logger }))
 
 const redis = vi.hoisted(() => ({
     get: vi.fn(),
+    getdel: vi.fn(),
     expire: vi.fn(),
     del: vi.fn(),
     setex: vi.fn(),
@@ -41,7 +42,8 @@ beforeEach(() => {
 
 describe('verifyUpgradeToken', () => {
     it('ok when token and session match', async () => {
-        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(SESSION_DATA)
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
+        redis.get.mockResolvedValueOnce(SESSION_DATA)
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'ok',
             sessionId: 's1',
@@ -57,7 +59,8 @@ describe('verifyUpgradeToken', () => {
             data: { userId: '1' },
             createdAt: new Date(Date.now() - 31 * DAY_MS).toISOString(),
         })
-        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(old)
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
+        redis.get.mockResolvedValueOnce(old)
 
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({ kind: 'missing' })
 
@@ -67,7 +70,8 @@ describe('verifyUpgradeToken', () => {
 
     // ADR 0002: the Redis records are intact, but users.sessionToken was rotated.
     it('missing when the sessionToken was rotated, though the session record exists', async () => {
-        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(SESSION_DATA)
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
+        redis.get.mockResolvedValueOnce(SESSION_DATA)
         checkSessionToken.mockResolvedValue('mismatch')
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'missing',
@@ -76,7 +80,8 @@ describe('verifyUpgradeToken', () => {
     })
 
     it('unavailable when the sessionToken lookup fails: no access on the Redis record alone', async () => {
-        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(SESSION_DATA)
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
+        redis.get.mockResolvedValueOnce(SESSION_DATA)
         checkSessionToken.mockResolvedValue('unavailable')
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'unavailable',
@@ -84,7 +89,8 @@ describe('verifyUpgradeToken', () => {
     })
 
     it('does not look the sessionToken up when the session record is missing', async () => {
-        redis.get.mockResolvedValueOnce(TOKEN_DATA).mockResolvedValueOnce(null)
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
+        redis.get.mockResolvedValueOnce(null)
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'missing',
         })
@@ -92,7 +98,7 @@ describe('verifyUpgradeToken', () => {
     })
 
     it('missing when the token is unknown', async () => {
-        redis.get.mockResolvedValueOnce(null)
+        redis.getdel.mockResolvedValueOnce(null)
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'missing',
         })
@@ -108,7 +114,7 @@ describe('verifyUpgradeToken', () => {
     })
 
     it('unavailable when the session lookup fails', async () => {
-        redis.get.mockResolvedValueOnce(TOKEN_DATA)
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
         withRedis
             .mockImplementationOnce(async (op) => op())
             .mockRejectedValueOnce(new RedisUnavailableError())
@@ -118,7 +124,7 @@ describe('verifyUpgradeToken', () => {
     })
 
     it('missing (logged) on other errors, as before', async () => {
-        redis.get.mockResolvedValueOnce('{not json')
+        redis.getdel.mockResolvedValueOnce('{not json')
         await expect(wsSessionAuth.verifyUpgradeToken('t')).resolves.toEqual({
             kind: 'missing',
         })
@@ -126,17 +132,32 @@ describe('verifyUpgradeToken', () => {
     })
 })
 
-describe('refreshToken, revokeToken, generateWsToken', () => {
-    it.each([
-        ['refreshToken', () => wsSessionAuth.refreshToken('t')],
-        ['revokeToken', () => wsSessionAuth.revokeToken('t')],
-        [
-            'generateWsToken',
-            () => generateWsToken({ id: 's1', data: { userToken: 'u1' }, createdAt: '' }, '1'),
-        ],
-    ])('%s rejects with RedisUnavailableError when Redis is down', async (_, call) => {
+// feat-196 (L-12): the token used to be read with GET and kept alive by every message, so it
+// opened any number of connections.
+describe('the WS token is consumed by the upgrade (feat-196)', () => {
+    it('reads the token with GETDEL, never with GET', async () => {
+        redis.getdel.mockResolvedValueOnce(TOKEN_DATA)
+        redis.get.mockResolvedValueOnce(SESSION_DATA)
+
+        await wsSessionAuth.verifyUpgradeToken('t')
+
+        expect(redis.getdel).toHaveBeenCalledTimes(1)
+        expect(redis.getdel).toHaveBeenCalledWith('auth:ws:t')
+        expect(redis.get).toHaveBeenCalledTimes(1)
+        expect(redis.get).not.toHaveBeenCalledWith('auth:ws:t')
+    })
+
+    it('exposes nothing that refreshes or revokes a token', () => {
+        expect(Object.keys(wsSessionAuth)).toEqual(['verifyUpgradeToken'])
+    })
+})
+
+describe('generateWsToken', () => {
+    it('rejects with RedisUnavailableError when Redis is down', async () => {
         withRedis.mockRejectedValue(new RedisUnavailableError())
-        await expect(call()).rejects.toBeInstanceOf(RedisUnavailableError)
+        await expect(
+            generateWsToken({ id: 's1', data: { userToken: 'u1' }, createdAt: '' }, '1'),
+        ).rejects.toBeInstanceOf(RedisUnavailableError)
         expect(withRedis).toHaveBeenCalledTimes(1)
     })
 })

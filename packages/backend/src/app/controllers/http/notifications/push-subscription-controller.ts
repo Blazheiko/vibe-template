@@ -1,4 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { pushSubscriptionContracts } from 'shared/contracts'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
@@ -29,13 +31,17 @@ import type {
     PushSubscriptionTestInput,
     UpdateSubscriptionInput,
 } from 'shared/schemas'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 // Non-numeric ids (e.g. GET /test-push, which now only exists as POST) are the
 // same "not found" as someone else's subscription, instead of a BigInt 500.
-function resolveSubscriptionId(context: HttpContext<unknown, unknown>): bigint | null {
-    const raw = context.httpData.params['subscriptionId'] ?? ''
-    return /^\d+$/.test(raw) ? BigInt(raw) : null
+// Each method below reads the parameters of its own contract (feat-186): a `:subscriptionId`
+// renamed in one of them stops the build here.
+function resolveSubscriptionId(params: { readonly subscriptionId: string }): bigint | null {
+    return parseEntityId(params.subscriptionId)
 }
+
+type Pc = typeof pushSubscriptionContracts
 
 const subscriptionNotFound = (): AppError => notFound('Subscription', 'Subscription not found')
 
@@ -75,6 +81,7 @@ export default {
             userId,
             payload,
             context.auth.getPresentedUserToken(),
+            context.httpData.ip ?? null,
         )
         return respond(context, result, (value) => ({
             status: 'success',
@@ -82,13 +89,15 @@ export default {
         }))
     },
 
-    async getSubscription(context: HttpContext): Promise<GetSubscriptionResponse> {
+    async getSubscription(
+        context: HttpContext<unknown, null, ParamsOf<Pc['get']>>,
+    ): Promise<GetSubscriptionResponse> {
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const subscriptionId = resolveSubscriptionId(context)
+        const subscriptionId = resolveSubscriptionId(context.httpData.params)
         if (subscriptionId === null) {
             return mapControllerError(context, subscriptionNotFound())
         }
@@ -100,14 +109,14 @@ export default {
     },
 
     async updateSubscription(
-        context: HttpContext<UpdateSubscriptionInput>,
+        context: HttpContext<UpdateSubscriptionInput, null, ParamsOf<Pc['update']>>,
     ): Promise<UpdateSubscriptionResponse> {
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const subscriptionId = resolveSubscriptionId(context)
+        const subscriptionId = resolveSubscriptionId(context.httpData.params)
         if (subscriptionId === null) {
             return mapControllerError(context, subscriptionNotFound())
         }
@@ -125,13 +134,15 @@ export default {
         }))
     },
 
-    async deleteSubscription(context: HttpContext): Promise<DeleteSubscriptionResponse> {
+    async deleteSubscription(
+        context: HttpContext<unknown, null, ParamsOf<Pc['remove']>>,
+    ): Promise<DeleteSubscriptionResponse> {
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const subscriptionId = resolveSubscriptionId(context)
+        const subscriptionId = resolveSubscriptionId(context.httpData.params)
         if (subscriptionId === null) {
             return mapControllerError(context, subscriptionNotFound())
         }
@@ -139,13 +150,15 @@ export default {
         return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
 
-    async getSubscriptionLogs(context: HttpContext): Promise<GetSubscriptionLogsResponse> {
+    async getSubscriptionLogs(
+        context: HttpContext<unknown, null, ParamsOf<Pc['logs']>>,
+    ): Promise<GetSubscriptionLogsResponse> {
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const subscriptionId = resolveSubscriptionId(context)
+        const subscriptionId = resolveSubscriptionId(context.httpData.params)
         if (subscriptionId === null) {
             return mapControllerError(context, subscriptionNotFound())
         }
@@ -154,14 +167,14 @@ export default {
     },
 
     async getSubscriptionStatistics(
-        context: HttpContext,
+        context: HttpContext<unknown, null, ParamsOf<Pc['statistics']>>,
     ): Promise<GetSubscriptionStatisticsResponse> {
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const subscriptionId = resolveSubscriptionId(context)
+        const subscriptionId = resolveSubscriptionId(context.httpData.params)
         if (subscriptionId === null) {
             return mapControllerError(context, subscriptionNotFound())
         }
@@ -176,14 +189,14 @@ export default {
     },
 
     async deactivateSubscription(
-        context: HttpContext<EmptyFormInput>,
+        context: HttpContext<EmptyFormInput, null, ParamsOf<Pc['deactivate']>>,
     ): Promise<DeactivateSubscriptionResponse> {
         const userId = requireUserId(context)
         if (userId === null) {
             return mapControllerError(context, unauthorized())
         }
 
-        const subscriptionId = resolveSubscriptionId(context)
+        const subscriptionId = resolveSubscriptionId(context.httpData.params)
         if (subscriptionId === null) {
             return mapControllerError(context, subscriptionNotFound())
         }

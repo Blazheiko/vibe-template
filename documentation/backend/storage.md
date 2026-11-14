@@ -16,7 +16,7 @@
 - **`requestChecksumCalculation` / `responseChecksumValidation` = `WHEN_REQUIRED`.** Нові версії SDK за замовчуванням додають CRC-контрольні суми, а частина S3-сумісних сховищ такі запити відхиляє.
 - Під час старту в лог пишуться `endpoint`, `bucket` і `region`. Ключі доступу в лог не потрапляють.
 
-Тест [`s3.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/storage/s3.spec.ts) перевіряє один сценарій: endpoint без схеми дає HTTPS і path-style адресацію.
+Тест [`s3.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/storage/s3.spec.ts) перевіряє три сценарії: `buildObjectKey` додає налаштовані префікси, `deleteFromS3` видаляє ключ із тими самими префіксами, що й завантаження та presign, а endpoint без схеми дає HTTPS і path-style адресацію.
 
 ## Ключі об'єктів
 
@@ -92,7 +92,7 @@ sequenceDiagram
 ## Як файли віддаються
 
 - **Аватари** завантажуються з `ACL: public-read` (рішення Р1) і читаються напряму з CDN. Бекенд віддає фронтенду `cdnUrl` (`CDN_URL`), `s3Prefix` і `s3DynamicDataPrefix` ([main-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/core/main-service.ts)). Фронтенд будує URL у `getStorageFileUrl` ([storage-url.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/storage-url.ts), [avatar-url.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/avatar-url.ts)). Якщо `CDN_URL` порожній, аватар не показується.
-- **Скриншоти KB** публічні: це довідковий контент, не секрет. Адмін завантажує їх з `ACL: public-read` ([knowledge-base-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-service.ts)). `GET /support/screenshot/:articleId` (потрібен `auth_guard`) відповідає `302` з `Location: <CDN_URL>/<повний ключ>` ([support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/support/support-controller.ts)). Якщо `CDN_URL` порожній, маршрут повертає `404`.
+- **Скриншоти KB** публічні: це довідковий контент, не секрет. Адмін завантажує їх з `ACL: public-read` ([knowledge-base-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/knowledge-base-service.ts)). `GET /support/screenshot/:articleId` (потрібен `auth_guard`) для **активної** статті відповідає `302` з `Location: <CDN_URL>/<повний ключ>` ([support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/support/support-controller.ts)). Якщо `CDN_URL` порожній, маршрут повертає `404`. Для вимкненої статті (`isActive = false`) відповідь теж `404`: вимкнення прибирає статтю з чату підтримки разом зі скріншотом (feat-160). Сам файл у сховищі при цьому лишається публічним за своїм ключем (ключ містить UUID, і вгадати його не можна).
 
 ::: warning Правило: медіа чату підтримки лише з нашого CDN
 Зображення й посилання, які бачить користувач у чаті підтримки, мають вести тільки на наш origin або на `CDN_URL`. Прямі посилання на S3-endpoint, presigned URL і сторонні хости заборонені: `img-src` у CSP дозволяє лише `'self'` і origin `CDN_URL`, і браузер перевіряє origin також після редиректу. Скриншоти, завантажені до цієї зміни без `public-read`, треба зробити публічними (ACL або політика бакета для префікса `knowledge-base/`), інакше CDN віддасть `403`.
@@ -102,31 +102,22 @@ sequenceDiagram
 Раніше аватари йшли в бакет без `public-read`. Якщо бакет або префікс не відкриті політикою сховища чи CDN, такі старі об'єкти лишаються приватними: їх треба перезалити або виставити ACL окремо.
 :::
 
-## Локальна розробка з MinIO
+## Локальна розробка
 
-Docker Compose для MinIO в репозиторії немає. Мінімальний приклад (облікові дані є плейсхолдерами):
-
-```bash
-docker run -d --name minio -p 9000:9000 -p 9001:9001 \
-  -e MINIO_ROOT_USER=<minio-user> \
-  -e MINIO_ROOT_PASSWORD=<minio-password> \
-  minio/minio server /data --console-address ":9001"
-```
-
-Створіть бакет у консолі `http://localhost:9001` і пропишіть у `packages/backend/.env`:
+У [`docker-compose.yml`](https://github.com/Blazheiko/vibe-template/blob/main/docker-compose.yml) є сервіс `s3`: SeaweedFS у режимі `weed mini` на порту `8333` (`make services-up` або `pnpm services:up` піднімає його разом із PostgreSQL, Redis і Mailpit). Бакет `S3_BUCKET` створюється на старті, ключ — `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` (dev-значення за замовчуванням `devaccesskey` / `devsecretkey`), а анонімне читання дозволене лише під `S3_BUCKET/S3_PREFIX/`, тож аватари й скриншоти відкриваються з `CDN_URL`. Для бекенда на хості пропишіть у `packages/backend/.env` (так само підказує [`.env.example`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/.env.example)):
 
 ```bash
-S3_ENDPOINT=http://localhost:9000   # без схеми буде https://
+S3_ENDPOINT=http://127.0.0.1:8333   # без схеми буде https://
 S3_REGION=us-east-1
-S3_BUCKET=<bucket>
-S3_ACCESS_KEY_ID=<minio-user>
-S3_SECRET_ACCESS_KEY=<minio-password>
+S3_BUCKET=vibe-template
+S3_ACCESS_KEY_ID=devaccesskey
+S3_SECRET_ACCESS_KEY=devsecretkey
 S3_PREFIX=app
 S3_DYNAMIC_DATA_PREFIX=uploads
-CDN_URL=http://localhost:9000/<bucket>
+CDN_URL=http://127.0.0.1:8333/vibe-template
 ```
 
-Для `localhost` path-style вмикається автоматично. Щоб аватари відображалися, дайте префіксу `app/uploads/avatars/` анонімний доступ на читання.
+Для локального endpoint path-style вмикається автоматично. Контейнер застосунку з профілю `app` отримує ті самі змінні з `docker-compose.yml` і пише в `http://s3:8333` через мережу compose.
 
 CORS бакета описує [`corsS3.xml`](https://github.com/Blazheiko/vibe-template/blob/main/corsS3.xml): лише `GET` і `HEAD` з origin застосунку (placeholder `https://app.example.com` — замініть своїм). Усі завантаження й видалення йдуть через бекенд із серверними ключами, тож браузеру `PUT`/`POST` не потрібні. Приклад для кількох оточень — [`corsS3.prod.example.xml`](https://github.com/Blazheiko/vibe-template/blob/main/corsS3.prod.example.xml). Застосовується вручну до бакета, код ці файли не читає.
 
@@ -136,7 +127,3 @@ CORS бакета описує [`corsS3.xml`](https://github.com/Blazheiko/vibe-
 - `ACL: public-read` використовують обидва завантаження: аватари й скриншоти KB.
 - Імена об'єктів генеруються сервером (`randomUUID`), тому клієнт не може обрати шлях або перезаписати чужий файл.
 - Секрети `S3_*` зберігайте лише в оточенні, див. [Безпека](/backend/security#чекліст-для-production).
-
-::: warning Розмір файлу
-Розмір перевіряється вже після того, як усе тіло буферизовано (до ліміту multipart у 50 MB).
-:::

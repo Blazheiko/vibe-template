@@ -3,10 +3,13 @@ import logger from '#vendor/utils/logger.js'
 import { clientKey, rateLimitStore, retryAfterSeconds } from './rate-limit-store.js'
 import { createWsErrorEnvelope } from '#vendor/utils/network/ws-error-envelope.js'
 
+// feat-197 (L-13): by user, not by IP. Users behind one NAT used to share a route's budget, so
+// one could use it up for the others, and one user on several addresses multiplied it. Every
+// open connection has a user (onOpen closes one without); the IP is only a fallback.
 function getWsClientIdentifier(ws: MyWebSocket): string {
-    // Use IP address from WebSocket user data for rate limiting
-    const { ip } = ws.getUserData()
-    return clientKey(typeof ip === 'string' ? ip : null)
+    const { userId, ip } = ws.getUserData()
+    if (typeof userId === 'string' && userId !== '') return `user:${userId}`
+    return `ip:${clientKey(typeof ip === 'string' ? ip : null)}`
 }
 
 function determineWsRateLimit(route: RouteItem, groupRateLimit?: RateLimit): RateLimit | null {

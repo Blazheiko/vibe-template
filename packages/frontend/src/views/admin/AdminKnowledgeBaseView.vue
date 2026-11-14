@@ -7,6 +7,8 @@ const articles = ref<KnowledgeBaseArticle[]>([])
 const total = ref(0)
 const isLoading = ref(false)
 const error = ref<string | null>(null)
+// What the last delete, reindex or screenshot action could not do.
+const actionError = ref<string | null>(null)
 
 // Form state
 const showForm = ref(false)
@@ -32,7 +34,10 @@ const isInitStarting = ref(false)
 let initPollTimer: number | null = null
 
 const isInitRunning = computed(() => initStatus.value?.state === 'running')
-const showInitButton = computed(() => !isLoading.value && total.value === 0 && !isInitRunning.value)
+// A list that failed to load is not an empty knowledge base: no offer to initialise it.
+const showInitButton = computed(
+    () => !isLoading.value && error.value === null && total.value === 0 && !isInitRunning.value,
+)
 const showInitProgress = computed(
     () => initStatus.value !== null && initStatus.value.state !== 'idle',
 )
@@ -133,8 +138,15 @@ async function saveForm(): Promise<void> {
             return
         }
         // Upload screenshot if selected
+        actionError.value = null
         if (screenshotFile.value !== null) {
-            await adminKnowledgeBaseApi.uploadScreenshot(saved.id, screenshotFile.value)
+            const uploaded = await adminKnowledgeBaseApi.uploadScreenshot(
+                saved.id,
+                screenshotFile.value,
+            )
+            if (uploaded === null) {
+                actionError.value = 'The article was saved, but its screenshot was not uploaded'
+            }
         }
         showForm.value = false
         await loadArticles()
@@ -147,12 +159,14 @@ async function saveForm(): Promise<void> {
 
 async function deleteArticle(article: KnowledgeBaseArticle): Promise<void> {
     if (!confirm(`Delete "${article.title}"?`)) return
-    await adminKnowledgeBaseApi.delete(article.id)
+    const deleted = await adminKnowledgeBaseApi.delete(article.id)
+    actionError.value = deleted ? null : `Failed to delete "${article.title}"`
     await loadArticles()
 }
 
 async function reindexArticle(article: KnowledgeBaseArticle): Promise<void> {
-    await adminKnowledgeBaseApi.reindex(article.id)
+    const reindexed = await adminKnowledgeBaseApi.reindex(article.id)
+    actionError.value = reindexed ? null : `Failed to reindex "${article.title}"`
     await loadArticles()
 }
 
@@ -160,8 +174,17 @@ async function reindexAll(): Promise<void> {
     isReindexingAll.value = true
     reindexResult.value = null
     try {
-        const count = await adminKnowledgeBaseApi.reindexAll()
-        reindexResult.value = `Indexed ${String(count)} article(s)`
+        const result = await adminKnowledgeBaseApi.reindexAll()
+        if (result === null) {
+            actionError.value = 'Failed to reindex the knowledge base'
+            return
+        }
+        actionError.value = null
+        const failed =
+            result.failed.length > 0
+                ? `, ${String(result.failed.length)} failed (ids: ${result.failed.join(', ')})`
+                : ''
+        reindexResult.value = `Indexed ${String(result.indexed)} article(s)${failed}`
         await loadArticles()
     } finally {
         isReindexingAll.value = false
@@ -196,7 +219,9 @@ function onScreenshotChange(e: Event): void {
 }
 
 async function deleteScreenshot(article: KnowledgeBaseArticle): Promise<void> {
-    await adminKnowledgeBaseApi.deleteScreenshot(article.id)
+    const updated = await adminKnowledgeBaseApi.deleteScreenshot(article.id)
+    actionError.value =
+        updated === null ? `Failed to delete the screenshot of "${article.title}"` : null
     await loadArticles()
 }
 
@@ -236,6 +261,7 @@ onUnmounted(() => {
 
         <p v-if="reindexResult" class="kb-reindex-result">{{ reindexResult }}</p>
         <p v-if="initError" class="kb-error">{{ initError }}</p>
+        <p v-if="actionError" class="kb-error" role="alert">{{ actionError }}</p>
 
         <div v-if="showInitProgress" class="kb-init-card" :class="`is-${initStatus?.state}`">
             <div class="kb-init-head">
@@ -276,7 +302,7 @@ onUnmounted(() => {
         </div>
 
         <div v-if="isLoading" class="kb-loading">Loading...</div>
-        <p v-else-if="error" class="kb-error">{{ error }}</p>
+        <p v-else-if="error" class="kb-error" role="alert">{{ error }}</p>
 
         <div v-else class="kb-table-wrap">
             <table class="kb-table">

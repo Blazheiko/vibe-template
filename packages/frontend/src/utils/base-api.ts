@@ -1,6 +1,6 @@
+import { buildUrl, mainContracts } from 'shared/contracts'
 import { CsrfRejectReason } from 'shared/errors'
 import { useEventBus } from './event-bus'
-import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import {
     hasResponseError,
     isUnauthorizedError,
@@ -50,7 +50,6 @@ interface ApiMethods {
         formData: FormData,
         options?: HttpOptions,
     ) => Promise<ApiResponse<T>>
-    ws: <T = HttpResponse>(route: string, body?: Record<string, unknown>) => Promise<T | null>
 }
 
 // `string & {}` keeps editor suggestions for the common methods.
@@ -73,9 +72,11 @@ const normalizeUrl = (url: string): string => {
 // Empty by default: requests stay same-origin (the Vite proxy in dev, the backend
 // that serves the SPA in production) instead of an example domain (code-issues item 59).
 const BASE_URL = normalizeUrl(import.meta.env.VITE_BASE_URL ?? '')
-const INIT_ROUTE = apiPath('main/init')
+// The transport calls main/init itself: the session refresh is what callApi's transport waits
+// for, so it cannot go through callApi. Its path and method are still the contract's (feat-186).
+const INIT_ROUTE = apiPath(buildUrl(mainContracts.init))
+const INIT_METHOD = mainContracts.init.method.toUpperCase()
 
-const { websocketApi } = useWebSocketConnection()
 const eventBus = useEventBus()
 const UNSAFE_METHODS = new Set(['post', 'put', 'patch', 'delete'])
 
@@ -136,7 +137,7 @@ const refreshSession = (): Promise<RefreshResult> => {
     refreshInFlight = (async (): Promise<RefreshResult> => {
         try {
             const response = await fetch(`${BASE_URL}${INIT_ROUTE}`, {
-                method: 'GET',
+                method: INIT_METHOD,
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 signal: AbortSignal.timeout(refreshTimeoutMs),
@@ -287,7 +288,7 @@ const send = async <T>(
         const failed = !response.ok || hasResponseError(responseData)
         const csrfToken = isRecord(responseData) ? responseData.csrfToken : undefined
 
-        if (route === INIT_ROUTE && method.toUpperCase() === 'GET') {
+        if (route === INIT_ROUTE && method.toUpperCase() === INIT_METHOD) {
             // init says whose session it is: 401 → anonymous, 200 → its user.
             if (response.status === 401) {
                 confirmCsrfToken(csrfToken, null)
@@ -327,7 +328,12 @@ const send = async <T>(
                 isRecord(responseData) &&
                 responseData.reason === CsrfRejectReason.TokenMismatch
 
-            if (isUnauthorizedError(responseData, normalizedError.transportCode)) {
+            // A 401 of a request that runs without a session of its own (sign-in, registration,
+            // a mailed link) is the answer for the form that sent it, not a lost session.
+            if (
+                options.csrfRecovery !== 'public' &&
+                isUnauthorizedError(responseData, normalizedError.transportCode)
+            ) {
                 eventBus.emit('unauthorized')
             }
 
@@ -465,22 +471,6 @@ const api: ApiMethods = {
             options,
             'Upload failed. Please try again later.',
         )
-    },
-
-    ws: async <T = HttpResponse>(
-        route: string,
-        body: Record<string, unknown> = {},
-    ): Promise<T | null> => {
-        try {
-            // console.log('websocketApi ws route', route)
-            // console.log('websocketApi ws body', body)
-            const result = await websocketApi(route, body)
-            console.log({ result })
-            return result as unknown as T
-        } catch (e) {
-            console.error(e)
-            return null
-        }
     },
 }
 

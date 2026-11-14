@@ -1,4 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { oauthContracts } from 'shared/contracts'
 import {
     mapControllerError,
     reportControllerError,
@@ -8,6 +10,7 @@ import { Result } from 'better-result'
 import {
     EMAIL_CHANGED,
     OAUTH_ALREADY_LINKED,
+    OAUTH_CROSS_SITE_START,
     OAUTH_LINK_REVOKED,
     oauthService,
     TOO_MANY_ATTEMPTS,
@@ -17,6 +20,7 @@ import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import {
     appErrorMessage,
     badRequest,
+    forbidden,
     internal,
     sessionRevoked,
     unauthorized,
@@ -80,9 +84,21 @@ export default {
     },
 
     async redirect(
-        context: HttpContext<unknown, OAuthRedirectQuery>,
+        context: HttpContext<unknown, OAuthRedirectQuery, ParamsOf<typeof oauthContracts.redirect>>,
     ): Promise<OAuthRedirectResponse> {
-        const provider = context.httpData.params['provider'] ?? ''
+        const provider = context.httpData.params.provider
+
+        // feat-200 (L-6): this GET starts a sign-in, and SameSite=Lax sends the session cookie
+        // on a navigation another site makes. A user who has authorized the application at
+        // the provider would be signed in, or switched to another account, without a click.
+        // Fetch Metadata tells such a navigation apart; a browser that does not send the
+        // header, and a non-browser client, go on.
+        if (context.httpData.headers.get('sec-fetch-site') === 'cross-site') {
+            return mapControllerError(
+                context,
+                forbidden('Start the sign-in from the application', OAUTH_CROSS_SITE_START),
+            )
+        }
 
         const result = oauthService.getAuthorizationUrl(provider)
 
@@ -90,7 +106,9 @@ export default {
             return mapControllerError(context, result.error)
         }
 
-        context.logger.info({ url: result.value.url }, 'oauth generated URL')
+        // The URL carries the single-use state and the PKCE challenge: the log names the
+        // provider only (feat-150).
+        context.logger.info({ provider }, 'oauth redirect to the provider')
 
         // Store OAuth state and PKCE verifier in session. feat-111: a session that vanished
         // meanwhile (a logout in another tab) is not recreated; the sign-in stops here instead of
@@ -98,6 +116,8 @@ export default {
         const stored = await context.session.updateSessionData({
             oauthState: result.value.state,
             oauthCodeVerifier: result.value.codeVerifier,
+            // feat-200 (L-7): the state belongs to the provider it was issued for.
+            oauthProvider: provider,
         })
         if (stored === null) {
             return mapControllerError(context, sessionRevoked())
@@ -110,10 +130,10 @@ export default {
     },
 
     async callback(
-        context: HttpContext<unknown, OAuthCallbackQuery>,
+        context: HttpContext<unknown, OAuthCallbackQuery, ParamsOf<typeof oauthContracts.callback>>,
     ): Promise<OAuthCallbackResponse> {
         const { httpData, logger, session, responseData, auth } = context
-        const provider = httpData.params['provider'] ?? ''
+        const provider = httpData.params.provider
         const query = httpData.query
         const code = query.code ?? ''
         const receivedState = query.state ?? ''
@@ -131,8 +151,18 @@ export default {
                 ? sessionData['oauthCodeVerifier']
                 : null
 
+        const storedProvider =
+            typeof sessionData?.['oauthProvider'] === 'string' ? sessionData['oauthProvider'] : ''
+
         if (code === '' || receivedState === '' || storedState === '') {
             return redirectToError(context, badRequest('Missing OAuth parameters'))
+        }
+
+        // feat-200 (L-7): a state issued for one provider is not accepted on the callback of
+        // another (provider mix-up, a code of one provider handed to another). Compared before
+        // the state is consumed, like the state itself.
+        if (!safeEqual(storedProvider, provider)) {
+            return redirectToError(context, badRequest('OAuth state mismatch'))
         }
 
         // feat-123: compared before it is consumed. A navigation another site makes to this
@@ -151,10 +181,10 @@ export default {
         // - consumed: this callback is the only one that goes on.
         let consumed: Awaited<ReturnType<typeof session.consumeSessionData>>
         try {
-            consumed = await session.consumeSessionData({ oauthState: storedState }, [
-                'oauthState',
-                'oauthCodeVerifier',
-            ])
+            consumed = await session.consumeSessionData(
+                { oauthState: storedState, oauthProvider: storedProvider },
+                ['oauthState', 'oauthCodeVerifier', 'oauthProvider'],
+            )
         } catch (err: unknown) {
             return redirectToError(context, internal(err, 'OAuth state could not be consumed'))
         }

@@ -9,8 +9,6 @@ import { useCompleteSignIn } from '@/composables/useCompleteSignIn'
 
 // Registration by phone, in three steps: the number (a code is sent), the code, then name and
 // password. A step back goes to the one before; from the first it goes back to the choice.
-const props = defineProps<{ token: string }>()
-
 const emit = defineEmits<{ back: []; 'signed-in': [] }>()
 
 const { t } = useI18n()
@@ -167,7 +165,6 @@ async function handlePhoneComplete(): Promise<void> {
                 challengeId: phoneChallengeId.value,
                 name: registerName.value.trim(),
                 password: registerPassword.value,
-                token: props.token,
             })
 
             const failure = failureMessage(data, error)

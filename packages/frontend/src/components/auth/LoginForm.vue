@@ -15,7 +15,6 @@ import SocialAuthButtons from '../SocialAuthButtons.vue'
 // forgot-password step starts from the identifier and coming back must not lose either), the rest
 // is this form's.
 const props = defineProps<{
-    token: string
     /** A message to show at first, such as "password updated, sign in with the new one". */
     notice: string
 }>()
@@ -89,7 +88,6 @@ async function handleLogin(): Promise<void> {
         const { data, error } = await authApi.login({
             identifier: loginIdentifier.value.trim(),
             password: loginPassword.value,
-            token: props.token,
         })
 
         const unauthorized =

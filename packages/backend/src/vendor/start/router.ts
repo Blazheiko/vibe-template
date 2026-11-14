@@ -42,6 +42,7 @@ const createRoute = (
         description: route.description,
         allowedContentTypes: route.allowedContentTypes,
         maxBodySize: route.maxBodySize,
+        signedInBeforeBody: route.signedInBeforeBody,
         ...(responseSchema !== undefined ? { ResponseSchema: responseSchema } : {}),
         // Built once here; null only for a route without a ResponseSchema.
         responseCheck: createResponseCheck(responseSchema, responseValidationConfig),
@@ -71,7 +72,30 @@ const routeHandler = (route: RouteItem, groupRateLimit?: RateLimit): NormalizedR
             )
         }
     }
+    if (route.signedInBeforeBody === true && isNoBodyMethod(method)) {
+        throw new Error(
+            `Route ${route.method.toUpperCase()} ${route.url} sets signedInBeforeBody, ` +
+                `but ${route.method.toUpperCase()} requests never read a body.`,
+        )
+    }
     return createRoute(method, route, groupRateLimit)
+}
+
+/**
+ * The URL of a route declared through a contract. The contract names the whole path; the group
+ * the route sits in supplies the middlewares and limits and must be the group of that path — a
+ * contract for `/admin/users` in the `auth` group is a mistake caught at startup.
+ */
+const contractRouteUrl = (contractPath: string, groupPrefix: string): string => {
+    const path = normalizePath(contractPath)
+    const prefix = normalizePath(groupPrefix)
+    if (prefix !== '' && path !== prefix && !path.startsWith(`${prefix}/`)) {
+        throw new Error(
+            `Route contract /${path} is declared in the route group "/${prefix}": ` +
+                'the path of a contract has to start with the prefix of its group.',
+        )
+    }
+    return path
 }
 
 const routesHandler = (routeList: routeList): NormalizedRouteItem[] => {
@@ -109,7 +133,12 @@ const parseGroups = (
                 parseRouteList.push(item)
             })
         } else if ('url' in route && 'handler' in route) {
-            const routeUrl = prefix !== '' ? `${prefix}/${normalizePath(route.url)}` : route.url
+            const routeUrl =
+                route.contractPath !== undefined
+                    ? contractRouteUrl(route.contractPath, prefix)
+                    : prefix !== ''
+                      ? `${prefix}/${normalizePath(route.url)}`
+                      : route.url
             const routeMiddlewares =
                 middlewares.length > 0
                     ? middlewares.concat(route.middlewares ?? [])
@@ -129,7 +158,9 @@ const parseGroups = (
 // Convert flat routes into the full-url lookup used by the WS dispatcher.
 // WS dispatch is exact-match only; `:param` route matching is not supported.
 const createWsRoutesByUrl = (routes: NormalizedRouteItem[]): WsRoutes => {
-    const routesByUrl: WsRoutes = {}
+    // No prototype: the dispatcher looks a route up by a name the client sends, and
+    // `constructor` or `toString` must not be found (feat-149).
+    const routesByUrl = Object.create(null) as WsRoutes
     routes.forEach((route) => {
         if (routesByUrl[route.url] !== undefined) {
             logger.warn({ url: route.url }, 'Duplicate WS route URL')

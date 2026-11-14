@@ -12,7 +12,7 @@
 
 | Призначення           | Залежності                                                    |
 | --------------------- | ------------------------------------------------------------- |
-| HTTP/WebSocket-сервер | `uWebSockets.js` (`v20.71.0` з GitHub), `ws`                  |
+| HTTP/WebSocket-сервер | `uWebSockets.js` (`v20.71.0` з GitHub)                        |
 | БД                    | `drizzle-orm` / `drizzle-kit` `1.0.0-rc.5`, `pg` (PostgreSQL) |
 | Валідація             | `@arktype/type`                                               |
 | Redis                 | `ioredis`                                                     |
@@ -29,17 +29,17 @@
 
 ## Структура `src`
 
-| Каталог                                                                                                | Вміст                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [app](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app)                   | Логіка застосунку: `controllers` (http, ws), `middlewares`, `repositories`, `transformers`, `services`, `routes` (`http-routes.ts`, `ws-routes.ts`), `routing` (`define-route.ts`, `define-ws-route.ts`), `start`, `state`, `validate`, `websocket` |
-| [config](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config)             | Модулі конфігурації: `app`, `auth`, `cookies`, `cors`, `csp`, `csrf`, `database`, `redis`, `session`, `mail`, `disk`, `push`, `ai`, `oauth`, `sentry` та ін.                                                                                        |
-| [vendor](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor)             | Інфраструктурне ядро: `start/` (`server.ts`, `router.ts`, `static-server.ts`), `utils/` (logger, session, rate-limit, storage, validation…), `contracts/`, `types/`                                                                                 |
-| [database](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database)         | Підключення (`db.ts`, `redis.ts`), схема (`schema.ts`) і relations (`relations.ts`)                                                                                                                                                                 |
-| [db](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db)                     | Скрипти `create-database.ts` і `seed.ts`                                                                                                                                                                                                            |
-| [drizzle](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle)           | Міграції (`migrations/`, по одній папці на міграцію)                                                                                                                                                                                                |
-| [openapi](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/openapi)           | Невикористані заготовки під OpenAPI (`spec.ts` порожній)                                                                                                                                                                                            |
-| [test-support](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/test-support) | Хелпери для тестів: тимчасова база PostgreSQL, тестовий Redis, фікстури зображень                                                                                                                                                                   |
-| [scripts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/scripts)           | Службові скрипти, зокрема `send-test-email.ts`                                                                                                                                                                                                      |
+| Каталог                                                                                                | Вміст                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [app](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app)                   | Логіка застосунку: `controllers` (http, ws), `middlewares`, `repositories`, `transformers`, `services`, `routes` (`http-routes.ts`, `ws-routes.ts`), `routing` (`contract-registry.ts`, `define-ws-route.ts`, `define-raw-route.ts` для тестів), `routes/contract-schemas` (реєстр схем контрактів), `start`, `state`, `validate`, `websocket` |
+| [config](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config)             | Модулі конфігурації: `app`, `auth`, `cookies`, `cors`, `csp`, `csrf`, `database`, `redis`, `session`, `mail`, `disk`, `push`, `ai`, `oauth`, `sentry` та ін.                                                                                                                                                                                   |
+| [vendor](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor)             | Інфраструктурне ядро: `start/` (`server.ts`, `router.ts`, `static-server.ts`), `utils/` (logger, session, rate-limit, storage, validation…), `contracts/`, `types/`                                                                                                                                                                            |
+| [database](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database)         | Підключення (`db.ts`, `redis.ts`), схема (`schema.ts`) і relations (`relations.ts`)                                                                                                                                                                                                                                                            |
+| [db](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db)                     | Скрипти `create-database.ts` і `seed.ts`                                                                                                                                                                                                                                                                                                       |
+| [drizzle](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle)           | Міграції (`migrations/`, по одній папці на міграцію)                                                                                                                                                                                                                                                                                           |
+| [openapi](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/openapi)           | Невикористані заготовки під OpenAPI (`spec.ts` порожній)                                                                                                                                                                                                                                                                                       |
+| [test-support](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/test-support) | Хелпери для тестів: тимчасова база PostgreSQL, тестовий Redis, фікстури зображень                                                                                                                                                                                                                                                              |
+| [scripts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/scripts)           | Службові скрипти, зокрема `send-test-email.ts`                                                                                                                                                                                                                                                                                                 |
 
 ### Дерево каталогів
 
@@ -53,7 +53,7 @@ packages/backend/src/
 │   ├── routes/               # таблиці маршрутів
 │   │   ├── http-routes.ts    #   HTTP: метод, шлях, middleware, схеми, контролер
 │   │   └── ws-routes.ts      #   WebSocket-події
-│   ├── routing/              # define-route.ts, define-ws-route.ts — хелпери оголошення маршрутів
+│   ├── routing/              # contract-registry.ts, define-ws-route.ts — хелпери оголошення маршрутів; define-raw-route.ts — лише для тестів
 │   ├── middlewares/          # kernel.ts (реєстр), csrf-guard, admin-guard, ws-admin-guard
 │   ├── controllers/          # тонкий шар: дістає дані із запиту, кличе сервіс, віддає відповідь
 │   │   ├── http/             #   admin, ai, auth, core, notifications, support, user
@@ -79,7 +79,6 @@ packages/backend/src/
 │   ├── validate/             # валідація запитів
 │   │   ├── adapters/         #   arktype-adapter
 │   │   ├── checkers/         #   cookie, header, parameter
-│   │   ├── schemas/          #   common/, query/
 │   │   └── errors/           #   validation-error.ts
 │   ├── websocket/            # реєстр з'єднань, координатор, авторизація WS-сесії
 │   ├── state/                # state.ts — спільний стан процесу (listenSocket)

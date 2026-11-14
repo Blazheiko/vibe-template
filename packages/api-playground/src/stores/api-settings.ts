@@ -113,8 +113,10 @@ export const useApiSettingsStore = defineStore('api-settings', () => {
             if (saved) {
                 // localStorage may hold settings from an older version.
                 const settingsData = JSON.parse(saved) as Partial<ApiSettings>
+                // VITE_API_BASE_URL of this build wins over a value saved earlier: the saved
+                // one is usually a copy of an older env and would pin the playground to it.
                 const savedBaseUrl = settingsData.baseUrl?.trim()
-                persistedBaseUrl.value = !savedBaseUrl ? BASE_URL : savedBaseUrl
+                persistedBaseUrl.value = BASE_URL || savedBaseUrl || FALLBACK_BASE_URL
                 pathPrefix.value = settingsData.pathPrefix || ''
                 enableGlobalHeaders.value = settingsData.enableGlobalHeaders ?? true
                 // An older version stored the header values here too: forget them and rewrite

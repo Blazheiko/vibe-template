@@ -165,8 +165,6 @@ beforeAll(async () => {
             }),
         onConnected: () => Promise.resolve(),
         onDisconnected: () => Promise.resolve(),
-        onRefreshToken: () => Promise.resolve(),
-        onRevokeToken: () => Promise.resolve(),
     })
 
     const server = await import('./server.js')

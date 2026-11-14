@@ -10,10 +10,9 @@ export const SerializedPushSubscriptionSchema = type({
     id: 'string',
     userId: 'string',
     endpoint: 'string',
-    p256dhKey: 'string',
-    authKey: 'string',
+    // feat-208: no p256dhKey, authKey or ipAddress. The browser has its own keys, and
+    // nothing on the client reads them back; the server keeps them to encrypt a push.
     userAgent: 'string | null',
-    ipAddress: 'string | null',
     isActive: 'boolean',
     deviceType: 'string | null',
     browserName: 'string | null',

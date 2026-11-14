@@ -10,8 +10,6 @@ import SocialAuthButtons from '../SocialAuthButtons.vue'
 
 // Registration by e-mail: name, address, password, the terms. With strict registration the answer
 // is only a message ("check your inbox") and nobody is signed in yet; otherwise the new user is.
-const props = defineProps<{ token: string }>()
-
 const emit = defineEmits<{ login: []; 'signed-in': [] }>()
 
 const { t } = useI18n()
@@ -81,7 +79,6 @@ async function handleEmailRegister(): Promise<void> {
             name: registerName.value.trim(),
             email: registerEmail.value.trim(),
             password: registerPassword.value,
-            token: props.token,
         })
 
         const failure = failureMessage(data, error)

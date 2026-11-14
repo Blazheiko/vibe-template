@@ -191,8 +191,15 @@ export const pushNotificationSenderService = {
                     sentAt: new Date(),
                 })
                 failed++
+                // Not the error object: a WebPushError carries the subscription's endpoint and
+                // the headers and body of the push service answer as own fields (feat-150). The
+                // text of the error stays in the notification log row.
                 logger.error(
-                    { err: error, subscriptionId: String(subscription.id) },
+                    {
+                        subscriptionId: String(subscription.id),
+                        statusCode: statusCode ?? null,
+                        errorName: error instanceof Error ? error.name : typeof error,
+                    },
                     'Failed to send push notification',
                 )
 

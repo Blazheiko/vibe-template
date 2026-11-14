@@ -1,7 +1,7 @@
 // HTTP paths and WS request events both live under the backend's API_PATH_PREFIX
-// (code-issues items 17 and 73). Set VITE_API_PATH_PREFIX when the backend runs with a
-// non-default API_PATH_PREFIX.
-import { normalizeApiPrefix } from 'shared/ws-client'
+// (code-issues items 17 and 73). vite.config.ts compiles that prefix in as VITE_API_PATH_PREFIX,
+// taken from API_PATH_PREFIX in packages/backend/.env or the shell (feat-192).
+import { normalizeApiPrefix } from 'shared/api-prefix'
 
 export { normalizeApiPrefix }
 

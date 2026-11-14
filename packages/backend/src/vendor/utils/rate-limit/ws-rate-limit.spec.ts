@@ -51,6 +51,38 @@ describe('checkRateLimitWs', () => {
         })
     })
 
+    // feat-197 (L-13): the key used to be the IP address alone.
+    describe('the budget of a route belongs to the user', () => {
+        const userWs = (userId: string, ip: string): MyWebSocket =>
+            ({ getUserData: () => ({ userId, ip }) }) as unknown as MyWebSocket
+
+        it('two users behind one address do not share it', async () => {
+            const checkRateLimitWs = (await import('./ws-rate-limit.js')).default
+            const route = createRoute({ windowMs: 60_000, maxRequests: 1 })
+
+            expect(checkRateLimitWs(userWs('1', '10.0.0.5'), route).allowed).toBe(true)
+            expect(checkRateLimitWs(userWs('1', '10.0.0.5'), route).allowed).toBe(false)
+            expect(checkRateLimitWs(userWs('2', '10.0.0.5'), route).allowed).toBe(true)
+        })
+
+        it('one user on several addresses, or several sockets, has one budget', async () => {
+            const checkRateLimitWs = (await import('./ws-rate-limit.js')).default
+            const route = createRoute({ windowMs: 60_000, maxRequests: 2 })
+
+            expect(checkRateLimitWs(userWs('3', '10.0.0.6'), route).allowed).toBe(true)
+            expect(checkRateLimitWs(userWs('3', '10.0.0.7'), route).allowed).toBe(true)
+            expect(checkRateLimitWs(userWs('3', '10.0.0.8'), route).allowed).toBe(false)
+        })
+
+        it('a user id and an address that read the same are different keys', async () => {
+            const checkRateLimitWs = (await import('./ws-rate-limit.js')).default
+            const route = createRoute({ windowMs: 60_000, maxRequests: 1 })
+
+            expect(checkRateLimitWs(userWs('10.0.0.9', '10.0.0.1'), route).allowed).toBe(true)
+            expect(checkRateLimitWs(createWs('10.0.0.9'), route).allowed).toBe(true)
+        })
+    })
+
     it('fails closed when the configured limit cannot be checked', async () => {
         const { rateLimitStore } = await import('./rate-limit-store.js')
         vi.spyOn(rateLimitStore, 'consume').mockImplementationOnce(() => {

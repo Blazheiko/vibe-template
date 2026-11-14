@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { supportKnowledgeBase } from '#database/schema.js'
-import { and, eq, sql, count } from 'drizzle-orm'
+import { and, asc, count, eq, sql } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 
 export type KbRow = InferSelectModel<typeof supportKnowledgeBase>
@@ -48,10 +48,16 @@ export const supportKnowledgeRepository = {
                 : undefined
 
         const baseQuery = db.select(kbArticleSelect).from(supportKnowledgeBase)
+        // Ordered: LIMIT/OFFSET without an order pages over whatever order the table happens
+        // to be read in, and an edited row can move between pages (feat-160).
         const [rows, totalResult] = await Promise.all([
             whereClause !== undefined
-                ? baseQuery.where(whereClause).limit(limit).offset(offset)
-                : baseQuery.limit(limit).offset(offset),
+                ? baseQuery
+                      .where(whereClause)
+                      .orderBy(asc(supportKnowledgeBase.id))
+                      .limit(limit)
+                      .offset(offset)
+                : baseQuery.orderBy(asc(supportKnowledgeBase.id)).limit(limit).offset(offset),
             whereClause !== undefined
                 ? db.select({ count: count() }).from(supportKnowledgeBase).where(whereClause)
                 : db.select({ count: count() }).from(supportKnowledgeBase),

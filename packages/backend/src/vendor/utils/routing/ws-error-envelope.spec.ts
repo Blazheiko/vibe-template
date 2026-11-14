@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
+import { defineRawWsRoute } from '#app/routing/define-ws-route.js'
 import type { RouteItem } from '#vendor/types/types.js'
 
 // feat-048: every transport error of the WS dispatcher has status 'error', data null and
@@ -54,8 +54,23 @@ describe('ws-api-dispatcher transport errors (feat-048)', () => {
         })
     })
 
+    // feat-149: the route map is looked up by a name the client sends; members of
+    // Object.prototype are not routes.
+    it.each(['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf'])(
+        'answers not_found for %s, without an error log',
+        async (event) => {
+            const result = await dispatch(event, null)
+            expect(result).toMatchObject({
+                status: 'error',
+                data: null,
+                error: { code: 'not_found' },
+            })
+            expect(logger.error).not.toHaveBeenCalled()
+        },
+    )
+
     it('validation_failed has data null', async () => {
-        const route = defineWsRoute({
+        const route = defineRawWsRoute({
             url: 'typing',
             validator: type({ roomId: 'string' }),
             handler: () => ({ ok: true }),
@@ -69,7 +84,7 @@ describe('ws-api-dispatcher transport errors (feat-048)', () => {
     })
 
     it('internal_error drops data a handler wrote before it threw', async () => {
-        const route = defineWsRoute({
+        const route = defineRawWsRoute({
             url: 'partial',
             handler: (context) => {
                 context.responseData.data = { partial: 'secret' }
@@ -97,7 +112,7 @@ describe('ws-api-dispatcher transport errors (feat-048)', () => {
 
     it('rate_limited has data null', async () => {
         checkRateLimitWsMock.mockReturnValue({ allowed: false, retryAfter: 5 })
-        const route = defineWsRoute({ url: 'limited', handler: () => ({ ok: true }) })
+        const route = defineRawWsRoute({ url: 'limited', handler: () => ({ ok: true }) })
         const result = await dispatch('limited', null, route)
         expect(result).toMatchObject({
             status: 'error',
@@ -108,7 +123,7 @@ describe('ws-api-dispatcher transport errors (feat-048)', () => {
 
     it('a middleware that stops without writing data leaves data null', async () => {
         executeMiddlewaresMock.mockResolvedValue(false)
-        const route = defineWsRoute({ url: 'stopped', handler: () => ({ ok: true }) })
+        const route = defineRawWsRoute({ url: 'stopped', handler: () => ({ ok: true }) })
         const result = await dispatch('stopped', null, { ...route, middlewares: ['deny'] })
         expect(result.data).toBeNull()
     })

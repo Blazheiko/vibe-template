@@ -40,36 +40,40 @@ After `make env`, open `packages/backend/.env` and check the values: what is nee
 
 ## Development
 
-| Target           | pnpm script       | What it does                                                             |
-| ---------------- | ----------------- | ------------------------------------------------------------------------ |
-| `dev`            | `dev`             | builds `shared` and `backend`, runs the backend and frontend dev servers |
-| `dev-backend`    | `dev:backend`     | backend only                                                             |
-| `dev-frontend`   | `dev:frontend`    | frontend only                                                            |
-| `dev-playground` | `dev:manual_test` | backend and API Playground                                               |
-| `prod-local`     | `prod:local`      | production-like run: the backend serves the built SPA                    |
-| `start`          | `start`           | run the built backend                                                    |
+| Target           | pnpm script       | What it does                                                                                        |
+| ---------------- | ----------------- | --------------------------------------------------------------------------------------------------- |
+| `dev`            | `dev`             | builds `shared` and `backend`, runs the backend, frontend and landing dev servers                   |
+| `dev-backend`    | `dev:backend`     | backend only                                                                                        |
+| `dev-frontend`   | `dev:frontend`    | frontend only                                                                                       |
+| `dev-landing`    | `dev:landing`     | only the [landing page](/en/landing/) on `http://localhost:5175`                                    |
+| `dev-playground` | `dev:manual_test` | backend and API Playground                                                                          |
+| `prod-local`     | `prod:local`      | production-like run: the backend serves the built SPA, the landing runs on `vite preview` (`:4174`) |
+| `start`          | `start`           | run the built backend                                                                               |
 
 ## Quality
 
 `make check` is the same as the check step in the `quality` job in [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml): after `pnpm install --frozen-lockfile`, CI calls exactly `make check`. So a green `make check` locally means a green `quality` in CI (CI counts coverage as a separate step).
 
-| Target                    | What it does                                                                                                           |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `check`                   | runs `build-shared`, `verify-makefile`, `format-check`, `typecheck`, `lint`, `test` in order; stops at the first error |
-| `verify-makefile`         | checks the Makefile itself (see above)                                                                                 |
-| `typecheck`               | `pnpm typecheck`                                                                                                       |
-| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                          |
-| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                    |
+| Target                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check`                   | runs `build-shared`, `verify-makefile`, `verify-compose`, `format-check`, `typecheck`, `lint`, `check-bundle-graph`, `test` in order; stops at the first error                                                                                                                                                                                                                                                                               |
+| `verify-makefile`         | checks the Makefile itself (see above)                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `verify-compose`          | [`scripts/verify-compose.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/verify-compose.mjs): `docker compose config` gives `app` and `migrate` the same `API_PATH_PREFIX` as `docker-build.sh` (shell → `packages/backend/.env` → `api`), and the healthcheck asks for `/<prefix>/ready`; the `landing` service is published on `127.0.0.1:LANDING_PORT` with a `/healthz` healthcheck; skipped without `docker compose` |
+| `typecheck`               | `pnpm typecheck`                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `check-bundle-graph`      | `pnpm check:bundle-graph`: builds the frontend production bundle and checks on the module graph that it carries no validation schemas and no ArkType ([check-bundle-graph.mjs](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/scripts/check-bundle-graph.mjs), ADR 0005)                                                                                                                                             |
+| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Tests
 
-| Target       | pnpm script                             | Note                                    |
-| ------------ | --------------------------------------- | --------------------------------------- |
-| `test`       | `test` (or `--filter <PKG> test`)       | unit tests of all packages or one       |
-| `test-e2e`   | `--filter frontend test:e2e`            | Playwright                              |
-| `test-pg`    | `--filter backend test:pg`              | requires PostgreSQL: `make services-up` |
-| `test-redis` | `--filter backend test:redis`           | requires Redis: `make services-up`      |
-| `coverage`   | `test:coverage` in backend and frontend | like the Coverage step in CI            |
+| Target             | pnpm script                                  | Note                                                   |
+| ------------------ | -------------------------------------------- | ------------------------------------------------------ |
+| `test`             | `test` (or `--filter <PKG> test`)            | unit tests of all packages or one                      |
+| `test-e2e`         | `--filter frontend test:e2e`                 | Playwright                                             |
+| `test-e2e-landing` | `build:landing`, `--filter landing test:e2e` | builds the landing and runs its Playwright smoke tests |
+| `test-pg`          | `--filter backend test:pg`                   | requires PostgreSQL: `make services-up`                |
+| `test-redis`       | `--filter backend test:redis`                | requires Redis: `make services-up`                     |
+| `coverage`         | `test:coverage` in backend and frontend      | like the Coverage step in CI                           |
 
 ## Services, database and Docker
 
@@ -82,11 +86,11 @@ After `make env`, open `packages/backend/.env` and check the values: what is nee
 | `db-generate`   | `backend db:generate` | generates a migration from the schema                                                                                            |
 | `db-seed`       | `backend db:seed`     | initial data; `ARGS=--demo` adds demo accounts                                                                                   |
 | `db-studio`     | `backend db:studio`   | Drizzle Studio                                                                                                                   |
-| `app-build`     | `app:build`           | builds the `vibe-template:local` image                                                                                           |
+| `app-build`     | `app:build`           | builds the `vibe-template:local` and `vibe-template-landing:local` images                                                        |
 | `app-up`        | `app:up`              | services, migrations and the app in compose                                                                                      |
-| `app-down`      | `app:down`            | stops and removes only the `app` and `migrate` containers, services keep running                                                 |
+| `app-down`      | `app:down`            | stops and removes only the `app`, `migrate` and `landing` containers, services keep running                                      |
 | `app-seed`      | `app:seed`            | seed with demo accounts in compose                                                                                               |
-| `app-logs`      | `app:logs`            | app log                                                                                                                          |
+| `app-logs`      | `app:logs`            | app and landing logs                                                                                                             |
 
 A sequence for a clean machine: `make setup`, edit `.env`, `make services-up db-create db-migrate`, `make dev`. Targets in a single `make` call run in order from left to right. The same through pnpm: `pnpm install`, `pnpm build:shared`, `pnpm services:up`, `pnpm --filter backend db:create`, `pnpm --filter backend db:migrate`, `pnpm dev`.
 
@@ -106,14 +110,16 @@ Other options: stop the local server or set a different `PGSQL_PORT` in `.env` (
 
 ## Documentation and build
 
-| Target         | pnpm script    | What it does                               |
-| -------------- | -------------- | ------------------------------------------ |
-| `docs-dev`     | `docs:dev`     | VitePress dev server                       |
-| `docs-build`   | `docs:build`   | site build                                 |
-| `docs-preview` | `docs:preview` | preview of the built site                  |
-| `docs-verify`  | `docs:verify`  | build check: links, anchors, key pages     |
-| `build`        | `build`        | build of all packages                      |
-| `clean`        | `clean`        | removes build artifacts and `node_modules` |
+| Target            | pnpm script       | What it does                                                         |
+| ----------------- | ----------------- | -------------------------------------------------------------------- |
+| `docs-dev`        | `docs:dev`        | VitePress dev server                                                 |
+| `docs-build`      | `docs:build`      | site build                                                           |
+| `docs-preview`    | `docs:preview`    | preview of the built site                                            |
+| `docs-verify`     | `docs:verify`     | build check: links, anchors, key pages                               |
+| `build`           | `build`           | build of all packages                                                |
+| `build-landing`   | `build:landing`   | builds the [landing page](/en/landing/) into `packages/landing/dist` |
+| `preview-landing` | `preview:landing` | serves the built landing on `http://localhost:4174`                  |
+| `clean`           | `clean`           | removes build artifacts and `node_modules`                           |
 
 ## Windows
 

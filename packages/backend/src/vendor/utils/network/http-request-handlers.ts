@@ -8,6 +8,8 @@ import config from '#config/app.js'
 import { getParts } from 'uWebSockets.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'
 import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
+import { BodyBudgetExceededError } from '#vendor/utils/network/errors/body-budget-exceeded-error.js'
+import { chargeBodyBytes, releaseBodyBytes } from '#vendor/utils/network/body-budget.js'
 
 // ─── Body kind detection ──────────────────────────────────────────────────────
 
@@ -43,28 +45,47 @@ const resolveKindLimit = (kind: BodyKind): number => {
 /**
  * The body limit of a request: the global limit of its kind, tightened by the route's
  * own `maxBodySize` when it has one (never loosened).
+ *
+ * feat-202: a JSON route without a limit of its own gets `defaultJsonBodySize` (100 KB), not
+ * the whole `maxJsonBodySize`: a body is read before authentication, and almost no route needs
+ * megabytes of JSON. A route that does says so with `maxBodySize`, up to `maxJsonBodySize`.
  */
 export const resolveMaxBodySize = (kind: BodyKind, routeLimit?: number): number => {
     const kindLimit = resolveKindLimit(kind)
-    return routeLimit === undefined ? kindLimit : Math.min(kindLimit, routeLimit)
+    if (routeLimit !== undefined) return Math.min(kindLimit, routeLimit)
+    return kind === 'json' ? Math.min(kindLimit, config.defaultJsonBodySize) : kindLimit
 }
 
 // ─── Headers ─────────────────────────────────────────────────────────────────
 
+// How many names of refused headers one log line carries, and how much of each.
+const INVALID_HEADER_NAMES_LOGGED = 3
+const INVALID_HEADER_NAME_LENGTH = 64
+
 const getHeaders = (req: HttpRequest): Map<string, string> => {
     const headers: Map<string, string> = new Map<string, string>()
+    let invalid = 0
+    const invalidNames: string[] = []
     req.forEach((key, value) => {
         // The raw `cookie` header carries session/csrf/ws secrets and is parsed
         // separately into `httpData.cookies`. Keeping it out of the headers map
         // avoids redundant validation and prevents accidental leakage by code
-        // that serializes/echoes all headers (e.g. testHeaders).
+        // that serializes or echoes all headers.
         if (key === 'cookie') return
         if (validateHeader(key, value)) {
             headers.set(key, value.trim())
         } else {
-            logger.warn(`Invalid header detected and skipped: ${key}`)
+            invalid += 1
+            if (invalidNames.length < INVALID_HEADER_NAMES_LOGGED) {
+                invalidNames.push(key.slice(0, INVALID_HEADER_NAME_LENGTH))
+            }
         }
     })
+    // feat-206: this runs before the rate limit, for requests that end in a 429 too. One
+    // debug line per request with a count, not a warning per header: anyone can send them.
+    if (invalid > 0) {
+        logger.debug({ invalid, names: invalidNames }, 'Invalid headers skipped')
+    }
 
     return headers
 }
@@ -89,6 +110,8 @@ const readData = (
     limit: number,
     contentType: string,
     abortSignal: RequestAbortSignal,
+    /** Whose in-flight budget the body is charged to (feat-201). */
+    ipKey: string,
 ): Promise<Buffer | null> => {
     return new Promise(
         (resolve: (value: Buffer | null) => void, reject: (reason?: unknown) => void) => {
@@ -105,8 +128,13 @@ const readData = (
             const chunks: Buffer[] = []
             let totalSize = 0
 
+            // feat-201: what this body has charged to the in-flight budget; given back once,
+            // however the read ends (complete, aborted, too large, refused, failed).
+            let charged = 0
             const cleanup = (): void => {
                 delete abortSignal.onAbort
+                releaseBodyBytes(ipKey, charged)
+                charged = 0
             }
 
             abortSignal.onAbort = (): void => {
@@ -128,6 +156,15 @@ const readData = (
                         reject(new PayloadTooLargeError(limit, contentType))
                         return
                     }
+
+                    const admission = chargeBodyBytes(ipKey, chunk.length, config)
+                    if (admission !== 'ok') {
+                        stopped = true
+                        cleanup()
+                        reject(new BodyBudgetExceededError(admission))
+                        return
+                    }
+                    charged += chunk.length
 
                     chunks.push(chunk)
 
@@ -229,11 +266,12 @@ const getData = async (
     headers: Map<string, string>,
     limit: number,
     abortSignal: RequestAbortSignal,
+    ipKey: string,
 ): Promise<{
     payload: Payload | null
     files: Map<string, UploadedFile> | null
 }> => {
-    const buffer = await readData(res, limit, contentType, abortSignal)
+    const buffer = await readData(res, limit, contentType, abortSignal, ipKey)
     if (buffer === null) return { payload: null, files: null }
 
     const kind = detectBodyKind(contentType)

@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import MenuButton from '@/components/MenuButton.vue'
-import { computed, ref, onMounted } from 'vue'
-import { useEventBus } from '@/utils/event-bus'
+import { computed } from 'vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 
 // Props
@@ -19,7 +18,6 @@ defineProps({
 
 const router = useRouter()
 const route = useRoute()
-const eventBus = useEventBus()
 
 const activeNav = computed(() => route.path)
 
@@ -52,18 +50,6 @@ const websocketStatusClass = computed(() => {
             return 'status-unknown'
     }
 })
-
-// Состояние звуковых уведомлений (глобальная кнопка в шапке)
-const notificationsEnabled = ref(true)
-onMounted(() => {
-    notificationsEnabled.value = localStorage.getItem('notifications_enabled') !== 'false'
-})
-
-const toggleNotifications = () => {
-    notificationsEnabled.value = !notificationsEnabled.value
-    localStorage.setItem('notifications_enabled', String(notificationsEnabled.value))
-    eventBus.emit('toggle_notifications', { enabled: notificationsEnabled.value })
-}
 
 // Вернуться назад
 const goBack = () => {
@@ -106,38 +92,6 @@ const goBack = () => {
                         <span>Support</span>
                     </button>
                 </nav>
-                <button
-                    class="notification-button"
-                    @click="toggleNotifications"
-                    title="Toggle notification sound"
-                >
-                    <svg
-                        v-if="notificationsEnabled"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                    >
-                        <path
-                            d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"
-                            fill="currentColor"
-                        />
-                    </svg>
-                    <svg
-                        v-else
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                    >
-                        <path
-                            d="M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01l2.97 2.97V5.36c0-.22.02-.42.05-.62.07.41.23.78.46 1.06.43.52 1.1.84 1.83.84.33 0 .65-.06.93-.18.5.52.86 1.15 1.09 1.86.11.34.17.69.2 1.06v5.59l3.24 3.24-.07-.03c.45-.4.87-.92 1.22-1.5.19-.32.34-.67.45-1.05z"
-                            fill="currentColor"
-                        />
-                    </svg>
-                </button>
 
                 <!-- WebSocket Status Indicator -->
                 <div
@@ -362,27 +316,6 @@ const goBack = () => {
         0 8px 20px rgba(2, 6, 23, 0.42);
 }
 
-.notification-button {
-    background: rgba(255, 255, 255, 0.1);
-    border: none;
-    color: white;
-    padding: 3px 6px;
-    height: 22px;
-    width: 22px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 8px;
-}
-
-.notification-button:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-    transform: translateY(-1px);
-}
-
 /* WebSocket Status Indicator */
 .websocket-status {
     display: inline-flex;
@@ -459,16 +392,6 @@ const goBack = () => {
     /* На мобильных основную навигацию не показываем */
     .main-nav {
         display: none;
-    }
-
-    .notification-button {
-        width: 44px;
-        height: 44px;
-        padding: 10px;
-        margin-right: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
     }
 
     /* WebSocket status на мобильных - показываем только точку */

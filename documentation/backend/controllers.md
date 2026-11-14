@@ -35,6 +35,10 @@ flowchart LR
 
 Контролер — це об'єкт за замовчуванням (`export default { ... }`) з async-методами. У маршрутах метод передається як `handler: AuthController.login.bind(AuthController)` ([http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts), [ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts)).
 
+::: tip Числові id у шляху й query
+Id з параметра шляху чи query (`:id`, `:subscriptionId`, `:articleId`, `userId`, `cursor`) читає [`parseEntityId`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/parse-id.ts): лише десяткові цифри й не більше за `bigint` PostgreSQL. Значення поза цим (30 цифр, `0x10`, `-5`) контролер відхиляє так само, як нечисловий id (`400` або `404`), а не доводить до запиту, де воно дало б `500` (feat-161).
+:::
+
 ## Контекст обробника
 
 Коротка шпаргалка нижче; кожне поле розібрано в розділах [HttpContext докладно](#httpcontext-докладно) і [WsContext докладно](#wscontext-докладно).
@@ -42,13 +46,14 @@ flowchart LR
 Типи визначені у [vendor/types/types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts):
 
 ```ts
-export interface HttpContext<TPayload = unknown, TQuery = null> {
+export interface HttpContext<TPayload = unknown, TQuery = null, TParams = Params> {
     requestId: string
     logger: Logger
-    httpData: HttpData<TPayload, TQuery>
+    httpData: HttpData<TPayload, TQuery, TParams>
     responseData: ResponseData
     session: Session
     auth: Auth
+    signal: AbortSignal
 }
 export interface WsContext<TPayload = unknown> {
     requestId: string
@@ -59,13 +64,14 @@ export interface WsContext<TPayload = unknown> {
     session: null
     auth: null
     logger: Logger
+    signal: AbortSignal
 }
 ```
 
 | Що потрібно         | HTTP                                                               | WS                                    |
 | ------------------- | ------------------------------------------------------------------ | ------------------------------------- |
 | Провалідоване тіло  | `getTypedPayload(context)`                                         | `getTypedPayload(context)`            |
-| Параметри шляху     | `context.httpData.params['id']` (рядки)                            | —                                     |
+| Параметри шляху     | `context.httpData.params.id` (рядки, типи з контракту)             | —                                     |
 | Query               | `context.httpData.query` (типізований, якщо є `queryValidator`)    | —                                     |
 | Поточний користувач | `context.auth.getUserId()` (`string \| null`)                      | `context.userData?.userId`            |
 | Сесія               | `context.session.sessionInfo`, `updateSessionData(...)`            | `session: null`                       |
@@ -94,23 +100,23 @@ context.logger.error({ err: result.error }, 'Failed to load history')
 
 Усе, що прийшло від клієнта. Об'єкт тільки для читання.
 
-| Поле          | Тип                                 | Опис                                                                                                                                                           |
-| ------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `method`      | `Method`                            | HTTP-метод маршруту (`'get'`, `'post'`, …).                                                                                                                    |
-| `ip`          | `string \| null \| undefined`       | IP клієнта (з урахуванням довірених проксі).                                                                                                                   |
-| `params`      | `Record<string, string>`            | Параметри шляху (`:id` → `params['id']`). Завжди рядки — числа й `bigint` перетворюйте самі.                                                                   |
-| `payload`     | `TPayload \| null`                  | Тіло запиту після валідатора маршруту. Читайте через `getTypedPayload(context)`, а не напряму.                                                                 |
-| `query`       | `TQuery`                            | Провалідований об'єкт query, **не** `URLSearchParams`. Без `queryValidator` — `null` (звертання до полів — помилка TS). Див. [Валідація](/backend/validation). |
-| `headers`     | `Map<string, string>`               | Заголовки запиту, імена в нижньому регістрі: `headers.get('user-agent')`.                                                                                      |
-| `contentType` | `string \| undefined`               | `Content-Type` запиту.                                                                                                                                         |
-| `cookies`     | `Map<string, string>`               | Cookies запиту: `cookies.get('name')`.                                                                                                                         |
-| `isJson`      | `boolean`                           | Чи тіло прийшло як JSON.                                                                                                                                       |
-| `files`       | `Map<string, UploadedFile> \| null` | Файли з `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null`, якщо файлів немає.                                                       |
-| `hasFile`     | `(name: string) => boolean`         | Чи є файл з таким іменем поля.                                                                                                                                 |
+| Поле          | Тип                                                   | Опис                                                                                                                                                                             |
+| ------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`      | `Method`                                              | HTTP-метод маршруту (`'get'`, `'post'`, …).                                                                                                                                      |
+| `ip`          | `string \| null \| undefined`                         | IP клієнта (з урахуванням довірених проксі).                                                                                                                                     |
+| `params`      | `TParams` (за замовчуванням `Record<string, string>`) | Параметри шляху (`:id` → `params.id`) — третій параметр `HttpContext`: `ParamsOf<typeof contracts.get>` з контракту маршруту. Завжди рядки — числа й `bigint` перетворюйте самі. |
+| `payload`     | `TPayload \| null`                                    | Тіло запиту після валідатора маршруту. Читайте через `getTypedPayload(context)`, а не напряму.                                                                                   |
+| `query`       | `TQuery`                                              | Провалідований об'єкт query, **не** `URLSearchParams`. Без `queryValidator` — `null` (звертання до полів — помилка TS). Див. [Валідація](/backend/validation).                   |
+| `headers`     | `Map<string, string>`                                 | Заголовки запиту, імена в нижньому регістрі: `headers.get('user-agent')`.                                                                                                        |
+| `contentType` | `string \| undefined`                                 | `Content-Type` запиту.                                                                                                                                                           |
+| `cookies`     | `Map<string, string>`                                 | Cookies запиту: `cookies.get('name')`.                                                                                                                                           |
+| `isJson`      | `boolean`                                             | Чи тіло прийшло як JSON.                                                                                                                                                         |
+| `files`       | `Map<string, UploadedFile> \| null`                   | Файли з `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null`, якщо файлів немає.                                                                         |
+| `hasFile`     | `(name: string) => boolean`                           | Чи є файл з таким іменем поля.                                                                                                                                                   |
 
 ```ts
-async getItem(context: HttpContext<unknown, ListQuery>) {
-    const id = context.httpData.params['id'] ?? ''
+async getItem(context: HttpContext<unknown, ListQuery, ParamsOf<typeof itemContracts.get>>) {
+    const id = context.httpData.params.id // `:id` of the contract; renamed there, this stops compiling
     const { page, limit } = context.httpData.query
     const lang = context.httpData.headers.get('accept-language')
     if (!context.httpData.hasFile('avatar')) { /* ... */ }
@@ -212,7 +218,7 @@ await context.auth.login(result.value.userId, result.value.userToken)
 | Поле                 | Опис                                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `event`, `timestamp` | Копіюються з вхідного повідомлення, щоб клієнт зіставив відповідь із запитом. Не змінюйте.                                      |
-| `status: string`     | За замовчуванням `'200'`. Виставляйте рядок, наприклад `'403'`, коли повертаєте помилку.                                        |
+| `status`             | `WsReplyStatus` (`shared/ws-client`). За замовчуванням `'200'`. Виставляйте рядок, наприклад `'403'`, коли повертаєте помилку.  |
 | `data`               | Сюди диспетчер кладе значення, яке повернув метод.                                                                              |
 | `error`              | Заповнює диспетчер для системних помилок (`not_found`, `validation_failed`, `internal_error`, rate limit) зі `status: 'error'`. |
 

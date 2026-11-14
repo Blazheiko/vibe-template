@@ -1,3 +1,4 @@
+import type { BroadcastContracts, BroadcastEventName } from 'shared/contracts'
 import type { BroadcastPayload } from 'shared/schemas'
 import { ENTITY_ID_PATTERN } from 'shared/patterns'
 
@@ -75,3 +76,20 @@ export const isAdminUserOnlineRemovePayload = (
     value: unknown,
 ): value is BroadcastPayload<'admin_user_online_remove'> =>
     isObject(value) && hasOnlyKeys(value, REMOVE_KEYS) && isEntityId(value.id)
+
+/** A guard of each broadcast event, by event (ADR 0006, decision 3, feat-182). */
+export type BroadcastGuards = {
+    readonly [E in BroadcastEventName]: (value: unknown) => value is BroadcastContracts[E]
+}
+
+/**
+ * The guard of every broadcast event. `satisfies` makes the map complete: an event added to
+ * the registry in shared/schemas/ws/broadcast-events.ts without a guard here does not compile.
+ */
+export const broadcastGuards = {
+    support_chat_token: isSupportChatTokenPayload,
+    support_chat_complete: isSupportChatCompletePayload,
+    support_chat_error: isSupportChatErrorPayload,
+    admin_user_online_upsert: isWSAdminUserOnlineUpsertPayload,
+    admin_user_online_remove: isAdminUserOnlineRemovePayload,
+} as const satisfies BroadcastGuards

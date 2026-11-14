@@ -6,6 +6,7 @@ import { useStateStore } from '@/stores/state'
 import PwaInstallButton from '@/components/PwaInstallButton.vue'
 import { usePwaInstallButton } from '@/composables/usePwaInstallButton'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
+import { PRODUCT } from 'shared/product'
 
 const router = useRouter()
 //const route = useRoute()
@@ -93,8 +94,8 @@ const logout = async () => {
             v-if="shouldMountPwaInstall"
             ref="pwaInstall"
             manifest-url="/manifest.json"
-            name="Vibe Template"
-            description="Educational Vue 3 and TypeScript template with frontend, backend, shared packages, tests, and build tooling."
+            :name="PRODUCT.name"
+            :description="PRODUCT.description"
             icon="/icons/icon_192x192.png"
             disable-android-fallback
             :styles="pwaStyles"

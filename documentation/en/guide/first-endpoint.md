@@ -25,7 +25,9 @@ curl 'http://127.0.0.1:3000/api/hello?name=Olena'
 | Contract   | `packages/shared/src/responses/hello-controller.ts`                   | What the response looks like                                                        |
 | Service    | `packages/backend/src/app/services/hello/hello-service.ts`            | Business rule: how to greet                                                         |
 | Controller | `packages/backend/src/app/controllers/http/hello/hello-controller.ts` | Takes the query, calls the service, builds the response                             |
-| Route      | `packages/backend/src/app/routes/http-routes.ts`                      | Ties the URL to the controller and the schema                                       |
+| Contract   | `packages/shared/src/contracts/hello.ts`                              | The route's method, path and types for the backend and the frontend                 |
+| Route      | `packages/backend/src/app/routes/contract-schemas/hello.ts`           | The query and response schemas for the contract                                     |
+| Route      | `packages/backend/src/app/routes/http-routes.ts`                      | Ties the contract to the controller                                                 |
 
 All the code below was actually added to a clean copy of the template and checked with `pnpm typecheck`, a test and `curl` requests.
 
@@ -74,7 +76,7 @@ And a line at the end of `packages/shared/src/responses/index.ts`:
 export * from './hello-controller.js'
 ```
 
-The backend reads `shared` from the built `dist/`, so rebuild the package after the changes:
+The backend dev server (`pnpm dev`) sees changes in `packages/shared/src` at once, but `typecheck`, tests and `start` read the built `dist/`, so rebuild the package before them:
 
 ```bash
 pnpm --filter shared build
@@ -144,15 +146,68 @@ export default {
 
 ## Step 4. Route
 
-All that is left is to tell the server that `GET /api/hello` is handled by our controller. Open [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) and add the imports to the existing ones:
+All that is left is to tell the server that `GET /api/hello` is handled by our controller. Every HTTP route of the template is declared through a **contract** ([Routing](/en/backend/routing#http-routes-defineroute)), so there are three small changes here.
+
+**The contract.** The method, the full path under the `api` prefix and the types of the query and the response. The schemas are imported only as types, so the frontend can import the contract without them. As in the existing contracts, the query type comes from [`QueryInputOf`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts): what a client may pass in the query string:
+
+```ts
+// packages/shared/src/contracts/hello.ts
+import type { HelloQuerySchema } from '../schemas/hello/hello-query.js'
+import type { QueryInputOf } from '../schemas/query/types.js'
+import type { HelloResponse } from '../responses/hello-controller.js'
+import { contract } from './core.js'
+
+export const helloContracts = {
+    hello: contract<undefined, QueryInputOf<typeof HelloQuerySchema>, HelloResponse>()(
+        'get',
+        '/hello',
+    ),
+} as const
+```
+
+Add a line at the end of `packages/shared/src/contracts/index.ts` and run `pnpm --filter shared build` again:
+
+```ts
+export { helloContracts } from './hello.js'
+```
+
+**The route's schemas.** The backend keeps the schemas of every contract in the `app/routes/contract-schemas/` registry. `contractSchemas` checks the entry against the contract's types: if the keys of `HelloQuerySchema` drift from the contract's query, `pnpm typecheck` shows it.
+
+```ts
+// packages/backend/src/app/routes/contract-schemas/hello.ts
+import { HelloQuerySchema } from 'shared/schemas'
+import * as ResponseSchemas from 'shared/responses'
+import { helloContracts } from 'shared/contracts'
+import { contractSchemas } from '#app/routing/contract-registry.js'
+
+export const helloSchemas = contractSchemas(helloContracts, {
+    hello: { query: HelloQuerySchema, response: ResponseSchemas.HelloResponseSchema },
+})
+```
+
+Add it as an argument of `mergeContractSchemas` in [`contract-schemas/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts): two contracts with the same method and path stop the server from starting:
+
+```ts
+import { helloSchemas } from './hello.js'
+// ...
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
+    // ...
+    supportWsSchemas,
+    helloSchemas,
+)
+```
+
+**The route.** Open [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). `defineRoute` is already imported there from `#app/routes/contract-schemas/index.js`; add the controller import and `helloContracts` to the existing import from `shared/contracts`:
 
 ```ts
 import HelloController from '#app/controllers/http/hello/hello-controller.js'
 // ...
 import {
     // ...
-    HelloQuerySchema,
-} from 'shared/schemas'
+    supportContracts,
+    helloContracts,
+} from 'shared/contracts'
 ```
 
 Then add the group as the last element of the array, before `] satisfies routeList`:
@@ -161,11 +216,8 @@ Then add the group as the last element of the array, before `] satisfies routeLi
     {
         group: [
             defineRoute({
-                url: '/',
-                method: 'get',
+                contract: helloContracts.hello,
                 handler: HelloController.hello.bind(HelloController),
-                queryValidator: HelloQuerySchema,
-                ResponseSchema: ResponseSchemas.HelloResponseSchema,
                 description: 'Say hello',
             }),
         ],
@@ -174,10 +226,10 @@ Then add the group as the last element of the array, before `] satisfies routeLi
     },
 ```
 
-- `prefix: 'hello'` + `url: '/'` + the global `api` prefix = `/api/hello`.
-- `queryValidator` — the core will check the query against the schema **before** calling the controller. Unknown parameters are rejected (a strict policy by default).
-- There are no `middlewares`, so the route is public: no session or sign-in is needed. How to close a route to signed-out users is shown in [How to add a feature](/en/backend/adding-a-feature#step-8-route-registration).
-- `ResponseSchema` describes the response for the API documentation and [API Playground](/en/playground/). During development the server also validates every controller response against it: if it does not match the schema, the client gets `500`, and the log contains the path to the field that did not match. See [Response validation](/en/backend/response-validation). Even before launch, TypeScript checks the type the controller returns against the schema, so we keep the `HelloResponse` annotation in the controller ([Handler response type](/en/backend/routing#handler-response-type)).
+- The contract path `/hello` + the global `api` prefix = `/api/hello`. The group's `prefix: 'hello'` must be the start of the contract path, otherwise the server does not start.
+- The `query` schema of the registry entry — the core will check the query against it **before** calling the controller. Unknown parameters are rejected (a strict policy by default).
+- There are no `middlewares`, so the route is public: no session or sign-in is needed. How to close a route to signed-out users is shown in [How to add a feature](/en/backend/adding-a-feature#step-8-contract-and-route-registration).
+- The `response` schema describes the response for the API documentation and [API Playground](/en/playground/). During development the server also validates every controller response against it: if it does not match the schema, the client gets `500`, and the log contains the path to the field that did not match. See [Response validation](/en/backend/response-validation). Even before launch, TypeScript checks the type the controller returns against the schema, so we keep the `HelloResponse` annotation in the controller ([Handler response type](/en/backend/routing#handler-response-type)).
 
 `pnpm dev` will restart the backend by itself when you save the file.
 
@@ -271,10 +323,10 @@ Along with this test, run `src/app/layering.spec.ts`: it checks that the layers 
 | Concept                     | Where in this exercise                      | More                                                                     |
 | --------------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
 | Contract in `shared`        | `HelloQuerySchema`, `HelloResponseSchema`   | [The shared package](/en/shared/), [Validation](/en/backend/validation)  |
-| Runtime validation          | `queryValidator` → `422`                    | [Validation](/en/backend/validation)                                     |
+| Runtime validation          | the `query` schema in the registry → `422`  | [Validation](/en/backend/validation)                                     |
 | `Result` instead of `throw` | `Result.ok` / `Result.err(badRequest(...))` | [Services](/en/backend/services)                                         |
 | Error mapping               | `mapControllerError` → `400`                | [Controllers](/en/backend/controllers)                                   |
-| Route declaration           | `defineRoute` in a group with `prefix`      | [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares) |
+| Route declaration           | `defineRoute({ contract })` in a group      | [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares) |
 
 What is still missing here: a database, a session and route protection. The next step adds all of that.
 

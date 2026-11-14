@@ -15,6 +15,32 @@ import { fileURLToPath } from 'node:url'
 // configureVueProject({ scriptLangs: ['ts', 'tsx'] })
 // More info at https://github.com/vuejs/eslint-config-typescript/#advanced-setup
 
+// Restricted imports, one list per file group: a later block's `no-restricted-imports` replaces
+// an earlier one, so each block names every pattern that still applies to its files.
+const SENTRY_ONLY_IN_SERVICE = {
+    group: ['@sentry/*'],
+    message: 'Import Sentry only from src/utils/sentry-service.ts',
+}
+// feat-186: the transport is reached through the clients, under any name. Its named settings
+// (setCurrentUserIdProvider, setReloadHandler) stay importable.
+// The module with or without an extension (`./base-api.ts`, `@/utils/base-api.js`) or a Vite
+// query (feat-187); `my-base-api` and `base-api-docs` are other modules.
+const TRANSPORT_MODULE = '(^|[/])base-api([.][cm]?[jt]sx?)?([?].*)?$'
+const TRANSPORT_ONLY_IN_CLIENT = {
+    regex: TRANSPORT_MODULE,
+    importNames: ['default'],
+    message:
+        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+}
+
+// feat-193: a Vite config loads before the `shared-source` condition applies, so `shared/*` there
+// is shared/dist and keeps the values of the last `shared` build. Import the source by path.
+const SHARED_SOURCE_IN_VITE_CONFIG = {
+    regex: '^shared(/|$)',
+    message:
+        'A Vite config reads shared/dist through the package name: import ../shared/src/<module>/index instead (feat-193).',
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const monorepoRootDir = resolve(__dirname, '../..')
 
@@ -30,7 +56,13 @@ export default defineConfigWithVueTs(
 
     {
         name: 'app/files-to-ignore',
-        ignores: ['**/dist/**', '**/dist-e2e-mock/**', '**/dist-ssr/**', '**/coverage/**'],
+        ignores: [
+            '**/dist/**',
+            '**/dist-e2e-mock/**',
+            '**/dist-e2e-sentry/**',
+            '**/dist-ssr/**',
+            '**/coverage/**',
+        ],
     },
 
     {
@@ -55,14 +87,7 @@ export default defineConfigWithVueTs(
             ],
             'no-restricted-imports': [
                 'error',
-                {
-                    patterns: [
-                        {
-                            group: ['@sentry/*'],
-                            message: 'Import Sentry only from src/utils/sentry-service.ts',
-                        },
-                    ],
-                },
+                { patterns: [SENTRY_ONLY_IN_SERVICE, TRANSPORT_ONLY_IN_CLIENT] },
             ],
         },
     },
@@ -70,7 +95,81 @@ export default defineConfigWithVueTs(
     {
         files: ['src/utils/sentry-service.ts'],
         rules: {
-            'no-restricted-imports': 'off',
+            'no-restricted-imports': ['error', { patterns: [TRANSPORT_ONLY_IN_CLIENT] }],
+        },
+    },
+
+    {
+        // The HTTP client is the one module that holds the transport; tests drive it directly.
+        files: ['src/utils/api-client.ts', 'src/**/__tests__/**'],
+        rules: {
+            'no-restricted-imports': ['error', { patterns: [SENTRY_ONLY_IN_SERVICE] }],
+        },
+    },
+
+    {
+        // feat-186: no request by hand. The transport (base-api.ts) is the one place that calls
+        // fetch for the API; the service worker fetches for its cache.
+        files: ['src/**/*.{ts,vue}'],
+        ignores: ['src/utils/base-api.ts', 'src/service-worker.ts', 'src/**/__tests__/**'],
+        rules: {
+            'no-restricted-globals': [
+                'error',
+                {
+                    name: 'fetch',
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                },
+            ],
+            'no-restricted-properties': [
+                'error',
+                ...['window', 'globalThis', 'self'].map((object) => ({
+                    object,
+                    property: 'fetch',
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                })),
+            ],
+        },
+    },
+
+    {
+        // The API is called through contracts, never by hand:
+        // - HTTP through `callApi` in utils/api-client.ts (docs/adr/0005-route-contracts.md,
+        //   feat-170);
+        // - WS requests through `callWs` in utils/ws-client.ts, on top of the connection in
+        //   composables/useWebSocketConnection.ts (docs/adr/0006-websocket-contracts.md, feat-181).
+        // One block on purpose: a second block with `no-restricted-syntax` for the same files
+        // would replace this one, not add to it.
+        files: ['src/**/*.{ts,vue}'],
+        ignores: [
+            'src/utils/api-client.ts',
+            'src/utils/ws-client.ts',
+            'src/composables/useWebSocketConnection.ts',
+            'src/**/__tests__/**',
+        ],
+        rules: {
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector:
+                        'CallExpression[callee.property.name=/^(http|upload)$/][callee.object.name=/^(baseApi|api)$/]',
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                },
+                {
+                    // feat-186: the transport cannot be reached by a dynamic import either.
+                    selector: `ImportExpression[source.value=/${TRANSPORT_MODULE}/]`,
+                    message:
+                        'Call the API through a contract: callApi(contract, input) from @/utils/api-client (ADR 0005).',
+                },
+                {
+                    selector:
+                        "CallExpression:matches([callee.name='websocketApi'], [callee.property.name='websocketApi'])",
+                    message:
+                        'Send the WS request through its contract: callWs(contract, payload) from @/utils/ws-client (ADR 0006).',
+                },
+            ],
         },
     },
 
@@ -95,6 +194,21 @@ export default defineConfigWithVueTs(
     {
         ...pluginPlaywright.configs['flat/recommended'],
         files: ['e2e/**/*.{test,spec}.{js,ts,jsx,tsx}', 'e2e-csp/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    },
+    {
+        files: ['vite.*.ts', 'vitest.config.ts'],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    patterns: [
+                        SENTRY_ONLY_IN_SERVICE,
+                        TRANSPORT_ONLY_IN_CLIENT,
+                        SHARED_SOURCE_IN_VITE_CONFIG,
+                    ],
+                },
+            ],
+        },
     },
     {
         files: ['src/types/i18n.d.ts'],

@@ -6,6 +6,7 @@ import {
     userRepository,
 } from '#app/repositories/index.js'
 import { emailService } from '#app/services/notifications/email-service.js'
+import { PRODUCT } from 'shared/product'
 import { Result } from 'better-result'
 import { validatePassword } from 'metautil'
 import {
@@ -41,17 +42,20 @@ function buildVerificationUrl(token: string): string {
     return `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`
 }
 
-function buildLinkEmailContent(name: string, verificationUrl: string): RenderedEmail {
+// feat-203 (L-1): the address is not confirmed yet, so the mail greets nobody by name: the
+// name of the account was chosen by whoever asked for this mail, and that need not be the
+// owner of the mailbox.
+function buildLinkEmailContent(verificationUrl: string): RenderedEmail {
     return renderBrandedEmail({
         subject: 'Confirm your new email',
         eyebrow: 'Email linking',
         title: 'Confirm your new email address',
-        name,
-        intro: 'Confirm this email to finish linking it to your Vibe Template account. Open the link in the browser where you are signed in to that account.',
+        name: '',
+        intro: `Confirm this email to finish linking it to your ${PRODUCT.name} account. Open the link in the browser where you are signed in to that account.`,
         action: { kind: 'link', url: verificationUrl },
         footer: 'This link will expire in 24 hours. If you did not request this, ignore this email: the link does nothing unless you are signed in to the account that asked for it.',
         textLines: [
-            'Please confirm this new email address for your Vibe Template account by opening this link',
+            `Please confirm this new email address for your ${PRODUCT.name} account by opening this link`,
             'in the browser where you are signed in to that account:',
             verificationUrl,
             '',
@@ -61,14 +65,14 @@ function buildLinkEmailContent(name: string, verificationUrl: string): RenderedE
     })
 }
 
-function buildEmailContent(name: string, verificationUrl: string): RenderedEmail {
+function buildEmailContent(verificationUrl: string): RenderedEmail {
     return renderBrandedEmail({
         subject: 'Confirm your email',
-        preheader: 'Confirm your Vibe Template email address.',
+        preheader: `Confirm your ${PRODUCT.name} email address.`,
         eyebrow: 'Email verification',
         title: 'Confirm your email address',
-        name,
-        intro: 'Finish setting up your Vibe Template account by confirming this email address. You will be asked for the password you chose when you signed up.',
+        name: '',
+        intro: `Finish setting up your ${PRODUCT.name} account by confirming this email address. You will be asked for the password you chose when you signed up.`,
         action: { kind: 'button', label: 'Confirm email', url: verificationUrl },
         footer: 'This link will expire in 24 hours. If you did not create an account, ignore this email: without the account password the link confirms nothing.',
         textLines: [
@@ -162,7 +166,7 @@ export const emailVerificationService = {
         }
 
         const verificationUrl = buildVerificationUrl(rawToken)
-        const emailContent = buildEmailContent(user.name, verificationUrl)
+        const emailContent = buildEmailContent(verificationUrl)
         const sendResult = await emailService.send({
             to: user.email,
             subject: emailContent.subject,
@@ -358,6 +362,15 @@ export const emailVerificationService = {
         if (Result.isError(throttle)) {
             return Result.err(throttle.error)
         }
+        // feat-203 (L-2): and the daily budget, shared with the mail a sign-in sends.
+        const daily = await enforceThrottle(
+            throttlePolicies.verificationMailUserDaily,
+            String(userId),
+            rateLimited('Too many verification emails requested. Please try again later.'),
+        )
+        if (Result.isError(daily)) {
+            return Result.err(daily.error)
+        }
 
         const user = await userRepository.findById(userId)
         if (user === undefined) {
@@ -433,10 +446,10 @@ export const emailVerificationService = {
         if (Result.isError(issued)) {
             return Result.err(issued.error)
         }
-        const { rawToken, user } = issued.value
+        const { rawToken } = issued.value
 
         const verificationUrl = buildVerificationUrl(rawToken)
-        const emailContent = buildLinkEmailContent(user.name, verificationUrl)
+        const emailContent = buildLinkEmailContent(verificationUrl)
         const sendResult = await emailService.send({
             to: targetEmail,
             subject: emailContent.subject,

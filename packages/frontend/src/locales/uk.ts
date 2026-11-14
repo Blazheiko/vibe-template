@@ -55,7 +55,6 @@ const uk: typeof en = {
     },
 
     login: {
-        heroTitle: 'Vibe Template',
         heroSubtitle: 'Вивчайте структуру full-stack проєкту на Vue 3 і TypeScript.',
         featureSupportTitle: 'Підтримка',
         featureSupportDesc: 'Відкрийте розмову з підтримкою та отримайте допомогу з акаунтом.',
@@ -66,7 +65,7 @@ const uk: typeof en = {
         signIn: 'Увійти',
         createAccount: 'Створити акаунт',
         about: 'Про проєкт',
-        mobileTitle: 'Ласкаво просимо до Vibe Template',
+        mobileTitle: 'Ласкаво просимо до {name}',
         mobileSubtitle: 'Дослідіть навчальний шаблон full-stack застосунку',
         socialLoginFailed: 'Не вдалося увійти через соцмережу. Спробуйте ще раз.',
         socialLoginLinkPending:
@@ -113,6 +112,8 @@ const uk: typeof en = {
         resetPasswordHelp: 'Введіть новий пароль нижче.',
         resetPasswordSuccessTitle: 'Пароль оновлено',
         resetPasswordSuccess: 'Ваш пароль оновлено. Тепер можна увійти з новим паролем.',
+        resetPasswordLinkedMethods:
+            'Ці способи входу досі прив’язані до вашого акаунта й далі працюють: {methods}. Якщо якийсь із них вам не знайомий, увійдіть і приберіть його на сторінці акаунта.',
         invalidResetToken: 'Це посилання для скидання пароля недійсне або втратило чинність.',
         signingIn: 'Входимо...',
         orContinueWith: 'або продовжити через',
@@ -148,7 +149,7 @@ const uk: typeof en = {
         errorEmailInvalid: 'Введіть дійсну адресу пошти',
         errorPassword: 'Вкажіть пароль',
         errorPasswordLength: 'Пароль має містити щонайменше 8 символів',
-        errorPasswordMaxLength: 'Пароль має містити щонайбільше 32 символи',
+        errorPasswordMaxLength: 'Пароль має містити щонайбільше 128 символів',
         errorName: 'Вкажіть ім’я',
         errorPasswordsMismatch: 'Паролі не збігаються',
         errorTooManyResetRequests: 'Забагато спроб скидання. Зачекайте хвилину й повторіть.',
@@ -180,11 +181,14 @@ const uk: typeof en = {
         loadEarlier: 'Показати попередні повідомлення',
         loadingEarlier: 'Завантаження...',
         inputPlaceholder: 'Введіть повідомлення...',
+        send: 'Надіслати повідомлення',
+        connectionLost: "З'єднання втрачено. Розмова оновиться, коли воно відновиться.",
     },
 
     account: {
         avatar: {
             delete: 'Видалити аватар',
+            closeEditor: 'Закрити редактор аватара',
             errorFileSize: 'Файл має бути меншим за 10 МБ',
             errorFileType: 'Оберіть файл зображення',
         },
@@ -204,10 +208,27 @@ const uk: typeof en = {
             newPassword: 'Новий пароль',
             confirmPassword: 'Підтвердіть новий пароль',
             updatePassword: 'Оновити пароль',
-            errorNewPasswordLength: 'Новий пароль має містити від 8 до 32 символів',
+            errorNewPasswordLength: 'Новий пароль має містити від 8 до 128 символів',
             errorMismatch: 'Паролі не збігаються',
             errorUpdate: 'Не вдалося оновити пароль',
             successUpdate: 'Пароль оновлено',
+        },
+        signInMethods: {
+            title: 'Способи входу',
+            help: 'Акаунти інших сервісів, прив’язані до цього акаунта. Кожен із них входить у нього, також після зміни пароля.',
+            empty: 'Жоден інший сервіс не прив’язано.',
+            linkedAt: 'прив’язано {date}',
+            unlink: 'Прибрати',
+            currentPassword: 'Поточний пароль',
+            noPasswordHint:
+                'Цей акаунт не має пароля: щоб прибрати спосіб входу, потрібен вхід за останні 10 хвилин, а останній спосіб прибрати не можна.',
+            unlinked: '{provider} прибрано',
+            errorLoad: 'Не вдалося завантажити способи входу',
+            errorUnlink: 'Не вдалося прибрати спосіб входу',
+            errorPasswordRequired: 'Введіть поточний пароль, щоб прибрати спосіб входу',
+            errorPasswordIncorrect: 'Поточний пароль неправильний',
+            errorRecentSignIn: 'Вийдіть і увійдіть знову, а потім приберіть спосіб входу',
+            errorLastMethod: 'Встановіть пароль, перш ніж прибирати останній спосіб входу',
         },
         contactMethods: {
             title: 'Способи зв’язку',

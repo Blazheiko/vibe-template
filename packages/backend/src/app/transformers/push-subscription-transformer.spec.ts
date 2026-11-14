@@ -39,6 +39,26 @@ describe('pushSubscriptionTransformer (feat-047 §4.2)', () => {
         })
     })
 
+    // feat-208 (I-3)
+    it('keeps the keys and the address on the server', () => {
+        const serialized = pushSubscriptionTransformer.serialize({
+            ...row,
+            ipAddress: '203.0.113.7',
+        })
+        const withLogs = pushSubscriptionTransformer.serializeWithLogs({
+            ...row,
+            ipAddress: '203.0.113.7',
+            notificationLogs: [],
+        })
+
+        for (const value of [serialized, withLogs]) {
+            expect(value).not.toHaveProperty('p256dhKey')
+            expect(value).not.toHaveProperty('authKey')
+            expect(value).not.toHaveProperty('ipAddress')
+            expect(value.endpoint).toBe('https://push.example/1')
+        }
+    })
+
     it('serializes the nested log summaries too', () => {
         const serialized = pushSubscriptionTransformer.serializeWithLogs({
             ...row,

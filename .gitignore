@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 dist/
 dist-e2e-mock/
+dist-e2e-sentry/
 coverage/
 *.tsbuildinfo
 
@@ -15,7 +16,9 @@ coverage/
 *.swo
 .DS_Store
 
-.claude/
+# Local Claude Code state stays out; shared agent skills are versioned.
+.claude/*
+!.claude/skills/
 .ssh/
 docs/tech_spec/LANGUAGE_SETTINGS_SIMPLIFICATION_PLAN.md
 packages/backend/.windsurf/

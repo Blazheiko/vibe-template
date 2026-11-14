@@ -1,5 +1,7 @@
 import { Result } from 'better-result'
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { promptContracts } from 'shared/contracts'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import {
@@ -38,8 +40,10 @@ export default {
         }
     },
 
-    getByType(context: HttpContext): PromptGetByTypeResponse {
-        const { type } = context.httpData.params as { type: string }
+    getByType(
+        context: HttpContext<unknown, null, ParamsOf<typeof promptContracts.get>>,
+    ): PromptGetByTypeResponse {
+        const { type } = context.httpData.params
         if (!isPromptType(type)) {
             return mapControllerError(context, badRequest(`Unknown prompt type: ${type}`))
         }
@@ -50,8 +54,10 @@ export default {
         return { status: 'success', data: promptTransformer.serialize(prompt) }
     },
 
-    async testPrompt(context: HttpContext<PromptTestInput>): Promise<PromptTestResponse> {
-        const { type } = context.httpData.params as { type: string }
+    async testPrompt(
+        context: HttpContext<PromptTestInput, null, ParamsOf<typeof promptContracts.test>>,
+    ): Promise<PromptTestResponse> {
+        const { type } = context.httpData.params
         if (!isPromptType(type)) {
             return mapControllerError(context, badRequest(`Unknown prompt type: ${type}`))
         }
@@ -75,8 +81,10 @@ export default {
         return { status: 'success', result: result.value }
     },
 
-    async update(context: HttpContext<PromptUpdateInput>): Promise<PromptUpdateResponse> {
-        const { type } = context.httpData.params as { type: string }
+    async update(
+        context: HttpContext<PromptUpdateInput, null, ParamsOf<typeof promptContracts.update>>,
+    ): Promise<PromptUpdateResponse> {
+        const { type } = context.httpData.params
         if (!isPromptType(type)) {
             return mapControllerError(context, badRequest(`Unknown prompt type: ${type}`))
         }

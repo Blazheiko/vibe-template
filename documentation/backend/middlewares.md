@@ -8,17 +8,17 @@ Middleware задаються списком назв на групі маршр
 
 ```ts
 {
-    group: [ /* defineRoute(...) */ ],
+    group: [ /* defineRoute({ contract: ..., handler: ... }) */ ],
     prefix: 'notes',
     middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
 }
 ```
 
-| Набір middleware                                         | Хто пройде                | Інші отримають                                    |
-| -------------------------------------------------------- | ------------------------- | ------------------------------------------------- |
-| немає                                                    | усі (як `GET /api/hello`) | —                                                 |
-| `session_web`, `csrf_guard`, `auth_guard`                | лише залогінені           | `401 unauthorized`                                |
-| `session_web`, `csrf_guard`, `auth_guard`, `admin_guard` | лише роль `admin`         | `401` без входу, `403` для звичайного користувача |
+| Набір middleware                                         | Хто пройде               | Інші отримають                                    |
+| -------------------------------------------------------- | ------------------------ | ------------------------------------------------- |
+| немає                                                    | усі (як `GET /api/ping`) | —                                                 |
+| `session_web`, `csrf_guard`, `auth_guard`                | лише залогінені          | `401 unauthorized`                                |
+| `session_web`, `csrf_guard`, `auth_guard`, `admin_guard` | лише роль `admin`        | `401` без входу, `403` для звичайного користувача |
 
 Відповіді перевірено на запущеному сервері (`GET /api/admin/users`):
 

@@ -217,7 +217,10 @@ export default {
         )
         // The service's reasons (invalid_token, expired_token, used_token, token_required,
         // passwords_mismatch) pass through the canonical error body as they are.
-        return respond(context, result, () => ({ status: 'success' }))
+        return respond(context, result, ({ signInMethods }) => ({
+            status: 'success' as const,
+            signInMethods,
+        }))
     },
 
     async completePhonePasswordReset(
@@ -231,9 +234,10 @@ export default {
             payload.passwordConfirm,
             { ipAddress: context.httpData.ip ?? '' },
         )
-        return respond(context, result, () => ({
-            status: 'success',
+        return respond(context, result, ({ signInMethods }) => ({
+            status: 'success' as const,
             message: 'Password reset successfully',
+            signInMethods,
         }))
     },
 

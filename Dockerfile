@@ -1,15 +1,31 @@
 # Точная версия Node.js, как в .nvmrc: сборка падает, если установлена другая.
 ARG NODE_VERSION=24.22.2
+# feat-207 (L-18). The base image is pinned by digest (Dependabot, ecosystem `docker`, moves
+# it), and Node comes from the NodeSource apt repository added by hand: the signing key is
+# checked against this hash, and apt checks the packages against the key. Before, the
+# NodeSource setup script was piped into bash as root. When NodeSource replaces the key the
+# build stops here: compare the new key with their announcement, then update the hash
+# (`curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sha256sum`).
+ARG NODESOURCE_ASC_SHA256=b42e0321dabdc24e892115da705cf061167eac12a317f23d329862d0aa0a271d
 
-FROM ubuntu:24.04 AS builder
+FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5 AS builder
 WORKDIR /app
 
 # Устанавливаем Node.js 24 и необходимые инструменты
 ARG NODE_VERSION
+ARG NODESOURCE_ASC_SHA256
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        -o /etc/apt/keyrings/nodesource.asc \
+    && echo "${NODESOURCE_ASC_SHA256}  /etc/apt/keyrings/nodesource.asc" | sha256sum -c - \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_24.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && printf 'Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n' \
+        > /etc/apt/preferences.d/nodejs \
+    && apt-get update \
     && apt-get install -y nodejs=${NODE_VERSION}-1nodesource1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -33,6 +49,11 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Передаём Vite env в build stage до сборки frontend.
+# API_PATH_PREFIX — тот же, с которым запускается контейнер: vite.config.ts вшивает его в бандл
+# (feat-153, feat-192; .env в образ не попадает). Пустое значение — префикс `api`.
+ARG API_PATH_PREFIX
+ARG VITE_BASE_URL
+ARG VITE_AUTH_PHONE_ENABLED
 ARG VITE_SENTRY_DSN
 ARG VITE_SENTRY_ENABLED
 ARG VITE_SENTRY_ENVIRONMENT
@@ -41,7 +62,10 @@ ARG VITE_SENTRY_TRACES_SAMPLE_RATE
 ARG VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE
 ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE
 
-ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
+ENV API_PATH_PREFIX=$API_PATH_PREFIX \
+    VITE_BASE_URL=$VITE_BASE_URL \
+    VITE_AUTH_PHONE_ENABLED=$VITE_AUTH_PHONE_ENABLED \
+    VITE_SENTRY_DSN=$VITE_SENTRY_DSN \
     VITE_SENTRY_ENABLED=$VITE_SENTRY_ENABLED \
     VITE_SENTRY_ENVIRONMENT=$VITE_SENTRY_ENVIRONMENT \
     VITE_SENTRY_RELEASE=$VITE_SENTRY_RELEASE \
@@ -64,15 +88,24 @@ RUN rm -rf packages/backend/public && \
 
 
 # --- Этап 2: продакшн ---
-FROM ubuntu:24.04 AS production
+FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5 AS production
 WORKDIR /app
 
 # Устанавливаем Node.js 24 и необходимые инструменты
 ARG NODE_VERSION
+ARG NODESOURCE_ASC_SHA256
 RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && install -d -m 0755 /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        -o /etc/apt/keyrings/nodesource.asc \
+    && echo "${NODESOURCE_ASC_SHA256}  /etc/apt/keyrings/nodesource.asc" | sha256sum -c - \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_24.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && printf 'Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n' \
+        > /etc/apt/preferences.d/nodejs \
+    && apt-get update \
     && apt-get install -y nodejs=${NODE_VERSION}-1nodesource1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -110,9 +143,9 @@ ENV NODE_ENV=production \
 COPY --from=builder /app/packages/backend/dist ./packages/backend/dist
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
-# Копируем public (frontend build) и public-test
+# Копируем public (frontend build). public-test (страницы для APP_ENV=manual-test) в образ
+# не попадает: это локальный режим разработки (feat-207, I-5).
 COPY --from=builder /app/packages/backend/public ./packages/backend/public
-COPY --from=builder /app/packages/backend/public-test ./packages/backend/public-test
 
 # Копируем конфигурационные файлы для drizzle-kit
 COPY --from=builder /app/packages/backend/drizzle.config.ts ./packages/backend/drizzle.config.ts

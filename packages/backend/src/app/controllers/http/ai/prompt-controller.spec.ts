@@ -21,7 +21,7 @@ const context = (signal: AbortSignal) =>
         responseData: { status: 200, payload: null, headers: [], cookies: new Map() },
         signal,
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    }) as unknown as HttpContext<{ message: string }>
+    }) as unknown as HttpContext<{ message: string }, null, { type: string }>
 
 afterEach(() => {
     vi.clearAllMocks()

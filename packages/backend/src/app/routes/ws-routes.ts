@@ -1,22 +1,21 @@
 import AdminWsController from '#app/controllers/ws/admin-ws-controller.js'
 import SupportWsController from '#app/controllers/ws/support-controller.js'
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
-import { SupportChatInputSchema, SupportOpenChatInputSchema } from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
+import { defineWsRoute } from '#app/routes/contract-schemas/index.js'
+import { adminWsContracts, supportWsContracts } from 'shared/contracts'
 
+// Every WS route is declared through its contract (ADR 0006): the event, payload and reply come
+// from shared/contracts/ws.ts and the schema registry.
 export default [
     {
         group: [
             defineWsRoute({
-                url: 'subscribe_online_users',
+                contract: adminWsContracts.subscribeOnlineUsers,
                 handler: AdminWsController.subscribeOnlineUsers.bind(AdminWsController),
-                ResponseSchema: ResponseSchemas.AdminOnlineUsersWsResponseSchema,
                 description: 'Subscribe current admin websocket to admin online updates',
             }),
             defineWsRoute({
-                url: 'unsubscribe_online_users',
+                contract: adminWsContracts.unsubscribeOnlineUsers,
                 handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
-                ResponseSchema: ResponseSchemas.AdminOnlineUsersWsResponseSchema,
                 description: 'Unsubscribe current admin websocket from admin online updates',
             }),
         ],
@@ -28,17 +27,13 @@ export default [
     {
         group: [
             defineWsRoute({
-                url: 'support_open_chat',
+                contract: supportWsContracts.openChat,
                 handler: SupportWsController.openChat.bind(SupportWsController),
-                validator: SupportOpenChatInputSchema,
-                ResponseSchema: ResponseSchemas.SupportOpenChatResponseSchema,
                 description: 'Open support chat and trigger first greeting',
             }),
             defineWsRoute({
-                url: 'support_chat',
+                contract: supportWsContracts.chat,
                 handler: SupportWsController.chat.bind(SupportWsController),
-                validator: SupportChatInputSchema,
-                ResponseSchema: ResponseSchemas.SupportChatResponseSchema,
                 description: 'Send a message to the support agent',
             }),
         ],

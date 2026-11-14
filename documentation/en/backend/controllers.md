@@ -35,6 +35,10 @@ There is no separate `static/` folder in controllers: static file serving lives 
 
 A controller is a default-exported object (`export default { ... }`) with async methods. In routes a method is passed as `handler: AuthController.login.bind(AuthController)` ([http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts), [ws-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/ws-routes.ts)).
 
+::: tip Numeric ids in the path and the query
+An id from a path parameter or the query (`:id`, `:subscriptionId`, `:articleId`, `userId`, `cursor`) is read by [`parseEntityId`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/parse-id.ts): decimal digits only and no more than PostgreSQL's `bigint`. A value outside that (30 digits, `0x10`, `-5`) is refused by the controller the same way as a non-numeric id (`400` or `404`) instead of reaching the query, where it would be a `500` (feat-161).
+:::
+
 ## Handler context
 
 A short cheat sheet below; each field is covered in the sections [HttpContext in detail](#httpcontext-in-detail) and [WsContext in detail](#wscontext-in-detail).
@@ -42,13 +46,14 @@ A short cheat sheet below; each field is covered in the sections [HttpContext in
 The types are defined in [vendor/types/types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts):
 
 ```ts
-export interface HttpContext<TPayload = unknown, TQuery = null> {
+export interface HttpContext<TPayload = unknown, TQuery = null, TParams = Params> {
     requestId: string
     logger: Logger
-    httpData: HttpData<TPayload, TQuery>
+    httpData: HttpData<TPayload, TQuery, TParams>
     responseData: ResponseData
     session: Session
     auth: Auth
+    signal: AbortSignal
 }
 export interface WsContext<TPayload = unknown> {
     requestId: string
@@ -59,13 +64,14 @@ export interface WsContext<TPayload = unknown> {
     session: null
     auth: null
     logger: Logger
+    signal: AbortSignal
 }
 ```
 
 | What you need    | HTTP                                                               | WS                                     |
 | ---------------- | ------------------------------------------------------------------ | -------------------------------------- |
 | Validated body   | `getTypedPayload(context)`                                         | `getTypedPayload(context)`             |
-| Path parameters  | `context.httpData.params['id']` (strings)                          | —                                      |
+| Path parameters  | `context.httpData.params.id` (strings, typed by the contract)      | —                                      |
 | Query            | `context.httpData.query` (typed if there is a `queryValidator`)    | —                                      |
 | Current user     | `context.auth.getUserId()` (`string \| null`)                      | `context.userData?.userId`             |
 | Session          | `context.session.sessionInfo`, `updateSessionData(...)`            | `session: null`                        |
@@ -94,23 +100,23 @@ Do not log passwords, tokens or full request bodies.
 
 Everything that came from the client. A read-only object.
 
-| Field         | Type                                | Description                                                                                                                                                                |
-| ------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `method`      | `Method`                            | The route's HTTP method (`'get'`, `'post'`, …).                                                                                                                            |
-| `ip`          | `string \| null \| undefined`       | Client IP (taking trusted proxies into account).                                                                                                                           |
-| `params`      | `Record<string, string>`            | Path parameters (`:id` → `params['id']`). Always strings: convert numbers and `bigint` yourself.                                                                           |
-| `payload`     | `TPayload \| null`                  | Request body after the route validator. Read it through `getTypedPayload(context)`, not directly.                                                                          |
-| `query`       | `TQuery`                            | The validated query object, **not** `URLSearchParams`. Without a `queryValidator` it is `null` (accessing fields is a TS error). See [Validation](/en/backend/validation). |
-| `headers`     | `Map<string, string>`               | Request headers, names in lowercase: `headers.get('user-agent')`.                                                                                                          |
-| `contentType` | `string \| undefined`               | The request `Content-Type`.                                                                                                                                                |
-| `cookies`     | `Map<string, string>`               | Request cookies: `cookies.get('name')`.                                                                                                                                    |
-| `isJson`      | `boolean`                           | Whether the body arrived as JSON.                                                                                                                                          |
-| `files`       | `Map<string, UploadedFile> \| null` | Files from `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null` if there are no files.                                                             |
-| `hasFile`     | `(name: string) => boolean`         | Whether there is a file with this field name.                                                                                                                              |
+| Field         | Type                                            | Description                                                                                                                                                                                        |
+| ------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`      | `Method`                                        | The route's HTTP method (`'get'`, `'post'`, …).                                                                                                                                                    |
+| `ip`          | `string \| null \| undefined`                   | Client IP (taking trusted proxies into account).                                                                                                                                                   |
+| `params`      | `TParams` (`Record<string, string>` by default) | Path parameters (`:id` → `params.id`): the third type parameter of `HttpContext`, `ParamsOf<typeof contracts.get>` of the route's contract. Always strings: convert numbers and `bigint` yourself. |
+| `payload`     | `TPayload \| null`                              | Request body after the route validator. Read it through `getTypedPayload(context)`, not directly.                                                                                                  |
+| `query`       | `TQuery`                                        | The validated query object, **not** `URLSearchParams`. Without a `queryValidator` it is `null` (accessing fields is a TS error). See [Validation](/en/backend/validation).                         |
+| `headers`     | `Map<string, string>`                           | Request headers, names in lowercase: `headers.get('user-agent')`.                                                                                                                                  |
+| `contentType` | `string \| undefined`                           | The request `Content-Type`.                                                                                                                                                                        |
+| `cookies`     | `Map<string, string>`                           | Request cookies: `cookies.get('name')`.                                                                                                                                                            |
+| `isJson`      | `boolean`                                       | Whether the body arrived as JSON.                                                                                                                                                                  |
+| `files`       | `Map<string, UploadedFile> \| null`             | Files from `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null` if there are no files.                                                                                     |
+| `hasFile`     | `(name: string) => boolean`                     | Whether there is a file with this field name.                                                                                                                                                      |
 
 ```ts
-async getItem(context: HttpContext<unknown, ListQuery>) {
-    const id = context.httpData.params['id'] ?? ''
+async getItem(context: HttpContext<unknown, ListQuery, ParamsOf<typeof itemContracts.get>>) {
+    const id = context.httpData.params.id // `:id` of the contract; renamed there, this stops compiling
     const { page, limit } = context.httpData.query
     const lang = context.httpData.headers.get('accept-language')
     if (!context.httpData.hasFile('avatar')) { /* ... */ }
@@ -212,7 +218,7 @@ The response envelope the dispatcher sends to the client: `{ event, timestamp, s
 | Field                | Description                                                                                                                         |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `event`, `timestamp` | Copied from the incoming message so the client can match the response to the request. Do not change them.                           |
-| `status: string`     | `'200'` by default. Set a string, for example `'403'`, when you return an error.                                                    |
+| `status`             | `WsReplyStatus` (`shared/ws-client`). `'200'` by default. Set a string, for example `'403'`, when you return an error.              |
 | `data`               | The dispatcher puts the value returned by the method here.                                                                          |
 | `error`              | Filled by the dispatcher for system errors (`not_found`, `validation_failed`, `internal_error`, rate limit) with `status: 'error'`. |
 

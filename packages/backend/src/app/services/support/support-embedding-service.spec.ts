@@ -36,9 +36,9 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
             })),
         )
 
-        const count = await supportEmbeddingService.reindexAll()
+        const result = await supportEmbeddingService.reindexAll()
 
-        expect(count).toBe(120)
+        expect(result).toEqual({ indexed: 120, failed: [] })
         expect(embedBatch.mock.calls.map((call) => call[0].length)).toEqual([50, 50, 20])
         expect(repository.setEmbedding).toHaveBeenCalledTimes(120)
         expect(repository.setEmbedding).toHaveBeenLastCalledWith(120n, [0.1], 121)
@@ -102,6 +102,37 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
             .mockResolvedValueOnce(false)
             .mockResolvedValueOnce(true)
 
-        expect(await supportEmbeddingService.reindexAll()).toBe(2)
+        expect(await supportEmbeddingService.reindexAll()).toEqual({ indexed: 2, failed: [] })
+    })
+})
+
+// feat-160 (review 2026-11-10): one batch the provider refuses (an article longer than the
+// model's input) used to throw out of the loop: every later article stayed unindexed, and a
+// rerun paid for the earlier batches again and stopped at the same place.
+describe('supportEmbeddingService.reindexAll when a batch fails', () => {
+    it('goes on with the later batches and names the articles of the failed one', async () => {
+        const { default: logger } = await import('#logger')
+        repository.findActiveAll.mockResolvedValue(
+            Array.from({ length: 120 }, (_, i) => ({
+                id: BigInt(i + 1),
+                title: 't',
+                content: 'c',
+                contentVersion: 1,
+            })),
+        )
+        embedBatch
+            .mockImplementationOnce((texts: string[]) => Promise.resolve(texts.map(() => [0.1])))
+            .mockImplementationOnce(() => Promise.reject(new Error('input too long')))
+
+        const result = await supportEmbeddingService.reindexAll()
+
+        expect(embedBatch).toHaveBeenCalledTimes(3)
+        expect(result.indexed).toBe(70)
+        expect(result.failed).toEqual(Array.from({ length: 50 }, (_, i) => String(i + 51)))
+        expect(repository.setEmbedding).toHaveBeenCalledTimes(70)
+        expect(repository.setEmbedding).toHaveBeenLastCalledWith(120n, [0.1], 1)
+        // The ids of the batch, never the text of an article.
+        expect(logger.error).toHaveBeenCalledTimes(1)
+        expect(JSON.stringify(vi.mocked(logger.error).mock.calls)).not.toContain('"content"')
     })
 })

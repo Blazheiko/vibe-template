@@ -17,7 +17,19 @@ function buildNativeLanguageInstruction(langNative: string): string {
     ].join(' ')
 }
 
+/** The prompts whose model answers the support chat: the reply and the greeting. */
+export type SupportChatStage = 'SUPPORT_SYSTEM' | 'SUPPORT_FIRST_CHAT'
+
 export const supportLlmService = {
+    /**
+     * Whether the adapter of the stage's model will make the call. One that is not configured
+     * fails before any request, so the run does not reserve the answer for it (ADR 0003,
+     * point 5; feat-185).
+     */
+    isConfigured(stage: SupportChatStage): boolean {
+        return getTextAdapterForModel(promptService.getModel(stage)).isConfigured()
+    },
+
     async *openChatStream(
         langNative: string,
         onComplete?: TextUsageCompleteHandler,

@@ -16,10 +16,11 @@ Input data (the HTTP request body, query, the payload of a WS message, and the W
     })
     ```
 
-2. Pass it to the route as `validator` (for query, use `queryValidator`):
+2. Write it as `body` in the schema registry entry for the route's contract (for query, `query`); the route names only the contract ([step 8 of the tutorial](/en/backend/adding-a-feature#step-8-contract-and-route-registration)):
 
     ```ts
-    defineRoute({ url: '/', method: 'post', handler: ..., validator: CreateNoteInputSchema })
+    // app/routes/contract-schemas/notes.ts
+    create: { body: CreateNoteInputSchema, response: ResponseSchemas.CreateNoteResponseSchema },
     ```
 
 3. In the controller, take the already validated data: `getTypedPayload(context)` returns `CreateNoteInput`.
@@ -76,27 +77,31 @@ export { arkValidator as defaultValidator, arkValidator } from './adapters/arkty
 
 ## How a route gets its validator
 
-Routes are given a **schema**, not a validator: `defineRoute` / `defineWsRoute` wrap it themselves via `defaultValidator` ([define-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts), [define-ws-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-ws-route.ts)). There is no need to wrap `arkValidator(...)` manually in route files.
+A route gets a **schema**, not a validator. An HTTP route takes its schemas from the registry entry of its contract (`body`, `query`, `response` in [`app/routes/contract-schemas/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts)), and `defineRoute` ([contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)) wraps them itself via `defaultValidator` into the `validator` and `queryValidator` fields. A WS route likewise takes its payload schema from the registry entry of its WS contract (key `ws <event>`), and `defineWsRoute` wraps it ([contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts), ADR 0006). There is no need to wrap `arkValidator(...)` manually.
 
-- `validator` is the schema of the body (HTTP) or payload (WS). On HTTP it is allowed only for `post`, `put` and `patch`; on `get`/`delete` it causes a type error and a startup error, because the body is not read there ([Methods and request body](/en/backend/routing#methods-and-request-body)). Without `Content-Type` and without a body, `{}` is validated, so a handler with a `validator` never receives `payload = null` (except for `octet` routes).
-- `queryValidator` is the query schema (HTTP only). `defineRoute` applies `onUndeclaredKey("reject")` to it (extra keys cause an error) or, with `queryAllowExtra: true`, `onUndeclaredKey("delete")` (extra keys are removed). `queryArrays` lists the keys that may repeat (collected into `string[]`); see [flatten-query.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/flatten-query.ts).
+- `validator` is the schema of the body (HTTP, from `body` of the registry entry) or payload (WS). On HTTP it is allowed only for `post`, `put` and `patch` (for them the `route-contracts.spec.ts` test requires it); on `get`/`delete` it causes a startup error, because the body is not read there ([Methods and request body](/en/backend/routing#methods-and-request-body)). Without `Content-Type` and without a body, `{}` is validated, so a handler with a `validator` never receives `payload = null` (except for `octet` routes).
+- `queryValidator` is the query schema (HTTP only, from `query` of the registry entry). `defineRoute` applies `onUndeclaredKey("reject")` to it (extra keys cause an error) or, with `queryAllowExtra: true`, `onUndeclaredKey("delete")` (extra keys are removed). `queryArrays` lists the keys that may repeat (collected into `string[]`); see [flatten-query.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/flatten-query.ts).
 
 Example from [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts):
 
 ```ts
+// app/routes/contract-schemas/auth.ts — the registry entry
+login: {
+    body: LoginInputSchema,
+    response: ResponseSchemas.LoginResponseSchema,
+},
+
+// app/routes/http-routes.ts — the route
 defineRoute({
-    url: '/login',
-    method: 'post',
+    contract: authContracts.login,
     handler: AuthController.login.bind(AuthController),
-    validator: LoginInputSchema,
-    ResponseSchema: ResponseSchemas.LoginResponseSchema,
     description: 'Login a user by email or phone identifier',
-})
+}),
 ```
 
 ### Type inference
 
-`defineRoute` infers the `payload` type from the `Type<T>` of the body schema, and the `query` type from the query schema (or `null` if `queryValidator` is not set). If `ResponseSchema` is set, the handler result is checked against its input type (`inferIn`); see [Handler response type](/en/backend/routing#handler-response-type). For handlers declared separately (controller methods) there is the helper `InferQuery<typeof Schema>` in [app/validate/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/index.ts); at the contract level there is `InferPayload<V>`. In shared schemas the type is usually exported next to the schema via `typeof Schema.infer` / `["inferIn"]`.
+`defineRoute` infers the `payload` type from the output of the registry entry's `body` schema, and the `query` type from the output of the `query` schema (or `null` if the entry has none). The handler result is checked against the input type (`inferIn`) of the `response` schema; see [Handler response type](/en/backend/routing#handler-response-type). For handlers declared separately (controller methods) there is the helper `InferQuery<typeof Schema>` in [app/validate/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/validate/index.ts); at the contract level there is `InferPayload<V>`. In shared schemas the type is usually exported next to the schema via `typeof Schema.infer` / `["inferIn"]`.
 
 ## Where validation runs
 
@@ -129,19 +134,19 @@ Example schema ([shared/src/schemas/auth/register-email.ts](https://github.com/B
 
 ```ts
 import { type } from '@arktype/type'
+import { PasswordSchema } from './password.js'
 
 export const RegisterEmailInputSchema = type({
     name: 'string >= 1 & string <= 100',
     email: 'string.email & string <= 255',
-    password: 'string >= 8 & string <= 32',
-    token: 'string <= 60',
+    password: PasswordSchema,
     '+': 'reject',
 })
 
 export type RegisterEmailInput = typeof RegisterEmailInputSchema.infer
 ```
 
-`'+': 'reject'` forbids unknown keys. Query schemas arrive as strings, so they use parser morphs, e.g. `type('string.integer.parse').pipe(type('number > 0'))` in [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); default values are set with `.default('50')` (previously this was done with tuple casts `[schema, '=', '50']`, which `@arktype/type` 2.2.9 no longer needs), and what the schema infers for the handler is pinned in [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) and compared at compile time.
+`PasswordSchema` ([auth/password.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/auth/password.ts)) sets the password length bounds from [`shared/limits`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/limits), which the browser checks too; every password field uses this schema. `'+': 'reject'` forbids unknown keys. Query schemas arrive as strings, so they use parser morphs, e.g. `type('string.integer.parse').pipe(type('number > 0'))` in [query/common.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/common.ts); default values are set with `.default('50')` (previously this was done with tuple casts `[schema, '=', '50']`, which `@arktype/type` 2.2.9 no longer needs), and what the schema infers for the handler is pinned in [`type-checks.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/type-checks.ts) and compared at compile time. The type of what a client sends (`*QueryInput`) is not written by hand: [`QueryInputOf<typeof Schema>`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/query/types.ts) derives it — keys and optionality come from the schema's input (a field with `.default()` is optional), values from its output: `number` → `number | string`, `Date` → a string, `boolean` → `boolean | 'true' | 'false'`. These types are pinned in `type-checks.ts` as well, and the schema registry requires the contract's query to equal `QueryInputOf` of the schema.
 
 ## Checkers: headers, cookies, parameters
 
@@ -194,8 +199,8 @@ The decision on the validator abstraction is recorded in [ADR 0001](https://gith
 
 - `ResponseSchema?: BaseType` in `vendor/types/types.d.ts`;
 - runtime response validation ([validate-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/validation/validate-response.ts)) calls the schema directly and recognizes errors via `type.errors`, not via `Validator<T>`;
-- `defineRoute`/`defineWsRoute` and `InferQuery` are typed via `Type` from `@arktype/type`;
-- doc serialization of `ResponseSchema` (`outputSchema`) is ArkType-only; `validator` / `queryValidator` schemas are also accepted from other engines via `describe()` (see [the contract](#the-validator-t-contract));
+- the contract schema registry (`SchemaEntry` in [contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)), `defineRoute`/`defineWsRoute` and `InferQuery` are typed via `Type` from `@arktype/type`;
+- doc serialization of `ResponseSchema` (`outputSchema`) is ArkType-only; `validator` / `queryValidator` schemas are serialized through the validator's `describe()`, so the core would accept them from other engines too (see [the contract](#the-validator-t-contract));
 - the WS envelope schema in `ws-message-validator.ts`.
 
 ::: warning Plan
@@ -205,10 +210,10 @@ Not implemented from the original plan (see ADR 0001): exporting `InputSchema` f
 ## Recipe: validation for a new route
 
 1. Describe the schema in `packages/shared/src/schemas/<domain>/` via `type({...})` with `'+': 'reject'` and export it together with its type; add it to the package's `index.ts`.
-2. Pass the schema to `validator` (and/or `queryValidator`) in `defineRoute`/`defineWsRoute`; do not wrap it manually.
+2. For HTTP, write the schema as `body` (and/or `query`) in the `app/routes/contract-schemas/` registry entry for the route's contract; for WS, as `body` in the registry entry for the WS contract (`app/routes/contract-schemas/ws.ts`). Do not wrap it manually.
 3. Type the handler: the payload type is inferred automatically; for separately declared handlers, use `InferQuery<typeof Schema>` or the type from the schema.
 4. Check for a 422 with `validation_failed` on an invalid body. For the full walkthrough, see [Adding a feature](/en/backend/adding-a-feature).
 
 ### Replacing the validation library
 
-The code supports this only as a **global** replacement: a new adapter implementing `Validator<T>` and a change to the `defaultValidator` export in `app/validate/index.ts`. But you would also have to rewrite all schemas in `shared`, the `defineRoute`/`defineWsRoute`/`InferQuery` types (they are built on ArkType's `Type`), `ws-message-validator.ts` and the doc serialization. The project uses a single validator: routes pass the raw schema (`validator: SomeSchema`), `defineRoute` does the wrapping, and engines cannot be mixed per route ([ADR 0001](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0001-validator-abstraction.md)).
+The code supports this only as a **global** replacement: a new adapter implementing `Validator<T>` and a change to the `defaultValidator` export in `app/validate/index.ts`. But you would also have to rewrite all schemas in `shared`, the types of the contract registry and of `defineRoute`/`defineWsRoute`/`InferQuery` (they are built on ArkType's `Type`), `ws-message-validator.ts` and the doc serialization. The project uses a single validator: the contract registry passes the raw schema (`body: SomeSchema`), `defineRoute` does the wrapping, and engines cannot be mixed per route ([ADR 0001](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0001-validator-abstraction.md)).

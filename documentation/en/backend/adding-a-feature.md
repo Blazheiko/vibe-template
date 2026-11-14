@@ -1,9 +1,13 @@
 # How to add a feature to the backend
 
-This tutorial adds a new **`notes`** resource (the current user's notes) step by step, with two endpoints, `GET /api/notes` and `POST /api/notes`, and walks through every layer of the project architecture: shared schemas → Drizzle table and migration → repository → transformer → service → controller → route registration → Vitest unit test.
+This tutorial adds a new **`notes`** resource (the current user's notes) step by step, with two endpoints, `GET /api/notes` and `POST /api/notes`, and walks through every layer of the project architecture: shared schemas → Drizzle table and migration → repository → transformer → service → controller → contract and route registration → Vitest unit test.
 
 ::: info Before you read
 Work through the [First route](/en/guide/first-endpoint) exercise: it shows the same layers (schema → service → controller → route) without a database. This tutorial adds a table, a migration, a repository, a transformer and session protection for the route.
+:::
+
+::: tip A skill for the agent
+Claude Code can walk these steps itself: the repository has the skill [`backend-feature`](https://github.com/Blazheiko/vibe-template/blob/main/.claude/skills/backend-feature/SKILL.md) (`.claude/skills/backend-feature/`). This page is the source of truth: if the skill and the tutorial disagree, the tutorial is right. Agents without skill support read this page directly.
 :::
 
 The overall picture of the layers is described in [Architecture](/en/backend/architecture), routing and middleware in [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares), working with the DB in [Database](/en/backend/database), and the path of a request in [Request lifecycle](/en/backend/request-lifecycle).
@@ -28,7 +32,12 @@ All the code below was actually added to a clean copy of the repository, after w
 | Transformer (barrel) | `packages/backend/src/app/transformers/index.ts`                    | edit      |
 | Service              | `packages/backend/src/app/services/note/note-service.ts`            | new       |
 | Controller           | `packages/backend/src/app/controllers/http/note/note-controller.ts` | new       |
+| Shared: contract     | `packages/shared/src/contracts/notes.ts`                            | new       |
+| Shared: contract     | `packages/shared/src/contracts/index.ts`                            | edit      |
+| Schema registry      | `packages/backend/src/app/routes/contract-schemas/notes.ts`         | new       |
+| Schema registry      | `packages/backend/src/app/routes/contract-schemas/index.ts`         | edit      |
 | Routes               | `packages/backend/src/app/routes/http-routes.ts`                    | edit      |
+| Frontend call        | `packages/frontend/src/utils/api.ts`                                | edit      |
 | Test                 | `packages/backend/src/app/services/note/note-service.spec.ts`       | new       |
 
 ## Step 1. Input schema in `shared`
@@ -56,7 +65,7 @@ export { CreateNoteInputSchema, type CreateNoteInput } from './note/create-note.
 
 ## Step 2. Response schemas in `shared`
 
-Controller responses live in `packages/shared/src/responses/` and are built as `type.or(<success>, CanonicalErrorResponseSchema)`, see [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) and [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). The `Note` type is the public contract that the transformer returns. Outside production the server checks every controller response against this schema, and a mismatch gives a `500` — see [Response validation](/en/backend/response-validation).
+Controller responses live in `packages/shared/src/responses/` and are built as `type.or(<success>, CanonicalErrorResponseSchema)`, see [push-subscription-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/push-subscription-controller.ts) and [error-response.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/error-response.ts). The `Note` type is the public contract that the transformer returns. The server checks every response of the route against this schema in any environment: a mismatch gives a `500`, and an extra field is a `500` outside production and is stripped in production (the `log` mode) — see [Response validation](/en/backend/response-validation).
 
 ```ts
 // packages/shared/src/responses/note-controller.ts
@@ -90,7 +99,7 @@ Add a line to [packages/shared/src/responses/index.ts](https://github.com/Blazhe
 export * from './note-controller.js'
 ```
 
-The backend consumes `shared` through `dist/` (see `exports` in [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), so after the changes you **must** rebuild the package:
+The backend consumes `shared` through `dist/` (see `exports` in [packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), so after the changes you **must** rebuild the package. Only the dev server (`pnpm dev`) reads `src/` through the `shared-source` condition and sees changes without a build:
 
 ```bash
 pnpm --filter shared build
@@ -294,52 +303,117 @@ Authentication is guaranteed by the `auth_guard` middleware on the route group (
 
 If an action has nothing to return (for example, a delete), the handler returns `null`: the response will be `204 No Content` with no body, while an explicitly set 201 or 202 is preserved. Details are in [Response without data](/en/backend/request-lifecycle#response-without-data).
 
-## Step 8. Route registration
+## Step 8. Contract and route registration
 
-In [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) add the controller import (next to the others) and append `CreateNoteInputSchema` to the existing import from `shared/schemas`:
+Every HTTP route of the application is declared through a contract ([ADR 0005](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0005-route-contracts.md), [Routing](/en/backend/routing#http-routes-defineroute)). ESLint forbids the helper for a route without a contract (`defineRawRoute`) in application code, and a route without a contract or without a registry entry fails the test [`route-contracts.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/route-contracts.spec.ts). The notes need three parts: a contract in `shared`, an entry in the schema registry and the routes themselves.
+
+**The contract.** It describes the method, the full path under the API prefix and the types of the body, query and response. The schemas are imported only as types (`import type`), so they do not reach the browser bundle. The model is [push-subscriptions.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/push-subscriptions.ts):
+
+```ts
+// packages/shared/src/contracts/notes.ts
+import type { CreateNoteInputSchema } from '../schemas/note/create-note.js'
+import type { CreateNoteResponse, GetNotesResponse } from '../responses/note-controller.js'
+import { contract } from './core.js'
+
+export const noteContracts = {
+    list: contract<undefined, undefined, GetNotesResponse>()('get', '/notes'),
+    create: contract<typeof CreateNoteInputSchema.inferIn, undefined, CreateNoteResponse>()(
+        'post',
+        '/notes',
+    ),
+} as const
+```
+
+Export the group from [packages/shared/src/contracts/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/index.ts) (it is imported from there as `shared/contracts`) and rebuild `shared` again:
+
+```ts
+export { noteContracts } from './notes.js'
+```
+
+**The schema registry.** Route schemas live in the backend, one file per contract group. [`contractSchemas`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts) requires an entry for every contract of the group and checks it against the contract's types: if the input of `CreateNoteInputSchema` drifts from the contract's body type or you forget the entry for `list`, `pnpm typecheck` fails.
+
+```ts
+// packages/backend/src/app/routes/contract-schemas/notes.ts
+import { CreateNoteInputSchema } from 'shared/schemas'
+import * as ResponseSchemas from 'shared/responses'
+import { noteContracts } from 'shared/contracts'
+import { contractSchemas } from '#app/routing/contract-registry.js'
+
+export const noteSchemas = contractSchemas(noteContracts, {
+    list: { response: ResponseSchemas.GetNotesResponseSchema },
+    create: {
+        body: CreateNoteInputSchema,
+        response: ResponseSchemas.CreateNoteResponseSchema,
+    },
+})
+```
+
+Add the group to `mergeContractSchemas(...)` in [contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts):
+
+```ts
+import { noteSchemas } from './notes.js'
+// ...
+export const contractSchemaRegistry = mergeContractSchemas(
+    adminSchemas,
+    // ...
+    supportWsSchemas,
+    noteSchemas,
+)
+```
+
+Unlike a spread, `mergeContractSchemas` ([contract-registry.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/contract-registry.ts)) does not let a later group silently overwrite an entry of an earlier one: two contracts with the same `<method> <path>` stop the module import, so neither the server nor the tests start.
+
+**The routes.** In [http-routes.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) `defineRoute` is already imported from `#app/routes/contract-schemas/index.js`. Add the controller import (next to the others) and append `noteContracts` to the existing import from `shared/contracts`:
 
 ```ts
 import NoteController from '#app/controllers/http/note/note-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
 // ...
 import {
     // ...
-    PushSubscriptionTestInputSchema,
-    CreateNoteInputSchema,
-} from 'shared/schemas'
+    supportContracts,
+    noteContracts,
+} from 'shared/contracts'
 ```
 
-Then add the group as the last element of the array, before `] satisfies routeList;`:
+Then add the group as the last element of the array, before `] satisfies routeList`:
 
 ```ts
-  {
-    group: [
-      defineRoute({
-        url: "/",
-        method: "get",
-        handler: NoteController.getNotes.bind(NoteController),
-        ResponseSchema: ResponseSchemas.GetNotesResponseSchema,
-        description: "List notes of the current user",
-      }),
-      defineRoute({
-        url: "/",
-        method: "post",
-        handler: NoteController.createNote.bind(NoteController),
-        validator: CreateNoteInputSchema,
-        ResponseSchema: ResponseSchemas.CreateNoteResponseSchema,
-        description: "Create a note for the current user",
-      }),
-    ],
-    description: "Note routes",
-    middlewares: ["session_web", "csrf_guard", "auth_guard"],
-    prefix: "notes",
-  },
-] satisfies routeList;
+    {
+        group: [
+            defineRoute({
+                contract: noteContracts.list,
+                handler: NoteController.getNotes.bind(NoteController),
+                description: 'List notes of the current user',
+            }),
+            defineRoute({
+                contract: noteContracts.create,
+                handler: NoteController.createNote.bind(NoteController),
+                description: 'Create a note for the current user',
+            }),
+        ],
+        description: 'Note routes',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'notes',
+    },
+] satisfies routeList
 ```
 
-[`defineRoute`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts) infers the payload type from `validator`, so the compiler checks `HttpContext<CreateNoteInput>` in the controller. It compares the controller's result with `ResponseSchema`: if `create` returns something other than `CreateNoteResponse`, `tsc` fails on the `handler:` line. Keep the `Promise<CreateNoteResponse>` annotation in the controller — without it, literals like `'success'` widen to `string` ([Handler response type](/en/backend/routing#handler-response-type)). The `session_web` + `csrf_guard` + `auth_guard` middleware set is the same as for the `avatar` group. So `POST` requires a session and a CSRF token (details in [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares)).
+The route does not write `url`, `method`, `validator` or `ResponseSchema`: `defineRoute` takes the method and the path from the contract and the schemas from the registry entry. The contract path `/notes` must start with the group prefix `notes`, otherwise the server does not start. The handler's payload type is the output of the `body` schema, so the compiler checks `HttpContext<CreateNoteInput>` in the controller. It compares the controller's result with the `response` schema: if `create` returns something other than `CreateNoteResponse`, `tsc` fails on the `handler:` line. Keep the `Promise<CreateNoteResponse>` annotation in the controller — without it, literals like `'success'` widen to `string` ([Handler response type](/en/backend/routing#handler-response-type)). The `session_web` + `csrf_guard` + `auth_guard` middleware set is the same as for the `avatar` group. So `POST` requires a session and a CSRF token (details in [Routing](/en/backend/routing) and [Middleware](/en/backend/middlewares)).
 
-If you add updating or deleting a note: for a partial update use `method: "patch"` with a `validator`, and for deletion use `method: "delete"` with `url: "/:id"` and no `validator`, because `DELETE` does not read a body ([Methods and request body](/en/backend/routing#methods-and-request-body)).
+If you add updating or deleting a note: for a partial update declare a `'patch'` contract with a body type and a `body` schema in the registry, and for deletion a `'delete'` contract with the path `'/notes/:id'` and no body, because `DELETE` does not read a body ([Methods and request body](/en/backend/routing#methods-and-request-body)).
+
+**Calling from the frontend.** The frontend calls routes only through [`callApi`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts) (ESLint forbids direct `baseApi.http`/`baseApi.upload` outside `utils/api-client.ts`). A wrong body or an extra field is a compile error in the frontend:
+
+```ts
+// packages/frontend/src/utils/api.ts
+import type { CreateNoteInput } from 'shared/schemas'
+import { noteContracts } from 'shared/contracts'
+
+export const noteApi = {
+    list: () => callApi(noteContracts.list),
+    create: (body: CreateNoteInput) => callApi(noteContracts.create, { body }),
+}
+```
 
 ## Step 9. Service test
 
@@ -414,16 +488,13 @@ describe('noteService', () => {
         }
     })
 
-    it('maps repository failure to an Internal error', async () => {
+    // An unexpected failure is not a Result: it reaches the HTTP layer, which answers 500.
+    it('lets a repository failure through: the HTTP layer answers 500', async () => {
         noteRepositoryMock.findByUserId.mockRejectedValue(new Error('db down'))
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.getNotes(7n)
 
-        expect(Result.isError(result)).toBe(true)
-        if (Result.isError(result)) {
-            expect(result.error._tag).toBe('Internal')
-        }
+        await expect(noteService.getNotes(7n)).rejects.toThrow('db down')
     })
 })
 ```
@@ -438,8 +509,8 @@ pnpm typecheck
 pnpm --filter backend test
 npx eslint packages/backend/src/app/services/note packages/backend/src/app/controllers/http/note \
   packages/backend/src/app/repositories/note packages/backend/src/app/transformers/note-transformer.ts \
-  packages/backend/src/app/routes/http-routes.ts packages/shared/src/schemas/note \
-  packages/shared/src/responses/note-controller.ts
+  packages/backend/src/app/routes packages/shared/src/schemas/note \
+  packages/shared/src/responses/note-controller.ts packages/shared/src/contracts/notes.ts
 ```
 
 ### Manual verification: requests and responses
@@ -461,7 +532,7 @@ csrf() { curl -s -b cookies.txt -c cookies.txt $B/main/init | sed -E 's/.*"csrfT
 # log in
 curl -s -o /dev/null -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json' \
   -H "x-csrf-token: $(csrf)" \
-  -d '{"email":"user@example.com","password":"<user-password>","token":""}' $B/auth/login
+  -d '{"identifier":"user@example.com","password":"<user-password>"}' $B/auth/login
 
 CSRF=$(csrf)   # the token is new after login
 ```
@@ -480,12 +551,12 @@ curl -s -b cookies.txt -H "$O" -H 'content-type: application/json' -H "x-csrf-to
         "id": "1",
         "title": "Buy milk",
         "body": "2 liters",
-        "created_at": "2026-10-25T17:23:05.794+02:00"
+        "created_at": "2026-10-25T15:23:05.794Z"
     }
 }
 ```
 
-Status `200`. The response was captured on a server with the `Europe/Kiev` time zone and PostgreSQL in UTC, so `created_at` has a `+02:00` offset. Without the `body` field the note is created too, and the response will have `"body": null`.
+Status `200`. `created_at` is always UTC (`Z`): the transformer returns `toISOString()`, whatever the time zone of the server. Without the `body` field the note is created too, and the response will have `"body": null`.
 
 **Get the list** (newest first):
 
@@ -501,13 +572,13 @@ curl -s -b cookies.txt $B/notes
             "id": "2",
             "title": "Call",
             "body": null,
-            "created_at": "2026-10-25T17:23:05.810+02:00"
+            "created_at": "2026-10-25T15:23:05.810Z"
         },
         {
             "id": "1",
             "title": "Buy milk",
             "body": "2 liters",
-            "created_at": "2026-10-25T17:23:05.794+02:00"
+            "created_at": "2026-10-25T15:23:05.794Z"
         }
     ]
 }
@@ -531,7 +602,7 @@ Before merging, go through the full Definition of Done from [AGENTS.md](https://
 
 ## Common mistakes
 
-- **Forgot `pnpm --filter shared build`.** The backend does not see the new `shared` / `shared/schemas` exports, because it reads `dist/`.
+- **Forgot `pnpm --filter shared build`.** The backend's `typecheck`, tests and `start` do not see the new `shared` / `shared/schemas` exports, because they read `dist/` (the dev server works, since it reads `src/`).
 - **Importing the repository directly from its file**, not from `#app/repositories/index.js`. Then `vi.mock` in the test will not intercept it.
 - **Returning a `bigint` or a `Date` from a controller.** Always pass rows through the transformer.
 - **Throwing exceptions from a service.** Return `Result.err(...)`, and `mapControllerError` will set the HTTP status.

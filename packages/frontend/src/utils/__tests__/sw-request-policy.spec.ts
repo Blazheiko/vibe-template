@@ -43,7 +43,7 @@ describe('classifyRequest', () => {
     it.each([
         ['/assets/index-abc.js'],
         ['/icons/icon_192x192.png'],
-        ['/audio/notification.mp3'],
+        ['/screenshots/editor-mobile.png'],
         ['/manifest.json'],
         ['/favicon.svg'],
         ['/styles/theme.css'],

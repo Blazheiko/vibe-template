@@ -40,36 +40,40 @@
 
 ## Розробка
 
-| Ціль             | pnpm-скрипт       | Що робить                                                            |
-| ---------------- | ----------------- | -------------------------------------------------------------------- |
-| `dev`            | `dev`             | збирає `shared` і `backend`, запускає dev-сервери backend і frontend |
-| `dev-backend`    | `dev:backend`     | тільки backend                                                       |
-| `dev-frontend`   | `dev:frontend`    | тільки frontend                                                      |
-| `dev-playground` | `dev:manual_test` | backend і API Playground                                             |
-| `prod-local`     | `prod:local`      | production-подібний запуск: backend віддає зібраний SPA              |
-| `start`          | `start`           | запуск зібраного backend                                             |
+| Ціль             | pnpm-скрипт       | Що робить                                                                                      |
+| ---------------- | ----------------- | ---------------------------------------------------------------------------------------------- |
+| `dev`            | `dev`             | збирає `shared` і `backend`, запускає dev-сервери backend, frontend і лендінгу                 |
+| `dev-backend`    | `dev:backend`     | тільки backend                                                                                 |
+| `dev-frontend`   | `dev:frontend`    | тільки frontend                                                                                |
+| `dev-landing`    | `dev:landing`     | тільки [лендінг](/landing/) на `http://localhost:5175`                                         |
+| `dev-playground` | `dev:manual_test` | backend і API Playground                                                                       |
+| `prod-local`     | `prod:local`      | production-подібний запуск: backend віддає зібраний SPA, лендінг — на `vite preview` (`:4174`) |
+| `start`          | `start`           | запуск зібраного backend                                                                       |
 
 ## Якість
 
 `make check` — те саме, що крок перевірки в job `quality` у [`ci.yml`](https://github.com/Blazheiko/vibe-template/blob/main/.github/workflows/ci.yml): CI після `pnpm install --frozen-lockfile` викликає саме `make check`. Тому зелений `make check` локально означає зелений `quality` у CI (покриття CI рахує окремим кроком).
 
-| Ціль                      | Що робить                                                                                                              |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `check`                   | по черзі `build-shared`, `verify-makefile`, `format-check`, `typecheck`, `lint`, `test`; зупиняється на першій помилці |
-| `verify-makefile`         | перевіряє сам Makefile (див. вище)                                                                                     |
-| `typecheck`               | `pnpm typecheck`                                                                                                       |
-| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                          |
-| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                    |
+| Ціль                      | Що робить                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check`                   | по черзі `build-shared`, `verify-makefile`, `verify-compose`, `format-check`, `typecheck`, `lint`, `check-bundle-graph`, `test`; зупиняється на першій помилці                                                                                                                                                                                                                                                               |
+| `verify-makefile`         | перевіряє сам Makefile (див. вище)                                                                                                                                                                                                                                                                                                                                                                                           |
+| `verify-compose`          | [`scripts/verify-compose.mjs`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/verify-compose.mjs): `docker compose config` дає `app` і `migrate` той самий `API_PATH_PREFIX`, що й `docker-build.sh` (shell → `packages/backend/.env` → `api`), а healthcheck питає `/<префікс>/ready`; сервіс `landing` опубліковано на `127.0.0.1:LANDING_PORT` з healthcheck `/healthz`; без `docker compose` пропускається |
+| `typecheck`               | `pnpm typecheck`                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `lint` / `lint-fix`       | `pnpm lint` / `pnpm lint:fix`                                                                                                                                                                                                                                                                                                                                                                                                |
+| `check-bundle-graph`      | `pnpm check:bundle-graph`: збирає production-бандл фронтенду й за графом модулів перевіряє, що в ньому немає схем валідації й ArkType ([check-bundle-graph.mjs](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/scripts/check-bundle-graph.mjs), ADR 0005)                                                                                                                                            |
+| `format` / `format-check` | `pnpm format` / `pnpm format:check`                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Тести
 
-| Ціль         | pnpm-скрипт                          | Примітка                                |
-| ------------ | ------------------------------------ | --------------------------------------- |
-| `test`       | `test` (або `--filter <PKG> test`)   | unit-тести всіх пакетів чи одного       |
-| `test-e2e`   | `--filter frontend test:e2e`         | Playwright                              |
-| `test-pg`    | `--filter backend test:pg`           | потрібен PostgreSQL: `make services-up` |
-| `test-redis` | `--filter backend test:redis`        | потрібен Redis: `make services-up`      |
-| `coverage`   | `test:coverage` у backend і frontend | як крок Coverage у CI                   |
+| Ціль               | pnpm-скрипт                                  | Примітка                                        |
+| ------------------ | -------------------------------------------- | ----------------------------------------------- |
+| `test`             | `test` (або `--filter <PKG> test`)           | unit-тести всіх пакетів чи одного               |
+| `test-e2e`         | `--filter frontend test:e2e`                 | Playwright                                      |
+| `test-e2e-landing` | `build:landing`, `--filter landing test:e2e` | збирає лендінг і запускає його Playwright smoke |
+| `test-pg`          | `--filter backend test:pg`                   | потрібен PostgreSQL: `make services-up`         |
+| `test-redis`       | `--filter backend test:redis`                | потрібен Redis: `make services-up`              |
+| `coverage`         | `test:coverage` у backend і frontend         | як крок Coverage у CI                           |
 
 ## Сервіси, база даних і Docker
 
@@ -82,11 +86,11 @@
 | `db-generate`   | `backend db:generate` | генерує міграцію зі схеми                                                                                          |
 | `db-seed`       | `backend db:seed`     | початкові дані; `ARGS=--demo` додає demo-акаунти                                                                   |
 | `db-studio`     | `backend db:studio`   | Drizzle Studio                                                                                                     |
-| `app-build`     | `app:build`           | збирає образ `vibe-template:local`                                                                                 |
+| `app-build`     | `app:build`           | збирає образи `vibe-template:local` і `vibe-template-landing:local`                                                |
 | `app-up`        | `app:up`              | сервіси, міграції й застосунок у compose                                                                           |
-| `app-down`      | `app:down`            | зупиняє й видаляє лише контейнери `app` і `migrate`, сервіси працюють далі                                         |
+| `app-down`      | `app:down`            | зупиняє й видаляє лише контейнери `app`, `migrate` і `landing`, сервіси працюють далі                              |
 | `app-seed`      | `app:seed`            | seed з demo-акаунтами в compose                                                                                    |
-| `app-logs`      | `app:logs`            | лог застосунку                                                                                                     |
+| `app-logs`      | `app:logs`            | логи застосунку й лендінгу                                                                                         |
 
 Ланцюжок для чистої машини: `make setup`, правка `.env`, `make services-up db-create db-migrate`, `make dev`. Цілі в одному виклику `make` виконуються по черзі зліва направо. Те саме через pnpm: `pnpm install`, `pnpm build:shared`, `pnpm services:up`, `pnpm --filter backend db:create`, `pnpm --filter backend db:migrate`, `pnpm dev`.
 
@@ -106,14 +110,16 @@ make services-up ARGS="redis s3 mailpit"   # pnpm services:up redis s3 mailpit
 
 ## Документація і збірка
 
-| Ціль           | pnpm-скрипт    | Що робить                                            |
-| -------------- | -------------- | ---------------------------------------------------- |
-| `docs-dev`     | `docs:dev`     | dev-сервер VitePress                                 |
-| `docs-build`   | `docs:build`   | збірка сайту                                         |
-| `docs-preview` | `docs:preview` | перегляд зібраного сайту                             |
-| `docs-verify`  | `docs:verify`  | перевірка збірки: посилання, якорі, ключові сторінки |
-| `build`        | `build`        | збірка всіх пакетів                                  |
-| `clean`        | `clean`        | видаляє артефакти збірки й `node_modules`            |
+| Ціль              | pnpm-скрипт       | Що робить                                              |
+| ----------------- | ----------------- | ------------------------------------------------------ |
+| `docs-dev`        | `docs:dev`        | dev-сервер VitePress                                   |
+| `docs-build`      | `docs:build`      | збірка сайту                                           |
+| `docs-preview`    | `docs:preview`    | перегляд зібраного сайту                               |
+| `docs-verify`     | `docs:verify`     | перевірка збірки: посилання, якорі, ключові сторінки   |
+| `build`           | `build`           | збірка всіх пакетів                                    |
+| `build-landing`   | `build:landing`   | збірка [лендінгу](/landing/) у `packages/landing/dist` |
+| `preview-landing` | `preview:landing` | віддає зібраний лендінг на `http://localhost:4174`     |
+| `clean`           | `clean`           | видаляє артефакти збірки й `node_modules`              |
 
 ## Windows
 

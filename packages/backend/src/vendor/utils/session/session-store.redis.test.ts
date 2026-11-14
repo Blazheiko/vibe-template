@@ -321,7 +321,9 @@ describe.skipIf(!hasRedis)(
 
 describe.skipIf(!hasRedis)('OAuth callback after a logout in another tab (feat-119, F2)', () => {
     it('state read, then logout: no sign-in, no new signed-in session', async () => {
-        await save('cb', { data: { oauthState: 'state-1', oauthCodeVerifier: 'verifier' } })
+        await save('cb', {
+            data: { oauthState: 'state-1', oauthCodeVerifier: 'verifier', oauthProvider: 'google' },
+        })
         const { default: OAuthController } =
             await import('#app/controllers/http/auth/oauth-controller.js')
         const request = createRequest('cb')
@@ -342,7 +344,9 @@ describe.skipIf(!hasRedis)('OAuth callback after a logout in another tab (feat-1
     })
 
     it('with the session intact, the state is consumed before the sign-in runs', async () => {
-        await save('cb-ok', { data: { oauthState: 'state-1', oauthCodeVerifier: 'verifier' } })
+        await save('cb-ok', {
+            data: { oauthState: 'state-1', oauthCodeVerifier: 'verifier', oauthProvider: 'google' },
+        })
         const { Result } = await import('better-result')
         let stateDuringSignIn: unknown = 'not called'
         oauthCallback.mockImplementation(async () => {
@@ -375,7 +379,9 @@ describe.skipIf(!hasRedis)(
         }
 
         it('two callbacks with the same state: exactly one goes on', async () => {
-            await save('twice', { data: { oauthState: 'A', oauthCodeVerifier: 'vA' } })
+            await save('twice', {
+                data: { oauthState: 'A', oauthCodeVerifier: 'vA', oauthProvider: 'google' },
+            })
             const { Result } = await import('better-result')
             oauthCallback.mockResolvedValue(Result.ok({ redirectUrl: '/?oauth=success' }))
             const { default: OAuthController } =
@@ -400,7 +406,9 @@ describe.skipIf(!hasRedis)(
         })
 
         it('a late callback with state A after a new start wrote B: it stops and B stays', async () => {
-            await save('replaced', { data: { oauthState: 'A', oauthCodeVerifier: 'vA' } })
+            await save('replaced', {
+                data: { oauthState: 'A', oauthCodeVerifier: 'vA', oauthProvider: 'google' },
+            })
             const { default: OAuthController } =
                 await import('#app/controllers/http/auth/oauth-controller.js')
             const late = callbackRequest('replaced', 'A')
@@ -408,7 +416,7 @@ describe.skipIf(!hasRedis)(
             // A new OAuth start in another tab, after the late callback read A.
             await storage.updateSessionData(
                 'replaced',
-                { oauthState: 'B', oauthCodeVerifier: 'vB' },
+                { oauthState: 'B', oauthCodeVerifier: 'vB', oauthProvider: 'google' },
                 USER_TOKEN,
             )
 
@@ -419,11 +427,36 @@ describe.skipIf(!hasRedis)(
             expect((await recordOf('replaced'))?.data).toMatchObject({
                 oauthState: 'B',
                 oauthCodeVerifier: 'vB',
+                oauthProvider: 'google',
+            })
+        })
+
+        // feat-200 (L-7): the state belongs to the provider it was issued for.
+        it('a state issued for another provider is refused and stays for its own callback', async () => {
+            await save('mixup', {
+                data: { oauthState: 'A', oauthCodeVerifier: 'vA', oauthProvider: 'github' },
+            })
+            const { default: OAuthController } =
+                await import('#app/controllers/http/auth/oauth-controller.js')
+            // The callback of google, with the state the session holds for github.
+            const wrong = callbackRequest('mixup', 'A')
+            expect(await executeMiddlewares(['session_web'], wrong.context)).toBe(true)
+
+            const payload = await OAuthController.callback(wrong.context as never)
+
+            expect(oauthCallback).not.toHaveBeenCalled()
+            expect(payload).toMatchObject({ message: 'OAuth state mismatch' })
+            expect((await recordOf('mixup'))?.data).toMatchObject({
+                oauthState: 'A',
+                oauthCodeVerifier: 'vA',
+                oauthProvider: 'github',
             })
         })
 
         it('the store: of 10 concurrent consumers of one value exactly one wins', async () => {
-            await save('race', { data: { oauthState: 'A', oauthCodeVerifier: 'vA' } })
+            await save('race', {
+                data: { oauthState: 'A', oauthCodeVerifier: 'vA', oauthProvider: 'google' },
+            })
 
             const results = await Promise.all(
                 Array.from({ length: 10 }, () =>

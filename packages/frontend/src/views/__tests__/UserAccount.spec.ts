@@ -5,12 +5,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import UserAccount from '../UserAccount.vue'
 import en from '../../locales/en'
 
-const { currentUser, resendOAuthEmailLinkMock } = vi.hoisted(() => {
-    const currentUser: { value: Record<string, unknown> } = {
-        value: { id: '1', name: 'Jane', email: 'jane@example.com' },
-    }
-    return { currentUser, resendOAuthEmailLinkMock: vi.fn() }
-})
+const { currentUser, resendOAuthEmailLinkMock, signInMethodsMock, unlinkSignInMethodMock } =
+    vi.hoisted(() => {
+        const currentUser: { value: Record<string, unknown> } = {
+            value: { id: '1', name: 'Jane', email: 'jane@example.com' },
+        }
+        return {
+            currentUser,
+            resendOAuthEmailLinkMock: vi.fn(),
+            signInMethodsMock: vi.fn(),
+            unlinkSignInMethodMock: vi.fn(),
+        }
+    })
 
 vi.mock('@/utils/api', () => ({
     avatarApi: { upload: vi.fn(), delete: vi.fn() },
@@ -21,6 +27,8 @@ vi.mock('@/utils/api', () => ({
         confirmPhoneLink: vi.fn(),
         startEmailLink: vi.fn(),
         resendOAuthEmailLink: resendOAuthEmailLinkMock,
+        signInMethods: signInMethodsMock,
+        unlinkSignInMethod: unlinkSignInMethodMock,
     },
     pushSubscriptionApi: { testPush: vi.fn() },
 }))
@@ -54,6 +62,18 @@ vi.mock('@/composables/useWebSocketConnection', () => ({
     useWebSocketConnection: () => ({ websocketOpen: vi.fn() }),
 }))
 vi.mock('@/utils/event-bus', () => ({ useEventBus: () => ({ emit: vi.fn(), on: vi.fn() }) }))
+
+const methodsAnswer = (methods: Record<string, unknown>[], hasPassword = true) => ({
+    data: { status: 'success', hasPassword, methods },
+    error: null,
+})
+
+beforeEach(() => {
+    signInMethodsMock.mockReset()
+    unlinkSignInMethodMock.mockReset()
+    // No linked sign-in method unless a test says otherwise.
+    signInMethodsMock.mockResolvedValue(methodsAnswer([]))
+})
 
 const mountAccount = () =>
     mount(UserAccount, {
@@ -154,5 +174,108 @@ describe('UserAccount email awaiting confirmation', () => {
         await flushPromises()
 
         expect(wrapper.text()).toContain(text)
+    })
+})
+
+// feat-199 (security review 2026-11-12, M-2): the OAuth identities linked to the account can be
+// seen and removed.
+describe('UserAccount sign-in methods', () => {
+    const GITHUB = { id: '31', provider: 'github', name: 'Jane', linkedAt: '2026-11-01T10:00:00Z' }
+    const GOOGLE = { id: '32', provider: 'google', name: null, linkedAt: '2026-11-05T10:00:00Z' }
+
+    const panel = async (methods: Record<string, unknown>[], hasPassword = true) => {
+        signInMethodsMock.mockResolvedValue(methodsAnswer(methods, hasPassword))
+        const wrapper = mountAccount()
+        await flushPromises()
+        return wrapper.get('[data-testid="sign-in-methods"]')
+    }
+
+    it('says so when no other service is linked, and asks for no password', async () => {
+        const section = await panel([])
+
+        expect(section.text()).toContain('No other service is linked.')
+        expect(section.findAll('li')).toHaveLength(0)
+        expect(section.find('input[type="password"]').exists()).toBe(false)
+    })
+
+    it('lists the linked services by name, with the profile name when there is one', async () => {
+        const section = await panel([GITHUB, GOOGLE])
+
+        const items = section.findAll('li')
+        expect(items).toHaveLength(2)
+        expect(items[0]?.text()).toContain('GitHub')
+        expect(items[0]?.text()).toContain('Jane')
+        expect(items[1]?.text()).toContain('Google')
+        expect(items[1]?.attributes('data-provider')).toBe('google')
+    })
+
+    it('removes a method with the current password and reads the list again', async () => {
+        const section = await panel([GITHUB, GOOGLE])
+        unlinkSignInMethodMock.mockResolvedValue({ data: { status: 'success' }, error: null })
+        signInMethodsMock.mockResolvedValue(methodsAnswer([GOOGLE]))
+
+        const password = section.get('input[name="unlink-current-password"]')
+        expect(password.attributes('autocomplete')).toBe('current-password')
+        await password.setValue('my-password-1')
+        await section.findAll('li button')[0]?.trigger('click')
+        await flushPromises()
+
+        expect(unlinkSignInMethodMock).toHaveBeenCalledWith({
+            id: '31',
+            currentPassword: 'my-password-1',
+        })
+        expect(section.findAll('li')).toHaveLength(1)
+        expect(section.text()).toContain('GitHub was removed')
+    })
+
+    it('does not call the server without the current password', async () => {
+        const section = await panel([GITHUB])
+
+        await section.get('li button').trigger('click')
+        await flushPromises()
+
+        expect(unlinkSignInMethodMock).not.toHaveBeenCalled()
+        expect(section.text()).toContain('Enter your current password to remove a sign-in method')
+    })
+
+    it('an account without a password sends none and is told the rules', async () => {
+        const section = await panel([GITHUB, GOOGLE], false)
+        unlinkSignInMethodMock.mockResolvedValue({ data: { status: 'success' }, error: null })
+
+        expect(section.find('input[type="password"]').exists()).toBe(false)
+        expect(section.text()).toContain('This account has no password')
+        await section.findAll('li button')[1]?.trigger('click')
+        await flushPromises()
+
+        expect(unlinkSignInMethodMock).toHaveBeenCalledWith({ id: '32' })
+    })
+
+    it.each([
+        ['current_password_incorrect', 'Current password is incorrect'],
+        ['recent_sign_in_required', 'Sign out and sign in again, then remove the sign-in method'],
+        ['last_sign_in_method', 'Set a password before removing your last sign-in method'],
+    ])('explains a refusal with reason %s and keeps the list', async (reason, text) => {
+        const section = await panel([GITHUB], false)
+        unlinkSignInMethodMock.mockResolvedValue({
+            data: { status: 'error', code: 'conflict', message: 'server words', reason },
+            error: { message: 'server words' },
+        })
+
+        await section.get('li button').trigger('click')
+        await flushPromises()
+
+        expect(section.text()).toContain(text)
+        expect(section.findAll('li')).toHaveLength(1)
+        expect(signInMethodsMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows that the list could not be loaded', async () => {
+        signInMethodsMock.mockResolvedValue({ data: null, error: { message: 'Network error' } })
+        const wrapper = mountAccount()
+        await flushPromises()
+
+        const section = wrapper.get('[data-testid="sign-in-methods"]')
+        expect(section.text()).toContain('Network error')
+        expect(section.text()).not.toContain('No other service is linked.')
     })
 })

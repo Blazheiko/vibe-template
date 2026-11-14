@@ -5,7 +5,7 @@ import type { ApiRoute } from '@/stores/api-doc'
 import { validateJSON } from '@/utils/api-helpers'
 import { formatResponseBody, scrollToResponse } from '@/utils/test-form-helpers'
 import baseApi from '@/utils/base-api'
-import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
+import { useWebSocketConnection, WsRequestError } from '@/composables/useWebSocketConnection'
 import { useApiSettingsStore } from '@/stores/api-settings'
 
 interface Props {
@@ -85,6 +85,17 @@ const connectWebSocket = () => {
     }
 }
 
+/** The status of a reply as a number: the backend answers a request with the string '200'. */
+const replyStatus = (value: unknown): number => {
+    const status =
+        typeof value === 'number'
+            ? value
+            : typeof value === 'string'
+              ? Number.parseInt(value, 10)
+              : Number.NaN
+    return Number.isFinite(status) ? status : 200
+}
+
 const sendWebSocketMessage = async () => {
     const bodyValidation = validateBody()
 
@@ -115,7 +126,7 @@ const sendWebSocketMessage = async () => {
 
         testResult.value = {
             success: true,
-            status: response?.status || 200,
+            status: replyStatus(response?.status),
             statusText: 'WebSocket Response',
             data: response,
             responseTime,
@@ -125,11 +136,18 @@ const sendWebSocketMessage = async () => {
             wsUrl: wsUrl.value,
         }
     } catch (error) {
+        // feat-158: a refused request or a timeout. The server's error reply is shown whole
+        // (`error.code`, `error.message`, `details`); without one, the message of the failure.
+        const failure = error instanceof WsRequestError ? error : null
+        const numericStatus = typeof failure?.status === 'number' ? failure.status : 0
         testResult.value = {
             success: false,
-            status: 0,
-            statusText: 'WebSocket Error',
-            data: error instanceof Error ? error.message : 'Unknown error',
+            status: numericStatus,
+            statusText:
+                failure?.code !== undefined
+                    ? `WebSocket Error: ${failure.code}`
+                    : 'WebSocket Error',
+            data: failure?.reply ?? (error instanceof Error ? error.message : 'Unknown error'),
             responseTime: 0,
             error: true,
             url: requestUrl,

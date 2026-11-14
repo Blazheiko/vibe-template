@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import nodemailer, { type SendMailOptions, type Transporter } from 'nodemailer'
 import logger from '#logger'
+import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import mailConfig from '#config/mail.js'
 import { badRequest, internalMessage, type AppResult } from '#app/services/shared/errors.js'
 
@@ -214,8 +215,9 @@ export const emailService = {
         logger.info(
             {
                 messageId: info.messageId,
-                accepted: normalizeResultAddresses(info.accepted),
-                rejected: normalizeResultAddresses(info.rejected),
+                // Masked, like every address in the auth logs (feat-150).
+                accepted: normalizeResultAddresses(info.accepted).map(maskEmailForLogs),
+                rejected: normalizeResultAddresses(info.rejected).map(maskEmailForLogs),
                 subject: input.subject.trim(),
             },
             'Email sent',

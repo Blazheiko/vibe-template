@@ -1,7 +1,7 @@
 to: jane@example.com
 subject: Confirm your email
 --- text ---
-Hello, <b>"Jane" & 'Co'</b>.
+Hello.
 
 Please confirm your email address by opening this link
 and entering the password you chose when you signed up:
@@ -43,7 +43,7 @@ If you did not create an account, ignore this email.
                   <tr>
                     <td style="padding:32px 40px 40px;">
                       <p style="margin:0 0 18px;font-size:18px;line-height:1.65;color:#2C3440;">
-                        Hello, &lt;b&gt;&quot;Jane&quot; &amp; &#39;Co&#39;&lt;/b&gt;.
+                        Hello.
                       </p>
                       <p style="margin:0 0 28px;font-size:17px;line-height:1.7;color:#5E6977;">
                         Finish setting up your Vibe Template account by confirming this email address. You will be asked for the password you chose when you signed up.

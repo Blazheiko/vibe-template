@@ -22,7 +22,8 @@ const rateLimitConfig = Object.freeze({
      */
     wsUpgrade: read('WS_UPGRADE_RATE_LIMIT', { windowMs: 60_000, max: 120 }),
     /** Command timeout of the dedicated Redis connection for shared limits. */
-    redisTimeoutMs: reader.int('RATE_LIMIT_REDIS_TIMEOUT_MS', 50, { min: 1 }),
+    // 50 ms gave intermittent 503s on a loaded machine (feat-178): the same as the main client.
+    redisTimeoutMs: reader.int('RATE_LIMIT_REDIS_TIMEOUT_MS', 500, { min: 1 }),
     configError: reader.error,
 })
 

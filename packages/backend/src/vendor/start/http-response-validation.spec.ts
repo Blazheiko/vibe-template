@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import type { HttpContext, Payload } from '#vendor/types/types.js'
 import type { ResponseCheck } from '#vendor/utils/validation/validate-response.js'
 
@@ -92,7 +92,7 @@ const spyCheck = (): ResponseCheck & ReturnType<typeof vi.fn> =>
     vi.fn((payload: unknown) => ({ ok: true, payload })) as never
 
 const route = (name: string, setup: Setup) => ({
-    ...defineRoute({
+    ...defineRawRoute({
         url: name,
         method: 'get',
         handler: (context: HttpContext) => {

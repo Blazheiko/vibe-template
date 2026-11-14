@@ -37,8 +37,8 @@ describe.skipIf(!hasPg)('supportRepository.addUserMessageOnce on PostgreSQL', as
         const first = await supportRepository.addUserMessageOnce(user, 'hello', 'id-1')
         const second = await supportRepository.addUserMessageOnce(user, 'hello', 'id-1')
 
-        expect(first).toEqual({ stored: true })
-        expect(second).toEqual({ stored: false })
+        expect(first).toEqual({ stored: true, id: expect.any(BigInt) })
+        expect(second).toEqual({ stored: false, id: null })
         const rows = await rowsOf(user)
         expect(rows).toHaveLength(1)
         expect(rows[0]?.clientMessageId).toBe('id-1')
@@ -51,8 +51,8 @@ describe.skipIf(!hasPg)('supportRepository.addUserMessageOnce on PostgreSQL', as
         const again = await supportRepository.addUserMessageOnce(user, 'same text', 'id-b')
         const reworded = await supportRepository.addUserMessageOnce(user, 'other text', 'id-a')
 
-        expect(again).toEqual({ stored: true })
-        expect(reworded).toEqual({ stored: false })
+        expect(again).toEqual({ stored: true, id: expect.any(BigInt) })
+        expect(reworded).toEqual({ stored: false, id: null })
         expect(await rowsOf(user)).toHaveLength(2)
     })
 
@@ -62,8 +62,8 @@ describe.skipIf(!hasPg)('supportRepository.addUserMessageOnce on PostgreSQL', as
         const first = await supportRepository.addUserMessageOnce(a, 'hi', 'shared-id')
         const second = await supportRepository.addUserMessageOnce(b, 'hi', 'shared-id')
 
-        expect(first).toEqual({ stored: true })
-        expect(second).toEqual({ stored: true })
+        expect(first).toEqual({ stored: true, id: expect.any(BigInt) })
+        expect(second).toEqual({ stored: true, id: expect.any(BigInt) })
     })
 
     it('stores a message without an id every time', async () => {

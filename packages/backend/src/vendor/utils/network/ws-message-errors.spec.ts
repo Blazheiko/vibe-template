@@ -12,12 +12,20 @@ vi.mock('../session/session-handler.js', () => ({ wsSessionHandler }))
 
 const validate = vi.fn()
 const handlers = await import('./ws-handlers.js')
+
+// feat-197: an event no route answers is refused before the session is read, so the events of
+// these tests need a route. The dispatcher is mocked: only the names matter.
+const ROUTES = {
+    main: {},
+    support: {},
+    user: {},
+    'api/user/me': {},
+    'some/route': {},
+} as never
 handlers.registerWsAppHooks({
     onUpgrade: vi.fn(),
     onConnected: vi.fn(),
     onDisconnected: vi.fn(),
-    onRefreshToken: vi.fn().mockResolvedValue(undefined),
-    onRevokeToken: vi.fn(),
 })
 handlers.registerWsMessageValidator({ validate: (value: unknown) => validate(value) as never })
 
@@ -42,7 +50,7 @@ const message = (text: string): ArrayBuffer => {
 
 const send = async (text: string) => {
     const ws = createWs()
-    await handlers.onMessage(ws as never, message(text), false, {})
+    await handlers.onMessage(ws as never, message(text), false, ROUTES)
     expect(ws.sent).toHaveLength(1)
     return JSON.parse(ws.sent[0] ?? '') as Record<string, unknown>
 }
@@ -115,5 +123,45 @@ describe('onMessage error replies', () => {
             error: { code: 'internal_error', message: 'Internal server error' },
         })
         expect(logger.error).toHaveBeenCalledTimes(1)
+    })
+})
+
+// feat-180 (ADR 0006, Д-WS1): an error reply built before the dispatcher carries the request's
+// `id` too, or the client's request would wait until its timeout.
+describe('onMessage error replies keep the request id', () => {
+    it('on an invalid message', async () => {
+        validate.mockReturnValue({ ok: false, messages: ['bad'] })
+
+        const reply = await send(
+            JSON.stringify({ event: 'support:chat', id: 'req-1', timestamp: 4 }),
+        )
+
+        expect(reply).toMatchObject({ id: 'req-1', error: { code: 'validation_failed' } })
+    })
+
+    it('on an unexpected failure', async () => {
+        wsSessionHandler.mockRejectedValue(new Error('boom'))
+
+        const reply = await send(JSON.stringify({ event: 'user:me', id: 'req-2', timestamp: 5 }))
+
+        expect(reply).toMatchObject({ id: 'req-2', error: { code: 'internal_error' } })
+    })
+
+    it('on Redis unavailable for the session', async () => {
+        wsSessionHandler.mockResolvedValue({ kind: 'unavailable' })
+
+        const reply = await send(
+            JSON.stringify({ event: 'user:me', id: 'req-3', timestamp: 6, payload: {} }),
+        )
+
+        expect(reply).toMatchObject({ id: 'req-3', error: { code: 'service_unavailable' } })
+    })
+
+    it('not an id that is not a string', async () => {
+        validate.mockReturnValue({ ok: false, messages: ['bad'] })
+
+        const reply = await send(JSON.stringify({ event: 'user:me', id: 42, timestamp: 7 }))
+
+        expect('id' in reply).toBe(false)
     })
 })

@@ -22,7 +22,7 @@ vi.mock('@/utils/api', () => ({ authApi: { confirmOAuthLink: confirmMock } }))
 vi.mock('@/stores/user', () => ({ useUserStore: () => ({ resetReady: resetReadyMock }) }))
 vi.mock('@/utils/event-bus', () => ({ useEventBus: () => ({ emit: emitMock }) }))
 vi.mock('vue-router', () => ({
-    useRoute: () => ({ query: routeQuery.value }),
+    useRoute: () => ({ path: '/oauth/link/confirm', query: routeQuery.value }),
     useRouter: () => ({ push: vi.fn(), replace: replaceMock }),
 }))
 

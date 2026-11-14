@@ -182,8 +182,6 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             onUpgrade: () => Promise.resolve({ kind: 'missing' as const }),
             onConnected: () => Promise.resolve(),
             onDisconnected: () => Promise.resolve(),
-            onRefreshToken: () => Promise.resolve(),
-            onRevokeToken: () => Promise.resolve(),
         })
         const { routesHandler } = await import('#vendor/start/router.js')
         const { default: httpRoutes } = await import('#app/routes/http-routes.js')
@@ -316,6 +314,22 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     // The other routes with :subscriptionId were already owner-scoped; their
     // contract is pinned here because the docs state it.
     describe('the other routes with :subscriptionId', () => {
+        // feat-161 (review 2026-11-10): an id PostgreSQL cannot hold is not an id of anything.
+        // It used to reach the query and come back as a 500 ("out of range for type bigint").
+        it.each([
+            ['GET', ''],
+            ['GET', '/statistics'],
+            ['GET', '/logs'],
+            ['DELETE', ''],
+        ] as const)(
+            '%s /:id%s answers like a missing id for a 30-digit id',
+            async (method, path) => {
+                const result = await call(method, `/${'9'.repeat(30)}${path}`, { user: ids.owner })
+
+                expect(result.status).toBe(404)
+            },
+        )
+
         it('GET /:id answers 404 for a foreign id and leaks nothing', async () => {
             const result = await call('GET', `/${String(ids.ownerSub)}`, { user: ids.other })
 
@@ -546,6 +560,169 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
 
             expect(statuses.slice(0, 5)).not.toContain(429)
             expect(statuses[5]).toBe(429)
+        })
+    })
+
+    // feat-156 (review 2026-11-10, M5): the columns are varchar, the request schema took any
+    // string: a long value reached the INSERT and came back as a 500. And the stored address was
+    // whatever the client wrote into `ipAddress`.
+    describe('input bounds of a subscription', () => {
+        let user = 0n
+        const endpoint = (tag: string): string =>
+            `https://fcm.googleapis.com/fcm/send/bounds-${tag}-${String(now)}`
+        const valid = (tag: string): Record<string, unknown> => ({
+            endpoint: endpoint(tag),
+            p256dhKey: 'p'.repeat(87),
+            authKey: 'a'.repeat(22),
+        })
+        const stored = async (tag: string) => {
+            const [row] = await db
+                .select()
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.endpoint, endpoint(tag)))
+            return row
+        }
+
+        beforeAll(async () => {
+            user = await insertUser('push-bounds')
+        })
+
+        it.each([
+            ['deviceType', 51],
+            ['browserName', 101],
+            ['browserVersion', 51],
+            ['osName', 101],
+            ['osVersion', 51],
+            ['timezone', 51],
+            ['userAgent', 1025],
+            ['p256dhKey', 256],
+            ['authKey', 256],
+        ])('answers 422 for %s of %i characters and stores nothing', async (field, length) => {
+            const tag = `long-${field}`
+            const result = await call('POST', '', {
+                user,
+                body: { ...valid(tag), [field]: 'x'.repeat(length) },
+            })
+
+            expect(result.status).toBe(422)
+            expect(await stored(tag)).toBeUndefined()
+        })
+
+        it('answers 422 for an endpoint longer than the column', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: {
+                    ...valid('long-endpoint'),
+                    endpoint: `${endpoint('e')}/${'x'.repeat(500)}`,
+                },
+            })
+
+            expect(result.status).toBe(422)
+        })
+
+        // feat-208 (L-10): 400 Cyrillic letters pass the schema (under 500 characters), but the
+        // stored form percent-encodes them into about 2400, and the INSERT failed with a 500.
+        it('answers 400 for an endpoint whose canonical form is longer than the column', async () => {
+            const cyrillic = `https://fcm.googleapis.com/${'ж'.repeat(400)}`
+            expect(cyrillic.length).toBeLessThan(500)
+
+            const result = await call('POST', '', {
+                user,
+                body: { ...valid('cyrillic'), endpoint: cyrillic },
+            })
+
+            expect(result.status).toBe(400)
+            expect(result.body).toMatchObject({ reason: 'push_endpoint_too_long' })
+            const rows = await db
+                .select({ id: pushSubscriptions.id })
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.userId, user))
+            expect(rows).toEqual([])
+        })
+
+        // feat-208 (I-3): the owner gets the subscription back without its keys and address.
+        it('answers a created, listed and read subscription without keys and address', async () => {
+            const created = await call('POST', '', { user, body: valid('no-keys') })
+            const row = await stored('no-keys')
+            if (row === undefined) throw new Error('subscription missing')
+            const listed = await call('GET', '', { user })
+            const read = await call('GET', `/${String(row.id)}`, { user })
+
+            expect([created.status, listed.status, read.status]).toEqual([200, 200, 200])
+            const text = JSON.stringify([created.body, listed.body, read.body])
+            expect(text).toContain(row.endpoint)
+            for (const secret of [
+                'p256dhKey',
+                'authKey',
+                'ipAddress',
+                row.p256dhKey,
+                row.authKey,
+            ]) {
+                expect(text).not.toContain(secret)
+            }
+            // The server still has them: a push is encrypted with these keys.
+            expect(row.p256dhKey).toBe('p'.repeat(87))
+        })
+
+        it('answers 422 for more notification types than there are', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: {
+                    ...valid('many-types'),
+                    notificationTypes: Array.from({ length: 11 }, () => 'system'),
+                },
+            })
+
+            expect(result.status).toBe(422)
+        })
+
+        it('does not take the address from the client: `ipAddress` in the body is refused', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: { ...valid('client-ip'), ipAddress: '203.0.113.99' },
+            })
+
+            expect(result.status).toBe(422)
+            expect(await stored('client-ip')).toBeUndefined()
+        })
+
+        it('stores a subscription with every field at its limit, with the address the server saw', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: {
+                    ...valid('at-limit'),
+                    p256dhKey: 'p'.repeat(255),
+                    authKey: 'a'.repeat(255),
+                    userAgent: 'u'.repeat(1024),
+                    deviceType: 'd'.repeat(50),
+                    browserName: 'b'.repeat(100),
+                    browserVersion: 'v'.repeat(50),
+                    osName: 'o'.repeat(100),
+                    osVersion: 'w'.repeat(50),
+                    timezone: 't'.repeat(50),
+                    notificationTypes: ['mention', 'system'],
+                },
+            })
+
+            expect(result.status).toBe(200)
+            const row = await stored('at-limit')
+            expect(row).toMatchObject({ userId: user, deviceType: 'd'.repeat(50) })
+            // The test client connects from the loopback address.
+            expect(row?.ipAddress).toMatch(/^(127\.0\.0\.1|::1|::ffff:127\.0\.0\.1)$/)
+        })
+
+        it('answers 422 for an over-long field of an update too', async () => {
+            await call('POST', '', { user, body: valid('to-update') })
+            const row = await stored('to-update')
+            if (row === undefined) throw new Error('subscription missing')
+
+            const result = await call('PUT', `/${String(row.id)}`, {
+                user,
+                body: { deviceType: 'x'.repeat(51) },
+            })
+
+            expect(result.status).toBe(422)
+            expect((await stored('to-update'))?.deviceType).toBeNull()
         })
     })
 })

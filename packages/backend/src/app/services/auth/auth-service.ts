@@ -65,6 +65,7 @@ import type { Logger } from 'pino'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 
 interface AuthSuccessPayload {
     status: 'success'
@@ -120,6 +121,15 @@ export function resolveLoginKey(identifier: string): LoginKey | null {
     }
     const phone = normalizePhone(trimmed)
     return Result.isError(phone) ? null : { kind: 'phone', value: phone.value }
+}
+
+/** The hourly SMS budget of a number, for the start that opens its challenge (feat-214). */
+function spendSmsBudget(phone: string): Promise<AppResult<void>> {
+    return enforceThrottle(
+        throttlePolicies.smsSendPhone,
+        phone,
+        rateLimited('Too many verification attempts. Please try again later.'),
+    )
 }
 
 // A correct password resets the per-account budget. Best effort: a failure here must not
@@ -328,6 +338,15 @@ async function resendVerificationAfterUnverifiedLogin(userId: bigint): Promise<v
             String(userId),
         )
         if (!throttle.allowed) return
+        // feat-203 (L-2): the interval alone allowed 12 mails an hour, 288 a day, to an address
+        // somebody else may have registered. This path spends the same hourly budget as the
+        // resend button, and the daily one.
+        for (const policy of [
+            throttlePolicies.resendVerificationUser,
+            throttlePolicies.verificationMailUserDaily,
+        ]) {
+            if (!(await consumeAuthThrottle(policy, String(userId))).allowed) return
+        }
         await emailVerificationService.sendVerificationEmailInBackground(userId, 'unverified login')
     } catch (err) {
         logger.warn({ err, userId: String(userId) }, 'Could not resend the verification mail')
@@ -366,10 +385,21 @@ async function registerEmailFlow(
     // one: otherwise the duration of the answer says whether the address is registered.
     const passwordHash = await hashPassword(password)
 
+    // feat-157: in strict mode the answer is the same whatever the address is, and so is what
+    // happens to the caller's stored session: it ends in every branch. It used to end only
+    // when the address was free, which told the caller whether the email was registered. (The
+    // non-strict mode signs a free address in, so it has nothing to hide here.)
+    const answerStrict = async (): Promise<AppResult<RegisterEmailFlowPayload>> => {
+        await session.destroySession()
+        return genericEmailRegistrationAnswer()
+    }
+
     const existResult = await userRepository.findByEmail(email)
 
     if (existResult !== undefined) {
-        return genericEmailRegistrationAnswer()
+        return authConfig.strictRegistration
+            ? await answerStrict()
+            : genericEmailRegistrationAnswer()
     }
 
     if (!authConfig.strictRegistration) {
@@ -406,14 +436,13 @@ async function registerEmailFlow(
     )
     if (Result.isError(registeredUserResult)) {
         if (isRegistrationTaken(registeredUserResult.error)) {
-            return genericEmailRegistrationAnswer()
+            // Lost the race to a concurrent registration: like a taken address.
+            return await answerStrict()
         }
         return Result.err(registeredUserResult.error)
     }
 
-    await session.destroySession()
-
-    return genericEmailRegistrationAnswer()
+    return await answerStrict()
 }
 
 export const authService = {
@@ -459,15 +488,6 @@ export const authService = {
             return Result.err(ipThrottle.error)
         }
 
-        const phoneThrottle = await enforceThrottle(
-            throttlePolicies.smsSendPhone,
-            phone,
-            rateLimited('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(phoneThrottle)) {
-            return Result.err(phoneThrottle.error)
-        }
-
         const existingUser = await userRepository.findByPhone(phone)
         const collisionDetected = existingUser !== undefined
 
@@ -478,6 +498,9 @@ export const authService = {
 
         const issuedChallengeResult = await issueSmsChallenge({
             phone,
+            // feat-214: the hourly SMS budget of the number, spent under the lock by the start
+            // that opens a challenge. Spent before it, a start the cooldown refused paid too.
+            spendBudget: () => spendSmsBudget(phone),
             flow: REGISTER_PHONE_FLOW,
             metadata: {
                 ipAddress: requestMeta.ipAddress,
@@ -702,15 +725,6 @@ export const authService = {
             return Result.err(userThrottle.error)
         }
 
-        const phoneThrottle = await enforceThrottle(
-            throttlePolicies.smsSendPhone,
-            phone,
-            rateLimited('Too many verification attempts. Please try again later.'),
-        )
-        if (Result.isError(phoneThrottle)) {
-            return Result.err(phoneThrottle.error)
-        }
-
         const phoneExists = await userRepository.phoneExistsForOtherUser(phone, userId)
         if (phoneExists) {
             return Result.err(conflict('Phone is already linked to another account'))
@@ -733,6 +747,9 @@ export const authService = {
         }
         const issuedChallengeResult = await issueSmsChallenge({
             phone,
+            // feat-214: the hourly SMS budget of the number, spent under the lock by the start
+            // that opens a challenge. Spent before it, a start the cooldown refused paid too.
+            spendBudget: () => spendSmsBudget(phone),
             flow: LINK_PHONE_FLOW,
             metadata: linkMetadata,
             noLongerValid: 'Phone linking challenge is no longer valid',
@@ -1004,7 +1021,14 @@ export const authService = {
         auth: Auth,
         session: Session,
     ): Promise<AppResult<{ status: 'success'; csrfToken: string }>> {
+        // feat-195: the WebSocket connections opened from this session close with it; the
+        // other sessions of the user keep theirs.
+        const userId = auth.getUserId()
+        const sessionId = session.sessionInfo?.id
         const result = await auth.logout()
+        if (userId !== null && sessionId !== undefined) {
+            wsSessionRevocation.closeUserConnections(userId, { sessionId })
+        }
 
         if (!result) {
             return Result.err(internalMessage('Failed to log out user'))
@@ -1096,6 +1120,8 @@ export const authService = {
                 )
             }
         }
+        // feat-195: every session is revoked, so every WebSocket connection of the user closes.
+        if (userId !== null) wsSessionRevocation.closeUserConnections(userId)
         // The sessions are revoked by now; what follows is memory cleanup and must not turn
         // the answer into an error. auth.logoutAll() issues the anonymous session either way.
         let deletedCount = 0
@@ -1230,6 +1256,11 @@ export const authService = {
             String(userId),
             'Change password',
         )
+
+        // feat-195: the connections of every session close, this one's too: its socket carries
+        // the token that was just rotated, and the client reconnects with the WS token of the
+        // renewed session.
+        wsSessionRevocation.closeUserConnections(String(userId))
 
         // Memory cleanup, not the revocation: a failure leaves records that are already
         // rejected, so it is logged and the password change still succeeds.

@@ -14,7 +14,7 @@
 - TypeScript `6.0.3`, перевірка типів через `vue-tsc`;
 - workspace-залежність `shared`.
 
-Скрипти: `dev`, `build` (`type-check` разом із `vite build`), `preview`, `typecheck`, `lint`, `lint:check`, `format`. Скрипта `test` немає.
+Скрипти: `dev`, `build` (`type-check` разом із `vite build`), `preview`, `typecheck`, `lint`, `lint:check`, `format`, `test` (`vitest run`).
 
 ## Запуск
 
@@ -26,11 +26,11 @@
 
 У [`vite.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/vite.config.ts) dev-сервер слухає порт **5174** і проксіює запити:
 
-| Префікс                                             | Ціль                    | Примітка                                                                    |
-| --------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- |
-| `/<VITE_API_PATH_PREFIX>` (за замовчуванням `/api`) | `http://127.0.0.1:3000` | `changeOrigin: true`, `ws: true` — HTTP і WS-ендпоінт `/<prefix>/websocket` |
+| Префікс                                        | Ціль                                                                      | Примітка                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `/<API_PATH_PREFIX>` (за замовчуванням `/api`) | `http://<HOST>:<PORT>` бекенда (за замовчуванням `http://127.0.0.1:3000`) | `changeOrigin: true`, `ws: true` — HTTP і WS-ендпоінт `/<prefix>/websocket` |
 
-Префікс API береться з `VITE_API_PATH_PREFIX` (має збігатися з бекендовим `API_PATH_PREFIX`, за замовчуванням `api`). WS-відповідь розпізнається за очікуваним запитом з тим самим event, тож працює з будь-яким префіксом. Базовий URL для HTTP-викликів за замовчуванням порожній. Тому запити йдуть відносно origin dev-сервера і проходять через proxy. Його можна перевизначити змінною `VITE_API_BASE_URL` або в налаштуваннях UI ([`stores/api-settings.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-settings.ts)).
+Префікс, `HOST` і `PORT` беруться з бекендових змінних у shell або `packages/backend/.env`, як і для фронтенда ([одне джерело](/backend/configuration#одне-джерело-адреси-и-префікса-api)); власного префікса чи порту playground не має. WS-відповідь розпізнається за `id` очікуваного запиту ([протокол](/backend/websocket#протокол-повідомлень)), тож працює з будь-яким префіксом, і кілька запитів однієї події можуть бути в дорозі одночасно. Базовий URL для HTTP-викликів за замовчуванням порожній. Тому запити йдуть відносно origin dev-сервера і проходять через proxy. Його можна перевизначити змінною `VITE_API_BASE_URL` або в налаштуваннях UI ([`stores/api-settings.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-settings.ts)).
 
 ```mermaid
 flowchart LR
@@ -43,7 +43,7 @@ flowchart LR
 
 ## Завантаження опису маршрутів
 
-Функція `fetchRoutes()` у [`stores/api-doc.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-doc.ts) робить `fetch(apiUrl(baseUrl, 'doc/routes'))` ([`utils/api-path.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/api-path.ts)): `<baseUrl>/<VITE_API_PATH_PREFIX>/doc/routes`, з порожнім `baseUrl` — через proxy. Відповідь має форму `{ httpRoutes, wsRoutes, pathPrefix }`. Store об'єднує групи з однаковим префіксом, присвоює маршрутам числові `id` і будує для навігації плоскі списки з `fullUrl` (префікс + шляхи груп + `url`). Отриманий `pathPrefix` зберігається в налаштуваннях.
+Функція `fetchRoutes()` у [`stores/api-doc.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/stores/api-doc.ts) робить `fetch(apiUrl(baseUrl, 'doc/routes'))` ([`utils/api-path.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/api-path.ts)): `<baseUrl>/<API_PATH_PREFIX>/doc/routes`, з порожнім `baseUrl` — через proxy. Відповідь має форму `{ httpRoutes, wsRoutes, pathPrefix }`. Store об'єднує групи з однаковим префіксом, присвоює маршрутам числові `id` і будує для навігації плоскі списки з `fullUrl` (префікс + шляхи груп + `url`). Отриманий `pathPrefix` зберігається в налаштуваннях.
 
 Серіалізацію на backend виконує [`serialize-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/routing/serialize-routes.ts). Вона копіює поля маршруту, замінює `handler` на `null` і прибирає `validator`, `queryValidator` та `ResponseSchema`. Замість них додаються:
 
@@ -77,8 +77,9 @@ flowchart LR
 - поля для path-параметрів: кожен `:name` у `fullUrl` замінюється введеним значенням;
 - заголовки у форматі JSON (за замовчуванням `Content-Type: application/json`) з перевіркою JSON;
 - тіло у форматі JSON, яке заповнюється заготовкою з `inputSchema`. Для `GET` і `DELETE` тіло не надсилається ([`utils/base-api.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/base-api.ts));
+- тіло відповіді для будь-якого статусу: помилка (`400`, `401`, `403`, `409`, `429`, `5xx`) показується разом зі своїм JSON — `code`, `message`, `reason` відмови CSRF — а не лише числом статусу. Відповідь без тіла (`204`) чи не у форматі JSON — це успіх із порожніми даними, а не «мережева помилка»;
 - генерацію еквівалентної `curl`-команди;
-- повторні запуски: кількість запитів і кількість «потоків», зі статистикою часу відповіді (середній, мінімальний, максимальний) і кількістю успішних запитів. Запуск виконує composable [`useLoadTest`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/composables/useLoadTest.ts) (типи й підрахунки — у [`utils/load-test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/load-test.ts)); прокрутку до відповіді й форматування тіла `TestForm.vue` ділить із `TestFormWs.vue` через [`utils/test-form-helpers.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/test-form-helpers.ts);
+- повторні запуски: кількість запитів і кількість «потоків», зі статистикою часу відповіді (середній — середнє тривалостей запитів, мінімальний, максимальний) і кількістю успішних запитів. Межі — 1000 запитів на потік і 100 потоків — застосовуються в коді, а не лише в атрибутах поля: введене більше значення обрізається, порожнє чи нульове стає 1. Кнопка **Stop** завершує запуск після запитів, що вже в дорозі, і показує статистику того, що надіслано. Запуск виконує composable [`useLoadTest`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/composables/useLoadTest.ts) (типи й підрахунки — у [`utils/load-test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/load-test.ts)); прокрутку до відповіді й форматування тіла `TestForm.vue` ділить із `TestFormWs.vue` через [`utils/test-form-helpers.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/src/utils/test-form-helpers.ts);
 - перегляд відповіді: статус, заголовки, час, тіло.
 
 Окремого редактора query-рядка немає. `querySchema` лише відображається в картці маршруту, тому query-параметри доведеться дописати в URL вручну.
@@ -103,7 +104,8 @@ flowchart LR
 
 - підключення за URL і токеном. Токен передається як subprotocol (`Sec-WebSocket-Protocol`);
 - автозаповнення: якщо HTTP-відповідь містить `wsUrl` і `wsToken`, вони підставляються у форму підключення;
-- надсилання повідомлень у форматі `{ event, timestamp, payload }`, де `event` — повний шлях WS-маршруту. Відповідь зіставляється з запитом за `event`, діє тайм-аут. Паралельний запит з тим самим `event` відхиляється;
+- надсилання повідомлень у форматі `{ event, id, timestamp, payload }`, де `event` — повний шлях WS-маршруту, а `id` — новий UUID кожного запиту. Відповідь зіставляється з запитом за `id`, діє тайм-аут. Кілька запитів з тим самим `event` можуть бути в дорозі одночасно;
+- помилки запиту: відповідь сервера з `status: "error"` одразу показується як помилка з `error.code`, `error.message` і `details`; відсутність відповіді — як тайм-аут через 10 с. Жодне з них не показується як успішна відповідь;
 - обробку закриття з'єднання: код `4001` вважається неавторизованим доступом, для кодів `4000–4099` перепідключення не виконується.
 
 Протокол описано в розділі [WebSocket](/backend/websocket).
@@ -114,15 +116,15 @@ flowchart LR
 
 ## Типові проблеми
 
-| Симптом                                                                    | Що перевірити                                                                                                                                                                                                      |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| маршрути не завантажуються, `Failed to fetch` або 404 на `/api/doc/routes` | backend запущений на `:3000`; у `packages/backend/.env` задано `APP_ENV=manual-test`, `DOC_PAGE=true`, `SERVE_STATIC=true` (без усіх трьох endpoint не реєструється); `API_PATH_PREFIX` — `api` (див. «Обмеження») |
-| HTTP-запити йдуть не туди                                                  | `VITE_API_BASE_URL` і `baseUrl` / override у налаштуваннях: порожнє значення означає «через Vite proxy»                                                                                                            |
-| WebSocket не підключається                                                 | URL і токен у формі підключення; токен береться з відповіді, що містить `wsUrl` і `wsToken`; закриття з кодом `4001` — токен недійсний                                                                             |
-| помилки CORS у консолі                                                     | запити йдуть повз proxy (заданий `baseUrl` на інший origin); тоді origin playground має бути в CORS-whitelist backend ([Безпека](/backend/security#cors))                                                          |
-| `POST` повертає `403` з `code: csrf_invalid`                               | `reason: origin_mismatch` — origin playground (`http://localhost:5174`) немає в `CSRF_ALLOWED_ORIGINS`; `reason: token_mismatch` — немає або застарів `x-csrf-token` (візьміть новий з `GET /api/main/init`)       |
+| Симптом                                                                    | Що перевірити                                                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| маршрути не завантажуються, `Failed to fetch` або 404 на `/api/doc/routes` | backend запущений на `:3000`; у `packages/backend/.env` задано `APP_ENV=manual-test`, `DOC_PAGE=true`, `SERVE_STATIC=true` (без усіх трьох endpoint не реєструється); після зміни `PORT` чи `API_PATH_PREFIX` бекенду Vite перезапущено: proxy читає їх на старті (див. [Vite proxy](#vite-proxy)) |
+| HTTP-запити йдуть не туди                                                  | `VITE_API_BASE_URL` і `baseUrl` / override у налаштуваннях: порожнє значення означає «через Vite proxy»; `VITE_API_BASE_URL` поточної збірки має перевагу над збереженим `baseUrl`                                                                                                                 |
+| WebSocket не підключається                                                 | URL і токен у формі підключення; токен береться з відповіді, що містить `wsUrl` і `wsToken`; закриття з кодом `4001` — токен недійсний                                                                                                                                                             |
+| помилки CORS у консолі                                                     | запити йдуть повз proxy (заданий `baseUrl` на інший origin); тоді origin playground має бути в CORS-whitelist backend ([Безпека](/backend/security#cors))                                                                                                                                          |
+| `POST` повертає `403` з `code: csrf_invalid`                               | `reason: origin_mismatch` — origin playground (`http://localhost:5174`) немає в `CSRF_ALLOWED_ORIGINS`; `reason: token_mismatch` — немає або застарів `x-csrf-token` (візьміть новий з `GET /api/main/init`)                                                                                       |
 
-Кнопка **Test Connection** у налаштуваннях робить `GET <baseUrl>/<prefix>/ping` — liveness-маршрут бекенду (раніше вона била в неіснуючий `/health`). WS-адреса за замовчуванням виводиться з `baseUrl`: `http://` → `ws://`, `https://` → `wss://`. Повідомлення не ставляться в чергу: без відкритого з'єднання `sendMessage` нічого не надсилає, пише помилку в консоль і повертає `false`.
+Кнопка **Test Connection** у налаштуваннях робить `GET <baseUrl>/<prefix>/ping` — liveness-маршрут бекенду (раніше вона била в неіснуючий `/health`); з порожнім `baseUrl` перевірка йде через Vite proxy. Тіло запиту в консоль не пишеться (там бувають паролі й токени); його видно на вкладці Network. Порожній WS-токен не передається як subprotocol. WS-адреса за замовчуванням виводиться з `baseUrl`: `http://` → `ws://`, `https://` → `wss://`. Повідомлення не ставляться в чергу: без відкритого з'єднання `sendMessage` нічого не надсилає, пише помилку в консоль і повертає `false`.
 
 ## Обмеження
 
