@@ -76,17 +76,17 @@ pnpm dev:backend
 when they are usually needed. Variable names match what the runtime config reads
 in `src/config/*`.
 
-| Area          | Required for local boot | Variables                                                                                                                       |
-| ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| App           | Yes                     | `APP_KEY`, `APP_ENV`, `APP_URL`, `FRONTEND_URL`, `PORT`, `HOST`                                                                 |
-| Database      | Yes                     | `DB_CONNECTION`, `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`, `PGSQL_DB_NAME`                                    |
-| Redis         | Usually yes             | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`                                                                    |
-| Request body  | Optional (has defaults) | `APP_MAX_BODY_SIZE`, `APP_MAX_JSON_BODY_SIZE`, `APP_MAX_MULTIPART_BODY_SIZE`, `APP_MAX_OCTET_BODY_SIZE`                         |
-| Routing/CDN   | Optional                | `API_PATH_PREFIX`, `APP_UNIX_PATH`, `CDN_URL`, `SERVE_STATIC`, `DOC_PAGE`, `DOMAIN`                                             |
-| Security      | Production              | `APP_IS_PRODUCTION`, `CORS_ALLOWED_ORIGINS`, `CSRF_ENFORCE`, `SESSION_COOKIE_HOST_PREFIX`, `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` |
-| Storage (S3)  | Feature-dependent       | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`                                             |
-| Mail (SMTP)   | Feature-dependent       | `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`                     |
-| Observability | Optional                | `SENTRY_DSN`, `SENTRY_ENABLED`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`                                                          |
+| Area          | Required for local boot | Variables                                                                                                                                                        |
+| ------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App           | Yes                     | `APP_KEY`, `APP_ENV`, `APP_URL`, `FRONTEND_URL`, `PORT`, `HOST`                                                                                                  |
+| Database      | Yes                     | `DB_CONNECTION`, `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`, `PGSQL_DB_NAME`                                                                     |
+| Redis         | Usually yes             | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`                                                                                                     |
+| Request body  | Optional (has defaults) | `APP_MAX_BODY_SIZE`, `APP_MAX_JSON_BODY_SIZE`, `APP_MAX_MULTIPART_BODY_SIZE`, `APP_MAX_OCTET_BODY_SIZE`                                                          |
+| Routing/CDN   | Optional                | `API_PATH_PREFIX`, `APP_UNIX_PATH`, `CDN_URL`, `SERVE_STATIC`, `DOC_PAGE`, `DOMAIN`                                                                              |
+| Security      | Production              | `APP_IS_PRODUCTION`, `CORS_ALLOWED_ORIGINS`, `CSRF_ENFORCE`, `CSRF_ALLOWED_ORIGINS`, `CSP_*`, `SESSION_COOKIE_HOST_PREFIX`, `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` |
+| Storage (S3)  | Feature-dependent       | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`                                                                              |
+| Mail (SMTP)   | Feature-dependent       | `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`                                                      |
+| Observability | Optional                | `SENTRY_DSN`, `SENTRY_ENABLED`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`                                                                                           |
 
 `.env.example` lists every variable the backend reads (except `NODE_ENV`, a
 fallback for `APP_ENV`). Empty `PGSQL_*` values fall back to the defaults in
@@ -146,7 +146,7 @@ A compact end-to-end checklist (see the detailed sections below for each layer):
 
 ## Configuration
 
-Configuration is split across modules in `src/config/` (`app.ts`, `database.ts`, `redis.ts`, `disk.ts`, `cookies.ts`, `cors.ts`, `csp.ts`, `mail.ts`, `oauth.ts`, `push.ts`, `session.ts`, `ai.ts`, `support.ts`, `translator.ts`, `turn.ts`).
+Configuration is split across modules in `src/config/` (`app.ts`, `auth.ts`, `database.ts`, `redis.ts`, `disk.ts`, `cookies.ts`, `cors.ts`, `csp.ts`, `csrf.ts`, `mail.ts`, `oauth.ts`, `push.ts`, `session.ts`, `sentry.ts`, `rate-limit.ts`, `throttle-policies.ts`, `websocket.ts`, `ai.ts`, `support.ts`, `turn.ts`, …).
 
 ### Auth / proxy environment variables
 
@@ -280,7 +280,6 @@ Rollout plan:
 1. Keep `SENTRY_ENABLED=false` in all environments until the change is deployed.
 2. Enable Sentry in staging first and watch event volume / noise for at least 48 hours.
 3. Promote to production only after staging is stable.
-4. Keep Telegram alerts on during the initial rollout so Sentry can be compared against the existing path.
 
 ## Tech Stack
 
@@ -294,7 +293,7 @@ Rollout plan:
 - Nodemailer — transactional email
 - Arctic — OAuth (Google, GitHub, ...)
 - web-push — Web Push notifications
-- AI SDKs — OpenAI, xAI (Grok), Mistral, Inworld
+- AI SDKs — OpenAI, xAI (Grok), Mistral
 
 ## Architecture
 
@@ -408,7 +407,7 @@ Side-channels:
 
 - **Session / auth** — `context.session` (Redis via `#database/redis.js`) and `context.auth` are populated by the `session_web` middleware before `auth_guard` runs.
 - **Logging** — every step logs through `context.logger` (Pino, scoped by `requestId`).
-- **WebSocket** — same shape, but the chain replaces "readAndParseBody" with `ws-api-dispatcher.ts` and "Controller" with handlers in `src/app/controllers/ws/`. Connection-level state lives in `src/app/websocket/{ws-session-auth, ws-connection-registry, ws-coordinator}.ts`.
+- **WebSocket** — same shape, but the chain replaces "readAndParseBody" with `src/vendor/utils/routing/ws-api-dispatcher.ts` and "Controller" with handlers in `src/app/controllers/ws/`. Connection-level state lives in `src/app/websocket/{ws-session-auth, ws-connection-registry, ws-coordinator}.ts`.
 
 ### Layer Responsibilities
 
@@ -428,32 +427,35 @@ src/
 │   ├── controllers/
 │   │   ├── http/            # HTTP request handlers
 │   │   └── ws/              # WebSocket event handlers
-│   ├── services/
+│   ├── services/            # business logic, grouped by domain
 │   │   ├── shared/          # AppError/AppResult and shared helpers
 │   │   ├── actions/         # cross-service orchestration actions
+│   │   ├── auth/ user/ admin/ support/ communication/ notifications/
 │   │   ├── ai/              # AI provider adapters
-│   │   └── statistics/
+│   │   ├── core/ observability/ statistics/
 │   ├── repositories/        # Drizzle data access objects
 │   ├── transformers/        # DB row → API payload
 │   ├── routes/
 │   │   ├── http-routes.ts
-│   │   └── ws-routes.ts
+│   │   ├── ws-routes.ts
+│   │   └── contract-schemas/ # schema registry: one entry per shared contract
+│   ├── routing/             # defineRaw/WsRoute internals (outside tests, use contract-schemas)
 │   ├── middlewares/
 │   │   └── kernel.ts        # middleware name → function mapping
 │   ├── validate/
-│   │   ├── schemas/         # ArkType schemas (legacy + local)
+│   │   ├── adapters/        # ArkType adapter
 │   │   ├── checkers/        # custom payload checkers
 │   │   └── errors/          # validation error helpers
 │   ├── websocket/
 │   │   ├── ws-connection-registry.ts
 │   │   ├── ws-coordinator.ts   # cross-instance coordination via Redis
 │   │   └── ws-session-auth.ts  # WS handshake auth
-│   ├── events/
 │   ├── start/
 │   └── state/
-├── config/                  # app.ts, database.ts, redis.ts, disk.ts, mail.ts, oauth.ts, push.ts, ai.ts, ...
+├── config/                  # app.ts, auth.ts, database.ts, redis.ts, disk.ts, mail.ts, oauth.ts, csp.ts, ...
 ├── database/
 │   ├── db.ts                # pg Pool + Drizzle instance
+│   ├── relations.ts         # Drizzle relations (defineRelations)
 │   ├── redis.ts             # ioredis client(s)
 │   └── schema.ts            # all table definitions
 ├── db/
@@ -462,9 +464,8 @@ src/
 │   └── seed/                # seed logic and tests
 ├── drizzle/
 │   └── migrations/          # generated SQL migrations
-├── docs/                    # internal architecture / feature notes
 ├── openapi/                 # generated OpenAPI spec
-├── scripts/                 # one-off utilities (backfills, mail test, ...)
+├── scripts/                 # one-off utilities (mail test, VAPID keys, LLM prompt purge, ...)
 └── vendor/                  # framework internals (server, router, types)
 ```
 
@@ -815,7 +816,7 @@ defineRoute({
 })
 ```
 
-Do not wrap schemas manually with `arkValidator(...)`. `defineRoute` / `defineWsRoute` normalize the registry schema through the active validation wrapper internally (`defaultValidator` in `contract-registry.ts`).
+Do not wrap schemas manually with `arkValidator(...)`. `defineRoute` / `defineWsRoute` normalize the registry schema through the active validation wrapper internally (`defaultValidator` in `src/app/validate/index.ts`).
 
 ### Validation rules
 
@@ -1069,9 +1070,8 @@ How it works in practice:
    `queryArrays` and the schema expects an array type like `string[]`.
 
 This means the controller should always treat `context.httpData.query` as the
-canonical source of truth for query params. In middleware, where the route
-generic type is not always available, use `getTypedQuery<T>(ctx)` only after the
-route's contract has a `query` schema.
+canonical source of truth for query params. In a middleware, where the route
+generic type is not available, read `context.httpData.query` and narrow it yourself.
 
 Example for repeated keys:
 
@@ -1101,97 +1101,54 @@ Services live in `src/app/services/`. They contain all business logic and usuall
 // src/app/services/shared/errors.ts
 export type AppError =
     | { _tag: 'BadRequest'; message: string; reason?: string }
-    | { _tag: 'Unauthorized'; message: string }
+    | { _tag: 'Unauthorized'; message: string; reason?: string }
     | { _tag: 'Forbidden'; message: string; reason?: string }
     | { _tag: 'NotFound'; resource: string; message: string }
     | { _tag: 'Conflict'; message: string; reason?: string }
+    | { _tag: 'RateLimited'; message: string; reason?: string; retryAfterSeconds?: number }
     | { _tag: 'Internal'; publicMessage: string; cause?: unknown }
+    | { _tag: 'ServiceUnavailable'; message: string; retryAfterSeconds: number; cause?: unknown }
+    | { _tag: 'UpstreamError'; message: string; cause?: unknown }
+    | { _tag: 'UpstreamTimeout'; message: string; cause?: unknown }
 
 export type AppResult<T> = Result<T, AppError>
 
 export function badRequest(message: string, reason?: string): AppError
-export function unauthorized(message?: string): AppError
+export function unauthorized(message?: string, reason?: string): AppError
 export function forbidden(message: string, reason?: string): AppError
 export function notFound(resource: string, message: string): AppError
 export function conflict(message: string, reason?: string): AppError
+export function rateLimited(...): AppError
 export function internal(cause: unknown, publicMessage?: string): AppError
+export function serviceUnavailable(cause?: unknown): AppError
+export function upstreamError(cause?: unknown, message?: string): AppError
+export function upstreamTimeout(...): AppError
 ```
 
 ### Service example
 
+A simplified shape of `src/app/services/auth/auth-service.ts` (the real `login` also
+spends throttle budgets and compares the password against a dummy hash for unknown
+accounts):
+
 ```ts
-// src/app/services/auth-service.ts (excerpt)
 import { Result } from 'better-result'
-import { hashPassword, validatePassword } from 'metautil'
+import { validatePassword } from 'metautil'
 import type { Auth, Session } from '#vendor/types/types.js'
 import { userRepository } from '#app/repositories/index.js'
 import { userTransformer } from '#app/transformers/index.js'
-import { badRequest, conflict, unauthorized, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
-import { generateWsToken } from '#app/services/generate-ws-token-service.js'
-import { getWsUrl } from '#app/services/get-ws-url-service.js'
-import type { LoginInput, RegisterInput } from 'shared/schemas'
+import { unauthorized, type AppResult } from '#app/services/shared/errors.js'
+import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
+import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
+import type { LoginInput } from 'shared/schemas'
 
 export const authService = {
-    async register(
-        payload: RegisterInput,
-        auth: Auth,
-        session: Session,
-    ): Promise<
-        AppResult<{
-            status: 'success'
-            user: SerializedUser
-            wsUrl: string
-            wsToken: string
-        }>
-    > {
-        const email = payload.email.toLowerCase()
-
-        const existResult = await tryInternal(
-            () => userRepository.findByEmail(email),
-            'Failed to load user by email',
-        )
-        if (Result.isError(existResult)) return Result.err(existResult.error)
-        if (existResult.value !== undefined) {
-            return Result.err(conflict('Email already exists'))
-        }
-
-        const hash = await hashPassword(payload.password)
-        const user = await userRepository.create({
-            name: payload.name,
-            email,
-            password: hash,
-        })
-
-        await auth.login(String(user.id), session)
-        const wsToken = await generateWsToken(user.id)
-
-        return Result.ok({
-            status: 'success',
-            user: userTransformer.serialize(user),
-            wsUrl: getWsUrl(),
-            wsToken,
-        })
-    },
-
     async login(
         payload: LoginInput,
         auth: Auth,
         session: Session,
-    ): Promise<
-        AppResult<{
-            status: 'success'
-            user: SerializedUser
-            wsUrl: string
-            wsToken: string
-        }>
-    > {
-        const userResult = await tryInternal(
-            () => userRepository.findByEmail(payload.email.toLowerCase()),
-            'Failed to load user by email',
-        )
-        if (Result.isError(userResult)) return Result.err(userResult.error)
-        const user = userResult.value
+    ): Promise<AppResult<AuthSuccessPayload>> {
+        const user = await userRepository.findByEmail(payload.identifier.toLowerCase())
         if (user === undefined || user.password === null) {
             return Result.err(unauthorized('Invalid email or password'))
         }
@@ -1209,11 +1166,6 @@ export const authService = {
             wsToken,
         })
     },
-
-    async logout(auth: Auth): Promise<AppResult<{ status: 'success' }>> {
-        await auth.logout()
-        return Result.ok({ status: 'success' })
-    },
 }
 ```
 
@@ -1224,7 +1176,7 @@ export const authService = {
 Repositories live in `src/app/repositories/`. **Only** Drizzle queries — no HTTP, no session, no formatting. They typically expose an interface plus the implementation, and are re-exported from `src/app/repositories/index.ts`.
 
 ```ts
-// src/app/repositories/user-repository.ts (excerpt)
+// src/app/repositories/user/user-repository.ts (excerpt)
 import { db } from '#database/db.js'
 import { users } from '#database/schema.js'
 import { eq, sql } from 'drizzle-orm'
@@ -1235,16 +1187,16 @@ export type UserInsert = InferInsertModel<typeof users>
 export type UserUpdate = Partial<
     Pick<
         UserInsert,
-        'name' | 'email' | 'password' | 'phone' | 'avatar' | 'role' | 'emailVerifiedAt'
+        'name' | 'email' | 'password' | 'phone' | 'avatar' | 'sessionToken' | 'emailVerifiedAt'
     >
 >
 
 export interface IUserRepository {
-    create(data: UserInsert): Promise<UserRow>
+    create(data: UserInsert, executor?: DbExecutor): Promise<UserRow>
     findById(id: bigint): Promise<UserRow | undefined>
     findByEmail(email: string): Promise<UserRow | undefined>
-    update(id: bigint, data: UserUpdate): Promise<UserRow | undefined>
-    delete(id: bigint): Promise<boolean>
+    update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
+    // … plus findByPhone, lockById, admin listings and more
 }
 
 export const userRepository: IUserRepository = {
@@ -1284,11 +1236,6 @@ export const userRepository: IUserRepository = {
             .where(eq(users.id, id))
         return userRepository.findById(id)
     },
-
-    async delete(id) {
-        const deleted = await db.delete(users).where(eq(users.id, id)).returning()
-        return deleted.length > 0
-    },
 }
 ```
 
@@ -1300,12 +1247,11 @@ Transformers live in `src/app/transformers/`. They convert DB rows to API-safe p
 
 ```ts
 // src/app/transformers/user-transformer.ts
-import { DateTime } from 'luxon'
-import type { UserRow } from '#app/repositories/user-repository.js'
+import type { UserRow } from '#app/repositories/index.js'
 
 export type SerializedUser = Omit<
     UserRow,
-    'id' | 'password' | 'createdAt' | 'updatedAt' | 'emailVerifiedAt'
+    'id' | 'password' | 'sessionToken' | 'createdAt' | 'updatedAt' | 'emailVerifiedAt'
 > & {
     id: string
     created_at: string | null
@@ -1316,20 +1262,28 @@ export type SerializedUser = Omit<
 
 export const userTransformer = {
     serialize(user: UserRow): SerializedUser {
-        const { id, password: _password, createdAt, updatedAt, emailVerifiedAt, ...rest } = user
+        // sessionToken is the user's Redis session namespace: the client never needs it
+        const {
+            id,
+            password: _password,
+            sessionToken: _sessionToken,
+            createdAt,
+            updatedAt,
+            emailVerifiedAt,
+            ...rest
+        } = user
         return {
             ...rest,
             id: String(id), // bigint → string for safe JSON
-            created_at: DateTime.fromJSDate(createdAt).toISO(),
-            updated_at: DateTime.fromJSDate(updatedAt).toISO(),
+            created_at: createdAt.toISOString(),
+            updated_at: updatedAt.toISOString(),
             emailVerified: emailVerifiedAt !== null,
-            emailVerifiedAt:
-                emailVerifiedAt === null ? null : DateTime.fromJSDate(emailVerifiedAt).toISO(),
+            emailVerifiedAt: emailVerifiedAt === null ? null : emailVerifiedAt.toISOString(),
         }
     },
 
-    serializeArray(rows: UserRow[]): SerializedUser[] {
-        return rows.map((u) => userTransformer.serialize(u))
+    serializeArray(usersData: UserRow[]): SerializedUser[] {
+        return usersData.map((u) => userTransformer.serialize(u))
     },
 }
 ```
@@ -1338,7 +1292,7 @@ Notes:
 
 - `id` is converted from `bigint` → `string` so it survives JSON serialization.
 - Internal fields like `password` are stripped here, not at the controller.
-- Dates are emitted in ISO 8601 via Luxon.
+- Dates are emitted in ISO 8601 (`toISOString()`).
 
 ---
 
@@ -1346,24 +1300,18 @@ Notes:
 
 ### Connection
 
-`src/database/db.ts` creates a `pg.Pool` and passes it to Drizzle. The pool is configured for up to 10 concurrent connections. Redis clients live in `src/database/redis.ts` and are shared by sessions, the WS coordinator, and presence services.
+`src/database/db.ts` creates a `pg.Pool` (up to 10 connections, with a connection timeout and a per-statement `statement_timeout` from `config/database-pool.ts`) and passes it to Drizzle together with the relations from `src/database/relations.ts` (Relational Queries v2). Redis clients live in `src/database/redis.ts` and are shared by sessions, the WS coordinator, and presence services.
 
 ```ts
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
-import * as schema from './schema.js'
+import { relations } from './relations.js'
 
-const pool = new pg.Pool({
-    host: databaseConfig.host,
-    port: databaseConfig.port,
-    user: databaseConfig.user,
-    password: databaseConfig.password,
-    database: databaseConfig.database,
-    max: 10,
-})
+const pool = new pg.Pool({ ...connectionOptions, max: 10 /* timeouts … */ })
 
-export const db = drizzle(pool, { schema, logger: appConfig.env !== 'prod' })
-export { pool }
+const db = drizzle({ client: pool, relations, logger: sqlLoggingEnabled(appConfig) })
+
+export { db, pool }
 ```
 
 ### Schema
@@ -1372,44 +1320,35 @@ All tables are defined in `src/database/schema.ts` using Drizzle's `pgTable` bui
 
 ```ts
 // src/database/schema.ts (excerpt)
-import {
-    pgTable,
-    bigserial,
-    bigint,
-    varchar,
-    text,
-    timestamp,
-    boolean,
-    pgEnum,
-} from 'drizzle-orm/pg-core'
-
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 
-export const users = pgTable('users', {
-    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-    name: varchar('name', { length: 100 }).notNull(),
-    email: varchar('email', { length: 255 }).notNull().unique(),
-    password: varchar('password', { length: 255 }),
-    avatar: varchar('avatar', { length: 500 }),
-    role: userRoleEnum('role').notNull().default('user'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at')
-        .notNull()
-        .defaultNow()
-        .$onUpdate(() => new Date()),
-})
-
-export const notes = pgTable('notes', {
-    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-    title: varchar('title', { length: 255 }).notNull(),
-    description: text('description').notNull(),
-    userId: bigint('user_id', { mode: 'bigint' }).notNull(),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at')
-        .notNull()
-        .defaultNow()
-        .$onUpdate(() => new Date()),
-})
+export const users = pgTable(
+    'users',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        name: varchar('name', { length: 100 }).notNull(),
+        email: varchar('email', { length: 255 }), // unique through a LOWER(email) index
+        emailVerifiedAt: timestamp('email_verified_at'),
+        password: varchar('password', { length: 255 }),
+        phone: varchar('phone', { length: 20 }).unique(),
+        avatar: varchar('avatar', { length: 500 }),
+        role: userRoleEnum('role').notNull().default('user'),
+        sessionToken: varchar('session_token', { length: 24 })
+            .notNull()
+            .unique()
+            .$defaultFn(() => nanoid()),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+        updatedAt: timestamp('updated_at')
+            .notNull()
+            .defaultNow()
+            .$onUpdate(() => new Date()),
+    },
+    (table) => [
+        uniqueIndex('users_email_unique_non_null_idx')
+            .on(sql`LOWER(${table.email})`)
+            .where(sql`${table.email} IS NOT NULL`),
+    ],
+)
 ```
 
 ### Migrations
@@ -1492,7 +1431,7 @@ WS connection state is managed by three modules in `src/app/websocket/`:
 | `ws-connection-registry.ts` | In-process map of `userId → sockets`; used to fan messages out locally                      |
 | `ws-coordinator.ts`         | Cross-instance pub/sub over Redis so multiple Node processes can deliver to the same user   |
 
-Presence and broadcast helpers live in `src/app/services/` (`ws-presence-service.ts`, `broadcast-service.ts`, `ws-service.ts`).
+Presence and broadcast helpers live in `src/app/services/communication/` (`ws-presence-service.ts`, `broadcast-service.ts`, `user-online-service.ts`).
 
 ---
 
@@ -1538,14 +1477,16 @@ When Sentry is enabled, `logger.error` and `logger.fatal` are the only log level
 ## Available Scripts
 
 ```bash
-pnpm dev                            # tsx watch src/index.ts
+pnpm dev                            # tsx watch src/index.ts (with the shared-source condition)
 pnpm build                          # tsc --build
 pnpm start                          # node dist/index.js
 pnpm clean                          # rm -rf dist .tsbuildinfo
 pnpm typecheck                      # tsc --noEmit
 pnpm test                           # vitest run
 pnpm test:watch                     # vitest (watch mode)
+pnpm test:coverage                  # vitest with coverage
 pnpm test:redis                     # vitest against a real Redis (vitest.redis.config.ts)
+pnpm test:pg                        # vitest against a real PostgreSQL (vitest.pg.config.ts)
 pnpm db:create                      # bootstrap empty database (src/db/create-database.ts)
 pnpm db:create:prod                 # node dist/db/create-database.js
 pnpm db:generate                    # drizzle-kit generate
@@ -1554,4 +1495,7 @@ pnpm db:studio                      # drizzle-kit studio
 pnpm db:seed                        # tsx src/db/seed.ts
 pnpm db:seed:prod                   # node dist/db/seed.js
 pnpm mail:test                      # send a test email; requires recipient argument
+pnpm push:vapid                     # generate a VAPID key pair (--write saves it to .env)
+pnpm llm:purge-prompts              # empty stored LLM prompt text (retention job)
+pnpm bench:response                 # benchmark the response contract check
 ```
