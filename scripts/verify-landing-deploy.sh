@@ -8,6 +8,8 @@
 #   --allow-local  accept http and local addresses (the local compose stack); without it every
 #                  published address must be a public https one, like LANDING_STRICT=true
 #   --insecure     do not verify TLS certificates (a local proxy with its own CA)
+#   --check-address URL
+#                  print why URL cannot be a production address ("ok" when it can) and exit
 #   --resolve HOST:PORT:ADDR
 #                  send requests for HOST:PORT to ADDR (curl --resolve, repeatable): check a new
 #                  server before DNS points at it
@@ -20,21 +22,85 @@
 set -uo pipefail
 
 ALLOW_LOCAL=false
+CHECK_ADDRESS=""
 CURL_OPTS=(--silent --show-error --max-time 20)
 while [ $# -gt 0 ]; do
     case "$1" in
         --allow-local) ALLOW_LOCAL=true; shift ;;
         --insecure) CURL_OPTS+=(--insecure); shift ;;
+        --check-address)
+            # One address through the rule only, for the shared test table.
+            [ $# -ge 2 ] || { echo "--check-address needs a URL" >&2; exit 2; }
+            CHECK_ADDRESS="$2"
+            shift 2
+            ;;
         --resolve)
             [ $# -ge 2 ] || { echo "--resolve needs HOST:PORT:ADDR" >&2; exit 2; }
             CURL_OPTS+=(--resolve "$2")
             shift 2
             ;;
-        -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
+        -h | --help) sed -n '2,24p' "$0"; exit 0 ;;
         --*) echo "Unknown option $1" >&2; exit 2 ;;
         *) break ;;
     esac
 done
+# Why an address cannot be published in production, or nothing. The same rule, step by step and
+# message by message, as productionProblem in packages/landing/build/urls.ts: a shell cannot
+# normalize hosts the way a URL parser does (2130706433 and local%68ost are both localhost to a
+# browser), so both refuse anything but a host written as a plain ASCII domain name.
+# packages/landing/build/__tests__/address-rule.spec.ts runs one case table through both.
+production_problem() {
+    local url="$1" rest authority host port last
+    case "$url" in
+        *[[:space:][:cntrl:]\\]*) echo "is not a plain URL"; return 0 ;;
+    esac
+    case "$(printf '%s' "${url:0:8}" | tr '[:upper:]' '[:lower:]')" in
+        https://) ;;
+        *) echo "must use https"; return 0 ;;
+    esac
+    rest="${url:8}"
+    authority="${rest%%[/?#]*}"
+    authority="${authority##*@}"
+    port=""
+    if [ "${authority:0:1}" = "[" ]; then
+        host="${authority%%]*}]"
+        case "$authority" in *"]:"*) port="${authority#*]:}" ;; esac
+    else
+        host="${authority%%:*}"
+        case "$authority" in *:*) port="${authority#*:}" ;; esac
+    fi
+    host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+    # A trailing dot is the same DNS name: example.com. is example.com.
+    while [ "${host%.}" != "$host" ]; do host="${host%.}"; done
+    if [ -z "$host" ]; then echo "has no host"; return 0; fi
+    if [ -n "$port" ] && ! { [[ "$port" =~ ^[0-9]{1,5}$ ]] && [ "$((10#$port))" -le 65535 ]; }; then
+        echo "has an invalid port"; return 0
+    fi
+    if [ "${host:0:1}" = "[" ]; then echo "is an IP address, not a domain name"; return 0; fi
+    if ! [[ "$host" =~ ^[a-z0-9.-]+$ ]]; then echo "is not a plain ASCII domain name"; return 0; fi
+    # A URL parser reads a host whose last label is a number as IPv4 (127.1, 2130706433, 0x7f000001).
+    last="${host##*.}"
+    if [[ "$last" =~ ^[0-9]+$ ]] || [[ "$last" =~ ^0x[0-9a-f]*$ ]]; then
+        echo "is an IP address, not a domain name"; return 0
+    fi
+    case "$host" in
+        localhost | *.localhost) echo "points to the local machine" ;;
+        example | *.example | example.com | *.example.com | example.net | *.example.net | \
+            example.org | *.example.org | test | *.test | invalid | *.invalid)
+            echo "is a placeholder domain (RFC 2606)" ;;
+    esac
+}
+
+address_problem() {
+    [ "$ALLOW_LOCAL" = "true" ] && return 0
+    production_problem "$1"
+}
+
+if [ -n "$CHECK_ADDRESS" ]; then
+    problem="$(production_problem "$CHECK_ADDRESS")"
+    echo "${problem:-ok}"
+    exit 0
+fi
 if [ $# -ne 2 ]; then
     echo "Usage: $0 [--allow-local] [--insecure] [--resolve HOST:PORT:ADDR] <landing origin> <app origin>" >&2
     exit 2
@@ -64,27 +130,6 @@ fetch() {
 }
 
 header() { grep -i "^$1:" "$WORK/$2.headers" | tail -n 1 | cut -d: -f2- | sed -e 's/^ *//' -e 's/\r$//'; }
-
-# Why an address cannot be published in production, or nothing (same rules as build/urls.ts).
-address_problem() {
-    [ "$ALLOW_LOCAL" = "true" ] && return 0
-    case "$1" in
-        https://*) ;;
-        *) echo "must use https"; return 0 ;;
-    esac
-    local host="${1#https://}"
-    host="${host%%/*}"
-    host="${host%%:*}"
-    host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
-    # A trailing dot is the same DNS name: example.com. is example.com.
-    while [ "${host%.}" != "$host" ]; do host="${host%.}"; done
-    case "$host" in
-        localhost | 127.0.0.1 | 0.0.0.0 | *.localhost) echo "points to the local machine" ;;
-        example | *.example | example.com | *.example.com | example.net | *.example.net | \
-            example.org | *.example.org | test | *.test | invalid | *.invalid)
-            echo "is a placeholder domain (RFC 2606)" ;;
-    esac
-}
 
 check_address() {
     local problem

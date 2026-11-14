@@ -28,10 +28,13 @@ Both landing variables are origins: no path, no trailing `/`. [`build/urls.ts`](
 **Strict mode** is on only with an explicit `LANDING_STRICT=true`; it does not follow the Vite mode. In strict mode the build refuses any address that:
 
 - does not use `https`;
-- points to `localhost`, `127.0.0.1` or `*.localhost`;
+- has a host not written as a plain ASCII domain name: an IP address in any form (`[::1]`, `127.0.0.1`, `2130706433`, `127.1`), `%`, non-ASCII characters, `\` or whitespace;
+- points to `localhost` or `*.localhost`;
 - is a domain reserved by RFC 2606: `example.com`, `.net`, `.org`, `.example`, `.test`, `.invalid`.
 
 A trailing DNS dot (`example.com.`) does not get past the check: it is dropped before comparing.
+
+The rule is this strict because a browser normalizes hosts: to it, `2130706433` and `local%68ost` are `localhost`. The shell deploy check cannot normalize that way. So both validators accept only a host already written in plain form, and both run one shared case table ([`address-rule.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/build/__tests__/address-rule.spec.ts)).
 
 `LANDING_STRICT=false` or no variable gives an ordinary local build. Any other value is an error.
 

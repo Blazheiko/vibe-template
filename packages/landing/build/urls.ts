@@ -55,7 +55,6 @@ export function parseStrict(value: string | undefined): boolean {
     throw new Error(`LANDING_STRICT: "${raw}" must be true or false`)
 }
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0'])
 // Reserved by RFC 2606: the documentation placeholders of .env.example and the docs, and the
 // testing and invalid names. None of them is ever a public site.
 const PLACEHOLDER_DOMAINS = [
@@ -67,21 +66,57 @@ const PLACEHOLDER_DOMAINS = [
     'invalid',
 ]
 
-/** Why `url` cannot be a production address, or null. Shared with build/verify-dist.ts. */
-export function productionProblem(url: string): string | null {
-    let parsed: URL
-    try {
-        parsed = new URL(url)
-    } catch {
-        return 'is not an absolute URL'
+/** The host as written in `url`: after `scheme://` and any userinfo, before the port and path. */
+function writtenHost(url: string): { host: string; port: string | undefined } {
+    const authority = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(url)?.[1] ?? ''
+    const hostPort = authority.slice(authority.lastIndexOf('@') + 1)
+    if (hostPort.startsWith('[')) {
+        const end = hostPort.indexOf(']')
+        return end < 0
+            ? { host: hostPort, port: undefined }
+            : { host: hostPort.slice(0, end + 1), port: hostPort.slice(end + 2) || undefined }
     }
-    if (parsed.protocol !== 'https:') return 'must use https'
-    // A trailing dot is the same DNS name (`example.com.` is `example.com`): drop it before
-    // comparing, or it would slip past both lists.
-    const host = parsed.hostname.toLowerCase().replace(/\.+$/, '')
-    if (LOCAL_HOSTS.has(host) || host.endsWith('.localhost')) return 'points to the local machine'
+    const colon = hostPort.indexOf(':')
+    return colon < 0
+        ? { host: hostPort, port: undefined }
+        : { host: hostPort.slice(0, colon), port: hostPort.slice(colon + 1) }
+}
+
+/**
+ * Why `url` cannot be a production address, or null. Shared with build/verify-dist.ts, and the
+ * same rule, step by step, as `address_problem` in scripts/verify-landing-deploy.sh: the shell
+ * cannot normalize hosts the way a URL parser does (`2130706433` and `local%68ost` are both
+ * localhost to a browser), so both refuse anything but a host written as a plain ASCII domain
+ * name. build/__tests__/address-rule.spec.ts runs one case table through both.
+ */
+export function productionProblem(url: string): string | null {
+    if (/[\\\s\x00-\x1f\x7f]/.test(url)) return 'is not a plain URL'
+    if (!/^https:\/\//i.test(url)) return 'must use https'
+    const { host: written, port } = writtenHost(url)
+    // A trailing dot is the same DNS name (`example.com.` is `example.com`).
+    const host = written.toLowerCase().replace(/\.+$/, '')
+    if (host === '') return 'has no host'
+    if (
+        port !== undefined &&
+        port !== '' &&
+        !(/^[0-9]{1,5}$/.test(port) && Number(port) <= 65535)
+    ) {
+        return 'has an invalid port'
+    }
+    if (host.startsWith('[')) return 'is an IP address, not a domain name'
+    if (!/^[a-z0-9.-]+$/.test(host)) return 'is not a plain ASCII domain name'
+    // A URL parser reads a host whose last label is a number as IPv4 (127.1, 2130706433, 0x7f000001).
+    const last = host.slice(host.lastIndexOf('.') + 1)
+    if (/^[0-9]+$/.test(last) || /^0x[0-9a-f]*$/.test(last))
+        return 'is an IP address, not a domain name'
+    if (host === 'localhost' || host.endsWith('.localhost')) return 'points to the local machine'
     if (PLACEHOLDER_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
         return 'is a placeholder domain (RFC 2606)'
+    }
+    try {
+        new URL(url)
+    } catch {
+        return 'is not an absolute URL'
     }
     return null
 }

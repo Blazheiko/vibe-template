@@ -42,7 +42,7 @@ describe('productionProblem', () => {
     it.each([
         ['http://app.vibe.dev', 'must use https'],
         ['https://localhost:3000', 'points to the local machine'],
-        ['https://127.0.0.1', 'points to the local machine'],
+        ['https://127.0.0.1', 'is an IP address, not a domain name'],
         ['https://app.localhost', 'points to the local machine'],
         ['https://app.example.com', 'is a placeholder domain (RFC 2606)'],
         ['https://vibe-template.example', 'is a placeholder domain (RFC 2606)'],
