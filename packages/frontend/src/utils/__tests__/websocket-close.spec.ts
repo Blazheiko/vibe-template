@@ -43,4 +43,25 @@ describe('resolveWebSocketCloseAction', () => {
         expect(resolveWebSocketCloseAction(4000, true, 0)).toEqual({ kind: 'stop' })
         expect(resolveWebSocketCloseAction(4099, false, 0)).toEqual({ kind: 'stop' })
     })
+
+    // feat-149: the backend closes a connection that keeps going over its message budget.
+    it('does not reconnect after 4029 (message budget exceeded)', () => {
+        expect(resolveWebSocketCloseAction(4029, true, 0)).toEqual({ kind: 'stop' })
+    })
+
+    // feat-151: a socket the client retired itself is not a lost connection, whatever the code.
+    it.each([1000, 1005, 1006, 4001, 4201])(
+        'ignores the close of a socket the client retired (code %i)',
+        (code) => {
+            expect(resolveWebSocketCloseAction(code, true, 0, true)).toEqual({ kind: 'ignore' })
+            expect(resolveWebSocketCloseAction(code, false, 3, true)).toEqual({ kind: 'ignore' })
+        },
+    )
+
+    it('still reconnects after a connection that was open is lost (1006)', () => {
+        expect(resolveWebSocketCloseAction(1006, true, 0)).toEqual({
+            kind: 'reconnect',
+            delayMs: WS_RETRY_DELAY_MS,
+        })
+    })
 })

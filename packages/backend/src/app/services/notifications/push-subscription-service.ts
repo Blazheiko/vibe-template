@@ -1,4 +1,5 @@
 import type { CreateSubscriptionInput, UpdateSubscriptionInput } from 'shared/schemas'
+import { PUSH_ENDPOINT_MAX_LENGTH } from 'shared/limits'
 import { Result } from 'better-result'
 import { pushSubscriptionRepository } from '#app/repositories/index.js'
 import type { SerializedPushSubscription } from '#app/transformers/push-subscription-transformer.js'
@@ -41,13 +42,19 @@ export const pushSubscriptionService = {
         userId: bigint,
         payload: CreateSubscriptionInput,
         presentedSessionToken: string | undefined,
+        /**
+         * The address the request came from, as the server sees it (feat-156); never a value
+         * from the request body. Without one (a call that is not an HTTP request) none is stored.
+         */
+        clientIp: string | null = null,
     ): Promise<
         AppResult<{
             subscription: ReturnType<typeof pushSubscriptionTransformer.serialize>
         }>
     > {
+        const ipAddress = storableIp(clientIp)
         return await withCurrentSession(userId, presentedSessionToken, (tx) =>
-            upsertSubscription(userId, payload, tx),
+            upsertSubscription(userId, payload, ipAddress, tx),
         )
     },
 
@@ -180,9 +187,16 @@ export const pushSubscriptionService = {
     },
 }
 
+// push_subscriptions.ip_address is varchar(45): an IPv6 address with an IPv4 tail. An address
+// that does not fit (a zone id, a placeholder) is not stored rather than failing the request.
+const IP_COLUMN_LENGTH = 45
+const storableIp = (ip: string | null | undefined): string | null =>
+    typeof ip === 'string' && ip !== '' && ip.length <= IP_COLUMN_LENGTH ? ip : null
+
 async function upsertSubscription(
     userId: bigint,
     payload: CreateSubscriptionInput,
+    ipAddress: string | null,
     tx: DbTransaction,
 ): Promise<AppResult<{ subscription: SerializedPushSubscription }>> {
     // feat-104: the server POSTs to this URL; only the allowed push services are stored.
@@ -190,6 +204,12 @@ async function upsertSubscription(
     const endpoint = canonicalPushEndpoint(payload.endpoint)
     if (endpoint === null) {
         return Result.err(badRequest('Push endpoint is not allowed', 'push_endpoint_not_allowed'))
+    }
+    // feat-208: the schema checks the length of what the client sent, but the stored form is
+    // the canonical one, and `new URL()` percent-encodes a non-ASCII path: 400 Cyrillic letters
+    // become 2400 characters, and the INSERT into varchar(500) failed with a 500.
+    if (endpoint.length > PUSH_ENDPOINT_MAX_LENGTH) {
+        return Result.err(badRequest('Push endpoint is too long', 'push_endpoint_too_long'))
     }
 
     const existingSubscription = await pushSubscriptionRepository.findByEndpoint(endpoint, tx)
@@ -217,7 +237,7 @@ async function upsertSubscription(
                 p256dhKey: payload.p256dhKey,
                 authKey: payload.authKey,
                 userAgent: payload.userAgent,
-                ipAddress: payload.ipAddress,
+                ipAddress,
                 deviceType: payload.deviceType,
                 browserName: payload.browserName,
                 browserVersion: payload.browserVersion,
@@ -247,7 +267,7 @@ async function upsertSubscription(
             p256dhKey: payload.p256dhKey,
             authKey: payload.authKey,
             userAgent: payload.userAgent ?? null,
-            ipAddress: payload.ipAddress ?? null,
+            ipAddress,
             deviceType: payload.deviceType ?? null,
             browserName: payload.browserName ?? null,
             browserVersion: payload.browserVersion ?? null,

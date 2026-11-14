@@ -12,7 +12,7 @@ export interface IOAuthAccountRepository {
         provider: string,
         providerUserId: string,
     ): Promise<OAuthAccountRow | undefined>
-    findByUserId(userId: bigint): Promise<OAuthAccountRow[]>
+    findByUserId(userId: bigint, executor?: DbExecutor): Promise<OAuthAccountRow[]>
     /**
      * The link of this identity to this user, read inside `tx` (feat-097): a sign-in
      * re-checks it under the user's row lock, so a claim that removed it is seen.
@@ -26,6 +26,11 @@ export interface IOAuthAccountRepository {
     create(data: OAuthAccountInsert, executor?: DbExecutor): Promise<OAuthAccountRow>
     /** Removes every OAuth link of the user (a claim, feat-097). */
     deleteByUserId(userId: bigint, executor: DbExecutor): Promise<number>
+    /**
+     * Removes one link, only if it belongs to this user (feat-199). False when there is no
+     * such link of this user: the id of another account's link removes nothing.
+     */
+    deleteByIdForUser(id: bigint, userId: bigint, executor: DbExecutor): Promise<boolean>
 }
 
 export const oauthAccountRepository: IOAuthAccountRepository = {
@@ -43,8 +48,8 @@ export const oauthAccountRepository: IOAuthAccountRepository = {
             .then((rows) => rows.at(0))
     },
 
-    async findByUserId(userId) {
-        return db.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId))
+    async findByUserId(userId, executor = db) {
+        return executor.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId))
     },
 
     async findLinkForUser(provider, providerUserId, userId, tx) {
@@ -84,5 +89,13 @@ export const oauthAccountRepository: IOAuthAccountRepository = {
             .where(eq(oauthAccounts.userId, userId))
             .returning({ id: oauthAccounts.id })
         return rows.length
+    },
+
+    async deleteByIdForUser(id, userId, executor) {
+        const rows = await executor
+            .delete(oauthAccounts)
+            .where(and(eq(oauthAccounts.id, id), eq(oauthAccounts.userId, userId)))
+            .returning({ id: oauthAccounts.id })
+        return rows.length > 0
     },
 }

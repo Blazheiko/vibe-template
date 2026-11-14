@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { escapeHtml, renderBrandedEmail, type BrandedEmail } from './email-templates.js'
+import {
+    escapeHtml,
+    mailSafeDisplayName,
+    renderBrandedEmail,
+    type BrandedEmail,
+} from './email-templates.js'
 
 // feat-072 (H3): the three real mails are frozen byte for byte in
 // auth/auth-email-templates.snapshot.spec.ts; this pins the layout function on its own.
@@ -42,11 +47,28 @@ describe('renderBrandedEmail', () => {
     })
 
     it('escapes the name and the address in html, and leaves the text as it is', () => {
-        const mail = renderBrandedEmail({ ...base, name: '<b>"J"</b>' })
-        expect(mail.html).toContain('Hello, &lt;b&gt;&quot;J&quot;&lt;/b&gt;.')
-        expect(mail.html).not.toContain('<b>"J"</b>')
+        const mail = renderBrandedEmail({ ...base, name: '<b>"J" & Co' })
+        expect(mail.html).toContain('Hello, &lt;b&gt;&quot;J&quot; &amp; Co.')
+        expect(mail.html).not.toContain('<b>"J"')
         expect(mail.html).toContain('href="https://app.example.com/x?token=a&amp;b=&lt;c&gt;"')
         expect(mail.text).toContain('token=a&b=<c>')
+    })
+
+    // feat-203 (L-1): the renderer itself refuses a name that could pass for a link or carry
+    // a second line, whoever the caller is.
+    it.each([
+        'Your account is locked. Sign in at https://evil.example/x',
+        'evil.example',
+        'Jane\nYour account is locked',
+        'help@evil.example',
+    ])('greets nobody when the name is %j', (name) => {
+        const mail = renderBrandedEmail({ ...base, name })
+
+        expect(mail.text.startsWith('Hello.')).toBe(true)
+        expect(mail.text).not.toContain('evil.example')
+        expect(mail.text).not.toContain('locked')
+        expect(mail.html).not.toContain('evil.example')
+        expect(mail.html).not.toContain('locked')
     })
 
     it('a button action shows the button and the alternative link box', () => {
@@ -101,5 +123,42 @@ describe('renderBrandedEmail escapes every field', () => {
     it('keeps the plain-text body as text', () => {
         const mail = renderBrandedEmail({ ...base, textLines: [payload] })
         expect(mail.text.endsWith(payload)).toBe(true)
+    })
+})
+
+// feat-198: a name from outside quoted in a mail the product signs.
+describe('mailSafeDisplayName', () => {
+    it.each([
+        ['Jane Doe', 'Jane Doe'],
+        ['  Jane   Doe  ', 'Jane Doe'],
+        ['Олена Петренко', 'Олена Петренко'],
+        ["O'Brien-Smith Jr.", "O'Brien-Smith Jr."],
+        ['J. R. R. Tolkien', 'J. R. R. Tolkien'],
+    ])('keeps an ordinary name: %j', (value, expected) => {
+        expect(mailSafeDisplayName(value)).toBe(expected)
+    })
+
+    it.each([
+        'https://evil.example/x',
+        'Sign in at evil.example',
+        'evil.example',
+        'www.evil.example',
+        'help@evil.example',
+        'a/b',
+        'key: value',
+        'back\\slash',
+        'Jane\nLocked',
+        'Jane\r\nLocked',
+        'Jane\tDoe',
+        'Jane\u2028Doe',
+        'Jane\u0000',
+        '',
+        '   ',
+    ])('refuses %j', (value) => {
+        expect(mailSafeDisplayName(value)).toBeNull()
+    })
+
+    it('cuts a long name to 60 characters', () => {
+        expect(mailSafeDisplayName('a'.repeat(200))).toBe('a'.repeat(60))
     })
 })

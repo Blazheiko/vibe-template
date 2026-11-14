@@ -5,10 +5,18 @@ import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
+import { aiAbortKind } from '#app/services/ai/ai-request-signal.js'
 
 const { defaultTranslationPrompt, defaultGeneration } = supportConfig
 
 export const supportQueryTranslationService = {
+    /** Whether `translateToEnglish` will call the provider (it returns the text as is without one). */
+    isConfigured(): boolean {
+        return getTextAdapterForModel(
+            promptService.getModel('SUPPORT_QUERY_TRANSLATION'),
+        ).isConfigured()
+    },
+
     async translateToEnglish(
         text: string,
         options: {
@@ -60,8 +68,19 @@ export const supportQueryTranslationService = {
             const englishQuery = result.trim()
             return englishQuery.length > 0 ? englishQuery : text
         } catch (err) {
+            // The text of the message is what the user wrote to support: it is never logged,
+            // only its length (feat-150). The prompt text is stored on request only
+            // (AI_USAGE_STORE_PROMPTS).
+            if (aiAbortKind(err) === 'aborted') {
+                // The client went away (a closed tab): not a failure of the translation.
+                logger.info(
+                    { originalLength: text.length },
+                    'Support: query translation aborted by the client, using original',
+                )
+                return text
+            }
             logger.error(
-                { err, originalLength: text.length, originalQuery: text },
+                { err, originalLength: text.length },
                 'Support: query translation failed, using original',
             )
             return text

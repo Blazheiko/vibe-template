@@ -128,8 +128,7 @@ const closeModal = () => {
 }
 
 const checkServer = async () => {
-    if (!effectiveBaseUrl.value) return
-
+    // An empty base URL is the dev server's own origin: the check goes through its proxy.
     serverStatus.value = 'checking'
     try {
         const isOnline = await checkServerHealth(effectiveBaseUrl.value)

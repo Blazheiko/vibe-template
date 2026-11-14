@@ -21,7 +21,7 @@ describe('apiPath', () => {
         vi.doMock('../base-api', () => ({ default: { http } }))
         const { authApi } = await import('../api')
 
-        await authApi.login({ identifier: 'a@b.c', password: 'password1', token: '' })
+        await authApi.login({ identifier: 'a@b.c', password: 'password1' })
 
         expect(http).toHaveBeenCalledWith('POST', '/v1/auth/login', expect.anything(), {
             csrfRecovery: 'public',

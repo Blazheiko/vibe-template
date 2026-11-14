@@ -32,7 +32,8 @@ export function mapWsControllerError(
     context: Pick<WsContext, 'responseData' | 'logger' | 'signal'>,
     error: AppError,
 ): ReturnType<typeof appErrorToPayload> {
-    context.responseData.status = String(appErrorStatus(error))
+    // The HTTP status as text, the form `WsReplyStatus` (shared/ws-client) gives it.
+    context.responseData.status = String(appErrorStatus(error)) as `${number}`
     reportControllerError(context, error)
     return appErrorToPayload(error)
 }

@@ -24,9 +24,25 @@ import checkUpgradeRateLimit, {
 } from '#vendor/utils/rate-limit/upgrade-rate-limit.js'
 import { makeJson } from '#vendor/utils/helpers/json-handlers.js'
 import configApp from '#config/app.js'
+import configWebsocket from '#config/websocket.js'
+import {
+    WS_CLOSE_MESSAGE_FLOOD,
+    admitWsMessage,
+    admitWsPing,
+    createWsMessageBudget,
+    releaseWsHandler,
+    secondsToNextWindow,
+    type WsMessageBudgetState,
+} from '#vendor/utils/rate-limit/ws-message-budget.js'
+import { createWsRateLimitErrorResponse } from '#vendor/utils/rate-limit/ws-rate-limit.js'
+import {
+    acquireWsConnection,
+    releaseWsConnection,
+} from '#vendor/utils/rate-limit/ws-connection-limit.js'
+import { clientKey } from '#vendor/utils/rate-limit/rate-limit-store.js'
+import { findWsRoute } from '#vendor/utils/routing/ws-route-lookup.js'
 import type { Validator } from '#vendor/contracts/validator.js'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
-import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
 import {
     classifiedErrorBody,
@@ -35,6 +51,7 @@ import {
     type ClassifiedError,
 } from '#vendor/utils/network/errors/classify-error.js'
 import { createWsErrorEnvelope } from '#vendor/utils/network/ws-error-envelope.js'
+import { endSessionExpired } from '#vendor/utils/network/ws-session-expired.js'
 import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 
 // ---------------------------------------------------------------------------
@@ -51,8 +68,6 @@ export interface WsAppHooks {
     /** Rejects with RedisUnavailableError while Redis is down. */
     onConnected: (ws: MyWebSocket, userData: UserConnection) => Promise<void>
     onDisconnected: (ws: MyWebSocket, userData: UserConnection, code: number) => Promise<void>
-    onRefreshToken: (token: string) => Promise<void>
-    onRevokeToken: (token: string) => Promise<void>
 }
 
 let appHooks: WsAppHooks | null = null
@@ -130,21 +145,12 @@ const sendJson = (ws: MyWebSocket, data: WsResponseData, userData?: UserConnecti
     }
 }
 
-const unAuthorizedMessage = (): WsResponseData => ({
-    event: 'service:error',
-    status: 'error',
-    data: null,
-    timestamp: Date.now(),
-    error: createWsErrorEnvelope('unauthorized', `Session expired. Please login again.`, {
-        reason: 'session_expired',
-    }),
-})
-
 // Redis is down: the connection stays open, only this request fails. Same shape
 // as createWsRateLimitErrorResponse, with the request's event so the client
 // rejects the matching promise at once.
-const serviceUnavailableMessage = (event: string): WsResponseData => ({
+const serviceUnavailableMessage = (event: string, id: string | undefined): WsResponseData => ({
     event,
+    ...(id !== undefined ? { id } : {}),
     status: 'error',
     data: null,
     timestamp: Date.now(),
@@ -154,18 +160,24 @@ const serviceUnavailableMessage = (event: string): WsResponseData => ({
     ),
 })
 
+const routeNotFoundMessage = (message: WsMessage): WsResponseData => ({
+    event: message.event,
+    ...(message.id !== undefined ? { id: message.id } : {}),
+    status: 'error',
+    data: null,
+    timestamp: message.timestamp,
+    error: createWsErrorEnvelope('not_found', 'Route not found'),
+})
+
 const closeExpiredSession = (ws: MyWebSocket, userData: UserConnection): void => {
     // feat-128: the session lookup before this is awaited; a socket that closed meanwhile is
     // gone already, and touching it would throw.
     if (userData.closed === true) return
-    ws.cork(() => {
-        try {
-            ws.send(makeJson(unAuthorizedMessage()))
-            ws.end(4001)
-        } catch (e) {
-            logger.error({ err: e }, 'Error ws send unAuthorizedMessage')
-        }
-    })
+    try {
+        endSessionExpired(ws)
+    } catch (e) {
+        logger.error({ err: e }, 'Error ws send unAuthorizedMessage')
+    }
 }
 
 const checkToken = (token: string): boolean =>
@@ -187,11 +199,11 @@ const normalizeAppTypeProtocol = (rawAppType: string): 'web' | 'pwa' => {
 // Graceful shutdown
 // ---------------------------------------------------------------------------
 
-// feat-112: every socket gets 4201 first, whatever Redis does; the token revokes then run
-// together and a failing one is only logged. (onClose revokes too; a DEL is idempotent.)
+// feat-112: every socket gets 4201, whatever Redis does. feat-196: there is no token left to
+// revoke, the upgrade consumed it.
 // feat-138 (sixth review L12): cleared by closeAllWs. An upgrade still waiting on its token check
-// when the shutdown began would otherwise open a socket after every socket was closed and every
-// token revoked; it is answered 503 instead.
+// when the shutdown began would otherwise open a socket after every socket was closed; it is
+// answered 503 instead.
 let acceptingUpgrades = true
 
 /** Test hook: a module-level flag outlives one test's shutdown. */
@@ -199,41 +211,85 @@ const __acceptUpgradesForTests = (): void => {
     acceptingUpgrades = true
 }
 
+// Async for its callers: the shutdown awaits it between its other steps.
+// eslint-disable-next-line @typescript-eslint/require-await
 const closeAllWs = async (): Promise<void> => {
     acceptingUpgrades = false
-    const hooks = getAppHooks()
-    const tokens: string[] = []
     for (const ws of [...wsStorage]) {
         try {
-            const token = ws.getUserData().token
-            if (token !== '') tokens.push(token)
             ws.end(4201)
         } catch (e) {
             logger.error({ err: e }, 'closeAllWs error')
         }
     }
     wsStorage.clear()
-
-    const revoked = await Promise.allSettled(tokens.map((token) => hooks.onRevokeToken(token)))
-    const failed = revoked.filter((outcome) => outcome.status === 'rejected').length
-    if (failed > 0) {
-        logger.warn({ failed, total: tokens.length }, 'closeAllWs: some WS tokens were not revoked')
-    }
 }
 
 // ---------------------------------------------------------------------------
 // uWS callbacks
 // ---------------------------------------------------------------------------
 
-/** Resolves false when Redis is unavailable; other errors are logged as before. */
-const refreshToken = async (token: string): Promise<boolean> => {
+const messageBudgetOf = (userData: UserConnection, now: number): WsMessageBudgetState => {
+    userData.messageBudget ??= createWsMessageBudget(now)
+    return userData.messageBudget
+}
+
+// feat-149: a connection that keeps flooding. 4029 is in the range the client does not
+// reconnect on. A socket that closed meanwhile is gone already.
+const closeFloodingConnection = (ws: MyWebSocket, userData: UserConnection): void => {
+    if (userData.closed === true) return
+    logger.warn(
+        { userId: userData.userId, messages: userData.messageBudget?.messages },
+        'WebSocket closed: message budget exceeded repeatedly',
+    )
     try {
-        await getAppHooks().onRefreshToken(token)
-    } catch (error: unknown) {
-        if (error instanceof RedisUnavailableError) return false
-        logger.error({ err: error }, 'Error refresh token')
+        ws.end(WS_CLOSE_MESSAGE_FLOOD, 'Too many messages')
+    } catch (e) {
+        logger.error({ err: e }, 'Error closing a flooding WebSocket')
     }
-    return true
+}
+
+/** 1003: the endpoint received a type of data it cannot accept (RFC 6455). */
+const WS_CLOSE_UNSUPPORTED_DATA = 1003
+
+const closeBinaryConnection = (ws: MyWebSocket, userData: UserConnection): void => {
+    if (userData.closed === true) return
+    logger.warn({ userId: userData.userId }, 'WebSocket closed: binary frames are not supported')
+    try {
+        ws.end(WS_CLOSE_UNSUPPORTED_DATA, 'Binary frames are not supported')
+    } catch (e) {
+        logger.error({ err: e }, 'Error closing a WebSocket after a binary frame')
+    }
+}
+
+// A message over the budget (or over the running handlers) is answered with the request's event
+// and id when they can be read, so the client rejects the matching promise at once (ADR 0006:
+// a reply is matched by its id, feat-185); nothing else runs for it: no Redis, no session.
+const refuseOverBudget = (
+    ws: MyWebSocket,
+    jsonMessage: string,
+    userData: UserConnection,
+    budget: WsMessageBudgetState,
+    now: number,
+): void => {
+    let identity: Pick<RequestIdentity, 'event' | 'id'> = { event: '', id: undefined }
+    try {
+        identity = requestIdentity(JSON.parse(jsonMessage))
+    } catch {
+        // Not JSON: answered without an event, like a malformed message.
+    }
+    sendJson(
+        ws,
+        {
+            ...createWsRateLimitErrorResponse(
+                'Too many messages',
+                secondsToNextWindow(budget, now),
+                identity.event,
+            ),
+            ...(identity.id !== undefined ? { id: identity.id } : {}),
+        },
+        userData,
+    )
 }
 
 const onMessage = async (
@@ -242,42 +298,76 @@ const onMessage = async (
     isBinary: boolean,
     wsRoutesByUrl: Readonly<WsRoutes>,
 ): Promise<void> => {
+    const userData = ws.getUserData()
+    // feat-197 (L-11): the protocol is text only. A binary frame used to be dropped before the
+    // message budget saw it, with an error line each, so a client could send them (up to
+    // maxPayloadLength) at any rate. The first one closes the connection.
     if (isBinary) {
-        logger.error('onMessage isBinary is not supported')
+        closeBinaryConnection(ws, userData)
         return
     }
     const jsonMessage = ab2str(wsMessage)
-    const userData = ws.getUserData()
 
-    const token = userData.token
+    const now = Date.now()
+    const budget = messageBudgetOf(userData, now)
 
-    // Heartbeat confirms the transport, not Redis: pong first, with no Redis
-    // command before it; the token refresh for ping runs after and is not awaited.
+    // Heartbeat confirms the transport and costs no Redis command (feat-196: the WS token is
+    // consumed by the upgrade, there is nothing to refresh).
     if (jsonMessage === 'ping') {
         try {
             ws.send('pong')
         } catch (e) {
             logger.error({ err: e }, 'Error ws send pong')
         }
-        if (token !== '') void refreshToken(token)
+        // Heartbeats have a budget of their own: a flood of them closes the connection.
+        if (admitWsPing(budget, configWebsocket, now) === 'close') {
+            closeFloodingConnection(ws, userData)
+        }
         return
     }
 
-    // false: Redis is unavailable (already reported by redis-health, no log here).
-    const refreshed = token === '' ? true : await refreshToken(token)
+    // First, from memory: a valid message below costs a session read, a Redis command and a
+    // PostgreSQL query (feat-149).
+    const admission = admitWsMessage(budget, configWebsocket, now)
+    if (admission === 'close') {
+        closeFloodingConnection(ws, userData)
+        return
+    }
+    if (admission === 'refuse') {
+        refuseOverBudget(ws, jsonMessage, userData, budget, now)
+        return
+    }
 
+    try {
+        await handleAdmittedMessage(ws, jsonMessage, userData, wsRoutesByUrl)
+    } finally {
+        releaseWsHandler(budget)
+    }
+}
+
+const handleAdmittedMessage = async (
+    ws: MyWebSocket,
+    jsonMessage: string,
+    userData: UserConnection,
+    wsRoutesByUrl: Readonly<WsRoutes>,
+): Promise<void> => {
     let parsedMessage: unknown
     try {
         parsedMessage = JSON.parse(jsonMessage)
     } catch {
         // A client error like a malformed HTTP body: warn, no message text, no Sentry.
-        sendWsError(ws, '', 0, classifyAndLog(new MalformedBodyError('json')), userData)
+        sendWsError(
+            ws,
+            { event: '', timestamp: 0, id: undefined },
+            classifyAndLog(new MalformedBodyError('json')),
+            userData,
+        )
         return
     }
 
     // Known before validation, so even a validation failure answers the request's
-    // event and the client can match it.
-    const { event, timestamp } = requestIdentity(parsedMessage)
+    // event and id, and the client can match it.
+    const { event, timestamp, id } = requestIdentity(parsedMessage)
 
     try {
         const validatedMessage = getWsMessageValidator().validate(parsedMessage)
@@ -287,13 +377,17 @@ const onMessage = async (
                 undefined,
                 validatedMessage.issues,
             )
-            sendWsError(ws, event, timestamp, classifyAndLog(error), userData)
+            sendWsError(ws, { event, timestamp, id }, classifyAndLog(error), userData)
             return
         }
         const message = validatedMessage.value
 
-        if (!refreshed) {
-            sendJson(ws, serviceUnavailableMessage(message.event), userData)
+        // feat-197 (M-4): an event no route answers is refused here, from memory. It used to
+        // cost a session read (a Redis command and a PostgreSQL query on the pool the HTTP
+        // session checks share) before the dispatcher said not_found, and no route limit
+        // applies to it.
+        if (findWsRoute(wsRoutesByUrl, message.event) === undefined) {
+            sendJson(ws, routeNotFoundMessage(message), userData)
             return
         }
 
@@ -304,11 +398,11 @@ const onMessage = async (
                 : ({ kind: 'missing' } as const)
 
         if (sessionResult.kind === 'unavailable') {
-            sendJson(ws, serviceUnavailableMessage(message.event), userData)
+            sendJson(ws, serviceUnavailableMessage(message.event, message.id), userData)
         } else if (sessionResult.kind === 'missing') {
             closeExpiredSession(ws, userData)
         } else {
-            // The dispatcher always answers, an unknown route included (not_found).
+            // The dispatcher always answers.
             const result = await wsApiHandler(
                 message,
                 ws,
@@ -319,18 +413,29 @@ const onMessage = async (
             sendJson(ws, result, userData)
         }
     } catch (err: unknown) {
-        sendWsError(ws, event, timestamp, classifyAndLog(err), userData)
+        sendWsError(ws, { event, timestamp, id }, classifyAndLog(err), userData)
     }
 }
 
-/** `event` / `timestamp` of a parsed message when they have the right type, else empty. */
-const requestIdentity = (parsed: unknown): { event: string; timestamp: number } => {
+interface RequestIdentity {
+    event: string
+    timestamp: number
+    id: string | undefined
+}
+
+/**
+ * `event` / `timestamp` / `id` of a parsed message when they have the right type, else empty.
+ * The id is echoed only when it is one the envelope allows (a non-empty string ≤ 64).
+ */
+const requestIdentity = (parsed: unknown): RequestIdentity => {
     const record = typeof parsed === 'object' && parsed !== null ? parsed : {}
     const event = (record as { event?: unknown }).event
     const timestamp = (record as { timestamp?: unknown }).timestamp
+    const id = (record as { id?: unknown }).id
     return {
         event: typeof event === 'string' ? event : '',
         timestamp: typeof timestamp === 'number' ? timestamp : 0,
+        id: typeof id === 'string' && id.length > 0 && id.length <= 64 ? id : undefined,
     }
 }
 
@@ -342,8 +447,7 @@ const classifyAndLog = (err: unknown): ClassifiedError => {
 
 const sendWsError = (
     ws: MyWebSocket,
-    event: string,
-    timestamp: number,
+    { event, timestamp, id }: RequestIdentity,
     classified: ClassifiedError,
     userData?: UserConnection,
 ): void => {
@@ -358,6 +462,7 @@ const sendWsError = (
                 details !== undefined ? { details } : undefined,
             ),
             event,
+            ...(id !== undefined ? { id } : {}),
             timestamp,
             data: null,
         },
@@ -375,15 +480,11 @@ const onOpen = (ws: MyWebSocket): void => {
                 { userId: userData.userId, sessionId: userData.sessionId },
                 'Closing WS connection: missing auth data',
             )
-            const errorMessage = unAuthorizedMessage()
-            ws.cork(() => {
-                try {
-                    ws.send(makeJson(errorMessage))
-                    ws.end(4001)
-                } catch (e) {
-                    logger.error({ err: e }, 'Error sending unauthorized message:')
-                }
-            })
+            try {
+                endSessionExpired(ws)
+            } catch (e) {
+                logger.error({ err: e }, 'Error sending unauthorized message:')
+            }
             return
         }
 
@@ -452,6 +553,13 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
     }
     wsStorage.delete(ws)
 
+    // feat-197: the place this connection took at upgrade is free again.
+    const slot = userData.connectionSlot
+    if (slot !== undefined) {
+        userData.connectionSlot = undefined
+        releaseWsConnection(slot)
+    }
+
     const { userId, sessionId } = userData
     let disconnected: Promise<void> | undefined
     if (userId !== undefined && sessionId !== undefined) {
@@ -459,15 +567,6 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
             disconnected = getAppHooks().onDisconnected(ws, userData, code)
         } catch (e) {
             logger.error({ err: e }, 'Error in onDisconnected hook')
-        }
-    }
-
-    const token = userData.token
-    if (token !== '') {
-        try {
-            await getAppHooks().onRevokeToken(token)
-        } catch (e) {
-            logger.error({ err: e }, 'Error in onRevokeToken hook')
         }
     }
 
@@ -479,6 +578,9 @@ const onClose = async (ws: MyWebSocket, code: number, message: ArrayBuffer): Pro
         }
     }
 }
+
+// A place frees when one of the open connections closes; nothing says when.
+const WS_CONNECTION_LIMIT_RETRY_AFTER_SECONDS = 5
 
 const rejectUpgrade = (
     res: HttpResponse,
@@ -606,11 +708,27 @@ const upgradeConnection = async (
     }
 
     const dataAccess = tokenResult
+
+    // feat-197 (M-4): a place among the connections of this user and of this address. Taken
+    // here, with nothing awaited between the check and res.upgrade, and given back in onClose.
+    const admission = acquireWsConnection(dataAccess.userId, clientKey(ip), configWebsocket)
+    if (admission.kind === 'limited') {
+        logger.warn(
+            { userId: dataAccess.userId, ip, by: admission.by },
+            'WebSocket upgrade refused: too many open connections',
+        )
+        res.cork(() => {
+            res.writeStatus('429 Too Many Requests')
+                .writeHeader('Retry-After', String(WS_CONNECTION_LIMIT_RETRY_AFTER_SECONDS))
+                .end('Too many open WebSocket connections')
+        })
+        return
+    }
+
     res.cork(() => {
         const userData: UserData = {
             ip,
             ip2: ab2str(res.getProxiedRemoteAddressAsText()),
-            token,
             user: null,
             uuid: generateUUID(),
             sessionId: dataAccess.sessionId,
@@ -619,8 +737,15 @@ const upgradeConnection = async (
             timeStart: Date.now(),
             userAgent,
             appType,
+            connectionSlot: admission.slot,
         }
-        res.upgrade(userData, secWebsocketKey, token, secWebsocketExtensions, context)
+        try {
+            res.upgrade(userData, secWebsocketKey, token, secWebsocketExtensions, context)
+        } catch (err) {
+            // No connection, so no close handler will give the place back.
+            releaseWsConnection(admission.slot)
+            throw err
+        }
     })
 }
 

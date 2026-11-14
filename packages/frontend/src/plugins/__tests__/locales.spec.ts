@@ -57,13 +57,12 @@ describe('the locale files', () => {
         const same = Object.entries(english).filter(
             ([path, text]) => translations[code][path] === text,
         )
-        // Brand name, the example phone number and the code mask are the same in every language
+        // The example phone number, email and the code mask are the same in every language
         expect(same.map(([path]) => path).sort()).toEqual(
             [
                 'auth.phonePlaceholder',
                 'auth.verificationCodePlaceholder',
                 'auth.emailPlaceholder',
-                'login.heroTitle',
             ].sort(),
         )
         expect(Object.values(translations[code]).every((text) => text.trim() !== '')).toBe(true)

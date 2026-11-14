@@ -4,6 +4,7 @@ import type { DbExecutor } from '../transaction.js'
 import { users } from '#database/schema.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
+import { MAX_PAGE_LIMIT } from 'shared/schemas'
 
 export type UserRow = InferSelectModel<typeof users>
 export type UserInsert = InferInsertModel<typeof users>
@@ -18,6 +19,9 @@ export interface AdminUserListFilters {
     userId?: bigint
     dateFrom?: Date
     dateTo?: Date
+    /** Only users with an id below this one: the last id of the previous page. */
+    cursor?: bigint
+    /** Rows to read; the service asks for one more than a page. */
     limit?: number
 }
 
@@ -93,6 +97,11 @@ export interface IUserRepository {
     findRolesByIds(ids: bigint[]): Promise<Map<string, UserRow['role']>>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
     findSessionToken(id: bigint): Promise<string | undefined>
+    /**
+     * The current sessionToken of these users by id; a user that no longer exists is absent.
+     * Bounded like findSessionToken.
+     */
+    findSessionTokensByIds(ids: bigint[]): Promise<Map<string, string>>
     /**
      * Sets a new password and rotates the sessionToken only if the stored password is
      * still `currentPassword` (null/'' for an account that has none yet) and the
@@ -171,13 +180,13 @@ export const userRepository: IUserRepository = {
             conditions.push(lt(users.createdAt, nextDay))
         }
 
-        let whereClause: SQL | undefined
-        if (conditions.length === 1) {
-            whereClause = conditions.at(0)
-        } else if (conditions.length > 1) {
-            whereClause = and(...conditions)
+        // The total counts every match; the cursor only moves the page.
+        const totalWhere = conditions.length > 0 ? and(...conditions) : undefined
+        if (filters.cursor !== undefined) {
+            conditions.push(lt(users.id, filters.cursor))
         }
-        const limit = Math.min(Math.max(filters.limit ?? 100, 1), 100)
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+        const limit = Math.min(Math.max(filters.limit ?? 100, 1), MAX_PAGE_LIMIT + 1)
 
         const rowsQuery = db
             .select({
@@ -188,12 +197,14 @@ export const userRepository: IUserRepository = {
             })
             .from(users)
             .where(whereClause)
-            .orderBy(desc(users.createdAt))
+            // By id, newest first: the order the cursor pages through (feat-155). The id grows
+            // with registration, and unlike created_at it never ties.
+            .orderBy(desc(users.id))
             .limit(limit)
 
         const totalQueryBase = db.select({ total: count() }).from(users)
 
-        const totalQuery = totalQueryBase.where(whereClause)
+        const totalQuery = totalQueryBase.where(totalWhere)
 
         const [rows, totalRows] = await Promise.all([rowsQuery, totalQuery])
 
@@ -314,6 +325,17 @@ export const userRepository: IUserRepository = {
             .where(eq(users.id, id))
             .limit(1)
         return row?.sessionToken
+    },
+
+    // On the session-check pool: the WS session re-check runs one pass at a time, so a query
+    // that hangs would stop every later pass (feat-195).
+    async findSessionTokensByIds(ids) {
+        if (ids.length === 0) return new Map()
+        const rows = await sessionCheckDb
+            .select({ id: users.id, sessionToken: users.sessionToken })
+            .from(users)
+            .where(inArray(users.id, ids))
+        return new Map(rows.map((row) => [String(row.id), row.sessionToken]))
     },
 
     async changePasswordIfCurrent(id, currentPassword, expectedSessionToken, data, executor = db) {

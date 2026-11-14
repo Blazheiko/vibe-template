@@ -141,6 +141,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
 
         const logs = await pushNotificationLogRepository.latestBySubscriptionIds(
             subscriptionsData.map((sub) => sub.id),
+            userId,
             LOGS_PER_SUBSCRIPTION,
         )
         const logsBySubscription = new Map<bigint, PushSubscriptionLogSummary[]>()

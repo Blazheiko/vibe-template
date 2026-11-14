@@ -22,7 +22,7 @@ hero:
 features:
     - icon: 🔐
       title: Accounts and sign-in
-      details: Registration by email and phone, email confirmation, sign-in via Google, GitHub and Facebook, password reset, sign-out from all devices.
+      details: Registration by email and phone, email confirmation, sign-in via Google, GitHub, GitLab and Facebook, password reset, sign-out from all devices.
       link: /en/backend/auth
     - icon: ⚡
       title: Fast backend on uWebSockets.js
@@ -53,8 +53,8 @@ features:
       details: A list of users, who is online now, online history and a knowledge base editor for the AI chat. A separate layout and access for administrators only.
       link: /en/frontend/
     - icon: 🌍
-      title: 18 languages and themes
-      details: The interface is translated with vue-i18n into 18 languages. Light and dark themes and the Ocean, Mint, Lavender, Rose, Sunset and Monochrome color palettes.
+      title: Languages and themes
+      details: The interface is translated with vue-i18n into English, Ukrainian and Polish; the support AI recognizes 18 languages. Light and dark themes and the Ocean, Mint, Lavender, Rose, Sunset and Monochrome color palettes.
       link: /en/frontend/#i18n
     - icon: 📁
       title: Files and mail
@@ -68,6 +68,18 @@ features:
       title: AI support chat
       details: A chat that answers from a knowledge base (pgvector), a prompt admin panel, token accounting, OpenAI, xAI and Mistral providers.
       link: /en/backend/ai
+    - icon: 🚀
+      title: Landing page for search engines
+      details: A separate package with a static product page in three languages, no JavaScript, with canonical, hreflang and a sitemap. Its buttons lead to the app's sign-in and sign-up, and the page ships as its own nginx image.
+      link: /en/landing/
+    - icon: 🐳
+      title: Docker and deployment
+      details: A production image that runs as a non-root user with a healthcheck, migrations as a separate step, and a graceful shutdown. The whole stack (services, the app and the landing) starts in Docker Compose with one command.
+      link: /en/backend/deployment
+    - icon: 🧭
+      title: Rules for AI agents
+      details: AGENTS.md, feature_list.json and the Definition of Done give the agent its working order. The backend-feature skill takes a new feature through every layer, and make check runs the same checks as CI.
+      link: /en/guide/workflow
 ---
 
 ## What this template is
@@ -76,17 +88,30 @@ features:
 
 This is not an empty "skeleton" but a **working application** from which you start your product. The first weeks of a new project usually go to the same things: registration, login, password reset, sessions, CSRF, file uploads, emails, push, an admin panel, deployment. In this template all of that is already written, covered by tests and documented. You clone the repository, configure `.env` and immediately write **your own** business logic.
 
-The template consists of three packages in one repository (pnpm workspace):
+The template's main packages in one repository (pnpm workspace):
 
 | Package    | What it is                                                                   | Documentation                     |
 | ---------- | ---------------------------------------------------------------------------- | --------------------------------- |
 | `backend`  | API server and WebSocket in TypeScript + uWebSockets.js                      | [Backend overview](/en/backend/)  |
 | `frontend` | SPA/PWA on Vue 3 with Pinia, vue-router and vue-i18n                         | [Frontend](/en/frontend/)         |
 | `shared`   | Schemas, types and enums that both the frontend and the backend import alike | [The shared package](/en/shared/) |
+| `landing`  | A static product page for search engines with Log in and Sign up buttons     | [Landing page](/en/landing/)      |
 
 ::: tip New to the project?
 Start with the [Introduction](/en/guide/introduction), then the [Quick start](/en/guide/getting-started) — a local launch in 10 minutes. Then read [How the backend works](/en/guide/how-backend-works): it explains in simple words what happens to a request and why each layer exists.
 :::
+
+## How the developer's role changes
+
+The template moves control from the code to the **contracts**. The agent writes the implementation and immediately gets feedback from the framework: whether the contracts are broken, whether the layers are in place, whether the tests pass. So you do not need to read every line of generated code. The main attention goes to three contracts:
+
+1. **What comes into the backend.** The request schemas in `shared` define what data a route accepts. A `validator` on a route is optional: a route without one accepts any body, so check that it is there wherever the route reads input.
+2. **What the backend returns.** A route with a `ResponseSchema` checks each of its responses (how exactly — [argument 5](#why-the-template-suits-agent-based-development) below).
+3. **The database schema.** The Drizzle schema and migrations define the data structure that everything else depends on.
+
+The three contracts do not describe **access to routes**: which middleware, guards and limits a group or a route has is in `http-routes.ts` and `ws-routes.ts`, and part of the rules is checked by `route-access.spec.ts`. These files need attention in review too.
+
+The correctness of business logic is verified by **tests**: if a behavior is described by a test and the test is green, review can focus on the tests and the contracts rather than on every line of the implementation. Human review stays required ([`AGENTS.md`](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md), Definition of Done), and a change to tests needs review just as a change to code does: a weakened test lets through what it was meant to catch.
 
 ## Why the template suits agent-based development
 
@@ -102,9 +127,10 @@ Start with the [Introduction](/en/guide/introduction), then the [Quick start](/e
 6. **The same structure means less context.** Every backend feature consists of the same layers route → controller → service → repository. The agent does not have to read the whole project: it is enough to open a neighboring feature as a sample.
 7. **One command to check everything.** [`init.sh`](https://github.com/Blazheiko/vibe-template/blob/main/init.sh) runs install, typecheck, lint, test and build. CI runs the same checks (plus `format:check` and Playwright) on every PR, so the agent's "it works for me" is verified the same way as a human's code.
 8. **The working rules are written for the agent.** [`AGENTS.md`](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md) describes the session start order, the Definition of Done and the documentation rules. `feature_list.json` records who works on which feature, and `progress.md` and `session-handoff.md` on the feature branch carry the state between sessions. The agent starts a new session from files, not from the memory of the previous conversation. More in [Workflow](/en/guide/workflow).
+9. **A ready skill for a new feature.** The Claude Code skill [`backend-feature`](https://github.com/Blazheiko/vibe-template/blob/main/.claude/skills/backend-feature/SKILL.md) lives in the repository (`.claude/skills/`) and walks the agent through every backend layer: `shared` schemas, the table and migration, repository, transformer, service, controller, contract and route, test. It follows the [How to add a feature](/en/backend/adding-a-feature) tutorial and is updated in the same PR that changes those patterns.
 
 ::: warning What types do not guarantee
-The checks catch errors of form: wrong types, forgotten usage sites, broken layers. They do not verify that the business logic is correct. For that you need behavior tests and human review.
+The checks catch errors of form: wrong types, forgotten usage sites, broken layers. They do not verify that the business logic is correct. For that you need behavior tests. A test checks only the cases it describes, so in review a human checks that the needed cases are described and the existing ones are not weakened.
 :::
 
 ## Why this template
@@ -152,7 +178,7 @@ src/views/admin/AdminUsersView.vue(165,37): error TS2339: Property 'name' does n
 Without a shared type, the backend would start returning the new field, and the table in the admin panel would silently show an empty column. The same schema describes the response of the `GET /api/admin/users` route in the [API Playground](/en/playground/), so the API documentation does not diverge from the type either.
 
 ::: warning Limitation
-Protection by types works only where both sides really import the type from `shared`. At runtime the route's `ResponseSchema` checks every response ([Response validation](/en/backend/response-validation)), but the frontend is not protected by this: if a component described its own type instead of importing it from `shared`, only the user will see the mismatch. New code is best written as in the example above: a schema in `shared`, a type via `.infer`, and this type in the service, the controller and the component.
+Protection by types works only where both sides really import the type from `shared`. Response validation against `ResponseSchema` ([argument 5](#why-the-template-suits-agent-based-development)) protects the server, but the frontend is not protected by this: if a component described its own type instead of importing it from `shared`, only the user will see the mismatch. New code is best written as in the example above: a schema in `shared`, a type via `.infer`, and this type in the service, the controller and the component.
 :::
 
 ### One service for HTTP and WebSocket
@@ -161,10 +187,20 @@ The support chat works over two transports: messages go over WebSocket ([ws/supp
 
 ```ts
 // WebSocket: a new message in the chat
-void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid, context.signal)
+const admission = await supportService.admitChat(userId, payload.message)
+if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+void supportService.runChat(
+    admission.value,
+    userId,
+    payload.message,
+    userData.uuid,
+    context.signal,
+    payload.language,
+    payload.clientMessageId,
+)
 
 // HTTP: chat history
-const result = await supportService.getChatHistory(userId)
+const result = await supportService.getChatHistory(userId, { before, limit })
 ```
 
 The chat rules (limits, history storage, calls to AI) live in one place. If you change them, the behavior of both transports changes.
@@ -193,17 +229,17 @@ Below is the functionality you can use right away. The API prefix by default is 
 
 ### Authentication and account
 
-| Capability                        | How it works                                                                   | More details                                               |
-| --------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| Registration by email             | `POST /auth/register/email`, an email with a confirmation link                 | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Email confirmation                | `POST /auth/verify-email`, resend via `resend-verification-email`              | [Mail](/en/backend/mail)                                   |
-| Registration and sign-in by phone | SMS code: `register/phone/start` → `confirm` → `complete-profile`              | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Social login (OAuth)              | Google, GitHub, Facebook: `auth/oauth/:provider/redirect` and `/callback`      | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Login / logout                    | `POST /auth/login`, `/logout`, `/logout-all` (sign out on all devices)         | [Authentication](/en/backend/auth)                         |
-| Password change and reset         | `change-password`, `forgot-password` → email → `reset-password`; reset via SMS | [Authentication](/en/backend/auth)                         |
-| Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                   | [Authentication](/en/backend/auth)                         |
-| User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                             | [File storage](/en/backend/storage)                        |
-| Roles                             | A regular user and an administrator, the `auth_guard` and `admin_guard` guards | [Roles and capabilities](/en/reference/roles-capabilities) |
+| Capability                        | How it works                                                                      | More details                                               |
+| --------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Registration by email             | `POST /auth/register/email`, an email with a confirmation link                    | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Email confirmation                | `POST /auth/verify-email`, resend via `resend-verification-email`                 | [Mail](/en/backend/mail)                                   |
+| Registration and sign-in by phone | SMS code: `register/phone/start` → `confirm` → `complete-profile`                 | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Social login (OAuth)              | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` and `/callback` | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Login / logout                    | `POST /auth/login`, `/logout`, `/logout-all` (sign out on all devices)            | [Authentication](/en/backend/auth)                         |
+| Password change and reset         | `change-password`, `forgot-password` → email → `reset-password`; reset via SMS    | [Authentication](/en/backend/auth)                         |
+| Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                      | [Authentication](/en/backend/auth)                         |
+| User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                | [File storage](/en/backend/storage)                        |
+| Roles                             | A regular user and an administrator, the `auth_guard` and `admin_guard` guards    | [Roles and capabilities](/en/reference/roles-capabilities) |
 
 ### Security
 
@@ -264,7 +300,7 @@ Access only for the administrator role — [Roles and capabilities](/en/referenc
 
 - Vue 3 + Pinia + vue-router, route guards for authorized and admin pages.
 - Ready pages: login/registration, email confirmation, password reset, account, support chat, admin panel, legal pages (Privacy, Terms, Cookies, AI Policy).
-- **18 languages** of the interface (vue-i18n), including Ukrainian and English.
+- **3 interface languages** (vue-i18n): English, Ukrainian and Polish ([`SHIPPED_LOCALE_CODES`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/enums/languages.ts)); the support AI uses the 18 `APP_LOCALE_CODES` to recognize the language of messages.
 - **PWA:** installation on a device, offline mode, push notifications.
 - An HTTP client that adds the CSRF token itself and handles the session; a WebSocket client with reconnection.
 - Unit tests (Vitest) and e2e (Playwright).
@@ -282,6 +318,7 @@ More details: [Frontend](/en/frontend/).
 | Caching         | Static serving with ETag and `Cache-Control`, process caches                                               | [Caching and ETag](/en/backend/caching-etag) |
 | Tests           | Vitest for the backend, a test that watches the architecture layer rules                                   | [Testing](/en/backend/testing)               |
 | API Playground  | A separate dev app for manually calling HTTP and WS routes without Postman                                 | [API Playground](/en/playground/)            |
+| Landing page    | Static pages in three languages with no JavaScript, a sitemap, its own nginx image                         | [Landing page](/en/landing/)                 |
 | Deployment      | A build into `dist`, graceful shutdown, working behind a proxy, serving the frontend from the same process | [Deployment](/en/backend/deployment)         |
 
 ## Author

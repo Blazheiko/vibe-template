@@ -54,15 +54,16 @@ describe.skipIf(!hasRedis)('rate-limit Redis client with production options', ()
             enableOfflineQueue: false,
             maxRetriesPerRequest: 0,
             autoResendUnfulfilledCommands: false,
-            commandTimeout: 50,
+            commandTimeout: 500,
         })
     })
 
     it('fails a command after commandTimeout instead of waiting', async () => {
-        await admin.call('CLIENT', 'PAUSE', '400', 'WRITE')
+        // The pause outlasts the 500 ms timeout (feat-178): the command fails at the timeout.
+        await admin.call('CLIENT', 'PAUSE', '1500', 'WRITE')
         const started = Date.now()
         await expect(client.eval(INCR_LUA, 1, 'timeout')).rejects.toThrow(/timed out/i)
-        expect(Date.now() - started).toBeLessThan(300)
+        expect(Date.now() - started).toBeLessThan(1000)
         await admin.call('CLIENT', 'UNPAUSE')
     })
 

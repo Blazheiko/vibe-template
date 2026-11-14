@@ -1,4 +1,6 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { supportContracts } from 'shared/contracts'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { knowledgeBaseService } from '#app/services/support/knowledge-base-service.js'
@@ -11,6 +13,7 @@ import type {
 } from 'shared/responses'
 import { Result } from 'better-result'
 import type { SupportChatHistoryQuery } from 'shared/schemas'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 export default {
     async getChatHistory(
@@ -40,19 +43,16 @@ export default {
         return respond(context, result, () => ({ status: 'ok' }))
     },
 
-    async getScreenshot(context: HttpContext): Promise<SupportScreenshotResponse> {
+    async getScreenshot(
+        context: HttpContext<unknown, null, ParamsOf<typeof supportContracts.screenshot>>,
+    ): Promise<SupportScreenshotResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
 
-        const articleIdStr = context.httpData.params['articleId']
-        if (articleIdStr === undefined) {
-            return mapControllerError(context, badRequest('Missing articleId'))
-        }
-
-        let articleId: bigint
-        try {
-            articleId = BigInt(articleIdStr)
-        } catch {
+        // The router fills every segment of the contract's path; an empty or non-numeric one is
+        // refused here.
+        const articleId = parseEntityId(context.httpData.params.articleId)
+        if (articleId === null) {
             return mapControllerError(context, badRequest('Invalid articleId'))
         }
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSupportStore } from '@/stores/support'
 import { useEventBus } from '@/utils/event-bus'
-import { apiPath } from '@/utils/api-path'
+import { supportContracts, supportWsContracts } from 'shared/contracts'
+import { contractUrl } from '@/utils/api-client'
+import { callWs } from '@/utils/ws-client'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { supportLanguage } from '@/composables/useLocale'
 import { getResponseMessage } from '@/utils/response-normalizer'
@@ -17,7 +19,7 @@ const props = defineProps<{
 const { t } = useI18n()
 const store = useSupportStore()
 const eventBus = useEventBus()
-const { websocketApi } = useWebSocketConnection()
+const { isConnected } = useWebSocketConnection()
 
 const chatContainer = ref<HTMLElement | null>(null)
 const textInput = ref('')
@@ -92,6 +94,28 @@ function onSupportChatError(data: {
     if (data.code === 'chat_interrupted') void store.loadHistory()
 }
 
+// feat-152: an answer in progress ends with its own events, and a dropped connection sends
+// none: the server aborts the stream when the socket closes. Without this the input stayed
+// disabled and the typing indicator stayed on until the page was left.
+const reloadWhenConnected = ref(false)
+
+watch(isConnected, (connected) => {
+    if (!connected) {
+        if (!isSending.value && !store.isStreaming) return
+        isSending.value = false
+        store.abandonStreaming()
+        store.setError(t('support.connectionLost'))
+        reloadWhenConnected.value = true
+        return
+    }
+    if (!reloadWhenConnected.value) return
+    // Back online: the message is stored once whatever was shown here, and the answer is
+    // there if the server finished it.
+    reloadWhenConnected.value = false
+    store.setError(null)
+    void store.loadHistory().then(scrollToBottom)
+})
+
 async function openChat(): Promise<boolean> {
     if (isOpeningChat.value) return false
 
@@ -99,7 +123,7 @@ async function openChat(): Promise<boolean> {
     store.setError(null)
 
     try {
-        await websocketApi('support/support_open_chat', { language: supportLanguage() })
+        await callWs(supportWsContracts.openChat, { language: supportLanguage() })
         sessionReady.value = true
         return true
     } catch (error) {
@@ -137,7 +161,7 @@ async function sendMessage(textOverride?: string): Promise<void> {
 
     // A lost answer is answered by sending the same request again: the id makes it safe.
     const result = await sendUntilAnswered(() =>
-        websocketApi('support/support_chat', {
+        callWs(supportWsContracts.chat, {
             message: text,
             language: supportLanguage(),
             clientMessageId,
@@ -198,6 +222,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+    // The rest of the answer would arrive with nobody listening: no frozen partial text is
+    // left in the store, and the next visit reads the conversation again (feat-152).
+    if (isSending.value || store.isStreaming) store.abandonStreaming()
     eventBus.off('support_chat_token', onSupportChatToken)
     eventBus.off('support_chat_complete', onSupportChatComplete)
     eventBus.off('support_chat_error', onSupportChatError)
@@ -307,9 +334,9 @@ onUnmounted(() => {
                                         v-for="articleId in msg.screenshots"
                                         :key="articleId"
                                         :src="
-                                            apiPath(
-                                                `support/screenshot/${encodeURIComponent(articleId)}`,
-                                            )
+                                            contractUrl(supportContracts.screenshot, {
+                                                params: { articleId },
+                                            })
                                         "
                                         class="message-screenshot"
                                         alt="Screenshot"
@@ -350,10 +377,18 @@ onUnmounted(() => {
                         />
                         <button
                             class="support-send-btn"
+                            type="button"
+                            :aria-label="t('support.send')"
                             :disabled="isSending || !textInput.trim()"
                             @click="sendMessage()"
                         >
-                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                            <svg
+                                viewBox="0 0 24 24"
+                                width="18"
+                                height="18"
+                                fill="currentColor"
+                                aria-hidden="true"
+                            >
                                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                             </svg>
                         </button>

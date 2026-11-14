@@ -1,8 +1,9 @@
 import { type } from '@arktype/type'
+import { PasswordSchema } from './password.js'
 
 export const LinkEmailStartInputSchema = type({
     email: 'string.email & string <= 255',
-    currentPassword: 'string >= 8 & string <= 32',
+    currentPassword: PasswordSchema,
     '+': 'reject',
 })
 

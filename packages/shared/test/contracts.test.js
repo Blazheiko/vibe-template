@@ -126,45 +126,44 @@ test('the support history query is bounded and takes a numeric cursor', () => {
 // large), so this is where the two are held together.
 test('the password limits are what every auth schema enforces', async () => {
     const { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } = await import('../dist/limits/index.js')
-    const {
-        ChangePasswordInputSchema,
-        LoginInputSchema,
-        RegisterEmailInputSchema,
-        ResetPasswordInputSchema,
-    } = await import('../dist/schemas/index.js')
+    const schemas = await import('../dist/schemas/index.js')
+    const { PasswordSchema, VerifyEmailInputSchema } = schemas
     assert.equal(PASSWORD_MIN_LENGTH, 8)
-    assert.equal(PASSWORD_MAX_LENGTH, 32)
+    assert.equal(PASSWORD_MAX_LENGTH, 128)
 
     const ok = (length) => 'p'.repeat(length)
-    const cases = [
-        [
-            'register',
-            (password) =>
-                RegisterEmailInputSchema({
-                    name: 'J',
-                    email: 'j@example.com',
-                    password,
-                    token: '',
-                }),
-        ],
-        [
-            'login',
-            (password) => LoginInputSchema({ identifier: 'j@example.com', password, token: '' }),
-        ],
-        ['login without token', (password) => LoginInputSchema({ identifier: 'jane', password })],
-        ['change', (newPassword) => ChangePasswordInputSchema({ newPassword })],
-        [
-            'reset',
-            (password) =>
-                ResetPasswordInputSchema({ token: 't', password, passwordConfirm: password }),
-        ],
-    ]
-    for (const [name, check] of cases) {
-        assert.ok(!(check(ok(PASSWORD_MIN_LENGTH)) instanceof type.errors), `${name}: min`)
-        assert.ok(!(check(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), `${name}: max`)
-        assert.ok(check(ok(PASSWORD_MIN_LENGTH - 1)) instanceof type.errors, `${name}: min - 1`)
-        assert.ok(check(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, `${name}: max + 1`)
+    assert.ok(!(PasswordSchema(ok(PASSWORD_MIN_LENGTH)) instanceof type.errors), 'min')
+    assert.ok(!(PasswordSchema(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), 'max')
+    assert.ok(PasswordSchema(ok(PASSWORD_MIN_LENGTH - 1)) instanceof type.errors, 'min - 1')
+    assert.ok(PasswordSchema(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, 'max + 1')
+
+    // Every field named like a password, in every exported schema, is PasswordSchema; a new
+    // schema with its own bounds fails here. The one exception is the email link, which takes
+    // any non-empty password up to the longest (a shorter one is just a wrong password).
+    const fields = []
+    for (const [name, schema] of Object.entries(schemas)) {
+        if (typeof schema !== 'function' || name === 'PasswordSchema') continue
+        let props
+        try {
+            props = schema.props
+        } catch {
+            continue // not an object schema
+        }
+        for (const prop of props ?? []) {
+            if (/password/i.test(prop.key)) fields.push([`${name}.${prop.key}`, prop.value])
+        }
     }
+    assert.ok(fields.length >= 11, `found ${fields.length} password fields`)
+    for (const [field, value] of fields) {
+        if (field === 'VerifyEmailInputSchema.password') continue
+        assert.ok(value.equals(PasswordSchema), `${field} is PasswordSchema`)
+    }
+
+    const verify = (password) => VerifyEmailInputSchema({ token: 't', password })
+    assert.ok(!(verify('p') instanceof type.errors), 'verify-email: 1')
+    assert.ok(!(verify(ok(PASSWORD_MAX_LENGTH)) instanceof type.errors), 'verify-email: max')
+    assert.ok(verify('') instanceof type.errors, 'verify-email: empty')
+    assert.ok(verify(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, 'verify-email: max + 1')
 })
 
 test('ENTITY_ID_PATTERN is what EntityIdSchema takes, and looksLikePhoneNumber what the phone check reads', async () => {
@@ -218,4 +217,184 @@ test('the query schemas default and parse their strings as before', async () => 
         )
     }
     assert.ok(AdminUserListQuerySchema({ dateFrom: 'not a date' }) instanceof type.errors)
+})
+
+// feat-155: the services clamp a page to MAX_PAGE_LIMIT, the schema rejects a larger `limit`;
+// the bound is written twice (a constant and a schema literal), so it is checked here.
+test('the page limit of the query schemas is MAX_PAGE_LIMIT', async () => {
+    const { LimitIntFromString, MAX_PAGE_LIMIT, AdminUserListQuerySchema } =
+        await import('../dist/schemas/index.js')
+
+    assert.equal(LimitIntFromString(String(MAX_PAGE_LIMIT)), MAX_PAGE_LIMIT)
+    assert.ok(LimitIntFromString(String(MAX_PAGE_LIMIT + 1)) instanceof type.errors)
+    assert.ok(LimitIntFromString('0') instanceof type.errors)
+
+    // The admin user list takes the cursor of the previous page as a string.
+    const parsed = AdminUserListQuerySchema({ cursor: '42', limit: '100' })
+    assert.deepEqual(parsed, { cursor: '42', limit: 100 })
+})
+
+// feat-156: the bounds of a push subscription are the columns it is stored in.
+test('the push subscription schemas bound every string and take no address from the client', async () => {
+    const { CreateSubscriptionInputSchema, UpdateSubscriptionInputSchema } =
+        await import('../dist/schemas/index.js')
+    const base = { endpoint: 'https://fcm.googleapis.com/fcm/send/x', p256dhKey: 'p', authKey: 'a' }
+    const rejected = (schema, value) => schema(value) instanceof type.errors
+
+    assert.deepEqual(CreateSubscriptionInputSchema(base), base)
+    for (const [field, max] of [
+        ['endpoint', 500],
+        ['p256dhKey', 255],
+        ['authKey', 255],
+        ['userAgent', 1024],
+        ['deviceType', 50],
+        ['browserName', 100],
+        ['browserVersion', 50],
+        ['osName', 100],
+        ['osVersion', 50],
+        ['timezone', 50],
+    ]) {
+        assert.ok(
+            !rejected(CreateSubscriptionInputSchema, { ...base, [field]: 'x'.repeat(max) }),
+            `${field} of ${String(max)} characters is accepted`,
+        )
+        assert.ok(
+            rejected(CreateSubscriptionInputSchema, { ...base, [field]: 'x'.repeat(max + 1) }),
+            `${field} of ${String(max + 1)} characters is rejected`,
+        )
+    }
+    assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, endpoint: '' }))
+    assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, ipAddress: '203.0.113.9' }))
+    assert.ok(
+        rejected(CreateSubscriptionInputSchema, {
+            ...base,
+            notificationTypes: Array.from({ length: 11 }, () => 'system'),
+        }),
+    )
+
+    assert.ok(!rejected(UpdateSubscriptionInputSchema, { deviceType: 'x'.repeat(50) }))
+    assert.ok(rejected(UpdateSubscriptionInputSchema, { deviceType: 'x'.repeat(51) }))
+    assert.ok(rejected(UpdateSubscriptionInputSchema, { timezone: 'x'.repeat(51) }))
+})
+
+// docs/adr/0005-route-contracts.md: a contract is `{ method, path }` at run time, and its URL
+// is built with real encoding.
+test('a route contract is a method and a path, and builds its URL with encoding', async () => {
+    const {
+        adminContracts,
+        authContracts,
+        buildPath,
+        buildQuery,
+        buildUrl,
+        contract,
+        pushSubscriptionContracts,
+    } = await import('../dist/contracts/index.js')
+
+    assert.deepEqual({ ...authContracts.login }, { method: 'post', path: '/auth/login' })
+    assert.deepEqual(
+        { ...contract()('delete', '/notes/:noteId') },
+        { method: 'delete', path: '/notes/:noteId' },
+    )
+
+    // A value with a slash, a question mark or a space stays one path segment.
+    assert.equal(
+        buildUrl(pushSubscriptionContracts.remove, { params: { subscriptionId: 'a/b?c d' } }),
+        '/push-subscriptions/a%2Fb%3Fc%20d',
+    )
+    assert.equal(buildPath('/a/:x/b/:y', { x: '1', y: '2' }), '/a/1/b/2')
+    assert.throws(() => buildPath('/a/:x', {}), /no value for the path parameter "x"/)
+    assert.throws(() => buildPath('/a/:x', { x: '' }), /no value for the path parameter "x"/)
+
+    // The query: empty values are left out, an array repeats its key, the order is kept.
+    assert.equal(
+        buildUrl(adminContracts.users, {
+            query: { limit: 100, cursor: '2', userId: '', dateFrom: undefined, dateTo: null },
+        }),
+        '/admin/users?limit=100&cursor=2',
+    )
+    assert.equal(
+        buildQuery({ tag: ['a b', 'c&d'], flag: false, n: 0 }),
+        '?tag=a%20b&tag=c%26d&flag=false&n=0',
+    )
+    assert.equal(buildQuery({}), '')
+    assert.equal(buildQuery(undefined), '')
+})
+
+test('the contracts module loads no schema', async () => {
+    const { readFile, readdir } = await import('node:fs/promises')
+    const directory = new URL('../dist/contracts/', import.meta.url)
+    for (const file of await readdir(directory)) {
+        if (!file.endsWith('.js')) continue
+        const source = await readFile(new URL(file, directory), 'utf8')
+        const imports = [...source.matchAll(/from '([^']+)'/g)].map((match) => match[1])
+        assert.ok(
+            imports.every((specifier) => specifier.startsWith('./')),
+            `${file} imports only its own directory, got: ${imports.join(', ')}`,
+        )
+    }
+})
+
+// feat-161: the bounds of the prompt and knowledge base schemas are their columns and what a
+// provider accepts.
+test('the prompt and knowledge base schemas bound their fields', async () => {
+    const {
+        PromptTestInputSchema,
+        PromptUpdateInputSchema,
+        SupportKnowledgeBaseCreateSchema,
+        SupportKnowledgeBaseUpdateSchema,
+    } = await import('../dist/schemas/index.js')
+    const rejected = (schema, value) => schema(value) instanceof type.errors
+
+    for (const value of [
+        { maxTokens: -5 },
+        { maxTokens: 0 },
+        { maxTokens: 1.5 },
+        { maxTokens: 100001 },
+        { temperature: -0.1 },
+        { temperature: 100 },
+        { model: 'm'.repeat(101) },
+        { content: 'c'.repeat(50001) },
+    ]) {
+        assert.ok(
+            rejected(PromptUpdateInputSchema, value),
+            `${JSON.stringify(value).slice(0, 40)} is rejected`,
+        )
+    }
+    for (const value of [
+        { maxTokens: 1 },
+        { maxTokens: 100000 },
+        { maxTokens: null },
+        { temperature: 0 },
+        { temperature: 2 },
+        { temperature: null },
+        { model: 'm'.repeat(100) },
+        { model: null },
+        {},
+    ]) {
+        assert.ok(
+            !rejected(PromptUpdateInputSchema, value),
+            `${JSON.stringify(value).slice(0, 40)} is accepted`,
+        )
+    }
+
+    assert.ok(!rejected(PromptTestInputSchema, { message: 'm'.repeat(4000) }))
+    assert.ok(rejected(PromptTestInputSchema, { message: 'm'.repeat(4001) }))
+    assert.ok(rejected(PromptTestInputSchema, { message: '' }))
+
+    const article = { title: 't', content: 'c' }
+    assert.ok(!rejected(SupportKnowledgeBaseCreateSchema, { ...article, title: 't'.repeat(255) }))
+    assert.ok(rejected(SupportKnowledgeBaseCreateSchema, { ...article, title: 't'.repeat(256) }))
+    assert.ok(
+        !rejected(SupportKnowledgeBaseCreateSchema, { ...article, category: 'c'.repeat(100) }),
+    )
+    assert.ok(rejected(SupportKnowledgeBaseCreateSchema, { ...article, category: 'c'.repeat(101) }))
+    assert.ok(
+        !rejected(SupportKnowledgeBaseCreateSchema, { ...article, content: 'c'.repeat(30000) }),
+    )
+    assert.ok(
+        rejected(SupportKnowledgeBaseCreateSchema, { ...article, content: 'c'.repeat(30001) }),
+    )
+    assert.ok(rejected(SupportKnowledgeBaseUpdateSchema, { title: 't'.repeat(256) }))
+    assert.ok(rejected(SupportKnowledgeBaseUpdateSchema, { category: 'c'.repeat(101) }))
+    assert.ok(!rejected(SupportKnowledgeBaseUpdateSchema, { isActive: false }))
 })

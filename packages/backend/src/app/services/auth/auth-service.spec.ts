@@ -83,6 +83,12 @@ const moduleLogger = vi.hoisted(() => {
 })
 vi.mock('#vendor/utils/logger.js', () => ({ default: moduleLogger }))
 
+// feat-195: the WebSocket connections of a revoked session are closed by the flow that revokes it.
+const closeUserConnections = vi.hoisted(() => vi.fn(() => 0))
+vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
+    wsSessionRevocation: { closeUserConnections },
+}))
+
 vi.mock('#app/repositories/index.js', () => ({
     // feat-109: change-password and logout-all retire the pending reset links.
     passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
@@ -180,7 +186,6 @@ describe('authService', () => {
                 name: 'Jane',
                 email: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -221,7 +226,6 @@ describe('authService', () => {
                 name: 'Jane',
                 email: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -261,7 +265,6 @@ describe('authService', () => {
                 name: 'Jane',
                 email: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -288,7 +291,7 @@ describe('authService', () => {
             const { authService } = await loadAuthService()
             const started = performance.now()
             const result = await authService.registerByEmail(
-                { name: 'Jane', email: 'user@example.com', password: 'secret', token: '' },
+                { name: 'Jane', email: 'user@example.com', password: 'secret' },
                 authMock as any,
                 sessionMock as any,
                 loggerMock as any,
@@ -361,7 +364,7 @@ describe('authService', () => {
                 let settled = false
                 const pending = authService
                     .registerByEmail(
-                        { name: 'Jane', email: 'user@example.com', password: 'secret', token: '' },
+                        { name: 'Jane', email: 'user@example.com', password: 'secret' },
                         authMock as any,
                         sessionMock as any,
                         loggerMock as any,
@@ -428,7 +431,6 @@ describe('authService', () => {
             {
                 identifier: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -461,7 +463,7 @@ describe('authService', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.login(
-            { identifier: 'user@example.com', password: 'secret', token: '' },
+            { identifier: 'user@example.com', password: 'secret' },
             authMock as any,
             sessionMock as any,
             { ipAddress: '127.0.0.1' },
@@ -617,7 +619,6 @@ describe('authService', () => {
             {
                 identifier: 'missing@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -650,7 +651,6 @@ describe('authService', () => {
             {
                 identifier: 'user@example.com',
                 password: 'wrong-secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -678,7 +678,7 @@ describe('authService', () => {
             password: 'hashed-password',
             sessionToken: 'session-token',
         }
-        const credentials = { identifier: 'user@example.com', password: 'secret', token: '' }
+        const credentials = { identifier: 'user@example.com', password: 'secret' }
         const login = async () => {
             const { authService } = await loadAuthService()
             return authService.login(credentials, authMock as any, sessionMock as any, {
@@ -752,6 +752,69 @@ describe('authService', () => {
             expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
         })
 
+        // feat-203 (security review 2026-11-12, L-2): the interval alone let somebody who
+        // registered another person's address have it mailed 12 times an hour, 288 a day.
+        it('spends the hourly and the daily budget of the resend button, in that order', async () => {
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            await login()
+            await settle()
+
+            const resendScopes = consumeAuthThrottleMock.mock.calls
+                .map(([policy, key]) => [(policy as { scope: string }).scope, key])
+                .filter(([scope]) =>
+                    [
+                        'login_unverified_resend',
+                        'resend_verification_user',
+                        'verification_mail_user_daily',
+                    ].includes(String(scope)),
+                )
+            expect(resendScopes).toEqual([
+                ['login_unverified_resend', '7'],
+                ['resend_verification_user', '7'],
+                ['verification_mail_user_daily', '7'],
+            ])
+            expect(sendVerificationEmailInBackgroundMock).toHaveBeenCalledTimes(1)
+        })
+
+        it.each(['resend_verification_user', 'verification_mail_user_daily'])(
+            'sends no mail once the %s budget is spent, and still answers 401',
+            async (spent) => {
+                consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                    Promise.resolve({ allowed: policy.scope !== spent, count: 9 }),
+                )
+                userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+                validatePasswordMock.mockResolvedValue(true)
+
+                const result = await login()
+                await settle()
+
+                expect(Result.isError(result) && result.error._tag).toBe('Unauthorized')
+                expect(sendVerificationEmailInBackgroundMock).not.toHaveBeenCalled()
+            },
+        )
+
+        it('does not touch the hourly or daily budget inside the interval', async () => {
+            consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                Promise.resolve({
+                    allowed: policy.scope !== 'login_unverified_resend',
+                    count: 1,
+                }),
+            )
+            userRepositoryMock.findByEmail.mockResolvedValue(unverified)
+            validatePasswordMock.mockResolvedValue(true)
+
+            await login()
+            await settle()
+
+            const scopes = consumeAuthThrottleMock.mock.calls.map(
+                ([policy]) => (policy as { scope: string }).scope,
+            )
+            expect(scopes).not.toContain('resend_verification_user')
+            expect(scopes).not.toContain('verification_mail_user_daily')
+        })
+
         it('answers 401 even when the resend cannot be arranged (Redis down)', async () => {
             consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
                 policy.scope === 'login_unverified_resend'
@@ -810,7 +873,6 @@ describe('authService', () => {
             {
                 identifier: 'user@example.com',
                 password: 'secret',
-                token: '',
             },
             authMock as any,
             sessionMock as any,
@@ -1047,6 +1109,112 @@ describe('authService', () => {
                 csrfToken: ROTATED_LOGOUT_CSRF_TOKEN,
             })
         }
+    })
+
+    describe('WebSocket connections close with the session (feat-195)', () => {
+        it('logout closes the connections of the session that logged out, not the others', async () => {
+            authMock.logout.mockImplementation(async () => {
+                sessionMock.sessionInfo = {
+                    id: 'anonymous-session-id',
+                    data: { csrfToken: ROTATED_LOGOUT_CSRF_TOKEN },
+                }
+                return true
+            })
+            const signedInSessionId = sessionMock.sessionInfo.id
+
+            const { authService } = await loadAuthService()
+            await authService.logout(authMock as any, sessionMock as any)
+
+            expect(closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(closeUserConnections).toHaveBeenCalledWith('7', {
+                sessionId: signedInSessionId,
+            })
+        })
+
+        it('logout of an anonymous session closes nothing', async () => {
+            authMock.getUserId.mockReturnValueOnce(null as any)
+            authMock.logout.mockResolvedValue(true)
+
+            const { authService } = await loadAuthService()
+            await authService.logout(authMock as any, sessionMock as any)
+
+            expect(closeUserConnections).not.toHaveBeenCalled()
+        })
+
+        it('logoutAll closes every connection of the user, after the rotation', async () => {
+            const order: string[] = []
+            userRepositoryMock.updateIfSessionToken.mockImplementation(async () => {
+                order.push('rotate')
+                return { id: 7n }
+            })
+            closeUserConnections.mockImplementation(() => {
+                order.push('close sockets')
+                return 1
+            })
+
+            const { authService } = await loadAuthService()
+            await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(order).toEqual(['rotate', 'close sockets'])
+            expect(closeUserConnections).toHaveBeenCalledWith('7')
+        })
+
+        it('logoutAll that lost to another revocation closes nothing', async () => {
+            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+            userRepositoryMock.findSessionToken.mockResolvedValue('rotated-elsewhere')
+
+            const { authService } = await loadAuthService()
+            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+
+            expect(Result.isError(result)).toBe(true)
+            expect(closeUserConnections).not.toHaveBeenCalled()
+        })
+
+        it('changePassword closes every connection of the user once the password is written', async () => {
+            userRepositoryMock.findById.mockResolvedValue({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            validatePasswordMock.mockResolvedValue(true)
+            hashPasswordMock.mockResolvedValue('new-hash')
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
+            destroyAllSessionsMock.mockResolvedValue({ deleted: 2, complete: true })
+
+            const { authService } = await loadAuthService()
+            const result = await authService.changePassword(
+                7n,
+                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                'previous-session-token',
+                sessionStillStored,
+            )
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(closeUserConnections).toHaveBeenCalledWith('7')
+        })
+
+        it('changePassword that changed nothing closes nothing', async () => {
+            userRepositoryMock.findById.mockResolvedValue({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            validatePasswordMock.mockResolvedValue(true)
+            hashPasswordMock.mockResolvedValue('new-hash')
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
+
+            const { authService } = await loadAuthService()
+            const result = await authService.changePassword(
+                7n,
+                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                'previous-session-token',
+                sessionStillStored,
+            )
+
+            expect(Result.isError(result)).toBe(true)
+            expect(closeUserConnections).not.toHaveBeenCalled()
+        })
     })
 
     it('returns the rotated CSRF token after logoutAll mutates the session', async () => {
@@ -1316,7 +1484,7 @@ describe('auth throttle fail-closed (email link)', () => {
 })
 
 describe('authService while Redis is unavailable', () => {
-    const LOGIN_INPUT = { identifier: 'user@example.com', password: 'secret', token: '' }
+    const LOGIN_INPUT = { identifier: 'user@example.com', password: 'secret' }
     const LOGIN_CONTEXT = { ipAddress: '127.0.0.1' }
 
     const arrangeLogin = (): void => {

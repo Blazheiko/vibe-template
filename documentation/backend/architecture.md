@@ -46,7 +46,7 @@ flowchart LR
   Sh -.-> C
 ```
 
-- **Route** — об'єкт `defineRoute({ url, method, handler, validator, ResponseSchema, middlewares, rateLimit })` ([define-route.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routing/define-route.ts)). Групи задають `prefix`, спільні `middlewares` і `rateLimit`; `routesHandler` у [router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts) розгортає їх у плоский список і додає `appConfig.pathPrefix` (за замовчуванням `api`, змінна `API_PATH_PREFIX`).
+- **Route** — об'єкт `defineRoute({ contract, handler, middlewares, rateLimit, description })` ([contract-schemas/index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/index.ts)). Метод і шлях дає контракт з `shared/contracts`, схеми тіла, query й відповіді — запис реєстру `app/routes/contract-schemas/` (див. [Маршрутизація](/backend/routing#http-маршрути-defineroute)). Групи задають `prefix`, спільні `middlewares` і `rateLimit`; `routesHandler` у [router.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/router.ts) розгортає їх у плоский список і додає `appConfig.pathPrefix` (за замовчуванням `api`, змінна `API_PATH_PREFIX`).
 - **Middleware** — функція `(context, next)`; якщо вона не викликала `next()`, обробник не запускається (див. [Middleware](/backend/middlewares)).
 - **Controller** — отримує `HttpContext`, викликає сервіс, повертає `respond(context, result, toBody)`, який мапить помилку `Result` у HTTP-відповідь через `mapControllerError`.
 - **Service** — бізнес-логіка, повертає `Result.ok(...)` / `Result.err(...)`.
@@ -62,7 +62,7 @@ flowchart LR
 
 ## Контракти в packages/shared
 
-Пакет `shared` ([index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/index.ts)) експортує `schemas` (вхідні схеми, напр. `VerifyEmailInputSchema`), `responses` (схеми відповідей, напр. `InitResponseSchema`), `enums`, `errors`, `brands`, `utils`. Маршрути імпортують їх як `shared/schemas` і `shared/responses`, а контролери — типи відповідей (`InitResponse`, `PingResponse`) з `shared`.
+Пакет `shared` ([index.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/index.ts)) експортує `schemas` (вхідні схеми, напр. `VerifyEmailInputSchema`), `responses` (схеми відповідей, напр. `InitResponseSchema`), `enums`, `errors`, `brands`, `utils`. Окремий subpath `shared/contracts` містить контракти маршрутів (метод, шлях і типи; без схем під час виконання), які імпортують і бекенд, і фронтенд. Реєстр схем бекенду (`app/routes/contract-schemas/`) імпортує схеми як `shared/schemas` і `shared/responses`, а контролери — типи відповідей (`InitResponse`, `PingResponse`) з `shared`.
 
 ## Наскрізний приклад: GET /api/main/init
 
@@ -70,16 +70,14 @@ flowchart LR
 
 ```ts
 defineRoute({
-  url: "/init",
-  method: "get",
-  handler: MainController.init.bind(MainController),
-  ResponseSchema: ResponseSchemas.InitResponseSchema,
-  description: "Initialize app state",
-  middlewares: ["auth_guard"],
+    contract: mainContracts.init,
+    handler: MainController.init.bind(MainController),
+    description: 'Initialize app state',
+    middlewares: ['auth_guard'],
 }),
 ```
 
-Після `routesHandler` URL стає `api/main/init`, а ланцюжок middleware — `session_web → csrf_guard → auth_guard`.
+Контракт `mainContracts.init` — це `GET /main/init`, а схема відповіді `InitResponseSchema` береться із запису реєстру ([contract-schemas/main.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/main.ts)). Після `routesHandler` URL стає `api/main/init`, а ланцюжок middleware — `session_web → csrf_guard → auth_guard`.
 
 2. **Middleware.** `executeMiddlewares` бере функції з [kernel.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/middlewares/kernel.ts). `auth_guard` ([auth-guard.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/middlewares/core/auth-guard.ts)) за відсутності автентифікації ставить `responseData.status = 401` і не викликає `next()`.
 3. **Controller.** `MainController.init` ([main-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/core/main-controller.ts)) викликає `mainService.init(session.sessionInfo ?? null)`; при помилці — `mapControllerError`, інакше повертає `{ status: "ok", ...result.value }`.

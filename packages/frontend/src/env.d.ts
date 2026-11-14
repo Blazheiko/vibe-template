@@ -28,7 +28,7 @@ declare global {
     interface ImportMetaEnv {
         /** API origin; empty — same origin (Vite proxy in dev). */
         readonly VITE_BASE_URL?: string
-        /** Backend API_PATH_PREFIX; WS events are `<prefix>/<route>`. Default `api`. */
+        /** Set by vite.config.ts from the backend API_PATH_PREFIX (default `api`), not by hand. */
         readonly VITE_API_PATH_PREFIX?: string
         /** `'true'` enables sign-in and registration by phone. */
         readonly VITE_AUTH_PHONE_ENABLED?: string

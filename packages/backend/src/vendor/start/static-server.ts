@@ -14,6 +14,7 @@ import {
     writeHttpStatus,
 } from '#vendor/utils/network/http-response-handlers.js'
 import { matchesIfNoneMatch } from '#vendor/utils/network/if-none-match.js'
+import { checkStaticBuildPrefix } from './static-build-meta.js'
 
 const STATIC_PATH =
     appConfig.env === 'manual-test'
@@ -183,6 +184,14 @@ const cacheStaticSource = async (): Promise<Map<string, StaticEntry> | null> => 
             return null
         }
         await cacheDirectory(STATIC_PATH)
+        // feat-153: the SPA's API prefix is compiled in; say so when it is not the server's.
+        const build = await checkStaticBuildPrefix(STATIC_PATH, appConfig.pathPrefix)
+        if (build.kind === 'mismatch') {
+            logger.error(
+                { builtFor: build.builtFor, served: build.served },
+                'The SPA in the static directory was built for another API prefix: its API calls will not reach the API (a GET gets index.html, anything else 404). Rebuild it with the same API_PATH_PREFIX (the frontend build reads it from the environment or packages/backend/.env)',
+            )
+        }
         const index = cache.get('/index.html')
         if (index !== undefined) cache.set('/', index)
         const onDisk = [...cache.values()].filter((entry) => entry.kind === 'disk').length
@@ -198,8 +207,14 @@ const cacheStaticSource = async (): Promise<Map<string, StaticEntry> | null> => 
 // The service worker script's own CSP would govern the worker (and its fetches), so it gets none.
 const SERVICE_WORKER_PATH = '/service-worker.js'
 
+// feat-206: an HTML file is a document wherever its bytes come from. One over
+// STATIC_MAX_MEMORY_FILE_SIZE, or cached after the memory budget ran out, is streamed from
+// disk and used to leave without a Content-Security-Policy. `''` is `/`, the index.
+const HTML_EXTENSIONS: ReadonlySet<string> = new Set(['', 'html', 'htm'])
+
 const getAssetCspKind = (url: string, ext: string): CspKind | null => {
     if (url === SERVICE_WORKER_PATH) return null
+    if (HTML_EXTENSIONS.has(ext)) return 'document'
     return ext === 'svg' ? 'svg' : null
 }
 

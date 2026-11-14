@@ -20,6 +20,7 @@ import {
 } from '#vendor/utils/network/errors/classify-error.js'
 import { validateRoutePayload } from '#vendor/utils/validation/validate-route-payload.js'
 import logger from '#vendor/utils/logger.js'
+import { findWsRoute } from './ws-route-lookup.js'
 import { isEmptyPayload } from '#vendor/utils/network/response-body.js'
 import { createWsErrorEnvelope, setWsError } from '#vendor/utils/network/ws-error-envelope.js'
 
@@ -34,6 +35,8 @@ export default async (
         // null until the handler answers: an error or a stopped middleware sends no data.
         data: null,
         event: message.event,
+        // Echoed in every outcome (ADR 0006): the client waits for its reply under this id.
+        ...(message.id !== undefined ? { id: message.id } : {}),
         timestamp: message.timestamp,
         status: '200',
         error: null,
@@ -42,12 +45,7 @@ export default async (
     let userId: string | undefined
     let routePath: string | undefined
     try {
-        const event = message.event
-        const nameRoute = event.split(':')[0]
-        if (nameRoute === undefined) {
-            throw new Error('Invalid event')
-        }
-        const route = wsRoutesByUrl[nameRoute]
+        const route = findWsRoute(wsRoutesByUrl, message.event)
         if (route !== undefined) {
             routePath = route.url
             // Check rate limit before processing
@@ -55,11 +53,14 @@ export default async (
 
             if (!rateLimitResult.allowed) {
                 // Rate limit exceeded - return error response
-                return createWsRateLimitErrorResponse(
-                    rateLimitResult.errorMessage ?? 'Rate limit exceeded',
-                    rateLimitResult.retryAfter ?? 60,
-                    message.event,
-                )
+                return {
+                    ...createWsRateLimitErrorResponse(
+                        rateLimitResult.errorMessage ?? 'Rate limit exceeded',
+                        rateLimitResult.retryAfter ?? 60,
+                        message.event,
+                    ),
+                    ...(message.id !== undefined ? { id: message.id } : {}),
+                }
             }
 
             const rawPayload = (message as { payload?: unknown }).payload

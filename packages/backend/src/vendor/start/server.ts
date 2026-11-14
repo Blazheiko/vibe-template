@@ -26,6 +26,8 @@ import {
 } from '../utils/network/http-request-handlers.js'
 import { normalizePath } from '#vendor/utils/helpers/normalize-path.js'
 import { PayloadTooLargeError } from '#vendor/utils/network/errors/payload-too-large-error.js'
+import { SignInRequiredBeforeBodyError } from '#vendor/utils/network/errors/sign-in-required-before-body-error.js'
+import { isSignedInSessionCookie } from '#vendor/utils/session/signed-in-cookie.js'
 import { UnsupportedMediaTypeError } from '#vendor/utils/network/errors/unsupported-media-type-error.js'
 import {
     classifiedErrorBody,
@@ -44,6 +46,7 @@ import {
 } from '#vendor/utils/network/http-response-handlers.js'
 import executeMiddlewares from '#vendor/utils/middlewares/core/execute-httpMiddlewares.js'
 import checkRateLimit, { checkGlobalRateLimit } from '#vendor/utils/rate-limit/http-rate-limit.js'
+import { clientKey } from '#vendor/utils/rate-limit/rate-limit-store.js'
 import type {
     Cookie,
     HttpContext,
@@ -216,6 +219,16 @@ export const readAndParseBody = async (
         return { payload: null, files: null }
     }
 
+    // feat-202 (M-3): a route that takes its body only from a signed-in user refuses an
+    // anonymous request here, before a byte is buffered. One HMAC over the cookie, no I/O; the
+    // session middleware still decides whether that session exists.
+    if (
+        route.signedInBeforeBody === true &&
+        !isSignedInSessionCookie(meta.cookies.get(sessionConfig.cookieName))
+    ) {
+        throw new SignInRequiredBeforeBodyError()
+    }
+
     const allowed: BodyKind[] = route.allowedContentTypes ?? ['json']
 
     if (meta.contentType === undefined) {
@@ -262,7 +275,14 @@ export const readAndParseBody = async (
         throw new PayloadTooLargeError(limit, meta.contentType)
     }
 
-    const result = await getData(res, meta.contentType, meta.headers, limit, abortSignal)
+    const result = await getData(
+        res,
+        meta.contentType,
+        meta.headers,
+        limit,
+        abortSignal,
+        clientKey(meta.ip),
+    )
 
     if (route.validator !== undefined && result.payload !== null) {
         return {
@@ -352,6 +372,8 @@ interface ErrorResponseExtras {
     cookies?: ReadonlyMap<string, Cookie> | undefined
     /** Request Origin, for the CORS headers a browser needs to read the error. */
     origin?: string | undefined
+    /** Close the connection with the answer: the rest of the request body is not read. */
+    closeConnection?: boolean | undefined
 }
 
 const sendErrorResponse = (
@@ -373,7 +395,9 @@ const sendErrorResponse = (
         }
         if (corsConfig.enabled) setCorsHeader(res, extras.origin)
         res.writeHeader('content-type', 'application/json')
-        res.end(makeJson(body))
+        // uWS adds `Connection: close` itself and closes the socket once the answer is out.
+        if (extras.closeConnection === true) res.end(makeJson(body), true)
+        else res.end(makeJson(body))
     })
 }
 
@@ -406,7 +430,7 @@ export const handleError = (
         classified.status,
         { status: 'error', ...classifiedErrorBody(classified) },
         classified.headers,
-        extras,
+        classified.closeConnection === true ? { ...extras, closeConnection: true } : extras,
     )
 }
 
@@ -669,22 +693,28 @@ const configureHttp = async (server: TemplatedApp, routes: ServerRoutes): Promis
                 res.end()
             })
         } else if (isApiPath && method !== 'options') {
-            sendErrorResponse(res, 404, {
-                status: 'error',
-                code: 'not_found',
-                message: 'Route not found',
-            })
+            // With the request's origin: a cross-origin SPA has to be able to read the 404
+            // (feat-159), like every other error answer.
+            sendErrorResponse(
+                res,
+                404,
+                { status: 'error', code: 'not_found', message: 'Route not found' },
+                {},
+                { origin },
+            )
         } else if (appConfig.serveStatic && method === 'get') {
             void staticHandler(res, req).catch((err: unknown) => {
                 const error = err instanceof Error ? err : new Error(String(err))
                 logger.error({ err: error, url }, 'Unhandled static handler error')
             })
         } else {
-            sendErrorResponse(res, 404, {
-                status: 'error',
-                code: 'not_found',
-                message: 'Not found',
-            })
+            sendErrorResponse(
+                res,
+                404,
+                { status: 'error', code: 'not_found', message: 'Not found' },
+                {},
+                { origin },
+            )
         }
     })
 }

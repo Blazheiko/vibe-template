@@ -2,7 +2,10 @@ import { adminOnlineUsersService } from '#app/services/admin/admin-online-users-
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
 import { badRequest, notFound } from '#app/services/shared/errors.js'
 import type { HttpContext } from '#vendor/types/types.js'
+import type { ParamsOf } from '#app/routing/contract-registry.js'
+import type { adminContracts } from 'shared/contracts'
 import type { AdminOnlineUserDetailResponse, AdminOnlineUserListResponse } from 'shared/responses'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 export default {
     async list(_context: HttpContext): Promise<AdminOnlineUserListResponse> {
@@ -14,13 +17,15 @@ export default {
         }
     },
 
-    async getById(context: HttpContext): Promise<AdminOnlineUserDetailResponse> {
-        const idParam = context.httpData.params['id'] ?? ''
-        if (!/^\d+$/.test(idParam)) {
+    async getById(
+        context: HttpContext<unknown, null, ParamsOf<typeof adminContracts.onlineUser>>,
+    ): Promise<AdminOnlineUserDetailResponse> {
+        const id = parseEntityId(context.httpData.params.id)
+        if (id === null) {
             return mapControllerError(context, badRequest('Invalid user id'))
         }
 
-        const user = await adminOnlineUsersService.getOnlineUserDetail(BigInt(idParam))
+        const user = await adminOnlineUsersService.getOnlineUserDetail(id)
         if (user === undefined) {
             return mapControllerError(context, notFound('User', 'User not found'))
         }

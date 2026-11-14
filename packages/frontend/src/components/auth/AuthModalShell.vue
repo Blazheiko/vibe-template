@@ -1,26 +1,48 @@
 <script setup lang="ts">
+import { ref, useId } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useModalDialog } from '@/composables/useModalDialog'
 
 // The frame of an auth modal: the dimmed overlay, the panel, the title and the close button. What
 // is inside is the slot's; the forms' styles are in assets/auth-forms.css.
-defineProps<{
+const props = defineProps<{
     show: boolean
     title: string
 }>()
 
-defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [] }>()
 
 const { t } = useI18n()
+
+// Both auth modals stay mounted and are shown by a class: the dialog behaviour follows `show`.
+const panel = ref<HTMLElement | null>(null)
+const titleId = useId()
+useModalDialog({
+    panel,
+    isOpen: () => props.show,
+    close: () => {
+        emit('close')
+    },
+})
 </script>
 
 <template>
     <div class="modal-overlay" :class="{ show }">
-        <div class="modal auth-modal">
+        <div
+            ref="panel"
+            class="modal auth-modal"
+            role="dialog"
+            aria-modal="true"
+            :aria-labelledby="titleId"
+            tabindex="-1"
+        >
             <div class="modal-header">
-                <h3>{{ title }}</h3>
+                <h3 :id="titleId">{{ title }}</h3>
                 <button
                     class="close-modal"
-                    @click="$emit('close')"
+                    type="button"
+                    data-modal-close
+                    @click="emit('close')"
                     :aria-label="t('auth.closeModal')"
                 >
                     ×
@@ -88,6 +110,10 @@ const { t } = useI18n()
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+.modal:focus {
+    outline: none;
 }
 
 .dark-theme .modal {

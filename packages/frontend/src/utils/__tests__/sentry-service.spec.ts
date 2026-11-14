@@ -25,7 +25,8 @@ const sentryMocks = vi.hoisted(() => {
         flush: vi.fn().mockResolvedValue(true),
         withScope: vi.fn((callback: (scope: ScopeMock) => unknown) => callback(scope)),
         browserTracingIntegration: vi.fn(() => ({ name: 'browserTracingIntegration' })),
-        replayIntegration: vi.fn(() => ({ name: 'replayIntegration' })),
+        replayIntegration: vi.fn((...args: unknown[]) => ({ name: 'replayIntegration', args })),
+        addEventProcessor: vi.fn((...args: unknown[]) => args.length),
     }
 })
 
@@ -234,6 +235,31 @@ describe('sentry service', () => {
         })
     })
 
+    // feat-162 (review 2026-11-10): the message of every breadcrumb went through the URL
+    // mask, which parses its input as a URL: a plain sentence came out as a link.
+    it('masks the URLs of a breadcrumb message and leaves plain text alone', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const initOptions = sentryMocks.init.mock.calls[0]?.[0]
+        const beforeBreadcrumb = initOptions.beforeBreadcrumb as (
+            breadcrumb: Record<string, unknown> | null,
+        ) => Record<string, unknown> | null
+        const messageOf = (message: string): unknown =>
+            beforeBreadcrumb({ category: 'console', message })?.message
+
+        expect(messageOf('WebSocket connected')).toBe('WebSocket connected')
+        expect(messageOf('Sign-in failed: wrong password?')).toBe('Sign-in failed: wrong password?')
+        expect(messageOf('GET https://example.com/reset?token=secret failed')).toBe(
+            'GET https://example.com/reset?token=%5BFiltered%5D failed',
+        )
+        expect(messageOf('/reset-password?token=secret')).toContain('token=%5BFiltered%5D')
+        expect(messageOf('/reset-password?token=secret')).not.toContain('secret')
+    })
+
     // feat-075 (I): request data and breadcrumb data share one walker; they differ only in what
     // happens to a sensitive key (dropped from the request, kept as "[Filtered]" in a breadcrumb).
     it('treats a sensitive key by where it is: dropped in request data, filtered in breadcrumbs', async () => {
@@ -286,6 +312,84 @@ describe('sentry service', () => {
         })
     })
 
+    // Security review of main at 68789d6 (MEDIUM): beforeSend cleaned request and breadcrumbs
+    // but sent `extra` as is, so `extra.targetRoute` carried `?token=…` of a failed navigation.
+    it('masks URLs and sensitive keys in event extra', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const beforeSend = sentryMocks.init.mock.calls[0]?.[0].beforeSend as (
+            event: Record<string, unknown>,
+        ) => Record<string, unknown>
+
+        const event = beforeSend({
+            extra: {
+                targetRoute: '/reset-password?token=secret&lang=uk',
+                nested: { note: 'see https://x.test/cb?code=abc', resetToken: 'raw' },
+                plain: '/account',
+                count: 3,
+            },
+        })
+
+        expect(event.extra).toEqual({
+            targetRoute: expect.stringContaining('token=%5BFiltered%5D'),
+            nested: {
+                note: 'see https://x.test/cb?code=%5BFiltered%5D',
+                resetToken: '[Filtered]',
+            },
+            plain: '/account',
+            count: 3,
+        })
+        expect(JSON.stringify(event)).not.toContain('secret')
+        expect(JSON.stringify(event)).toContain('lang=uk')
+    })
+
+    // Security review of main at 68789d6 (HIGH): the Vue router integration copies query
+    // parameters into span attributes; beforeSend does not run on spans.
+    it('masks query tokens and URLs in span attributes before send', async () => {
+        vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/4')
+        vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+
+        const sentryService = await loadService()
+        sentryService.init(createAppMock(), createRouterMock())
+
+        const beforeSendSpan = sentryMocks.init.mock.calls[0]?.[0].beforeSendSpan as (
+            span: Record<string, unknown>,
+        ) => Record<string, unknown>
+        expect(beforeSendSpan).toBeTypeOf('function')
+
+        const span = beforeSendSpan({
+            name: '/reset-password',
+            attributes: {
+                'query.token': 'secret',
+                'query.state': 'xyz',
+                'query.lang': 'uk',
+                'url.full': 'https://app.test/reset-password?token=secret&lang=uk',
+                'url.query': 'token=secret&lang=uk',
+                'http.request.header.authorization': 'Bearer abc',
+                'sentry.op': 'navigation',
+                typed: { value: 'https://app.test/?access_token=secret', type: 'string' },
+                count: 2,
+            },
+        })
+
+        expect(span.name).toBe('/reset-password')
+        expect(span.attributes).toEqual({
+            'query.token': '[Filtered]',
+            'query.state': '[Filtered]',
+            'query.lang': 'uk',
+            'url.full': 'https://app.test/reset-password?token=%5BFiltered%5D&lang=uk',
+            'url.query': 'token=%5BFiltered%5D&lang=uk',
+            'http.request.header.authorization': '[Filtered]',
+            'sentry.op': 'navigation',
+            typed: { value: 'https://app.test/?access_token=%5BFiltered%5D', type: 'string' },
+            count: 2,
+        })
+    })
+
     it('forwards only the user id when setting user context', async () => {
         vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/5')
         vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
@@ -295,6 +399,68 @@ describe('sentry service', () => {
         sentryService.setUser({ id: '123' })
 
         expect(sentryMocks.setUser).toHaveBeenCalledWith({ id: '123' })
+    })
+
+    // feat-205 (security review 2026-11-12, L-17): beforeSend, beforeBreadcrumb and
+    // beforeSendSpan are not called for a replay.
+    describe('Session Replay', () => {
+        const initWithReplay = async () => {
+            vi.stubEnv('VITE_SENTRY_DSN', 'https://example.invalid/7')
+            vi.stubEnv('VITE_SENTRY_ENABLED', 'true')
+            vi.stubEnv('VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE', '1')
+            const sentryService = await loadService()
+            sentryService.init(createAppMock(), createRouterMock())
+        }
+
+        it('masks the URLs of the recording events the integration adds', async () => {
+            await initWithReplay()
+            const options = sentryMocks.replayIntegration.mock.calls[0]?.[0] as {
+                beforeAddRecordingEvent: (event: unknown) => unknown
+            }
+
+            const masked = options.beforeAddRecordingEvent({
+                type: 5,
+                timestamp: 1,
+                data: {
+                    tag: 'performanceSpan',
+                    payload: {
+                        op: 'navigation.push',
+                        description: 'https://app.example.com/reset-password?token=canary&lang=uk',
+                        data: { previous: '/login', url: '/verify-email?token=canary' },
+                    },
+                },
+            })
+
+            const text = JSON.stringify(masked)
+            expect(text).not.toContain('canary')
+            expect(text).toContain('lang=uk')
+            expect(masked).toMatchObject({
+                type: 5,
+                timestamp: 1,
+                data: { tag: 'performanceSpan', payload: { op: 'navigation.push' } },
+            })
+        })
+
+        it('masks the URLs in the header of a replay segment and leaves other events alone', async () => {
+            await initWithReplay()
+            const processor = sentryMocks.addEventProcessor.mock.calls[0]?.[0] as (
+                event: Record<string, unknown>,
+            ) => Record<string, unknown>
+            expect(processor).toBeTypeOf('function')
+
+            const replay = processor({
+                type: 'replay_event',
+                replay_id: 'r1',
+                urls: ['https://app.example.com/reset-password?token=canary', '/account'],
+                request: { url: 'https://app.example.com/verify-email?token=canary&x=1' },
+            })
+            expect(JSON.stringify(replay)).not.toContain('canary')
+            expect(replay).toMatchObject({ type: 'replay_event', replay_id: 'r1' })
+            expect((replay.urls as string[])[1]).toBe('/account')
+
+            const error = { message: 'x', request: { url: '/reset-password?token=canary' } }
+            expect(processor(error)).toBe(error)
+        })
     })
 
     it('emits replay integration only when replay sample rates are enabled', async () => {

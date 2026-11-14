@@ -50,7 +50,6 @@ export default {
     },
 
     login: {
-        heroTitle: 'Vibe Template',
         heroSubtitle: 'Learn a Vue 3 and TypeScript full-stack workspace structure.',
         featureSupportTitle: 'Support',
         featureSupportDesc: 'Open a support conversation and get help with your account.',
@@ -61,7 +60,7 @@ export default {
         signIn: 'Sign In',
         createAccount: 'Create Account',
         about: 'About',
-        mobileTitle: 'Welcome to Vibe Template',
+        mobileTitle: 'Welcome to {name}',
         mobileSubtitle: 'Explore an educational full-stack application template',
         socialLoginFailed: 'Social login failed. Please try again.',
         socialLoginLinkPending:
@@ -111,6 +110,8 @@ export default {
         resetPasswordSuccessTitle: 'Password updated',
         resetPasswordSuccess:
             'Your password has been updated. You can now sign in with the new password.',
+        resetPasswordLinkedMethods:
+            'These sign-in methods are still linked to your account and keep working: {methods}. If you do not recognise one, sign in and remove it on the account page.',
         invalidResetToken: 'This password reset link is invalid or has expired.',
         signingIn: 'Signing In...',
         orContinueWith: 'or continue with',
@@ -146,7 +147,7 @@ export default {
         errorEmailInvalid: 'Enter a valid email',
         errorPassword: 'Password is required',
         errorPasswordLength: 'Password must be at least 8 characters long',
-        errorPasswordMaxLength: 'Password must be at most 32 characters long',
+        errorPasswordMaxLength: 'Password must be at most 128 characters long',
         errorName: 'Name is required',
         errorPasswordsMismatch: 'Passwords do not match',
         errorTooManyResetRequests: 'Too many reset attempts. Please wait a minute and try again.',
@@ -178,11 +179,14 @@ export default {
         loadEarlier: 'Show earlier messages',
         loadingEarlier: 'Loading...',
         inputPlaceholder: 'Type your message...',
+        send: 'Send message',
+        connectionLost: 'The connection was lost. The conversation will refresh when it is back.',
     },
 
     account: {
         avatar: {
             delete: 'Delete avatar',
+            closeEditor: 'Close the avatar editor',
             errorFileSize: 'File must be under 10MB',
             errorFileType: 'Choose an image file',
         },
@@ -202,10 +206,27 @@ export default {
             newPassword: 'New password',
             confirmPassword: 'Confirm new password',
             updatePassword: 'Update password',
-            errorNewPasswordLength: 'New password must be 8-32 characters',
+            errorNewPasswordLength: 'New password must be 8-128 characters',
             errorMismatch: 'Passwords do not match',
             errorUpdate: 'Could not update password',
             successUpdate: 'Password updated',
+        },
+        signInMethods: {
+            title: 'Sign-in methods',
+            help: 'Accounts of other services linked to this account. Each of them signs in to it, also after a password change.',
+            empty: 'No other service is linked.',
+            linkedAt: 'linked {date}',
+            unlink: 'Remove',
+            currentPassword: 'Current password',
+            noPasswordHint:
+                'This account has no password: removing a sign-in method needs a sign-in within the last 10 minutes, and the last method cannot be removed.',
+            unlinked: '{provider} was removed',
+            errorLoad: 'Could not load sign-in methods',
+            errorUnlink: 'Could not remove the sign-in method',
+            errorPasswordRequired: 'Enter your current password to remove a sign-in method',
+            errorPasswordIncorrect: 'Current password is incorrect',
+            errorRecentSignIn: 'Sign out and sign in again, then remove the sign-in method',
+            errorLastMethod: 'Set a password before removing your last sign-in method',
         },
         contactMethods: {
             title: 'Contact methods',

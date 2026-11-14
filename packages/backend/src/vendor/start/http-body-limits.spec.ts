@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import type { HttpContext } from '#vendor/types/types.js'
 
 // Goes through the handler registered with uWS (server.post), the real
@@ -72,8 +72,8 @@ const controller = vi.fn((context: HttpContext) => {
     return { status: 'success' }
 })
 
-const route = (url: string, extra: Partial<Parameters<typeof defineRoute>[0]> = {}) => ({
-    ...defineRoute({ url, method: 'post', handler: controller, ...extra } as never),
+const route = (url: string, extra: Partial<Parameters<typeof defineRawRoute>[0]> = {}) => ({
+    ...defineRawRoute({ url, method: 'post', handler: controller, ...extra } as never),
     url: `api/${url}`,
     middlewares: [],
 })

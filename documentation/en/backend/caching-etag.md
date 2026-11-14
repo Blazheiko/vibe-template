@@ -6,7 +6,7 @@ The backend has two caching layers: an in-memory static file cache with ETag/`Ca
 
 Everything is implemented in [`static-server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts):
 
-- **When:** only with `appConfig.serveStatic`. The `cacheStaticSource()` function recursively reads `./public` once at startup (with `APP_ENV=manual-test`, `./public-test`) relative to `process.cwd()`. Files and directories whose names start with `.` are skipped.
+- **When:** only with `appConfig.serveStatic`. The `cacheStaticSource()` function recursively reads `./public` once at startup (with `APP_ENV=manual-test`, `./public-test`; this is a local mode, the Docker image does not have this directory) relative to `process.cwd()`. Files and directories whose names start with `.` are skipped.
 - **What:** only files with extensions from the `ALLOWED_STATIC_EXTENSIONS` whitelist are taken (html, css, js, mjs, json, webmanifest, images, fonts, audio/video). The rest is ignored. Binary files are stored as `Buffer`, text files as a `utf8` string ([`isBinaryExtension`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/file-utils.ts)).
 - **Memory limits:** files up to `STATIC_MAX_MEMORY_FILE_SIZE` (1 MiB by default) are put in RAM until the total (including compressed variants) exceeds `STATIC_MAX_MEMORY_TOTAL` (64 MiB). The rest is served by **streaming from disk** (`fs.createReadStream` with uWS backpressure: `tryEnd` / `onWritable`); their content is not read at startup. `index.html` is always in memory: the SPA fallback serves it. At startup `Static files cached` is logged with `files`, `memoryBytes` and `streamedFromDisk`. Changes on disk after startup are not picked up; a restart is needed.
 - **Routes:** in [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts) (`configureHttp`) a separate `server.get(key, …)` → `staticCacheHandler` is registered for each cached path. The `/` path gets a copy of `/index.html`.
@@ -50,9 +50,7 @@ Requests that did not match any cached path go to `server.any('/*')`. If it is a
 - A URL **without a dot** gets `index.html` through the same `handleHtmlRequest`, that is, with ETag and `must-revalidate`.
 - A URL with a dot that is not in the cache gets `404` with an empty body.
 
-::: warning CSP
-Generation of the CSP header in `static-server.ts` is commented out (`setCspHeader`), so HTML is served without a Content-Security-Policy. This is issue 1 in `docs/plan/code-issues-found-during-docs.md`.
-:::
+The HTML shell (and `index.html` for the SPA fallback) and any other `.html` / `.htm` file, including one streamed from disk, gets the `document` CSP, SVG gets the `svg` CSP, `/service-worker.js` and other files get no CSP (`setSecurityHeaders(res, [], cspKind)` in `static-server.ts`). The rules are in [Security](/en/backend/security#content-security-policy).
 
 ## API responses
 
@@ -67,7 +65,7 @@ CORS: if `ENABLED_CORS=true`, `setCorsHeader` writes `Vary: Origin` and `Access-
 
 ## Frontend: Service Worker
 
-[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (built via [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) precaches the `filesToCache` list on `install`: `/`, icons, splash, audio. For `/assets/`, `/icons/`, `/audio/`, `.css`, etc. (`isStaticAsset`) it uses a cache-first strategy. The cache name is `BUILD_TIMESTAMP`. Old caches are deleted on `activate`.
+[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (built via [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) precaches the `PRECACHE_FILES` list from [`sw-precache.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/sw-precache.ts) on `install`: `/`, icons, splash, the manifest screenshots. Every path of the list must exist in `public/`; a unit test checks it. The HTML shell (navigations, the network-first strategy) is stored under the path without the query string: a one-time token from `/reset-password?token=…` does not stay in Cache Storage, and an offline navigation gets the copy stored for the same path. For `/assets/`, `/icons/`, `/audio/`, `.css`, etc. (`isStaticAsset`) it uses a cache-first strategy. The cache name is `BUILD_TIMESTAMP`. Old caches are deleted on `activate`.
 
 ## Checking with curl
 
@@ -91,7 +89,7 @@ The port and MIME depend on your configuration ([Configuration](/en/backend/conf
 - The `Cache-Control` values are set by constants in `static-server.ts` (`HTML_CACHE_CONTROL`, `IMMUTABLE_CACHE_CONTROL`, `REVALIDATE_CACHE_CONTROL`); the rule "`immutable` only for `/assets/`" is in `cacheControlFor`.
 - Memory limits are `STATIC_MAX_MEMORY_FILE_SIZE`, `STATIC_MAX_MEMORY_TOTAL` ([Configuration](/en/backend/configuration)).
 - The extension whitelist is set in `ALLOWED_STATIC_EXTENSIONS`.
-- **Dev:** the frontend is served by the Vite dev server, `SERVE_STATIC` is usually `false`. **Prod:** either `SERVE_STATIC=true` with the `public` directory in the image (the variable is not set in the Dockerfile, issue 31), or separate hosting/CDN (`CDN_URL`). With a CDN, the caching headers are set by the CDN. See [Deployment](/en/backend/deployment).
+- **Dev:** the frontend is served by the Vite dev server, `SERVE_STATIC` is usually `false`. **Prod:** either `SERVE_STATIC=true` with the `public` directory in the image (this is what the [Dockerfile](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) does: `SERVE_STATIC=true`), or separate hosting/CDN (`CDN_URL`). With a CDN, the caching headers are set by the CDN. See [Deployment](/en/backend/deployment).
 
 ::: info History
 Previously the ETag was built from the file length and URL. Now it is a SHA1 hash of the content, computed once at startup; why it is done this way is explained in a comment in [static-server.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts). The `etag-improvements.md` note with the MD5 / mtime / CRC32 options was removed in feat-009 ([last version](https://github.com/Blazheiko/vibe-template/blob/8f3479f/packages/backend/src/docs/etag-improvements.md)).

@@ -4,6 +4,8 @@ import type { BaseType } from '@arktype/type'
 import type { InferPayload, Validator } from '#vendor/contracts/validator.js'
 import type { BodyKind } from '../utils/network/http-request-handlers.js'
 import type { ResponseCheck } from '../utils/validation/validate-response.js'
+import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
+import type { WsErrorBody, WsReplyEnvelope, WsRequestEnvelope } from 'shared/ws-client'
 
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
@@ -15,7 +17,6 @@ export interface UserConnection extends Record<string, unknown> {
     ip: string
     userAgent: string
     ip2: string
-    token: string
     user: unknown
     role?: 'user' | 'admin'
     appType: 'web' | 'pwa'
@@ -30,6 +31,10 @@ export interface UserConnection extends Record<string, unknown> {
      * every access to it throws. Work that awaited before touching the socket checks it (feat-107).
      */
     closed?: boolean
+    /** feat-197: the place among the connections of its user and address; freed on close. */
+    connectionSlot?: { userId: string; ipKey: string } | undefined
+    /** feat-149: what the connection sent this minute; created with its first message. */
+    messageBudget?: WsMessageBudgetState
 }
 
 export interface MyWebSocket extends WebSocket<UserConnection> {
@@ -53,10 +58,15 @@ export interface Cookie {
     sameSite: string | undefined
 }
 
-export interface HttpContext<TPayload = unknown, TQuery = null> {
+/**
+ * The context of an HTTP handler. `TParams` are the path parameters: `defineRoute` passes those of
+ * the route's contract (`:name` segments), so a handler that names another parameter does not
+ * compile (feat-186).
+ */
+export interface HttpContext<TPayload = unknown, TQuery = null, TParams = Params> {
     requestId: string
     logger: Logger
-    httpData: HttpData<TPayload, TQuery>
+    httpData: HttpData<TPayload, TQuery, TParams>
     responseData: ResponseData
     session: Session
     auth: Auth
@@ -159,10 +169,10 @@ export interface UploadedFile {
     data: ArrayBuffer
 }
 
-export interface HttpData<TPayload = unknown, TQuery = null> {
+export interface HttpData<TPayload = unknown, TQuery = null, TParams = Params> {
     method: Method
     ip: string | null | undefined
-    params: Params
+    params: TParams
     payload: TPayload | null
     /**
      * Validated, typed query object. NOT a raw URLSearchParams.
@@ -185,26 +195,14 @@ export interface HttpData<TPayload = unknown, TQuery = null> {
     hasFile: (name: string) => boolean
 }
 
-export interface ErrorResponse {
-    code: string
-    message: string
-    reason?: string
-    details?: unknown
-}
+/** The error envelope of a refused request (shared/ws-client, feat-184). */
+export type ErrorResponse = WsErrorBody
 
-export interface WsMessage {
-    payload: Record<string, unknown> | null
-    event: string
-    timestamp: number
-}
+/** A WS request as the server receives it: the envelope of shared/ws-client (feat-184). */
+export type WsMessage = WsRequestEnvelope
 
-export interface WsResponseData {
-    data: Payload | null
-    error: ErrorResponse | null
-    event: string
-    status: string
-    timestamp: number
-}
+/** A WS reply as the server sends it: the envelope of shared/ws-client (feat-184). */
+export type WsResponseData = WsReplyEnvelope<Payload>
 
 export interface WsData<TPayload = unknown> {
     ws: MyWebSocket
@@ -260,19 +258,25 @@ type BivariantHandler<TContext> = {
 export type RouteHandler<TPayload = unknown, TQuery = null> = BivariantHandler<
     HttpContext<TPayload, TQuery> | WsContext<TPayload>
 >
-// Same bivariance trick as BivariantHandler, with a typed result for defineRoute /
-// defineWsRoute routes that declare a ResponseSchema.
+// Same bivariance trick as BivariantHandler, with a typed result for defineRoute, defineRawRoute /
+// defineWsRoute / defineRawWsRoute routes that declare a ResponseSchema.
 export type TypedHandler<TContext, TOut> = {
     bivarianceHack(context: TContext): TOut | Promise<TOut>
 }['bivarianceHack']
 
-// Base route configuration without handler (for defineRoute)
+// Base route configuration without handler (for defineRoute and defineRawRoute)
 export interface RouteConfig<
     TValidator extends Validator<unknown> | undefined = undefined,
     TQueryValidator extends Validator<unknown> | undefined = undefined,
 > {
     url: string
     method: Method
+    /**
+     * Set by `defineRawRoute({ contract })`: the route's whole path under the API prefix, as the
+     * contract says it. The router checks that the group the route is in has that prefix, and
+     * takes the URL from here (docs/adr/0005-route-contracts.md).
+     */
+    contractPath?: string | undefined
     middlewares?: string[] | undefined
     validator?: TValidator | undefined
     /**
@@ -307,6 +311,13 @@ export interface RouteConfig<
      * tighten it. For a multipart upload it is the whole body: the file plus its framing.
      */
     maxBodySize?: number | undefined
+    /**
+     * The body is read only when the request carries the cookie of a signed-in session
+     * (feat-202); otherwise 401 before a byte is buffered. For routes behind `auth_guard`
+     * that take a large body: the body is read before the middlewares run, so without this
+     * an anonymous client makes the server buffer the whole upload to answer 401.
+     */
+    signedInBeforeBody?: boolean | undefined
 }
 
 // RouteItem with handler - uses function overload pattern for type erasure

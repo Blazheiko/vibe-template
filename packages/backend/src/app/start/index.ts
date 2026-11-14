@@ -18,8 +18,6 @@ registerWsAppHooks({
     onConnected: (ws, userData) => websocketCoordinator.handleConnected(ws, userData),
     onDisconnected: (ws, userData, code) =>
         websocketCoordinator.handleDisconnected(ws, userData, code),
-    onRefreshToken: (token) => wsSessionAuth.refreshToken(token),
-    onRevokeToken: (token) => wsSessionAuth.revokeToken(token),
 })
 
 // ADR 0002: sessions are revoked by rotating users.sessionToken; the vendor session

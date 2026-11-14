@@ -1,7 +1,7 @@
 import { db } from '#database/db.js'
 import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { smsAuthChallenges } from '#database/schema.js'
-import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 
 export type SmsAuthChallengeRow = InferSelectModel<typeof smsAuthChallenges>
@@ -16,6 +16,14 @@ export interface SmsAuthChallengeRepository {
         flow: SmsAuthChallengeFlow,
         executor?: DbExecutor,
     ): Promise<SmsAuthChallengeRow | undefined>
+    /** Every challenge of this phone and flow that is still waiting, newest first (feat-204). */
+    findPendingForPhoneFlow(
+        phone: string,
+        flow: SmsAuthChallengeFlow,
+        executor?: DbExecutor,
+    ): Promise<SmsAuthChallengeRow[]>
+    /** Invalidates these challenges where they are still waiting (feat-204). */
+    invalidatePendingByIds(ids: readonly string[], executor?: DbExecutor): Promise<number>
     /**
      * feat-134 (L2): a transaction-scoped advisory lock on this phone and flow. Two starts that
      * both passed the cooldown check take it one at a time, and the second sees the first one's
@@ -93,6 +101,38 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
             .orderBy(sql`${smsAuthChallenges.createdAt} desc`)
             .limit(1)
             .then((rows) => rows.at(0))
+    },
+
+    async findPendingForPhoneFlow(phone, flow, executor = db) {
+        return await executor
+            .select()
+            .from(smsAuthChallenges)
+            .where(
+                and(
+                    eq(smsAuthChallenges.phone, phone),
+                    eq(smsAuthChallenges.flow, flow),
+                    isNull(smsAuthChallenges.invalidatedAt),
+                    isNull(smsAuthChallenges.confirmedAt),
+                ),
+            )
+            .orderBy(sql`${smsAuthChallenges.createdAt} desc`)
+    },
+
+    async invalidatePendingByIds(ids, executor = db) {
+        if (ids.length === 0) return 0
+        const now = new Date()
+        const rows = await executor
+            .update(smsAuthChallenges)
+            .set({ invalidatedAt: now, updatedAt: now })
+            .where(
+                and(
+                    inArray(smsAuthChallenges.id, [...ids]),
+                    isNull(smsAuthChallenges.invalidatedAt),
+                    isNull(smsAuthChallenges.confirmedAt),
+                ),
+            )
+            .returning({ id: smsAuthChallenges.id })
+        return rows.length
     },
 
     async lockPhoneFlow(phone, flow, tx) {

@@ -1,7 +1,5 @@
-import baseApi from './base-api'
 import type { ApiResponse } from './api-error'
-import { apiPath } from './api-path'
-import { adminQueryString } from './admin-query'
+import { callApi } from './api-client'
 import type {
     OAuthProvidersResponse,
     OAuthLinkConfirmResponse,
@@ -19,6 +17,8 @@ import type {
     ResetPasswordResponse,
     UpdateWsTokenResponse,
     SupportKnowledgeBaseInitJob,
+    SupportKnowledgeBaseItem,
+    SupportChatHistoryItem,
     AdminUserListResponse,
     AdminOnlineUserListResponse,
     AdminOnlineUserDetailResponse,
@@ -32,7 +32,8 @@ import type {
     LinkEmailStartResponse,
     ResetPhoneStartResponse,
     ResetPhoneCompleteResponse,
-    GetSubscriptionStatisticsResponse,
+    GetSignInMethodsResponse,
+    UnlinkSignInMethodResponse,
 } from 'shared/responses'
 import type {
     CreateSubscriptionInput,
@@ -55,331 +56,162 @@ import type {
     LinkEmailStartInput,
     ResetPhoneStartInput,
     ResetPhoneCompleteInput,
+    SupportKnowledgeBaseCreateInput,
+    SupportKnowledgeBaseUpdateInput,
 } from 'shared/schemas'
+import {
+    adminContracts,
+    authContracts,
+    avatarContracts,
+    knowledgeBaseContracts,
+    mainContracts,
+    oauthContracts,
+    pushSubscriptionContracts,
+    supportContracts,
+} from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
 const isSuccessfulResponse = <T extends Record<string, unknown>>(
     response: ApiResponse<T>,
-): response is { data: T; error: null } =>
+): response is { data: Exclude<T, { status: 'error' }>; error: null } =>
     response.error === null && response.data !== null && !hasResponseError(response.data)
 
 export const authApi = {
-    getOAuthProviders: async (): Promise<ApiResponse<OAuthProvidersResponse>> => {
-        return baseApi.http<OAuthProvidersResponse>('GET', apiPath('auth/oauth/providers'))
-    },
+    getOAuthProviders: (): Promise<ApiResponse<OAuthProvidersResponse>> =>
+        callApi(oauthContracts.providers),
 
     /**
      * feat-097: the mailed link that confirms an OAuth link. It works only in the browser
      * session that started the sign-in, which is usually still anonymous: `public` recovery.
      */
-    confirmOAuthLink: async (
+    confirmOAuthLink: (
         body: OAuthLinkConfirmInput,
-    ): Promise<ApiResponse<OAuthLinkConfirmResponse>> => {
-        return baseApi.http<OAuthLinkConfirmResponse>(
-            'POST',
-            apiPath('auth/oauth/link/confirm'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<OAuthLinkConfirmResponse>> =>
+        callApi(oauthContracts.confirmLink, { body }, { csrfRecovery: 'public' }),
 
     /** feat-097: send again the link that confirms the address of an account without one. */
-    resendOAuthEmailLink: async (): Promise<ApiResponse<EmailLinkResendResponse>> => {
-        return baseApi.http<EmailLinkResendResponse>('POST', apiPath('auth/oauth/email/resend'))
-    },
+    resendOAuthEmailLink: (): Promise<ApiResponse<EmailLinkResendResponse>> =>
+        callApi(oauthContracts.resendEmailLink, { body: {} }),
 
-    login: async (body: LoginInput): Promise<ApiResponse<LoginResponse>> => {
-        return baseApi.http<LoginResponse>('POST', apiPath('auth/login'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    login: (body: LoginInput): Promise<ApiResponse<LoginResponse>> =>
+        callApi(authContracts.login, { body }, { csrfRecovery: 'public' }),
 
-    registerEmail: async (
-        body: RegisterEmailInput,
-    ): Promise<ApiResponse<RegisterEmailResponse>> => {
-        return baseApi.http<RegisterEmailResponse>('POST', apiPath('auth/register/email'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    registerEmail: (body: RegisterEmailInput): Promise<ApiResponse<RegisterEmailResponse>> =>
+        callApi(authContracts.registerEmail, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneStart: async (
+    registerPhoneStart: (
         body: RegisterPhoneStartInput,
-    ): Promise<ApiResponse<RegisterPhoneStartResponse>> => {
-        return baseApi.http<RegisterPhoneStartResponse>(
-            'POST',
-            apiPath('auth/register/phone/start'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneStartResponse>> =>
+        callApi(authContracts.registerPhoneStart, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneConfirm: async (
+    registerPhoneConfirm: (
         body: RegisterPhoneConfirmInput,
-    ): Promise<ApiResponse<RegisterPhoneConfirmResponse>> => {
-        return baseApi.http<RegisterPhoneConfirmResponse>(
-            'POST',
-            apiPath('auth/register/phone/confirm'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneConfirmResponse>> =>
+        callApi(authContracts.registerPhoneConfirm, { body }, { csrfRecovery: 'public' }),
 
-    registerPhoneComplete: async (
+    registerPhoneComplete: (
         body: RegisterPhoneCompleteInput,
-    ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> => {
-        return baseApi.http<RegisterPhoneCompleteResponse>(
-            'POST',
-            apiPath('auth/register/phone/complete-profile'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> =>
+        callApi(authContracts.registerPhoneComplete, { body }, { csrfRecovery: 'public' }),
 
-    register: async (body: RegisterEmailInput): Promise<ApiResponse<RegisterEmailResponse>> => {
-        return authApi.registerEmail(body)
-    },
+    logout: (): Promise<ApiResponse<LogoutResponse>> =>
+        callApi(authContracts.logout, { body: {} }, { sessionAfter: 'anonymous' }),
 
-    logout: async (): Promise<ApiResponse<LogoutResponse>> => {
-        return baseApi.http<LogoutResponse>(
-            'POST',
-            apiPath('auth/logout'),
-            {},
-            { sessionAfter: 'anonymous' },
-        )
-    },
+    logoutAll: (): Promise<ApiResponse<LogoutAllResponse>> =>
+        callApi(authContracts.logoutAll, { body: {} }, { sessionAfter: 'anonymous' }),
 
-    logoutAll: async (): Promise<ApiResponse<LogoutAllResponse>> => {
-        return baseApi.http<LogoutAllResponse>(
-            'POST',
-            apiPath('auth/logout-all'),
-            {},
-            { sessionAfter: 'anonymous' },
-        )
-    },
+    changePassword: (body: ChangePasswordInput): Promise<ApiResponse<ChangePasswordResponse>> =>
+        callApi(authContracts.changePassword, { body }),
 
-    changePassword: async (
-        body: ChangePasswordInput,
-    ): Promise<ApiResponse<ChangePasswordResponse>> => {
-        return baseApi.http<ChangePasswordResponse>('POST', apiPath('auth/change-password'), body)
-    },
+    forgotPassword: (body: ForgotPasswordInput): Promise<ApiResponse<ForgotPasswordResponse>> =>
+        callApi(authContracts.forgotPassword, { body }, { csrfRecovery: 'public' }),
 
-    forgotPassword: async (
-        body: ForgotPasswordInput,
-    ): Promise<ApiResponse<ForgotPasswordResponse>> => {
-        return baseApi.http<ForgotPasswordResponse>('POST', apiPath('auth/forgot-password'), body, {
-            csrfRecovery: 'public',
-        })
-    },
-
-    startPhonePasswordReset: async (
+    startPhonePasswordReset: (
         body: ResetPhoneStartInput,
-    ): Promise<ApiResponse<ResetPhoneStartResponse>> => {
-        return baseApi.http<ResetPhoneStartResponse>(
-            'POST',
-            apiPath('auth/reset-phone/start'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<ResetPhoneStartResponse>> =>
+        callApi(authContracts.resetPhoneStart, { body }, { csrfRecovery: 'public' }),
 
-    completePhonePasswordReset: async (
+    completePhonePasswordReset: (
         body: ResetPhoneCompleteInput,
-    ): Promise<ApiResponse<ResetPhoneCompleteResponse>> => {
-        return baseApi.http<ResetPhoneCompleteResponse>(
-            'POST',
-            apiPath('auth/reset-phone/complete'),
-            body,
-            { csrfRecovery: 'public' },
-        )
-    },
+    ): Promise<ApiResponse<ResetPhoneCompleteResponse>> =>
+        callApi(authContracts.resetPhoneComplete, { body }, { csrfRecovery: 'public' }),
 
-    resetPassword: async (
-        body: ResetPasswordInput,
-    ): Promise<ApiResponse<ResetPasswordResponse>> => {
-        return baseApi.http<ResetPasswordResponse>('POST', apiPath('auth/reset-password'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    resetPassword: (body: ResetPasswordInput): Promise<ApiResponse<ResetPasswordResponse>> =>
+        callApi(authContracts.resetPassword, { body }, { csrfRecovery: 'public' }),
 
-    verifyEmail: async (body: VerifyEmailInput): Promise<ApiResponse<VerifyEmailResponse>> => {
-        return baseApi.http<VerifyEmailResponse>('POST', apiPath('auth/verify-email'), body, {
-            csrfRecovery: 'public',
-        })
-    },
+    verifyEmail: (body: VerifyEmailInput): Promise<ApiResponse<VerifyEmailResponse>> =>
+        callApi(authContracts.verifyEmail, { body }, { csrfRecovery: 'public' }),
 
-    resendVerificationEmail: async (): Promise<ApiResponse<ResendVerificationEmailResponse>> => {
-        return baseApi.http<ResendVerificationEmailResponse>(
-            'POST',
-            apiPath('auth/resend-verification-email'),
-        )
-    },
+    resendVerificationEmail: (): Promise<ApiResponse<ResendVerificationEmailResponse>> =>
+        callApi(authContracts.resendVerificationEmail, { body: {} }),
 
-    startPhoneLink: async (
-        body: LinkPhoneStartInput,
-    ): Promise<ApiResponse<LinkPhoneStartResponse>> => {
-        return baseApi.http<LinkPhoneStartResponse>('POST', apiPath('auth/link-phone/start'), body)
-    },
+    startPhoneLink: (body: LinkPhoneStartInput): Promise<ApiResponse<LinkPhoneStartResponse>> =>
+        callApi(authContracts.linkPhoneStart, { body }),
 
-    confirmPhoneLink: async (
+    confirmPhoneLink: (
         body: LinkPhoneConfirmInput,
-    ): Promise<ApiResponse<LinkPhoneConfirmResponse>> => {
-        return baseApi.http<LinkPhoneConfirmResponse>(
-            'POST',
-            apiPath('auth/link-phone/confirm'),
-            body,
-        )
-    },
+    ): Promise<ApiResponse<LinkPhoneConfirmResponse>> =>
+        callApi(authContracts.linkPhoneConfirm, { body }),
 
-    startEmailLink: async (
-        body: LinkEmailStartInput,
-    ): Promise<ApiResponse<LinkEmailStartResponse>> => {
-        return baseApi.http<LinkEmailStartResponse>('POST', apiPath('auth/link-email/start'), body)
-    },
+    startEmailLink: (body: LinkEmailStartInput): Promise<ApiResponse<LinkEmailStartResponse>> =>
+        callApi(authContracts.linkEmailStart, { body }),
+
+    // feat-199: the OAuth identities linked to the account.
+    signInMethods: (): Promise<ApiResponse<GetSignInMethodsResponse>> =>
+        callApi(authContracts.signInMethods, {}),
+
+    unlinkSignInMethod: (body: {
+        id: string
+        currentPassword?: string
+    }): Promise<ApiResponse<UnlinkSignInMethodResponse>> =>
+        callApi(authContracts.unlinkSignInMethod, { body }),
 }
 
 export const mainApi = {
-    init: async (): Promise<ApiResponse<InitResponse>> => {
-        return baseApi.http<InitResponse>('GET', apiPath('main/init'))
-    },
+    init: (): Promise<ApiResponse<InitResponse>> => callApi(mainContracts.init),
 
-    updateWsToken: async (): Promise<ApiResponse<UpdateWsTokenResponse>> => {
-        return baseApi.http<UpdateWsTokenResponse>('GET', apiPath('main/update-ws-token'))
-    },
+    updateWsToken: (): Promise<ApiResponse<UpdateWsTokenResponse>> =>
+        callApi(mainContracts.updateWsToken),
 }
 
-interface PushSubscriptionData extends Record<string, unknown> {
-    endpoint: string
-    p256dhKey: string
-    authKey: string
-    userAgent?: string
-    ipAddress?: string
-    deviceType?: string
-    browserName?: string
-    browserVersion?: string
-    osName?: string
-    osVersion?: string
-    notificationTypes?: ('mention' | 'system')[]
-    timezone?: string
-}
-
-interface PushSubscriptionResponse {
-    id: string
-    userId: string
-    endpoint: string
-    p256dhKey: string
-    authKey: string
-    userAgent?: string
-    deviceType?: string
-    browserName?: string
-    isActive: boolean
-    created_at: string
-    updated_at: string
-}
-
+// The push-subscriptions routes go through their contracts (docs/adr/0005-route-contracts.md):
+// the method, the path, the body and the answer of each call are the contract's.
 export const pushSubscriptionApi = {
-    getSubscriptions: async (): Promise<ApiResponse<PushSubscriptionResponse[]>> => {
-        return baseApi.http<PushSubscriptionResponse[]>('GET', apiPath('push-subscriptions'))
-    },
+    getSubscriptions: () => callApi(pushSubscriptionContracts.list),
 
-    createSubscription: async (
-        subscriptionData: CreateSubscriptionInput | PushSubscriptionData,
-    ): Promise<ApiResponse<PushSubscriptionResponse>> => {
-        return baseApi.http<PushSubscriptionResponse>(
-            'POST',
-            apiPath('push-subscriptions'),
-            subscriptionData,
-        )
-    },
+    createSubscription: (body: CreateSubscriptionInput) =>
+        callApi(pushSubscriptionContracts.create, { body }),
 
-    getSubscription: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<PushSubscriptionResponse>> => {
-        return baseApi.http<PushSubscriptionResponse>(
-            'GET',
-            apiPath(`push-subscriptions/${subscriptionId}`),
-        )
-    },
+    getSubscription: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.get, { params: { subscriptionId } }),
 
-    deleteSubscription: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<{ success: boolean }>> => {
-        return baseApi.http<{ success: boolean }>(
-            'DELETE',
-            apiPath(`push-subscriptions/${subscriptionId}`),
-        )
-    },
+    deleteSubscription: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.remove, { params: { subscriptionId } }),
 
-    getSubscriptionStatistics: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<GetSubscriptionStatisticsResponse>> => {
-        return baseApi.http<GetSubscriptionStatisticsResponse>(
-            'GET',
-            apiPath(`push-subscriptions/${subscriptionId}/statistics`),
-        )
-    },
+    getSubscriptionStatistics: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.statistics, { params: { subscriptionId } }),
 
-    deactivateSubscription: async (
-        subscriptionId: string,
-    ): Promise<ApiResponse<PushSubscriptionResponse>> => {
-        return baseApi.http<PushSubscriptionResponse>(
-            'PUT',
-            apiPath(`push-subscriptions/${subscriptionId}/deactivate`),
-            {},
-        )
-    },
+    deactivateSubscription: (subscriptionId: string) =>
+        callApi(pushSubscriptionContracts.deactivate, { params: { subscriptionId }, body: {} }),
 
-    getVapidPublicKey: async (): Promise<ApiResponse<{ vapidPublicKey: string }>> => {
-        return baseApi.http<{ vapidPublicKey: string }>(
-            'GET',
-            apiPath('push-subscriptions/vapid-public-key'),
-        )
-    },
+    getVapidPublicKey: () => callApi(pushSubscriptionContracts.vapidPublicKey),
 
-    testPush: async (
-        payload: PushSubscriptionTestInput = {},
-    ): Promise<
-        ApiResponse<{ status: string; message: string; sent?: number; failed?: number }>
-    > => {
-        return baseApi.http<{ status: string; message: string; sent?: number; failed?: number }>(
-            'POST',
-            apiPath('push-subscriptions/test-push'),
-            payload,
-        )
-    },
+    testPush: (body: PushSubscriptionTestInput = {}) =>
+        callApi(pushSubscriptionContracts.testPush, { body }),
 }
 
 export const avatarApi = {
-    upload: async (file: Blob): Promise<ApiResponse<UploadAvatarResponse>> => {
-        const formData = new FormData()
-        formData.append('avatar', file, 'avatar.webp')
-        return baseApi.upload<UploadAvatarResponse>('POST', apiPath('avatar/upload'), formData)
-    },
+    upload: (file: Blob): Promise<ApiResponse<UploadAvatarResponse>> =>
+        callApi(avatarContracts.upload, {
+            body: { fields: {}, files: { avatar: { blob: file, filename: 'avatar.webp' } } },
+        }),
 
-    delete: async (): Promise<ApiResponse<DeleteAvatarResponse>> => {
-        return baseApi.http<DeleteAvatarResponse>('DELETE', apiPath('avatar'))
-    },
+    delete: (): Promise<ApiResponse<DeleteAvatarResponse>> => callApi(avatarContracts.remove),
 }
 
-export interface SupportChatMessage {
-    id: string
-    role: 'user' | 'assistant'
-    content: string
-    screenshots: string[] | null
-    createdAt: string
-}
+export type SupportChatMessage = SupportChatHistoryItem
 
-export interface KnowledgeBaseArticle {
-    id: string
-    title: string
-    content: string
-    category: string | null
-    isActive: boolean
-    hasScreenshot: boolean
-    screenshotKey: string | null
-    embeddingIndexed: boolean
-    createdAt: string
-    updatedAt: string
-}
+export type KnowledgeBaseArticle = SupportKnowledgeBaseItem
 
 export type KnowledgeBaseInitStatus = SupportKnowledgeBaseInitJob
 
@@ -400,14 +232,9 @@ export const supportApi = {
         options: { before?: string; signal?: AbortSignal } = {},
     ): Promise<SupportHistoryPage | null> => {
         const { before, ...requestOptions } = options
-        const response = await baseApi.http<{
-            status: string
-            data?: SupportChatMessage[]
-            hasMore?: boolean
-        }>(
-            'GET',
-            apiPath(`support/chat/history${before !== undefined ? `?before=${before}` : ''}`),
-            {},
+        const response = await callApi(
+            supportContracts.history,
+            { query: { before } },
             requestOptions,
         )
         if (!isSuccessfulResponse(response)) return null
@@ -415,15 +242,8 @@ export const supportApi = {
     },
 
     deleteChatHistory: async (): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'DELETE',
-            apiPath('support/chat/history'),
-        )
+        const response = await callApi(supportContracts.deleteHistory)
         return isSuccessfulResponse(response)
-    },
-
-    getScreenshotUrl: (articleId: string): string => {
-        return apiPath(`support/screenshot/${encodeURIComponent(articleId)}`)
     },
 }
 
@@ -431,92 +251,69 @@ export const adminKnowledgeBaseApi = {
     getAll: async (
         params?: AdminKnowledgeBaseListQueryInput,
     ): Promise<{ items: KnowledgeBaseArticle[]; total: number }> => {
-        const qs = adminQueryString({
-            category: params?.category,
-            page: params?.page,
-            limit: params?.limit,
+        const response = await callApi(knowledgeBaseContracts.list, {
+            query: { category: params?.category, page: params?.page, limit: params?.limit },
         })
-        const response = await baseApi.http<{
-            status: string
-            data?: KnowledgeBaseArticle[]
-            total?: number
-        }>('GET', apiPath(`admin/knowledge-base${qs}`))
-        if (!isSuccessfulResponse(response)) return { items: [], total: 0 }
+        // A failure is not an empty knowledge base: the view must tell them apart.
+        if (!isSuccessfulResponse(response)) {
+            throw new Error(response.error?.message ?? 'Failed to load the knowledge base')
+        }
         return { items: response.data.data ?? [], total: response.data.total ?? 0 }
     },
 
-    create: async (payload: {
-        title: string
-        content: string
-        category?: string
-        isActive?: boolean
-    }): Promise<KnowledgeBaseArticle | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseArticle }>(
-            'POST',
-            apiPath('admin/knowledge-base'),
-            payload,
-        )
+    create: async (
+        payload: SupportKnowledgeBaseCreateInput,
+    ): Promise<KnowledgeBaseArticle | null> => {
+        const response = await callApi(knowledgeBaseContracts.create, { body: payload })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     update: async (
         id: string,
-        payload: { title?: string; content?: string; category?: string | null; isActive?: boolean },
+        payload: SupportKnowledgeBaseUpdateInput,
     ): Promise<KnowledgeBaseArticle | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseArticle }>(
-            'PUT',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}`),
-            payload,
-        )
+        const response = await callApi(knowledgeBaseContracts.update, {
+            params: { id },
+            body: payload,
+        })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     delete: async (id: string): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'DELETE',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}`),
-        )
+        const response = await callApi(knowledgeBaseContracts.remove, { params: { id } })
         return isSuccessfulResponse(response)
     },
 
     uploadScreenshot: async (id: string, file: File): Promise<KnowledgeBaseArticle | null> => {
-        const formData = new FormData()
-        formData.append('screenshot', file)
-        const response = await baseApi.upload<{ status: string; data?: KnowledgeBaseArticle }>(
-            'POST',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/screenshot`),
-            formData,
-        )
+        const response = await callApi(knowledgeBaseContracts.uploadScreenshot, {
+            params: { id },
+            body: { fields: {}, files: { screenshot: file } },
+        })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     deleteScreenshot: async (id: string): Promise<KnowledgeBaseArticle | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseArticle }>(
-            'DELETE',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/screenshot`),
-        )
+        const response = await callApi(knowledgeBaseContracts.removeScreenshot, { params: { id } })
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 
     reindex: async (id: string): Promise<boolean> => {
-        const response = await baseApi.http<{ status: string }>(
-            'POST',
-            apiPath(`admin/knowledge-base/${encodeURIComponent(id)}/reindex`),
-        )
+        const response = await callApi(knowledgeBaseContracts.reindex, {
+            params: { id },
+            body: {},
+        })
         return isSuccessfulResponse(response)
     },
 
-    reindexAll: async (): Promise<number> => {
-        const response = await baseApi.http<{ status: string; indexed?: number }>(
-            'POST',
-            apiPath('admin/knowledge-base/reindex-all'),
-        )
-        if (!isSuccessfulResponse(response)) return 0
-        return response.data.indexed ?? 0
+    /** `null` when the request failed; `failed` are the ids of the articles left unindexed. */
+    reindexAll: async (): Promise<{ indexed: number; failed: string[] } | null> => {
+        const response = await callApi(knowledgeBaseContracts.reindexAll, { body: {} })
+        if (!isSuccessfulResponse(response)) return null
+        return { indexed: response.data.indexed ?? 0, failed: response.data.failed ?? [] }
     },
 
     startInit: async (): Promise<{
@@ -524,11 +321,7 @@ export const adminKnowledgeBaseApi = {
         status: KnowledgeBaseInitStatus | null
         message: string | null
     }> => {
-        const response = await baseApi.http<{
-            status: string
-            data?: KnowledgeBaseInitStatus
-            message?: string
-        }>('POST', apiPath('admin/knowledge-base/init'))
+        const response = await callApi(knowledgeBaseContracts.startInit, { body: {} })
         if (!isSuccessfulResponse(response)) {
             return {
                 ok: false,
@@ -547,54 +340,32 @@ export const adminKnowledgeBaseApi = {
     },
 
     getInitStatus: async (): Promise<KnowledgeBaseInitStatus | null> => {
-        const response = await baseApi.http<{ status: string; data?: KnowledgeBaseInitStatus }>(
-            'GET',
-            apiPath('admin/knowledge-base/init-status'),
-        )
+        const response = await callApi(knowledgeBaseContracts.initStatus)
         if (!isSuccessfulResponse(response)) return null
         return response.data.data ?? null
     },
 }
 
 export const adminUsersApi = {
-    list: async (params?: AdminUserListQueryInput): Promise<ApiResponse<AdminUserListResponse>> => {
-        const qs = adminQueryString({
-            limit: params?.limit,
-            userId: params?.userId?.trim(),
-            dateFrom: params?.dateFrom,
-            dateTo: params?.dateTo,
-        })
-        return baseApi.http<AdminUserListResponse>('GET', apiPath(`admin/users${qs}`))
-    },
+    list: (params?: AdminUserListQueryInput): Promise<ApiResponse<AdminUserListResponse>> =>
+        callApi(adminContracts.users, {
+            query: { ...params, userId: params?.userId?.trim() },
+        }),
 }
 
 export const adminOnlineUsersApi = {
-    list: async (): Promise<ApiResponse<AdminOnlineUserListResponse>> => {
-        return baseApi.http<AdminOnlineUserListResponse>('GET', apiPath('admin/users-online'))
-    },
+    list: (): Promise<ApiResponse<AdminOnlineUserListResponse>> =>
+        callApi(adminContracts.onlineUsers),
 
-    getById: async (id: string): Promise<ApiResponse<AdminOnlineUserDetailResponse>> => {
-        return baseApi.http<AdminOnlineUserDetailResponse>(
-            'GET',
-            apiPath(`admin/users-online/${encodeURIComponent(id)}`),
-        )
-    },
+    getById: (id: string): Promise<ApiResponse<AdminOnlineUserDetailResponse>> =>
+        callApi(adminContracts.onlineUser, { params: { id } }),
 }
 
 export const adminOnlineHistoryApi = {
-    list: async (
+    list: (
         params?: AdminOnlineHistoryListQueryInput,
-    ): Promise<ApiResponse<AdminOnlineHistoryListResponse>> => {
-        const qs = adminQueryString({
-            limit: params?.limit,
-            cursor: params?.cursor,
-            userId: params?.userId?.trim(),
-            dateFrom: params?.dateFrom,
-            dateTo: params?.dateTo,
-        })
-        return baseApi.http<AdminOnlineHistoryListResponse>(
-            'GET',
-            apiPath(`admin/history-online${qs}`),
-        )
-    },
+    ): Promise<ApiResponse<AdminOnlineHistoryListResponse>> =>
+        callApi(adminContracts.onlineHistory, {
+            query: { ...params, userId: params?.userId?.trim() },
+        }),
 }

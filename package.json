@@ -11,10 +11,13 @@
     "scripts": {
         "build": "pnpm -r build",
         "build:shared": "pnpm --filter shared build",
-        "dev": "pnpm run build:shared && pnpm --filter backend build && pnpm --filter backend --filter frontend --parallel dev",
+        "dev": "pnpm run build:shared && pnpm --filter backend build && pnpm --filter backend --filter frontend --filter landing --parallel dev",
         "dev:manual_test": "pnpm run build:shared && sh -c 'pnpm --filter ./packages/backend dev & pnpm --filter ./packages/api-playground dev & wait'",
         "dev:backend": "pnpm --filter backend dev",
         "dev:frontend": "pnpm --filter frontend dev",
+        "dev:landing": "pnpm --filter landing dev",
+        "build:landing": "pnpm run build:shared && pnpm --filter landing build",
+        "preview:landing": "pnpm --filter landing preview",
         "docs:dev": "pnpm --filter documentation docs:dev",
         "docs:build": "pnpm --filter documentation docs:build",
         "docs:preview": "pnpm --filter documentation docs:preview",
@@ -24,16 +27,17 @@
         "services:down": "docker compose --env-file packages/backend/.env --profile app down",
         "app:build": "./scripts/docker-build.sh",
         "app:up": "docker compose --env-file packages/backend/.env --profile app up -d --wait",
-        "app:down": "docker compose --env-file packages/backend/.env --profile app rm --stop --force app migrate",
+        "app:down": "docker compose --env-file packages/backend/.env --profile app rm --stop --force app migrate landing",
         "app:seed": "docker compose --env-file packages/backend/.env --profile app run --rm --no-deps migrate pnpm db:seed:prod --demo",
-        "app:logs": "docker compose --env-file packages/backend/.env --profile app logs -f app",
+        "app:logs": "docker compose --env-file packages/backend/.env --profile app logs -f app landing",
         "start": "pnpm --filter backend start",
-        "prod:local": "./scripts/prod-local.sh",
+        "prod:local": "PROD_LOCAL_LANDING=true ./scripts/prod-local.sh",
         "lint": "eslint . && pnpm -r --if-present lint:check",
         "lint:fix": "eslint . --fix",
         "format": "prettier --write \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "typecheck": "pnpm -r typecheck",
+        "check:bundle-graph": "pnpm --filter frontend check:bundle-graph",
         "test": "pnpm -r test",
         "clean": "pnpm -r clean && rm -rf node_modules"
     },
@@ -47,6 +51,9 @@
         "typescript-eslint": "^8.72.1"
     },
     "pnpm": {
+        "onlyBuiltDependencies": [
+            "esbuild"
+        ],
         "overrides": {
             "@typescript-eslint/utils": "^8.72.1",
             "@typescript-eslint/typescript-estree": "^8.72.1",
@@ -56,7 +63,9 @@
             "@vitejs/plugin-vue@5>vite": "^6.4.5",
             "postcss-selector-parser@<6.1.5": "^6.1.5",
             "minimatch@<11.0.1": "^11.0.1",
-            "glob@>=9 <14.0.2": "^14.0.2"
+            "glob@>=9 <14.0.2": "^14.0.2",
+            "hono@<4.13.16": "^4.13.16",
+            "@hono/node-server@>=2.0.0 <2.1.6": "^2.1.6"
         },
         "patchedDependencies": {
             "uWebSockets.js@20.71.0": "patches/uWebSockets.js@20.71.0.patch"

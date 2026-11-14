@@ -23,11 +23,21 @@ export abstract class HttpError extends Error {
         return {}
     }
 
+    /** HTTP only: close the connection with the answer (the rest of a body is not read). */
+    closeConnection(): boolean {
+        return false
+    }
+
+    /** Log level; by default 4xx are logged at warn, 5xx at error. */
+    logLevel(): 'warn' | 'error' {
+        return this.statusCode >= 500 ? 'error' : 'warn'
+    }
+
     /** Log record fields. Default: the error itself; override to keep payloads out. */
     logFields(): Record<string, unknown> {
         return { err: this }
     }
 
-    /** Log message; 4xx are logged at warn, 5xx at error. */
+    /** Log message. */
     readonly logMessage: string = 'Handle Error'
 }

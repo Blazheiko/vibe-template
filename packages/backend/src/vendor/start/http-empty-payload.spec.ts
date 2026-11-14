@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import type { HttpContext, Payload } from '#vendor/types/types.js'
 
 // Goes through the handler registered with uWS (server.get) and the real
@@ -60,7 +60,7 @@ const cases = new Map<string, Setup>()
 const route = (name: string, setup: Setup) => {
     cases.set(name, setup)
     return {
-        ...defineRoute({
+        ...defineRawRoute({
             url: name,
             method: 'get',
             handler: (context: HttpContext) => {

@@ -4,9 +4,13 @@ import {
     type SerializedPushLogSummary,
 } from './push-notification-log-transformer.js'
 
+// feat-208: the encryption keys of a subscription and the address it was created from stay on
+// the server. The owner's browser has the keys already, and no client reads them back.
+type ServerOnlyField = 'p256dhKey' | 'authKey' | 'ipAddress'
+
 export type SerializedPushSubscription = Omit<
     PushSubscriptionRow,
-    'id' | 'userId' | 'createdAt' | 'updatedAt' | 'lastUsedAt'
+    'id' | 'userId' | 'createdAt' | 'updatedAt' | 'lastUsedAt' | ServerOnlyField
 > & {
     id: string
     userId: string
@@ -17,7 +21,13 @@ export type SerializedPushSubscription = Omit<
 
 export type SerializedPushSubscriptionWithLogs = Omit<
     PushSubscriptionWithLogs,
-    'id' | 'userId' | 'createdAt' | 'updatedAt' | 'lastUsedAt' | 'notificationLogs'
+    | 'id'
+    | 'userId'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'lastUsedAt'
+    | 'notificationLogs'
+    | ServerOnlyField
 > & {
     notificationLogs: SerializedPushLogSummary[]
     id: string
@@ -29,7 +39,17 @@ export type SerializedPushSubscriptionWithLogs = Omit<
 
 export const pushSubscriptionTransformer = {
     serialize(subscription: PushSubscriptionRow): SerializedPushSubscription {
-        const { createdAt, updatedAt, lastUsedAt, id, userId, ...rest } = subscription
+        const {
+            createdAt,
+            updatedAt,
+            lastUsedAt,
+            id,
+            userId,
+            p256dhKey: _p256dhKey,
+            authKey: _authKey,
+            ipAddress: _ipAddress,
+            ...rest
+        } = subscription
         return {
             ...rest,
             id: String(id),
@@ -41,8 +61,18 @@ export const pushSubscriptionTransformer = {
     },
 
     serializeWithLogs(subscription: PushSubscriptionWithLogs): SerializedPushSubscriptionWithLogs {
-        const { createdAt, updatedAt, lastUsedAt, id, userId, notificationLogs, ...rest } =
-            subscription
+        const {
+            createdAt,
+            updatedAt,
+            lastUsedAt,
+            id,
+            userId,
+            notificationLogs,
+            p256dhKey: _p256dhKey,
+            authKey: _authKey,
+            ipAddress: _ipAddress,
+            ...rest
+        } = subscription
         return {
             ...rest,
             notificationLogs: notificationLogs.map((log) =>

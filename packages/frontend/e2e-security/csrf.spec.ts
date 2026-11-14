@@ -46,7 +46,6 @@ const otherTab = (request: APIRequestContext) => ({
         const response = await this.post('/api/auth/login', {
             identifier: account.email,
             password: account.password,
-            token: '',
         })
         expect(response.status()).toBe(200)
     },

@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import type { ApiRoute } from '@/stores/api-doc'
 import { extractParameters, getDefaultRequestBody, validateJSON } from '@/utils/api-helpers'
 import { formatResponseBody, scrollToResponse } from '@/utils/test-form-helpers'
-import { wsHandoffOf } from '@/utils/load-test'
+import { MAX_REQUESTS_PER_THREAD, MAX_THREADS, wsHandoffOf } from '@/utils/load-test'
 import { useLoadTest } from '@/composables/useLoadTest'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 
@@ -35,7 +35,7 @@ const headersError = ref('')
 const bodyError = ref('')
 const copyCurlState = ref<'idle' | 'copied' | 'error'>('idle')
 
-const { testResult, isLoading, progress, progressPercentage, run, clear } = useLoadTest({
+const { testResult, isLoading, progress, progressPercentage, run, stop, clear } = useLoadTest({
     requestCount,
     threadCount,
     onSingleResponse: (outcome) => {
@@ -259,7 +259,7 @@ const clearResult = clear
                                     v-model.number="requestCount"
                                     type="number"
                                     min="1"
-                                    max="1000"
+                                    :max="MAX_REQUESTS_PER_THREAD"
                                     class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-green-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                                 />
                             </div>
@@ -272,7 +272,7 @@ const clearResult = clear
                                     v-model.number="threadCount"
                                     type="number"
                                     min="1"
-                                    max="100"
+                                    :max="MAX_THREADS"
                                     class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm text-slate-900 outline-none transition focus:border-transparent focus:ring-2 focus:ring-green-500 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                                 />
                             </div>
@@ -301,6 +301,14 @@ const clearResult = clear
                                 @click="clearResult"
                             >
                                 Clear
+                            </button>
+                            <button
+                                v-if="isLoading && (threadCount > 1 || requestCount > 1)"
+                                type="button"
+                                class="inline-flex min-h-[36px] items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-500"
+                                @click="stop"
+                            >
+                                Stop
                             </button>
                             <button
                                 type="submit"

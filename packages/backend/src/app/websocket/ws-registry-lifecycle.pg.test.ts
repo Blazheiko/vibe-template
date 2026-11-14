@@ -101,7 +101,7 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
         }
     const { broadcastService } = await import('#app/services/communication/broadcast-service.js')
     const { wsConnectionRegistry } = await import('#app/websocket/ws-connection-registry.js')
-    const { wsSessionAuth } = await import('#app/websocket/ws-session-auth.js')
+    const { userOnlineService } = await import('#app/services/communication/user-online-service.js')
     const { generateWsToken } = await import('#app/services/auth/generate-ws-token-service.js')
     const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
     const { createResponseData } = await import('#vendor/utils/network/response-data.js')
@@ -186,32 +186,33 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
         await pool.end()
     })
 
-    it('the new socket gets direct messages while the old close still waits on Redis', async () => {
+    it('the new socket gets direct messages while the old close is still running', async () => {
         const user = await insertUser()
         const userId = String(user.id)
         const old = await Client.connect(await wsTokenFor(user))
         await sleep(100)
         expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(1)
 
-        // Hold the old socket's close handler in its Redis token revoke.
-        const revoke = wsSessionAuth.revokeToken.bind(wsSessionAuth)
+        // Hold the old socket's close handler in its user_online UPDATE (feat-196: there is no
+        // WS token revoke at close any more, the upgrade consumed the token).
+        const track = userOnlineService.trackDisconnected.bind(userOnlineService)
         let release: () => void = () => undefined
         const held = new Promise<void>((resolve) => {
             release = resolve
         })
-        let revoking: () => void = () => undefined
-        const revokeStarted = new Promise<void>((resolve) => {
-            revoking = resolve
+        let closing: () => void = () => undefined
+        const closeStarted = new Promise<void>((resolve) => {
+            closing = resolve
         })
-        vi.spyOn(wsSessionAuth, 'revokeToken').mockImplementation(async (token) => {
-            revoking()
+        vi.spyOn(userOnlineService, 'trackDisconnected').mockImplementation(async (input) => {
+            closing()
             await held
-            await revoke(token)
+            await track(input)
         })
 
         old.ws.close()
-        await revokeStarted
-        // The old socket is already out of the registry, before Redis answered.
+        await closeStarted
+        // The old socket is already out of the registry, before its close finished.
         expect(wsConnectionRegistry.getOnlineUserMeta(userId)).toBeUndefined()
 
         const fresh = await Client.connect(await wsTokenFor(user))
@@ -229,9 +230,88 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
         expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(1)
     })
 
-    // feat-112 (R08): the last case, it stops the server. Every socket gets 4201 although every
-    // token revoke fails, and the listen socket is closed before.
-    it('stopServer closes every socket with 4201 even when Redis fails the revokes', async () => {
+    // feat-196 (L-12): the token travels in Sec-WebSocket-Protocol, where proxies, extensions
+    // and devtools see it. It used to be read with GET and kept alive by every message of the
+    // first socket, so whoever saw it could open more sockets as the user, with no cookie.
+    it('a WS token opens one connection: the second upgrade with it is refused', async () => {
+        const user = await insertUser()
+        const userId = String(user.id)
+        const token = await wsTokenFor(user)
+
+        const first = await Client.connect(token)
+        await sleep(100)
+        // The first socket is alive and has sent a message: nothing brings the token back.
+        first.ws.send(
+            JSON.stringify({ event: 'no/such/route', timestamp: Date.now(), payload: null }),
+        )
+        await sleep(50)
+
+        await expect(Client.connect(token)).rejects.toThrow('websocket failed to open')
+        expect(await admin.exists(`auth:ws:${token}`)).toBe(0)
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(1)
+
+        // A new token from the same session opens the next connection, as a reconnect does.
+        await Client.connect(await wsTokenFor(user))
+        await sleep(100)
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(2)
+    })
+
+    it('of two upgrades racing with one token exactly one opens', async () => {
+        const user = await insertUser()
+        const token = await wsTokenFor(user)
+
+        const outcomes = await Promise.allSettled([Client.connect(token), Client.connect(token)])
+
+        expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['fulfilled', 'rejected'])
+    })
+
+    // feat-197 (M-4): the message budget is per connection, so one account multiplied it by
+    // opening sockets without end. The real server, the default limit of 10 per user.
+    it('the eleventh connection of a user is refused, and accepted once one closes', async () => {
+        const user = await insertUser()
+        const userId = String(user.id)
+        const open: Client[] = []
+        for (let n = 0; n < 10; n += 1) open.push(await Client.connect(await wsTokenFor(user)))
+        await sleep(100)
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(10)
+
+        await expect(Client.connect(await wsTokenFor(user))).rejects.toThrow(
+            'websocket failed to open',
+        )
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(10)
+
+        // Another user is not affected by this one's limit.
+        const other = await insertUser()
+        const otherClient = await Client.connect(await wsTokenFor(other))
+
+        open[0]?.ws.close()
+        await sleep(100)
+        await Client.connect(await wsTokenFor(user))
+        await sleep(100)
+        expect(wsConnectionRegistry.getOnlineUserMeta(userId)?.connectionsCount).toBe(10)
+
+        for (const client of [...open, otherClient]) client.ws.close()
+        await sleep(100)
+    })
+
+    // feat-197 (L-11): a binary frame used to be dropped before the budget, at any rate.
+    it('a binary frame closes the connection with 1003', async () => {
+        const user = await insertUser()
+        const client = await Client.connect(await wsTokenFor(user))
+        const closed = new Promise<number>((resolve) => {
+            client.ws.addEventListener('close', (event) => {
+                resolve(event.code)
+            })
+        })
+
+        client.ws.send(new Uint8Array([1, 2, 3]))
+
+        await expect(closed).resolves.toBe(1003)
+    })
+
+    // feat-112 (R08): the last case, it stops the server. Every socket gets 4201 and the listen
+    // socket is closed before.
+    it('stopServer closes every socket with 4201', async () => {
         const first = await insertUser()
         const firstClient = await Client.connect(await wsTokenFor(first))
         const secondClient = await Client.connect(await wsTokenFor(first))
@@ -241,8 +321,6 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
                 codes.push(event.code)
             })
         }
-        vi.spyOn(wsSessionAuth, 'revokeToken').mockRejectedValue(new Error('redis down'))
-
         await stopServer?.('test')
         await sleep(200)
 

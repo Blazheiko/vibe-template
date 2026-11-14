@@ -35,33 +35,34 @@ websocketOpen(data.wsUrl as string, data.wsToken as string)
 
 ### В любом компоненте
 
+Компоненты отправляют WS-запросы через контракт: `callWs(contract, payload)` из `@/utils/ws-client`, контракты — из `shared/contracts` (ADR 0006). Прямой вызов `websocketApi` вне `ws-client.ts`, `useWebSocketConnection.ts` и тестов запрещён ESLint (`eslint.config.ts`).
+
 ```typescript
-const { isConnected, websocketApi } = useWebSocketConnection()
+import { supportWsContracts, adminWsContracts } from 'shared/contracts'
+import { callWs } from '@/utils/ws-client'
 
-// Запрос-ответ через WebSocket: отправляется событие `api/<route>`
-// (здесь `api/support/support_open_chat`), ответ ждётся 10 с — как в SupportView.vue
-if (isConnected.value) {
-    const response = await websocketApi('support/support_open_chat', {})
-}
+// Событие `api/support/support_open_chat`, ответ ждётся 10 с — как в SupportView.vue
+const reply = await callWs(supportWsContracts.openChat, { language: supportLanguage() })
 
-// sendMessage отправляет событие как есть: для WS-маршрута нужен полный путь
-// `api/<group>/<route>`, иначе диспетчер его не найдёт
+// Контракт без payload — как в AdminLayout.vue
+await callWs(adminWsContracts.subscribeOnlineUsers)
 ```
+
+`callWs` резолвится с ответом, включая бизнес-ошибку (`reply.data.status === 'error'`), и отклоняется только при ошибке транспорта (соединение не открыто или сброшено) или по таймауту.
 
 ## API
 
 Возвращаемые значения:
 
-| Имя                                               | Что это                                                                                                                                                                     |
-| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `statusWebSocket`                                 | статус VueUse: `'CONNECTING' \| 'OPEN' \| 'CLOSED'`                                                                                                                         |
-| `isConnected` / `isConnecting` / `isDisconnected` | computed по `statusWebSocket`                                                                                                                                               |
-| `isInitialized`                                   | `true` после открытия соединения / события `connection_established`                                                                                                         |
-| `websocketOpen(url, token)`                       | открыть или переоткрыть соединение                                                                                                                                          |
-| `websocketClose()`                                | закрыть соединение и отменить ожидающие API-запросы                                                                                                                         |
-| `sendMessage(data: SendPayload)`                  | отправить `{ event, timestamp, payload }` как есть (`event` — полный путь, например `api/support/support_open_chat`); если соединение не открыто, сообщение не отправляется |
-| `websocketApi(route, payload?)`                   | API-запрос через WebSocket; Promise, отклоняется по таймауту (10 с) или при закрытии соединения                                                                             |
-| `ws`                                              | сырой `WebSocket` (для отладки)                                                                                                                                             |
+| Имя                                               | Что это                                                                                                                                                                                                             |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `statusWebSocket`                                 | статус VueUse: `'CONNECTING' \| 'OPEN' \| 'CLOSED'`                                                                                                                                                                 |
+| `isConnected` / `isConnecting` / `isDisconnected` | computed по `statusWebSocket`                                                                                                                                                                                       |
+| `isInitialized`                                   | `true` после открытия соединения / события `connection_established`                                                                                                                                                 |
+| `websocketOpen(url, token)`                       | открыть или переоткрыть соединение                                                                                                                                                                                  |
+| `websocketClose()`                                | закрыть соединение и отменить ожидающие API-запросы                                                                                                                                                                 |
+| `sendMessage(data: SendPayload)`                  | отправить объект как есть (`event` — полный путь, например `api/support/support_open_chat`; у запросов `websocketApi` — `{ event, id, timestamp, payload }`); если соединение не открыто, сообщение не отправляется |
+| `websocketApi(route, payload?)`                   | внутренний транспорт `callWs`: запрос с `id`, ответ ищется по нему; отклоняется по таймауту (10 с) или при закрытии соединения. Компоненты используют `callWs`                                                      |
 
 ## Поведение соединения
 
@@ -82,9 +83,14 @@ if (isConnected.value) {
 
 ## Остальные composables
 
-| Файл                     | Назначение                                      |
-| ------------------------ | ----------------------------------------------- |
-| `useBroadcastHandler.ts` | разбор broadcast-событий WebSocket (см. выше)   |
-| `useLocale.ts`           | текущая локаль и переключение языка             |
-| `useSessionLifecycle.ts` | реакция на окончание сессии (`redirectToLogin`) |
-| `useToast.ts`            | уведомления                                     |
+| Файл                         | Назначение                                                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `useBroadcastHandler.ts`     | разбор broadcast-событий WebSocket (см. выше)                                                                  |
+| `useLocale.ts`               | язык браузера: начальная локаль и язык ответов Support                                                         |
+| `useAdminUserDetailModal.ts` | модалка «детали пользователя» в админке: загрузка по `openUserModal(userId)`, сброс при `closeModal()`         |
+| `useAuthRequest.ts`          | обёртка запроса auth-формы: флаг загрузки, «ошибка сервера» при исключении, `failureMessage` для ответа-ошибки |
+| `useCompleteSignIn.ts`       | после входа/регистрации: сохранить пользователя, перейти на `?redirect=` (или в аккаунт), затем `init_app`     |
+| `useModalDialog.ts`          | клавиатура модального окна: фокус внутрь, Tab в пределах панели, Escape закрывает, возврат фокуса              |
+| `useOAuthProviders.ts`       | список OAuth-провайдеров с бэкенда, загружается один раз на страницу                                           |
+| `usePwaInstallButton.ts`     | пункт меню «Install App»: системный prompt браузера или диалог `<pwa-install>`                                 |
+| `useSessionLifecycle.ts`     | реакция на окончание сессии (`redirectToLogin`)                                                                |

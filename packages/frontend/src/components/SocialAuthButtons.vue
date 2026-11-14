@@ -3,7 +3,9 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { OAuthProvider } from 'shared/responses'
 import { useOAuthProviders } from '@/composables/useOAuthProviders'
-import { apiPath } from '@/utils/api-path'
+import { oauthContracts } from 'shared/contracts'
+import { contractUrl } from '@/utils/api-client'
+import { rememberPostSignInTarget } from '@/utils/post-sign-in-target'
 
 // Buttons only for providers configured on the backend; nothing at all when none are.
 const props = defineProps<{
@@ -27,11 +29,15 @@ const buttons = computed(() =>
     providers.value.map((provider) => ({
         provider,
         label: LABELS[provider],
-        url: apiPath(`auth/oauth/${provider}/redirect`),
+        url: contractUrl(oauthContracts.redirect, { params: { provider } }),
     })),
 )
 
 function onClick(event: MouseEvent, url: string): void {
+    // The sign-in leaves the application and comes back to "/": the page the router guard put
+    // into ?redirect= is kept in the tab for the trip (feat-154). No redirect in the address
+    // forgets what an earlier, unfinished sign-in kept.
+    rememberPostSignInTarget(new URLSearchParams(window.location.search).get('redirect'))
     if (!props.interceptClick) return
     event.preventDefault()
     emit('select', url)

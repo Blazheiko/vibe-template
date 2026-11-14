@@ -5,172 +5,185 @@ name: CI
 # PostgreSQL and Redis). No paths filter, so the jobs can be required checks. Redis integration tests stay in redis-tests.yml: vitest.config.ts
 # excludes *.redis.test.ts from `pnpm test`.
 on:
-  pull_request:
-  push:
-    branches: [main]
-  workflow_dispatch:
+    pull_request:
+    push:
+        branches: [main]
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  quality:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      VITEST_MAX_WORKERS: 2
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      # The same checks as a local `make check`: build shared (typecheck and the
-      # backend/frontend tests import it), verify the Makefile, format, typecheck, lint, test.
-      - run: make check
-
-      - name: Coverage
-        run: |
-          pnpm --filter backend test:coverage
-          pnpm --filter frontend test:coverage
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: coverage
-          path: |
-            packages/backend/coverage/
-            packages/frontend/coverage/
-          if-no-files-found: ignore
-          retention-days: 14
-
-  e2e:
-    # Pinned: ubuntu-latest moved to 26.04, where Playwright's WebKit build cannot start
-    # (libicudata.so.74 missing), so every WebKit and Mobile Safari test failed. Chromium and
-    # Firefox were fine. Unpin once the Playwright version in use supports the newer image.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm --filter shared build
-
-      # On CI Playwright serves the production build with `vite preview`.
-      - run: pnpm --filter frontend build
-
-      - name: Playwright version
-        id: playwright
-        run: echo "version=$(pnpm --filter frontend exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
-
-      # All browsers of playwright.config.ts projects: chromium, firefox, webkit
-      # (webkit also runs Mobile Safari). System deps are not cached.
-      - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter frontend exec playwright install --with-deps
-
-      - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter frontend exec playwright install-deps
-
-      - run: pnpm --filter frontend test:e2e
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: playwright-report
-          path: packages/frontend/playwright-report/
-          retention-days: 14
-
-  # The SPA served by the real backend with PostgreSQL (pgvector), Redis and a mail sink:
-  # what the mocks of the `e2e` job cannot show, e.g. that a password reset in one browser signs
-  # another one out (feat-069, G3). The run uses a database and a Redis key prefix of its own.
-  e2e-live:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
+    quality:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
         env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
-    env:
-      PGSQL_HOST: 127.0.0.1
-      PGSQL_PORT: 5432
-      PGSQL_USER: postgres
-      PGSQL_PASSWORD: postgres
-      REDIS_HOST: 127.0.0.1
-      REDIS_PORT: 6379
-      APP_KEY: ci-live-e2e-app-key-0123456789abcdef
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
+            VITEST_MAX_WORKERS: 2
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version-file: .nvmrc
+                  cache: pnpm
 
-      - run: pnpm install --frozen-lockfile
+            - run: pnpm install --frozen-lockfile
 
-      - name: Playwright version
-        id: playwright
-        run: echo "version=$(pnpm --filter frontend exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+            # The same checks as a local `make check`: build shared (typecheck and the
+            # backend/frontend tests import it), verify the Makefile, format, typecheck, lint, test.
+            - run: make check
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-live-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+            - name: Coverage
+              run: |
+                  pnpm --filter backend test:coverage
+                  pnpm --filter frontend test:coverage
 
-      # Chromium only: the live specs are about the session, not about the engines.
-      - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm --filter frontend exec playwright install --with-deps chromium
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              if: always()
+              with:
+                  name: coverage
+                  path: |
+                      packages/backend/coverage/
+                      packages/frontend/coverage/
+                  if-no-files-found: ignore
+                  retention-days: 14
 
-      - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm --filter frontend exec playwright install-deps chromium
+    e2e:
+        # Pinned: ubuntu-latest moved to 26.04, where Playwright's WebKit build cannot start
+        # (libicudata.so.74 missing), so every WebKit and Mobile Safari test failed. Chromium and
+        # Firefox were fine. Unpin once the Playwright version in use supports the newer image.
+        runs-on: ubuntu-24.04
+        # 30 + up to 16 minutes of retried browser dependencies (feat-179).
+        timeout-minutes: 40
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version-file: .nvmrc
+                  cache: pnpm
 
-      # Builds shared, the SPA (phone auth off, API at http://localhost:3100) and the backend,
-      # then Playwright starts the backend with the database made first.
-      - run: pnpm --filter frontend test:e2e:live
+            - run: pnpm install --frozen-lockfile
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with:
-          name: playwright-live-report
-          path: |
-            packages/frontend/playwright-report/
-            packages/frontend/test-results/live/
-          retention-days: 14
+            - run: pnpm --filter shared build
+
+            # On CI Playwright serves the production build with `vite preview`.
+            - run: pnpm --filter frontend build
+
+            - name: Playwright version
+              id: playwright
+              run: echo "version=$(pnpm --filter frontend exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              id: playwright-cache
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+            # All browsers of playwright.config.ts projects: chromium, firefox, webkit
+            # (webkit also runs Mobile Safari). System deps are not cached. They come from the
+            # runner's apt mirrors, which can be down for a while (2026-11-11): up to 3 attempts of
+            # at most 5 minutes each (apt waits long on an unreachable mirror), 30 s and 60 s apart
+            # (scripts/retry.sh, feat-179). The job timeout leaves room for them.
+            - if: steps.playwright-cache.outputs.cache-hit != 'true'
+              run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install --with-deps
+
+            - if: steps.playwright-cache.outputs.cache-hit == 'true'
+              run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps
+
+            - run: pnpm --filter frontend test:e2e
+
+            # The landing (feat-217): its build ends with the dist/ checks (build/verify-dist.ts), the
+            # smoke tests run on `vite preview` with the browsers installed above (same Playwright).
+            - run: pnpm --filter landing build
+            - run: pnpm --filter landing test:e2e
+
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              if: failure()
+              with:
+                  name: playwright-report
+                  path: |
+                      packages/frontend/playwright-report/
+                      packages/landing/playwright-report/
+                  retention-days: 14
+
+    # The SPA served by the real backend with PostgreSQL (pgvector), Redis and a mail sink:
+    # what the mocks of the `e2e` job cannot show, e.g. that a password reset in one browser signs
+    # another one out (feat-069, G3). The run uses a database and a Redis key prefix of its own.
+    e2e-live:
+        runs-on: ubuntu-24.04
+        # 20 + room for retried browser dependencies (feat-179).
+        timeout-minutes: 30
+        services:
+            postgres:
+                image: pgvector/pgvector:pg16
+                env:
+                    POSTGRES_PASSWORD: postgres
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd "pg_isready -U postgres"
+                    --health-interval 5s
+                    --health-timeout 3s
+                    --health-retries 10
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 5s
+                    --health-timeout 3s
+                    --health-retries 10
+        env:
+            PGSQL_HOST: 127.0.0.1
+            PGSQL_PORT: 5432
+            PGSQL_USER: postgres
+            PGSQL_PASSWORD: postgres
+            REDIS_HOST: 127.0.0.1
+            REDIS_PORT: 6379
+            APP_KEY: ci-live-e2e-app-key-0123456789abcdef
+        steps:
+            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+            - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version-file: .nvmrc
+                  cache: pnpm
+
+            - run: pnpm install --frozen-lockfile
+
+            - name: Playwright version
+              id: playwright
+              run: echo "version=$(pnpm --filter frontend exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              id: playwright-cache
+              with:
+                  path: ~/.cache/ms-playwright
+                  key: playwright-live-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+            # Chromium only: the live specs are about the session, not about the engines. The apt
+            # mirrors can be down for a while: retried as in the e2e job (scripts/retry.sh).
+            - if: steps.playwright-cache.outputs.cache-hit != 'true'
+              run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install --with-deps chromium
+
+            - if: steps.playwright-cache.outputs.cache-hit == 'true'
+              run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps chromium
+
+            # Builds shared, the SPA (phone auth off, API at http://localhost:3100) and the backend,
+            # then Playwright starts the backend with the database made first.
+            - run: pnpm --filter frontend test:e2e:live
+
+            - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+              if: failure()
+              with:
+                  name: playwright-live-report
+                  path: |
+                      packages/frontend/playwright-report/
+                      packages/frontend/test-results/live/
+                  retention-days: 14

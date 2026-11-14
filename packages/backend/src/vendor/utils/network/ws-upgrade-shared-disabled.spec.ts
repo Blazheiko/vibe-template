@@ -35,8 +35,6 @@ describe('handleUpgrade with level 2 disabled', () => {
                 .mockResolvedValue({ kind: 'ok', sessionId: 's1', userId: '1', userToken: 'u1' }),
             onConnected: vi.fn(),
             onDisconnected: vi.fn(),
-            onRefreshToken: vi.fn(),
-            onRevokeToken: vi.fn(),
         })
         const statuses: string[] = []
         const token = 'a'.repeat(appConfig.accessTokenLength)

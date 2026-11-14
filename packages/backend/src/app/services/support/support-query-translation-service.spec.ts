@@ -50,3 +50,44 @@ describe('supportQueryTranslationService.translateToEnglish', () => {
         expect(adapter.streamText.mock.calls[0]?.[0]).toMatchObject({ signal: controller.signal })
     })
 })
+
+// feat-150 (review 2026-11-10, M3): the user's message is what they wrote to support. A failed
+// translation falls back to it, and the log says only how long it was.
+describe('supportQueryTranslationService.translateToEnglish: what a failure logs', () => {
+    const QUERY = 'Мій пароль не приймається, пошта olena@example.test'
+
+    it('logs the failure without the text of the message', async () => {
+        const { default: logger } = await import('#logger')
+        // eslint-disable-next-line require-yield
+        adapter.streamText.mockImplementation(async function* () {
+            await Promise.resolve()
+            throw new Error('provider answered 500')
+        })
+
+        const result = await supportQueryTranslationService.translateToEnglish(QUERY, {})
+
+        expect(result).toBe(QUERY)
+        expect(logger.error).toHaveBeenCalledTimes(1)
+        const logged = JSON.stringify(vi.mocked(logger.error).mock.calls)
+        expect(logged).not.toContain(QUERY)
+        expect(logged).not.toContain('olena@example.test')
+        expect(vi.mocked(logger.error).mock.calls[0]?.[0]).toMatchObject({
+            originalLength: QUERY.length,
+        })
+    })
+
+    it('does not log an error when the client went away during the translation', async () => {
+        const { default: logger } = await import('#logger')
+        // eslint-disable-next-line require-yield
+        adapter.streamText.mockImplementation(async function* () {
+            await Promise.resolve()
+            throw new DOMException('The operation was aborted', 'AbortError')
+        })
+
+        const result = await supportQueryTranslationService.translateToEnglish(QUERY, {})
+
+        expect(result).toBe(QUERY)
+        expect(logger.error).not.toHaveBeenCalled()
+        expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain(QUERY)
+    })
+})

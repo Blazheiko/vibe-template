@@ -25,6 +25,13 @@ export const useSessionLifecycle = () => {
     }
 
     const logout = async () => {
+        // While the session still exists: the server record needs it (feat-148). On its own,
+        // so that a failure here never skips the logout request.
+        try {
+            await pushStore.releaseBrowserSubscription()
+        } catch (error) {
+            console.error('Push release error:', error)
+        }
         try {
             const { error } = await authApi.logout()
             if (error) {

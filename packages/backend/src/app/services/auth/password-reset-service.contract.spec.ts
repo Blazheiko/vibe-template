@@ -34,6 +34,9 @@ const challengeRepositoryMock = {
     create: vi.fn(),
     findById: vi.fn(),
     findLatestPendingForPhoneFlow: vi.fn(),
+    // feat-204: the waiting challenges of a number, newest first; a start retires its own.
+    findPendingForPhoneFlow: vi.fn(),
+    invalidatePendingByIds: vi.fn(),
     lockPhoneFlow: vi.fn(() => Promise.resolve()),
     invalidatePendingForPhoneFlow: vi.fn(),
     consumeAttempt: vi.fn(),
@@ -47,6 +50,7 @@ const issueMock = vi.fn()
 const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const hashPasswordMock = vi.fn()
 const consumeAuthThrottleMock = vi.fn()
+const resetAuthThrottleMock = vi.fn()
 const securityNotice = vi.fn()
 const loggerMock = { warn: vi.fn(), error: vi.fn(), info: vi.fn() }
 const TX = vi.hoisted(() => ({ transaction: true }))
@@ -71,12 +75,16 @@ vi.mock('#app/services/notifications/email-service.js', () => ({ emailService: e
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: securityNotice, supportReply: vi.fn() },
 }))
+// feat-199: what the reset says about the sign-in methods still linked (own spec).
+vi.mock('#app/services/auth/password-reset-notice.js', () => ({
+    announcePasswordReset: () => Promise.resolve(['github']),
+}))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: destroyAllSessionsMock,
 }))
 vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     consumeAuthThrottle: consumeAuthThrottleMock,
-    resetAuthThrottle: vi.fn(),
+    resetAuthThrottle: resetAuthThrottleMock,
 }))
 vi.mock('#app/services/auth/sms-verification-provider.js', () => ({
     smsVerificationProvider: { issueVerificationCode: issueMock },
@@ -109,6 +117,9 @@ beforeEach(() => {
     process.env['FRONTEND_URL'] = 'https://app.example.com'
     process.env['APP_URL'] = 'https://app.example.com'
     consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
+    // No waiting challenge unless a row says otherwise.
+    challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([])
+    challengeRepositoryMock.invalidatePendingByIds.mockResolvedValue(0)
     withTransactionMock.mockImplementation((work) => work(TX))
 })
 
@@ -526,7 +537,7 @@ const ROWS: readonly Row[] = [
             destroyAllSessionsMock.mockRejectedValue(new Error('redis'))
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(loggerMock.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: '7' }),
@@ -541,7 +552,7 @@ const ROWS: readonly Row[] = [
             arrangeResetOk({ phone: PHONE })
         },
         call: reset({ token: ' tok ' }),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(withTransactionMock).toHaveBeenCalledTimes(1)
             expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, TX)
@@ -612,7 +623,7 @@ const ROWS: readonly Row[] = [
             )
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
     },
     {
         // feat-097: the first proof of the mailbox on an unverified account hands it to the
@@ -622,7 +633,7 @@ const ROWS: readonly Row[] = [
             arrangeResetOk({ emailVerifiedAt: null, phone: PHONE })
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(withTransactionMock).toHaveBeenCalledTimes(1)
             expect(resetRepositoryMock.markUsed).toHaveBeenCalledWith(11n, TX)
@@ -675,7 +686,7 @@ const ROWS: readonly Row[] = [
             arrangeResetOk({ phone: PHONE })
         },
         call: reset(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(
                 claimRepositoryMocks.oauthAccountRepository.deleteByUserId,
@@ -730,70 +741,234 @@ const ROWS: readonly Row[] = [
             'A verification code was already sent recently. Please wait before requesting another one.',
             'resend_cooldown_active',
         ),
+        // feat-160: nothing is sent, so the hourly SMS budget of the number is not spent
+        // either — only the per-address limit was counted.
+        after: () => {
+            expect(issueMock).not.toHaveBeenCalled()
+            const policies = consumeAuthThrottleMock.mock.calls.map(
+                ([policy]) => (policy as { name?: string }).name,
+            )
+            expect(policies).not.toContain('sms_send_phone')
+            expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
+        },
     },
+    // feat-160 (decision Д5): after the cooldown the session that started the reset gets a new
+    // code. It used to hand the waiting challenge back and send nothing, so a user
+    // whose SMS never arrived could not get another one while that challenge was alive.
     {
-        name: 'startPhonePasswordReset · a live challenge of this session is handed back',
+        name: 'startPhonePasswordReset · after the cooldown a new code is sent and the waiting challenge is retired',
         arrange: () => {
-            userRepositoryMock.findByPhone.mockResolvedValue(phoneOnlyUser())
+            arrangeStartOk(phoneOnlyUser())
             challengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(challenge())
+            challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([challenge()])
         },
         call: startPhone('sess-1'),
         ok: {
             message: GENERIC_PHONE,
-            challengeId: 'ch-1',
-            expiresAt: FUTURE.toISOString(),
-            resendAvailableAt: expect.any(String),
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
         },
         after: () => {
-            expect(challengeRepositoryMock.create).not.toHaveBeenCalled()
+            expect(issueMock).toHaveBeenCalledWith({ phone: PHONE, flow: 'reset_phone' })
+            // feat-204: only the session's own waiting challenge is retired.
+            expect(challengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+                ['ch-1'],
+                expect.anything(),
+            )
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
+        },
+    },
+    // feat-204 (security review 2026-11-12, L-3). A live challenge used to block every other
+    // session: the answer had no challenge, so whoever started first held the only one and the
+    // owner could not use the codes that reached their phone. Another session now opens its
+    // own challenge next to it; the one that was waiting stays, so nobody cancels a reset
+    // they did not start (feat-160).
+    {
+        name: 'startPhonePasswordReset · another session gets a challenge of its own and the waiting one stays',
+        arrange: () => {
+            arrangeStartOk(phoneOnlyUser())
+            challengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(challenge())
+            challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([challenge()])
+        },
+        call: startPhone('other'),
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
+        after: () => {
+            // Nothing of the other session is retired.
+            expect(challengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+                [],
+                expect.anything(),
+            )
+            expect(challengeRepositoryMock.invalidatePendingForPhoneFlow).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    metadata: expect.objectContaining({ sessionId: 'other' }),
+                }),
+                expect.anything(),
+            )
+            expect(issueMock).toHaveBeenCalledWith({ phone: PHONE, flow: 'reset_phone' })
         },
     },
     {
-        name: 'startPhonePasswordReset · a live challenge of another session is not revealed',
+        name: 'startPhonePasswordReset · a request without a session owns nothing: it opens next to a live challenge',
+        arrange: () => {
+            arrangeStartOk(phoneOnlyUser())
+            challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([challenge()])
+        },
+        call: startPhone(null),
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
+        after: () => {
+            expect(challengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+                [],
+                expect.anything(),
+            )
+        },
+    },
+    {
+        name: 'startPhonePasswordReset · two sessions already wait: a third gets the generic answer, nothing is sent and no SMS budget is spent',
         arrange: () => {
             userRepositoryMock.findByPhone.mockResolvedValue(phoneOnlyUser())
-            challengeRepositoryMock.findLatestPendingForPhoneFlow.mockResolvedValue(challenge())
+            challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([
+                challenge({ id: 'ch-a', metadata: { userId: '7', sessionId: 'sess-a' } }),
+                challenge({ id: 'ch-b', metadata: { userId: '7', sessionId: 'sess-b' } }),
+            ])
         },
         call: startPhone('other'),
         ok: { message: GENERIC_PHONE },
         after: () => {
             expect(challengeRepositoryMock.create).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.invalidatePendingByIds).not.toHaveBeenCalled()
+            expect(issueMock).not.toHaveBeenCalled()
+            const scopes = consumeAuthThrottleMock.mock.calls.map(
+                ([policy]) => (policy as { scope?: string }).scope,
+            )
+            expect(scopes).not.toContain('sms_send_phone')
         },
     },
     {
-        name: 'startPhonePasswordReset · the provider fails, the challenge is invalidated',
+        name: 'startPhonePasswordReset · one of the two waiting sessions starts again: it replaces its own, the other stays',
+        arrange: () => {
+            arrangeStartOk(phoneOnlyUser())
+            challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([
+                challenge({ id: 'ch-a', metadata: { userId: '7', sessionId: 'sess-a' } }),
+                challenge({ id: 'ch-b', metadata: { userId: '7', sessionId: 'sess-b' } }),
+            ])
+        },
+        call: startPhone('sess-b'),
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
+        after: () => {
+            expect(challengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+                ['ch-b'],
+                expect.anything(),
+            )
+        },
+    },
+    {
+        name: 'startPhonePasswordReset · an expired leftover of another session does not count and is retired',
+        arrange: () => {
+            arrangeStartOk(phoneOnlyUser())
+            challengeRepositoryMock.findPendingForPhoneFlow.mockResolvedValue([
+                challenge({ id: 'ch-a', metadata: { userId: '7', sessionId: 'sess-a' } }),
+                challenge({
+                    id: 'ch-old',
+                    expiresAt: PAST,
+                    metadata: { userId: '7', sessionId: 'sess-b' },
+                }),
+            ])
+        },
+        call: startPhone('other'),
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
+        after: () => {
+            expect(challengeRepositoryMock.invalidatePendingByIds).toHaveBeenCalledWith(
+                ['ch-old'],
+                expect.anything(),
+            )
+        },
+    },
+    // feat-204 (L-4): the code is sent after the answer, so the answer no longer waits for
+    // the SMS provider (a number that gets an SMS used to answer later than one that does
+    // not) and a failed send no longer changes it.
+    {
+        name: 'startPhonePasswordReset · the provider fails: the same answer, the challenge is invalidated, the failure logged',
         arrange: () => {
             arrangeStartOk(phoneOnlyUser())
             issueMock.mockRejectedValue(new Error('sms down'))
         },
         call: startPhone(),
-        throws: true,
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
+            expect(loggerMock.error).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    err: expect.any(Error),
+                    phoneMasked: expect.not.stringContaining('0501234'),
+                }),
+                'Phone reset code was not sent',
+            )
         },
     },
     {
-        name: 'startPhonePasswordReset · the issued code cannot be stored',
+        name: 'startPhonePasswordReset · the issued code cannot be stored: the same answer, the challenge is invalidated',
         arrange: () => {
             arrangeStartOk(phoneOnlyUser())
             challengeRepositoryMock.markIssued.mockRejectedValue(new Error('db'))
         },
         call: startPhone(),
-        throws: true,
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
+            expect(loggerMock.error).toHaveBeenCalledTimes(1)
         },
     },
     {
-        name: 'startPhonePasswordReset · the challenge was invalidated meanwhile',
+        name: 'startPhonePasswordReset · the challenge was invalidated meanwhile: the same answer, a warning',
         arrange: () => {
             arrangeStartOk(phoneOnlyUser())
             challengeRepositoryMock.markIssued.mockResolvedValue(undefined)
         },
         call: startPhone(),
-        error: badRequest('Phone reset challenge is no longer valid'),
+        ok: {
+            message: GENERIC_PHONE,
+            challengeId: 'ch-new',
+            expiresAt: '2030-01-01T00:10:00.000Z',
+            resendAvailableAt: '2030-01-01T00:01:00.000Z',
+        },
         after: () => {
             expect(challengeRepositoryMock.markInvalidated).toHaveBeenCalledWith('ch-new')
+            expect(loggerMock.warn).toHaveBeenCalledWith(
+                expect.objectContaining({ phoneMasked: expect.any(String) }),
+                'Phone reset code was not recorded: the challenge is no longer valid',
+            )
         },
     },
     {
@@ -893,6 +1068,31 @@ const ROWS: readonly Row[] = [
             challengeRepositoryMock.findById.mockResolvedValue(challenge({ expiresAt: PAST })),
         call: completePhone(),
         error: badRequest('Phone reset challenge is no longer valid'),
+    },
+    // feat-204 (security review 2026-11-12, L-4): a challenge allows a few wrong codes and a
+    // number gets a few challenges an hour, for ever. The codes tried against one number in
+    // a day have a budget a new challenge does not renew.
+    {
+        name: 'completePhonePasswordReset · the daily budget of code attempts of the number is spent: 429, no try of the challenge used',
+        arrange: () => {
+            arrangePhoneOk()
+            consumeAuthThrottleMock.mockImplementation((policy: { scope: string }) =>
+                Promise.resolve({
+                    allowed: policy.scope !== 'reset_phone_code_attempts_phone',
+                    count: 11,
+                }),
+            )
+        },
+        call: completePhone(),
+        error: err(429, 'rate_limited', 'Too many verification attempts. Please try again later.'),
+        after: () => {
+            expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
+                expect.objectContaining({ scope: 'reset_phone_code_attempts_phone' }),
+                PHONE,
+            )
+            expect(challengeRepositoryMock.consumeAttempt).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        },
     },
     {
         name: 'completePhonePasswordReset · wrong code counts an attempt',
@@ -994,7 +1194,7 @@ const ROWS: readonly Row[] = [
             destroyAllSessionsMock.mockRejectedValue(new Error('redis'))
         },
         call: completePhone(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(loggerMock.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: '7' }),
@@ -1007,7 +1207,7 @@ const ROWS: readonly Row[] = [
         name: 'completePhonePasswordReset · ok rotates the session token and drops the old sessions',
         arrange: arrangePhoneOk,
         call: completePhone(),
-        ok: { status: 'success' },
+        ok: { status: 'success', signInMethods: ['github'] },
         after: () => {
             expect(userRepositoryMock.update).toHaveBeenCalledWith(
                 7n,
@@ -1023,6 +1223,26 @@ const ROWS: readonly Row[] = [
             expect(challengeRepositoryMock.markConfirmed).toHaveBeenCalledWith('ch-1', TX)
             expect(resetRepositoryMock.invalidatePendingByUserId).toHaveBeenCalledWith(7n, TX)
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
+            // feat-204: the owner proved the number, the day's budget of code attempts is cleared.
+            expect(resetAuthThrottleMock).toHaveBeenCalledWith(
+                expect.objectContaining({ scope: 'reset_phone_code_attempts_phone' }),
+                PHONE,
+            )
+        },
+    },
+    {
+        name: 'completePhonePasswordReset · the attempts budget cannot be cleared: the reset stands',
+        arrange: () => {
+            arrangePhoneOk()
+            resetAuthThrottleMock.mockRejectedValue(new Error('redis down'))
+        },
+        call: completePhone(),
+        ok: { status: 'success', signInMethods: ['github'] },
+        after: () => {
+            expect(loggerMock.warn).toHaveBeenCalledWith(
+                expect.objectContaining({ err: expect.any(Error) }),
+                'Phone reset code attempts budget was not cleared',
+            )
         },
     },
 ]

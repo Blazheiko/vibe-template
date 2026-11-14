@@ -58,7 +58,9 @@ export default Object.freeze({
   | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Expose-Headers
   |
   */
-    exposeHeaders: 'Cache-Control Content-Language Content-Type Expires Last-Modified Pragma',
+    // A comma-separated list, as the header requires: a space-separated value is not a valid
+    // list, and a name added to it would stay unreadable for a cross-origin page.
+    exposeHeaders: 'Cache-Control, Content-Language, Content-Type, Expires, Last-Modified, Pragma',
 
     /*
   |--------------------------------------------------------------------------

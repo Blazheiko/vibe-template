@@ -2,13 +2,14 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
 
-// packages/frontend and packages/api-playground have their own eslint.config.ts: ESLint 10
+// packages/frontend, packages/api-playground and packages/landing have their own eslint.config.ts: ESLint 10
 // lints each file with the nearest config, so blocks for those packages do not belong here.
 export default tseslint.config(
     {
         ignores: [
             '**/dist/**',
             '**/dist-e2e-mock/**',
+            '**/dist-e2e-sentry/**',
             '**/node_modules/**',
             // the SPA copied into the backend by scripts/prod-local.sh and the Dockerfile
             'packages/backend/public/**',
@@ -128,6 +129,37 @@ export default tseslint.config(
                 projectService: true,
                 allowDefaultProject: true,
             },
+        },
+    },
+    {
+        // docs/adr/0005-route-contracts.md: a route of the application is declared through its
+        // contract (`defineRoute` of app/routes/contract-schemas). The schema-only helper is for
+        // the tests of the HTTP machinery (feat-170).
+        files: ['packages/backend/src/**/*.ts'],
+        ignores: [
+            '**/*.spec.ts',
+            '**/*.test.ts',
+            'packages/backend/src/app/routing/define-raw-route.ts',
+            'packages/backend/src/app/routing/define-ws-route.ts',
+        ],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        {
+                            name: '#app/routing/define-raw-route.js',
+                            message:
+                                'Declare the route through its contract: defineRoute from #app/routes/contract-schemas/index.js (ADR 0005).',
+                        },
+                        {
+                            name: '#app/routing/define-ws-route.js',
+                            message:
+                                'Declare the WS route through its contract: defineWsRoute from #app/routes/contract-schemas/index.js (ADR 0006).',
+                        },
+                    ],
+                },
+            ],
         },
     },
     {

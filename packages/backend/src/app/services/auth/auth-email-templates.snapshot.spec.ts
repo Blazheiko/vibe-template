@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type * as SharedProduct from 'shared/product'
 
 // feat-069 (G1): the three auth mails — password reset, email verification and email linking —
 // are frozen as files before they are moved into one shared template module (H3). The
@@ -77,7 +78,9 @@ afterEach(() => {
 
 const USERS = [
     { slug: 'plain', name: 'Jane Doe' },
-    { slug: 'markup', name: `<b>"Jane" & 'Co'</b>` },
+    // No closing tag: a name with a slash is not quoted at all (feat-203), and this one is
+    // here to pin the escaping.
+    { slug: 'markup', name: `<b>"Jane" & 'Co'` },
     { slug: 'blank', name: '   ' },
 ] as const
 
@@ -137,7 +140,8 @@ function arrange(name: string, over: Record<string, unknown> = {}): void {
 
 describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
     it('password reset', async () => {
-        arrange(name)
+        // feat-203: the reset mail greets by name only an account whose address is confirmed.
+        arrange(name, { emailVerifiedAt: new Date('2026-01-01T00:00:00Z') })
         configure()
         const { passwordResetService } = await import('./password-reset-service.js')
         const result = await passwordResetService.sendPasswordResetEmail(7n)
@@ -172,5 +176,101 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
         await expect(render(sentMail())).toMatchFileSnapshot(
             `./__snapshots__/email-link.${slug}.txt`,
         )
+    })
+})
+
+// feat-203 (security review 2026-11-12, L-1): a mail to an address nobody has confirmed greets
+// nobody by name. The name was typed by whoever asked for the mail, and that need not be the
+// owner of the mailbox: "your account is locked, sign in at ..." arrived in a mail the product
+// signed.
+describe('a name is not mailed to an address that is not confirmed', () => {
+    const HOSTILE = 'Your account is locked. Call 555 0100 and say your password'
+    const expectNoName = (): void => {
+        const mail = sentMail()
+        expect(mail.text.startsWith('Hello.')).toBe(true)
+        expect(mail.text).not.toContain('locked')
+        expect(mail.html).not.toContain('locked')
+    }
+
+    it('email verification', async () => {
+        arrange(HOSTILE)
+        configure()
+        const { emailVerificationService } = await import('./email-verification-service.js')
+
+        await emailVerificationService.sendVerificationEmail(7n)
+
+        expectNoName()
+    })
+
+    it('email linking', async () => {
+        arrange(HOSTILE, { email: null })
+        configure()
+        const { emailVerificationService } = await import('./email-verification-service.js')
+
+        await emailVerificationService.sendLinkVerificationEmail(7n, 'new@example.com', SESSION)
+
+        expectNoName()
+    })
+
+    it('password reset of an account whose address is not confirmed', async () => {
+        arrange(HOSTILE)
+        configure()
+        const { passwordResetService } = await import('./password-reset-service.js')
+
+        await passwordResetService.sendPasswordResetEmail(7n)
+
+        expectNoName()
+    })
+
+    it('password reset of a confirmed account still greets its owner', async () => {
+        arrange('Jane Doe', { emailVerifiedAt: new Date('2026-01-01T00:00:00Z') })
+        configure()
+        const { passwordResetService } = await import('./password-reset-service.js')
+
+        await passwordResetService.sendPasswordResetEmail(7n)
+
+        expect(sentMail().text.startsWith('Hello, Jane Doe.')).toBe(true)
+    })
+})
+
+// feat-191: the product name comes from shared/product only. With another name every mail
+// carries it in the HTML (escaped) and no trace of the template's own anywhere.
+describe('auth mails with another product name', () => {
+    const NAME = `Acme <Notes> & Co`
+    const send = {
+        'password reset': async () => {
+            const { passwordResetService } = await import('./password-reset-service.js')
+            return passwordResetService.sendPasswordResetEmail(7n)
+        },
+        'email verification': async () => {
+            const { emailVerificationService } = await import('./email-verification-service.js')
+            return emailVerificationService.sendVerificationEmail(7n)
+        },
+        'email linking': async () => {
+            const { emailVerificationService } = await import('./email-verification-service.js')
+            return emailVerificationService.sendLinkVerificationEmail(
+                7n,
+                'new@example.com',
+                SESSION,
+            )
+        },
+    }
+
+    afterEach(() => {
+        vi.doUnmock('shared/product')
+    })
+
+    it.each(Object.keys(send) as (keyof typeof send)[])('%s', async (kind) => {
+        vi.doMock('shared/product', async (importOriginal) => {
+            const actual = await importOriginal<typeof SharedProduct>()
+            return { PRODUCT: { ...actual.PRODUCT, name: NAME } }
+        })
+        arrange('Jane Doe', kind === 'email linking' ? { email: null } : {})
+        configure()
+        expect(Result.isOk(await send[kind]())).toBe(true)
+        const mail = sentMail()
+        expect(mail.html).toContain('Acme &lt;Notes&gt; &amp; Co')
+        expect(mail.html).not.toContain(NAME)
+        expect(render(mail)).not.toMatch(/vibe/i)
     })
 })

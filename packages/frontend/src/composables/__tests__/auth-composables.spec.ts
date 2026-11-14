@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 // feat-076 (J): what every auth form does around a request, and what a sign-in does, once.
@@ -7,7 +7,11 @@ const t = (key: string): string => `t:${key}`
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t }) }))
 
 const push = vi.hoisted(() => vi.fn())
-vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
+const route = vi.hoisted(() => {
+    const current: { query: Record<string, unknown> } = { query: {} }
+    return current
+})
+vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => route }))
 
 const calls: string[] = []
 const setUser = vi.hoisted(() => vi.fn())
@@ -58,21 +62,93 @@ describe('useAuthRequest', () => {
 })
 
 describe('useCompleteSignIn', () => {
-    it('remembers the user, tells the caller, opens the account page, then has the app read the session — in that order', async () => {
+    const signIn = async (): Promise<void> => {
+        const { useCompleteSignIn } = await import('../useCompleteSignIn')
+        useCompleteSignIn(() => calls.push('onSignedIn'))({ id: '1' })
+        await Promise.resolve()
+        await Promise.resolve()
+    }
+
+    beforeEach(() => {
+        calls.length = 0
+        vi.clearAllMocks()
+        route.query = {}
+        sessionStorage.clear()
         setUser.mockImplementation(() => calls.push('setUser'))
         push.mockImplementation(() => {
             calls.push('push')
             return Promise.resolve()
         })
         emit.mockImplementation(() => calls.push('init_app'))
-        const { useCompleteSignIn } = await import('../useCompleteSignIn')
-        const completeSignIn = useCompleteSignIn(() => calls.push('onSignedIn'))
+    })
 
-        completeSignIn({ id: '1' })
+    it('remembers the user, tells the caller, opens the account page, then has the app read the session — in that order', async () => {
+        await signIn()
 
         expect(calls).toEqual(['setUser', 'onSignedIn', 'push', 'init_app'])
         expect(setUser).toHaveBeenCalledWith({ id: '1' })
         expect(push).toHaveBeenCalledWith({ name: 'UserAccount' })
         expect(emit).toHaveBeenCalledWith('init_app')
+    })
+
+    // feat-154 (review 2026-11-10, M10): the router guard sends an anonymous visitor to
+    // /login?redirect=<where they were going>. Closing the modal replaces the route, so the
+    // target is read first.
+    it('goes to the page the router guard remembered in ?redirect=', async () => {
+        route.query = { redirect: '/support' }
+        await signIn()
+
+        expect(push).toHaveBeenCalledWith('/support')
+    })
+
+    it.each(['https://evil.example/', '//evil.example', '/\\evil.example', 'support', ''])(
+        'ignores a redirect that is not a path inside the application: %s',
+        async (redirect) => {
+            route.query = { redirect }
+            await signIn()
+
+            expect(push).toHaveBeenCalledWith({ name: 'UserAccount' })
+        },
+    )
+
+    it('has the app read the session only after the navigation settled, so init sees the new page', async () => {
+        let finishNavigation: (() => void) | undefined
+        push.mockImplementation(() => {
+            calls.push('push')
+            return new Promise<void>((resolve) => {
+                finishNavigation = resolve
+            })
+        })
+        route.query = { redirect: '/support' }
+        const { useCompleteSignIn } = await import('../useCompleteSignIn')
+        useCompleteSignIn(() => calls.push('onSignedIn'))({ id: '1' })
+        await Promise.resolve()
+
+        expect(calls).toEqual(['setUser', 'onSignedIn', 'push'])
+        finishNavigation?.()
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(calls).toEqual(['setUser', 'onSignedIn', 'push', 'init_app'])
+    })
+
+    it('still has the app read the session when the navigation fails', async () => {
+        push.mockImplementation(() => {
+            calls.push('push')
+            return Promise.reject(new Error('navigation aborted'))
+        })
+        await signIn()
+
+        expect(calls).toEqual(['setUser', 'onSignedIn', 'push', 'init_app'])
+    })
+
+    it('forgets a target remembered for an OAuth sign-in that was not finished', async () => {
+        const { rememberPostSignInTarget, takePostSignInTarget } =
+            await import('@/utils/post-sign-in-target')
+        rememberPostSignInTarget('/admin/users')
+
+        await signIn()
+
+        expect(takePostSignInTarget()).toBeNull()
     })
 })

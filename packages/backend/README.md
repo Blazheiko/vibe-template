@@ -76,17 +76,17 @@ pnpm dev:backend
 when they are usually needed. Variable names match what the runtime config reads
 in `src/config/*`.
 
-| Area          | Required for local boot | Variables                                                                                                                       |
-| ------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| App           | Yes                     | `APP_KEY`, `APP_ENV`, `APP_URL`, `FRONTEND_URL`, `PORT`, `HOST`                                                                 |
-| Database      | Yes                     | `DB_CONNECTION`, `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`, `PGSQL_DB_NAME`                                    |
-| Redis         | Usually yes             | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`                                                                    |
-| Request body  | Optional (has defaults) | `APP_MAX_BODY_SIZE`, `APP_MAX_JSON_BODY_SIZE`, `APP_MAX_MULTIPART_BODY_SIZE`, `APP_MAX_OCTET_BODY_SIZE`                         |
-| Routing/CDN   | Optional                | `API_PATH_PREFIX`, `APP_UNIX_PATH`, `CDN_URL`, `SERVE_STATIC`, `DOC_PAGE`, `DOMAIN`                                             |
-| Security      | Production              | `APP_IS_PRODUCTION`, `CORS_ALLOWED_ORIGINS`, `CSRF_ENFORCE`, `SESSION_COOKIE_HOST_PREFIX`, `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` |
-| Storage (S3)  | Feature-dependent       | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`                                             |
-| Mail (SMTP)   | Feature-dependent       | `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`                     |
-| Observability | Optional                | `SENTRY_DSN`, `SENTRY_ENABLED`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`                                                          |
+| Area          | Required for local boot | Variables                                                                                                                                                        |
+| ------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| App           | Yes                     | `APP_KEY`, `APP_ENV`, `APP_URL`, `FRONTEND_URL`, `PORT`, `HOST`                                                                                                  |
+| Database      | Yes                     | `DB_CONNECTION`, `PGSQL_HOST`, `PGSQL_PORT`, `PGSQL_USER`, `PGSQL_PASSWORD`, `PGSQL_DB_NAME`                                                                     |
+| Redis         | Usually yes             | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_PREFIX`                                                                                                     |
+| Request body  | Optional (has defaults) | `APP_MAX_BODY_SIZE`, `APP_MAX_JSON_BODY_SIZE`, `APP_MAX_MULTIPART_BODY_SIZE`, `APP_MAX_OCTET_BODY_SIZE`                                                          |
+| Routing/CDN   | Optional                | `API_PATH_PREFIX`, `APP_UNIX_PATH`, `CDN_URL`, `SERVE_STATIC`, `DOC_PAGE`, `DOMAIN`                                                                              |
+| Security      | Production              | `APP_IS_PRODUCTION`, `CORS_ALLOWED_ORIGINS`, `CSRF_ENFORCE`, `CSRF_ALLOWED_ORIGINS`, `CSP_*`, `SESSION_COOKIE_HOST_PREFIX`, `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` |
+| Storage (S3)  | Feature-dependent       | `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`                                                                              |
+| Mail (SMTP)   | Feature-dependent       | `SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, `SMTP_FROM_NAME`                                                      |
+| Observability | Optional                | `SENTRY_DSN`, `SENTRY_ENABLED`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE`                                                                                           |
 
 `.env.example` lists every variable the backend reads (except `NODE_ENV`, a
 fallback for `APP_ENV`). Empty `PGSQL_*` values fall back to the defaults in
@@ -120,10 +120,16 @@ pnpm --filter backend mail:test <recipient@example.com> [subject]
 
 A compact end-to-end checklist (see the detailed sections below for each layer):
 
-1. Define or reuse request/response **schemas** in the `shared` package.
-2. Register the **route** in `src/app/routes` with `defineRoute`.
-3. Add **validation** (`validator` / `queryValidator`) when the handler reads
-   body or query data.
+1. Define or reuse request/response **schemas** in the `shared` package, and
+   declare the route's **contract** (method, path, body/query/response types)
+   in `packages/shared/src/contracts` (ADR 0005).
+2. Add the contract's **schema entry** (`body` / `query` / `response`) to its
+   group file in `src/app/routes/contract-schemas/` — a contract without an
+   entry does not compile.
+3. Register the **route** in `src/app/routes/http-routes.ts` with
+   `defineRoute({ contract, handler, … })` from
+   `#app/routes/contract-schemas/index.js`, inside the group whose prefix
+   starts the contract's path.
 4. Keep the **controller** transport-focused: read context, call services, map
    errors to HTTP status codes.
 5. Put business logic in `src/app/services`.
@@ -140,7 +146,7 @@ A compact end-to-end checklist (see the detailed sections below for each layer):
 
 ## Configuration
 
-Configuration is split across modules in `src/config/` (`app.ts`, `database.ts`, `redis.ts`, `disk.ts`, `cookies.ts`, `cors.ts`, `csp.ts`, `mail.ts`, `oauth.ts`, `push.ts`, `session.ts`, `ai.ts`, `support.ts`, `translator.ts`, `turn.ts`).
+Configuration is split across modules in `src/config/` (`app.ts`, `auth.ts`, `database.ts`, `redis.ts`, `disk.ts`, `cookies.ts`, `cors.ts`, `csp.ts`, `csrf.ts`, `mail.ts`, `oauth.ts`, `push.ts`, `session.ts`, `sentry.ts`, `rate-limit.ts`, `throttle-policies.ts`, `websocket.ts`, `ai.ts`, `support.ts`, `turn.ts`, …).
 
 ### Auth / proxy environment variables
 
@@ -274,7 +280,6 @@ Rollout plan:
 1. Keep `SENTRY_ENABLED=false` in all environments until the change is deployed.
 2. Enable Sentry in staging first and watch event volume / noise for at least 48 hours.
 3. Promote to production only after staging is stable.
-4. Keep Telegram alerts on during the initial rollout so Sentry can be compared against the existing path.
 
 ## Tech Stack
 
@@ -288,7 +293,7 @@ Rollout plan:
 - Nodemailer — transactional email
 - Arctic — OAuth (Google, GitHub, ...)
 - web-push — Web Push notifications
-- AI SDKs — OpenAI, xAI (Grok), Mistral, Inworld
+- AI SDKs — OpenAI, xAI (Grok), Mistral
 
 ## Architecture
 
@@ -402,7 +407,7 @@ Side-channels:
 
 - **Session / auth** — `context.session` (Redis via `#database/redis.js`) and `context.auth` are populated by the `session_web` middleware before `auth_guard` runs.
 - **Logging** — every step logs through `context.logger` (Pino, scoped by `requestId`).
-- **WebSocket** — same shape, but the chain replaces "readAndParseBody" with `ws-api-dispatcher.ts` and "Controller" with handlers in `src/app/controllers/ws/`. Connection-level state lives in `src/app/websocket/{ws-session-auth, ws-connection-registry, ws-coordinator}.ts`.
+- **WebSocket** — same shape, but the chain replaces "readAndParseBody" with `src/vendor/utils/routing/ws-api-dispatcher.ts` and "Controller" with handlers in `src/app/controllers/ws/`. Connection-level state lives in `src/app/websocket/{ws-session-auth, ws-connection-registry, ws-coordinator}.ts`.
 
 ### Layer Responsibilities
 
@@ -422,32 +427,35 @@ src/
 │   ├── controllers/
 │   │   ├── http/            # HTTP request handlers
 │   │   └── ws/              # WebSocket event handlers
-│   ├── services/
+│   ├── services/            # business logic, grouped by domain
 │   │   ├── shared/          # AppError/AppResult and shared helpers
 │   │   ├── actions/         # cross-service orchestration actions
+│   │   ├── auth/ user/ admin/ support/ communication/ notifications/
 │   │   ├── ai/              # AI provider adapters
-│   │   └── statistics/
+│   │   ├── core/ observability/ statistics/
 │   ├── repositories/        # Drizzle data access objects
 │   ├── transformers/        # DB row → API payload
 │   ├── routes/
 │   │   ├── http-routes.ts
-│   │   └── ws-routes.ts
+│   │   ├── ws-routes.ts
+│   │   └── contract-schemas/ # schema registry: one entry per shared contract
+│   ├── routing/             # defineRaw/WsRoute internals (outside tests, use contract-schemas)
 │   ├── middlewares/
 │   │   └── kernel.ts        # middleware name → function mapping
 │   ├── validate/
-│   │   ├── schemas/         # ArkType schemas (legacy + local)
+│   │   ├── adapters/        # ArkType adapter
 │   │   ├── checkers/        # custom payload checkers
 │   │   └── errors/          # validation error helpers
 │   ├── websocket/
 │   │   ├── ws-connection-registry.ts
 │   │   ├── ws-coordinator.ts   # cross-instance coordination via Redis
 │   │   └── ws-session-auth.ts  # WS handshake auth
-│   ├── events/
 │   ├── start/
 │   └── state/
-├── config/                  # app.ts, database.ts, redis.ts, disk.ts, mail.ts, oauth.ts, push.ts, ai.ts, ...
+├── config/                  # app.ts, auth.ts, database.ts, redis.ts, disk.ts, mail.ts, oauth.ts, csp.ts, ...
 ├── database/
 │   ├── db.ts                # pg Pool + Drizzle instance
+│   ├── relations.ts         # Drizzle relations (defineRelations)
 │   ├── redis.ts             # ioredis client(s)
 │   └── schema.ts            # all table definitions
 ├── db/
@@ -456,9 +464,8 @@ src/
 │   └── seed/                # seed logic and tests
 ├── drizzle/
 │   └── migrations/          # generated SQL migrations
-├── docs/                    # internal architecture / feature notes
 ├── openapi/                 # generated OpenAPI spec
-├── scripts/                 # one-off utilities (backfills, mail test, ...)
+├── scripts/                 # one-off utilities (mail test, VAPID keys, LLM prompt purge, ...)
 └── vendor/                  # framework internals (server, router, types)
 ```
 
@@ -476,7 +483,7 @@ src/
 ```ts
 import { db } from '#database/db.js'
 import logger from '#logger'
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRoute } from '#app/routes/contract-schemas/index.js'
 ```
 
 ---
@@ -493,79 +500,85 @@ Each group has:
 - `description` — shown in API docs
 - `group` — array of `defineRoute(...)` calls
 
-Individual routes can also declare their own `middlewares`, `rateLimit`, and `allowedContentTypes` that stack on top of the group's.
+Every route is declared through its **contract** from `shared/contracts` (ADR 0005): `defineRoute` from `#app/routes/contract-schemas/index.js` takes the method and the full path from the contract, and the body, query and response schemas from the schema registry (`src/app/routes/contract-schemas/*.ts`, keyed `<method> <path>`). The contract's path must start with the prefix of the group it sits in, otherwise the router refuses to start. Importing `#app/routing/define-raw-route.js` or `#app/routing/define-ws-route.js` outside tests is an ESLint error (root `eslint.config.ts`).
+
+Individual routes can also declare their own `middlewares`, `rateLimit`, `maxBodySize` and `allowedContentTypes` that stack on top of the group's.
 
 ### Route fields
 
-| Field                 | Type         | Default     | Description                                                                                                  |
-| --------------------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `url`                 | `string`     | —           | URL path (`:param` for path params)                                                                          |
-| `method`              | `string`     | —           | `get`, `post`, `put`, `patch`, `delete`, `ws`                                                                |
-| `handler`             | `Function`   | —           | Controller method                                                                                            |
-| `validator`           | `ArkType`    | `undefined` | ArkType schema for request body (`post`/`put`/`patch` only); payload is validated before the handler         |
-| `queryValidator`      | `ArkType`    | `undefined` | ArkType schema for query params; query is validated before the handler and exposed as typed `httpData.query` |
-| `queryAllowExtra`     | `boolean`    | `false`     | Allows undeclared query keys and strips them from the validated object instead of rejecting the request      |
-| `queryArrays`         | `string[]`   | `[]`        | Declares query keys that may appear multiple times and should be collected as arrays                         |
-| `allowedContentTypes` | `BodyKind[]` | `['json']`  | Allowed request body content-type kinds for POST/PUT. Non-matching requests are rejected with **415**.       |
-| `middlewares`         | `string[]`   | `[]`        | Middleware keys from `kernel.ts`, stacked on top of group middlewares                                        |
-| `rateLimit`           | `RateLimit`  | `undefined` | Per-route rate limit                                                                                         |
-| `description`         | `string`     | `undefined` | Shown in API docs                                                                                            |
-| `ResponseSchema`      | `ArkType`    | `undefined` | Response schema for docs and the runtime allow-list check (`RESPONSE_VALIDATION_CONTRACT`)                   |
+| Field                 | Type         | Default     | Description                                                                                                                                             |
+| --------------------- | ------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `contract`            | contract     | —           | Contract from `shared/contracts`: method, full path (`:param` for path params) and the body/query/response types                                        |
+| `handler`             | `Function`   | —           | Controller method; its context and return type are checked against the contract's registry entry                                                        |
+| `queryAllowExtra`     | `boolean`    | `false`     | Allows undeclared query keys and strips them from the validated object instead of rejecting the request                                                 |
+| `queryArrays`         | `string[]`   | `[]`        | Declares query keys that may appear multiple times and should be collected as arrays                                                                    |
+| `allowedContentTypes` | `BodyKind[]` | `['json']`  | Allowed request body content-type kinds for POST/PUT. Non-matching requests are rejected with **415**. A multipart contract sets `['multipart']` itself |
+| `maxBodySize`         | `number`     | `undefined` | Per-route body limit in bytes; the smaller of this and the global `APP_MAX_*_BODY_SIZE` applies                                                         |
+| `middlewares`         | `string[]`   | `[]`        | Middleware keys from `kernel.ts`, stacked on top of group middlewares                                                                                   |
+| `rateLimit`           | `RateLimit`  | `undefined` | Per-route rate limit                                                                                                                                    |
+| `description`         | `string`     | `undefined` | Shown in API docs                                                                                                                                       |
+
+The body schema (`validator`), query schema (`queryValidator`) and `ResponseSchema` of the route are not route fields: `defineRoute` fills them from the registry entry of the contract (`body`, `query`, `response`); the response schema drives the docs and the runtime allow-list check (`RESPONSE_VALIDATION_CONTRACT`).
 
 `BodyKind` values: `'json'` · `'multipart'` · `'urlencoded'` · `'text'` · `'octet'`
 
 ```ts
+// packages/shared/src/contracts/auth.ts — the contract: types first, then method and path
+export const authContracts = {
+    login: contract<typeof LoginInputSchema.inferIn, undefined, LoginResponse>()(
+        'post',
+        '/auth/login',
+    ),
+    logout: contract<EmptyBody, undefined, LogoutResponse>()('post', '/auth/logout'),
+    // …
+}
+
+// src/app/routes/contract-schemas/auth.ts — the schemas of every contract of the group
+export const authSchemas = contractSchemas(authContracts, {
+    login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
+    logout: { body: EmptyFormInputSchema, response: ResponseSchemas.LogoutResponseSchema },
+    // …
+})
+
 // src/app/routes/http-routes.ts
 import AuthController from '#app/controllers/http/auth/auth-controller.js'
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
-import { defineRoute } from '#app/routing/define-route.js'
-import { RegisterEmailInputSchema, LoginInputSchema, EmptyFormInputSchema } from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
+import { defineRoute } from '#app/routes/contract-schemas/index.js'
+import { authContracts, avatarContracts } from 'shared/contracts'
+import { AVATAR_MAX_FILE_BYTES, multipartBodyLimit } from '#app/services/shared/upload-limits.js'
 
 export default [
     {
         group: [
             defineRoute({
-                url: '/register/email',
-                method: 'post',
-                handler: AuthController.registerByEmail.bind(AuthController),
-                validator: RegisterEmailInputSchema, // ArkType schema from shared/schemas
-                // allowedContentTypes defaults to ['json'] — no need to specify
-                ResponseSchema: ResponseSchemas.RegisterEmailResponseSchema,
-                description: 'Register a new user by email',
-            }),
-            defineRoute({
-                url: '/login',
-                method: 'post',
+                contract: authContracts.login, // post /auth/login
                 handler: AuthController.login.bind(AuthController),
-                validator: LoginInputSchema,
-                ResponseSchema: ResponseSchemas.LoginResponseSchema,
                 description: 'Login a user by email or phone identifier',
             }),
             defineRoute({
-                url: '/logout',
-                method: 'post',
+                contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
-                validator: EmptyFormInputSchema,
-                ResponseSchema: ResponseSchemas.LogoutResponseSchema,
                 description: 'Logout a user',
                 middlewares: ['auth_guard'], // route-level middleware
             }),
         ],
+        description: 'Auth routes',
+        middlewares: ['session_web', 'csrf_guard'], // applied to every route in the group
+        prefix: 'auth', // every contract path in the group starts with /auth
+        rateLimit: { windowMs: 60_000, maxRequests: 10 },
     },
     {
-        prefix: 'avatar', // groups can share a URL prefix and middlewares
-        middlewares: ['auth_guard'], // applied to every route in the group
         group: [
             defineRoute({
-                url: '/upload',
-                method: 'post',
+                contract: avatarContracts.upload, // multipartContract: allowedContentTypes = ['multipart']
                 handler: AvatarController.uploadAvatar.bind(AvatarController),
-                allowedContentTypes: ['multipart'], // must be explicit for file uploads
-                ResponseSchema: ResponseSchemas.UploadAvatarResponseSchema,
+                maxBodySize: multipartBodyLimit(AVATAR_MAX_FILE_BYTES),
                 description: 'Upload user avatar',
             }),
         ],
+        description: 'Avatar routes',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'avatar',
     },
 ]
 ```
@@ -613,21 +626,22 @@ When the limit is exceeded the server responds **429 Too Many Requests**:
 
 ### Nested Groups
 
-Groups can be nested to compose middleware/prefix chains:
+Groups can be nested to compose middleware/prefix chains. The prefixes add up, and the contract path of a route must start with the full prefix:
 
 ```ts
 {
   prefix: 'main',
   middlewares: ['session_web'],
   group: [
-    defineRoute({ url: '/init', method: 'get', handler: MainController.init, middlewares: ['auth_guard'] }),
+    defineRoute({ contract: mainContracts.init, handler: MainController.init.bind(MainController) }),
 
-    // nested group — prefix becomes "main/admin", both session_web and auth_guard apply
+    // nested group — prefix becomes "main/admin", both session_web and auth_guard apply;
+    // its contracts have paths under /main/admin
     {
       prefix: 'admin',
       middlewares: ['auth_guard'],
       group: [
-        defineRoute({ url: '/stats', method: 'get', handler: AdminController.stats }),
+        defineRoute({ contract: someContracts.stats, handler: SomeController.stats.bind(SomeController) }),
       ],
     },
   ],
@@ -638,43 +652,50 @@ Groups can be nested to compose middleware/prefix chains:
 
 ## WebSocket Routes
 
-Defined in `src/app/routes/ws-routes.ts`. Same structure as HTTP routes but use `defineWsRoute`.
+Defined in `src/app/routes/ws-routes.ts`. Same structure as HTTP routes, but each route is declared with `defineWsRoute` from `#app/routes/contract-schemas/index.js` and a WS contract (`wsContract`) from `shared/contracts/ws.ts` (ADR 0006). The contract path is the event under the API prefix (`/support/support_open_chat` → event `api/support/support_open_chat`); the payload and reply schemas come from `src/app/routes/contract-schemas/ws.ts`.
 
 ```ts
 // src/app/routes/ws-routes.ts
-import WSApiController from '#app/controllers/ws/ws-api-controller.js'
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
-import { WSEventTypingPayloadSchema } from 'shared/schemas'
-import * as ResponseSchemas from 'shared/responses'
+import AdminWsController from '#app/controllers/ws/admin-ws-controller.js'
+import SupportWsController from '#app/controllers/ws/support-controller.js'
+import { defineWsRoute } from '#app/routes/contract-schemas/index.js'
+import { adminWsContracts, supportWsContracts } from 'shared/contracts'
 
 export default [
     {
-        prefix: 'main',
-        description: 'Main WS routes',
-        rateLimit: {
-            windowMs: 1 * 60 * 1000,
-            maxRequests: 600,
-        },
         group: [
             defineWsRoute({
-                url: 'event_typing',
-                handler: WSApiController.eventTyping.bind(WSApiController),
-                validator: WSEventTypingPayloadSchema,
-                ResponseSchema: ResponseSchemas.EventTypingResponseSchema,
-                description: 'Handle typing events',
-                rateLimit: {
-                    windowMs: 1 * 60 * 1000,
-                    maxRequests: 30,
-                },
+                contract: adminWsContracts.subscribeOnlineUsers, // no payload
+                handler: AdminWsController.subscribeOnlineUsers.bind(AdminWsController),
+                description: 'Subscribe current admin websocket to admin online updates',
             }),
             defineWsRoute({
-                url: 'read_message',
-                handler: WSApiController.readMessage.bind(WSApiController),
-                validator: ReadMessagesInputSchema,
-                ResponseSchema: ResponseSchemas.ReadMessageResponseSchema,
-                description: 'Handle read message events',
+                contract: adminWsContracts.unsubscribeOnlineUsers,
+                handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
+                description: 'Unsubscribe current admin websocket from admin online updates',
             }),
         ],
+        prefix: 'admin',
+        description: 'Admin websocket routes',
+        middlewares: ['ws_admin_guard'],
+        rateLimit: { windowMs: 60_000, maxRequests: 120 },
+    },
+    {
+        group: [
+            defineWsRoute({
+                contract: supportWsContracts.openChat, // payload: SupportOpenChatInputSchema
+                handler: SupportWsController.openChat.bind(SupportWsController),
+                description: 'Open support chat and trigger first greeting',
+            }),
+            defineWsRoute({
+                contract: supportWsContracts.chat,
+                handler: SupportWsController.chat.bind(SupportWsController),
+                description: 'Send a message to the support agent',
+            }),
+        ],
+        prefix: 'support',
+        description: 'Support agent routes',
+        rateLimit: { windowMs: 60_000, maxRequests: 60 },
     },
 ]
 ```
@@ -780,28 +801,34 @@ export type CreateNoteInput = typeof CreateNoteInputSchema.infer
 
 ### Using in a route
 
+A route does not name its schema: the schema goes into the registry entry of the route's contract, and `defineRoute` picks it up.
+
 ```ts
+// src/app/routes/contract-schemas/notes.ts
+export const noteSchemas = contractSchemas(noteContracts, {
+    create: { body: CreateNoteInputSchema, response: ResponseSchemas.CreateNoteResponseSchema },
+})
+
+// src/app/routes/http-routes.ts
 defineRoute({
-    url: '/',
-    method: 'post',
-    validator: CreateNoteInputSchema, // schema passed directly to defineRoute
+    contract: noteContracts.create, // post /notes
     handler: NotesController.createNote.bind(NotesController),
 })
 ```
 
-Do not wrap route validators manually with `arkValidator(...)` in route files. `defineRoute` / `defineWsRoute` normalize the schema through the active validation wrapper internally.
+Do not wrap schemas manually with `arkValidator(...)`. `defineRoute` / `defineWsRoute` normalize the registry schema through the active validation wrapper internally (`defaultValidator` in `src/app/validate/index.ts`).
 
 ### Validation rules
 
 - This backend uses one schema engine across the project: ArkType.
-- Route files pass the raw schema object as `validator: SomeSchema`; `defineRoute` / `defineWsRoute` apply the active wrapper internally.
+- Schema files pass the raw schema object (`body: SomeSchema`, `query: SomeSchema`) in `contractSchemas(...)`; `defineRoute` / `defineWsRoute` apply the active wrapper internally. The compiler checks each entry against its contract's types.
 - Do not introduce a second schema engine per-route (`Zod`, `Valibot`, `Yup`, etc.). If the project ever migrates, that is a global refactor, not a local experiment.
 - If a rare transport edge case needs a custom validator, treat it as an exception and keep it behind the same validator contract instead of mixing route-level schema engines.
 
 ### Reading validated payload in a handler
 
 `getTypedPayload` extracts the already-validated, fully-typed payload from context.
-The generic `TPayload` on `HttpContext<TPayload>` is inferred automatically from `validator` by `defineRoute`.
+The handler's `HttpContext<TPayload>` is checked by `defineRoute` against the output of the contract's body schema.
 
 ```ts
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
@@ -813,18 +840,17 @@ async createNote(context: HttpContext<CreateNoteInput>) {
 }
 ```
 
-### Routes without a validator
+### Routes without a body schema
 
-Only `post`, `put` and `patch` read a body. A `validator` on `get` / `delete` is a type error in `defineRoute` and a startup error in `routesHandler`: pass data there via `:params` or `queryValidator`.
+Only `post`, `put` and `patch` read a body. A body schema on `get` / `delete` is a startup error in `routesHandler`: pass data there via `:params` or a query schema.
 
-If a route does **not** declare `validator`, the framework discards any incoming body and the controller receives `httpData.payload = null` — even on POST/PUT/PATCH with a JSON body. The raw body is **not** forwarded to the handler.
+If the contract's registry entry has **no** `body` schema, the framework discards any incoming body and the controller receives `httpData.payload = null` — even on POST/PUT/PATCH with a JSON body. The raw body is **not** forwarded to the handler.
 
 ```ts
+// registry entry without `body`: { response: ResponseSchemas.PingResponseSchema }
 defineRoute({
-  url: '/ping',
-  method: 'post',
+  contract: pingContracts.ping,
   handler: PingController.ping.bind(PingController),
-  // no validator
 })
 
 // in the controller:
@@ -835,10 +861,10 @@ async ping(context: HttpContext) {
 
 Implications:
 
-- Use a `validator` for any route that needs to read the request body. Without it, the body is unreachable from the handler.
-- `getTypedPayload(context)` will throw `Error("Payload is missing")` — this is intentional: it surfaces the missing validator immediately rather than silently passing empty data to the handler.
-- Handlers on validator-less routes (e.g. `logout`, `ping`) must not call `getTypedPayload` — they have nothing to read.
-- The TypeScript generic on `HttpContext<TPayload>` does **not** reflect runtime nullness, so don't trust typed fields on a route that has no validator.
+- Give the contract a `body` schema for any route that needs to read the request body. Without it, the body is unreachable from the handler.
+- `getTypedPayload(context)` will throw `Error("Payload is missing")` — this is intentional: it surfaces the missing body schema immediately rather than silently passing empty data to the handler.
+- Handlers on routes without a body schema (e.g. `ping`, `main/init`) must not call `getTypedPayload` — they have nothing to read.
+- The TypeScript generic on `HttpContext<TPayload>` does **not** reflect runtime nullness, so don't trust typed fields on a route that has no body schema.
 
 ---
 
@@ -987,12 +1013,12 @@ Notes drawn from the real controller:
 
 ### Query validation
 
-Query validation is handled by `defineRoute(...)` and executed in `server.ts`
+Query validation is set up by `defineRoute(...)` from the `query` schema of the contract's registry entry and executed in `server.ts`
 before the controller runs. The request never exposes raw `URLSearchParams` to
 handlers:
 
-- if a route does not declare `queryValidator`, `httpData.query` is `null`
-- if a route declares `queryValidator`, `httpData.query` contains the validated
+- if the entry has no `query` schema, `httpData.query` is `null`
+- if it has one, `httpData.query` contains the validated
   and typed object produced by ArkType
 - invalid query values fail the request with **422 Unprocessable Entity**
 - this happens before controller logic, so the handler only sees normalized data
@@ -1004,22 +1030,27 @@ const ListQuerySchema = type({
     'userId?': 'string',
 })
 
+// registry entry: list: { query: ListQuerySchema, response: ResponseSchemas.ItemListResponseSchema }
 defineRoute({
-    url: '/items',
-    method: 'get',
-    queryValidator: ListQuerySchema,
-    handler: ItemsController.list,
+    contract: itemContracts.list, // get /items
+    handler: ItemsController.list.bind(ItemsController),
 })
 ```
 
 Short admin example from the current codebase:
 
 ```ts
+// src/app/routes/contract-schemas/admin.ts
+users: {
+    query: AdminUserListQuerySchema,
+    response: ResponseSchemas.AdminUserListResponseSchema,
+},
+
+// src/app/routes/http-routes.ts, group prefix 'admin'
 defineRoute({
-    url: '/users',
-    method: 'get',
-    queryValidator: AdminUserListQuerySchema,
+    contract: adminContracts.users, // get /admin/users
     handler: AdminUserController.list.bind(AdminUserController),
+    description: 'List users with filters (admin)',
 })
 ```
 
@@ -1029,7 +1060,7 @@ raw query string itself.
 
 How it works in practice:
 
-1. The router registers `queryValidator` and related flags on the route.
+1. `defineRoute` turns the `query` schema into the route's `queryValidator` (strict unless `queryAllowExtra`) and the router registers it with the related flags.
 2. `server.ts` reads the URL query string, flattens repeated keys only for the
    names listed in `queryArrays`, and then runs ArkType validation.
 3. By default the schema is strict: undeclared keys are rejected with **422**.
@@ -1039,9 +1070,8 @@ How it works in practice:
    `queryArrays` and the schema expects an array type like `string[]`.
 
 This means the controller should always treat `context.httpData.query` as the
-canonical source of truth for query params. In middleware, where the route
-generic type is not always available, use `getTypedQuery<T>(ctx)` only after the
-route has declared a `queryValidator`.
+canonical source of truth for query params. In a middleware, where the route
+generic type is not available, read `context.httpData.query` and narrow it yourself.
 
 Example for repeated keys:
 
@@ -1050,12 +1080,11 @@ const SearchQuerySchema = type({
     'tags?': 'string[]',
 })
 
+// registry entry: search: { query: SearchQuerySchema, response: … }
 defineRoute({
-    url: '/search',
-    method: 'get',
-    queryValidator: SearchQuerySchema,
+    contract: searchContracts.search, // get /search
     queryArrays: ['tags'],
-    handler: SearchController.search,
+    handler: SearchController.search.bind(SearchController),
 })
 ```
 
@@ -1072,97 +1101,54 @@ Services live in `src/app/services/`. They contain all business logic and usuall
 // src/app/services/shared/errors.ts
 export type AppError =
     | { _tag: 'BadRequest'; message: string; reason?: string }
-    | { _tag: 'Unauthorized'; message: string }
+    | { _tag: 'Unauthorized'; message: string; reason?: string }
     | { _tag: 'Forbidden'; message: string; reason?: string }
     | { _tag: 'NotFound'; resource: string; message: string }
     | { _tag: 'Conflict'; message: string; reason?: string }
+    | { _tag: 'RateLimited'; message: string; reason?: string; retryAfterSeconds?: number }
     | { _tag: 'Internal'; publicMessage: string; cause?: unknown }
+    | { _tag: 'ServiceUnavailable'; message: string; retryAfterSeconds: number; cause?: unknown }
+    | { _tag: 'UpstreamError'; message: string; cause?: unknown }
+    | { _tag: 'UpstreamTimeout'; message: string; cause?: unknown }
 
 export type AppResult<T> = Result<T, AppError>
 
 export function badRequest(message: string, reason?: string): AppError
-export function unauthorized(message?: string): AppError
+export function unauthorized(message?: string, reason?: string): AppError
 export function forbidden(message: string, reason?: string): AppError
 export function notFound(resource: string, message: string): AppError
 export function conflict(message: string, reason?: string): AppError
+export function rateLimited(...): AppError
 export function internal(cause: unknown, publicMessage?: string): AppError
+export function serviceUnavailable(cause?: unknown): AppError
+export function upstreamError(cause?: unknown, message?: string): AppError
+export function upstreamTimeout(...): AppError
 ```
 
 ### Service example
 
+A simplified shape of `src/app/services/auth/auth-service.ts` (the real `login` also
+spends throttle budgets and compares the password against a dummy hash for unknown
+accounts):
+
 ```ts
-// src/app/services/auth-service.ts (excerpt)
 import { Result } from 'better-result'
-import { hashPassword, validatePassword } from 'metautil'
+import { validatePassword } from 'metautil'
 import type { Auth, Session } from '#vendor/types/types.js'
 import { userRepository } from '#app/repositories/index.js'
 import { userTransformer } from '#app/transformers/index.js'
-import { badRequest, conflict, unauthorized, type AppResult } from '#app/services/shared/errors.js'
-import { tryInternal } from '#app/services/shared/result-helpers.js'
-import { generateWsToken } from '#app/services/generate-ws-token-service.js'
-import { getWsUrl } from '#app/services/get-ws-url-service.js'
-import type { LoginInput, RegisterInput } from 'shared/schemas'
+import { unauthorized, type AppResult } from '#app/services/shared/errors.js'
+import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
+import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
+import type { LoginInput } from 'shared/schemas'
 
 export const authService = {
-    async register(
-        payload: RegisterInput,
-        auth: Auth,
-        session: Session,
-    ): Promise<
-        AppResult<{
-            status: 'success'
-            user: SerializedUser
-            wsUrl: string
-            wsToken: string
-        }>
-    > {
-        const email = payload.email.toLowerCase()
-
-        const existResult = await tryInternal(
-            () => userRepository.findByEmail(email),
-            'Failed to load user by email',
-        )
-        if (Result.isError(existResult)) return Result.err(existResult.error)
-        if (existResult.value !== undefined) {
-            return Result.err(conflict('Email already exists'))
-        }
-
-        const hash = await hashPassword(payload.password)
-        const user = await userRepository.create({
-            name: payload.name,
-            email,
-            password: hash,
-        })
-
-        await auth.login(String(user.id), session)
-        const wsToken = await generateWsToken(user.id)
-
-        return Result.ok({
-            status: 'success',
-            user: userTransformer.serialize(user),
-            wsUrl: getWsUrl(),
-            wsToken,
-        })
-    },
-
     async login(
         payload: LoginInput,
         auth: Auth,
         session: Session,
-    ): Promise<
-        AppResult<{
-            status: 'success'
-            user: SerializedUser
-            wsUrl: string
-            wsToken: string
-        }>
-    > {
-        const userResult = await tryInternal(
-            () => userRepository.findByEmail(payload.email.toLowerCase()),
-            'Failed to load user by email',
-        )
-        if (Result.isError(userResult)) return Result.err(userResult.error)
-        const user = userResult.value
+    ): Promise<AppResult<AuthSuccessPayload>> {
+        const user = await userRepository.findByEmail(payload.identifier.toLowerCase())
         if (user === undefined || user.password === null) {
             return Result.err(unauthorized('Invalid email or password'))
         }
@@ -1180,11 +1166,6 @@ export const authService = {
             wsToken,
         })
     },
-
-    async logout(auth: Auth): Promise<AppResult<{ status: 'success' }>> {
-        await auth.logout()
-        return Result.ok({ status: 'success' })
-    },
 }
 ```
 
@@ -1195,7 +1176,7 @@ export const authService = {
 Repositories live in `src/app/repositories/`. **Only** Drizzle queries — no HTTP, no session, no formatting. They typically expose an interface plus the implementation, and are re-exported from `src/app/repositories/index.ts`.
 
 ```ts
-// src/app/repositories/user-repository.ts (excerpt)
+// src/app/repositories/user/user-repository.ts (excerpt)
 import { db } from '#database/db.js'
 import { users } from '#database/schema.js'
 import { eq, sql } from 'drizzle-orm'
@@ -1206,16 +1187,16 @@ export type UserInsert = InferInsertModel<typeof users>
 export type UserUpdate = Partial<
     Pick<
         UserInsert,
-        'name' | 'email' | 'password' | 'phone' | 'avatar' | 'role' | 'emailVerifiedAt'
+        'name' | 'email' | 'password' | 'phone' | 'avatar' | 'sessionToken' | 'emailVerifiedAt'
     >
 >
 
 export interface IUserRepository {
-    create(data: UserInsert): Promise<UserRow>
+    create(data: UserInsert, executor?: DbExecutor): Promise<UserRow>
     findById(id: bigint): Promise<UserRow | undefined>
     findByEmail(email: string): Promise<UserRow | undefined>
-    update(id: bigint, data: UserUpdate): Promise<UserRow | undefined>
-    delete(id: bigint): Promise<boolean>
+    update(id: bigint, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>
+    // … plus findByPhone, lockById, admin listings and more
 }
 
 export const userRepository: IUserRepository = {
@@ -1255,11 +1236,6 @@ export const userRepository: IUserRepository = {
             .where(eq(users.id, id))
         return userRepository.findById(id)
     },
-
-    async delete(id) {
-        const deleted = await db.delete(users).where(eq(users.id, id)).returning()
-        return deleted.length > 0
-    },
 }
 ```
 
@@ -1271,12 +1247,11 @@ Transformers live in `src/app/transformers/`. They convert DB rows to API-safe p
 
 ```ts
 // src/app/transformers/user-transformer.ts
-import { DateTime } from 'luxon'
-import type { UserRow } from '#app/repositories/user-repository.js'
+import type { UserRow } from '#app/repositories/index.js'
 
 export type SerializedUser = Omit<
     UserRow,
-    'id' | 'password' | 'createdAt' | 'updatedAt' | 'emailVerifiedAt'
+    'id' | 'password' | 'sessionToken' | 'createdAt' | 'updatedAt' | 'emailVerifiedAt'
 > & {
     id: string
     created_at: string | null
@@ -1287,20 +1262,28 @@ export type SerializedUser = Omit<
 
 export const userTransformer = {
     serialize(user: UserRow): SerializedUser {
-        const { id, password: _password, createdAt, updatedAt, emailVerifiedAt, ...rest } = user
+        // sessionToken is the user's Redis session namespace: the client never needs it
+        const {
+            id,
+            password: _password,
+            sessionToken: _sessionToken,
+            createdAt,
+            updatedAt,
+            emailVerifiedAt,
+            ...rest
+        } = user
         return {
             ...rest,
             id: String(id), // bigint → string for safe JSON
-            created_at: DateTime.fromJSDate(createdAt).toISO(),
-            updated_at: DateTime.fromJSDate(updatedAt).toISO(),
+            created_at: createdAt.toISOString(),
+            updated_at: updatedAt.toISOString(),
             emailVerified: emailVerifiedAt !== null,
-            emailVerifiedAt:
-                emailVerifiedAt === null ? null : DateTime.fromJSDate(emailVerifiedAt).toISO(),
+            emailVerifiedAt: emailVerifiedAt === null ? null : emailVerifiedAt.toISOString(),
         }
     },
 
-    serializeArray(rows: UserRow[]): SerializedUser[] {
-        return rows.map((u) => userTransformer.serialize(u))
+    serializeArray(usersData: UserRow[]): SerializedUser[] {
+        return usersData.map((u) => userTransformer.serialize(u))
     },
 }
 ```
@@ -1309,7 +1292,7 @@ Notes:
 
 - `id` is converted from `bigint` → `string` so it survives JSON serialization.
 - Internal fields like `password` are stripped here, not at the controller.
-- Dates are emitted in ISO 8601 via Luxon.
+- Dates are emitted in ISO 8601 (`toISOString()`).
 
 ---
 
@@ -1317,24 +1300,18 @@ Notes:
 
 ### Connection
 
-`src/database/db.ts` creates a `pg.Pool` and passes it to Drizzle. The pool is configured for up to 10 concurrent connections. Redis clients live in `src/database/redis.ts` and are shared by sessions, the WS coordinator, and presence services.
+`src/database/db.ts` creates a `pg.Pool` (up to 10 connections, with a connection timeout and a per-statement `statement_timeout` from `config/database-pool.ts`) and passes it to Drizzle together with the relations from `src/database/relations.ts` (Relational Queries v2). Redis clients live in `src/database/redis.ts` and are shared by sessions, the WS coordinator, and presence services.
 
 ```ts
 import { drizzle } from 'drizzle-orm/node-postgres'
 import pg from 'pg'
-import * as schema from './schema.js'
+import { relations } from './relations.js'
 
-const pool = new pg.Pool({
-    host: databaseConfig.host,
-    port: databaseConfig.port,
-    user: databaseConfig.user,
-    password: databaseConfig.password,
-    database: databaseConfig.database,
-    max: 10,
-})
+const pool = new pg.Pool({ ...connectionOptions, max: 10 /* timeouts … */ })
 
-export const db = drizzle(pool, { schema, logger: appConfig.env !== 'prod' })
-export { pool }
+const db = drizzle({ client: pool, relations, logger: sqlLoggingEnabled(appConfig) })
+
+export { db, pool }
 ```
 
 ### Schema
@@ -1343,44 +1320,35 @@ All tables are defined in `src/database/schema.ts` using Drizzle's `pgTable` bui
 
 ```ts
 // src/database/schema.ts (excerpt)
-import {
-    pgTable,
-    bigserial,
-    bigint,
-    varchar,
-    text,
-    timestamp,
-    boolean,
-    pgEnum,
-} from 'drizzle-orm/pg-core'
-
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 
-export const users = pgTable('users', {
-    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-    name: varchar('name', { length: 100 }).notNull(),
-    email: varchar('email', { length: 255 }).notNull().unique(),
-    password: varchar('password', { length: 255 }),
-    avatar: varchar('avatar', { length: 500 }),
-    role: userRoleEnum('role').notNull().default('user'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at')
-        .notNull()
-        .defaultNow()
-        .$onUpdate(() => new Date()),
-})
-
-export const notes = pgTable('notes', {
-    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
-    title: varchar('title', { length: 255 }).notNull(),
-    description: text('description').notNull(),
-    userId: bigint('user_id', { mode: 'bigint' }).notNull(),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at')
-        .notNull()
-        .defaultNow()
-        .$onUpdate(() => new Date()),
-})
+export const users = pgTable(
+    'users',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        name: varchar('name', { length: 100 }).notNull(),
+        email: varchar('email', { length: 255 }), // unique through a LOWER(email) index
+        emailVerifiedAt: timestamp('email_verified_at'),
+        password: varchar('password', { length: 255 }),
+        phone: varchar('phone', { length: 20 }).unique(),
+        avatar: varchar('avatar', { length: 500 }),
+        role: userRoleEnum('role').notNull().default('user'),
+        sessionToken: varchar('session_token', { length: 24 })
+            .notNull()
+            .unique()
+            .$defaultFn(() => nanoid()),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+        updatedAt: timestamp('updated_at')
+            .notNull()
+            .defaultNow()
+            .$onUpdate(() => new Date()),
+    },
+    (table) => [
+        uniqueIndex('users_email_unique_non_null_idx')
+            .on(sql`LOWER(${table.email})`)
+            .where(sql`${table.email} IS NOT NULL`),
+    ],
+)
 ```
 
 ### Migrations
@@ -1403,43 +1371,51 @@ WS handlers receive `WsContext` instead of `HttpContext`. There is no `session`
 or `auth` on `WsContext` — authentication is handled at connection time and the
 resolved user identity is exposed as `context.userData`. `wsData.middlewareData`
 remains available for generic middleware state, but controllers should not read
-the current user from it. WS errors are produced with `appErrorToWsError(...)`
-(from `#app/services/shared/ws-error.js`) rather than `mapControllerError`.
+the current user from it. A WS handler returns its error as the reply payload:
+`appErrorToPayload(...)` (from `#app/services/shared/app-error-payload.js`) for an
+error the controller raises itself, and `mapWsControllerError(context, error)`
+(from `#app/controllers/shared/controller-error.js`) for the error of a service
+`Result`.
 
 ```ts
 // src/app/controllers/ws/support-controller.ts
+import { Result } from 'better-result'
 import type { WsContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { supportService } from '#app/services/support/support-service.js'
-import { appErrorToWsError } from '#app/services/shared/ws-error.js'
+import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 import { unauthorized } from '#app/services/shared/errors.js'
-import type { SupportChatInput, SupportOpenChatInput } from 'shared/schemas'
-import type { SupportChatResponse, SupportOpenChatResponse } from 'shared/responses'
+import { mapWsControllerError } from '#app/controllers/shared/controller-error.js'
+import type { SupportOpenChatInput } from 'shared/schemas'
+import type { SupportOpenChatResponse } from 'shared/responses'
 
 export default {
     async openChat(context: WsContext<SupportOpenChatInput>): Promise<SupportOpenChatResponse> {
         const { userData } = context
         if (userData?.userId === undefined) {
-            return appErrorToWsError(unauthorized())
-        }
-
-        void supportService.openChat(BigInt(userData.userId), userData.uuid)
-
-        return { status: 'ok' }
-    },
-
-    async chat(context: WsContext<SupportChatInput>): Promise<SupportChatResponse> {
-        const { userData } = context
-        if (userData?.userId === undefined) {
-            return appErrorToWsError(unauthorized())
+            return appErrorToPayload(unauthorized())
         }
 
         const payload = getTypedPayload(context)
+        const userId = BigInt(userData.userId)
 
-        void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid)
+        // The reply is the admission verdict: a refusal (e.g. 429) is the reply itself.
+        const admission = await supportService.admitOpenChat(userId)
+        if (Result.isError(admission)) return mapWsControllerError(context, admission.error)
+
+        // Accepted: the work runs on; later failures reach the client as broadcast events.
+        void supportService.runOpenChat(
+            admission.value,
+            userId,
+            userData.uuid,
+            context.signal,
+            payload.language,
+        )
 
         return { status: 'ok' }
     },
+
+    // chat: the same shape with admitChat / runChat
 }
 ```
 
@@ -1455,7 +1431,7 @@ WS connection state is managed by three modules in `src/app/websocket/`:
 | `ws-connection-registry.ts` | In-process map of `userId → sockets`; used to fan messages out locally                      |
 | `ws-coordinator.ts`         | Cross-instance pub/sub over Redis so multiple Node processes can deliver to the same user   |
 
-Presence and broadcast helpers live in `src/app/services/` (`ws-presence-service.ts`, `broadcast-service.ts`, `ws-service.ts`).
+Presence and broadcast helpers live in `src/app/services/communication/` (`ws-presence-service.ts`, `broadcast-service.ts`, `user-online-service.ts`).
 
 ---
 
@@ -1501,14 +1477,16 @@ When Sentry is enabled, `logger.error` and `logger.fatal` are the only log level
 ## Available Scripts
 
 ```bash
-pnpm dev                            # tsx watch src/index.ts
+pnpm dev                            # tsx watch src/index.ts (with the shared-source condition)
 pnpm build                          # tsc --build
 pnpm start                          # node dist/index.js
 pnpm clean                          # rm -rf dist .tsbuildinfo
 pnpm typecheck                      # tsc --noEmit
 pnpm test                           # vitest run
 pnpm test:watch                     # vitest (watch mode)
+pnpm test:coverage                  # vitest with coverage
 pnpm test:redis                     # vitest against a real Redis (vitest.redis.config.ts)
+pnpm test:pg                        # vitest against a real PostgreSQL (vitest.pg.config.ts)
 pnpm db:create                      # bootstrap empty database (src/db/create-database.ts)
 pnpm db:create:prod                 # node dist/db/create-database.js
 pnpm db:generate                    # drizzle-kit generate
@@ -1517,4 +1495,7 @@ pnpm db:studio                      # drizzle-kit studio
 pnpm db:seed                        # tsx src/db/seed.ts
 pnpm db:seed:prod                   # node dist/db/seed.js
 pnpm mail:test                      # send a test email; requires recipient argument
+pnpm push:vapid                     # generate a VAPID key pair (--write saves it to .env)
+pnpm llm:purge-prompts              # empty stored LLM prompt text (retention job)
+pnpm bench:response                 # benchmark the response contract check
 ```

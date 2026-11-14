@@ -10,6 +10,8 @@ export interface ClassifiedError {
     details?: ErrorDetails
     /** HTTP only. */
     headers: Readonly<Record<string, string>>
+    /** HTTP only: the connection is closed with the answer. */
+    closeConnection?: boolean
     log: {
         level: 'warn' | 'error'
         fields: Record<string, unknown>
@@ -59,8 +61,9 @@ export const classifyError = (
             message: err.publicMessage,
             ...(details !== undefined ? { details } : {}),
             headers: err.headers(),
+            ...(err.closeConnection() ? { closeConnection: true } : {}),
             log: {
-                level: err.statusCode >= 500 ? 'error' : 'warn',
+                level: err.logLevel(),
                 fields: err.logFields(),
                 message: err.logMessage,
             },

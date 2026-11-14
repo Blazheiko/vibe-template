@@ -13,7 +13,7 @@ This page is about turning the template into **your** product: what to rename, w
 
 Before deleting or rewriting anything, look at what you get right away. All screenshots were taken on a clean run with demo accounts (`db:seed --demo`).
 
-**Sign-in and registration.** Email and password, sign-in buttons for Google and Facebook, password reset. Behind them are the `/api/auth/*` and `/api/auth/oauth/*` routes.
+**Sign-in and registration.** Email and password, social sign-in buttons (only for the providers configured on the backend: Google, GitHub, GitLab, Facebook), password reset. Behind them are the `/api/auth/*` and `/api/auth/oauth/*` routes.
 
 ![Sign-in form](/screenshots/login.jpg)
 
@@ -21,7 +21,7 @@ Before deleting or rewriting anything, look at what you get right away. All scre
 
 ![Account page](/screenshots/account.jpg)
 
-**Admin: users.** A list with a filter by id and registration date (`GET /api/admin/users`), available only to the `admin` role.
+**Admin: users.** A list with a filter by id and registration date (`GET /api/admin/users`), available only to the `admin` role. The list is paged: the response carries `total`, `hasMore` and `nextCursor` (the id of the last user of the page), and the next page is the same request with `cursor=<nextCursor>`. A page holds up to 200 rows (`limit`, 50 by default; the admin UI asks for 100), newest registrations first. The connection history (`GET /api/admin/history-online`) works the same way.
 
 ![Admin: users](/screenshots/admin-users.jpg)
 
@@ -41,31 +41,38 @@ To call any HTTP or WS route by hand there is a separate application, [API Playg
 
 ## 1. Rename
 
-The template name is hard-coded in several places. Below is the list collected by searching for `Vibe Template`, `VIBE` and `vibe-template` across `packages/` (excluding tests and `node_modules`):
+The product name and the texts about it live in one file: [`packages/shared/src/product/index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/product/index.ts). Change `PRODUCT` there:
 
-| What                                        | Where                                                                                               |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Workspace name                              | `package.json` (`"name": "vibe-template"`)                                                          |
-| Page title and description                  | `packages/frontend/index.html` (`<title>`, `meta`)                                                  |
-| PWA: name, icons, colors                    | `packages/frontend/public/manifest.json`, `public/icons/`, `public/splash/`, `public/favicon.svg`   |
-| Logo on the sign-in page                    | `packages/frontend/src/views/Login.vue` (`'VIBE'`), `src/assets/logo.svg`                           |
-| Name in the PWA install button              | `packages/frontend/src/components/MenuButton.vue`                                                   |
-| Home page texts                             | `packages/frontend/src/locales/*.ts` (`heroTitle`, `mobileTitle`, etc.)                             |
-| Service worker cache                        | `packages/frontend/src/service-worker.ts` (`__vibe_template_sw_error_queue__`)                      |
-| Emails (password reset, email confirmation) | `packages/backend/src/app/services/auth/password-reset-service.ts`, `email-verification-service.ts` |
-| AI support prompts                          | `packages/backend/src/config/support.ts`; `db:seed` puts them into the database                     |
-| Default DB name                             | `packages/backend/src/config/database.ts` (`vibe_template`)                                         |
-| `robots.txt`                                | `packages/frontend/public/robots.txt`                                                               |
+| Field          | Where it shows up                                                                                          |
+| -------------- | ---------------------------------------------------------------------------------------------------------- |
+| `name`         | `<title>`, `meta`, JSON-LD, the PWA manifest, the PWA install button, the sign-in page, emails, AI prompts |
+| `shortName`    | the label under the PWA icon (up to 12 characters)                                                         |
+| `logoText`     | the logo the sign-in page types out                                                                        |
+| `tagline`      | `<title>`: `<name> — <tagline>`                                                                            |
+| `description`  | `meta description`, Open Graph, Twitter, the manifest, the PWA install button, the About page              |
+| `siteUrl`      | `canonical`, `og:url`, JSON-LD, `Sitemap` in `robots.txt`                                                  |
+| `supportEmail` | the AI support prompt: where to send the user when there is no answer                                      |
+
+`index.html` holds `%PRODUCT_*%` placeholders, and `manifest.json` and `robots.txt` are generated: the Vite plugin [`vite.product.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.product.ts) does all of it in both `pnpm dev` and `vite build`. The plugin reads `packages/shared/src/product` directly, so after an edit the dev server restarts by itself and serves the new `index.html`, `manifest.json` and `robots.txt` without `pnpm build:shared`. An unknown placeholder stops the build.
+
+What is left to replace by hand is what is not text, and the technical identifiers:
+
+| What                         | Where                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Icons, splash, favicon, logo | `packages/frontend/public/icons/`, `public/splash/`, `public/favicon.svg`, `src/assets/logo.svg`      |
+| PWA colors                   | `packages/frontend/vite.product.ts` (`theme_color`, `background_color`), `index.html` (`theme-color`) |
+| Workspace name               | `package.json` (`"name": "vibe-template"`)                                                            |
+| Default DB name              | `packages/backend/src/config/database.ts` (`vibe_template`) and `PGSQL_DB_NAME` below                 |
 
 In `.env`, change:
 
-| Variable                            | Value in `.env.example`    | Why                                                            |
-| ----------------------------------- | -------------------------- | -------------------------------------------------------------- |
-| `APP_NAME`                          | `uwebsockets-api`          | Application name in logs and configuration                     |
-| `REDIS_PREFIX`                      | `uwebsocket:`              | Redis key prefix; different projects on one Redis will not mix |
-| `PGSQL_DB_NAME`                     | `vibe_template`            | Your own database                                              |
-| `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL` | —                          | Who the emails come from                                       |
-| `VAPID_SUBJECT`                     | `mailto:example@gmail.com` | Contact for browser push services                              |
+| Variable                            | Value in `.env.example`    | Why                                                                   |
+| ----------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| `APP_NAME`                          | `uwebsockets-api`          | Process name (`process.title`); the product name comes from `PRODUCT` |
+| `REDIS_PREFIX`                      | `uwebsocket:`              | Redis key prefix; different projects on one Redis will not mix        |
+| `PGSQL_DB_NAME`                     | `vibe_template`            | Your own database                                                     |
+| `SMTP_FROM_NAME`, `SMTP_FROM_EMAIL` | —                          | Who the emails come from                                              |
+| `VAPID_SUBJECT`                     | `mailto:example@gmail.com` | Contact for browser push services                                     |
 
 AI prompts are cached in the database: if you have already run `db:seed`, change them in the admin panel or rerun the seed on a clean database.
 
@@ -99,11 +106,11 @@ Each integration is enabled with environment variables. Without them the server 
 
 There are three levels of decision:
 
-| Decision             | What to do                                                                                                               | When                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| **Configure**        | Fill in the variables in `.env` following [Configuration](/en/backend/configuration)                                     | The feature is needed                                     |
-| **Leave disabled**   | Do nothing. Hide the buttons in the interface (for example, social sign-in in `AuthModals.vue`, the "Support" menu item) | You may need it later                                     |
-| **Remove from code** | Remove the feature's routes, controllers, services, pages and tests (see below)                                          | Definitely not needed, and you want less code to maintain |
+| Decision             | What to do                                                                                                                                                  | When                                                      |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **Configure**        | Fill in the variables in `.env` following [Configuration](/en/backend/configuration)                                                                        | The feature is needed                                     |
+| **Leave disabled**   | Do nothing. Hide the buttons in the interface (for example, the "Support" menu item). Social sign-in buttons hide themselves until a provider is configured | You may need it later                                     |
+| **Remove from code** | Remove the feature's routes, controllers, services, pages and tests (see below)                                                                             | Definitely not needed, and you want less code to maintain |
 
 ### How to remove a feature
 

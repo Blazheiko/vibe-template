@@ -209,7 +209,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             await this.init() // anonymous session and its CSRF token (401)
             const reply = this.keep(
                 await this.request('POST', '/auth/login', {
-                    body: { identifier: email, password, token: '' },
+                    body: { identifier: email, password },
                 }),
             )
             expect(reply.status).toBe(200)

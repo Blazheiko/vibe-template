@@ -2,7 +2,7 @@ import { type } from '@arktype/type'
 import type * as uWS from 'uWebSockets.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineRoute } from '#app/routing/define-route.js'
+import { defineRawRoute } from '#app/routing/define-raw-route.js'
 import type { HttpContext } from '#vendor/types/types.js'
 
 // Regression tests for findings marked "closed, no test" in
@@ -91,9 +91,16 @@ const failing = vi.fn(() => {
 const NameSchema = type({ name: 'string' })
 
 const routes = [
-    { ...defineRoute({ url: 'json', method: 'post', validator: NameSchema, handler: controller }) },
     {
-        ...defineRoute({
+        ...defineRawRoute({
+            url: 'json',
+            method: 'post',
+            validator: NameSchema,
+            handler: controller,
+        }),
+    },
+    {
+        ...defineRawRoute({
             url: 'form',
             method: 'post',
             validator: NameSchema,
@@ -101,8 +108,8 @@ const routes = [
             handler: controller,
         }),
     },
-    { ...defineRoute({ url: 'item', method: 'del', handler: controller }) },
-    { ...defineRoute({ url: 'boom', method: 'get', handler: failing }) },
+    { ...defineRawRoute({ url: 'item', method: 'del', handler: controller }) },
+    { ...defineRawRoute({ url: 'boom', method: 'get', handler: failing }) },
 ].map((route) => ({ ...route, url: `api/${route.url}`, middlewares: [] }))
 
 interface Captured {

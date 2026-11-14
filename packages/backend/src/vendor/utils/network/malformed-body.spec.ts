@@ -42,9 +42,14 @@ const sendBody = async (body: string): Promise<unknown> => {
             return res
         },
     }
-    return getData(res as never, 'application/json', new Map(), 1_000_000, {
-        aborted: false,
-    }).catch((err: unknown) => err)
+    return getData(
+        res as never,
+        'application/json',
+        new Map(),
+        1_000_000,
+        { aborted: false },
+        '127.0.0.1',
+    ).catch((err: unknown) => err)
 }
 
 describe('malformed JSON body', () => {

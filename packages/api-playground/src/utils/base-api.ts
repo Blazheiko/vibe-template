@@ -55,6 +55,22 @@ const checkServerHealth = async (baseUrl: string): Promise<boolean> => {
     }
 }
 
+/** The JSON body of an answer, or null when it has none or it is not JSON. */
+const readJsonBody = async (response: Response): Promise<unknown> => {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!contentType.toLowerCase().includes('json')) return null
+    try {
+        return (await response.json()) as unknown
+    } catch {
+        return null
+    }
+}
+
+const messageOf = (body: unknown): string | undefined => {
+    const message = (body as { message?: unknown } | null)?.message
+    return typeof message === 'string' && message !== '' ? message : undefined
+}
+
 const api: ApiMethods = {
     http: async <T = HttpResponse>(
         method: HttpMethod,
@@ -92,60 +108,40 @@ const api: ApiMethods = {
                 url = `${apiSettings.baseUrl}/${route}`
             }
 
+            // No body here: it carries passwords and tokens, and a console outlives the tab
+            // in a shared screen or a pasted log. The Network panel shows it on purpose.
             console.log('Making API request:', {
                 method,
                 url,
                 headers: redactHeaders(headersToAdd),
-                body: init.body,
             })
 
             const response = await fetch(url, init)
-
-            if (!response.ok && response.status === 422) {
-                console.log('!response.ok && response.status === 422')
-                const errorData = await response.json()
-                console.log({ errorData })
-                return {
-                    data: errorData,
-                    error: { code: 422, message: String(errorData.message || 'Validation Error') },
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries()),
-                }
-            }
-
-            if (!response.ok) {
-                console.log('!response.ok')
-                if (response.status === 401) {
-                    eventBus.emit('unauthorized')
-                    return {
-                        data: null,
-                        error: { code: 401, message: 'Unauthorized' },
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: Object.fromEntries(response.headers.entries()),
-                    }
-                }
-                return {
-                    data: null,
-                    error: {
-                        code: response.status,
-                        message: `HTTP error! status: ${response.status}`,
-                    },
-                    status: response.status,
-                    statusText: response.statusText,
-                    headers: Object.fromEntries(response.headers.entries()),
-                }
-            }
-
-            const data = await response.json()
-            console.log({ data })
-            return {
-                data: data as T,
-                error: null,
+            const answered = {
                 status: response.status,
                 statusText: response.statusText,
                 headers: Object.fromEntries(response.headers.entries()),
+            }
+            // The body, whatever the status: an error says why in it (`code`, `message`,
+            // `reason` of a CSRF refusal). No body, or one that is not JSON, is null (feat-158).
+            const data = await readJsonBody(response)
+
+            if (response.ok) {
+                return { data: data as T | null, error: null, ...answered }
+            }
+
+            if (response.status === 401) {
+                eventBus.emit('unauthorized')
+            }
+            const message =
+                messageOf(data) ??
+                (response.status === 422
+                    ? 'Validation Error'
+                    : `HTTP error! status: ${String(response.status)}`)
+            return {
+                data: data as T | null,
+                error: { code: response.status, message },
+                ...answered,
             }
         } catch (error: unknown) {
             console.error('Network error:', error)
@@ -182,18 +178,10 @@ const api: ApiMethods = {
     ): Promise<T | null> => {
         const { websocketApi } = useWebSocketConnection()
 
-        try {
-            const result = await websocketApi(normalizePath(route), body)
-            console.log({ result })
-            return result as unknown as T
-        } catch (e) {
-            console.error(e)
-            const errorMessage = e instanceof Error ? e.message : 'Unknown error'
-            return {
-                data: null,
-                error: { code: 408, message: errorMessage },
-            } as T
-        }
+        // A refused request or a timeout rejects (WsRequestError): turning it into a result
+        // made the form show a failed request as a success (feat-158).
+        const result = await websocketApi(normalizePath(route), body)
+        return result as unknown as T
     },
 }
 

@@ -60,7 +60,7 @@ The browser adds the `Origin` header to a `POST`: the scheme, domain and port of
 
 ### 4. CSRF token: a secret the attacker does not have
 
-The main layer. For each session the server generates a random **CSRF token** and stores it next to the session in Redis. The frontend adds this token to every request that changes data, in the `X-CSRF-Token` header. The server compares: the token in the header must match the session token.
+The main layer. For each session the server generates a random **CSRF token** and stores it with the session: for a guest session (before login) in the signed session cookie, since such a session is not written to Redis at all, and after login in the session record in Redis. The frontend adds this token to every request that changes data, in the `X-CSRF-Token` header. The server compares: the token in the header must match the session token.
 
 A foreign site cannot learn the token: it cannot read your server's response (the browser forbids this), so it cannot insert the token either. A mismatched token gets `403` with the reason `token_mismatch`.
 
@@ -101,7 +101,7 @@ These cases are handled by `src/utils/base-api.ts`; you don't need to write your
 
 ### A new route that changes data
 
-Add it to a route group that has `session_web` and `csrf_guard`; all groups in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) are built this way. Then the protection works automatically. The frontend inserts the token itself if you call the API via `baseApi.http` or `baseApi.upload`.
+Add it to a route group that has `session_web` and `csrf_guard`; all groups in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts) are built this way. Then the protection works automatically. The frontend inserts the token itself: every API call goes through `callApi` ([api-client.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/api-client.ts)), which hands it to `baseApi.http` or `baseApi.upload`.
 
 This is the rule for routes called by our frontend. A route of the public API for other servers and apps takes credentials from a header, not from a cookie, so CSRF is not a threat to it: it goes into a separate group without `session_web` and `csrf_guard`. See [Web routes and public API](/en/backend/web-and-api-routes).
 
@@ -128,7 +128,7 @@ B=http://127.0.0.1:3000/api
 O='origin: http://localhost:5173'
 CSRF=$(curl -s -c cookies.txt -b cookies.txt $B/main/init | sed -E 's/.*"csrfToken":"([^"]+)".*/\1/')
 curl -s -b cookies.txt -c cookies.txt -H "$O" -H 'content-type: application/json' \
-  -H "x-csrf-token: $CSRF" -d '{"email":"user@example.com","password":"<user-password>","token":""}' \
+  -H "x-csrf-token: $CSRF" -d '{"identifier":"user@example.com","password":"<user-password>"}' \
   $B/auth/login
 ```
 
@@ -149,5 +149,5 @@ The full scenario is in the [Quick start](/en/guide/getting-started#the-same-wit
 - [How the backend works](/en/guide/how-backend-works): where `csrf_guard` stands among the other middleware.
 
 ::: tip Check it yourself
-Run the project following the [Quick start](/en/guide/getting-started) and send `POST /api/auth/logout` with curl without the `origin` header. The server responds `403` with `reason: origin_mismatch`. Add `-H 'origin: http://localhost:5173'`: now the `403` will be with `token_mismatch`. Add `x-csrf-token` as well: the request goes through.
+Run the project following the [Quick start](/en/guide/getting-started) and send `POST /api/auth/logout` with curl without the `origin` header. The server responds `403` with `reason: origin_mismatch`. Add `-H 'origin: http://localhost:5173'`: now the `403` will be with `token_mismatch`. Add the session cookie and `x-csrf-token` from the `GET /api/main/init` response as well: the CSRF check passes, but a guest gets `401 unauthorized`, because the route has `auth_guard` after `csrf_guard` and only a logged-in user can log out.
 :::

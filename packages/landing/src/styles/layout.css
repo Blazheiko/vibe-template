@@ -1,0 +1,112 @@
+.container {
+    width: 100%;
+    max-width: var(--container);
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+}
+
+.site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.site-header__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 24px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--color-text);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.site-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    margin-left: auto;
+}
+
+.site-nav a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+}
+
+.site-nav a:hover {
+    color: var(--color-text);
+}
+
+.locale-switcher {
+    display: flex;
+    gap: 4px;
+}
+
+.locale-switcher a {
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    text-decoration: none;
+}
+
+.locale-switcher a[aria-current='page'] {
+    background: var(--color-surface-muted);
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+.site-footer {
+    border-top: 1px solid var(--color-border);
+    padding: 32px 0;
+    color: var(--color-text-muted);
+    font-size: 0.9375rem;
+}
+
+.site-footer__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 32px;
+}
+
+.site-footer__name {
+    margin: 0;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.site-footer__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    margin-right: auto;
+}
+
+@media (max-width: 720px) {
+    /* The nav wraps onto its own row here: a sticky header would cover a quarter of the screen. */
+    .site-header {
+        position: static;
+    }
+
+    .site-nav {
+        order: 3;
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .site-header .locale-switcher {
+        margin-left: auto;
+    }
+}

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type * as Arctic from 'arctic'
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -58,12 +59,14 @@ const facebookValidateAuthorizationCodeMock = vi.fn()
 const facebookCreateAuthorizationUrlMock = vi.fn(
     () => new URL('https://www.facebook.com/v19.0/dialog/oauth'),
 )
-const githubValidateAuthorizationCodeMock = vi.fn()
+const githubValidateAuthorizationCodeMock = vi.fn((..._args: unknown[]): unknown => undefined)
 const githubCreateAuthorizationUrlMock = vi.fn(
-    () => new URL('https://github.com/login/oauth/authorize'),
+    (..._args: unknown[]) => new URL('https://github.com/login/oauth/authorize'),
 )
-const gitlabValidateAuthorizationCodeMock = vi.fn()
-const gitlabCreateAuthorizationUrlMock = vi.fn(() => new URL('https://gitlab.com/oauth/authorize'))
+const gitlabValidateAuthorizationCodeMock = vi.fn((..._args: unknown[]): unknown => undefined)
+const gitlabCreateAuthorizationUrlMock = vi.fn(
+    (..._args: unknown[]) => new URL('https://gitlab.com/oauth/authorize'),
+)
 
 vi.mock('#config/oauth.js', () => ({
     default: {
@@ -128,6 +131,10 @@ vi.mock('#vendor/utils/logger.js', () => ({
     default: loggerMock,
 }))
 
+// The real generic client, to build the authorization URL the way the library does: the PKCE
+// tests read the challenge from it.
+const realArctic = await vi.importActual<typeof Arctic>('arctic')
+
 vi.mock('arctic', () => ({
     Google: class {
         createAuthorizationURL = googleCreateAuthorizationUrlMock
@@ -137,14 +144,45 @@ vi.mock('arctic', () => ({
         createAuthorizationURL = facebookCreateAuthorizationUrlMock
         validateAuthorizationCode = facebookValidateAuthorizationCodeMock
     },
-    GitHub: class {
-        createAuthorizationURL = githubCreateAuthorizationUrlMock
-        validateAuthorizationCode = githubValidateAuthorizationCodeMock
+    // feat-200: GitHub and GitLab go through the library's generic client, which sends PKCE.
+    // One class serves both; the endpoint says which provider is meant.
+    OAuth2Client: class {
+        private readonly real: InstanceType<typeof realArctic.OAuth2Client>
+        constructor(clientId: string, clientSecret: string | null, redirectUri: string | null) {
+            this.real = new realArctic.OAuth2Client(clientId, clientSecret, redirectUri)
+        }
+        createAuthorizationURLWithPKCE(
+            endpoint: string,
+            state: string,
+            method: unknown,
+            codeVerifier: string,
+            scopes: string[],
+        ): URL {
+            const create = endpoint.startsWith('https://github.com/')
+                ? githubCreateAuthorizationUrlMock
+                : gitlabCreateAuthorizationUrlMock
+            create(endpoint, state, method, codeVerifier, scopes)
+            // What the library really sends, challenge included.
+            return this.real.createAuthorizationURLWithPKCE(
+                endpoint,
+                state,
+                realArctic.CodeChallengeMethod.S256,
+                codeVerifier,
+                scopes,
+            )
+        }
+        validateAuthorizationCode(
+            endpoint: string,
+            code: string,
+            codeVerifier: string | null,
+        ): unknown {
+            const validate = endpoint.startsWith('https://github.com/')
+                ? githubValidateAuthorizationCodeMock
+                : gitlabValidateAuthorizationCodeMock
+            return validate(endpoint, code, codeVerifier)
+        }
     },
-    GitLab: class {
-        createAuthorizationURL = gitlabCreateAuthorizationUrlMock
-        validateAuthorizationCode = gitlabValidateAuthorizationCodeMock
-    },
+    CodeChallengeMethod: { S256: 'S256', Plain: 'plain' },
     generateState: vi.fn(() => 'oauth-state'),
     generateCodeVerifier: vi.fn(() => 'code-verifier'),
 }))
@@ -228,7 +266,8 @@ async function callback(provider: string, sessionId: string | null = SESSION_ID)
         'oauth-code',
         'oauth-state',
         'oauth-state',
-        provider === 'google' ? 'code-verifier' : null,
+        // Facebook is the one provider without PKCE.
+        provider === 'facebook' ? null : 'code-verifier',
         authMock as never,
         sessionId,
     )
@@ -543,11 +582,36 @@ describe('oauthService.handleCallback', () => {
             expect(order(claimLockedMock)).toBeLessThan(order(oauthAccountRepositoryMock.create))
             expect(destroySessionsQuietlyMock).not.toHaveBeenCalled()
             expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token')
+            // feat-198: announced as a new sign-in method, not as an ordinary sign-in.
             expect(securityMock).toHaveBeenCalledTimes(1)
-            expect(securityMock).toHaveBeenCalledWith(5n, 'new_sign_in')
-            // Nothing is mailed: Google proved the mailbox.
+            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+            // No confirmation link is mailed: Google proved the mailbox. The notice is.
             expect(oauthLinkVerificationRepositoryMock.create).not.toHaveBeenCalled()
-            expect(emailServiceMock.send).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
+            const notice = emailServiceMock.send.mock.calls[0]![0] as {
+                to: string
+                subject: string
+                text: string
+            }
+            expect(notice.to).toBe('user@gmail.com')
+            expect(notice.subject).toBe('A new sign-in method was added to your account')
+            expect(notice.text).toContain('The Google account "Jane" was linked')
+            expect(notice.text).toContain('keeps working after a password change')
+        })
+
+        it('announces the link even when the session cannot be created', async () => {
+            stubGoogle({ email: 'User@Gmail.com' })
+            givenExistingUserByEmail({ email: 'user@gmail.com' })
+            userRepositoryMock.findByEmail.mockResolvedValue(account({ email: 'user@gmail.com' }))
+            authMock.login.mockResolvedValue(false)
+
+            const result = await callback('google')
+
+            expect(Result.isError(result)).toBe(true)
+            // The link is committed whatever the sign-in answers.
+            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+            expect(securityMock).not.toHaveBeenCalledWith(5n, 'new_sign_in')
+            expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
         })
 
         it('reads hd from the Google profile: a Workspace address links directly', async () => {
@@ -823,6 +887,63 @@ describe('oauthService.handleCallback', () => {
             expectNoSignIn()
         })
 
+        // feat-203 (security review 2026-11-12, L-1): the link mail quoted the profile name of
+        // the provider account as it came, and greeted by the account's name even when the
+        // account's address had never been confirmed.
+        describe('what the link mail quotes', () => {
+            const mailFor = async (
+                profileName: string,
+                account: Record<string, unknown> = {},
+            ): Promise<{ text: string; html: string }> => {
+                githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('token'))
+                stubFetch({
+                    'https://api.github.com/user/emails': [
+                        { email: 'user@example.com', primary: true, verified: true },
+                    ],
+                    'https://api.github.com/user': { id: 1, name: profileName },
+                })
+                givenExistingUserByEmail(account)
+                await callback('github')
+                return emailServiceMock.send.mock.calls[0]![0] as { text: string; html: string }
+            }
+
+            it('quotes an ordinary profile name and greets the owner of a confirmed account', async () => {
+                const mail = await mailFor('Jane Doe')
+
+                expect(mail.text.startsWith('Hello, Account Owner.')).toBe(true)
+                expect(mail.text).toContain(
+                    'Somebody signed in with the GitHub account "Jane Doe" that uses this email address.',
+                )
+            })
+
+            it.each([
+                'Your account is locked. Sign in at https://evil.example/x',
+                'evil.example',
+                'Jane\nYour account is locked',
+            ])('does not quote the profile name %j', async (profileName) => {
+                const mail = await mailFor(profileName)
+
+                expect(mail.text).toContain(
+                    'Somebody signed in with a GitHub account that uses this email address.',
+                )
+                expect(mail.text).not.toContain('evil.example')
+                expect(mail.text).not.toContain('locked')
+                expect(mail.html).not.toContain('evil.example')
+                expect(mail.html).not.toContain('locked')
+            })
+
+            it('greets nobody by name when the account address was never confirmed', async () => {
+                const mail = await mailFor('Jane Doe', {
+                    emailVerifiedAt: null,
+                    name: 'Your account is locked, call 555 0100',
+                })
+
+                expect(mail.text.startsWith('Hello.')).toBe(true)
+                expect(mail.text).not.toContain('locked')
+                expect(mail.html).not.toContain('locked')
+            })
+        })
+
         it('refuses without a browser session: 400, no token, no mail', async () => {
             stubGitHub()
             givenExistingUserByEmail()
@@ -869,16 +990,10 @@ describe('oauthService.handleCallback', () => {
 
         it.each([
             [
-                'unverified',
-                { email: 'user@example.com', email_verified: false },
-                'user@example.com',
-            ],
-            [
                 'verified for another address',
                 { email: 'other@example.com', email_verified: true },
                 'other@example.com',
             ],
-            ['missing (no openid scope)', {}, 'user@example.com'],
         ])(
             'GitLab: the OIDC address is %s, the address looked up is the right one',
             async (_label, userinfo, looked) => {
@@ -906,6 +1021,22 @@ describe('oauthService.handleCallback', () => {
 
     // --- nobody has the address ----------------------------------------------------------------
     describe('a new account', () => {
+        // feat-161 (review 2026-11-10): users.name is varchar(100). A longer display name used
+        // to fail the INSERT, and with it every sign-up of that person through the provider.
+        it('cuts a display name longer than the column to its length', async () => {
+            const longName = `${'Jane '.repeat(30)}Doe`
+            stubGoogle({ email: 'jane@gmail.com', name: longName })
+            givenNewUser()
+
+            const result = await callback('google')
+
+            expect(Result.isOk(result)).toBe(true)
+            const [created] = userRepositoryMock.create.mock.calls[0] as [{ name: string }]
+            expect(longName.length).toBeGreaterThan(100)
+            expect(created.name).toBe(longName.slice(0, 100))
+            expect(created.name).toHaveLength(100)
+        })
+
         it('Google authoritative: created with the address, verified', async () => {
             stubGoogle({ email: 'Jane@Gmail.com', picture: 'https://cdn.example.com/g.png' })
             givenNewUser()
@@ -1374,7 +1505,55 @@ describe('oauthService.confirmLink', () => {
         expect(order(claimLockedMock)).toBeLessThan(order(oauthAccountRepositoryMock.create))
         expect(destroySessionsQuietlyMock).not.toHaveBeenCalled()
         expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token')
-        expect(securityMock).toHaveBeenCalledWith(5n, 'new_sign_in')
+        // feat-198 (M-2): this used to be announced as an ordinary "new sign-in", by push only.
+        expect(securityMock).toHaveBeenCalledTimes(1)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
+        const notice = emailServiceMock.send.mock.calls[0]![0] as {
+            to: string
+            subject: string
+            text: string
+            html: string
+        }
+        expect(notice.to).toBe('user@example.com')
+        expect(notice.subject).toBe('A new sign-in method was added to your account')
+        expect(notice.text).toContain('The GitHub account "Jane" was linked')
+        expect(notice.html).toContain('GitHub was linked to your account')
+    })
+
+    it('does not quote a profile name that carries a link or a line break', async () => {
+        arrange()
+        oauthLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue(
+            linkRow({ providerName: 'Your account is locked. Sign in at https://evil.example/x' }),
+        )
+
+        await confirm()
+
+        const notice = emailServiceMock.send.mock.calls[0]![0] as { text: string; html: string }
+        expect(notice.text).toContain('A GitHub account was linked')
+        expect(notice.text).not.toContain('evil.example')
+        expect(notice.html).not.toContain('evil.example')
+    })
+
+    it('a mail that cannot be sent does not fail the link', async () => {
+        arrange()
+        emailServiceMock.send.mockRejectedValue(new Error('smtp down'))
+
+        const result = await confirm()
+
+        expect(Result.isOk(result)).toBe(true)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+    })
+
+    it('a claim is announced as a claim and mails no notice', async () => {
+        arrange({ emailVerifiedAt: null })
+        claimAnswers(true)
+
+        await confirm()
+
+        expect(securityMock).toHaveBeenCalledTimes(1)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'account_claimed')
+        expect(emailServiceMock.send).not.toHaveBeenCalled()
     })
 
     it('claims an unverified account: old sessions go, the new token signs in', async () => {
@@ -1530,14 +1709,15 @@ describe('oauthService.confirmLink', () => {
         expectNoSignIn()
     })
 
-    it('the session cannot be created: 400, no notice', async () => {
+    it('the session cannot be created: 400, and the committed link is still announced', async () => {
         arrange()
         authMock.login.mockResolvedValue(false)
 
         const result = await confirm()
 
         expectError(result, { _tag: 'BadRequest', message: 'Failed to sign in' })
-        expect(securityMock).not.toHaveBeenCalled()
+        expect(securityMock).toHaveBeenCalledTimes(1)
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
     })
 })
 
@@ -1674,11 +1854,64 @@ describe('configured providers', () => {
         const { oauthService } = await loadOauthService()
         oauthService.getAuthorizationUrl('gitlab')
 
-        expect(gitlabCreateAuthorizationUrlMock).toHaveBeenCalledWith('oauth-state', [
-            'openid',
-            'email',
-            'read_user',
-        ])
+        expect(gitlabCreateAuthorizationUrlMock).toHaveBeenCalledWith(
+            'https://gitlab.com/oauth/authorize',
+            'oauth-state',
+            'S256',
+            'code-verifier',
+            ['openid', 'email', 'read_user'],
+        )
+    })
+
+    // feat-200 (L-7): PKCE used to be sent to Google only.
+    it.each([
+        ['github', githubCreateAuthorizationUrlMock, 'https://github.com/login/oauth/authorize'],
+        ['gitlab', gitlabCreateAuthorizationUrlMock, 'https://gitlab.com/oauth/authorize'],
+    ] as const)(
+        '%s: the redirect carries an S256 challenge',
+        async (provider, create, endpoint) => {
+            const { oauthService } = await loadOauthService()
+            const result = oauthService.getAuthorizationUrl(provider)
+
+            expect(Result.isOk(result) && result.value.codeVerifier).toBe('code-verifier')
+            expect(create).toHaveBeenCalledWith(
+                endpoint,
+                'oauth-state',
+                'S256',
+                'code-verifier',
+                expect.any(Array),
+            )
+        },
+    )
+
+    it.each(['github', 'gitlab'] as const)(
+        '%s: the URL built by the library carries the S256 challenge of the stored verifier',
+        async (provider) => {
+            const { oauthService } = await loadOauthService()
+            const result = oauthService.getAuthorizationUrl(provider)
+
+            expect(Result.isOk(result)).toBe(true)
+            if (!Result.isOk(result)) return
+            const url = new URL(result.value.url)
+            expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+            // base64url(SHA-256(verifier)), as RFC 7636 defines it.
+            expect(url.searchParams.get('code_challenge')).toBe(
+                createHash('sha256')
+                    .update(result.value.codeVerifier ?? '')
+                    .digest('base64url'),
+            )
+            expect(url.searchParams.get('state')).toBe('oauth-state')
+            expect(url.searchParams.get('response_type')).toBe('code')
+            // The verifier itself never leaves the server in the redirect.
+            expect(result.value.url).not.toContain('code-verifier')
+        },
+    )
+
+    it('facebook: no verifier, as before', async () => {
+        const { oauthService } = await loadOauthService()
+        const result = oauthService.getAuthorizationUrl('facebook')
+
+        expect(Result.isOk(result) && result.value.codeVerifier).toBeNull()
     })
 })
 
@@ -1811,6 +2044,160 @@ describe('oauthService.handleCallback provider answers (feat-108)', () => {
         expect(Result.isError(result) && result.error).toEqual({
             _tag: 'BadRequest',
             message: 'Could not retrieve email from provider',
+        })
+    })
+})
+
+// feat-200 (security review 2026-11-12, L-7, L-8, L-9, I-2).
+describe('oauthService hardening (feat-200)', () => {
+    describe('the PKCE verifier', () => {
+        it.each([
+            [
+                'github',
+                githubValidateAuthorizationCodeMock,
+                'https://github.com/login/oauth/access_token',
+            ],
+            ['gitlab', gitlabValidateAuthorizationCodeMock, 'https://gitlab.com/oauth/token'],
+        ] as const)(
+            '%s: goes to the token endpoint with the code',
+            async (provider, validate, endpoint) => {
+                validate.mockResolvedValue(tokens('token'))
+                stubFetch({
+                    'https://api.github.com/user/emails': [
+                        { email: 'user@example.com', primary: true, verified: true },
+                    ],
+                    'https://api.github.com/user': { id: 1, name: 'Jane' },
+                    'https://gitlab.com/api/v4/user': { id: 9, name: 'Jane' },
+                    'https://gitlab.com/oauth/userinfo': {
+                        email: 'user@example.com',
+                        email_verified: true,
+                    },
+                })
+                givenNewUser()
+
+                await callback(provider)
+
+                expect(validate).toHaveBeenCalledWith(endpoint, 'oauth-code', 'code-verifier')
+            },
+        )
+
+        it.each(['google', 'github', 'gitlab'])(
+            '%s: a callback without the verifier is refused before the provider is asked',
+            async (provider) => {
+                const { oauthService } = await loadOauthService()
+
+                const result = await oauthService.handleCallback(
+                    provider,
+                    'oauth-code',
+                    'oauth-state',
+                    'oauth-state',
+                    null,
+                    authMock as never,
+                    SESSION_ID,
+                )
+
+                expectError(result, { _tag: 'BadRequest', message: 'Missing OAuth parameters' })
+                expect(googleValidateAuthorizationCodeMock).not.toHaveBeenCalled()
+                expect(githubValidateAuthorizationCodeMock).not.toHaveBeenCalled()
+                expect(gitlabValidateAuthorizationCodeMock).not.toHaveBeenCalled()
+            },
+        )
+    })
+
+    // L-8: the profile's `email` used to be taken when the OIDC answer did not call it verified.
+    describe('a GitLab address that is not verified', () => {
+        it.each([
+            ['unverified', { email: 'user@example.com', email_verified: false }],
+            ['missing (no openid scope)', {}],
+            [
+                'verified as a string, not true',
+                { email: 'user@example.com', email_verified: 'true' },
+            ],
+        ])('%s: no address, nothing looked up, nothing mailed', async (_label, userinfo) => {
+            gitlabValidateAuthorizationCodeMock.mockResolvedValue(tokens('gl-token'))
+            stubFetch({
+                'https://gitlab.com/api/v4/user': {
+                    id: 9,
+                    email: 'user@example.com',
+                    name: 'Jane',
+                },
+                'https://gitlab.com/oauth/userinfo': userinfo,
+            })
+            givenExistingUserByEmail()
+
+            const result = await callback('gitlab')
+
+            expectError(result, {
+                _tag: 'BadRequest',
+                message: 'Could not retrieve email from provider',
+            })
+            expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
+            expect(emailServiceMock.send).not.toHaveBeenCalled()
+            expectNoSignIn()
+        })
+    })
+
+    // L-9, I-2: provider_name is varchar(255), provider_avatar and users.avatar varchar(500).
+    describe('a profile name and picture that do not fit', () => {
+        const linkOf = (): { providerName: string; providerAvatar: string | null } =>
+            oauthAccountRepositoryMock.create.mock.calls[0]![0] as never
+
+        it('cuts the name to 255 and drops a picture longer than 500', async () => {
+            const longName = 'N'.repeat(300)
+            const longPicture = `https://cdn.example.com/${'a'.repeat(600)}.png`
+            stubGoogle({ email: 'jane@gmail.com', name: longName, picture: longPicture })
+            givenNewUser()
+
+            const result = await callback('google')
+
+            expect(Result.isOk(result)).toBe(true)
+            expect(linkOf().providerName).toBe(longName.slice(0, 255))
+            expect(linkOf().providerAvatar).toBeNull()
+            const [created] = userRepositoryMock.create.mock.calls[0] as [{ avatar: unknown }]
+            expect(created.avatar).toBeNull()
+        })
+
+        it.each([
+            ['http, not https', 'http://cdn.example.com/a.png'],
+            ['a relative path', 'uploads/a.png'],
+            ['a protocol-relative address', '//cdn.example.com/a.png'],
+            ['a data URL', 'data:image/png;base64,AAAA'],
+            ['not a URL', 'https://'],
+        ])('stores no picture for %s', async (_label, picture) => {
+            stubGoogle({ email: 'jane@gmail.com', picture })
+            givenNewUser()
+
+            await callback('google')
+
+            expect(linkOf().providerAvatar).toBeNull()
+            const [created] = userRepositoryMock.create.mock.calls[0] as [{ avatar: unknown }]
+            expect(created.avatar).toBeNull()
+        })
+
+        it('keeps an https picture that fits, and the pending link gets the same values', async () => {
+            const longName = 'N'.repeat(300)
+            githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('token'))
+            stubFetch({
+                'https://api.github.com/user/emails': [
+                    { email: 'user@example.com', primary: true, verified: true },
+                ],
+                'https://api.github.com/user': {
+                    id: 1,
+                    name: longName,
+                    avatar_url: `http://cdn.example.com/${'a'.repeat(600)}`,
+                },
+            })
+            givenExistingUserByEmail()
+
+            await callback('github')
+
+            // The mailed link keeps what will be linked: it must fit its columns too.
+            const pending = oauthLinkVerificationRepositoryMock.create.mock.calls[0]![0] as {
+                providerName: string
+                providerAvatar: string | null
+            }
+            expect(pending.providerName).toHaveLength(255)
+            expect(pending.providerAvatar).toBeNull()
         })
     })
 })

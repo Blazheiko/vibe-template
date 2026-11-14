@@ -276,6 +276,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
             expect(queries).toBe(1)
             const counts = await pushNotificationLogRepository.countsBySubscription(
                 ids.sB,
+                ids.userB,
                 new Date(now - DAY),
             )
             expect(counts).toEqual({ total: 3, sent: 2, failed: 1, pending: 0, since: 3 })
@@ -283,7 +284,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
         it('latestBySubscriptionIds returns [] for no ids without a query', async () => {
             const { result, queries } = await countQueries(() =>
-                pushNotificationLogRepository.latestBySubscriptionIds([], 5),
+                pushNotificationLogRepository.latestBySubscriptionIds([], ids.userA, 5),
             )
             expect(result).toEqual([])
             expect(queries).toBe(0)
@@ -299,6 +300,95 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
             expect(s2?.lastUsedAt).toEqual(before?.lastUsedAt)
             // sB belongs to user B: not touched by user A.
             expect(sB?.lastUsedAt?.getTime()).toBeLessThan(now - DAY / 2)
+        })
+    })
+
+    // feat-147 (review 2026-11-10, M2): a subscription keeps its id when it moves to
+    // another account (same browser, account switch), so every read of its log has to
+    // be scoped by the log's owner too.
+    describe('log of a subscription that moved to another account', () => {
+        const moved = { userA: 0n, userB: 0n, subscription: 0n, endpoint: '' }
+
+        const insertLog = async (userId: bigint, title: string, status: 'SENT' | 'FAILED') => {
+            await db.insert(pushNotificationLogs).values({
+                userId,
+                subscriptionId: moved.subscription,
+                messageTitle: title,
+                messageBody: 'body',
+                status,
+                sentAt: new Date(),
+            })
+        }
+
+        const moveTo = async (userId: bigint) => {
+            const row = await pushSubscriptionRepository.updateByEndpoint(
+                moved.endpoint,
+                userId,
+                {},
+            )
+            expect(row?.id).toBe(moved.subscription)
+            expect(row?.userId).toBe(userId)
+        }
+
+        beforeAll(async () => {
+            moved.userA = await insertUser('push-moved-a')
+            moved.userB = await insertUser('push-moved-b')
+            moved.subscription = await insertSubscription(moved.userA, 'moved', 1)
+            moved.endpoint = `https://push.example.test/moved-${String(now)}`
+            await insertLog(moved.userA, 'A: new sign-in', 'SENT')
+            await insertLog(moved.userA, 'A: password changed', 'FAILED')
+            await moveTo(moved.userB)
+            await insertLog(moved.userB, 'B: test push', 'SENT')
+        })
+
+        afterAll(async () => {
+            await db.delete(users).where(eq(users.id, moved.userA))
+            await db.delete(users).where(eq(users.id, moved.userB))
+        })
+
+        it('the subscription list of the new owner has only their own log', async () => {
+            const [subscription] = await pushSubscriptionRepository.findByUserIdWithLogs(
+                moved.userB,
+            )
+            expect(subscription?.id).toBe(moved.subscription)
+            expect(subscription?.notificationLogs.map((log) => log.messageTitle)).toEqual([
+                'B: test push',
+            ])
+        })
+
+        it('the statistics of the new owner count only their own sends', async () => {
+            const result = await getPushSubscriptionStatistics(moved.subscription, moved.userB)
+            expect(result?.statistics).toMatchObject({
+                totalNotifications: 1,
+                sentNotifications: 1,
+                failedNotifications: 0,
+                last7DaysCount: 1,
+            })
+        })
+
+        it('the log of the subscription has only the rows of the new owner', async () => {
+            const logs = await pushSubscriptionRepository.getLogsBySubscriptionId(
+                moved.subscription,
+                moved.userB,
+            )
+            expect(logs.map((log) => log.messageTitle)).toEqual(['B: test push'])
+        })
+
+        it('keeps the log of the previous owner: they see it again after a move back', async () => {
+            await moveTo(moved.userA)
+            const [subscription] = await pushSubscriptionRepository.findByUserIdWithLogs(
+                moved.userA,
+            )
+            expect(subscription?.notificationLogs.map((log) => log.messageTitle).sort()).toEqual([
+                'A: new sign-in',
+                'A: password changed',
+            ])
+            const result = await getPushSubscriptionStatistics(moved.subscription, moved.userA)
+            expect(result?.statistics).toMatchObject({
+                totalNotifications: 2,
+                sentNotifications: 1,
+                failedNotifications: 1,
+            })
         })
     })
 })

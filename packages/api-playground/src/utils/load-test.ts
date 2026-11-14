@@ -126,13 +126,28 @@ export interface Progress {
     isVisible: boolean
 }
 
-/** One thread: `requestCount` requests one after another. */
+/** The most requests one thread sends, and the most threads of a run. */
+export const MAX_REQUESTS_PER_THREAD = 1000
+export const MAX_THREADS = 100
+
+/**
+ * A count the form holds, as a whole number from 1 to `max`. The `min` / `max` of a number
+ * input do not stop a typed or pasted value, and an emptied field is an empty string.
+ */
+export function clampCount(value: unknown, max: number): number {
+    const count = typeof value === 'number' ? Math.trunc(value) : Number.NaN
+    if (!Number.isFinite(count) || count < 1) return 1
+    return Math.min(count, max)
+}
+
+/** One thread: `requestCount` requests one after another, until `shouldStop` says so. */
 export async function executeThread(
     send: SendHttp,
     spec: RequestSpec,
     threadIndex: number,
     requestCount: number,
     progress: Progress,
+    shouldStop: () => boolean = () => false,
 ): Promise<ThreadResult> {
     const results: NumberedOutcome[] = []
     const responseTimes: number[] = []
@@ -140,7 +155,7 @@ export async function executeThread(
 
     progress.currentThread = threadIndex + 1
 
-    for (let i = 0; i < requestCount; i++) {
+    for (let i = 0; i < requestCount && !shouldStop(); i++) {
         const result = await executeRequest(send, spec)
         results.push({ ...result, requestNumber: i + 1, threadId: threadIndex + 1 })
         responseTimes.push(result.responseTime)
@@ -179,8 +194,9 @@ export function singleResultOf(outcome: RequestOutcome, spec: RequestSpec): Test
 }
 
 /**
- * The summary of a run of many. `perRequestDivisor` is what the average divides the wall-clock
- * time by: the requests of one thread, or of all threads together.
+ * The summary of a run of many. The average is of the durations of the requests: the wall-clock
+ * time of the run divided by their number is less than the fastest request once threads send at
+ * the same time. `totalRequests` is what the run was asked for; a stopped run sent fewer.
  */
 export function summaryOf(input: {
     spec: RequestSpec
@@ -192,6 +208,7 @@ export function summaryOf(input: {
 }): TestResult {
     const successfulRequests = input.results.filter((result) => result.success).length
     const hasTimes = input.responseTimes.length > 0
+    const sumOfTimes = input.responseTimes.reduce((sum, time) => sum + time, 0)
 
     return {
         success: successfulRequests > 0,
@@ -201,10 +218,10 @@ export function summaryOf(input: {
             successfulRequests,
             failedRequests: input.results.length - successfulRequests,
             totalTime: input.totalTime,
-            avgResponseTime: input.totalRequests > 0 ? input.totalTime / input.totalRequests : 0,
-            // a run of one thread has always had at least one request; threads guard the empty case
-            minResponseTime: hasTimes || !input.threads ? Math.min(...input.responseTimes) : 0,
-            maxResponseTime: hasTimes || !input.threads ? Math.max(...input.responseTimes) : 0,
+            avgResponseTime: hasTimes ? sumOfTimes / input.responseTimes.length : 0,
+            // Math.min() of nothing is Infinity: a run that sent no request has no extremes.
+            minResponseTime: hasTimes ? Math.min(...input.responseTimes) : 0,
+            maxResponseTime: hasTimes ? Math.max(...input.responseTimes) : 0,
             ...(input.threads && {
                 threadCount: input.threads.threadCount,
                 requestsPerThread: input.threads.requestsPerThread,

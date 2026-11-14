@@ -1,7 +1,7 @@
 import { type } from '@arktype/type'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { defineWsRoute } from '#app/routing/define-ws-route.js'
+import { defineRawWsRoute } from '#app/routing/define-ws-route.js'
 import type { ResponseCheck } from '#vendor/utils/validation/validate-response.js'
 
 const executeMiddlewaresMock = vi.fn()
@@ -32,7 +32,7 @@ describe('ws-api-dispatcher validation', () => {
 
     it('returns 422 and does not call handler for invalid WS payload', async () => {
         const handler = vi.fn()
-        const route = defineWsRoute({
+        const route = defineRawWsRoute({
             url: 'event_typing',
             validator: type({
                 roomId: 'string',
@@ -94,7 +94,7 @@ describe('ws-api-dispatcher runtime response validation (feat-044)', () => {
     })
 
     const dispatch = async (data: unknown, responseCheck: ResponseCheck | null) => {
-        const route = defineWsRoute({ url: 'user_get', handler: () => data as never })
+        const route = defineRawWsRoute({ url: 'user_get', handler: () => data as never })
         const wsApiDispatcher = (await import('./ws-api-dispatcher.js')).default
         return wsApiDispatcher(
             { event: 'user_get', timestamp: 1, payload: null },
@@ -172,7 +172,7 @@ describe('ws-api-dispatcher error classification', () => {
     })
 
     const dispatch = async (handler: () => unknown) => {
-        const route = defineWsRoute({ url: 'event_x', handler: handler as never })
+        const route = defineRawWsRoute({ url: 'event_x', handler: handler as never })
         const wsApiDispatcher = (await import('./ws-api-dispatcher.js')).default
         return wsApiDispatcher(
             { event: 'event_x', timestamp: 1, payload: {} },

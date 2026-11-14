@@ -38,7 +38,7 @@ export const supportRepository = {
         userId: bigint,
         content: string,
         clientMessageId: string | undefined,
-    ): Promise<{ stored: boolean }> {
+    ): Promise<{ stored: boolean; id: bigint | null }> {
         const inserted = await db
             .insert(supportChatHistory)
             .values({ userId, role: 'user', content, clientMessageId: clientMessageId ?? null })
@@ -46,7 +46,7 @@ export const supportRepository = {
                 target: [supportChatHistory.userId, supportChatHistory.clientMessageId],
             })
             .returning({ id: supportChatHistory.id })
-        return { stored: inserted.length > 0 }
+        return { stored: inserted.length > 0, id: inserted[0]?.id ?? null }
     },
 
     /**

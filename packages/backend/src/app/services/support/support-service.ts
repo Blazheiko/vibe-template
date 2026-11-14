@@ -331,7 +331,10 @@ export const supportService = {
                 const promptId = promptService.get('SUPPORT_FIRST_CHAT')?.id ?? null
 
                 let fullReply = ''
-                admission.budget.begin(BUDGET_CALLS.chat)
+                // Charged only when a call will be made (feat-185): see the answer below.
+                if (supportLlmService.isConfigured('SUPPORT_FIRST_CHAT')) {
+                    admission.budget.begin(BUDGET_CALLS.chat)
+                }
                 for await (const token of supportLlmService.openChatStream(
                     langNative,
                     llmUsageService.textUsageRecorder(
@@ -394,7 +397,7 @@ export const supportService = {
             // See runOpenChat: checked before every step that costs money.
             runSignal.throwIfAborted()
             const langNative = resolveSupportLanguage(language)
-            const { stored } = await supportRepository.addUserMessageOnce(
+            const { stored, id: messageId } = await supportRepository.addUserMessageOnce(
                 userId,
                 message,
                 clientMessageId,
@@ -414,7 +417,11 @@ export const supportService = {
                 return
             }
 
-            admission.budget.begin(BUDGET_CALLS.translation)
+            // A call that is never made is not charged (ADR 0003, point 5): without a
+            // configured provider the translation and the search answer without a request.
+            if (supportQueryTranslationService.isConfigured()) {
+                admission.budget.begin(BUDGET_CALLS.translation)
+            }
             const [englishQuery, chatHistory] = await Promise.all([
                 supportQueryTranslationService.translateToEnglish(message, {
                     userId,
@@ -425,7 +432,9 @@ export const supportService = {
             ])
             runSignal.throwIfAborted()
 
-            admission.budget.begin(BUDGET_CALLS.embedding)
+            if (supportEmbeddingService.isConfigured()) {
+                admission.budget.begin(BUDGET_CALLS.embedding)
+            }
             const searchResults = await supportEmbeddingService.search(englishQuery, 5, {
                 userId,
                 signal: runSignal,
@@ -436,11 +445,17 @@ export const supportService = {
             const promptId = promptService.get('SUPPORT_SYSTEM')?.id ?? null
 
             let fullReply = ''
-            admission.budget.begin(BUDGET_CALLS.chat)
+            // Like the translation and the search: an adapter that is not configured fails
+            // before any request, and its estimate goes back at settlement (feat-185).
+            if (supportLlmService.isConfigured('SUPPORT_SYSTEM')) {
+                admission.budget.begin(BUDGET_CALLS.chat)
+            }
             for await (const token of supportLlmService.chatStream(
                 message,
                 knowledgeContext,
-                chatHistory.filter((m) => m.role !== 'user' || m.content !== message),
+                // The message being answered is passed on its own: left out here by its id,
+                // not by its text, so an earlier "yes" stays in the history (feat-160).
+                chatHistory.filter((m) => m.id !== messageId),
                 langNative,
                 llmUsageService.textUsageRecorder(
                     'SUPPORT_CHAT',

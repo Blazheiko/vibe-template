@@ -6,7 +6,7 @@
 
 Усе реалізовано в [`static-server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts):
 
-- **Коли:** лише при `appConfig.serveStatic`. Функція `cacheStaticSource()` один раз на старті рекурсивно читає `./public` (при `APP_ENV=manual-test` — `./public-test`) відносно `process.cwd()`. Файли й каталоги, чиї імена починаються з `.`, пропускаються.
+- **Коли:** лише при `appConfig.serveStatic`. Функція `cacheStaticSource()` один раз на старті рекурсивно читає `./public` (при `APP_ENV=manual-test` — `./public-test`; це локальний режим, у Docker-образі цього каталогу немає) відносно `process.cwd()`. Файли й каталоги, чиї імена починаються з `.`, пропускаються.
 - **Що:** беруться лише файли з розширеннями з whitelist `ALLOWED_STATIC_EXTENSIONS` (html, css, js, mjs, json, webmanifest, зображення, шрифти, аудіо/відео). Решта ігнорується. Бінарні файли зберігаються як `Buffer`, текстові як `utf8`-рядок ([`isBinaryExtension`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/helpers/file-utils.ts)).
 - **Ліміти пам'яті:** у RAM кладуться файли до `STATIC_MAX_MEMORY_FILE_SIZE` (за замовчуванням 1 MiB), доки сума (разом зі стислими варіантами) не перевищить `STATIC_MAX_MEMORY_TOTAL` (64 MiB). Решта віддається **стрімінгом з диска** (`fs.createReadStream` з backpressure uWS: `tryEnd` / `onWritable`) — їхній вміст на старті не читається. `index.html` завжди в пам'яті: його віддає SPA fallback. На старті в лог пишеться `Static files cached` з `files`, `memoryBytes` і `streamedFromDisk`. Зміни на диску після старту не підхоплюються, потрібен рестарт.
 - **Маршрути:** у [`server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/server.ts) (`configureHttp`) для кожного закешованого шляху реєструється окремий `server.get(key, …)` → `staticCacheHandler`. Шлях `/` отримує копію `/index.html`.
@@ -50,9 +50,7 @@ MIME-тип береться з [`MIME_TYPES`](https://github.com/Blazheiko/vibe
 - URL **без крапки** отримує `index.html` через той самий `handleHtmlRequest`, тобто з ETag і `must-revalidate`.
 - URL із крапкою, якого немає в кеші, отримує `404` з порожнім тілом.
 
-::: warning CSP
-Генерація заголовка CSP у `static-server.ts` закоментована (`setCspHeader`), тому HTML віддається без Content-Security-Policy. Це проблема 1 у `docs/plan/code-issues-found-during-docs.md`.
-:::
+HTML-оболонка (і `index.html` для SPA fallback) та будь-який інший файл `.html` / `.htm`, зокрема той, що віддається стрімінгом з диска, отримує CSP `document`, SVG — CSP `svg`, `/service-worker.js` та інші файли — без CSP (`setSecurityHeaders(res, [], cspKind)` у `static-server.ts`). Правила — у [Безпеці](/backend/security#content-security-policy).
 
 ## API-відповіді
 
@@ -67,7 +65,7 @@ CORS: якщо `ENABLED_CORS=true`, `setCorsHeader` пише `Vary: Origin` і `
 
 ## Фронтенд: Service Worker
 
-[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (збирається через [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) під час `install` прекешує список `filesToCache`: `/`, іконки, splash, аудіо. Для `/assets/`, `/icons/`, `/audio/`, `.css` тощо (`isStaticAsset`) він працює за стратегією cache-first. Ім'я кешу — `BUILD_TIMESTAMP`. Старі кеші видаляються на `activate`.
+[`service-worker.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/service-worker.ts) (збирається через [`vite.sw.config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.sw.config.ts)) під час `install` прекешує список `PRECACHE_FILES` із [`sw-precache.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/sw-precache.ts): `/`, іконки, splash, знімки екрана для маніфесту. Кожен шлях списку має існувати в `public/` — це перевіряє unit-тест. HTML-оболонку (навігації, стратегія network-first) він зберігає під шляхом без рядка запиту: одноразовий токен із `/reset-password?token=…` не лишається в Cache Storage, а офлайн-навігація отримує копію, збережену для того самого шляху. Для `/assets/`, `/icons/`, `/audio/`, `.css` тощо (`isStaticAsset`) він працює за стратегією cache-first. Ім'я кешу — `BUILD_TIMESTAMP`. Старі кеші видаляються на `activate`.
 
 ## Перевірка через curl
 
@@ -91,7 +89,7 @@ curl -I -H 'If-None-Match: "3n0Yq…"' http://localhost:3000/index.html
 - Значення `Cache-Control` задані константами в `static-server.ts` (`HTML_CACHE_CONTROL`, `IMMUTABLE_CACHE_CONTROL`, `REVALIDATE_CACHE_CONTROL`); правило «`immutable` лише для `/assets/`» — у `cacheControlFor`.
 - Ліміти пам'яті — `STATIC_MAX_MEMORY_FILE_SIZE`, `STATIC_MAX_MEMORY_TOTAL` ([Конфігурація](/backend/configuration)).
 - Whitelist розширень задається в `ALLOWED_STATIC_EXTENSIONS`.
-- **Dev:** фронтенд віддає Vite dev-сервер, `SERVE_STATIC` зазвичай `false`. **Prod:** або `SERVE_STATIC=true` з каталогом `public` в образі (у Dockerfile змінна не задана, проблема 31), або окремий хостинг/CDN (`CDN_URL`). У випадку CDN заголовки кешування задає CDN. Див. [Розгортання](/backend/deployment).
+- **Dev:** фронтенд віддає Vite dev-сервер, `SERVE_STATIC` зазвичай `false`. **Prod:** або `SERVE_STATIC=true` з каталогом `public` в образі (так налаштовано [Dockerfile](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile): `SERVE_STATIC=true`), або окремий хостинг/CDN (`CDN_URL`). У випадку CDN заголовки кешування задає CDN. Див. [Розгортання](/backend/deployment).
 
 ::: info Історія
 Раніше ETag будувався з довжини файлу й URL. Зараз це SHA1-хеш вмісту, порахований один раз при старті; чому так — у коментарі в [static-server.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts). Нотатку `etag-improvements.md` з варіантами MD5 / mtime / CRC32 видалено у feat-009 ([остання версія](https://github.com/Blazheiko/vibe-template/blob/8f3479f/packages/backend/src/docs/etag-improvements.md)).

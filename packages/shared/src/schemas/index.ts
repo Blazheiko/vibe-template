@@ -15,6 +15,10 @@ export {
 } from './auth/register-phone-complete.js'
 export { LinkPhoneStartInputSchema, type LinkPhoneStartInput } from './auth/link-phone-start.js'
 export {
+    UnlinkSignInMethodInputSchema,
+    type UnlinkSignInMethodInput,
+} from './auth/unlink-sign-in-method.js'
+export {
     LinkPhoneConfirmInputSchema,
     type LinkPhoneConfirmInput,
 } from './auth/link-phone-confirm.js'
@@ -33,6 +37,7 @@ export {
     type OAuthLinkConfirmInput,
 } from './auth/oauth-link-confirm.js'
 export { ChangePasswordInputSchema, type ChangePasswordInput } from './auth/change-password.js'
+export { PasswordSchema } from './auth/password.js'
 
 export {
     CreateSubscriptionInputSchema,
@@ -59,8 +64,13 @@ export {
     type BroadcastMessage,
 } from './ws/broadcast-events.js'
 
-export { PositiveIntFromString, LimitIntFromString, DateFromString } from './query/common.js'
-export type { DateString, PositiveIntInput } from './query/types.js'
+export {
+    PositiveIntFromString,
+    LimitIntFromString,
+    DateFromString,
+    MAX_PAGE_LIMIT,
+} from './query/common.js'
+export type { DateString, PositiveIntInput, QueryInputOf, QueryWireValue } from './query/types.js'
 export {
     AdminUserSearchQuerySchema,
     OAuthRedirectQuerySchema,
@@ -86,8 +96,6 @@ export {
 export {
     LlmTextUsageQuerySchema,
     type LlmTextUsageFeature,
-    type BaseUsageQuery,
-    type BaseUsageQueryInput,
     type LlmTextUsageQuery,
     type LlmTextUsageQueryInput,
 } from './query/usage.js'
