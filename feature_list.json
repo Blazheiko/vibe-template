@@ -2181,8 +2181,8 @@
             "owner": "Blazheiko",
             "branch": "fix/landing-review",
             "dependencies": ["feat-217"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #660 (merge 4e4a80a): the four findings of the #657 review. verify-landing-deploy.sh validates every published address (canonical, hreflang, og:url, og:image, buttons) with no origin filter, pins og:image to <site>/og-image.png and gains --resolve; prod-local.sh binds the preview to 127.0.0.1 (Vite on localhost took [::1]:4174 next to a process on 127.0.0.1:4174, reproduced), starts the backend only once the preview serves this landing, explains a busy port or a landing built for another app, and stops both processes when either exits (a loop: macOS bash 3.2 has no wait -n); build/urls.ts and the shell check drop a trailing DNS dot, .test and .invalid added to the RFC 2606 list; the dev server renders the 404 page for an unknown .html path. make check passing (landing 66 tests); verify-landing-deploy.spec.ts runs the script in strict mode against https stand-ins (self-signed certificate, --resolve) and fails with the old filter and without the dot normalization (mutation check); prod-local busy port, stale build, preview killed, backend killed and SIGTERM all stop cleanly; landing e2e 36/36; docs:build + docs:verify green. CI on 0180d7b: quality, build, e2e, e2e-live green."
         }
     ]
 }
