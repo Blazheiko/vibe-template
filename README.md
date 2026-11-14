@@ -95,7 +95,6 @@ build on (or strip out):
 | **SMTP**                                  | Optional                   | Transactional / auth email                 |
 | **Sentry**                                | Optional                   | Error & performance monitoring             |
 | **AI providers** (OpenAI / Mistral / xAI) | Optional                   | AI features                                |
-| **Telegram**                              | Optional                   | Bot notifications                          |
 
 To boot the database layer you need **PostgreSQL**; **Redis** is required as soon
 as you exercise full auth/realtime behavior (sessions, WebSocket, presence). The
@@ -253,7 +252,7 @@ REDIS_PASSWORD=
 REDIS_PREFIX=uwebsocket:
 ```
 
-Everything else (S3/MinIO, SMTP, Sentry, AI, Telegram, CSRF/CORS hardening) is
+Everything else (S3/MinIO, SMTP, Sentry, AI, CSRF/CORS hardening) is
 opt-in — enable it when you start using the corresponding feature.
 
 ### Development workflow
@@ -263,7 +262,7 @@ A typical human-friendly loop:
 ```bash
 make install
 make build-shared   # shared contracts must be built before backend/frontend
-make dev            # run backend + frontend together
+make dev            # run backend, frontend and landing together
 
 make check          # format, typecheck, lint, tests: the same as the CI quality job
 make test PKG=backend
@@ -292,6 +291,7 @@ clean checkout:
 | Backend        | http://localhost:3000         |
 | Frontend       | http://localhost:5173         |
 | API playground | http://localhost:5174         |
+| Landing        | http://localhost:5175         |
 | Drizzle Studio | launched via `make db-studio` |
 
 ## Common commands
@@ -304,7 +304,7 @@ calls the pnpm script in the last column, which you can also run directly.
 | ----------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------- |
 | `make setup`                              | Check tools (`make doctor`), install deps, create `.env` if missing, build shared  | —                                  |
 | `make doctor`                             | Check Node, pnpm, Docker, `packages/backend/.env` and busy ports                   | `scripts/doctor.sh`                |
-| `make dev`                                | Build `shared` + `backend`, then run backend and frontend dev servers in parallel  | `dev`                              |
+| `make dev`                                | Build `shared` + `backend`, then run backend, frontend and landing dev servers     | `dev`                              |
 | `make dev-backend` / `make dev-frontend`  | Run a single package in dev mode                                                   | `dev:backend` / `dev:frontend`     |
 | `make check`                              | Build shared, verify the Makefile, format check, typecheck, lint, tests (CI)       | —                                  |
 | `make typecheck`                          | TypeScript checks across all packages                                              | `typecheck`                        |
@@ -312,6 +312,7 @@ calls the pnpm script in the last column, which you can also run directly.
 | `make format` / `make format-check`       | Write / check Prettier formatting                                                  | `format` / `format:check`          |
 | `make test [PKG=backend]`                 | Run all package test suites, or one package                                        | `test`                             |
 | `make test-e2e`                           | Frontend Playwright e2e                                                            | `frontend test:e2e`                |
+| `make test-e2e-landing`                   | Build the landing and run its Playwright smoke tests                               | `landing test:e2e`                 |
 | `make services-up` / `services-down`      | Start / stop the Docker Compose services (`ARGS="redis s3 mailpit"`: a subset)     | `services:up` / `services:down`    |
 | `make app-up` / `make app-down`           | Run the production image with the services / stop only the app                     | `app:up` / `app:down`              |
 | `make db-create` / `make db-migrate`      | Create the database / apply migrations                                             | `backend db:create` / `db:migrate` |
@@ -381,8 +382,8 @@ pnpm db:studio     # open Drizzle Studio
 
 All backend configuration is environment-driven. Use
 `packages/backend/.env.example` as the reference — it documents settings for the
-app, CORS/CSRF, proxy trust, phone/email auth, database, S3 storage, mail,
-Telegram, Sentry, Redis, and AI providers. The frontend reads `VITE_*` variables
+app, CSP, CORS/CSRF, proxy trust, phone/email auth, database, S3 storage, mail,
+Sentry, Redis, and AI providers. The frontend reads `VITE_*` variables
 (see `packages/frontend/.env.example`).
 
 > **Do not commit secrets.** Treat auth, storage, mail, AI, and database
@@ -390,24 +391,24 @@ Telegram, Sentry, Redis, and AI providers. The frontend reads `VITE_*` variables
 
 ### Content Security Policy (CSP)
 
-A Content-Security-Policy is pre-defined in
-`packages/backend/src/config/csp.ts` as a directives map, so you tune the policy
-in one place instead of hand-writing a header string:
+A Content-Security-Policy is **on by default** (`CSP_ENABLED=true`). The policy is
+built at startup by `packages/backend/src/config/csp.ts` from the environment, so
+you tune it with variables instead of hand-writing a header string:
 
-- `enabled` / `reportOnly` — master switch and a report-only mode for safe
-  rollout (observe violations before enforcing).
-- `directives` — `default-src`, `script-src`, `style-src`, `img-src`,
-  `font-src`, `connect-src`, `frame-ancestors`, `object-src`, `base-uri`, …
-- `connect-src` is environment-aware: stricter (`wss:`/`https:`) in production,
-  relaxed (`ws:`/`http:`) locally so dev tooling and the WebSocket connection
-  work out of the box.
+- `CSP_ENABLED` / `CSP_REPORT_ONLY` — master switch and a report-only mode for
+  safe rollout (observe violations before enforcing); `CSP_REPORT_URI` receives
+  the reports.
+- `CSP_API_ORIGIN`, `CSP_WS_ORIGIN`, `CSP_SENTRY_ORIGIN` — the origins allowed in
+  `connect-src`; by default they are derived from `APP_URL`, the WebSocket
+  address and `CDN_URL` (media in `img-src`). `CSP_EXTRA_CONNECT_SRC` and
+  `CSP_EXTRA_IMG_SRC` add more.
+- HTML gets the full policy, SVG and API responses a strict one, and
+  `/service-worker.js` none.
 
-The policy is meant to be emitted on HTML responses from the static server
-(`packages/backend/src/vendor/start/static-server.ts`). The header-emitting code
-there is currently shipped commented-out (opt-in) — uncomment `buildCspValue` /
-`setCspHeader` to start sending the header, and roll it out with `reportOnly:
-true` first. Remember to add your real CDN/S3 and API origins to `img-src` /
-`connect-src` before enforcing.
+With `SERVE_STATIC=true` the backend sends the policy on the HTML it serves; with
+`SERVE_STATIC=false` the reverse proxy or CDN that serves the frontend must set
+it. Details:
+[Security → CSP](https://blazheiko.github.io/vibe-template/backend/security#security-headers-and-csp).
 
 ## Starting a new product from this template
 
@@ -427,7 +428,7 @@ When you fork this template into a real product, work through:
 The multi-stage `Dockerfile` builds `shared`, then `frontend`, then `backend`,
 and copies the compiled frontend into the backend's `public/` directory. The
 container runs as the unprivileged user `app`, has a `HEALTHCHECK` on
-`/api/ping`, and starts only the server (`node dist/index.js`). Migrations are a
+`/api/ready` (PostgreSQL and Redis respond), and starts only the server (`node dist/index.js`). Migrations are a
 separate one-shot run of the same image before each rollout:
 
 ```bash
@@ -451,8 +452,9 @@ Before deploying, make sure you have:
 - [ ] Configured `CORS_ALLOWED_ORIGINS` for your real frontend origin(s)
 - [ ] Kept `CSRF_ENFORCE` and `CSRF_STRICT_ORIGIN` at their default `true` (no CSRF
       warning in the startup log); `false` only as a deliberate, temporary rollout step
-- [ ] Reviewed the CSP in `config/csp.ts` (add your CDN/S3 + API origins) and
-      enabled the header in the static server — roll out with `reportOnly: true`
+- [ ] Kept `CSP_ENABLED=true`, set `CSP_API_ORIGIN` / `CSP_WS_ORIGIN` /
+      `CSP_SENTRY_ORIGIN` if they differ from the defaults — the first deploy
+      can use `CSP_REPORT_ONLY=true` with `CSP_REPORT_URI`
 
 ## Workflow & conventions
 
