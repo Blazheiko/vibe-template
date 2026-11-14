@@ -61,6 +61,7 @@ This is a pnpm workspace with packages under `packages/*`.
 - `packages/frontend`: Vue 3 + Vite app. Source lives in `src/`, static assets in `public/`, unit tests near code in `src/**/__tests__`, and Playwright tests in `e2e/`.
 - `packages/backend`: TypeScript uWebSockets.js API/WebSocket server. Source is in `src/`, with app logic in `src/app`, configuration in `src/config`, the Drizzle schema and relations in `src/database`, database create/seed scripts in `src/db`, migrations in `src/drizzle/migrations`, and scripts in `src/scripts`.
 - `packages/shared`: workspace package for shared schemas, enums, guards, responses, utilities, and tests in `test/`.
+- `packages/landing`: the static landing page (Vue 3 + Vite, prerendered at build time, no client JavaScript). Pages and texts in `src/`, build-time logic (address contract, prerender, `dist/` checks) in `build/`, the nginx image in `Dockerfile` and `nginx/`, Playwright smoke in `e2e/`. It must stay on a different origin from the app; see `documentation/landing/index.md`.
 
 Generated output such as `dist/`, `node_modules/`, Playwright reports, and coverage should not be edited by hand.
 

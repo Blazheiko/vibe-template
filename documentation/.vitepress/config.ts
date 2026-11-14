@@ -9,6 +9,7 @@ const ukSide = {
     shared: 'Пакет shared',
     frontend: 'Фронтенд',
     playground: 'API Playground',
+    landing: 'Лендінг',
     packages: 'Пакети',
     firstDay: 'Перший день',
     g1: '1. Вступ',
@@ -77,6 +78,7 @@ function localeTheme(t: { p: string; nav: Nav; side: Side }): {
         { text: side.shared, link: `${p}/shared/` },
         { text: side.frontend, link: `${p}/frontend/` },
         { text: side.playground, link: `${p}/playground/` },
+        { text: side.landing, link: `${p}/landing/` },
     ]
     return {
         nav: [
@@ -88,6 +90,7 @@ function localeTheme(t: { p: string; nav: Nav; side: Side }): {
                     { text: 'shared', link: `${p}/shared/` },
                     { text: side.frontend, link: `${p}/frontend/` },
                     { text: side.playground, link: `${p}/playground/` },
+                    { text: side.landing, link: `${p}/landing/` },
                 ],
             },
             { text: nav.reference, link: `${p}/reference/scripts` },
@@ -162,6 +165,7 @@ function localeTheme(t: { p: string; nav: Nav; side: Side }): {
             [`${p}/shared/`]: [{ text: side.packages, items: packagesItems }],
             [`${p}/frontend/`]: [{ text: side.packages, items: packagesItems }],
             [`${p}/playground/`]: [{ text: side.packages, items: packagesItems }],
+            [`${p}/landing/`]: [{ text: side.packages, items: packagesItems }],
             [`${p}/reference/`]: [
                 {
                     text: nav.reference,
@@ -183,6 +187,7 @@ const enSide: Side = {
     shared: 'The shared package',
     frontend: 'Frontend',
     playground: 'API Playground',
+    landing: 'Landing page',
     packages: 'Packages',
     firstDay: 'Day one',
     g1: '1. Introduction',

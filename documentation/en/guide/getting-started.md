@@ -135,20 +135,21 @@ This compose file is not meant for production: the default credentials are known
 To look at the app without Node.js on the host, or to check the production build itself, you can run it in compose together with the services. This is the same image as for production ([`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile)): the backend serves the built frontend (`SERVE_STATIC=true`), so everything works from a single origin `http://localhost:3000`. There is no hot reload here: after code changes the image has to be rebuilt. For daily development, `pnpm dev` remains the way to go.
 
 ```bash
-make app-build   # scripts/docker-build.sh: local image vibe-template:local
-make app-up      # services + migrate + app, waits until app is healthy
+make app-build   # scripts/docker-build.sh: images vibe-template:local and vibe-template-landing:local
+make app-up      # services + migrate + app + landing, waits until they are healthy
 make app-seed    # optional: reference data and demo accounts from SEED_* in .env
 make app-logs    # app log
 make app-down    # stop only the app, services keep running (back to make dev)
 make services-down   # stop everything
 ```
 
-The app and migrations are described in compose under the `app` profile, so `make services-up` does not start them.
+The app, migrations and the landing are described in compose under the `app` profile, so `make services-up` does not start them.
 
-| Service   | What it does                                                                                                                                 |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `migrate` | runs `pnpm db:create:prod && pnpm db:migrate` once and exits                                                                                 |
-| `app`     | `node dist/index.js` on `127.0.0.1:APP_PORT` (3000); starts after `migrate` succeeds. `up --wait` waits for its `HEALTHCHECK` (`/api/ready`) |
+| Service   | What it does                                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrate` | runs `pnpm db:create:prod && pnpm db:migrate` once and exits                                                                                                                                      |
+| `app`     | `node dist/index.js` on `127.0.0.1:APP_PORT` (3000); starts after `migrate` succeeds. `up --wait` waits for its `HEALTHCHECK` (`/api/ready`)                                                      |
+| `landing` | the [landing page](/en/landing/) on nginx, `127.0.0.1:LANDING_PORT` (8080); its buttons lead to `http://localhost:APP_PORT`, so change the ports before `make app-build`. Healthcheck: `/healthz` |
 
 [`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) builds the image with the tag `APP_IMAGE` (`vibe-template:local` by default) and labels it with the git revision. The frontend is built without Sentry and without `VITE_BASE_URL`, that is, with the API on the same origin. Extra arguments are passed to `docker build`, for example `make app-build ARGS=--no-cache`. Compose neither builds nor pulls the image (`pull_policy: never`): without `make app-build`, `app:up` fails with the error `No such image: vibe-template:local`.
 
@@ -156,7 +157,7 @@ The app and migrations are described in compose under the `app` profile, so `mak
 
 | What                     | Value in the container                                                                                                                |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| app address              | `APP_URL`, `FRONTEND_URL`, `LANDING_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                                   |
+| app address              | `APP_URL`, `FRONTEND_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                                                  |
 | mode                     | `APP_ENV=local`, `APP_IS_PRODUCTION=false`, `SERVE_STATIC=true`, `DOC_PAGE=false`                                                     |
 | API prefix               | `API_PATH_PREFIX`: from the shell, else from `packages/backend/.env`, else `api`, as in `pnpm app:build`                              |
 | PostgreSQL, Redis        | `PGSQL_HOST=postgres`, `PGSQL_PORT=5432`, `REDIS_HOST=redis`, `REDIS_PORT=6379`                                                       |
@@ -231,16 +232,17 @@ More about the schema and migrations: [Database](/en/backend/database).
 make dev
 ```
 
-The target calls `pnpm dev`: the script builds `shared` and `backend`, and then runs the backend and frontend dev servers in parallel ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Both dev servers read `shared` from `src/`, so changes in `packages/shared/src` are picked up without a rebuild (see [Project structure](/en/guide/project-structure)). After startup:
+The target calls `pnpm dev`: the script builds `shared` and `backend`, and then runs the backend, frontend and landing dev servers in parallel ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Both dev servers read `shared` from `src/`, so changes in `packages/shared/src` are picked up without a rebuild (see [Project structure](/en/guide/project-structure)). After startup:
 
 | Service                    | URL                                                                                                                                                                                                                                                                             | Source                                                                                                   |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | Backend (HTTP + WebSocket) | `http://localhost:3000` (`PORT`, `HOST=0.0.0.0`)                                                                                                                                                                                                                                | [config/app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | Frontend (Vite)            | `http://localhost:5173`; `/api` (including the WebSocket `/api/websocket`) is proxied to `127.0.0.1:3000`; Vite takes the prefix and the port from the backend `API_PATH_PREFIX` and `PORT` ([one source](/en/backend/configuration#one-source-for-the-api-address-and-prefix)) | [vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts)  |
+| Landing page (Vite)        | `http://localhost:5175`; the buttons lead to `FRONTEND_URL` (`http://localhost:5173`), its own address is `LANDING_URL` from `.env` ([Landing page](/en/landing/))                                                                                                              | [vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/vite.config.ts)   |
 
 The backend log should show the line `Listening http://0.0.0.0:3000`, and Vite should show `Local: http://localhost:5173/`.
 
-Packages can also be started separately: `make dev-backend` / `make dev-frontend` (see [make commands](/en/reference/make)).
+Packages can also be started separately: `make dev-backend` / `make dev-frontend` / `make dev-landing` (see [make commands](/en/reference/make)).
 
 ## 5. Health check
 

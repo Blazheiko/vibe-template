@@ -135,20 +135,21 @@ SMTP_FROM_EMAIL=noreply@example.com
 Щоб подивитися на застосунок без Node.js на хості або перевірити саме production-збірку, його можна запустити в compose разом із сервісами. Це той самий образ, що й для production ([`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile)): backend віддає зібраний frontend (`SERVE_STATIC=true`), тому все працює з одного origin `http://localhost:3000`. Hot reload тут немає: після змін у коді образ треба зібрати знову. Для щоденної розробки лишається `pnpm dev`.
 
 ```bash
-make app-build   # scripts/docker-build.sh: локальний образ vibe-template:local
-make app-up      # сервіси + migrate + app, чекає, доки app стане healthy
+make app-build   # scripts/docker-build.sh: образи vibe-template:local і vibe-template-landing:local
+make app-up      # сервіси + migrate + app + landing, чекає, доки вони стануть healthy
 make app-seed    # за бажанням: довідкові дані й demo-акаунти з SEED_* у .env
 make app-logs    # лог застосунку
 make app-down    # зупинити лише застосунок, сервіси працюють далі (назад до make dev)
 make services-down   # зупинити все
 ```
 
-Застосунок і міграції описано в compose під профілем `app`, тому `make services-up` їх не запускає.
+Застосунок, міграції й лендінг описано в compose під профілем `app`, тому `make services-up` їх не запускає.
 
-| Сервіс    | Що робить                                                                                                                                   |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `migrate` | одноразово виконує `pnpm db:create:prod && pnpm db:migrate` і завершується                                                                  |
-| `app`     | `node dist/index.js` на `127.0.0.1:APP_PORT` (3000); стартує після успішного `migrate`. `up --wait` чекає його `HEALTHCHECK` (`/api/ready`) |
+| Сервіс    | Що робить                                                                                                                                                                      |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `migrate` | одноразово виконує `pnpm db:create:prod && pnpm db:migrate` і завершується                                                                                                     |
+| `app`     | `node dist/index.js` на `127.0.0.1:APP_PORT` (3000); стартує після успішного `migrate`. `up --wait` чекає його `HEALTHCHECK` (`/api/ready`)                                    |
+| `landing` | [лендінг](/landing/) на nginx, `127.0.0.1:LANDING_PORT` (8080); кнопки ведуть на `http://localhost:APP_PORT`, тож порти змінюйте до `make app-build`. Healthcheck — `/healthz` |
 
 [`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) збирає образ з тегом `APP_IMAGE` (за замовчуванням `vibe-template:local`) і позначає його git-ревізією. Frontend збирається без Sentry і без `VITE_BASE_URL`, тобто з API на тому ж origin. Додаткові аргументи передаються в `docker build`, наприклад `make app-build ARGS=--no-cache`. Compose образ не збирає і не завантажує (`pull_policy: never`): без `make app-build` `app:up` завершиться помилкою `No such image: vibe-template:local`.
 
@@ -156,7 +157,7 @@ make services-down   # зупинити все
 
 | Що                    | Значення в контейнері                                                                                                       |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| адреса застосунку     | `APP_URL`, `FRONTEND_URL`, `LANDING_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                         |
+| адреса застосунку     | `APP_URL`, `FRONTEND_URL` = `http://localhost:APP_PORT`, `DOMAIN=localhost:APP_PORT`                                        |
 | режим                 | `APP_ENV=local`, `APP_IS_PRODUCTION=false`, `SERVE_STATIC=true`, `DOC_PAGE=false`                                           |
 | префікс API           | `API_PATH_PREFIX`: зі shell, інакше з `packages/backend/.env`, інакше `api`, як і під час `pnpm app:build`                  |
 | PostgreSQL, Redis     | `PGSQL_HOST=postgres`, `PGSQL_PORT=5432`, `REDIS_HOST=redis`, `REDIS_PORT=6379`                                             |
@@ -231,16 +232,17 @@ Extension "vector" ensured in database "vibe_template".
 make dev
 ```
 
-Ціль викликає `pnpm dev`: скрипт збирає `shared` і `backend`, а потім паралельно запускає dev-сервери backend і frontend ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Обидва dev-сервери читають `shared` із `src/`, тому зміни в `packages/shared/src` підхоплюються без перезбирання (див. [Структура проєкту](/guide/project-structure)). Після старту:
+Ціль викликає `pnpm dev`: скрипт збирає `shared` і `backend`, а потім паралельно запускає dev-сервери backend, frontend і лендінгу ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). Обидва dev-сервери читають `shared` із `src/`, тому зміни в `packages/shared/src` підхоплюються без перезбирання (див. [Структура проєкту](/guide/project-structure)). Після старту:
 
 | Сервіс                     | URL                                                                                                                                                                                                                                              | Джерело                                                                                                  |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | Backend (HTTP + WebSocket) | `http://localhost:3000` (`PORT`, `HOST=0.0.0.0`)                                                                                                                                                                                                 | [config/app.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/app.ts) |
 | Frontend (Vite)            | `http://localhost:5173`; `/api` (разом із WebSocket `/api/websocket`) проксюється на `127.0.0.1:3000`; префікс і порт Vite бере з `API_PATH_PREFIX` і `PORT` бекенда ([одне джерело](/backend/configuration#одне-джерело-адреси-и-префікса-api)) | [vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/vite.config.ts)  |
+| Лендінг (Vite)             | `http://localhost:5175`; кнопки ведуть на `FRONTEND_URL` (`http://localhost:5173`), власна адреса — `LANDING_URL` з `.env` ([Лендінг](/landing/))                                                                                                | [vite.config.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/vite.config.ts)   |
 
 У лозі backend має з'явитися рядок `Listening http://0.0.0.0:3000`, а у Vite рядок `Local: http://localhost:5173/`.
 
-Пакети можна запускати й окремо: `make dev-backend` / `make dev-frontend` (див. [Команди make](/reference/make)).
+Пакети можна запускати й окремо: `make dev-backend` / `make dev-frontend` / `make dev-landing` (див. [Команди make](/reference/make)).
 
 ## 5. Перевірка health
 

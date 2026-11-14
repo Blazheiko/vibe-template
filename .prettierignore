@@ -1,5 +1,6 @@
 **/node_modules/
 **/dist/
+**/dist-ssr/
 **/dist-e2e-mock/
 **/dist-e2e-sentry/
 **/coverage/

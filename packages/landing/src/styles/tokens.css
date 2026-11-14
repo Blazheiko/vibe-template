@@ -1,0 +1,35 @@
+/* Colours follow the app (frontend manifest: theme #4E7FA8, background #EDF1F7). */
+:root {
+    --color-bg: #edf1f7;
+    --color-surface: #ffffff;
+    --color-surface-muted: #e3e9f2;
+    --color-text: #1b2430;
+    --color-text-muted: #4a5668;
+    --color-border: #cfd8e5;
+    --color-primary: #3d6e97;
+    --color-primary-hover: #2f5a7d;
+    --color-on-primary: #ffffff;
+    --color-focus: #1f6fb2;
+    --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+    --radius: 12px;
+    --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 12px rgb(16 24 40 / 6%);
+    --container: 1120px;
+    --gutter: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --color-bg: #11161d;
+        --color-surface: #19212b;
+        --color-surface-muted: #151c25;
+        --color-text: #e6ebf2;
+        --color-text-muted: #a7b3c4;
+        --color-border: #2b3644;
+        --color-primary: #6a9dc4;
+        --color-primary-hover: #86b2d3;
+        --color-on-primary: #0d1620;
+        --color-focus: #8cc0ea;
+        --shadow: 0 1px 2px rgb(0 0 0 / 30%);
+    }
+}

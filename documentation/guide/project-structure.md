@@ -16,9 +16,10 @@ packages:
 | `frontend`       | `packages/frontend`       | Vue 3 + Vite застосунок: PWA, i18n, Pinia, Vitest, Playwright e2e ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/package.json))                                                                                                |
 | `shared`         | `packages/shared`         | Спільні контракти: `brands`, `schemas`, `responses`, `errors`, `enums`, `utils`, `guards`, `limits`, `patterns`, `contracts`, `ws-client` — окремі subpath exports ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)) |
 | `api-playground` | `packages/api-playground` | Vue-інструмент розробника для ручного тестування HTTP/WebSocket API ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/api-playground/package.json))                                                                                        |
+| `landing`        | `packages/landing`        | Статичний лендінг шаблону з кнопками входу й реєстрації: Vue 3 + Vite, пререндер без JavaScript, nginx-образ ([Лендінг](/landing/), [package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/package.json))                                |
 | `documentation`  | `documentation`           | Цей сайт документації на VitePress ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/documentation/package.json))                                                                                                                                   |
 
-`frontend`, `backend` і `api-playground` залежать від `shared` через `workspace:*`, тому `shared` треба зібрати першим (`pnpm build:shared`). Dev-сервери (`vite` і `tsx watch` бекенду) читають `shared` прямо з `src/` через export condition `shared-source` ([packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), тож зміна в `packages/shared/src` доходить до HMR і перезапуску бекенду без перезбирання. `typecheck`, тести, `vite build`, `start` і Docker цієї умови не мають і читають `dist/`.
+`frontend`, `backend`, `api-playground` і `landing` залежать від `shared` через `workspace:*`, тому `shared` треба зібрати першим (`pnpm build:shared`). Dev-сервери (`vite` і `tsx watch` бекенду) читають `shared` прямо з `src/` через export condition `shared-source` ([packages/shared/package.json](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/package.json)), тож зміна в `packages/shared/src` доходить до HMR і перезапуску бекенду без перезбирання. `typecheck`, тести, `vite build`, `start` і Docker цієї умови не мають і читають `dist/`.
 
 ## Ключові каталоги
 
@@ -40,7 +41,8 @@ packages:
 │   │   └── drizzle.config.ts
 │   ├── frontend/           # src/, public/, e2e/ (Playwright), vite.sw.config.ts
 │   ├── shared/             # src/{brands,contracts,enums,errors,guards,limits,patterns,responses,schemas,utils,ws-client}, test/
-│   └── api-playground/     # src/{components,composables,router,stores,views}
+│   ├── api-playground/     # src/{components,composables,router,stores,views}
+│   └── landing/            # src/{components,content,styles}, build/ (адреси, пререндер, перевірки), nginx/
 ├── documentation/          # VitePress
 ├── Dockerfile
 ├── init.sh                 # install + typecheck + lint + test + build
@@ -71,7 +73,7 @@ packages:
 
 Згідно з [AGENTS.md](https://github.com/Blazheiko/vibe-template/blob/main/AGENTS.md):
 
-- **TypeScript `6.0.3`** — закріплено в корені ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)) і в пакетах (`backend`, `frontend`, `shared`, `api-playground`, `documentation`). Версії слід тримати узгодженими.
+- **TypeScript `6.0.3`** — закріплено в корені ([package.json](https://github.com/Blazheiko/vibe-template/blob/main/package.json)) і в пакетах (`backend`, `frontend`, `shared`, `api-playground`, `landing`, `documentation`). Версії слід тримати узгодженими.
 - **`@typescript-eslint/*`** утримуються на сумісній з TS 6 лінії через `pnpm.overrides` у кореневому `package.json`; оновлюйте їх разом із `typescript-eslint`.
 - **Без `baseUrl`** у `tsconfig` бекенду: він deprecated у TypeScript 6 і перестане працювати в TypeScript 7.
 - **`drizzle-orm` і `drizzle-kit` `1.0.0-rc.5`** — release candidate; оновлювати обидва разом до однієї точної версії. Relations — Relational Queries v2 (`defineRelations` у [relations.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/relations.ts)), міграції — у форматі «тека на міграцію» 1.0 ([migrations](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations)).
