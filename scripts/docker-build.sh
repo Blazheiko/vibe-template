@@ -1,10 +1,16 @@
 #!/bin/bash
-# Build the local Docker image of the application from the production Dockerfile:
-# the backend with the built SPA in packages/backend/public (SERVE_STATIC=true).
-# docker-compose.yml runs it as the `app` service (`pnpm app:up`).
+# Build the local Docker images from the production Dockerfiles: the application (the backend
+# with the built SPA in packages/backend/public, SERVE_STATIC=true) and the landing
+# (packages/landing/Dockerfile, nginx). docker-compose.yml runs them as the `app` and `landing`
+# services (`pnpm app:up`).
 #
 # Usage: scripts/docker-build.sh [extra docker build args...]
-#   APP_IMAGE=vibe-template:local   tag of the image (the same variable docker-compose.yml reads)
+#   APP_IMAGE=vibe-template:local             tag of the app image (docker-compose.yml reads it too)
+#   LANDING_IMAGE=vibe-template-landing:local tag of the landing image (likewise)
+#
+# The landing's addresses are compiled in: its buttons lead to http://localhost:APP_PORT and its
+# own address is http://localhost:LANDING_PORT, the ports compose publishes (shell, else
+# packages/backend/.env, else 3000 and 8080). Local http addresses, so LANDING_STRICT=false.
 #
 # The frontend is built for a same-origin API (no VITE_BASE_URL) and without Sentry, so the
 # image talks to nothing outside the compose stack. Extra arguments go to `docker build`,
@@ -29,13 +35,18 @@ if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
     REVISION="${REVISION}-dirty"
 fi
 
-# The last API_PATH_PREFIX line of the file, without quotes; empty when there is none.
-env_file_prefix() {
+# The last NAME= line of packages/backend/.env, without quotes; empty when there is none.
+env_file_value() {
     [ -f packages/backend/.env ] || return 0
-    sed -n 's/^[[:space:]]*API_PATH_PREFIX[[:space:]]*=[[:space:]]*//p' packages/backend/.env |
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" packages/backend/.env |
         tail -n 1 | sed -e 's/[[:space:]]*$//' -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
-API_PREFIX="${API_PATH_PREFIX:-$(env_file_prefix)}"
+API_PREFIX="${API_PATH_PREFIX:-$(env_file_value API_PATH_PREFIX)}"
+LANDING_IMAGE="${LANDING_IMAGE:-vibe-template-landing:local}"
+HOST_APP_PORT="${APP_PORT:-$(env_file_value APP_PORT)}"
+HOST_LANDING_PORT="${LANDING_PORT:-$(env_file_value LANDING_PORT)}"
+HOST_APP_PORT="${HOST_APP_PORT:-3000}"
+HOST_LANDING_PORT="${HOST_LANDING_PORT:-8080}"
 
 echo "Building ${APP_IMAGE} (revision ${REVISION}, API prefix ${API_PREFIX:-api})"
 docker build \
@@ -47,5 +58,17 @@ docker build \
     "$@" \
     .
 
+echo "Building ${LANDING_IMAGE} (buttons to http://localhost:${HOST_APP_PORT}, site http://localhost:${HOST_LANDING_PORT})"
+docker build \
+    --file packages/landing/Dockerfile \
+    --tag "$LANDING_IMAGE" \
+    --label "org.opencontainers.image.revision=${REVISION}" \
+    --build-arg "LANDING_APP_URL=http://localhost:${HOST_APP_PORT}" \
+    --build-arg "LANDING_SITE_URL=http://localhost:${HOST_LANDING_PORT}" \
+    --build-arg LANDING_STRICT=false \
+    "$@" \
+    .
+
 echo
-echo "Built ${APP_IMAGE}. Start it with the services: pnpm app:up (http://localhost:\${APP_PORT:-3000})"
+echo "Built ${APP_IMAGE} and ${LANDING_IMAGE}. Start them with the services: pnpm app:up"
+echo "(app http://localhost:${HOST_APP_PORT}, landing http://localhost:${HOST_LANDING_PORT})"

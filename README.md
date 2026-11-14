@@ -162,7 +162,8 @@ Which optional service / env each feature needs:
 │   ├── frontend/        # Vue 3 + Vite app (PWA, i18n, Pinia, Playwright e2e)
 │   ├── backend/         # uWebSockets.js HTTP/WebSocket server (Drizzle, Redis, S3, mail, AI)
 │   ├── shared/          # Shared schemas, enums, guards, responses, utils (workspace:*)
-│   └── api-playground/  # Vue dev tool for exercising the backend API/WebSocket
+│   ├── api-playground/  # Vue dev tool for exercising the backend API/WebSocket
+│   └── landing/         # Static landing page with Log in / Sign up buttons (prerendered Vue, nginx image)
 ├── documentation/       # VitePress docs site, published to GitHub Pages
 ├── Dockerfile           # Multi-stage build: shared → frontend → backend → production image
 ├── init.sh              # One-shot install + typecheck + lint + test + build
@@ -236,7 +237,6 @@ running locally you really only need a few of them:
 ```dotenv
 APP_KEY=at-least-32-characters-local-secret
 FRONTEND_URL=http://localhost:5173
-LANDING_URL=http://localhost:5173
 
 # PostgreSQL
 DB_CONNECTION=pg
@@ -300,28 +300,29 @@ Run from the repository root. [`Makefile`](Makefile) is the single entry point;
 `make` (or `make help`) prints every target with a description. Each target only
 calls the pnpm script in the last column, which you can also run directly.
 
-| Command                                  | Description                                                                       | pnpm script                        |
-| ---------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------- |
-| `make setup`                             | Check tools (`make doctor`), install deps, create `.env` if missing, build shared | —                                  |
-| `make doctor`                            | Check Node, pnpm, Docker, `packages/backend/.env` and busy ports                  | `scripts/doctor.sh`                |
-| `make dev`                               | Build `shared` + `backend`, then run backend and frontend dev servers in parallel | `dev`                              |
-| `make dev-backend` / `make dev-frontend` | Run a single package in dev mode                                                  | `dev:backend` / `dev:frontend`     |
-| `make check`                             | Build shared, verify the Makefile, format check, typecheck, lint, tests (CI)      | —                                  |
-| `make typecheck`                         | TypeScript checks across all packages                                             | `typecheck`                        |
-| `make lint` / `make lint-fix`            | Lint (and auto-fix) the whole repo with ESLint                                    | `lint` / `lint:fix`                |
-| `make format` / `make format-check`      | Write / check Prettier formatting                                                 | `format` / `format:check`          |
-| `make test [PKG=backend]`                | Run all package test suites, or one package                                       | `test`                             |
-| `make test-e2e`                          | Frontend Playwright e2e                                                           | `frontend test:e2e`                |
-| `make services-up` / `services-down`     | Start / stop the Docker Compose services (`ARGS="redis s3 mailpit"`: a subset)    | `services:up` / `services:down`    |
-| `make app-up` / `make app-down`          | Run the production image with the services / stop only the app                    | `app:up` / `app:down`              |
-| `make db-create` / `make db-migrate`     | Create the database / apply migrations                                            | `backend db:create` / `db:migrate` |
-| `make db-seed [ARGS=--demo]`             | Seed reference data (and demo accounts)                                           | `backend db:seed`                  |
-| `make build` / `make build-shared`       | Build every package / only `shared`                                               | `build` / `build:shared`           |
-| `make start`                             | Start the built backend (`node dist/index.js`)                                    | `start`                            |
-| `make clean`                             | Clean build artifacts and `node_modules`                                          | `clean`                            |
-| `make docs-dev` / `make docs-preview`    | Run the VitePress documentation site in dev mode / preview the built site         | `docs:dev` / `docs:preview`        |
-| `make docs-build` / `make docs-verify`   | Build the documentation site / check the build (links, anchors, key pages)        | `docs:build` / `docs:verify`       |
-| `make prod-local`                        | Production-like local run: the backend serves the built SPA                       | `prod:local`                       |
+| Command                                   | Description                                                                        | pnpm script                        |
+| ----------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------- |
+| `make setup`                              | Check tools (`make doctor`), install deps, create `.env` if missing, build shared  | —                                  |
+| `make doctor`                             | Check Node, pnpm, Docker, `packages/backend/.env` and busy ports                   | `scripts/doctor.sh`                |
+| `make dev`                                | Build `shared` + `backend`, then run backend and frontend dev servers in parallel  | `dev`                              |
+| `make dev-backend` / `make dev-frontend`  | Run a single package in dev mode                                                   | `dev:backend` / `dev:frontend`     |
+| `make check`                              | Build shared, verify the Makefile, format check, typecheck, lint, tests (CI)       | —                                  |
+| `make typecheck`                          | TypeScript checks across all packages                                              | `typecheck`                        |
+| `make lint` / `make lint-fix`             | Lint (and auto-fix) the whole repo with ESLint                                     | `lint` / `lint:fix`                |
+| `make format` / `make format-check`       | Write / check Prettier formatting                                                  | `format` / `format:check`          |
+| `make test [PKG=backend]`                 | Run all package test suites, or one package                                        | `test`                             |
+| `make test-e2e`                           | Frontend Playwright e2e                                                            | `frontend test:e2e`                |
+| `make services-up` / `services-down`      | Start / stop the Docker Compose services (`ARGS="redis s3 mailpit"`: a subset)     | `services:up` / `services:down`    |
+| `make app-up` / `make app-down`           | Run the production image with the services / stop only the app                     | `app:up` / `app:down`              |
+| `make db-create` / `make db-migrate`      | Create the database / apply migrations                                             | `backend db:create` / `db:migrate` |
+| `make db-seed [ARGS=--demo]`              | Seed reference data (and demo accounts)                                            | `backend db:seed`                  |
+| `make build` / `make build-shared`        | Build every package / only `shared`                                                | `build` / `build:shared`           |
+| `make start`                              | Start the built backend (`node dist/index.js`)                                     | `start`                            |
+| `make clean`                              | Clean build artifacts and `node_modules`                                           | `clean`                            |
+| `make docs-dev` / `make docs-preview`     | Run the VitePress documentation site in dev mode / preview the built site          | `docs:dev` / `docs:preview`        |
+| `make docs-build` / `make docs-verify`    | Build the documentation site / check the build (links, anchors, key pages)         | `docs:build` / `docs:verify`       |
+| `make prod-local`                         | Production-like local run: the backend serves the built SPA, plus the landing      | `prod:local`                       |
+| `make dev-landing` / `make build-landing` | Landing dev server (http://localhost:5175) / build it into `packages/landing/dist` | `dev:landing` / `build:landing`    |
 
 The full list, including `test-pg`, `test-redis`, `coverage`, `db-generate`,
 `db-studio` and the `app-*` targets, is in `make help` and in
@@ -332,6 +333,16 @@ Frontend e2e tests use Playwright:
 ```bash
 pnpm --filter frontend test:e2e
 ```
+
+### Landing page
+
+`packages/landing` is the template's public page: a description of the project and
+Log in / Sign up buttons that open the app's `/login` and `/register`. It is
+prerendered at build time into static HTML for three languages (`/`, `/uk/`,
+`/pl/`) with no JavaScript, and ships as its own nginx image. It runs with
+`make dev` on http://localhost:5175, and with `make app-up` on
+http://localhost:8080. The landing and the app need different origins. See
+[Landing page](https://blazheiko.github.io/vibe-template/en/landing/).
 
 ### Manual API testing
 

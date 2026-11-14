@@ -1,5 +1,5 @@
 // Checks that docker-compose.yml runs the app with the API prefix scripts/docker-build.sh builds
-// the SPA for (feat-185): the shell's API_PATH_PREFIX, else the one in packages/backend/.env,
+// the SPA for (feat-185), and the landing on the port docker-build.sh builds it for (feat-217): the shell's API_PATH_PREFIX, else the one in packages/backend/.env,
 // else `api`; the healthcheck asks for /<prefix>/ready. Runs `docker compose config` on a copy
 // of the file next to a generated .env, so the result does not depend on the local .env.
 // Without the docker CLI it says so and passes: the CI quality job has it.
@@ -56,7 +56,28 @@ const resolve = (shellPrefix, fileLines) => {
         app: services.app.environment.API_PATH_PREFIX,
         migrate: services.migrate.environment.API_PATH_PREFIX,
         health: services.app.healthcheck?.test?.join(' ') ?? '',
+        landing: services.landing,
     }
+}
+
+/**
+ * The landing service (packages/landing): in the `app` profile, published on 127.0.0.1 at
+ * LANDING_PORT (the port scripts/docker-build.sh compiles into the landing as its own address),
+ * with a healthcheck. Returns the problems.
+ */
+const landingProblems = (landing, wantPort) => {
+    if (landing === undefined) return ['no `landing` service in the app profile']
+    const problems = []
+    const port = landing.ports?.[0]
+    if (port?.host_ip !== '127.0.0.1')
+        problems.push(`landing is published on ${port?.host_ip}, not 127.0.0.1`)
+    if (String(port?.published) !== wantPort)
+        problems.push(`landing is published on ${port?.published}, not LANDING_PORT ${wantPort}`)
+    if (port?.target !== 8080)
+        problems.push(`landing targets ${port?.target}, nginx listens on 8080`)
+    if (!(landing.healthcheck?.test ?? []).join(' ').includes('/healthz'))
+        problems.push('landing has no /healthz healthcheck')
+    return problems
 }
 
 const cases = [
@@ -77,6 +98,15 @@ const cases = [
 
 let failed = 0
 try {
+    for (const [file, want] of [
+        [[], '8080'],
+        [['LANDING_PORT=9090'], '9090'],
+    ]) {
+        for (const problem of landingProblems(resolve(undefined, file).landing, want)) {
+            failed += 1
+            console.error(`verify-compose: ${problem}`)
+        }
+    }
     for (const c of cases) {
         const got = resolve(c.shell, c.file)
         const ok =
@@ -91,4 +121,4 @@ try {
 }
 
 if (failed > 0) process.exit(1)
-console.log(`verify-compose: ${String(cases.length)} cases passed`)
+console.log(`verify-compose: ${String(cases.length)} prefix cases and the landing service passed`)

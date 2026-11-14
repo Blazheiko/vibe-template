@@ -2,7 +2,7 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
 
-// packages/frontend and packages/api-playground have their own eslint.config.ts: ESLint 10
+// packages/frontend, packages/api-playground and packages/landing have their own eslint.config.ts: ESLint 10
 // lints each file with the nearest config, so blocks for those packages do not belong here.
 export default tseslint.config(
     {

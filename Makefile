@@ -19,14 +19,14 @@ ARGS ?=
 ENV_FILE := packages/backend/.env
 
 .PHONY: help setup init doctor install env build-shared \
-	dev dev-backend dev-frontend dev-playground prod-local start \
+	dev dev-backend dev-frontend dev-landing dev-playground prod-local start \
 	check verify-makefile verify-compose check-bundle-graph typecheck lint lint-fix format format-check \
-	test test-e2e test-pg test-redis coverage \
+	test test-e2e test-e2e-landing test-pg test-redis coverage \
 	services-up services-down \
 	db-create db-migrate db-generate db-seed db-studio \
 	app-build app-up app-down app-seed app-logs \
 	docs-dev docs-build docs-preview docs-verify \
-	build clean
+	build build-landing preview-landing clean
 
 ##@ Start
 
@@ -60,7 +60,7 @@ build-shared: ## Build the shared package (typecheck and tests import it)
 
 ##@ Development
 
-dev: ## Backend and frontend dev servers
+dev: ## Backend, frontend and landing dev servers
 	$(PNPM) dev
 
 dev-backend: ## Backend dev server only
@@ -69,10 +69,13 @@ dev-backend: ## Backend dev server only
 dev-frontend: ## Frontend dev server only
 	$(PNPM) dev:frontend
 
+dev-landing: ## Landing dev server only (http://localhost:5175)
+	$(PNPM) dev:landing
+
 dev-playground: ## Backend and API Playground
 	$(PNPM) dev:manual_test
 
-prod-local: ## Production-like local run: backend serves the built SPA
+prod-local: ## Production-like local run: backend serves the built SPA, plus the landing
 	$(PNPM) prod:local $(ARGS)
 
 start: ## Start the built backend
@@ -114,6 +117,10 @@ test: ## Unit tests (PKG=backend for one package)
 test-e2e: ## Playwright e2e for the frontend
 	$(PNPM) --filter frontend test:e2e $(ARGS)
 
+test-e2e-landing: ## Build the landing and run its Playwright smoke tests
+	$(PNPM) build:landing
+	$(PNPM) --filter landing test:e2e $(ARGS)
+
 test-pg: ## Backend PostgreSQL integration tests (needs services-up)
 	$(PNPM) --filter backend test:pg $(ARGS)
 
@@ -151,10 +158,10 @@ db-studio: ## Open Drizzle Studio
 
 ##@ App in Docker
 
-app-build: ## Build the vibe-template:local image
+app-build: ## Build the app and landing images (vibe-template:local, vibe-template-landing:local)
 	$(PNPM) app:build $(ARGS)
 
-app-up: ## Services, migrations and the app, wait until healthy
+app-up: ## Services, migrations, the app and the landing, wait until healthy
 	$(PNPM) app:up
 
 app-down: ## Stop and remove only the app containers, keep services running
@@ -163,7 +170,7 @@ app-down: ## Stop and remove only the app containers, keep services running
 app-seed: ## Seed the app database with demo accounts
 	$(PNPM) app:seed
 
-app-logs: ## Follow the app log
+app-logs: ## Follow the app and landing logs
 	$(PNPM) app:logs
 
 ##@ Documentation
@@ -184,6 +191,12 @@ docs-verify: ## Check the built site (links, anchors, key pages)
 
 build: ## Build every package
 	$(PNPM) build
+
+build-landing: ## Build the landing into packages/landing/dist
+	$(PNPM) build:landing
+
+preview-landing: ## Serve the built landing (http://localhost:4174)
+	$(PNPM) preview:landing
 
 clean: ## Remove build output and node_modules
 	$(PNPM) clean

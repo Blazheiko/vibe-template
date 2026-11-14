@@ -18,6 +18,10 @@ The backend serves static files only with `SERVE_STATIC=true` ([`config/app.ts`]
 The `Dockerfile` copies the frontend into `public` and sets `SERVE_STATIC=true` and `APP_ENV=production`, so the container serves the frontend without any extra variables. If the frontend is served by a proxy or CDN, override with `-e SERVE_STATIC=false`. When `SERVE_STATIC=true` but there is no `public` directory, the server prints a warning and starts without static files ([`static-server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts)). `.env.example` has `SERVE_STATIC=false`, because in dev the frontend is served by Vite.
 :::
 
+### Landing page
+
+The template's public page ([`packages/landing`](/en/landing/)) is a separate static site on its own origin, for example `https://example.com` next to the app on `https://app.example.com`. Its image is built separately ([`packages/landing/Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/Dockerfile), nginx on `8080`), and the addresses are compiled in at build time (`LANDING_APP_URL`, `LANDING_SITE_URL`, strict by default). The backend does not serve the landing and does not read `LANDING_URL`. Details and checking a deployed site: [Landing page → Docker image](/en/landing/#docker-image).
+
 ### CSP when a proxy serves the frontend
 
 With `SERVE_STATIC=true` the backend sets the CSP on HTML itself (see [Content-Security-Policy](/en/backend/security#content-security-policy)). If HTML is served by nginx or a CDN, the document policy has to be set there, with the same exception for the service worker:

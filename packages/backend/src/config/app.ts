@@ -47,7 +47,6 @@ const config = Object.freeze({
     ),
     url: normalizeUrl(env['APP_URL']),
     frontendUrl: normalizeUrl(env['FRONTEND_URL'] ?? env['APP_URL']),
-    landingUrl: normalizeUrl(env['LANDING_URL']),
     cdnUrl: env['CDN_URL'] ?? '',
     domain: env['DOMAIN'] ?? '127.0.0.1',
     host: env['HOST'] ?? '0.0.0.0',

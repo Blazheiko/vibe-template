@@ -18,6 +18,10 @@
 `Dockerfile` копіює фронтенд у `public` і задає `SERVE_STATIC=true` та `APP_ENV=production`, тож контейнер віддає фронтенд без додаткових змінних. Якщо фронтенд віддає проксі або CDN, перевизначте `-e SERVE_STATIC=false`. Коли `SERVE_STATIC=true`, а каталогу `public` немає, сервер пише попередження і стартує без статики ([`static-server.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/start/static-server.ts)). У `.env.example` стоїть `SERVE_STATIC=false`, бо в dev фронтенд віддає Vite.
 :::
 
+### Лендінг
+
+Публічна сторінка шаблону ([`packages/landing`](/landing/)) — окремий статичний сайт на своєму origin, наприклад `https://example.com` поряд із застосунком на `https://app.example.com`. Його образ збирається окремо ([`packages/landing/Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/Dockerfile), nginx на `8080`), а адреси вшиваються під час збірки (`LANDING_APP_URL`, `LANDING_SITE_URL`, строгий режим за замовчуванням). Бекенд лендінг не віддає, і `LANDING_URL` бекенд не читає. Деталі й перевірка розгорнутого сайту: [Лендінг → Docker-образ](/landing/#docker-образ).
+
 ### CSP, коли фронтенд віддає проксі
 
 При `SERVE_STATIC=true` бекенд сам ставить CSP на HTML (див. [Content-Security-Policy](/backend/security#content-security-policy)). Якщо HTML віддає nginx або CDN, політику документа треба задати там, з тим самим винятком для service worker:

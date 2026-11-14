@@ -79,6 +79,7 @@ const KEY_PAGES = [
     { page: 'shared/index.md', h1: 'Пакет shared' },
     { page: 'frontend/index.md', h1: 'Фронтенд' },
     { page: 'playground/index.md', h1: 'API Playground' },
+    { page: 'landing/index.md', h1: 'Лендінг' },
 ]
 
 /**
@@ -132,6 +133,7 @@ const EN_KEY_PAGES = [
     { page: 'en/shared/index.md', h1: 'The shared package' },
     { page: 'en/frontend/index.md', h1: 'Frontend' },
     { page: 'en/playground/index.md', h1: 'API Playground' },
+    { page: 'en/landing/index.md', h1: 'Landing page' },
 ]
 
 /** Home page (layout: home) checks (T2.3a), one per locale. */
