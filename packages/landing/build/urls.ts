@@ -56,8 +56,16 @@ export function parseStrict(value: string | undefined): boolean {
 }
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '0.0.0.0'])
-// Reserved for documentation (RFC 2606): the placeholders of .env.example and the docs.
-const PLACEHOLDER_DOMAINS = ['example', 'example.com', 'example.net', 'example.org']
+// Reserved by RFC 2606: the documentation placeholders of .env.example and the docs, and the
+// testing and invalid names. None of them is ever a public site.
+const PLACEHOLDER_DOMAINS = [
+    'example',
+    'example.com',
+    'example.net',
+    'example.org',
+    'test',
+    'invalid',
+]
 
 /** Why `url` cannot be a production address, or null. Shared with build/verify-dist.ts. */
 export function productionProblem(url: string): string | null {
@@ -68,7 +76,9 @@ export function productionProblem(url: string): string | null {
         return 'is not an absolute URL'
     }
     if (parsed.protocol !== 'https:') return 'must use https'
-    const host = parsed.hostname.toLowerCase()
+    // A trailing dot is the same DNS name (`example.com.` is `example.com`): drop it before
+    // comparing, or it would slip past both lists.
+    const host = parsed.hostname.toLowerCase().replace(/\.+$/, '')
     if (LOCAL_HOSTS.has(host) || host.endsWith('.localhost')) return 'points to the local machine'
     if (PLACEHOLDER_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
         return 'is a placeholder domain (RFC 2606)'

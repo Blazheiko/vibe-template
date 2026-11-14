@@ -1,18 +1,22 @@
 #!/bin/bash
 # Checks a deployed landing (packages/landing) from the outside, with curl only.
 #
-# Usage: scripts/verify-landing-deploy.sh [--allow-local] [--insecure] <landing origin> <app origin>
+# Usage: scripts/verify-landing-deploy.sh [options] <landing origin> <app origin>
 #   scripts/verify-landing-deploy.sh https://example.com https://app.example.com
 #   scripts/verify-landing-deploy.sh --allow-local http://localhost:8080 http://localhost:3000
 #
 #   --allow-local  accept http and local addresses (the local compose stack); without it every
 #                  published address must be a public https one, like LANDING_STRICT=true
 #   --insecure     do not verify TLS certificates (a local proxy with its own CA)
+#   --resolve HOST:PORT:ADDR
+#                  send requests for HOST:PORT to ADDR (curl --resolve, repeatable): check a new
+#                  server before DNS points at it
 #
-# Checks: the locale pages /, /uk/, /pl/ answer 200 with HTML; an unknown path answers 404 with the
-# landing's 404 page (not the home page with 200); the security headers; canonical, hreflang and
-# og:url of each page on the landing origin; both buttons on the app origin; sitemap.xml and
-# robots.txt; and that <app>/login answers 200. Exit code 1 lists every failed check.
+# Checks: the locale pages /, /uk/, /pl/ answer 200 with HTML; an unknown path answers 404 with
+# the landing's 404 page (not the home page with 200); the security headers; canonical, hreflang,
+# og:url and og:image of each page on the landing origin; both buttons on the app origin;
+# sitemap.xml and robots.txt; and that <app>/login answers 200. Every address a page publishes
+# follows the production rules, whatever its origin. Exit code 1 lists every failed check.
 set -uo pipefail
 
 ALLOW_LOCAL=false
@@ -21,13 +25,18 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --allow-local) ALLOW_LOCAL=true; shift ;;
         --insecure) CURL_OPTS+=(--insecure); shift ;;
-        -h | --help) sed -n '2,16p' "$0"; exit 0 ;;
+        --resolve)
+            [ $# -ge 2 ] || { echo "--resolve needs HOST:PORT:ADDR" >&2; exit 2; }
+            CURL_OPTS+=(--resolve "$2")
+            shift 2
+            ;;
+        -h | --help) sed -n '2,20p' "$0"; exit 0 ;;
         --*) echo "Unknown option $1" >&2; exit 2 ;;
         *) break ;;
     esac
 done
 if [ $# -ne 2 ]; then
-    echo "Usage: $0 [--allow-local] [--insecure] <landing origin> <app origin>" >&2
+    echo "Usage: $0 [--allow-local] [--insecure] [--resolve HOST:PORT:ADDR] <landing origin> <app origin>" >&2
     exit 2
 fi
 SITE="${1%/}"
@@ -66,9 +75,13 @@ address_problem() {
     local host="${1#https://}"
     host="${host%%/*}"
     host="${host%%:*}"
+    host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+    # A trailing dot is the same DNS name: example.com. is example.com.
+    while [ "${host%.}" != "$host" ]; do host="${host%.}"; done
     case "$host" in
         localhost | 127.0.0.1 | 0.0.0.0 | *.localhost) echo "points to the local machine" ;;
-        example | *.example | example.com | *.example.com | example.net | *.example.net | example.org | *.example.org)
+        example | *.example | example.com | *.example.com | example.net | *.example.net | \
+            example.org | *.example.org | test | *.test | invalid | *.invalid)
             echo "is a placeholder domain (RFC 2606)" ;;
     esac
 }
@@ -78,6 +91,19 @@ check_address() {
     problem="$(address_problem "$2")"
     if [ -n "$problem" ]; then fail "$1: $2 $problem"; else ok; fi
 }
+
+# The addresses a page publishes: canonical and hreflang links, og:url and og:image, both
+# buttons. Read from the tags themselves, one per line.
+published_addresses() {
+    {
+        grep -oE '<link [^>]*rel="(canonical|alternate)"[^>]*>' "$1" | attribute href
+        grep -oE '<meta [^>]*property="og:(url|image)"[^>]*>' "$1" | attribute content
+        grep -oE '<a [^>]*data-testid="cta-(login|register)"[^>]*>' "$1" | attribute href
+    } | sort -u
+}
+
+# attribute <name>: the value of that attribute of each tag on stdin.
+attribute() { sed -nE "s/.* $1=\"([^\"]*)\".*/\1/p"; }
 
 expect_contains() {
     if grep -qF -- "$3" "$WORK/$2.body"; then ok; else fail "$1: no $3"; fi
@@ -113,12 +139,12 @@ for entry in "en|/" "uk|/uk/" "pl|/pl/"; do
     for h in content-security-policy x-content-type-options referrer-policy; do
         if [ -n "$(header "$h" "$name")" ]; then ok; else fail "$path: no $h header"; fi
     done
-    # Every address the page publishes follows the production rules.
+    expect_contains "$path" "$name" "<meta property=\"og:image\" content=\"$SITE/og-image.png\" />"
+    # Every address the page publishes follows the production rules, whatever its origin: a
+    # stray og:image on another host must fail too, so nothing is filtered out before the check.
     while IFS= read -r address; do
         check_address "$path" "$address"
-    done < <(grep -oE '(href|content)="https?://[^"]*"' "$WORK/$name.body" |
-        sed -E 's/^(href|content)="//; s/"$//' |
-        grep -E "^(${SITE//./\\.}|${APP//./\\.})" | sort -u)
+    done < <(published_addresses "$WORK/$name.body")
 done
 
 # An unknown path is the 404 page with 404, not the home page with 200.

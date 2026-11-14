@@ -30,13 +30,16 @@ interface EntryServer {
 
 const SSR_OUT_DIR = 'dist-ssr'
 
-/** Requests Vite itself answers: its client, modules, sources, files with an extension. */
-const isViteRequest = (pathname: string): boolean =>
+/**
+ * Requests Vite itself answers: its client, modules, sources, files with an extension other than
+ * .html. An unknown .html path stays with the landing and gets the 404 page, as on nginx.
+ */
+export const isViteRequest = (pathname: string): boolean =>
     pathname.startsWith('/@') ||
     pathname.startsWith('/src/') ||
     pathname.startsWith('/node_modules/') ||
     pathname.startsWith('/__') ||
-    /\.[a-z0-9]+$/i.test(pathname.split('/').pop() ?? '')
+    /\.(?!html?$)[a-z0-9]+$/i.test(pathname.split('/').pop() ?? '')
 
 async function devRender(
     server: ViteDevServer,

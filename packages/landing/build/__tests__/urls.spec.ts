@@ -47,6 +47,13 @@ describe('productionProblem', () => {
         ['https://app.example.com', 'is a placeholder domain (RFC 2606)'],
         ['https://vibe-template.example', 'is a placeholder domain (RFC 2606)'],
         ['https://example.org', 'is a placeholder domain (RFC 2606)'],
+        // A trailing DNS dot names the same host.
+        ['https://example.com.', 'is a placeholder domain (RFC 2606)'],
+        ['https://app.example.com..', 'is a placeholder domain (RFC 2606)'],
+        ['https://localhost.', 'points to the local machine'],
+        ['https://landing.test', 'is a placeholder domain (RFC 2606)'],
+        ['https://app.invalid', 'is a placeholder domain (RFC 2606)'],
+        ['https://app.localhost.', 'points to the local machine'],
     ])('%s %s', (url, problem) => {
         expect(productionProblem(url)).toBe(problem)
     })
@@ -105,6 +112,16 @@ describe('resolveLandingUrls', () => {
                 LANDING_SITE_URL: 'https://vibe.dev',
             }),
         ).toThrow('LANDING_APP_URL: "https://app.example.com" is a placeholder domain')
+    })
+
+    it('in strict mode refuses a placeholder with a trailing dot', () => {
+        expect(() =>
+            resolveLandingUrls({
+                LANDING_STRICT: 'true',
+                LANDING_APP_URL: 'https://app.example.com.',
+                LANDING_SITE_URL: 'https://vibe.dev',
+            }),
+        ).toThrow('is a placeholder domain')
     })
 
     it('in strict mode accepts public https addresses', () => {

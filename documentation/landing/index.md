@@ -29,7 +29,9 @@
 
 - не використовує `https`;
 - вказує на `localhost`, `127.0.0.1` чи `*.localhost`;
-- є доменом-заглушкою з RFC 2606 (`example.com`, `.example` тощо).
+- є зарезервованим доменом з RFC 2606: `example.com`, `.net`, `.org`, `.example`, `.test`, `.invalid`.
+
+Кінцева крапка DNS (`example.com.`) перевірку не обходить: перед порівнянням її відкидають.
 
 `LANDING_STRICT=false` або відсутня змінна дають звичайну локальну збірку. Будь-яке інше значення — помилка.
 
@@ -48,7 +50,7 @@
 
 У dev-режимі зміни CSS застосовуються без перезавантаження сторінки. Зміна тексту чи компонента перезавантажує сторінку, і вона рендериться заново: плагін [`build/landing-plugin.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/landing/build/landing-plugin.ts) стежить за SSR-модулями.
 
-`make prod-local` збирає лендінг з кнопками на `http://localhost:<PORT>` і зупиняє його разом із бекендом. Скрипт frontend e2e викликають без лендінгу: його вмикає лише `PROD_LOCAL_LANDING=true`, яку ставить `pnpm prod:local`.
+`make prod-local` збирає лендінг з кнопками на `http://localhost:<PORT>`. Бекенд стартує лише тоді, коли preview на `127.0.0.1:4174` віддав саме цей лендінг. Якщо порт зайнятий або лендінг зібрано під іншу адресу застосунку, запуск зупиняється з поясненням. Коли завершується один із двох процесів, скрипт зупиняє й другий. Скрипт frontend e2e викликають без лендінгу: його вмикає лише `PROD_LOCAL_LANDING=true`, яку ставить `pnpm prod:local`.
 
 У compose лендінг — сервіс `landing` профілю `app`. Його образ збирає [`scripts/docker-build.sh`](https://github.com/Blazheiko/vibe-template/blob/main/scripts/docker-build.sh) з кнопками на `http://localhost:APP_PORT`. Тому `APP_PORT` і `LANDING_PORT` треба змінювати до `make app-build`, а не після.
 
@@ -112,7 +114,7 @@ scripts/verify-landing-deploy.sh --allow-local http://localhost:8080 http://loca
 - sitemap і robots;
 - `<app>/login` відповідає 200.
 
-Без `--allow-local` кожна опублікована адреса має бути публічною `https`.
+Без `--allow-local` кожна опублікована адреса (`canonical`, `hreflang`, `og:url`, `og:image`, кнопки) має бути публічною `https`, хоч би на який origin вона вказувала. `--resolve HOST:PORT:ADDR` (як у curl) перевіряє новий сервер ще до перемикання DNS, наприклад `--resolve example.com:443:203.0.113.10`.
 
 ::: warning План
 Деплой усього застосунку разом із лендінгом на Hetzner через Dokploy (`docker-compose-prod.yml`, Traefik, домени, змінні) — фіча `feat-218`. Поки її не зроблено, образ лендінгу розгортається за будь-яким reverse proxy з TLS.
