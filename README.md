@@ -460,8 +460,8 @@ Before deploying, make sure you have:
 
 This template is set up for coordinated multi-developer (and AI agent) work.
 `feature_list.json` on `main` is the single source of truth for who owns which
-feature; per-feature `progress.md` and `session-handoff.md` live on feature
-branches. Read **`AGENTS.md`** for the full startup workflow, Definition of
+feature; per-feature state (`feature-state/<feat-id>/progress.md` and
+`session-handoff.md`) lives on feature branches. Read **`AGENTS.md`** for the full startup workflow, Definition of
 Done, coding style, and testing guidelines before contributing.
 
 ## Troubleshooting

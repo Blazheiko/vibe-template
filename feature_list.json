@@ -11,7 +11,7 @@
             "evidence"
         ],
         "status_values": ["not-started", "in_progress", "blocked", "review", "done"],
-        "notes": "owner = team member or agent name responsible. branch = git branch where progress.md and session-handoff.md for this feature live. Only the owner edits the feature's row; everyone else opens a PR to change it."
+        "notes": "owner = team member or agent name responsible. branch = git branch where feature-state/<feat-id>/ (progress.md and session-handoff.md) for this feature lives. Only the owner edits the feature's row; everyone else opens a PR to change it."
     },
     "features": [
         {
