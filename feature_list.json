@@ -2161,8 +2161,8 @@
             "owner": "Blazheiko",
             "branch": "feat/landing",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #657 (merge 7cde444): packages/landing, a static landing with Log in / Sign up buttons to the app's /login and /register; one rendering path (src/entry-server.ts) prerendered into dist/ (en, uk, pl, 404.html, sitemap, robots; no JavaScript) and rendered per request in dev through an SSR middleware. Address contract in build/urls.ts (LANDING_APP_URL / LANDING_SITE_URL, different origins, strict mode only with LANDING_STRICT=true, RFC 2606 placeholders refused); dist/ checks at the end of every vite build; LANDING_URL repurposed as the landing address and the unused landingUrl backend field removed. Landing in make dev (:5175, api-playground keeps 5174), make prod-local (vite preview :4174 behind PROD_LOCAL_LANDING=true) and the compose app profile (nginx image packages/landing/Dockerfile, 127.0.0.1:LANDING_PORT 8080, /healthz); scripts/verify-landing-deploy.sh; verify-compose checks the landing service; CI e2e runs the landing smoke. Docs: Landing page (uk/en) and the run, make, scripts, configuration, deployment and structure pages. make check passing (backend 2983, frontend 607, api-playground 115, landing 46); landing Playwright 36/36 (Chromium, no JavaScript, mobile); docs:build + docs:verify green; make app-build && make app-up with verify-landing-deploy.sh --allow-local 78/78; dev HMR prototype checked in Chromium (CSS without reload, text reloads the page); golden path from the landing to the app's sign-in and sign-up dialogs. CI on 3e6983c: quality, build, e2e, test-pg, test-redis green; e2e-live failed once in push-account-switch (createVerifiedAccount: verify-email answered 400), unrelated to the change, green on rerun. Not verified: Lighthouse scores; deployment behind an HTTPS proxy (feat-218)."
         },
         {
             "id": "feat-218",
