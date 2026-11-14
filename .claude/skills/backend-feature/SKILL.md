@@ -27,7 +27,7 @@ semicolons, 100 columns.
 ## Step 0: Process (AGENTS.md)
 
 - New work needs a `feat-XXX` row in `feature_list.json` (via PR to `main`) and its own branch with
-  `progress.md`. Don't start on `main`.
+  `feature-state/<feat-id>/progress.md`. Don't start on `main`.
 - A new route / env / migration changes public backend behaviour → update the matching page in
   `documentation/backend/` **and** `documentation/en/backend/` in the same PR.
 
@@ -465,7 +465,7 @@ pnpm format:check
 
 Manual golden path: `db:migrate`, `pnpm dev`, log in and call the routes with curl (cookies, `Origin`
 header, `x-csrf-token` from `GET /api/main/init`) — recipe in the tutorial's Step 10. Record the
-evidence in `progress.md`. If docs changed: `pnpm docs:build && pnpm docs:verify`.
+evidence in `feature-state/<feat-id>/progress.md`. If docs changed: `pnpm docs:build && pnpm docs:verify`.
 
 ## Step 12: WebSocket routes (if requested)
 
@@ -496,7 +496,7 @@ Same chain (ADR 0006, `docs/adr/0006-websocket-contracts.md`): contract → regi
 
 ## Checklist
 
-- [ ] Feature row + branch + `progress.md` (Step 0)
+- [ ] Feature row + branch + `feature-state/<feat-id>/progress.md` (Step 0)
 - [ ] Input schemas (`@arktype/type`, bounded, `'+': 'reject'`) exported from `schemas/index.ts`
 - [ ] Response schemas (`type.or(..., CanonicalErrorResponseSchema)`, allow-list) exported from `responses/index.ts`
 - [ ] Table + generated migration folder (`db:generate --name …`), relations if needed
