@@ -2173,6 +2173,16 @@
             "dependencies": ["feat-217"],
             "status": "not-started",
             "evidence": ""
+        },
+        {
+            "id": "feat-219",
+            "name": "Landing Review Fixes",
+            "description": "Fixes from the review of feat-217 (PR #657): scripts/verify-landing-deploy.sh checks every published address of a page (canonical, hreflang, og:url, og:image, buttons) instead of only those on the landing or app origin; scripts/prod-local.sh waits for the landing preview to be ready and stops the backend and the preview together when either exits; the strict address checks (packages/landing/build/urls.ts and the shell script) drop a trailing DNS dot before comparing hosts, so https://example.com. is refused; the dev middleware renders the 404 page for an unknown .html path as nginx does. Regression tests for each.",
+            "owner": "Blazheiko",
+            "branch": "fix/landing-review",
+            "dependencies": ["feat-217"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
