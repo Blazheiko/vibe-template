@@ -199,7 +199,7 @@ sequenceDiagram
     Note over N: the response schema checks what we return
     N-->>A: 200 JSON
   end
-  A-->>U: ApiResponse&lt;LoginResponse&gt;
+  A-->>U: ApiResponse with the LoginResponse type
 ```
 
 What each side takes from the contract:

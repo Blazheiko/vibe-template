@@ -199,7 +199,7 @@ sequenceDiagram
     Note over N: схема відповіді перевіряє, що ми віддаємо
     N-->>A: 200 JSON
   end
-  A-->>U: ApiResponse&lt;LoginResponse&gt;
+  A-->>U: ApiResponse з типом LoginResponse
 ```
 
 Що кожна сторона бере з контракту:
