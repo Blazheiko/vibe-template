@@ -87,6 +87,150 @@ return Result.ok({ user })
 
 Контролер перевіряє результат і перетворює помилку на правильний HTTP-статус через `mapControllerError`. Так помилки видно в типах: TypeScript не дасть забути, що виклик може не вдатися. Детальніше — [Контролери → Мапінг помилок](/backend/controllers#мапінг-помилок).
 
+## Як описується маршрут
+
+Маршрут — це відповідь на питання «що буде, коли хтось звернеться за цією адресою». У шаблоні він не пишеться одним великим об'єктом, а складається з **трьох невеликих частин**, кожна з яких відповідає за своє. Уявіть ресторан:
+
+| Частина                | Аналогія                                         | Що в ній                                                      | Де лежить                                           |
+| ---------------------- | ------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------- |
+| **Контракт**           | Рядок у меню: назва, що замовляєте, що отримаєте | метод, шлях, тип тіла запиту, тип query, тип відповіді        | `packages/shared/src/contracts/`                    |
+| **Запис реєстру схем** | Перевірка на кухні: чи є всі інгредієнти         | схеми для перевірки тіла, query й відповіді під час виконання | `packages/backend/src/app/routes/contract-schemas/` |
+| **Маршрут**            | Хто готує страву і кого пускають у зал           | контролер-обробник, middleware, rate limit, опис              | `packages/backend/src/app/routes/http-routes.ts`    |
+
+Нове слово тут одне: **контракт** — домовленість між клієнтом і сервером про те, як виглядає звернення і що буде у відповідь. Вона записана один раз, а читають її обидві сторони.
+
+### З чого складається маршрут: логін
+
+Візьмемо `POST /api/auth/login` і подивимось на кожну частину.
+
+**1. Контракт** ([`shared/src/contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts)): метод, шлях і три типи.
+
+```ts
+login: contract<
+    typeof LoginInputSchema.inferIn, // що клієнт надсилає в тілі
+    undefined,                       // query немає
+    LoginResponse                    // що сервер відповідає
+>()('post', '/auth/login'),
+```
+
+Шлях записано без `/api`: префікс додається окремо, одним місцем (`API_PATH_PREFIX`).
+
+**2. Запис реєстру схем** ([`contract-schemas/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/auth.ts)): справжні схеми, якими сервер перевіряє дані.
+
+```ts
+login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
+```
+
+**3. Маршрут** ([`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts)): що саме викликати і з якими обмеженнями.
+
+```ts
+defineRoute({
+    contract: authContracts.login,
+    handler: AuthController.login.bind(AuthController),
+    description: 'Login a user by email or phone identifier',
+    // middlewares: ['auth_guard'],  // так маршрут закривають для незалогінених
+}),
+```
+
+Зверніть увагу, чого в маршруті **немає**: ні URL, ні методу, ні схем. `defineRoute` бере їх з контракту й реєстру сам. Тому їх неможливо записати двічі й розсинхронізувати.
+
+```mermaid
+flowchart LR
+  subgraph shared["packages/shared (спільне)"]
+    C["Контракт<br/>post /auth/login<br/>типи: тіло, відповідь"]
+    S["Схеми arktype<br/>LoginInputSchema"]
+  end
+  subgraph backend["packages/backend"]
+    R["Запис реєстру<br/>body + response схеми"]
+    D["defineRoute<br/>handler, middlewares, rateLimit"]
+    H["Роутер: POST /api/auth/login"]
+  end
+  C --> D
+  S --> R
+  R --> D
+  D --> H
+```
+
+::: tip Навіщо поділ на три частини
+Контракт має бути **легким**: його імпортує браузер, і в нього не повинно потрапити ні схем, ні бібліотеки валідації. Схеми потрібні лише серверу, тому лежать у бекенді. А middleware й ліміти — суто серверна справа, клієнту про них знати не треба.
+:::
+
+## Один контракт — два боки
+
+Найважливіше в цій архітектурі: **і сервер, і фронтенд працюють з тим самим контрактом**. Не «схожим» і не «синхронізованим вручну», а буквально з тим самим файлом.
+
+```mermaid
+flowchart TB
+  K["Контракт authContracts.login<br/>packages/shared/src/contracts/auth.ts"]
+
+  subgraph FE["Фронтенд"]
+    F1["api.ts: callApi(authContracts.login, { body })"]
+    F2["TypeScript перевіряє: тіло має форму LoginInput,<br/>відповідь — LoginResponse"]
+  end
+
+  subgraph BE["Бекенд"]
+    B1["defineRoute({ contract: authContracts.login, handler })"]
+    B2["Ядро бере method і URL з контракту,<br/>перевіряє тіло схемою з реєстру"]
+    B3["login(context: HttpContext&lt;LoginInput&gt;)"]
+  end
+
+  K --> F1 --> F2
+  K --> B1 --> B2 --> B3
+```
+
+Подивіться, що відбувається під час одного виклику з боку фронтенду та бекенду:
+
+```mermaid
+sequenceDiagram
+  participant U as Компонент (Vue)
+  participant A as api.ts / callApi
+  participant N as Ядро бекенду
+  participant C as Контролер
+
+  U->>A: api.login({ identifier, password })
+  Note over A: контракт дає method=post, path=/auth/login<br/>TypeScript перевіряє форму тіла
+  A->>N: POST /api/auth/login + CSRF-токен
+  Note over N: той самий контракт: цей маршрут існує<br/>схема з реєстру перевіряє тіло
+  alt тіло не підходить
+    N-->>A: 422 Validation failed
+  else тіло правильне
+    N->>C: login(context) з типізованим payload
+    C-->>N: LoginResponse
+    Note over N: схема відповіді перевіряє, що ми віддаємо
+    N-->>A: 200 JSON
+  end
+  A-->>U: ApiResponse&lt;LoginResponse&gt;
+```
+
+Що кожна сторона бере з контракту:
+
+| З контракту      | Фронтенд (`callApi`)                    | Бекенд (`defineRoute`)                           |
+| ---------------- | --------------------------------------- | ------------------------------------------------ |
+| метод і шлях     | куди й чим слати запит                  | під якою адресою зареєструвати маршрут           |
+| тип тіла         | що можна передати в `body`              | тип `payload` у контролері, і що перевіряє схема |
+| тип query        | які ключі можна передати в `query`      | тип `query` у контролері                         |
+| `:param` у шляху | обов'язковий `params: { id }`           | `httpData.params`                                |
+| тип відповіді    | тип результату, який повертає `callApi` | що має повернути контролер, і що перевіряє схема |
+
+### Що ловить компілятор
+
+Контракт робить типові помилки **помилками компіляції**, а не багами на проді:
+
+- фронтенд передав у `body` зайве або неправильне поле: `pnpm typecheck` не пройде;
+- забули `params` для шляху з `:id`: не пройде;
+- у `defineRoute` вказали схему тіла іншого маршруту або забули запис у реєстрі: не пройде (а на старті сервер не запуститься);
+- контролер повертає не те, що обіцяє контракт: не пройде;
+- два контракти з тим самим `метод + шлях`: сервер не стартує.
+
+### Як додати новий маршрут: чотири кроки
+
+1. **Схеми й типи відповіді** у `packages/shared` (`schemas/…`, `responses/…`): форма тіла і відповіді.
+2. **Контракт** у `shared/src/contracts/<група>.ts`: `contract<Тіло, Query, Відповідь>()(метод, шлях)`.
+3. **Запис реєстру** у `contract-schemas/<група>.ts`: які схеми перевіряють цей контракт. Компілятор вимагає запис для кожного контракту.
+4. **Маршрут** у `http-routes.ts` через `defineRoute` (контролер, middleware, ліміти) і **виклик на фронтенді** через `callApi(контракт, …)` у `api.ts`.
+
+Повний покроковий приклад із сервісом, репозиторієм і тестами — у розділі [Додавання фічі](/backend/adding-a-feature). Усі правила маршрутизації — у розділі [Маршрутизація](/backend/routing).
+
 ## Звідки беруться типи: єдине джерело істини
 
 У шаблоні типи майже не пишуть вручну. Їх **виводять** з двох описів, кожен з яких — [єдине джерело істини](/reference/glossary#єдине-джерело-істини) для свого контракту:
