@@ -128,9 +128,18 @@ defineRoute({
     contract: authContracts.login,
     handler: AuthController.login.bind(AuthController),
     description: 'Login a user by email or phone identifier',
-    // middlewares: ['auth_guard'],  // this is how a route is closed to anonymous users
+    // Optional fields (not needed here, so commented out):
+    // middlewares: ['auth_guard'],                    // checks before the handler; closes the route to anonymous users
+    // rateLimit: { windowMs: 60_000, maxRequests: 5 }, // request limit per IP for this route
+    // queryAllowExtra: true,                          // extra query keys: drop them instead of a 422
+    // queryArrays: ['tag'],                           // query keys that may repeat (?tag=a&tag=b)
+    // allowedContentTypes: ['json', 'urlencoded'],    // which Content-Types the route accepts (json only by default)
+    // maxBodySize: 1_048_576,                         // own body size limit in bytes
+    // signedInBeforeBody: true,                       // read the body only for a signed-in user (for large uploads)
 }),
 ```
+
+Only `contract` and `handler` are required here; the rest is optional. The full list of fields with explanations is in [Routing](/en/backend/routing#all-route-fields).
 
 Note what the route does **not** contain: no URL, no method, no schemas. `defineRoute` takes them from the contract and the registry. So they cannot be written twice and drift apart.
 

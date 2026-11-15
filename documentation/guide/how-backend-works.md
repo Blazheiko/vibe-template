@@ -128,9 +128,18 @@ defineRoute({
     contract: authContracts.login,
     handler: AuthController.login.bind(AuthController),
     description: 'Login a user by email or phone identifier',
-    // middlewares: ['auth_guard'],  // так маршрут закривають для незалогінених
+    // Необов'язкові поля (тут не потрібні, тому закоментовані):
+    // middlewares: ['auth_guard'],                    // перевірки перед handler; так закривають для незалогінених
+    // rateLimit: { windowMs: 60_000, maxRequests: 5 }, // ліміт запитів з одного IP на цей маршрут
+    // queryAllowExtra: true,                          // зайві ключі query: відкинути без 422
+    // queryArrays: ['tag'],                           // ключі query, що можуть повторюватися (?tag=a&tag=b)
+    // allowedContentTypes: ['json', 'urlencoded'],    // які Content-Type приймає маршрут (типово лише json)
+    // maxBodySize: 1_048_576,                         // свій ліміт розміру тіла в байтах
+    // signedInBeforeBody: true,                       // читати тіло лише для залогіненого (для великих завантажень)
 }),
 ```
+
+Обов'язкові тут лише `contract` і `handler`, решта необов'язкова. Повний список полів з поясненнями — у [Маршрутизації](/backend/routing#усі-поля-маршруту).
 
 Зверніть увагу, чого в маршруті **немає**: ні URL, ні методу, ні схем. `defineRoute` бере їх з контракту й реєстру сам. Тому їх неможливо записати двічі й розсинхронізувати.
 
