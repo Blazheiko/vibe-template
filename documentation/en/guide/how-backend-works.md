@@ -87,6 +87,150 @@ return Result.ok({ user })
 
 The controller checks the result and turns the error into the right HTTP status via `mapControllerError`. This way errors are visible in the types: TypeScript will not let you forget that a call can fail. More in [Controllers → Error mapping](/en/backend/controllers#error-mapping).
 
+## How a route is described
+
+A route answers the question "what happens when someone calls this address". The template does not write it as one big object. It is made of **three small parts**, each responsible for one thing. Think of a restaurant:
+
+| Part                      | Analogy                                                | What is in it                                                  | Where it lives                                      |
+| ------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------- |
+| **Contract**              | A line on the menu: name, what you order, what you get | method, path, request body type, query type, response type     | `packages/shared/src/contracts/`                    |
+| **Schema registry entry** | The kitchen check: are all ingredients present         | schemas that validate the body, query and response at run time | `packages/backend/src/app/routes/contract-schemas/` |
+| **Route**                 | Who cooks the dish and who is let into the dining room | controller handler, middleware, rate limit, description        | `packages/backend/src/app/routes/http-routes.ts`    |
+
+There is one new word: **contract**. It is an agreement between client and server about what a call looks like and what comes back. It is written once, and both sides read it.
+
+### What a route is made of: login
+
+Take `POST /api/auth/login` and look at each part.
+
+**1. The contract** ([`shared/src/contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts)): method, path and three types.
+
+```ts
+login: contract<
+    typeof LoginInputSchema.inferIn, // what the client sends in the body
+    undefined,                       // no query
+    LoginResponse                    // what the server answers
+>()('post', '/auth/login'),
+```
+
+The path is written without `/api`: the prefix is added separately, in one place (`API_PATH_PREFIX`).
+
+**2. The schema registry entry** ([`contract-schemas/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/contract-schemas/auth.ts)): the real schemas the server checks data with.
+
+```ts
+login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
+```
+
+**3. The route** ([`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts)): what to call and with which restrictions.
+
+```ts
+defineRoute({
+    contract: authContracts.login,
+    handler: AuthController.login.bind(AuthController),
+    description: 'Login a user by email or phone identifier',
+    // middlewares: ['auth_guard'],  // this is how a route is closed to anonymous users
+}),
+```
+
+Note what the route does **not** contain: no URL, no method, no schemas. `defineRoute` takes them from the contract and the registry. So they cannot be written twice and drift apart.
+
+```mermaid
+flowchart LR
+  subgraph shared["packages/shared (common)"]
+    C["Contract<br/>post /auth/login<br/>types: body, response"]
+    S["arktype schemas<br/>LoginInputSchema"]
+  end
+  subgraph backend["packages/backend"]
+    R["Registry entry<br/>body + response schemas"]
+    D["defineRoute<br/>handler, middlewares, rateLimit"]
+    H["Router: POST /api/auth/login"]
+  end
+  C --> D
+  S --> R
+  R --> D
+  D --> H
+```
+
+::: tip Why three parts
+The contract has to be **light**: the browser imports it, so no schemas or validation library may come with it. Schemas are needed only by the server, so they live in the backend. Middleware and limits are purely server business; the client does not need to know about them.
+:::
+
+## One contract, two sides
+
+The most important idea of this architecture: **both the server and the frontend work with the same contract**. Not a "similar" one and not one synced by hand, but literally the same file.
+
+```mermaid
+flowchart TB
+  K["Contract authContracts.login<br/>packages/shared/src/contracts/auth.ts"]
+
+  subgraph FE["Frontend"]
+    F1["api.ts: callApi(authContracts.login, { body })"]
+    F2["TypeScript checks: the body has the LoginInput shape,<br/>the answer is LoginResponse"]
+  end
+
+  subgraph BE["Backend"]
+    B1["defineRoute({ contract: authContracts.login, handler })"]
+    B2["The core takes method and URL from the contract,<br/>validates the body with the registry schema"]
+    B3["login(context: HttpContext&lt;LoginInput&gt;)"]
+  end
+
+  K --> F1 --> F2
+  K --> B1 --> B2 --> B3
+```
+
+Here is what happens during one call, on the frontend and the backend:
+
+```mermaid
+sequenceDiagram
+  participant U as Component (Vue)
+  participant A as api.ts / callApi
+  participant N as Backend core
+  participant C as Controller
+
+  U->>A: api.login({ identifier, password })
+  Note over A: the contract gives method=post, path=/auth/login<br/>TypeScript checks the body shape
+  A->>N: POST /api/auth/login + CSRF token
+  Note over N: the same contract: this route exists<br/>the registry schema validates the body
+  alt body is invalid
+    N-->>A: 422 Validation failed
+  else body is valid
+    N->>C: login(context) with a typed payload
+    C-->>N: LoginResponse
+    Note over N: the response schema checks what we return
+    N-->>A: 200 JSON
+  end
+  A-->>U: ApiResponse&lt;LoginResponse&gt;
+```
+
+What each side takes from the contract:
+
+| From the contract | Frontend (`callApi`)                | Backend (`defineRoute`)                              |
+| ----------------- | ----------------------------------- | ---------------------------------------------------- |
+| method and path   | where and how to send the request   | the address to register the route under              |
+| body type         | what may be passed as `body`        | the `payload` type in the controller, and the schema |
+| query type        | which keys may be passed as `query` | the `query` type in the controller                   |
+| `:param` in path  | a required `params: { id }`         | `httpData.params`                                    |
+| response type     | the type `callApi` returns          | what the controller must return, and the schema      |
+
+### What the compiler catches
+
+The contract turns typical mistakes into **compile errors** instead of production bugs:
+
+- the frontend passes an extra or wrong field in `body`: `pnpm typecheck` fails;
+- `params` forgotten for a path with `:id`: fails;
+- `defineRoute` is given the body schema of another route, or the registry entry is missing: fails (and the server does not start);
+- the controller returns something other than the contract promises: fails;
+- two contracts with the same `method + path`: the server does not start.
+
+### How to add a new route: four steps
+
+1. **Schemas and response types** in `packages/shared` (`schemas/…`, `responses/…`): the shape of the body and the response.
+2. **The contract** in `shared/src/contracts/<group>.ts`: `contract<Body, Query, Response>()(method, path)`.
+3. **The registry entry** in `contract-schemas/<group>.ts`: which schemas check this contract. The compiler requires an entry for every contract.
+4. **The route** in `http-routes.ts` through `defineRoute` (controller, middleware, limits) and **the call on the frontend** through `callApi(contract, …)` in `api.ts`.
+
+A full step-by-step example with a service, a repository and tests is in [Adding a feature](/en/backend/adding-a-feature). All routing rules are in [Routing](/en/backend/routing).
+
 ## Where types come from: a single source of truth
 
 The template almost never has types written by hand. They are **derived** from two descriptions, each of which is a [single source of truth](/en/reference/glossary#single-source-of-truth) for its contract:
