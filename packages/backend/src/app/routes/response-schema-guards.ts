@@ -2,7 +2,7 @@ import type { BaseType } from '@arktype/type'
 
 // Walks the JSON form of an ArkType schema and returns the paths whose content the
 // schema does not describe (`unknown` → `{}`, `unknown[]` → `"Array"`): an allow-list
-// cannot filter them (docs/plan/strip-response-fields-plan.md §4.5).
+// cannot filter them (docs/plan/archive/strip-response-fields-plan.md §4.5).
 type Node = unknown
 
 const isRecord = (value: Node): value is Record<string, Node> =>

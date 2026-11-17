@@ -1,8 +1,8 @@
 # Task list: контракти WebSocket (ADR 0006)
 
-**Статус: виконано 2026-11-12** (W1 #548, W2 #550, W3 #552). У W3.2 окремого `onBroadcast` немає: типізованою підпискою є `useEventBus().on`. Рішення Д-WS1…Д-WS3 прийнято 2026-11-11 — рекомендовані варіанти ([ADR 0006](../adr/0006-websocket-contracts.md#рішення-власника-2026-11-11)).
+**Статус: виконано 2026-11-12** (W1 #548, W2 #550, W3 #552). У W3.2 окремого `onBroadcast` немає: типізованою підпискою є `useEventBus().on`. Рішення Д-WS1…Д-WS3 прийнято 2026-11-11 — рекомендовані варіанти ([ADR 0006](../../adr/0006-websocket-contracts.md#рішення-власника-2026-11-11)).
 
-Фічі: W1 `feat-180`, W2 `feat-181`, W3 `feat-182`. Порядок — W1 → W2 → W3. Шаблони S / D / E / X — як у [code-review-2026-11-10-tasks.md](./code-review-2026-11-10-tasks.md): S — статус-PR і гілка, D — документація в обох мовах, E — повний набір перевірок і evidence, X — PR зі статусом `done`.
+Фічі: W1 `feat-180`, W2 `feat-181`, W3 `feat-182`. Порядок — W1 → W2 → W3. Шаблони S / D / E / X — як у [code-review-2026-11-10-tasks.md](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/code-review-2026-11-10-tasks.md): S — статус-PR і гілка, D — документація в обох мовах, E — повний набір перевірок і evidence, X — PR зі статусом `done`.
 
 ## W1 WS Request Correlation · e2e · live
 

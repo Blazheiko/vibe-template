@@ -191,4 +191,4 @@ docker logs <container> | jq 'select(.level >= 50)'
 docker logs <container> | jq 'select(.requestId == "<uuid>")'
 ```
 
-**Checking Sentry.** Set `SENTRY_DSN` and restart the backend, then call in code (for example, temporarily in a handler of a local route) `logger.error({ err: new Error('sentry test') }, 'sentry test')` — an `error`-level record goes to Sentry. There is no dedicated test route: the dead `MainController.testSentryError` was removed (item 27 in [code-issues-found-during-docs.md](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)).
+**Checking Sentry.** Set `SENTRY_DSN` and restart the backend, then call in code (for example, temporarily in a handler of a local route) `logger.error({ err: new Error('sentry test') }, 'sentry test')` — an `error`-level record goes to Sentry. There is no dedicated test route: the dead `MainController.testSentryError` was removed (item 27 in [code-issues-found-during-docs.md](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/code-issues-found-during-docs.md)).

@@ -215,7 +215,7 @@ cross-site redirect відхилено, same-site і без заголовка �
   уточнити під час реалізації й описати в документації поруч з оцінкою пам'яті.
 - Перевірити неперевірене у звіті: як довго uWS тримає зупинене з'єднання; за потреби — тайм-аут
   читання тіла.
-- Оновити `docs/plan/http-body-limits-plan.md:59` (застереження стає закритим) і
+- Оновити `docs/plan/archive/http-body-limits-plan.md:59` (застереження стає закритим) і
   `documentation/backend/` (env, ліміти), uk + en.
 
 Приймання: transport-тест — N завислих POST з одного IP, наступний отримує 429, з іншого IP —
@@ -292,7 +292,7 @@ cookie → 401, і `readData` не викликано; 11-те завантаж�
   описаний як локальний.
 - I-4: записати як прийняте в `docs/plan/dependency-upgrade-plan.md` (закріплено за SHA коміту;
   pnpm не зберігає integrity для tarball з codeload).
-- Оновити `docs/plan/docker-hardening-plan.md`.
+- Оновити `docs/plan/archive/docker-hardening-plan.md`.
 
 Приймання: `docker build` проходить, контейнер стартує і відповідає на `/api/ready`; `pnpm install`
 з нуля проходить без попереджень про заблоковані скрипти, що потрібні збірці; `make check` зелений.

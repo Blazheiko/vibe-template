@@ -190,5 +190,5 @@ sequenceDiagram
 Про сесії, CSRF і автентифікацію — див. [Автентифікація](/backend/auth) і [Безпека](/backend/security).
 
 ::: info Поза рамками
-Ліміти тіла задаються за типом тіла, маршрут може лише звузити їх опцією `maxBodySize` (див. [вище](#тіло-запиту-типи-і-ліміти)); WS-ліміт (`maxPayloadLength`, 1 MB) не налаштовується через env. Історія рішень — [початковий план](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/http-body-limits-original-plan.md) і [план feat-008](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/http-body-limits-plan.md). Тіло `PATCH` читається; `DELETE` тіло свідомо не читає (див. [Роутинг → Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)).
+Ліміти тіла задаються за типом тіла, маршрут може лише звузити їх опцією `maxBodySize` (див. [вище](#тіло-запиту-типи-і-ліміти)); WS-ліміт (`maxPayloadLength`, 1 MB) не налаштовується через env. Історія рішень — [початковий план](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/http-body-limits-original-plan.md) і [план feat-008](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/http-body-limits-plan.md). Тіло `PATCH` читається; `DELETE` тіло свідомо не читає (див. [Роутинг → Методи і тіло запиту](/backend/routing#методи-і-тіло-запиту)).
 :::

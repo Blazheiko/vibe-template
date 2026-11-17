@@ -230,7 +230,7 @@ When `SERVE_STATIC=false`, HTML is served by the reverse proxy or a CDN, and the
 
 ## Account pre-hijacking
 
-An attacker can create an account with the victim's address in advance (with a password, through a provider that does not verify the address, with their own phone) and wait until the victim arrives through OAuth or confirms an email they did not request. The protection rests on one rule: an address is considered proven only by proof of mailbox ownership, and the first such proof on an unverified account takes away from the previous owner everything they configured ([plan](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/oauth-pre-hijack-plan.md)).
+An attacker can create an account with the victim's address in advance (with a password, through a provider that does not verify the address, with their own phone) and wait until the victim arrives through OAuth or confirms an email they did not request. The protection rests on one rule: an address is considered proven only by proof of mailbox ownership, and the first such proof on an unverified account takes away from the previous owner everything they configured ([plan](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/oauth-pre-hijack-plan.md)).
 
 | Proof                                       | Who must click                                              | Guarantee                                                                            |
 | ------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------ |

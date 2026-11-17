@@ -5,7 +5,7 @@ import type { ResponseValidationMode } from '#config/response-validation.js'
 import logger from '#vendor/utils/logger.js'
 
 // Runtime check of a handler result against the route ResponseSchema
-// (docs/plan/strip-response-fields-plan.md §4.3). It checks the object the handler
+// (docs/plan/archive/strip-response-fields-plan.md §4.3). It checks the object the handler
 // returned, before JSON serialization:
 //  1. `reject` passes and inspectPayload finds nothing → the original object, no copy;
 //  2. any error other than an undeclared key, a non-plain object or a non-finite number

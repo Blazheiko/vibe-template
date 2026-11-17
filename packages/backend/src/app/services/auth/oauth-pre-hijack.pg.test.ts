@@ -8,7 +8,7 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 
 // feat-097: account pre-hijacking through OAuth, against a real PostgreSQL. The paths are
-// those of docs/plan/oauth-pre-hijack-plan.md («Шляхи атаки»): an attacker prepares an
+// those of docs/plan/archive/oauth-pre-hijack-plan.md («Шляхи атаки»): an attacker prepares an
 // account with the victim's address; after the fix, every way of keeping access to it ends
 // when the owner proves the mailbox. Providers, mail, push and Redis are stubbed.
 

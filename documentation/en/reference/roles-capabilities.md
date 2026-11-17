@@ -36,7 +36,7 @@ Marks: "Yes", "No", "—" (not applicable). The `session_web` and `csrf_guard` m
 | DB migrations, configuration, deployment | No        | No   | No    | Not HTTP capabilities: CLI scripts (`db:*`, see [Scripts](/en/reference/scripts)) and `.env`. Access is determined by access to the server/repository (Developer/QA locally, Operator in production)                                                                                                                                                      |
 
 ::: info Removed route `POST /main/save-user`
-The `main` group used to have an anonymous route `/main/save-user` that created a user with an unhashed password (item 65 in the [issues list](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)). It was removed together with the `SaveUserInput`/`SaveUserResponse` schemas, `WSSaveUserPayload` and the client `api.saveUser`. Users are created only through registration (email or phone) and OAuth — see [Authentication](/en/backend/auth#sign-in-methods) and [Social login](/en/backend/oauth).
+The `main` group used to have an anonymous route `/main/save-user` that created a user with an unhashed password (item 65 in the [issues list](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/code-issues-found-during-docs.md)). It was removed together with the `SaveUserInput`/`SaveUserResponse` schemas, `WSSaveUserPayload` and the client `api.saveUser`. Users are created only through registration (email or phone) and OAuth — see [Authentication](/en/backend/auth#sign-in-methods) and [Social login](/en/backend/oauth).
 :::
 
 ::: warning Not confirmed

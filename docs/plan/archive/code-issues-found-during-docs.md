@@ -36,7 +36,7 @@
 | feat-035 | 68             |
 | feat-038 | 71, 72, 73     |
 
-Усі 49 пунктів плану закрито. П. 55 — **відкладено** (рішення Р3: тестовий застосунок, промпти поки не очищаються). Пункти 71–73, знайдені під час виконання плану, закрито у feat-038. План закриття: [`open-issues-roadmap.md`](./open-issues-roadmap.md), task list: [`open-issues-tasks.md`](./open-issues-tasks.md).
+Усі 49 пунктів плану закрито. П. 55 — **відкладено** (рішення Р3: тестовий застосунок, промпти поки не очищаються). Пункти 71–73, знайдені під час виконання плану, закрито у feat-038. План закриття: [`open-issues-roadmap.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-roadmap.md), task list: [`open-issues-tasks.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-tasks.md).
 
 Шляхи відносно `packages/backend/`, якщо не вказано інше.
 
@@ -122,7 +122,7 @@
 
 ### 1. CSP ніде не застосовується
 
-> **Виправлено** у feat-005 (гілка `feat/security-hardening`) за планом [`csp-fix-plan.md`](./csp-fix-plan.md).
+> **Виправлено** у feat-005 (гілка `feat/security-hardening`) за планом [`csp-fix-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/csp-fix-plan.md).
 
 - **Що:** конфіг `src/config/csp.ts` ніхто не імпортує. Код встановлення CSP у `src/vendor/start/static-server.ts` закоментовано. `setSecurityHeaders` у `src/vendor/start/server.ts` додає `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy` і HSTS, але `Content-Security-Policy` не додає.
 - **Наслідок:** жодна відповідь (API, статика, HTML) не має CSP. Це finding M-5 зі `SECURITY_ANALYSIS.md`, закритий лише частково.
@@ -130,7 +130,7 @@
 
 ### 2. Немає rate limit на WebSocket upgrade і глобального per-IP ліміту
 
-> **Виправлено** у feat-005 (гілка `feat/security-hardening`) за планом [`ws-upgrade-rate-limit-plan.md`](./ws-upgrade-rate-limit-plan.md): L1 per-IP для HTTP API, окремий ліміт upgrade, лічильник з обмеженою пам'яттю. Підзадачу для кількох інстансів закрито у feat-013 за планом [`redis-rate-limit-plan.md`](./redis-rate-limit-plan.md): HTTP і WS-повідомлення свідомо лишаються в пам'яті (захист процесу), WS upgrade отримав другий рівень у Redis, а чутливі auth-дії (зокрема вхід, зміна й скидання пароля) обмежує спільний реєстр `config/throttle-policies.ts`. Поки що замість нього рекомендовано edge-ліміт у nginx, його описано в `deployment.md`.
+> **Виправлено** у feat-005 (гілка `feat/security-hardening`) за планом [`ws-upgrade-rate-limit-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ws-upgrade-rate-limit-plan.md): L1 per-IP для HTTP API, окремий ліміт upgrade, лічильник з обмеженою пам'яттю. Підзадачу для кількох інстансів закрито у feat-013 за планом [`redis-rate-limit-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/redis-rate-limit-plan.md): HTTP і WS-повідомлення свідомо лишаються в пам'яті (захист процесу), WS upgrade отримав другий рівень у Redis, а чутливі auth-дії (зокрема вхід, зміна й скидання пароля) обмежує спільний реєстр `config/throttle-policies.ts`. Поки що замість нього рекомендовано edge-ліміт у nginx, його описано в `deployment.md`.
 
 - **Що:** rate limiting є лише per-route для HTTP (`src/vendor/utils/rate-limit/*`), перевірка виконується до читання body. Upgrade-запит WebSocket ліміту не має. Глобального L1-ліміту за IP також немає. Лічильник зберігається в пам'яті процесу, а не в Redis.
 - **Наслідок:** при кількох інстансах ліміт не спільний. Upgrade можна флудити. Це залишок finding C-2.
@@ -197,7 +197,7 @@
 
 ### 10. `db:seed` — порожня заглушка
 
-> **Виправлено** у feat-007 (гілка `feat/db-dx`) за планом [`db-seed-plan.md`](./db-seed-plan.md): `db:seed` ідемпотентно вставляє три промпти `llm_system_prompts` (тексти — ті самі runtime-fallback з `config/support.ts`), а з `--demo` — адміна і, опційно, звичайного користувача з `SEED_*`. Додано `db:seed:prod`.
+> **Виправлено** у feat-007 (гілка `feat/db-dx`) за планом [`db-seed-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/db-seed-plan.md): `db:seed` ідемпотентно вставляє три промпти `llm_system_prompts` (тексти — ті самі runtime-fallback з `config/support.ts`), а з `--demo` — адміна і, опційно, звичайного користувача з `SEED_*`. Додано `db:seed:prod`.
 
 - **Що:** `src/db/seed.ts` містить лише `import "dotenv/config"`. Команда виконується успішно, але нічого не робить.
 - **Пропозиція:** додати мінімальні seed-дані (тестовий користувач/адмін) або прибрати скрипт.
@@ -215,7 +215,7 @@
 
 ### 12. Тіло запиту читається лише для `post`/`put`
 
-> **Виправлено** у feat-008 (гілка `feat/http-body-fixes`) за планом [`http-body-methods-plan.md`](./http-body-methods-plan.md): `patch` читає й валідує тіло; `validator` на `get`/`delete`/`del` заборонено типами `defineRoute` і перевіркою в `routesHandler`; маршрут з `validator` без `Content-Type` дає 422 (порожнє тіло валідується як `{}`) або 415 (є framing тіла) замість 500. Контракт `octet`-маршрутів з `validator` лишається відкритим.
+> **Виправлено** у feat-008 (гілка `feat/http-body-fixes`) за планом [`http-body-methods-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/http-body-methods-plan.md): `patch` читає й валідує тіло; `validator` на `get`/`delete`/`del` заборонено типами `defineRoute` і перевіркою в `routesHandler`; маршрут з `validator` без `Content-Type` дає 422 (порожнє тіло валідується як `{}`) або 415 (є framing тіла) замість 500. Контракт `octet`-маршрутів з `validator` лишається відкритим.
 
 - **Що:** у `src/vendor/start/server.ts` `hasBody` істинний лише для `post` і `put`. Body `PATCH` і `DELETE` ніколи не читається.
 - **Наслідок:** зараз `patch`-маршрутів немає, але новий `patch`-маршрут мовчки отримає порожній payload.
@@ -223,7 +223,7 @@
 
 ### 13. `sendResponse` при `payload === null`
 
-> **Виправлено** у feat-008 (гілка `feat/http-body-fixes`) за планом [`http-null-payload-plan.md`](./http-null-payload-plan.md): порожній payload (`null`/`undefined`) у 200 дає 204, в іншому 2xx — той самий статус без тіла; 204/205/3xx завжди без тіла й без `Content-Type` (зокрема з `responseData.headers`); у 4xx/5xx — канонічне тіло помилки з `code` зі спільного `ErrorCode`.
+> **Виправлено** у feat-008 (гілка `feat/http-body-fixes`) за планом [`http-null-payload-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/http-null-payload-plan.md): порожній payload (`null`/`undefined`) у 200 дає 204, в іншому 2xx — той самий статус без тіла; 204/205/3xx завжди без тіла й без `Content-Type` (зокрема з `responseData.headers`); у 4xx/5xx — канонічне тіло помилки з `code` зі спільного `ErrorCode`.
 
 - **Що:** якщо `payload` дорівнює `null`, тілом відповіді стає `String(status)`, хоча `Content-Type: application/json`.
 - **Пропозиція:** віддавати `null` або порожнє тіло зі статусом 204.
@@ -243,7 +243,7 @@
 
 ### 15. Застарілі внутрішні документи
 
-> **Виправлено** у feat-009 (гілка `feat/internal-docs-cleanup`) за планом [`internal-docs-cleanup-plan.md`](./internal-docs-cleanup-plan.md). Таблиця нижче — стан на момент аудиту; уточнення: у `SECURITY_ANALYSIS.md` закрито всі 15 findings (простежування — [`docs/security/security-analysis-status.md`](../security/security-analysis-status.md)), а кореневий README уже мав `documentation/`. Скрипт `test` для `api-playground` свідомо не додано: тестів у пакеті немає.
+> **Виправлено** у feat-009 (гілка `feat/internal-docs-cleanup`) за планом [`internal-docs-cleanup-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/internal-docs-cleanup-plan.md). Таблиця нижче — стан на момент аудиту; уточнення: у `SECURITY_ANALYSIS.md` закрито всі 15 findings (простежування — [`docs/security/security-analysis-status.md`](../../security/security-analysis-status.md)), а кореневий README уже мав `documentation/`. Скрипт `test` для `api-playground` свідомо не додано: тестів у пакеті немає.
 
 | Документ                                 | Стан                                                                                                     |
 | ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -295,14 +295,14 @@
 
 ### 20. Сервіси push-нотифікацій звертаються до БД напряму
 
-> **Виправлено** у feat-022 (гілка `feat/push-data-access`) за планом [`push-data-access-plan.md`](./push-data-access-plan.md): новий `push-notification-log-repository.ts` (`insertMany`, `countsBySubscription`, `latestBySubscriptionIds`) у barrel; `push-notification-sender-service.ts` і `push-subscription-statistics-service.ts` не імпортують `#database/*`.
+> **Виправлено** у feat-022 (гілка `feat/push-data-access`) за планом [`push-data-access-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/push-data-access-plan.md): новий `push-notification-log-repository.ts` (`insertMany`, `countsBySubscription`, `latestBySubscriptionIds`) у barrel; `push-notification-sender-service.ts` і `push-subscription-statistics-service.ts` не імпортують `#database/*`.
 
 - **Що:** `src/app/services/notifications/push-notification-sender-service.ts` імпортує `db` і робить `db.insert(pushNotificationLogs)`; `src/app/services/statistics/push-subscription-statistics-service.ts` робить `db.select` по `pushNotificationLogs`. Обидва оминають репозиторій.
 - **Пропозиція:** винести запити в `push-subscription-repository` (або окремий `push-notification-log-repository`).
 
 ### 21. N+1 у `findByUserIdWithLogs` і статистика в JS
 
-> **Виправлено** у feat-022 (гілка `feat/push-data-access`) за планом [`push-data-access-plan.md`](./push-data-access-plan.md): `findByUserIdWithLogs` — 2 запити (підписки + логи через `row_number() over (partition by subscription_id …) <= 5`), 1 запит для користувача без підписок; статистика — один запит з `count(case …)`, межа 7 днів передається з годинника застосунку. pg-тест порівнює результат з дослівною копією старої реалізації.
+> **Виправлено** у feat-022 (гілка `feat/push-data-access`) за планом [`push-data-access-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/push-data-access-plan.md): `findByUserIdWithLogs` — 2 запити (підписки + логи через `row_number() over (partition by subscription_id …) <= 5`), 1 запит для користувача без підписок; статистика — один запит з `count(case …)`, межа 7 днів передається з годинника застосунку. pg-тест порівнює результат з дослівною копією старої реалізації.
 
 - **Що:** `src/app/repositories/notifications/push-subscription-repository.ts` → `findByUserIdWithLogs` робить окремий запит логів на кожну підписку (`subscriptionsData.map(async …)`). Сервіс статистики завантажує всі логи і рахує агрегати в JavaScript.
 - **Пропозиція:** один запит з `inArray`/join; агрегати через `count()`/`group by` у SQL.
@@ -317,7 +317,7 @@
 
 ### 23. `prompt-controller` сам викликає OpenAI і кидає `Error`
 
-> **Виправлено** у feat-027 (гілка `feat/ai-reliability`) за планом [`ai-reliability-plan.md`](./ai-reliability-plan.md): `promptTestService.run` через `textAdapter`, без власного `fetch` і fallback на сирий OpenAI; нові `AppError` `UpstreamError` → `502 upstream_error` і `UpstreamTimeout` → `504 upstream_timeout` (коди в `shared` `ErrorCode`), не налаштований провайдер → `503`. Текст провайдера лише в лозі.
+> **Виправлено** у feat-027 (гілка `feat/ai-reliability`) за планом [`ai-reliability-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-reliability-plan.md): `promptTestService.run` через `textAdapter`, без власного `fetch` і fallback на сирий OpenAI; нові `AppError` `UpstreamError` → `502 upstream_error` і `UpstreamTimeout` → `504 upstream_timeout` (коди в `shared` `ErrorCode`), не налаштований провайдер → `503`. Текст провайдера лише в лозі.
 
 - **Що:** `src/app/controllers/http/ai/prompt-controller.ts` робить `fetch` до OpenAI і кидає `throw new Error(...)` замість `AppError`/`Result` через сервіс. Помилки провайдера йдуть клієнту як `500`.
 - **Пропозиція:** винести в AI-сервіс (є `textAdapter`), повертати доменні помилки.
@@ -390,7 +390,7 @@
 
 ### 32. `corsS3.xml`: `AllowedOrigin *` разом з `PUT`
 
-> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](./storage-hardening-plan.md): лише `GET`/`HEAD` з placeholder-origin застосунку, `MaxAgeSeconds`; приклад для кількох оточень — `corsS3.prod.example.xml`.
+> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/storage-hardening-plan.md): лише `GET`/`HEAD` з placeholder-origin застосунку, `MaxAgeSeconds`; приклад для кількох оточень — `corsS3.prod.example.xml`.
 
 - **Що:** CORS-конфіг бакета дозволяє будь-яке джерело для `GET`/`POST`/`PUT`.
 - **Пропозиція:** обмежити `AllowedOrigin` доменами застосунку; для продакшну тримати окремий файл.
@@ -399,21 +399,21 @@
 
 ### 33. `handleError` логує без `requestId`, контекст без `userId`
 
-> **Виправлено** у feat-030 (гілка `feat/observability`) за планом [`observability-plan.md`](./observability-plan.md): `requestId` генерується на першому кроці обробки запиту (раніше — у контексті після читання тіла, тож 413/415/422 його не мали взагалі); `handleError` пише через `logger.child({ requestId, userId, route, method })`; `userId` читається в момент помилки (раніше брався до `session_web` і завжди був `undefined`); `session_web` додає `userId` у логер запиту, WS-логер — з даних з'єднання.
+> **Виправлено** у feat-030 (гілка `feat/observability`) за планом [`observability-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/observability-plan.md): `requestId` генерується на першому кроці обробки запиту (раніше — у контексті після читання тіла, тож 413/415/422 його не мали взагалі); `handleError` пише через `logger.child({ requestId, userId, route, method })`; `userId` читається в момент помилки (раніше брався до `session_web` і завжди був `undefined`); `session_web` додає `userId` у логер запиту, WS-логер — з даних з'єднання.
 
 - **Що:** `handleError` у `src/vendor/start/server.ts` пише через глобальний `logger`, а не через дочірній logger запиту. Тому warn-записи (413/415/422) не мають `requestId`. Дочірні логери в `src/vendor/utils/context/http-context.ts` і `ws-context.ts` отримують лише `requestId`, без `userId`.
 - **Пропозиція:** передавати request logger у `handleError`; додати `userId` (коли відомий) у child-контекст.
 
 ### 34. Рівень логування не налаштовується
 
-> **Виправлено** у feat-030 (гілка `feat/observability`) за планом [`observability-plan.md`](./observability-plan.md): `LOG_LEVEL` (`config/logging.ts`, default `info`), невалідне значення зупиняє старт.
+> **Виправлено** у feat-030 (гілка `feat/observability`) за планом [`observability-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/observability-plan.md): `LOG_LEVEL` (`config/logging.ts`, default `info`), невалідне значення зупиняє старт.
 
 - **Що:** `src/vendor/utils/logger.ts` створює pino без `level` (діє default `info`), змінної `LOG_LEVEL` немає. Увімкнути `debug` без зміни коду неможливо.
 - **Пропозиція:** `level: env.LOG_LEVEL ?? 'info'` і документування в `.env.example`.
 
 ### 35. Немає readiness-перевірки
 
-> **Виправлено** у feat-030 (гілка `feat/observability`) за планом [`observability-plan.md`](./observability-plan.md): `GET /<prefix>/ready`: `SELECT 1` + Redis `PING` з таймаутом `READINESS_CHECK_TIMEOUT_MS`, `200 ok` / `503 unavailable` без деталей; `HEALTHCHECK` образу — на `/api/ready`. Заодно виправлено падіння процесу при обриві з'єднання з PostgreSQL: `pg.Pool` `error` без обробника ставав `uncaughtException`.
+> **Виправлено** у feat-030 (гілка `feat/observability`) за планом [`observability-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/observability-plan.md): `GET /<prefix>/ready`: `SELECT 1` + Redis `PING` з таймаутом `READINESS_CHECK_TIMEOUT_MS`, `200 ok` / `503 unavailable` без деталей; `HEALTHCHECK` образу — на `/api/ready`. Заодно виправлено падіння процесу при обриві з'єднання з PostgreSQL: `pg.Pool` `error` без обробника ставав `uncaughtException`.
 
 - **Що:** `GET /api/ping` повертає статичний `{status:"ok"}` (liveness) і не перевіряє PostgreSQL, Redis, S3 чи SMTP. Окремого readiness-маршруту немає.
 - **Наслідок:** оркестратор/балансувальник спрямує трафік на інстанс без доступу до БД чи Redis.
@@ -425,21 +425,21 @@
 
 ### 36. Немає CI для тестів застосунку і coverage
 
-> **Виправлено** у feat-018 (гілка `feat/app-ci`) за планом [`app-ci-plan.md`](./app-ci-plan.md): `.github/workflows/ci.yml` на кожен PR і push у `main` — job `quality` (`format:check`, `typecheck`, `lint`, `test`, coverage як artifact) і `e2e` (усі 4 проєкти Playwright). `@vitest/coverage-v8` і `test:coverage` у backend і frontend, без порогу. Redis-тести лишаються в `redis-tests.yml`.
+> **Виправлено** у feat-018 (гілка `feat/app-ci`) за планом [`app-ci-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/app-ci-plan.md): `.github/workflows/ci.yml` на кожен PR і push у `main` — job `quality` (`format:check`, `typecheck`, `lint`, `test`, coverage як artifact) і `e2e` (усі 4 проєкти Playwright). `@vitest/coverage-v8` і `test:coverage` у backend і frontend, без порогу. Redis-тести лишаються в `redis-tests.yml`.
 
 - **Що:** єдиний workflow — `.github/workflows/docs.yml`, і він тестує лише пакет `documentation`. Backend-, frontend- і shared-тести, typecheck та lint в CI не запускаються, лише локально через `./init.sh`. Coverage-інструментів чи скриптів немає в жодному пакеті.
 - **Пропозиція:** workflow `ci.yml` на PR (`pnpm typecheck`, `pnpm lint`, `pnpm test`, за потреби e2e); `@vitest/coverage-v8` зі звітом.
 
 ### 37. `vitest.config.ts` без `testTimeout`
 
-> **Виправлено** у feat-018 (гілка `feat/app-ci`) за планом [`app-ci-plan.md`](./app-ci-plan.md): `testTimeout: 15_000` у backend; `maxWorkers` з `VITEST_MAX_WORKERS` (у CI — 2).
+> **Виправлено** у feat-018 (гілка `feat/app-ci`) за планом [`app-ci-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/app-ci-plan.md): `testTimeout: 15_000` у backend; `maxWorkers` з `VITEST_MAX_WORKERS` (у CI — 2).
 
 - **Що:** `packages/backend/vitest.config.ts` не задає `testTimeout`, тож діє default 5 с. Під час feat-003 7 з 268 тестів один раз впали з таймаутом при паралельному навантаженні (typecheck + lint). При повторних прогонах — 268/268.
 - **Пропозиція:** явний `testTimeout` і/або обмеження `poolOptions` для CI.
 
 ### 38. Playwright `webServer` використовує `npm`
 
-> **Виправлено** у feat-018 (гілка `feat/app-ci`) за планом [`app-ci-plan.md`](./app-ci-plan.md): `pnpm run dev` / `pnpm run preview`; заодно `pnpm run build-sw` у скрипті `build` фронтенду.
+> **Виправлено** у feat-018 (гілка `feat/app-ci`) за планом [`app-ci-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/app-ci-plan.md): `pnpm run dev` / `pnpm run preview`; заодно `pnpm run build-sw` у скрипті `build` фронтенду.
 
 - **Що:** `packages/frontend/playwright.config.ts` запускає `npm run dev` / `npm run preview`, хоча репозиторій — pnpm-workspace.
 - **Пропозиція:** `pnpm dev` / `pnpm preview`.
@@ -448,7 +448,7 @@
 
 ### 39. Річний `immutable` для всіх не-HTML файлів
 
-> **Виправлено** у feat-031 (гілка `feat/static-caching`) за планом [`static-caching-plan.md`](./static-caching-plan.md): `immutable` лише для `/assets/*`, решта — `no-cache` з ETag (`manifest.json`, `service-worker.js`, іконки, аудіо).
+> **Виправлено** у feat-031 (гілка `feat/static-caching`) за планом [`static-caching-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/static-caching-plan.md): `immutable` лише для `/assets/*`, решта — `no-cache` з ETag (`manifest.json`, `service-worker.js`, іконки, аудіо).
 
 - **Що:** `src/vendor/start/static-server.ts` віддає `public, max-age=31536000, immutable` для кожного не-HTML файлу, а не лише для хешованих `/assets/*`. Під нього потрапляють `manifest.json`, `favicon.svg`, `/icons/*`, `/audio/*` і `service-worker.js` (збирається з фіксованим ім'ям у `packages/frontend/vite.sw.config.ts`).
 - **Наслідок:** зміни в цих файлах без зміни імені клієнти можуть не бачити до року. Скрипт SW браузер перевіряє в обхід HTTP-кешу, але маніфест, іконки й аудіо — ні.
@@ -456,14 +456,14 @@
 
 ### 40. `If-None-Match` порівнюється як точний рядок
 
-> **Виправлено** у feat-031 (гілка `feat/static-caching`) за планом [`static-caching-plan.md`](./static-caching-plan.md): `matchesIfNoneMatch` за RFC 9110: `*`, списки, слабке порівняння `W/`.
+> **Виправлено** у feat-031 (гілка `feat/static-caching`) за планом [`static-caching-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/static-caching-plan.md): `matchesIfNoneMatch` за RFC 9110: `*`, списки, слабке порівняння `W/`.
 
 - **Що:** у `static-server.ts` перевірка `ifNoneMatch === etag`. Списки ETag, `*` і слабкі `W/"…"` не обробляються.
 - **Пропозиція:** розбирати заголовок за RFC 9110.
 
 ### 41. Статика повністю в RAM без стиснення і ліміту
 
-> **Виправлено** у feat-031 (гілка `feat/static-caching`) за планом [`static-caching-plan.md`](./static-caching-plan.md): `STATIC_MAX_MEMORY_FILE_SIZE` (1 MiB) і `STATIC_MAX_MEMORY_TOTAL` (64 MiB), решта стрімінгом з диска з backpressure; `br`/`gzip`-варіанти текстових файлів на старті з `Vary: Accept-Encoding`. Відступ від roadmap: стиснення на старті сервера, а не `.br`/`.gz` при збірці фронтенду — без нових залежностей і для будь-якого вмісту `public`.
+> **Виправлено** у feat-031 (гілка `feat/static-caching`) за планом [`static-caching-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/static-caching-plan.md): `STATIC_MAX_MEMORY_FILE_SIZE` (1 MiB) і `STATIC_MAX_MEMORY_TOTAL` (64 MiB), решта стрімінгом з диска з backpressure; `br`/`gzip`-варіанти текстових файлів на старті з `Vary: Accept-Encoding`. Відступ від roadmap: стиснення на старті сервера, а не `.br`/`.gz` при збірці фронтенду — без нових залежностей і для будь-якого вмісту `public`.
 
 - **Що:** увесь `public` читається в пам'ять на старті без ліміту розміру; gzip/brotli немає.
 - **Пропозиція:** попередньо стиснуті `.br`/`.gz` при збірці; ліміт або стрімінг для великих файлів; або роздача статики через CDN/проксі (`CDN_URL`).
@@ -478,7 +478,7 @@
 
 ### 43. Кеш промптів у пам'яті процесу без TTL
 
-> **Виправлено** у feat-029 (гілка `feat/ai-quality`) за планом [`ai-quality-plan.md`](./ai-quality-plan.md): `PROMPT_CACHE_TTL_MS` (60 с): прострочений кеш віддає поточне значення й перечитує промпти у фоні (одне перечитування одночасно, помилка лишає старі значення); `update()` на своєму інстансі видно одразу. Pub/sub між інстансами — поза фічею, затримка ≤ TTL описана в документації.
+> **Виправлено** у feat-029 (гілка `feat/ai-quality`) за планом [`ai-quality-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-quality-plan.md): `PROMPT_CACHE_TTL_MS` (60 с): прострочений кеш віддає поточне значення й перечитує промпти у фоні (одне перечитування одночасно, помилка лишає старі значення); `update()` на своєму інстансі видно одразу. Pub/sub між інстансами — поза фічею, затримка ≤ TTL описана в документації.
 
 - **Що:** `src/app/services/ai/prompt-service.ts` тримає `Map` промптів у процесі без TTL та інвалідації між інстансами.
 - **Наслідок:** оновлення промпту на одному інстансі не видно на інших до рестарту.
@@ -488,21 +488,21 @@
 
 ### 44. `deleteFromS3` без `buildKey`
 
-> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](./storage-hardening-plan.md): `buildKey` експортується як `buildObjectKey`, `deleteFromS3` приймає відносний ключ, як решта функцій; обидві копії `buildFullS3Key` видалено (CDN URL скриншота — через `buildObjectKey`).
+> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/storage-hardening-plan.md): `buildKey` експортується як `buildObjectKey`, `deleteFromS3` приймає відносний ключ, як решта функцій; обидві копії `buildFullS3Key` видалено (CDN URL скриншота — через `buildObjectKey`).
 
 - **Що:** у `src/vendor/utils/storage/s3.ts` `upload`/`getSignedUrl`/`download` застосовують `buildKey` (префікс), а `deleteFromS3` — ні. Тому `avatar-service.ts` і `knowledge-base-service.ts` мають власні копії `buildFullS3Key`. Виклик з відносним ключем мовчки нічого не видаляє.
 - **Пропозиція:** `buildKey` у `deleteFromS3`, прибрати дублікати.
 
 ### 45. Аватари без `public-read`
 
-> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](./storage-hardening-plan.md): за рішенням Р1 аватари завантажуються з `publicRead: true`; про старі приватні об'єкти — у `storage.md`.
+> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/storage-hardening-plan.md): за рішенням Р1 аватари завантажуються з `publicRead: true`; про старі приватні об'єкти — у `storage.md`.
 
 - **Що:** `src/app/services/user/avatar-service.ts` завантажує аватари без `publicRead`, а фронтенд читає їх напряму за CDN URL. Вони відображаються лише тоді, коли бакет або CDN зроблено публічними поза кодом.
 - **Пропозиція:** явно задати політику: `publicRead` для аватарів або видача через signed URL.
 
 ### 46. MIME-тип довіряється заголовку клієнта
 
-> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](./storage-hardening-plan.md): `detectImageType` (magic bytes PNG/JPEG/WebP); аватари й скриншоти приймаються, лише коли тип за вмістом дозволений і збігається з заявленим, інакше `400`. `ContentType` і розширення ключа — з виявленого типу, ім'я файлу клієнта не використовується.
+> **Виправлено** у feat-023 (гілка `feat/storage-hardening`) за планом [`storage-hardening-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/storage-hardening-plan.md): `detectImageType` (magic bytes PNG/JPEG/WebP); аватари й скриншоти приймаються, лише коли тип за вмістом дозволений і збігається з заявленим, інакше `400`. `ContentType` і розширення ключа — з виявленого типу, ім'я файлу клієнта не використовується.
 
 - **Що:** `avatar-service.ts` і `knowledge-base-service.ts` перевіряють MIME за multipart-заголовком, без перевірки сигнатури вмісту. Розширення аватара береться з імені файлу клієнта.
 - **Пропозиція:** перевіряти magic bytes; розширення виводити з перевіреного типу.
@@ -510,7 +510,7 @@
 
 ### 47. Підписка push перепризначається іншому користувачу
 
-> **Виправлено** у feat-021 (гілка `feat/push-access`): за рішенням Р2 ([`open-issues-roadmap.md`](./open-issues-roadmap.md)) endpoint іншого користувача переноситься лише при збігу `p256dhKey` і `authKey`, інакше `409 conflict` і власник не змінюється.
+> **Виправлено** у feat-021 (гілка `feat/push-access`): за рішенням Р2 ([`open-issues-roadmap.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-roadmap.md)) endpoint іншого користувача переноситься лише при збігу `p256dhKey` і `authKey`, інакше `409 conflict` і власник не змінюється.
 
 - **Що:** `push-subscription-service.ts` → `createSubscription` шукає endpoint серед усіх користувачів і викликає `updateByEndpoint(endpoint, userId, …)`, що переносить підписку на поточного користувача.
 - **Наслідок:** ризик невеликий, бо endpoint — секретний URL від push-сервісу. Але поведінка неявна (наприклад, при зміні акаунта на тому ж пристрої це бажано, при витоку endpoint — ні).
@@ -525,47 +525,47 @@
 
 ### 49. Push надсилається лише з `test-push`
 
-> **Виправлено** у feat-022 (гілка `feat/push-data-access`) за планом [`push-data-access-plan.md`](./push-data-access-plan.md): `sendToUser` відправляє паралельно (`PUSH_SEND_CONCURRENCY = 5`), логи пишуться одним `insertMany`, `lastUsedAt` — одним `touchLastUsed`. Підключення до бізнес-подій винесено в п. 72.
+> **Виправлено** у feat-022 (гілка `feat/push-data-access`) за планом [`push-data-access-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/push-data-access-plan.md): `sendToUser` відправляє паралельно (`PUSH_SEND_CONCURRENCY = 5`), логи пишуться одним `insertMany`, `lastUsedAt` — одним `touchLastUsed`. Підключення до бізнес-подій винесено в п. 72.
 
 - **Що:** `push-notification-sender-service.ts` → `sendToUser` викликається тільки з `test-push`; жодна бізнес-подія push не надсилає, `skipIfOnline`/`notificationType` не використовуються. Підписки обробляються послідовно, з двома `await`-записами в БД на кожну.
 - **Пропозиція:** підключити до реальних подій; паралельна відправка з обмеженням і пакетний запис логів.
 
 ### 50. Невідомий `AI_TEXT_DRIVER` мовчки дає Mistral
 
-> **Виправлено** у feat-027 (гілка `feat/ai-reliability`) за планом [`ai-reliability-plan.md`](./ai-reliability-plan.md): `config/ai.ts` приймає лише `openai`, `xai`, `mistral`, інакше `configError` → `validateRuntimeConfig()` зупиняє старт.
+> **Виправлено** у feat-027 (гілка `feat/ai-reliability`) за планом [`ai-reliability-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-reliability-plan.md): `config/ai.ts` приймає лише `openai`, `xai`, `mistral`, інакше `configError` → `validateRuntimeConfig()` зупиняє старт.
 
 - **Що:** `src/app/services/ai/ai-provider.ts` повертає `mistralaiTextAdapter` для будь-якого значення, крім `openai` і `xai`, тож друкарська помилка не помітна.
 - **Пропозиція:** валідація в `validate-runtime-config.ts` з помилкою на старті.
 
 ### 51. Виклики AI-провайдерів без timeout
 
-> **Виправлено** у feat-027 (гілка `feat/ai-reliability`) за планом [`ai-reliability-plan.md`](./ai-reliability-plan.md): `AI_REQUEST_TIMEOUT_MS` (60 000) і `aiRequestSignal` в усіх адаптерах; `HttpContext.signal` (з `res.onAborted`) і `WsContext.signal` (сигнал з'єднання, abort в `onClose`) передаються в тест промпту й Support AI. Наживо: завислий провайдер → 504 за 1,57 с при ліміті 1,5 с; клієнт пішов через 1 с → з'єднання з провайдером закрито на 997 мс.
+> **Виправлено** у feat-027 (гілка `feat/ai-reliability`) за планом [`ai-reliability-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-reliability-plan.md): `AI_REQUEST_TIMEOUT_MS` (60 000) і `aiRequestSignal` в усіх адаптерах; `HttpContext.signal` (з `res.onAborted`) і `WsContext.signal` (сигнал з'єднання, abort в `onClose`) передаються в тест промпту й Support AI. Наживо: завислий провайдер → 504 за 1,57 с при ліміті 1,5 с; клієнт пішов через 1 с → з'єднання з провайдером закрито на 997 мс.
 
 - **Що:** адаптери в `src/app/services/ai/adapters/*` і `prompt-controller.ts` не передають timeout чи `AbortSignal`.
 - **Пропозиція:** таймаут і скасування при закритті WS/HTTP.
 
 ### 52. Support AI: `langNative = 'ru'` зашито в коді
 
-> **Виправлено** у feat-029 (гілка `feat/ai-quality`) за планом [`ai-quality-plan.md`](./ai-quality-plan.md): фронтенд передає i18n-локаль у полі `language` обох WS-подій; `resolveSupportLanguage` зводить її до `APP_LOCALE_CODES`, інакше `SUPPORT_DEFAULT_LANGUAGE` (`en`, перевіряється на старті). Мови в профілі користувача немає — окрема фіча.
+> **Виправлено** у feat-029 (гілка `feat/ai-quality`) за планом [`ai-quality-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-quality-plan.md): фронтенд передає i18n-локаль у полі `language` обох WS-подій; `resolveSupportLanguage` зводить її до `APP_LOCALE_CODES`, інакше `SUPPORT_DEFAULT_LANGUAGE` (`en`, перевіряється на старті). Мови в профілі користувача немає — окрема фіча.
 
 - **Що:** `src/app/services/support/support-service.ts` у `chat()` і `openChat()` задає `const langNative = 'ru'`, ігноруючи мову користувача.
 - **Пропозиція:** брати мову з профілю/запиту.
 
 ### 53. Неповний облік використання AI
 
-> **Виправлено** у feat-028 (гілка `feat/ai-usage-accounting`) за планом [`ai-usage-accounting-plan.md`](./ai-usage-accounting-plan.md): записуються переклад (`SUPPORT_QUERY_TRANSLATION`), тест промпту (`PROMPT_TEST`) і embeddings (нова feature `SUPPORT_EMBEDDING`); міграція робить токени й `user_id` nullable — `NULL` = провайдер не повідомив usage (адаптери більше не пропускають такі виклики, а пишуть `NULL` і `warn`), `user_id` `NULL` — індексація без користувача; статистика рахує `callsWithoutUsage` окремо.
+> **Виправлено** у feat-028 (гілка `feat/ai-usage-accounting`) за планом [`ai-usage-accounting-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-usage-accounting-plan.md): записуються переклад (`SUPPORT_QUERY_TRANSLATION`), тест промпту (`PROMPT_TEST`) і embeddings (нова feature `SUPPORT_EMBEDDING`); міграція робить токени й `user_id` nullable — `NULL` = провайдер не повідомив usage (адаптери більше не пропускають такі виклики, а пишуть `NULL` і `warn`), `user_id` `NULL` — індексація без користувача; статистика рахує `callsWithoutUsage` окремо.
 
 - **Що:** переклад (`support-query-translation-service.ts`) і тест промпту (`prompt-controller.ts`) не передають `onComplete`, тому `SUPPORT_QUERY_TRANSLATION` і `PROMPT_TEST` не записуються. Embeddings не обліковуються. `mistralai-text-adapter.ts` мовчки пропускає запис, якщо провайдер не повернув usage.
 
 ### 54. Embeddings
 
-> **Виправлено** у feat-029 (гілка `feat/ai-quality`) за планом [`ai-quality-plan.md`](./ai-quality-plan.md): `OPENAI_EMBEDDING_DIMENSIONS` ≠ `EMBEDDING_COLUMN_DIMENSIONS` (1536) зупиняє старт; `reindexAll` пачками `SUPPORT_EMBEDDING_BATCH_SIZE` (50); `searchByEmbedding` відкидає статті далі `SUPPORT_SEARCH_MAX_DISTANCE` (0.8, не відкалібровано — у `ai.md` описано, як підібрати).
+> **Виправлено** у feat-029 (гілка `feat/ai-quality`) за планом [`ai-quality-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ai-quality-plan.md): `OPENAI_EMBEDDING_DIMENSIONS` ≠ `EMBEDDING_COLUMN_DIMENSIONS` (1536) зупиняє старт; `reindexAll` пачками `SUPPORT_EMBEDDING_BATCH_SIZE` (50); `searchByEmbedding` відкидає статті далі `SUPPORT_SEARCH_MAX_DISTANCE` (0.8, не відкалібровано — у `ai.md` описано, як підібрати).
 
 - **Що:** `src/database/schema.ts` має `vector(1536)`, хоча `OPENAI_EMBEDDING_DIMENSIONS` налаштовується: зміна змінної без міграції зламає запис. `support-embedding-service.ts` → `reindexAll` шле всі статті одним `embedBatch`. `searchByEmbedding` (`support-knowledge-repository.ts`) не має порогу відстані, тож у контекст завжди йде до 5 статей.
 
 ### 55. `llm_text_usage.final_prompt` зберігає повні тексти
 
-> **Виправлено** пізніше (feat-065): [`purge-llm-prompts.ts`](../../packages/backend/src/scripts/purge-llm-prompts.ts) видаляє текст промптів, зберігаючи SHA-256 і довжину; retention — opt-in. Початкове рішення Р3 у [`open-issues-roadmap.md`](./open-issues-roadmap.md) («відкладено») застаріло.
+> **Виправлено** пізніше (feat-065): [`purge-llm-prompts.ts`](../../../packages/backend/src/scripts/purge-llm-prompts.ts) видаляє текст промптів, зберігаючи SHA-256 і довжину; retention — opt-in. Початкове рішення Р3 у [`open-issues-roadmap.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-roadmap.md) («відкладено») застаріло.
 
 - **Що:** у `llm_text_usage.final_prompt` безстроково зберігаються повні повідомлення користувачів та історія, і адміністратор бачить їх через `/admin/usage/text`.
 - **Наслідок:** персональні дані без політики зберігання.
@@ -673,11 +673,11 @@
 - **Наслідок:** під час збою Redis запити накопичуються замість швидкої відмови; у `APP_ENV=local` текст помилки ioredis потрапляє у відповідь.
 - **Пропозиція:** `commandTimeout` і менший `maxRetriesPerRequest` для основного клієнта (з урахуванням того, що сесії мають переживати короткі збої), швидка `503` при недоступному Redis; readiness-перевірка (п. 35).
 
-> **Виправлено** у feat-016 (гілка `feat/redis-main-client-timeout`) за планом [`redis-main-client-timeout-plan.md`](./redis-main-client-timeout-plan.md): основний клієнт без offline queue і повторів, з таймаутом `REDIS_COMMAND_TIMEOUT_MS` (500 мс); недоступний Redis дає `503 service_unavailable` з `Retry-After: 1` без тексту ioredis; одна подія Sentry на інцидент (`redis-health.ts`); WS-з'єднання не закриваються, heartbeat не залежить від Redis, upgrade — `503`; `logoutAll` обмежений `REDIS_LOGOUT_ALL_DEADLINE_MS`. Readiness-перевірка (п. 35) — окремо.
+> **Виправлено** у feat-016 (гілка `feat/redis-main-client-timeout`) за планом [`redis-main-client-timeout-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/redis-main-client-timeout-plan.md): основний клієнт без offline queue і повторів, з таймаутом `REDIS_COMMAND_TIMEOUT_MS` (500 мс); недоступний Redis дає `503 service_unavailable` з `Retry-After: 1` без тексту ioredis; одна подія Sentry на інцидент (`redis-health.ts`); WS-з'єднання не закриваються, heartbeat не залежить від Redis, upgrade — `503`; `logoutAll` обмежений `REDIS_LOGOUT_ALL_DEADLINE_MS`. Readiness-перевірка (п. 35) — окремо.
 
 ## Що варто зробити далі
 
-> Актуальний порядок і розбиття на фічі (feat-010, feat-018…feat-036) — у [`open-issues-roadmap.md`](./open-issues-roadmap.md). Список нижче — первинна пропозиція аудиту.
+> Актуальний порядок і розбиття на фічі (feat-010, feat-018…feat-036) — у [`open-issues-roadmap.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-roadmap.md). Список нижче — первинна пропозиція аудиту.
 
 Пропоную оформити окремі записи в `feature_list.json` (через PR у `main`):
 
@@ -732,7 +732,7 @@
 
 ### 74. Спільні контракти ловлять розбіжності лише частково
 
-> **Частково виправлено:** `InitResponse` тепер виводиться зі схеми (`WithCanonicalError<typeof InitResponseSchema.infer>`, [`main-controller.ts`](../../packages/shared/src/responses/main-controller.ts)). Решта пункту (інші ручні типи, типи push-підписок, runtime-перевірка відповідей) окремо не перевірялася — див. [`docs-issues-fix-audit.md`](./docs-issues-fix-audit.md).
+> **Частково виправлено:** `InitResponse` тепер виводиться зі схеми (`WithCanonicalError<typeof InitResponseSchema.infer>`, [`main-controller.ts`](../../../packages/shared/src/responses/main-controller.ts)). Решта пункту (інші ручні типи, типи push-підписок, runtime-перевірка відповідей) окремо не перевірялася — див. [`docs-issues-fix-audit.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/docs-issues-fix-audit.md).
 
 - **Що:** перевірено перейменуванням полів у `packages/shared/src/responses` і `pnpm typecheck`. `AdminUserListItem.name` → помилки і в backend, і у frontend. `InitResponseSchema.wsUrl` → помилок немає: тип `InitResponse` написано вручну окремо від схеми і він `extends Record<string, unknown>`. Перейменування поля в інтерфейсі `InitResponse` дає одну помилку у frontend (`App.vue`), backend не помічає, бо зайві ключі дозволені. `PushSubscriptionSchema.isActive` → помилок немає: frontend має власні типи підписок, backend не прив'язує повернення до цього типу. `ResponseSchema` маршрутів використовується лише для серіалізації опису API (`serialize-routes.ts`), відповідь під час виконання не перевіряється.
 - **Пропозиція:** виводити типи відповідей лише зі схем (`.infer`) і прибрати ручні інтерфейси з `Record<string, unknown>`; у frontend `utils/api.ts` використовувати типи зі `shared/responses` замість локальних; розглянути перевірку відповіді за `ResponseSchema` у dev/test-режимі.
@@ -746,7 +746,7 @@
 
 ### 76. Дати користувача зсунуті на часовий пояс сервера
 
-> **Частково виправлено** (feat-085, [`docs-issues-fix-plan.md`](./docs-issues-fix-plan.md)): зсув часу виправлено — усі пули застосунку й `db:seed` відкривають з'єднання з `TimeZone=UTC` ([`pool-options.ts`](../../packages/backend/src/database/pool-options.ts)), тож `now()` і JS `Date` дають той самий пояс. Міграцію на `timestamptz` не робили. **Відкрито:** різний формат дат у відповідях login та init (спільний DTO через `userTransformer`) — не входив у feat-085.
+> **Частково виправлено** (feat-085, [`docs-issues-fix-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/docs-issues-fix-plan.md)): зсув часу виправлено — усі пули застосунку й `db:seed` відкривають з'єднання з `TimeZone=UTC` ([`pool-options.ts`](../../../packages/backend/src/database/pool-options.ts)), тож `now()` і JS `Date` дають той самий пояс. Міграцію на `timestamptz` не робили. **Відкрито:** різний формат дат у відповідях login та init (спільний DTO через `userTransformer`) — не входив у feat-085.
 
 - **Що:** demo-акаунт, створений seed-ом одним викликом, у `GET /api/main/init` має `emailVerifiedAt: 2026-10-25T15:05:42Z` і `createdAt: 2026-10-25T17:05:42Z` (сервер у UTC+2). Одне з полів інтерпретується як локальний час замість UTC. Крім того, відповідь `POST /api/auth/login` віддає `created_at`/`updated_at` (snake_case, з офсетом), а `init` — `createdAt`/`updatedAt` (camelCase, `Z`).
 - **Причина (перевірено):** колонки оголошено як `timestamp` без часового поясу. `defaultNow()` пише `now()` у поясі сесії PostgreSQL (локальна інсталяція — `Europe/Kiev`), а значення з JS `Date` (`email_verified_at`) пишуться в UTC; node-pg читає обидва як UTC. Після `ALTER DATABASE ... SET timezone TO 'UTC'` зсув зникає. В образі `pgvector/pgvector` пояс UTC, тому в Docker проблеми не видно. Туторіал «Як додати фічу» повторює той самий патерн для `notes`.
@@ -761,7 +761,7 @@
 
 ### 78. Вхід без CSRF-токена відхиляється при `CSRF_ENFORCE=true`
 
-> **Задокументовано:** потік описано в [`security.md#csrf`](../../documentation/backend/security.md#csrf) і гайдах «CSRF простими словами» та «Швидкий старт». Окремого режиму для не-браузерних клієнтів немає — без конкретної вимоги не робимо.
+> **Задокументовано:** потік описано в [`security.md#csrf`](../../../documentation/backend/security.md#csrf) і гайдах «CSRF простими словами» та «Швидкий старт». Окремого режиму для не-браузерних клієнтів немає — без конкретної вимоги не робимо.
 
 - **Що:** `POST /api/auth/login` без попереднього `GET /api/main/init` дає `CSRF validation failed, reason: token_mismatch` (при `CSRF_ENFORCE=false` лише WARN). Для браузера це коректно, бо фронтенд спершу викликає `init`, але для API-клієнтів (мобільний застосунок, інтеграційні тести) поведінка неочевидна.
 - **Пропозиція:** описати в `auth-security.md` (зроблено в гайді «Швидкий старт»); за потреби — окремий режим для не-браузерних клієнтів.
