@@ -21,7 +21,7 @@ const { t } = useI18n()
 const userStore = useUserStore()
 const stateStore = useStateStore()
 const pushStore = usePushStore()
-const { websocketOpen } = useWebSocketConnection()
+const { websocketOpen, suspendReconnect, resumeReconnect } = useWebSocketConnection()
 const eventBus = useEventBus()
 const user = computed(() => userStore.user)
 
@@ -159,6 +159,10 @@ async function changePassword(): Promise<void> {
     }
 
     isChangingPassword.value = true
+    // feat-221: the server closes the sockets of the old session (4001) before its answer
+    // brings the renewed one. A token refresh started by that close would go out with the old
+    // cookie, get 401 and sign the user out; it waits for the answer instead.
+    suspendReconnect()
     try {
         const payload: { currentPassword?: string; newPassword: string } = {
             newPassword: newPassword.value,
@@ -191,6 +195,9 @@ async function changePassword(): Promise<void> {
         newPassword.value = ''
         confirmPassword.value = ''
     } finally {
+        // After websocketOpen: a refresh held back for the old socket is dropped by it. On a
+        // failure the held-back refresh runs now, with whatever session the browser has.
+        resumeReconnect()
         isChangingPassword.value = false
     }
 }

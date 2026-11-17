@@ -73,11 +73,17 @@ const beginConnecting = (userId: string, uuid: string, sessionId: string): (() =
 }
 
 /** Marks the user's connections that are being opened: all, or those of one session. */
-const revokeConnecting = (userId: string, sessionId?: string): number => {
+const revokeConnecting = (
+    userId: string,
+    sessionId?: string,
+    // feat-221: a password change spares the session that asked for it.
+    exceptSessionId?: string,
+): number => {
     let marked = 0
     for (const entry of connecting.values()) {
         if (entry.userId !== userId) continue
         if (sessionId !== undefined && entry.sessionId !== sessionId) continue
+        if (exceptSessionId !== undefined && entry.sessionId === exceptSessionId) continue
         entry.revoked = true
         marked += 1
     }

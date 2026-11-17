@@ -96,6 +96,23 @@ describe('closeUserConnections', () => {
         expect(otherSession.send).not.toHaveBeenCalled()
     })
 
+    // feat-221: a password change spares the session that asked for it.
+    it('closes every connection but those of the excepted session', () => {
+        const asked = connection('1', 'a', 's1', 't')
+        const sameSessionOtherTab = connection('1', 'b', 's1', 't')
+        const otherSession = connection('1', 'c', 's2', 't')
+        listUserConnections.mockReturnValue([asked, sameSessionOtherTab, otherSession])
+
+        expect(wsSessionRevocation.closeUserConnections('1', { exceptSessionId: 's1' })).toBe(1)
+
+        expect(otherSession.end).toHaveBeenCalledWith(4001)
+        for (const spared of [asked, sameSessionOtherTab]) {
+            expect(spared.end).not.toHaveBeenCalled()
+            expect(spared.send).not.toHaveBeenCalled()
+        }
+        expect(revokeConnecting).toHaveBeenCalledWith('1', undefined, 's1')
+    })
+
     it('skips a connection that has closed already and closes the rest', () => {
         const gone = connection('1', 'a', 's1', 't')
         closedSocket(gone)
@@ -196,8 +213,8 @@ describe('closeUserConnections: connections being opened (feat-210)', () => {
         wsSessionRevocation.closeUserConnections('1')
 
         expect(revokeConnecting.mock.calls).toEqual([
-            ['1', 's1'],
-            ['1', undefined],
+            ['1', 's1', undefined],
+            ['1', undefined, undefined],
         ])
         expect(revokeConnecting.mock.invocationCallOrder[0]).toBeLessThan(
             listUserConnections.mock.invocationCallOrder[0] ?? 0,

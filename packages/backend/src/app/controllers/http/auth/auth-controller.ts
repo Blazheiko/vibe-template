@@ -46,6 +46,7 @@ import {
     passwordResetService,
 } from '#app/services/auth/password-reset-service.js'
 import { unauthorized } from '#app/services/shared/errors.js'
+import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 
 function getSessionIdForPhoneBoundFlow(
     context: Pick<HttpContext, 'logger' | 'session' | 'httpData'>,
@@ -150,11 +151,14 @@ export default {
         }
 
         const payload = getTypedPayload(context)
+        // Before the renewal replaces it: the connections were opened from this id.
+        const sessionId = context.session.sessionInfo?.id
         const result = await authService.changePassword(
             userId,
             payload,
             context.auth.getPresentedUserToken(),
             () => context.session.isStored(),
+            sessionId,
         )
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -173,6 +177,11 @@ export default {
                 { err: renewed.error },
                 'Session renewal after password change failed',
             )
+            // feat-221: the service spared this session's connections for the renewal. Without
+            // one they belong to a revoked session; the client signs in again.
+            if (sessionId !== undefined) {
+                wsSessionRevocation.closeUserConnections(String(userId), { sessionId })
+            }
             return { status: 'success', sessionRenewed: false }
         }
 

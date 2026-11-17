@@ -58,10 +58,21 @@ vi.mock('@/stores/push', () => ({
         unsubscribeFromPush: vi.fn(),
     }),
 }))
-vi.mock('@/composables/useWebSocketConnection', () => ({
-    useWebSocketConnection: () => ({ websocketOpen: vi.fn() }),
+const ws = vi.hoisted(() => ({
+    calls: [] as string[],
+    websocketOpen: vi.fn(),
+    suspendReconnect: vi.fn(),
+    resumeReconnect: vi.fn(),
+    emit: vi.fn(),
 }))
-vi.mock('@/utils/event-bus', () => ({ useEventBus: () => ({ emit: vi.fn(), on: vi.fn() }) }))
+vi.mock('@/composables/useWebSocketConnection', () => ({
+    useWebSocketConnection: () => ({
+        websocketOpen: ws.websocketOpen,
+        suspendReconnect: ws.suspendReconnect,
+        resumeReconnect: ws.resumeReconnect,
+    }),
+}))
+vi.mock('@/utils/event-bus', () => ({ useEventBus: () => ({ emit: ws.emit, on: vi.fn() }) }))
 
 const methodsAnswer = (methods: Record<string, unknown>[], hasPassword = true) => ({
     data: { status: 'success', hasPassword, methods },
@@ -277,5 +288,98 @@ describe('UserAccount sign-in methods', () => {
         const section = wrapper.get('[data-testid="sign-in-methods"]')
         expect(section.text()).toContain('Network error')
         expect(section.text()).not.toContain('No other service is linked.')
+    })
+})
+
+// feat-221: the server closes the old session's sockets (4001) before the answer of the password
+// change brings the renewed session. A token refresh started by that close would carry the old
+// cookie, get 401 and sign the user out; the view holds it back for the whole request.
+describe('UserAccount password change and the WebSocket', () => {
+    const NEW_PASSWORD = 'new-secret-456'
+
+    const submitPasswordChange = async () => {
+        const wrapper = mountAccount()
+        const inputs = wrapper.findAll('input[type="password"]')
+        await inputs[0]?.setValue('old-secret-123')
+        await inputs[1]?.setValue(NEW_PASSWORD)
+        await inputs[2]?.setValue(NEW_PASSWORD)
+        const button = wrapper
+            .findAll('button')
+            .find((candidate) => candidate.attributes('class')?.includes('primary-button'))
+        await button?.trigger('click')
+        await flushPromises()
+    }
+
+    beforeEach(async () => {
+        ws.calls.length = 0
+        for (const name of ['websocketOpen', 'suspendReconnect', 'resumeReconnect'] as const) {
+            ws[name].mockReset()
+            ws[name].mockImplementation(() => {
+                ws.calls.push(name)
+            })
+        }
+        ws.emit.mockReset()
+        const { authApi } = await import('@/utils/api')
+        vi.mocked(authApi.changePassword).mockReset()
+    })
+
+    const answer = async (result: unknown) => {
+        const { authApi } = await import('@/utils/api')
+        vi.mocked(authApi.changePassword).mockImplementation(() => {
+            ws.calls.push('request')
+            return Promise.resolve(result as never)
+        })
+    }
+
+    it('holds the reconnect back for the request and opens the socket of the renewed session', async () => {
+        await answer({
+            data: {
+                status: 'success',
+                sessionRenewed: true,
+                csrfToken: 'c'.repeat(43),
+                wsUrl: 'wss://x/ws',
+                wsToken: 'renewed-ws-token',
+            },
+            error: null,
+        })
+
+        await submitPasswordChange()
+
+        expect(ws.calls).toEqual([
+            'suspendReconnect',
+            'request',
+            'websocketOpen',
+            'resumeReconnect',
+        ])
+        expect(ws.websocketOpen).toHaveBeenCalledWith('wss://x/ws', 'renewed-ws-token')
+    })
+
+    it('resumes the reconnect when the session was not renewed', async () => {
+        await answer({ data: { status: 'success', sessionRenewed: false }, error: null })
+
+        await submitPasswordChange()
+
+        expect(ws.calls).toEqual(['suspendReconnect', 'request', 'resumeReconnect'])
+        expect(ws.emit).toHaveBeenCalledWith('init_app')
+    })
+
+    it('resumes the reconnect when the password change fails', async () => {
+        await answer({
+            data: {
+                status: 'error',
+                code: 'bad_request',
+                message: 'Current password is incorrect',
+            },
+            error: {
+                code: 'bad_request',
+                transportCode: 400,
+                message: 'Current password is incorrect',
+            },
+        })
+
+        await submitPasswordChange()
+
+        expect(ws.calls).toEqual(['suspendReconnect', 'request', 'resumeReconnect'])
+        expect(ws.websocketOpen).not.toHaveBeenCalled()
     })
 })

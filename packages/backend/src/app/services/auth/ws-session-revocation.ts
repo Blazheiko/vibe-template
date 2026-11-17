@@ -75,20 +75,29 @@ let running = false
 
 export const wsSessionRevocation = {
     /**
-     * Closes, with 4001, the connections this instance holds for the user: all of them, or
-     * only those opened from `sessionId` (a logout of one session). Never throws: the session
-     * is revoked already, and a connection that could not be closed is left to the re-check.
+     * Closes, with 4001, the connections this instance holds for the user: all of them, only
+     * those opened from `sessionId` (a logout of one session), or all but those opened from
+     * `exceptSessionId` (a password change, feat-221: the session that asked is renewed, and
+     * its client replaces its socket with the WS token of the renewed session; a 4001 sent
+     * before the HTTP answer made the client refresh the WS token with the old cookie, get 401
+     * and sign out). Never throws: the session is revoked already, and a connection that could
+     * not be closed is left to the re-check.
      */
-    closeUserConnections(userId: string, options: { sessionId?: string } = {}): number {
+    closeUserConnections(
+        userId: string,
+        options: { sessionId?: string; exceptSessionId?: string } = {},
+    ): number {
         try {
-            const { sessionId } = options
+            const { sessionId, exceptSessionId } = options
             // feat-210: before the close, so a connection that registers in between is either
             // marked here or found below.
-            wsConnectionRegistry.revokeConnecting(userId, sessionId)
+            wsConnectionRegistry.revokeConnecting(userId, sessionId, exceptSessionId)
             const connections = wsConnectionRegistry
                 .listUserConnections(userId)
                 .filter(
-                    (connection) => sessionId === undefined || connection.sessionId === sessionId,
+                    (connection) =>
+                        (sessionId === undefined || connection.sessionId === sessionId) &&
+                        (exceptSessionId === undefined || connection.sessionId !== exceptSessionId),
                 )
             return closeAll(connections, sessionId === undefined ? 'revoked' : 'logout').closed
         } catch (err) {

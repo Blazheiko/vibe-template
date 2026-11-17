@@ -1170,7 +1170,7 @@ describe('authService', () => {
             expect(closeUserConnections).not.toHaveBeenCalled()
         })
 
-        it('changePassword closes every connection of the user once the password is written', async () => {
+        it('changePassword closes the connections of every other session once the password is written', async () => {
             userRepositoryMock.findById.mockResolvedValue({
                 id: 7n,
                 password: 'stored-hash',
@@ -1187,11 +1187,37 @@ describe('authService', () => {
                 { currentPassword: 'old-secret', newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
+                'asking-session',
             )
 
             expect(Result.isOk(result)).toBe(true)
             expect(closeUserConnections).toHaveBeenCalledTimes(1)
-            expect(closeUserConnections).toHaveBeenCalledWith('7')
+            // feat-221: not the session that asked; the controller renews it first.
+            expect(closeUserConnections).toHaveBeenCalledWith('7', {
+                exceptSessionId: 'asking-session',
+            })
+        })
+
+        it('changePassword without a session id closes every connection of the user', async () => {
+            userRepositoryMock.findById.mockResolvedValue({
+                id: 7n,
+                password: 'stored-hash',
+                sessionToken: 'previous-session-token',
+            })
+            validatePasswordMock.mockResolvedValue(true)
+            hashPasswordMock.mockResolvedValue('new-hash')
+            userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
+            destroyAllSessionsMock.mockResolvedValue({ deleted: 2, complete: true })
+
+            const { authService } = await loadAuthService()
+            await authService.changePassword(
+                7n,
+                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                'previous-session-token',
+                sessionStillStored,
+            )
+
+            expect(closeUserConnections).toHaveBeenCalledWith('7', {})
         })
 
         it('changePassword that changed nothing closes nothing', async () => {
