@@ -15,6 +15,7 @@ browser.
 ## Fix
 
 Server (`packages/backend`):
+
 - `wsSessionRevocation.closeUserConnections` and `wsConnectionRegistry.revokeConnecting` take an
   `exceptSessionId`.
 - `authService.changePassword` takes the requesting session id and closes the sockets of every
@@ -24,6 +25,7 @@ Server (`packages/backend`):
   token is rotated).
 
 Client (`packages/frontend`):
+
 - `useWebSocketConnection` gains `suspendReconnect()` / `resumeReconnect()`. While suspended, a
   token refresh (after 4001, a refused handshake or a delayed reconnect) is only remembered.
   `websocketOpen()` drops a remembered refresh, and `resumeReconnect()` runs it otherwise.
@@ -49,7 +51,7 @@ Docs: `documentation/backend/{auth,websocket}.md` and their `en/` twins.
   playground 115 and the remaining backend tests were green.
 - Mutation check: with the suspension disabled in `unauthorized()`, the three race tests in
   `useWebSocketConnection.spec.ts` fail (`4001 before the answer`, `held-back refresh`, `delayed
-  reconnect`).
+reconnect`).
 - `make check` passing after the last edit: backend 210 files / 2988 tests, frontend 55 / 614,
   landing 103, api-playground 115.
 - `pnpm --filter frontend test:e2e`: 99 passed.
