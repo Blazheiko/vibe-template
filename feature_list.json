@@ -2201,8 +2201,8 @@
             "owner": "Blazheiko",
             "branch": "fix/password-change-ws-race",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #673 (merge bcb7e46): a password change closed every WebSocket of the user with 4001 before the controller renewed the session; the client refreshed its WS token with the old cookie, got 401 and went to /login although the change answered sessionRenewed: true. Server: closeUserConnections/revokeConnecting take exceptSessionId, authService.changePassword spares the requesting session, the controller closes its sockets only when the renewal fails (otherwise the client replaces them and the re-check closes what is left). Client: useWebSocketConnection.suspendReconnect()/resumeReconnect() hold back the token refresh; UserAccount suspends around the request and resumes after websocketOpen with the renewed token. Docs backend/auth.md and backend/websocket.md (both locales). make check passing (backend 2988, frontend 614, landing 103, playground 115); new tests for a 4001 that arrives before the HTTP answer, the call order in UserAccount and the spared session on the server; with the suspension disabled the 3 race tests fail (mutation check); frontend e2e 99 passed; docs:build + docs:verify green. CI on e893814: quality, build, e2e, e2e-live, test-pg, test-redis green. Manual browser golden path not run (no Docker locally)."
         }
     ]
 }
