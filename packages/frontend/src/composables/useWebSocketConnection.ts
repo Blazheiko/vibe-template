@@ -115,6 +115,13 @@ const handleServiceError = (data: WsReplyEnvelope): void => {
 
 let isUpdatingWsToken = false
 let reconnectTimeout: number | null = null
+// feat-221: a flow that renews the session itself (a password change) closes the user's
+// sockets on the server before its HTTP answer brings the new cookie and WS token. A refresh
+// started meanwhile goes out with the old cookie, gets 401 and signs the user out. While
+// suspended, a refresh is only remembered; the flow then opens the socket with the token it
+// got, or resumes and lets the remembered refresh run.
+let reconnectSuspended = false
+let refreshDeferred = false
 // feat-151: sockets the client closed itself (a sign-out, or an old socket replaced by a new
 // one). vueuse reports the close of every socket through onDisconnected, also after it
 // stopped being the current one; for these it is not a lost connection.
@@ -133,6 +140,12 @@ const clearReconnectTimeout = () => {
 // Takes a new WS token over HTTP and opens a connection with it: after 4001, after a refused
 // upgrade, and for every other reconnect (the previous token is spent).
 const unauthorized = async () => {
+    if (reconnectSuspended) {
+        console.log('WebSocket token refresh deferred: the session is being renewed')
+        clearReconnectTimeout()
+        refreshDeferred = true
+        return
+    }
     if (isUpdatingWsToken) {
         console.log('Token update already in progress, skipping...')
         return
@@ -429,10 +442,33 @@ const resetApiResolve = () => {
     apiResolve.value = {}
 }
 
+/**
+ * feat-221: holds back the automatic token refresh and reconnect until resumeReconnect(), for a
+ * request that renews the session (and so the WS token) in its own answer.
+ */
+const suspendReconnect = (): void => {
+    reconnectSuspended = true
+}
+
+/**
+ * Ends suspendReconnect(). A refresh held back meanwhile runs now, unless websocketOpen() has
+ * opened a socket with the renewed token since.
+ */
+const resumeReconnect = (): void => {
+    if (!reconnectSuspended) return
+    reconnectSuspended = false
+    if (refreshDeferred) {
+        refreshDeferred = false
+        void unauthorized()
+    }
+}
+
 const websocketOpen = (url: string, token: string) => {
     console.log('websocketOpen', url)
 
     clearReconnectTimeout()
+    // A socket with a fresh token replaces whatever refresh was held back.
+    refreshDeferred = false
 
     // A live socket is about to be replaced (a token refresh over an open connection):
     // vueuse closes it inside open(), and its close event arrives after the new one exists.
@@ -487,5 +523,7 @@ export const useWebSocketConnection = () => {
         websocketApi,
         websocketClose,
         websocketOpen,
+        suspendReconnect,
+        resumeReconnect,
     }
 }

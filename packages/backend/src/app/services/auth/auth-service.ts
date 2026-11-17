@@ -1163,6 +1163,11 @@ export const authService = {
          * go through and the controller's renewSession sign the browser in again.
          */
         sessionStored: SessionStillStored,
+        /**
+         * feat-221: the session that asks. Its connections are not closed here: the controller
+         * renews it first, and its client then replaces the socket itself.
+         */
+        requestingSessionId?: string,
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
         const throttle = await enforceThrottle(
@@ -1257,10 +1262,16 @@ export const authService = {
             'Change password',
         )
 
-        // feat-195: the connections of every session close, this one's too: its socket carries
-        // the token that was just rotated, and the client reconnects with the WS token of the
-        // renewed session.
-        wsSessionRevocation.closeUserConnections(String(userId))
+        // feat-195: the connections of every other session close at once. feat-221: not those of
+        // the session that asked. A 4001 here reached the client before the HTTP answer; it
+        // asked for a new WS token with the old cookie, got 401 and signed out, although its
+        // session was renewed. The controller closes them when the renewal fails; after a
+        // renewal the client replaces the socket with the new WS token, and the re-check closes
+        // whatever is left (its token is rotated), as it does for another instance.
+        wsSessionRevocation.closeUserConnections(
+            String(userId),
+            requestingSessionId === undefined ? {} : { exceptSessionId: requestingSessionId },
+        )
 
         // Memory cleanup, not the revocation: a failure leaves records that are already
         // rejected, so it is logged and the password change still succeeds.

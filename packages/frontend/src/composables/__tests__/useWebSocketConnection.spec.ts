@@ -347,3 +347,82 @@ describe('useWebSocketConnection: request correlation by id', () => {
         expect(settled).toBe(false)
     })
 })
+
+// feat-221: a password change renews the session in its HTTP answer, but the server closes the
+// old session's sockets with 4001 first. A token refresh started by that close carried the old
+// cookie, got 401 and signed the user out.
+describe('useWebSocketConnection: reconnect suspended while the session is renewed', () => {
+    const openRenewable = async () => {
+        const connection = await load()
+        await connection.websocketOpen(URL, 'token-1')
+        const socket = currentSocket()
+        connect(socket)
+        return { ...connection, socket }
+    }
+
+    it('takes no token for a 4001 that arrives before the answer, and opens the renewed one', async () => {
+        const { websocketOpen, suspendReconnect, resumeReconnect, socket } = await openRenewable()
+        const { useEventBus } = await import('@/utils/event-bus')
+        const signedOut = vi.fn()
+        useEventBus().on('unauthorized', signedOut)
+
+        suspendReconnect()
+        // The server closed the socket of the old session; the HTTP answer has not come yet.
+        options().onDisconnected(socket, closeEvent(4001))
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(updateWsToken).not.toHaveBeenCalled()
+
+        // The answer: the renewed session and its WS token.
+        await websocketOpen(URL, 'renewed-token')
+        resumeReconnect()
+        await vi.advanceTimersByTimeAsync(60_000)
+
+        expect(updateWsToken).not.toHaveBeenCalled()
+        expect(signedOut).not.toHaveBeenCalled()
+        expect(fake.opens).toBe(2)
+        useEventBus().off('unauthorized', signedOut)
+    })
+
+    it('runs the refresh it held back once resumed without a new socket', async () => {
+        const { suspendReconnect, resumeReconnect, socket } = await openRenewable()
+        updateWsToken.mockResolvedValue({
+            data: { status: 'ok', wsUrl: URL, wsToken: 'token-2' },
+            error: null,
+        })
+
+        suspendReconnect()
+        options().onDisconnected(socket, closeEvent(4001))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(updateWsToken).not.toHaveBeenCalled()
+
+        resumeReconnect()
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(updateWsToken).toHaveBeenCalledOnce()
+        expect(fake.opens).toBe(2)
+    })
+
+    it('holds back a delayed reconnect as well', async () => {
+        const { suspendReconnect, resumeReconnect, socket } = await openRenewable()
+
+        suspendReconnect()
+        options().onDisconnected(socket, closeEvent(1006))
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(updateWsToken).not.toHaveBeenCalled()
+
+        resumeReconnect()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(updateWsToken).toHaveBeenCalledOnce()
+    })
+
+    it('does nothing on resume when nothing was held back', async () => {
+        const { suspendReconnect, resumeReconnect } = await openRenewable()
+
+        suspendReconnect()
+        resumeReconnect()
+        await vi.advanceTimersByTimeAsync(60_000)
+
+        expect(updateWsToken).not.toHaveBeenCalled()
+        expect(fake.opens).toBe(1)
+    })
+})

@@ -5,9 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // PostgreSQL before the session is renewed in Redis, so a Redis failure after the
 // write must not be reported as a failed password change.
 
-const { changePassword, renewSession } = vi.hoisted(() => ({
+const { changePassword, renewSession, closeUserConnections } = vi.hoisted(() => ({
     changePassword: vi.fn(),
     renewSession: vi.fn(),
+    closeUserConnections: vi.fn(() => 0),
+}))
+
+vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
+    wsSessionRevocation: { closeUserConnections },
 }))
 
 vi.mock('#app/services/auth/auth-service.js', () => ({
@@ -116,7 +121,37 @@ describe('AuthController.changePassword', () => {
             { currentPassword: 'old-password', newPassword: 'new-password' },
             'presented-token',
             expect.any(Function),
+            's1',
         )
+    })
+
+    // feat-221: the service spares this session's sockets for the renewal. A 4001 sent before
+    // the answer made the client ask for a WS token with the old cookie, get 401, sign out.
+    it('leaves the sockets of the renewed session to its client', async () => {
+        renewSession.mockResolvedValue(
+            Result.ok({ csrfToken: 'c'.repeat(43), wsUrl: 'wss://x/ws', wsToken: 'ws-token' }),
+        )
+
+        await AuthController.changePassword(createContext())
+
+        expect(closeUserConnections).not.toHaveBeenCalled()
+    })
+
+    it('closes the sockets of the session when it could not be renewed', async () => {
+        renewSession.mockRejectedValue(new Error('Command timed out'))
+
+        const response = await AuthController.changePassword(createContext())
+
+        expect(response).toEqual({ status: 'success', sessionRenewed: false })
+        expect(closeUserConnections).toHaveBeenCalledWith('7', { sessionId: 's1' })
+    })
+
+    it('closes nothing itself when the password change fails', async () => {
+        changePassword.mockResolvedValue(Result.err({ kind: 'bad_request', message: 'Wrong' }))
+
+        await AuthController.changePassword(createContext())
+
+        expect(closeUserConnections).not.toHaveBeenCalled()
     })
 
     it('answers 401 session_revoked without renewing when the session was revoked', async () => {
