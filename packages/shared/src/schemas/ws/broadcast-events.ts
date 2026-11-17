@@ -3,7 +3,7 @@ import { EntityIdSchema } from '../../brands/index.js'
 import { WSAdminUserOnlineUpsertPayloadSchema } from './ws-admin-user-online-upsert.js'
 
 // Payloads of the events the backend pushes without a request (`broadcast:<event>`),
-// docs/plan/ws-async-message-validation-plan.md §4.1. The backend checks every event
+// docs/plan/archive/ws-async-message-validation-plan.md §4.1. The backend checks every event
 // against its schema before sending; the frontend checks it with hand-written guards
 // (no ArkType in the bundle) kept in sync by a parity test. Schemas describe JSON:
 // no Date, bigint or morphs, and no '+': 'reject' — the backend mode decides on keys.

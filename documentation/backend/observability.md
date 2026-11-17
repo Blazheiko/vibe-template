@@ -191,4 +191,4 @@ docker logs <container> | jq 'select(.level >= 50)'
 docker logs <container> | jq 'select(.requestId == "<uuid>")'
 ```
 
-**Перевірити Sentry.** Задайте `SENTRY_DSN` і перезапустіть бекенд, потім викличте в коді (наприклад, тимчасово в обробнику локального маршруту) `logger.error({ err: new Error('sentry test') }, 'sentry test')` — запис рівня `error` іде в Sentry. Окремого тестового маршруту немає: мертвий `MainController.testSentryError` видалено (п. 27 у [code-issues-found-during-docs.md](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)).
+**Перевірити Sentry.** Задайте `SENTRY_DSN` і перезапустіть бекенд, потім викличте в коді (наприклад, тимчасово в обробнику локального маршруту) `logger.error({ err: new Error('sentry test') }, 'sentry test')` — запис рівня `error` іде в Sentry. Окремого тестового маршруту немає: мертвий `MainController.testSentryError` видалено (п. 27 у [code-issues-found-during-docs.md](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/code-issues-found-during-docs.md)).

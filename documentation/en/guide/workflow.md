@@ -94,4 +94,4 @@ The site in `documentation/` is published to GitHub Pages from `main` via [`.git
 
 ## Backlog of upcoming features
 
-Code issues found while writing the documentation are collected in [`docs/plan/code-issues-found-during-docs.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md). This is the source for future `feat-XXX` entries: each item that is decided to be fixed is recorded as a new row in `feature_list.json` via a PR to `main`.
+Code issues found while writing the documentation are collected in [`docs/plan/archive/code-issues-found-during-docs.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/code-issues-found-during-docs.md). This is the source for future `feat-XXX` entries: each item that is decided to be fixed is recorded as a new row in `feature_list.json` via a PR to `main`.

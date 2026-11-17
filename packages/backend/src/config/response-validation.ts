@@ -1,7 +1,7 @@
 import { env } from 'node:process'
 import appConfig from '#config/app.js'
 
-// Reaction to a broken response contract (docs/plan/strip-response-fields-plan.md §4.2).
+// Reaction to a broken response contract (docs/plan/archive/strip-response-fields-plan.md §4.2).
 // A schema mismatch is a 500 in both modes; undeclared keys are a 500 in strict and are
 // stripped with a warn in log. The schema runs on every response: there is no off mode.
 export const RESPONSE_VALIDATION_CONTRACT_MODES = ['strict', 'log'] as const

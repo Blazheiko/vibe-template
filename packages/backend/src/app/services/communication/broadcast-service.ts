@@ -19,7 +19,7 @@ import type { MyWebSocket } from '#vendor/types/types.js'
 
 // Every event is checked against its schema in shared/schemas/ws/broadcast-events.ts once,
 // before serialization and before the loop over connections
-// (docs/plan/ws-async-message-validation-plan.md §4.3). The mode is the response one:
+// (docs/plan/archive/ws-async-message-validation-plan.md §4.3). The mode is the response one:
 // undeclared keys are stripped in log and drop the event in strict; a mismatch drops it
 // in both. There is nobody to answer 500 to, so a dropped event is only logged.
 export interface BroadcastService {

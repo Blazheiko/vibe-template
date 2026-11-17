@@ -2,7 +2,7 @@
 
 - **Статус:** прийнято 2026-11-11 (рішення власника Д6 плану code review 2026-11-10); пілот — feat-168.
 - **Дата запису:** 2026-11-11.
-- **Джерело:** [`docs/plan/code-review-2026-11-10-report.md`](../plan/code-review-2026-11-10-report.md), розділ «Рекомендація: автоматична перевірка відповідності API»; план — [`code-review-2026-11-10-plan.md`](../plan/code-review-2026-11-10-plan.md), фічі C0–C6.
+- **Джерело:** [`docs/plan/archive/code-review-2026-11-10-report.md`](../plan/archive/code-review-2026-11-10-report.md), розділ «Рекомендація: автоматична перевірка відповідності API»; план — [`code-review-2026-11-10-plan.md`](../plan/archive/code-review-2026-11-10-plan.md), фічі C0–C6.
 
 ## Контекст
 

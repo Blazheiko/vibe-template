@@ -1,6 +1,6 @@
 # План: Docker hardening (feat-019, F02)
 
-Пункти 28, 29, 30 з [`code-issues-found-during-docs.md`](./code-issues-found-during-docs.md). Roadmap: [F02](./open-issues-roadmap.md); задачі: F02.1–F02.7 у [`open-issues-tasks.md`](./open-issues-tasks.md).
+Пункти 28, 29, 30 з [`code-issues-found-during-docs.md`](./code-issues-found-during-docs.md). Roadmap: [F02](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-roadmap.md); задачі: F02.1–F02.7 у [`open-issues-tasks.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/open-issues-tasks.md).
 
 ## Вихідний стан (`main` після PR #65)
 
@@ -38,7 +38,7 @@
 
 ## Доповнення: закріплення ланцюга постачання (feat-207, 2026-11-13)
 
-Знахідки L-18 та I-5 з [`security-review-2026-11-12.md`](../security/security-review-2026-11-12.md), рішення Д7.
+Знахідки L-18 та I-5 з [`security-review-2026-11-12.md`](../../security/security-review-2026-11-12.md), рішення Д7.
 
 - **Базовий образ за digest.** Обидва етапи: `FROM ubuntu:24.04@sha256:…`. Тег лишається для читача, збірку визначає digest. Оновлює Dependabot (екосистема `docker` у `.github/dependabot.yml`).
 - **NodeSource без `curl | bash`.** `Dockerfile` сам додає apt-репозиторій: ключ підпису завантажується в `/etc/apt/keyrings/nodesource.asc` і звіряється з `NODESOURCE_ASC_SHA256`; пакети apt перевіряє за цим ключем. Версія Node, як і раніше, закріплена (`nodejs=${NODE_VERSION}-1nodesource1`) і звіряється з `node -v`. Коли NodeSource замінить ключ, збірка зупиниться на `sha256sum -c`: це навмисно.

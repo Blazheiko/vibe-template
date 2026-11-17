@@ -2,7 +2,7 @@
 
 - **Статус:** прийнято 2026-11-02; реалізація — feat-089 і два наступні PR етапу 4.
 - **Дата запису:** 2026-11-02.
-- **Джерело:** code review `main` (2026-11-02); план — [`docs/plan/error-handling-fix-plan.md`](../plan/error-handling-fix-plan.md), етап 4.
+- **Джерело:** code review `main` (2026-11-02); план — [`docs/plan/archive/error-handling-fix-plan.md`](../plan/archive/error-handling-fix-plan.md), етап 4.
 
 ## Контекст
 

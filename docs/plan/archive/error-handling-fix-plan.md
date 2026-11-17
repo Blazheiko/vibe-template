@@ -36,7 +36,7 @@
 
 ### Політика логування, яку зберігають усі етапи
 
-Це наявні правила, які зараз розкидані по `handleError` ([`server.ts:391`](../../packages/backend/src/vendor/start/server.ts)) і [`logger.ts`](../../packages/backend/src/vendor/utils/logger.ts). Етапи 1, 2 і 4 переносять їх в одне місце, а не змінюють:
+Це наявні правила, які зараз розкидані по `handleError` ([`server.ts:391`](../../../packages/backend/src/vendor/start/server.ts)) і [`logger.ts`](../../../packages/backend/src/vendor/utils/logger.ts). Етапи 1, 2 і 4 переносять їх в одне місце, а не змінюють:
 
 | Випадок                                                                                    | Рівень  | Sentry                                               | Відповідь                                        |
 | ------------------------------------------------------------------------------------------ | ------- | ---------------------------------------------------- | ------------------------------------------------ |
@@ -45,13 +45,13 @@
 | `SessionVerificationUnavailableError`                                                      | `error` | так                                                  | 503 `service_unavailable`, `Retry-After: 1`      |
 | Решта 5xx                                                                                  | `error` | так                                                  | 500 `internal_error` (у `local` — `String(err)`) |
 
-**Чому Redis треба фільтрувати явно.** `isRedisUnavailableEntry` у `logger.ts:59` пропускає подію в Sentry лише тоді, коли `err.type === 'RedisUnavailableError'`. Цю обгортку кидає тільки main-клієнт. Rate-limit клієнт ([`redis-rate-limit.ts`](../../packages/backend/src/database/redis-rate-limit.ts)) кидає сирі помилки ioredis, а `toInternalError` перетворює їх на `ServiceUnavailable` з сирою `cause`. Якщо логувати таку `cause` як `err`, фільтр не спрацює, і кожен запит під час інциденту створить окрему подію в Sentry. Тому рішення «Redis чи ні» приймає код через `isRedisUnavailable()`, а в лог передає `sentrySkip: true`: це поле `logger.ts` уже підтримує (рядок 82).
+**Чому Redis треба фільтрувати явно.** `isRedisUnavailableEntry` у `logger.ts:59` пропускає подію в Sentry лише тоді, коли `err.type === 'RedisUnavailableError'`. Цю обгортку кидає тільки main-клієнт. Rate-limit клієнт ([`redis-rate-limit.ts`](../../../packages/backend/src/database/redis-rate-limit.ts)) кидає сирі помилки ioredis, а `toInternalError` перетворює їх на `ServiceUnavailable` з сирою `cause`. Якщо логувати таку `cause` як `err`, фільтр не спрацює, і кожен запит під час інциденту створить окрему подію в Sentry. Тому рішення «Redis чи ні» приймає код через `isRedisUnavailable()`, а в лог передає `sentrySkip: true`: це поле `logger.ts` уже підтримує (рядок 82).
 
 **Відкрите питання (не блокує).** У rate-limit клієнта немає свого `redis-health`, він пише тільки `warn` (`redis-rate-limit.ts:39,49`). Отже, його інцидент не дає жодної події в Sentry. Так є і зараз; якщо це треба змінити, це окрема задача.
 
 ## Етап 1 — логування 5xx `AppError` (🔴)
 
-**Проблема.** `tryInternal` ([`result-helpers.ts`](../../packages/backend/src/app/services/shared/result-helpers.ts)) ловить виняток і кладе його в `AppError.cause`. Далі `mapControllerError` ([`controller-error.ts`](../../packages/backend/src/app/controllers/shared/controller-error.ts)) і WS-контролери (`appErrorToPayload` у [`ws/support-controller.ts`](../../packages/backend/src/app/controllers/ws/support-controller.ts), [`ws/admin-ws-controller.ts`](../../packages/backend/src/app/controllers/ws/admin-ws-controller.ts)) лише формують відповідь. У Sentry потрапляє тільки `logger.error`, тому 500 від падіння S3 чи БД ніде не видно.
+**Проблема.** `tryInternal` ([`result-helpers.ts`](../../../packages/backend/src/app/services/shared/result-helpers.ts)) ловить виняток і кладе його в `AppError.cause`. Далі `mapControllerError` ([`controller-error.ts`](../../../packages/backend/src/app/controllers/shared/controller-error.ts)) і WS-контролери (`appErrorToPayload` у [`ws/support-controller.ts`](../../../packages/backend/src/app/controllers/ws/support-controller.ts), [`ws/admin-ws-controller.ts`](../../../packages/backend/src/app/controllers/ws/admin-ws-controller.ts)) лише формують відповідь. У Sentry потрапляє тільки `logger.error`, тому 500 від падіння S3 чи БД ніде не видно.
 
 **Зміни.**
 
@@ -76,16 +76,16 @@
 
 Окремо: тест на `logger.ts`, що запис із `sentrySkip` не доходить до `sentryService.captureException`; тест для WS `refuse`; регресія для `avatar-service` — падіння `uploadToS3` дає 500 і запис у лозі.
 
-**Документація.** [`observability.md`](../../documentation/backend/observability.md): 5xx бізнес-помилки логуються в контролерному шарі, Redis-причини йдуть із `sentrySkip`. [`controllers.md`](../../documentation/backend/controllers.md): нова сигнатура `mapControllerError`.
+**Документація.** [`observability.md`](../../../documentation/backend/observability.md): 5xx бізнес-помилки логуються в контролерному шарі, Redis-причини йдуть із `sentrySkip`. [`controllers.md`](../../../documentation/backend/controllers.md): нова сигнатура `mapControllerError`.
 
 ## Етап 2 — спільна класифікація, окреме форматування (🟠)
 
-**Основа.** feat-048 (`done`, [`ws-error-envelope-plan.md`](./ws-error-envelope-plan.md)) уже зробив WS-конверт однаковим: `data: null`, один будівник у [`ws-error-envelope.ts`](../../packages/backend/src/vendor/utils/network/ws-error-envelope.ts). Він також свідомо розвів два види помилок: транспортні помилки WS ідуть у `error`, бізнес-помилки контролерів і middleware — у `data`. Етап 2 будує на цьому і **не змінює** контрактів feat-048: не переносить бізнес-помилки з `data` і не змінює зовнішній конверт `{ event, timestamp, status, data, error }`. Він замінює лише те, як виняток стає кодом, повідомленням і рівнем логу.
+**Основа.** feat-048 (`done`, [`ws-error-envelope-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/ws-error-envelope-plan.md)) уже зробив WS-конверт однаковим: `data: null`, один будівник у [`ws-error-envelope.ts`](../../../packages/backend/src/vendor/utils/network/ws-error-envelope.ts). Він також свідомо розвів два види помилок: транспортні помилки WS ідуть у `error`, бізнес-помилки контролерів і middleware — у `data`. Етап 2 будує на цьому і **не змінює** контрактів feat-048: не переносить бізнес-помилки з `data` і не змінює зовнішній конверт `{ event, timestamp, status, data, error }`. Він замінює лише те, як виняток стає кодом, повідомленням і рівнем логу.
 
 **Проблема.**
 
-- HTTP: `handleError` ([`server.ts:391`](../../packages/backend/src/vendor/start/server.ts)) — ланцюжок `instanceof` на 7 класів, хоча всі вже мають `statusCode` і `code`. Гілки `RedisUnavailableError` і `SessionVerificationUnavailableError` однакові.
-- WS класифікує винятки ще у двох місцях: у [`ws-handlers.ts:229-299`](../../packages/backend/src/vendor/utils/network/ws-handlers.ts) і в [`ws-api-dispatcher.ts:110-140`](../../packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts). Кожне місце має свою копію `details` для валідації.
+- HTTP: `handleError` ([`server.ts:391`](../../../packages/backend/src/vendor/start/server.ts)) — ланцюжок `instanceof` на 7 класів, хоча всі вже мають `statusCode` і `code`. Гілки `RedisUnavailableError` і `SessionVerificationUnavailableError` однакові.
+- WS класифікує винятки ще у двох місцях: у [`ws-handlers.ts:229-299`](../../../packages/backend/src/vendor/utils/network/ws-handlers.ts) і в [`ws-api-dispatcher.ts:110-140`](../../../packages/backend/src/vendor/utils/routing/ws-api-dispatcher.ts). Кожне місце має свою копію `details` для валідації.
 - WS-баги:
     - `onMessage` обгортає одним `try` і `JSON.parse`, і всю подальшу обробку, а в `catch` пише `error`. Тому битий JSON іде в Sentry і отримує `internal_error`, хоча в HTTP та сама ситуація дає `warn` і 400. Будь-який клієнт може засмічувати Sentry;
     - `RedisUnavailableError` / `SessionVerificationUnavailableError` з WS-контролера потрапляють у загальну гілку і дають `internal_error` замість `service_unavailable`;
@@ -118,7 +118,7 @@
 - WS: `ws-error-envelope.spec.ts` і `ws-redis-unavailable.spec.ts` мають лишитися зеленими (конверт не змінюється). Нові тести: битий JSON → `bad_request` і **немає** `logger.error`; WS-контролер кидає `RedisUnavailableError` → `service_unavailable` без події в Sentry; невалідне повідомлення з `event` → відповідь з тим самим `event`; бізнес-помилка контролера як і раніше йде в `data`.
 - `shared` і frontend: типи та обробка `details`, якщо їх зачепило вирівнювання.
 
-**Документація.** [`websocket.md`](../../documentation/backend/websocket.md): коди транспортних помилок (`bad_request` для битого JSON, `service_unavailable`), розподіл транспортна/бізнес-помилка без змін. [`request-lifecycle.md`](../../documentation/backend/request-lifecycle.md): одна класифікація, окреме форматування. Позначку «Статус: план (не реалізовано)» у шапці `ws-error-envelope-plan.md` виправити, бо feat-048 уже `done`.
+**Документація.** [`websocket.md`](../../../documentation/backend/websocket.md): коди транспортних помилок (`bad_request` для битого JSON, `service_unavailable`), розподіл транспортна/бізнес-помилка без змін. [`request-lifecycle.md`](../../../documentation/backend/request-lifecycle.md): одна класифікація, окреме форматування. Позначку «Статус: план (не реалізовано)» у шапці `ws-error-envelope-plan.md` виправити, бо feat-048 уже `done`.
 
 ## Етап 3 — прибирання
 
@@ -155,7 +155,7 @@
 
 Команди запускати з `packages/backend`. `tryInternal(` по сервісах: `auth-service` 33, `password-reset-service` 14, `knowledge-base-service` 13, `push-subscription-service` 10, `avatar-service` 7, `oauth-service` 7, `email-verification-service` 6, `support-service` 5, `sms-challenge` 5, `one-time-token` 5, `main-service` 2, `enforce-throttle` 1.
 
-**Проблема.** Кожен виклик БД, Redis, S3 чи хешування обгорнуто в `tryInternal` плюс ручне прокидання помилки. Неочікувані збої вже правильно обробляє глобальний handler, тож обгортка його дублює і (до етапу 1) губила логи. Приклад — `authService.login` ([`auth-service.ts:949`](../../packages/backend/src/app/services/auth/auth-service.ts)): половина методу займає прокидання помилок.
+**Проблема.** Кожен виклик БД, Redis, S3 чи хешування обгорнуто в `tryInternal` плюс ручне прокидання помилки. Неочікувані збої вже правильно обробляє глобальний handler, тож обгортка його дублює і (до етапу 1) губила логи. Приклад — `authService.login` ([`auth-service.ts:949`](../../../packages/backend/src/app/services/auth/auth-service.ts)): половина методу займає прокидання помилок.
 
 **Рішення.** Записати як короткий `docs/adr/0004-result-for-expected-outcomes.md`. Це не дозвіл на зміну, а фіксація конвенції для нових сервісів і skill `backend-feature`.
 
@@ -193,7 +193,7 @@
 - Best-effort кроки (`resetAuthThrottle` після логіну й зміни пароля, видалення старих сесій) — явні `try/catch` з `warn`.
 - `tryInternal`, `toInternalError` і `result-helpers.ts` видалено.
 
-**Документація.** [`services.md`](../../documentation/backend/services.md), [`adding-a-feature.md`](../../documentation/backend/adding-a-feature.md), skill `backend-feature` (шаблон сервісу).
+**Документація.** [`services.md`](../../../documentation/backend/services.md), [`adding-a-feature.md`](../../../documentation/backend/adding-a-feature.md), skill `backend-feature` (шаблон сервісу).
 
 ## Етап 5 — helper для контролерів (🟢)
 
@@ -208,7 +208,7 @@
 
 ## Етап 6 — стан сесії (🟢, необов'язково)
 
-[`session-handler.ts:151-446`](../../packages/backend/src/vendor/utils/session/session-handler.ts) тримає три змінні стану в замиканні (`sessionInfo`, `cookieHeld`, `contextUserToken`) і 4 модульні `WeakMap`/`WeakSet`.
+[`session-handler.ts:151-446`](../../../packages/backend/src/vendor/utils/session/session-handler.ts) тримає три змінні стану в замиканні (`sessionInfo`, `cookieHeld`, `contextUserToken`) і 4 модульні `WeakMap`/`WeakSet`.
 
 **Зміна.** Винести стан у клас `RequestSession` з явними переходами (`anonCookie → stored`, `login`, `logout`). Замість трьох перезаписів `beforeSend` — одне поле для «що зробити перед відправкою».
 
@@ -221,15 +221,15 @@
 Перехідні механізми, які мали сенс лише для вже розгорнутих клієнтів:
 
 - **Фолбек на старий cookie сесії.**
-    - Ланцюжок, який треба видалити: [`resolve-session-cookie.ts`](../../packages/backend/src/vendor/utils/session/resolve-session-cookie.ts) повертає `source: 'legacy'`, [`delete-legacy-session-cookie.ts`](../../packages/backend/src/vendor/utils/session/delete-legacy-session-cookie.ts) видаляє старий cookie, у [`session-web.ts`](../../packages/backend/src/vendor/utils/middlewares/ws/session-web.ts) є гілка `legacy`, а в `sessionHandler` — параметр `forceCookie`. Читати тільки активне ім'я cookie.
+    - Ланцюжок, який треба видалити: [`resolve-session-cookie.ts`](../../../packages/backend/src/vendor/utils/session/resolve-session-cookie.ts) повертає `source: 'legacy'`, [`delete-legacy-session-cookie.ts`](../../../packages/backend/src/vendor/utils/session/delete-legacy-session-cookie.ts) видаляє старий cookie, у [`session-web.ts`](../../../packages/backend/src/vendor/utils/middlewares/ws/session-web.ts) є гілка `legacy`, а в `sessionHandler` — параметр `forceCookie`. Читати тільки активне ім'я cookie.
     - Саме ім'я `uapi` у `config/session.ts` лишається: його використовують без `__Host-` префікса (HTTP у локальній розробці). Перейменувати константу з `LEGACY_COOKIE_NAME` на `PLAIN_COOKIE_NAME` і прибрати `legacyCookieName` з конфігурації.
-- **`LegacyLoginInputSchema`** у [`shared/src/schemas/auth/login.ts`](../../packages/shared/src/schemas/auth/login.ts). Frontend надсилає тільки `identifier`. Залишити одну схему й перевірити `api-playground`, seed-скрипти, e2e і документацію на варіант з `email`.
-- **Аліас `routeItem`** у [`types.d.ts:335`](../../packages/backend/src/vendor/types/types.d.ts). У коді його використовує лише `routeList`, тож скрізь писати `RouteItem`.
+- **`LegacyLoginInputSchema`** у [`shared/src/schemas/auth/login.ts`](../../../packages/shared/src/schemas/auth/login.ts). Frontend надсилає тільки `identifier`. Залишити одну схему й перевірити `api-playground`, seed-скрипти, e2e і документацію на варіант з `email`.
+- **Аліас `routeItem`** у [`types.d.ts:335`](../../../packages/backend/src/vendor/types/types.d.ts). У коді його використовує лише `routeList`, тож скрізь писати `RouteItem`.
 - Перед PR ще раз пошукати `legacy`, `backward`, `deprecated` у `packages/*/src` і для кожного знайденого вирішити, прибрати його чи лишити (наприклад, `serialize-ark-schema.ts:36`).
 
 **Реалізовано (feat-093).** Прибрано фолбек на старий cookie (`resolve-session-cookie.ts`, `delete-legacy-session-cookie.ts`, `forceCookie`, `legacyCookieName`; константа тепер `PLAIN_COOKIE_NAME`), `LegacyLoginInputSchema` (вхід лише з `identifier`), аліас `routeItem`, одноразову міграцію `uiLang` у `useLocale`, невикористаний експорт сирого `ws` з `useWebSocketConnection` (frontend і api-playground) і дубль `LEGACY_BASE_URL` в api-playground. Лишено свідомо: `fields` у `serialize-ark-schema.ts` (поточний формат api-playground, а не сумісність зі старими клієнтами), `legacy: false` у vue-i18n (опція бібліотеки), поле `code` у `WebsocketMessage` (спільне з нормалізатором HTTP-помилок).
 
-**Документація.** [`auth.md`](../../documentation/backend/auth.md) / [`security.md`](../../documentation/backend/security.md): прибрати опис міграції cookie; [`configuration.md`](../../documentation/backend/configuration.md), якщо там згадано legacy-ім'я.
+**Документація.** [`auth.md`](../../../documentation/backend/auth.md) / [`security.md`](../../../documentation/backend/security.md): прибрати опис міграції cookie; [`configuration.md`](../../../documentation/backend/configuration.md), якщо там згадано legacy-ім'я.
 
 ## Перевірка завершення (для кожного етапу)
 

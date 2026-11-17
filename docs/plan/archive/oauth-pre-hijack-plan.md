@@ -1,10 +1,10 @@
 # План: захист від pre-hijacking акаунта через OAuth
 
-Дата: 2026-11-02, ревізія 5.1 (після п'яти рев'ю плану). Фічі: `feat-096` (транзакційний фундамент) і `feat-097` (OAuth, залежить від `feat-096`). Попередня робота: [`oauth-email-verification-plan.md`](./oauth-email-verification-plan.md) (`feat-043`).
+Дата: 2026-11-02, ревізія 5.1 (після п'яти рев'ю плану). Фічі: `feat-096` (транзакційний фундамент) і `feat-097` (OAuth, залежить від `feat-096`). Попередня робота: [`oauth-email-verification-plan.md`](https://github.com/Blazheiko/vibe-template/blob/33841b3/docs/plan/oauth-email-verification-plan.md) (`feat-043`).
 
 ## Вразливість
 
-`oauthService.handleCallback` ([`oauth-service.ts`](../../packages/backend/src/app/services/auth/oauth-service.ts), гілка «Link OAuth account to existing user») шукає користувача за email і прив'язує до нього нову OAuth-ідентичність, коли **провайдер** підтвердив адресу. Чи підтвердив її **наш** акаунт (`users.email_verified_at`), код не перевіряє. Жертва входить в акаунт, який атакуючий створив заздалегідь, а атакуючий зберігає до нього свій спосіб входу.
+`oauthService.handleCallback` ([`oauth-service.ts`](../../../packages/backend/src/app/services/auth/oauth-service.ts), гілка «Link OAuth account to existing user») шукає користувача за email і прив'язує до нього нову OAuth-ідентичність, коли **провайдер** підтвердив адресу. Чи підтвердив її **наш** акаунт (`users.email_verified_at`), код не перевіряє. Жертва входить в акаунт, який атакуючий створив заздалегідь, а атакуючий зберігає до нього свій спосіб входу.
 
 ### Шляхи атаки
 

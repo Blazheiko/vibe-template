@@ -69,7 +69,7 @@ The email and name from the profile are personal data. The OAuth login log conta
 
 ## Linking by email
 
-Protection against account pre-hijacking ([plan](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/oauth-pre-hijack-plan.md)): an attacker creates an account with the victim's address in advance (with a password, via Facebook, with a linked phone) and waits for the victim to sign in through OAuth. That is why linking by email and the `users.email` value itself rely only on **proof of mailbox ownership**.
+Protection against account pre-hijacking ([plan](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/oauth-pre-hijack-plan.md)): an attacker creates an account with the victim's address in advance (with a password, via Facebook, with a linked phone) and waits for the victim to sign in through OAuth. That is why linking by email and the `users.email` value itself rely only on **proof of mailbox ownership**.
 
 ### Trust in the address
 

@@ -36,7 +36,7 @@
 | Міграції БД, конфігурація, деплой             | Ні        | Ні   | Ні    | Не HTTP-можливості: CLI-скрипти (`db:*`, див. [Скрипти](/reference/scripts)) і `.env`. Доступ визначається доступом до сервера/репозиторію (Developer/QA локально, Operator у production)                                                                                                                                                              |
 
 ::: info Видалений маршрут `POST /main/save-user`
-Раніше в групі `main` був анонімний маршрут `/main/save-user`, який створював користувача з паролем без хешування (п. 65 у [списку проблем](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/code-issues-found-during-docs.md)). Його видалено разом зі схемами `SaveUserInput`/`SaveUserResponse`, `WSSaveUserPayload` і клієнтським `api.saveUser`. Користувачі створюються лише через реєстрацію (email або телефон) та OAuth — див. [Автентифікація](/backend/auth#способи-входу) і [Вхід через соцмережі](/backend/oauth).
+Раніше в групі `main` був анонімний маршрут `/main/save-user`, який створював користувача з паролем без хешування (п. 65 у [списку проблем](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/code-issues-found-during-docs.md)). Його видалено разом зі схемами `SaveUserInput`/`SaveUserResponse`, `WSSaveUserPayload` і клієнтським `api.saveUser`. Користувачі створюються лише через реєстрацію (email або телефон) та OAuth — див. [Автентифікація](/backend/auth#способи-входу) і [Вхід через соцмережі](/backend/oauth).
 :::
 
 ::: warning Не підтверджено

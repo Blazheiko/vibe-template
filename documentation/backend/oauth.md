@@ -69,7 +69,7 @@ Email і ім'я з профілю — персональні дані. Журн
 
 ## Прив'язка за email
 
-Захист від pre-hijacking акаунта ([план](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/oauth-pre-hijack-plan.md)): атакуючий заздалегідь створює акаунт з адресою жертви (паролем, через Facebook, з прив'язаним телефоном) і чекає, поки жертва увійде через OAuth. Тому прив'язка за email і саме значення `users.email` спираються лише на **доказ володіння скринькою**.
+Захист від pre-hijacking акаунта ([план](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/archive/oauth-pre-hijack-plan.md)): атакуючий заздалегідь створює акаунт з адресою жертви (паролем, через Facebook, з прив'язаним телефоном) і чекає, поки жертва увійде через OAuth. Тому прив'язка за email і саме значення `users.email` спираються лише на **доказ володіння скринькою**.
 
 ### Довіра до адреси
 

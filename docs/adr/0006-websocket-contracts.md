@@ -2,7 +2,7 @@
 
 - **Статус:** прийнято 2026-11-11 (feat-171, C6 плану code review 2026-11-10): власник обрав рекомендовані варіанти Д-WS1…Д-WS3. Реалізовано 2026-11-12: `feat-180` (#548), `feat-181` (#550), `feat-182` (#552). Під час W2 знайдено й виправлено помилку з часів пілоту ADR 0005: playground подвоював префікс групи в адресі маршруту з контрактом (`/api/admin/admin/…`).
 - **Продовжує:** [ADR 0005](./0005-route-contracts.md) (контракти HTTP-маршрутів, цільовий стан досягнуто в feat-170).
-- **Task list:** [`docs/plan/ws-contracts-tasks.md`](../plan/ws-contracts-tasks.md).
+- **Task list:** [`docs/plan/archive/ws-contracts-tasks.md`](../plan/archive/ws-contracts-tasks.md).
 
 ## Контекст
 
