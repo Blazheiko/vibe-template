@@ -2221,7 +2221,7 @@
             "owner": "Blazheiko",
             "branch": "feat/auth-token-cleanup-job",
             "dependencies": ["feat-222"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         },
         {
