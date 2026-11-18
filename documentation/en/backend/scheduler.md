@@ -102,6 +102,8 @@ pnpm --filter backend job:run <name> [--dry-run]
 
 [`scripts/run-job.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/scripts/run-job.ts) takes the same lease as the scheduled run, so the two never run side by side, and prints `matched` and `changed` (`changed` = 0 with `--dry-run`). It does not change the schedule state (`lastSuccessSlot`, backoff) and needs Redis. A job disabled for the schedule (`SCHEDULER_DISABLED_JOBS`) still runs by hand, with a warning.
 
+`pnpm` turns every non-zero exit code into `1`. Where the exact code matters (a cron wrapper that retries on `75`), run the script itself: `pnpm --filter backend exec tsx src/scripts/run-job.ts <name>` in development, `node dist/scripts/run-job.js <name>` in the built image.
+
 | Exit code | Meaning                                                       |
 | --------- | ------------------------------------------------------------- |
 | `0`       | `ok`                                                          |

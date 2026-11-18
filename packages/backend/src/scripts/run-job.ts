@@ -6,6 +6,7 @@ import redis, { redisHealth } from '../database/redis.js'
 import { createAppScheduler } from '../app/scheduler/app-scheduler.js'
 import { jobs } from '../app/scheduler/jobs/index.js'
 import { exitCodeOf, parseRunJobArgs } from './run-job-args.js'
+import { waitForRedisReady } from './redis-ready.js'
 
 // Runs one scheduled job now (feat-222, scheduler plan Р9):
 //
@@ -30,6 +31,7 @@ async function main(): Promise<number> {
     process.once('SIGINT', interrupt)
     process.once('SIGTERM', interrupt)
 
+    await waitForRedisReady(redis)
     const result = await createAppScheduler().runOnce(name, { dryRun, signal: controller.signal })
 
     if (result.outcome === 'skipped-locked') {

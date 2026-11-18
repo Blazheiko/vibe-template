@@ -102,6 +102,8 @@ pnpm --filter backend job:run <name> [--dry-run]
 
 [`scripts/run-job.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/scripts/run-job.ts) бере той самий lease, що й плановий запуск, тож вони ніколи не працюють поруч, і виводить `matched` і `changed` (при `--dry-run` `changed` = 0). Стан розкладу (`lastSuccessSlot`, backoff) він не змінює і потребує Redis. Задача, вимкнена для розкладу (`SCHEDULER_DISABLED_JOBS`), вручну все одно запускається, з попередженням.
 
+`pnpm` перетворює будь-який ненульовий код виходу на `1`. Де важливий точний код (обгортка cron, що повторює на `75`), запускайте сам скрипт: `pnpm --filter backend exec tsx src/scripts/run-job.ts <name>` у розробці, `node dist/scripts/run-job.js <name>` у зібраному образі.
+
 | Код виходу | Значення                                                              |
 | ---------- | --------------------------------------------------------------------- |
 | `0`        | `ok`                                                                  |
