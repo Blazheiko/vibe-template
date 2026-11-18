@@ -40,11 +40,27 @@ feat-224.
 - `job:run` waits for the Redis connection first (`redis-ready.ts`): the main client has no
   offline queue, and the manual check showed the first command failing while still connecting.
 
+## Review of 0606f9a
+
+Three confirmed defects in `scheduler.ts`, fixed with a test each (all five new tests fail on
+`0606f9a` and pass now):
+
+- a `stop()` during the state read, or a `runOnce` signal aborted beforehand, still called
+  `job.run()`: `execute()` now calls `scope.checkpoint()` before `run()` (outcome `shutdown`);
+- a lease lost during the run set no local backoff: `lease-lost` now holds the job back locally;
+- a success seen in Redis did not reset the local failure count: the local backoff now records
+  when it was set, and a later success in the state (or a slot already succeeded) clears it.
+
+Also from the review: a `release()` that failed (Redis unavailable) can be tried again; only one
+that reached Redis, or `abandon()`, makes later calls no-ops (the knowledge-base fallback relies
+on retrying). The wrapper `withJobLease` still calls `fn` when the caller signal is already
+aborted: every path runs the job through `execute()`, whose first step is that checkpoint.
+
 ## Evidence of Completion
 
 - Baseline `./init.sh` (before any change): green; backend 210 files / 2988 tests, frontend 55 /
   614, landing 103, api-playground 115.
-- `make check` after the last edit: green; backend 220 files / 3114 tests, frontend 55 / 614,
+- `make check` after the review fixes: green; backend 220 files / 3119 tests, frontend 55 / 614,
   landing 103, api-playground 115.
 - `make test-redis` with `REDIS_TEST_URL=redis://127.0.0.1:6390/15` (throwaway `redis:7-alpine`):
   15 files / 141 tests passed, 0 skipped.

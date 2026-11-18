@@ -706,3 +706,87 @@ describe('registry', () => {
         )
     })
 })
+
+// Review of 0606f9a: three defects, each pinned by a test.
+describe('review fixes', () => {
+    it('a stop() while the state is read starts no run: shutdown', async () => {
+        const run = vi.fn(() => counts())
+        const holder: { stop?: () => Promise<void> } = {}
+        const t = setup([job('a', run)])
+        holder.stop = () => t.scheduler.stop()
+        const read = t.store.state.read.getMockImplementation()
+        t.store.state.read.mockImplementation(async (name: string) => {
+            void holder.stop?.()
+            return (await read?.(name)) ?? { consecutiveFailures: 0 }
+        })
+
+        await t.scheduler.tick()
+
+        expect(run).not.toHaveBeenCalled()
+        expect(t.outcomes()).toEqual(['shutdown'])
+        expect(t.store.state.recordSuccess).not.toHaveBeenCalled()
+    })
+
+    it('runOnce with a signal aborted beforehand starts no run: shutdown', async () => {
+        const run = vi.fn(() => counts())
+        const t = setup([job('a', run)])
+        const controller = new AbortController()
+        controller.abort(new Error('SIGINT'))
+
+        const result = await t.scheduler.runOnce('a', { signal: controller.signal })
+
+        expect(run).not.toHaveBeenCalled()
+        expect(result.outcome).toBe('shutdown')
+    })
+
+    it('a lease lost during the run holds the job back locally', async () => {
+        const run = vi.fn(() => {
+            t.leases.last().loseIt()
+            return counts()
+        })
+        const t = setup([job('a', run)])
+
+        await t.scheduler.tick()
+        t.advance(30_000)
+        await t.scheduler.tick()
+
+        expect(run).toHaveBeenCalledTimes(1)
+        expect(t.outcomes()).toEqual(['lease-lost', 'skipped-backoff'])
+        expect(t.store.hashes.get('a')).toBeUndefined()
+    })
+
+    it('a success of another replica resets the local failure count', async () => {
+        let fail = true
+        const run = vi.fn(() => (fail ? Promise.reject(new Error('boom')) : counts()))
+        const t = setup([job('a', run)])
+        // A failure here whose state write Redis refused: held back 1m locally.
+        t.store.behaviour.throwOnWrite = true
+        await t.scheduler.tick()
+        t.store.behaviour.throwOnWrite = false
+
+        // Another replica succeeds in this slot; this process sees it after its backoff.
+        t.advance(2 * MINUTE)
+        t.store.hashes.set('a', {
+            consecutiveFailures: 0,
+            lastSuccessSlot: Date.parse('2026-11-18T03:00:00Z'),
+            lastOutcome: 'ok',
+            lastRunAt: T0 + MINUTE,
+        })
+        await t.scheduler.tick()
+
+        // The next slot: the run succeeds but its write fails. A fresh first backoff, 1m, not 2m.
+        fail = false
+        t.setNow(Date.parse('2026-11-18T03:15:00Z'))
+        t.store.behaviour.throwOnWrite = true
+        await t.scheduler.tick()
+        t.store.behaviour.throwOnWrite = false
+        t.leases.withLease.mockClear()
+
+        t.advance(MINUTE - 1)
+        await t.scheduler.tick()
+        expect(t.leases.withLease).not.toHaveBeenCalled()
+        t.advance(2)
+        await t.scheduler.tick()
+        expect(t.leases.withLease).toHaveBeenCalledTimes(1)
+    })
+})

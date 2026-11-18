@@ -84,6 +84,8 @@ export const abortedOutcome = (reason: unknown): Outcome => {
 interface LocalRetry {
     nextRetryAt: number
     failures: number
+    /** When this process recorded it: a success in Redis after this moment supersedes it. */
+    since: number
 }
 
 interface RunRecord {
@@ -156,10 +158,28 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
 
     const holdLocally = (job: Job, failuresBefore: number): void => {
         const failures = Math.max(failuresBefore, localRetry.get(job.name)?.failures ?? 0) + 1
+        const now = clock.now()
         localRetry.set(job.name, {
             failures,
-            nextRetryAt: clock.now() + backoffDelay(failures, maxBackoffOf(job.schedule)),
+            nextRetryAt: now + backoffDelay(failures, maxBackoffOf(job.schedule)),
+            since: now,
         })
+    }
+
+    /**
+     * The state in Redis is the reference: a success recorded there (by any replica) after this
+     * process held the job back locally ends that local backoff and its failure count.
+     */
+    const reconcileLocal = (job: Job, current: JobState): void => {
+        const local = localRetry.get(job.name)
+        if (local === undefined) return
+        if (
+            current.lastOutcome === 'ok' &&
+            current.lastRunAt !== undefined &&
+            current.lastRunAt >= local.since
+        ) {
+            localRetry.delete(job.name)
+        }
     }
 
     /** Runs the job under the scope's lease and tells how it ended. */
@@ -173,6 +193,8 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
         let result: JobResult | undefined
         let err: unknown
         try {
+            // A stop() or a lost lease while the lease was taken or the state read: no run.
+            scope.checkpoint()
             result = await job.run({
                 signal: scope.signal,
                 checkpoint: scope.checkpoint,
@@ -221,8 +243,11 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                 const now = clock.now()
                 const slot = slotOf(job.schedule, now)
                 const current: JobState = await state.read(job.name)
+                reconcileLocal(job, current)
                 if (current.lastSuccessSlot !== undefined && current.lastSuccessSlot >= slot) {
-                    // Not due: the slot already succeeded here or on another replica.
+                    // Not due: the slot already succeeded here or on another replica, so any
+                    // local backoff is over too.
+                    localRetry.delete(job.name)
                     return
                 }
                 if (current.nextRetryAt !== undefined && now < current.nextRetryAt) {
@@ -230,6 +255,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                     localRetry.set(job.name, {
                         nextRetryAt: current.nextRetryAt,
                         failures: current.consecutiveFailures,
+                        since: now,
                     })
                     report({
                         job: job.name,
@@ -273,14 +299,20 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                             localRetry.set(job.name, {
                                 nextRetryAt: write.nextRetryAt,
                                 failures: current.consecutiveFailures + 1,
+                                since: finishedAt,
                             })
                         } else {
                             reportToSentry(outcome, job.name, ran.err)
                             outcome = 'lease-lost'
                             holdLocally(job, current.consecutiveFailures)
                         }
+                    } else if (outcome === 'lease-lost') {
+                        // Р3: the state is not touched, but the job is held back locally: the key
+                        // may be free again at once, and another run right away would repeat
+                        // whatever made the lease go.
+                        holdLocally(job, current.consecutiveFailures)
                     }
-                    // shutdown / lease-lost: the state is not touched (Р3).
+                    // shutdown: the state is not touched (Р3).
                 } catch (writeError: unknown) {
                     // Redis failed on the write: the slot stays due, retried after a local backoff.
                     stateWritten = false

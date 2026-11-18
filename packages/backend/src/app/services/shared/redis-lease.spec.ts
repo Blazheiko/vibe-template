@@ -127,6 +127,17 @@ describe('HeldLease.abandon', () => {
         expect(redisMock.eval).not.toHaveBeenCalled()
     })
 
+    it('a release that failed can be tried again', async () => {
+        const held = await acquire()
+        redisMock.eval.mockRejectedValueOnce(new Error('Connection is closed'))
+
+        await expect(held.release()).rejects.toThrow('Connection is closed')
+        redisMock.eval.mockResolvedValueOnce(1)
+
+        expect(await held.release()).toBe(true)
+        expect(redisMock.eval).toHaveBeenCalledTimes(2)
+    })
+
     it('a second release does not reach Redis', async () => {
         redisMock.eval.mockResolvedValue(1)
         const held = await acquire()

@@ -72,7 +72,8 @@ export interface HeldLease {
     readonly lost: AbortSignal
     /**
      * True when this holder still owned the lock and released it. Stops the renewals. After an
-     * earlier release() or abandon() it is a no-op that answers false without calling Redis.
+     * earlier release() that reached Redis, or after abandon(), it is a no-op that answers false
+     * without calling Redis; a release() that failed (Redis unavailable) can be tried again.
      */
     release(): Promise<boolean>
     /**
@@ -126,6 +127,8 @@ export async function acquireLease(
     let renewing = false
     // feat-130: set by release(); a renewal that answers later must not re-arm the deadline.
     let released = false
+    // feat-222: release() reached Redis, or abandon() left the key to its TTL.
+    let settled = false
     let deadline: ReturnType<typeof setTimeout> | undefined
     // feat-222: the monotonic moment the holder is told lost, set by armDeadline; checkpoint()
     // compares against it synchronously.
@@ -190,13 +193,16 @@ export async function acquireLease(
     return {
         lost: lostController.signal,
         release: async (): Promise<boolean> => {
-            if (released) return false
+            if (settled) return false
             released = true
             stopTimers()
-            return (await withRedis(() => redis.eval(RELEASE_LUA, 1, key, token))) === 1
+            const reply = await withRedis(() => redis.eval(RELEASE_LUA, 1, key, token))
+            settled = true
+            return reply === 1
         },
         abandon: (): void => {
             released = true
+            settled = true
             stopTimers()
         },
         checkpoint: (): void => {
