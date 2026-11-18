@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
 import { sql } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 
 // feat-223: the auth-token-cleanup job deletes one-time tokens and SMS challenges whose
 // expires_at is before a cut-off. Real PostgreSQL. The rows of this file expire around
@@ -28,6 +29,10 @@ const LONG_EXPIRED = new Date('2000-06-01T00:00:00Z')
 /** Expired, but within the retention: after the cut-off. */
 const RECENTLY_EXPIRED = new Date('2001-06-01T00:00:00Z')
 const VALID = new Date(Date.now() + 60 * 60 * 1000)
+const MINUTE = 60 * 1000
+/** Minutes either side of the cut-off: an hours-sized shift (a time zone) would move them. */
+const JUST_BEFORE = new Date(BEFORE.getTime() - 2 * MINUTE)
+const JUST_AFTER = new Date(BEFORE.getTime() + 2 * MINUTE)
 
 describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -35,6 +40,8 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
     const schema = await import('#database/schema.js')
     const { authTokenCleanupService } =
         await import('#app/services/auth/auth-token-cleanup-service.js')
+    const { emailVerificationRepository } = await import('#app/repositories/index.js')
+    const { expiredBatchDelete } = await import('#app/repositories/auth/expired-rows.js')
 
     const tokenTables = [
         schema.emailVerifications,
@@ -122,6 +129,10 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
         }
     })
 
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
     afterAll(async () => {
         for (const table of allTables) {
             await db.delete(table).where(sql`${table.expiresAt} < '2002-01-01'`)
@@ -143,6 +154,24 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
         expect(await remaining(LONG_EXPIRED)).toEqual([0, 0, 0, 0, 0])
         expect(await remaining(RECENTLY_EXPIRED)).toEqual([1, 1, 1, 1, 1])
         expect(await remaining(VALID)).toEqual([1, 1, 1, 1, 1])
+    })
+
+    it('draws the line at the cut-off itself, not hours away from it', async () => {
+        for (const expiresAt of [JUST_BEFORE, BEFORE, JUST_AFTER]) {
+            for (const table of tokenTables) await insertToken(table, expiresAt)
+            await insertChallenge(expiresAt)
+        }
+
+        const counts = await authTokenCleanupService.purgeExpired({
+            before: BEFORE,
+            dryRun: false,
+        })
+
+        expect(counts).toEqual({ matched: 5, changed: 5 })
+        expect(await remaining(JUST_BEFORE)).toEqual([0, 0, 0, 0, 0])
+        // expires_at < before: a row expiring exactly at the cut-off stays.
+        expect(await remaining(BEFORE)).toEqual([1, 1, 1, 1, 1])
+        expect(await remaining(JUST_AFTER)).toEqual([1, 1, 1, 1, 1])
     })
 
     it('works in batches until a batch comes back short', async () => {
@@ -197,6 +226,8 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
 
     it('deletes every row exactly once when two runs overlap', async () => {
         await seed({ longExpired: 7, recent: 1 })
+        // Both runs are inside their first delete before either goes on.
+        bothReadBeforeEitherWrites(emailVerificationRepository, 'deleteExpiredBatch')
 
         const [first, second] = await Promise.all([
             authTokenCleanupService.purgeExpired({ before: BEFORE, dryRun: false, batchSize: 2 }),
@@ -208,18 +239,22 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
         expect(await remaining(RECENTLY_EXPIRED)).toEqual([1, 1, 1, 1, 1])
     })
 
-    // The tables are small here, so the planner is told to avoid a sequential scan: what is
-    // checked is that the index exists on expires_at and serves the range.
-    it('can use the expires_at index of every table', async () => {
+    // The tables are small and not analysed here, so the planner is told to avoid a sequential
+    // scan and a sort (what it picks on a large table anyway): the delete must then be able to
+    // take its batch from the expires_at index in index order, not sort every expired row.
+    it('deletes through the expires_at index of every table', async () => {
         for (const table of allTables) {
             const plan = await db.transaction(async (tx) => {
                 await tx.execute(sql`SET LOCAL enable_seqscan = off`)
+                await tx.execute(sql`SET LOCAL enable_sort = off`)
                 const result = await tx.execute<{ 'QUERY PLAN': string }>(
-                    sql`EXPLAIN SELECT count(*) FROM ${table} WHERE ${table.expiresAt} < ${BEFORE.toISOString()}`,
+                    sql`EXPLAIN ${expiredBatchDelete(table, { id: table.id, expiresAt: table.expiresAt }, BEFORE, 1000)}`,
                 )
                 return result.rows.map((row) => row['QUERY PLAN']).join('\n')
             })
             expect(plan).toMatch(/_expires_at_idx/)
+            // Read in index order: no sort of every expired row for each batch.
+            expect(plan).not.toMatch(/Sort/)
         }
     })
 })

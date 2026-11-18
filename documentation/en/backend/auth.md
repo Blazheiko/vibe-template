@@ -307,7 +307,7 @@ One-time tokens (`email_verifications`, `email_link_verifications`, `password_re
 What the deletion changes (feat-223 audit):
 
 - **Mailed links.** `findUsableToken` answers "already used" (`used_at` set) or "expired" (`expires_at` passed) only while the row exists. Once it is deleted, the same token answers "link is invalid" (`… link is invalid`; code `invalid_token` for password reset and OAuth). Token lifetimes are far shorter than the retention (password reset 1 h, OAuth link 30 min, email verification 24 h), so this only affects links opened a week after they expired.
-- **SMS challenges.** The resend cooldown reads only a challenge that is still pending (`resend_available_at` ≤ `expires_at` by default), and the SMS and attempt budgets live in Redis, not in database rows. A deleted challenge looked up by `challengeId` answers as unknown ("… challenge not found", "… challenge is invalid" for the phone reset) instead of "… no longer valid".
+- **SMS challenges.** The resend cooldown reads only a challenge that is still pending and the deletion does not affect it while `AUTH_SMS_RESEND_COOLDOWN_SECONDS` is below `AUTH_SMS_CHALLENGE_TTL_SECONDS` plus `AUTH_TOKEN_RETENTION` (by default 60 s against 10 min + 7 days; the configuration does not check it), and the SMS and attempt budgets live in Redis, not in database rows. A deleted challenge looked up by `challengeId` answers as unknown ("… challenge not found", "… challenge is invalid" for the phone reset) instead of "… no longer valid".
 - No table references these rows with a foreign key, and no counter counts them.
 
 ## WebSocket authorization

@@ -21,6 +21,7 @@ describe('auth-token-cleanup job', () => {
     it('runs daily at 03:30 UTC with a 10 minute timeout', () => {
         const job = createAuthTokenCleanupJob({
             retentionMs: 7 * DAY,
+            configError: null,
             now: () => NOW,
             purgeExpired: vi.fn(),
         })
@@ -36,6 +37,7 @@ describe('auth-token-cleanup job', () => {
             const purgeExpired = vi.fn().mockResolvedValue({ matched: 4, changed: dryRun ? 0 : 4 })
             const job = createAuthTokenCleanupJob({
                 retentionMs: 7 * DAY,
+                configError: null,
                 now: () => NOW,
                 purgeExpired,
             })
@@ -51,4 +53,19 @@ describe('auth-token-cleanup job', () => {
             expect(result).toEqual({ matched: 4, changed: dryRun ? 0 : 4 })
         },
     )
+
+    it('refuses to run with an unreadable AUTH_TOKEN_RETENTION, deleting nothing', async () => {
+        const purgeExpired = vi.fn()
+        const job = createAuthTokenCleanupJob({
+            retentionMs: 7 * DAY,
+            configError: 'AUTH_TOKEN_RETENTION: "30" is not a duration',
+            now: () => NOW,
+            purgeExpired,
+        })
+
+        await expect(job.run(context(false))).rejects.toThrow(
+            'Invalid auth token cleanup configuration: AUTH_TOKEN_RETENTION',
+        )
+        expect(purgeExpired).not.toHaveBeenCalled()
+    })
 })
