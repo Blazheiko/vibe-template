@@ -19,6 +19,7 @@ import redisConfig from '#config/redis.js'
 import { throttlePolicyConfigError } from '#config/throttle-policies.js'
 import sessionConfig from '#config/session.js'
 import schedulerConfig from '#config/scheduler.js'
+import authTokenCleanupConfig from '#config/auth-token-cleanup.js'
 import logger from '#logger'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 
@@ -75,6 +76,7 @@ export function validateRuntimeConfig(): void {
         ['Sentry', sentryConfig.configError],
         ['session', sessionConfig.configError],
         ['scheduler', schedulerConfig.configError],
+        ['auth token cleanup', authTokenCleanupConfig.configError],
     ]
     for (const [area, problem] of unreadable) {
         if (problem !== null) throw new Error(`Invalid ${area} configuration: ${problem}`)
