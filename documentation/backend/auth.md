@@ -300,6 +300,16 @@ sequenceDiagram
 
 Провайдер SMS обирається через `AUTH_SMS_PROVIDER`. Валідатор runtime-конфігурації забороняє `AUTH_SMS_PROVIDER=fake` в середовищах production-like і вимагає явно задати `AUTH_SMS_PROVIDER_ALLOW_FAKE=true` та `AUTH_FAKE_SMS_CODE`.
 
+## Чистка прострочених токенів
+
+Одноразові токени (`email_verifications`, `email_link_verifications`, `password_reset_tokens`, `oauth_link_verifications`) і SMS-челенджі (`sms_auth_challenges`) не видаляються в момент використання: використаний рядок отримує `used_at` (`confirmed_at` / `invalidated_at` у челенджа). Щодня о 03:30 UTC задача [`auth-token-cleanup`](/backend/scheduler#задачі) видаляє рядки, у яких `expires_at` раніше за `now − AUTH_TOKEN_RETENTION` (за замовчуванням `7d`), пачками по 1000 ([`auth-token-cleanup-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-token-cleanup-service.ts)). Два одночасні запуски видаляють кожен рядок рівно один раз. Перевірити, скільки рядків піде: `pnpm --filter backend job:run auth-token-cleanup --dry-run`.
+
+Що змінює видалення (аудит feat-223):
+
+- **Посилання з листа.** `findUsableToken` відповідає «вже використано» (`used_at` заданий) або «прострочено» (`expires_at` минув) лише поки рядок є. Після видалення той самий токен дає «посилання недійсне» (`… link is invalid`, для скидання пароля і OAuth код `invalid_token`). Строк дії токенів значно коротший за retention (скидання пароля 1 год, прив'язка OAuth 30 хв, підтвердження email 24 год), тож ця різниця стосується лише посилань, відкритих через тиждень після закінчення строку.
+- **SMS-челенджі.** Пауза перед повторною відправкою читає лише челендж, що ще чекає (`resend_available_at` ≤ `expires_at` за замовчуванням), а бюджети SMS і спроб живуть у Redis, а не в рядках БД. Видалений челендж за `challengeId` відповідає як невідомий («… challenge not found», для скидання за телефоном «… challenge is invalid») замість «… no longer valid».
+- Жодна таблиця не посилається на ці рядки зовнішнім ключем, і лічильники не рахують їх.
+
 ## Авторизація WebSocket
 
 1. Автентифікований клієнт викликає `GET /main/update-ws-token` (`auth_guard`). [`generate-ws-token-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/generate-ws-token-service.ts) кладе в Redis ключ `auth:ws:<token>` з TTL 60 с і даними `{ sessionId, userId, userToken }`.
