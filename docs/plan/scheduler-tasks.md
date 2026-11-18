@@ -1,10 +1,12 @@
-# Планувальник фонових задач — покроковий task list (v2)
+# Планувальник фонових задач — покроковий task list (v3)
 
 Джерело: [`scheduler-plan.md`](./scheduler-plan.md) (редакція 5, рішення Р1–Р13). Базовий шлях: `packages/backend/src/`, якщо не вказано інше. Коміт для посилань на рядки: `50af172`.
 
 Кожна фіча — окремий рядок у `feature_list.json`, гілка і PR (правила `AGENTS.md`). Задача T* — один коміт або кілька дрібних; вона закінчується зеленим вузьким тестом свого рівня. Позначення тестів: `*.spec.ts` — `pnpm --filter backend test`; `*.redis.test.ts` — `make test-redis`; `*.pg.test.ts` — `make test-pg` (з `REDIS_TEST_URL`, де вказано).
 
 **v2 — після рев'ю task list:** єдиний контракт `recordSuccess`/`recordFailure` (`{ status, nextRetryAt? }`) і оновлення `lastRunAt`/`lastOutcome`/`lastDurationMs` при невдачі (T6); `withJobLease` — явне завдання і єдиний шлях до lease для планового запуску, `runOnce` і старого CLI, зовнішній `signal` для SIGINT (T4, T7, T9, T22); застосування `SCHEDULER_DISABLED_JOBS` у циклі і перевірка, що `/ready` не залежить від планувальника (T7, T8); перевірка Р13 для реального реєстру (T17, T21); `PurgeCounts` у `services/shared`, щоб сервіси не імпортували `app/scheduler` (T2, T5, T16); паралельність `feat-223`/`feat-224` — лише з різними власниками.
+
+**v3:** `controller.signal` замість `AbortController` (T9, T22); тести T6/T7 очікують `{ status: 'not-owner' }`; перевірка `abandon()` (T7, T11) обмежена моментом завершення drain, після чого `release()` — no-op, а ключ живе до TTL.
 
 **Definition of Done для кожної фічі:** `make check`; `make test-redis` і/або `make test-pg` з кількістю виконаних і пропущених тестів у доказах (або посиланням на CI-джоби `test-redis`/`test-pg`); `pnpm docs:build && pnpm docs:verify`, якщо змінено `documentation/`; ручна перевірка golden path; усе це в `feature-state/<feat-id>/progress.md` → Evidence of Completion.
 
@@ -92,14 +94,14 @@
 - [ ] `readState(job)`: `HGETALL sched:state:<job>` → `{ lastSuccessSlot?, consecutiveFailures, nextRetryAt?, lastRunAt?, lastOutcome?, lastDurationMs? }`.
 - [ ] `recordSuccess(lease, job, { slot, durationMs, now })` через `lease.evalAsOwner`: `lastSuccessSlot = max(old, slot)`, `consecutiveFailures = 0`, `HDEL nextRetryAt`; `lastRunAt = now`, `lastOutcome = 'ok'`, `lastDurationMs`.
 - [ ] `recordFailure(lease, job, { outcome, durationMs, now, maxBackoffMs })` (`outcome` — `failed` або `timeout`) через `evalAsOwner`: `consecutiveFailures + 1`, `nextRetryAt = now + min(60_000 × 2^(failures − 1), maxBackoffMs)`; `lastRunAt = now`, `lastOutcome = outcome`, `lastDurationMs`. `lastSuccessSlot` не змінюється.
-- [ ] Єдиний контракт результату: `recordSuccess` → `{ status: 'written' } | { status: 'not-owner' }`; `recordFailure` → `{ status: 'written'; nextRetryAt: number } | { status: 'not-owner' }`. При `'not-owner'` нічого не записано; локальний backoff планувальник рахує сам тією самою формулою (`backoffDelay(failures, maxBackoffMs)` — чиста функція, спільна для Lua-параметрів і локального розрахунку). Помилка Redis кидається далі.
+- [ ] Єдиний контракт результату: `recordSuccess` → `{ status: 'written' } | { status: 'not-owner' }`; `recordFailure` → `{ status: 'written'; nextRetryAt: number } | { status: 'not-owner' }`. При `{ status: 'not-owner' }` нічого не записано (сирий рядок `'not-owner'` від Lua через `evalAsOwner` — деталь T3, назовні з `scheduler-state.ts` не виходить); локальний backoff планувальник рахує сам тією самою формулою (`backoffDelay(failures, maxBackoffMs)` — чиста функція, спільна для Lua-параметрів і локального розрахунку). Помилка Redis кидається далі.
 - [ ] `maxBackoffOf(schedule)`: `min(every, 1h)` для `every`, `1h` для `dailyAt`.
 
 **Тести** (`scheduler-state.redis.test.ts`)
 
 - [ ] `lastSuccessSlot` не відкочується (запис меншого слоту лишає більший).
 - [ ] Backoff: 1m, 2m, 4m … до максимуму; після `recordSuccess` — `consecutiveFailures = 0`, `nextRetryAt` немає.
-- [ ] **Колишній власник:** А бере lease, ключ видаляється, Б бере lease і пише успіх; запис А (`recordFailure` або `recordSuccess`) повертає `'not-owner'`, стан Б незмінний.
+- [ ] **Колишній власник:** А бере lease, ключ видаляється, Б бере lease і пише успіх; запис А (`recordFailure` або `recordSuccess`) повертає `{ status: 'not-owner' }`, стан Б незмінний.
 - [ ] `maxBackoffOf` — юніт у `scheduler-state.spec.ts`.
 
 ### T7 · Ядро (`scheduler.ts`) — Р3–Р8, Р10
@@ -111,7 +113,7 @@
 - [ ] Для кожної задачі: у `disabledJobs` → пропускається без звернення до Redis і без запису в лог на кожен тік (один `info` на старті зі списком вимкнених); локальний `nextRetryAt` у майбутньому → `skipped-backoff` без звернення до Redis; інакше `withLease({ name, timeoutMs, signal: stopSignal }, fn)` (`busy` → `skipped-locked`). Усередині `fn`: `readState` → due, якщо `lastSuccessSlot < slotOf(...)` і `now ≥ nextRetryAt` (інакше вихід без запуску; `skipped-backoff`, якщо причина в `nextRetryAt`) → `run(ctx)` → класифікація → запис стану, усе ще під lease.
 - [ ] `ctx.signal` і `ctx.checkpoint` — ті, що дав `withJobLease`; `dryRun: false`; `slot` — поточний слот.
 - [ ] Класифікація після `run()`: перерваний сигнал → `timeout` / `lease-lost` / `shutdown` за `signal.reason` навіть при успішному поверненні; виняток → `failed` (або за причиною сигналу, якщо він перерваний); інакше `ok`.
-- [ ] Запис: `ok` → `recordSuccess`; `failed`/`timeout` → `recordFailure`; `'not-owner'` → `outcome = lease-lost`, локальний backoff; помилка Redis → локальний backoff з тим самим розрахунком; `shutdown`/`lease-lost` → стан не пишеться.
+- [ ] Запис: `ok` → `recordSuccess`; `failed`/`timeout` → `recordFailure`; `{ status: 'not-owner' }` → `outcome = lease-lost`, локальний backoff; помилка Redis → локальний backoff з тим самим розрахунком; `shutdown`/`lease-lost` → стан не пишеться.
 - [ ] Звільнення lease — лише `withJobLease` (`finally`), власного `release()` у планувальнику немає.
 - [ ] Лог pino на запуск (поля Р8, `category`); `failed`/`timeout` → `sentryService.captureException` з тегом `job`.
 - [ ] `stop()`: припиняє цикл, перериває `stopSignal`, чекає поточну задачу до `stopDrainMs`; не завершилась → `lease.abandon()` (lease, який тримає поточний `fn`), після чого `release()` у `finally` обгортки — no-op; помилки Redis ловляться; повторний `stop()` — no-op.
@@ -120,10 +122,10 @@
 **Тести** (`scheduler.spec.ts`, фейковий годинник і фейкові lease/state)
 
 - [ ] Due / not-due; пропущені слоти (стан на 3 доби тому) → один запуск; перший старт (стану немає) → запуск одразу.
-- [ ] Backoff: зростання, максимум, обнулення після успіху; локальний backoff при `'not-owner'` і при помилці Redis.
+- [ ] Backoff: зростання, максимум, обнулення після успіху; локальний backoff при `{ status: 'not-owner' }` і при помилці Redis.
 - [ ] `run()`, що повернувся після abort, → `timeout`/`shutdown`, `recordSuccess` не викликано.
 - [ ] Задача, що працює до свого timeout, → `timeout`, а не `lease-lost` (з `leaseForJob`).
-- [ ] `stop()`: задача завершилася до drain → `release()`; ні → `abandon()`, `release()` не викликано; помилка `release()` не кидає з `stop()`.
+- [ ] `stop()`: задача завершилася до drain → `release()` звільняє ключ; ні → `abandon()` викликано, і **на момент завершення drain** `release()` ще не викликався; після того як `fn` завершиться, обгортка викликає `release()` як no-op (Redis не отримує `DEL`), а ключ **лишається до TTL** (перевіряється фейковим lease: ключ «живий» до TTL, хоча `release()` уже викликано); помилка `release()` не кидає з `stop()`.
 - [ ] Послідовність: друга задача стартує після завершення першої.
 - [ ] Sentry лише для `failed`/`timeout`.
 - [ ] Задача з `disabledJobs` не запускається і не бере lease, решта задач працюють.
@@ -142,7 +144,7 @@
 ### T9 · Ручний запуск (`scripts/run-job.ts`) — Р9
 
 - [ ] `scripts/run-job-args.ts` (чисті функції) + `run-job-args.spec.ts`: `<name>`, `--dry-run`, невідомий аргумент і невідома задача → помилка.
-- [ ] `scripts/run-job.ts`: `runOnce(name, { dryRun, signal })`, де `signal` — `AbortController`, який переривається на SIGINT/SIGTERM; вивід `matched`/`changed`; «зайнято» → `process.exitCode = 75`; `shutdown` → код 130; закриває пул і Redis.
+- [ ] `scripts/run-job.ts`: `runOnce(name, { dryRun, signal })`, де `signal` — `controller.signal` від `AbortController`, який CLI перериває на SIGINT/SIGTERM; вивід `matched`/`changed`; «зайнято» → `process.exitCode = 75`; `shutdown` → код 130; закриває пул і Redis.
 - [ ] `package.json`: `"job:run": "tsx src/scripts/run-job.ts"`; `scripts/README.md`.
 
 ### T10 · Redis-тести ядра (`app/scheduler/scheduler.redis.test.ts`)
@@ -163,7 +165,7 @@
 
 - [ ] Тестове з'єднання тримає `LOCK TABLE sched_test_target IN ACCESS EXCLUSIVE MODE`.
 - [ ] Репліка А: задача віддає тесту `pg_backend_pid()`, потім `checkpoint()` і запит до `sched_test_target`; тест опитує `pg_stat_activity`, доки `pid` А не матиме `wait_event_type = 'Lock'`, і лише тоді викликає `stop()`.
-- [ ] Перевірка: `abandon()` викликано, `release()` — ні; ключ існує, `PTTL < ttlMs`; `acquireLease` під час очікування А → `null`.
+- [ ] Перевірка: на момент завершення drain `abandon()` викликано, а `release()` — ще ні; ключ існує, `PTTL < ttlMs`; коли запит А завершиться і обгортка викличе `release()` (no-op), ключ **усе ще існує** і зникає лише після свого TTL; `acquireLease` під час очікування А → `null`.
 - [ ] Репліка Б працює зі своїм коротким тіком, тест нею не керує; її задача першим SQL-кроком робить `INSERT INTO sched_test_events (event, a_active) SELECT 'b-first', EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $pidA AND state = 'active')`. Очікування: рядок є і `a_active = false`.
 - [ ] На боці А — код `57014`. Варіант: тест знімає блокування раніше — запит А завершується успішно, решта перевірок та сама.
 - [ ] Спостерігач `pg_stat_activity` лише логує час завершення А, у перевірках не бере участі.
@@ -235,7 +237,7 @@
 
 ### T22 · CLI через спільний lease
 
-- [ ] `scripts/purge-llm-prompts.ts`: `withJobLease({ name: 'llm-prompt-retention', timeoutMs, signal }, …)` (T4; `timeoutMs` — timeout задачі з реєстру), де `signal` — `AbortController` на SIGINT/SIGTERM; `checkpoint` з обгортки передається в `purgePromptText`; прапори `--all`/`--days`/`--dry-run` без змін; «зайнято» → код 75, перерваний → 130; вивід `matched`/`changed`; стан Р3 не пише; закриває пул і Redis.
+- [ ] `scripts/purge-llm-prompts.ts`: `withJobLease({ name: 'llm-prompt-retention', timeoutMs, signal }, …)` (T4; `timeoutMs` — timeout задачі з реєстру), де `signal` — `controller.signal` від `AbortController`, який CLI перериває на SIGINT/SIGTERM; `checkpoint` з обгортки передається в `purgePromptText`; прапори `--all`/`--days`/`--dry-run` без змін; «зайнято» → код 75, перерваний → 130; вивід `matched`/`changed`; стан Р3 не пише; закриває пул і Redis.
 - [ ] `purge-llm-prompts-args.spec.ts` — без регресій; Redis-тест: CLI під час планового запуску → 75; помилка всередині CLI звільняє lease; після CLI `sched:state:llm-prompt-retention` незмінний.
 
 ### T23 · Документація і закриття
