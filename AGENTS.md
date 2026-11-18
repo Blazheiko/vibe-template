@@ -9,6 +9,7 @@ The workflow below applies to **implementation** sessions. Analysis, code review
     - `in_progress`: it is your active feature, continue it.
     - `review`: do not add scope; only address review comments on its branch.
     - `blocked`: read the blocker in `progress.md` on the branch and report it; resume only when it is resolved.
+    - `cancelled`: decided not to build; the reason is in `evidence`. Do not start it; the id stays reserved because docs reference it.
     - `not-started`: start it only when the request asks for it and its `dependencies` are `done`; flip it to `in_progress` through a PR to `main`, then create its branch and `progress.md`.
     - no matching feature: do not expand scope; propose a new `feat-XXX` entry via PR to `main` and wait for it.
 3. Switch to the feature's `branch` (see step 1). The feature's state files live **on that branch** under `feature-state/<feat-id>/` (`progress.md`, `session-handoff.md`).
@@ -24,7 +25,7 @@ The harness supports multiple parallel workers (humans and/or agents) under thes
 - **Each feature has exactly one `owner` and one `branch`.** Two people cannot share an `in_progress` row. If you want to help on someone else's feature, you contribute via PR to their branch, not by editing their `feature-state/<feat-id>/progress.md`.
 - **State files live on the feature branch under a per-feature path: `feature-state/<feat-id>/progress.md` and `feature-state/<feat-id>/session-handoff.md`.** They are per-feature working files, not global state; create them on the branch when you start. Never use root-level `progress.md` / `session-handoff.md`: after a merge they would reach `main`, other features would inherit them, and one feature's cleanup would delete another's state. A conflict inside one `feature-state/<feat-id>/` directory means two owners of the same feature: fix the ownership, not the conflict.
 - **They do not stay on `main`.** Reviewers read them on the branch before the merge. They may sit on `main` briefly between the implementation merge and the "Mark feat-XXX done" PR, which deletes only that feature's `feature-state/<feat-id>/` directory and keeps the evidence in the `evidence` field of `feature_list.json`.
-- **Status transitions are visible.** Flip `not-started` → `in_progress` → `review` → `done` via PRs that update `feature_list.json` on `main`. `blocked` is allowed; record the blocker in `progress.md` on the branch.
+- **Status transitions are visible.** Flip `not-started` → `in_progress` → `review` → `done` via PRs that update `feature_list.json` on `main`. `blocked` is allowed; record the blocker in `progress.md` on the branch. A feature that will not be built is set to `cancelled` (with the reason in `evidence`) instead of being deleted, so references to its id stay valid.
 - **Definition of Done still applies per feature** (see below). Reviewers check the feature branch's `progress.md` for the evidence block before approving the merge.
 - **Dependencies are enforced.** Do not start a feature whose `dependencies` are not yet `done`. If you need to start early, split the dependency into a smaller `feat-XXX` and complete that first.
 
