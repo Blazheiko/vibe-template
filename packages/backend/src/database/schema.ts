@@ -190,6 +190,7 @@ export const emailVerifications = pgTable(
     (table) => [
         unique('email_verifications_token_hash_key').on(table.tokenHash),
         index('email_verifications_user_id_idx').on(table.userId),
+        index('email_verifications_expires_at_idx').on(table.expiresAt),
     ],
 )
 
@@ -209,6 +210,7 @@ export const emailLinkVerifications = pgTable(
     (table) => [
         unique('email_link_verifications_token_hash_key').on(table.tokenHash),
         index('email_link_verifications_user_id_idx').on(table.userId),
+        index('email_link_verifications_expires_at_idx').on(table.expiresAt),
     ],
 )
 
@@ -230,6 +232,7 @@ export const passwordResetTokens = pgTable(
     (table) => [
         unique('password_reset_tokens_token_hash_key').on(table.tokenHash),
         index('password_reset_tokens_user_id_idx').on(table.userId),
+        index('password_reset_tokens_expires_at_idx').on(table.expiresAt),
     ],
 )
 
@@ -317,6 +320,7 @@ export const oauthLinkVerifications = pgTable(
     (table) => [
         unique('oauth_link_verifications_token_hash_key').on(table.tokenHash),
         index('oauth_link_verifications_user_id_provider_idx').on(table.userId, table.provider),
+        index('oauth_link_verifications_expires_at_idx').on(table.expiresAt),
     ],
 )
 

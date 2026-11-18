@@ -1,5 +1,6 @@
 import { emailLinkVerifications } from '#database/schema.js'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { ExpiredRowsRepository } from './expired-rows.js'
 import { createTokenRepository, type ITokenRepository } from './token-repository.js'
 
 export type EmailLinkVerificationRow = InferSelectModel<typeof emailLinkVerifications>
@@ -8,7 +9,8 @@ export type EmailLinkVerificationInsert = InferInsertModel<typeof emailLinkVerif
 export type IEmailLinkVerificationRepository = ITokenRepository<
     EmailLinkVerificationRow,
     EmailLinkVerificationInsert
->
+> &
+    ExpiredRowsRepository
 
 export const emailLinkVerificationRepository: IEmailLinkVerificationRepository =
     createTokenRepository(emailLinkVerifications, 'Failed to create email link verification')

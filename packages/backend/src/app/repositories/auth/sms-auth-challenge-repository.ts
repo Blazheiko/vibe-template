@@ -3,12 +3,13 @@ import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { smsAuthChallenges } from '#database/schema.js'
 import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
 
 export type SmsAuthChallengeRow = InferSelectModel<typeof smsAuthChallenges>
 export type SmsAuthChallengeInsert = InferInsertModel<typeof smsAuthChallenges>
 export type SmsAuthChallengeFlow = SmsAuthChallengeInsert['flow']
 
-export interface SmsAuthChallengeRepository {
+export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
     create(data: SmsAuthChallengeInsert, executor?: DbExecutor): Promise<SmsAuthChallengeRow>
     findById(id: string): Promise<SmsAuthChallengeRow | undefined>
     findLatestPendingForPhoneFlow(
@@ -59,6 +60,11 @@ export interface SmsAuthChallengeRepository {
 }
 
 export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
+    ...expiredRowsRepository(smsAuthChallenges, {
+        id: smsAuthChallenges.id,
+        expiresAt: smsAuthChallenges.expiresAt,
+    }),
+
     async create(data, executor = db) {
         const now = new Date()
         const [created] = await executor

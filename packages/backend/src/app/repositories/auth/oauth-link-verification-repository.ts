@@ -2,15 +2,16 @@ import { db } from '#database/db.js'
 import { oauthLinkVerifications } from '#database/schema.js'
 import { and, eq, isNull, sql, type InferInsertModel, type InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
+import type { ExpiredRowsRepository } from './expired-rows.js'
 import { createTokenRepository, type ITokenRepository } from './token-repository.js'
 
 export type OAuthLinkVerificationRow = InferSelectModel<typeof oauthLinkVerifications>
 export type OAuthLinkVerificationInsert = InferInsertModel<typeof oauthLinkVerifications>
 
-export interface IOAuthLinkVerificationRepository extends ITokenRepository<
-    OAuthLinkVerificationRow,
-    OAuthLinkVerificationInsert
-> {
+export interface IOAuthLinkVerificationRepository
+    extends
+        ITokenRepository<OAuthLinkVerificationRow, OAuthLinkVerificationInsert>,
+        ExpiredRowsRepository {
     /**
      * Retires the user's pending links of one provider only: a pending GitHub link does not
      * cancel a pending GitLab one (feat-097).

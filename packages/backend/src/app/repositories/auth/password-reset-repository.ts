@@ -1,5 +1,6 @@
 import { passwordResetTokens } from '#database/schema.js'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { ExpiredRowsRepository } from './expired-rows.js'
 import { createTokenRepository, type ITokenRepository } from './token-repository.js'
 
 export type PasswordResetTokenRow = InferSelectModel<typeof passwordResetTokens>
@@ -8,7 +9,8 @@ export type PasswordResetTokenInsert = InferInsertModel<typeof passwordResetToke
 export type IPasswordResetRepository = ITokenRepository<
     PasswordResetTokenRow,
     PasswordResetTokenInsert
->
+> &
+    ExpiredRowsRepository
 
 export const passwordResetRepository: IPasswordResetRepository = createTokenRepository(
     passwordResetTokens,
