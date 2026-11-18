@@ -284,6 +284,16 @@ DOMAIN=127.0.0.1:4000
 | `REDIS_COMMAND_TIMEOUT_MS`     | Таймаут команди основного клієнта (сесії, WS-токени), мс                           | `500`         | Ні                     | [redis.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/redis.ts) |
 | `REDIS_LOGOUT_ALL_DEADLINE_MS` | Дедлайн усього циклу `SCAN`/`DEL` у `logoutAll`, мс                                | `2000`        | Ні                     | [redis.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/redis.ts) |
 
+## Фонові задачі
+
+Читає [`config/scheduler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts); недійсне значення — помилка старту `Invalid scheduler configuration: ...`. Як працює планувальник: [Фонові задачі](/backend/scheduler).
+
+| Змінна                    | Призначення                                                                        | Default  | Обов'язковість (умова) | Читає файл                                                                                                    |
+| ------------------------- | ---------------------------------------------------------------------------------- | -------- | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `SCHEDULER_ENABLED`       | Чи запускає цей процес планувальник ([булевий контракт](#булеві-та-цілі-значення)) | `true`   | Ні                     | [scheduler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts) |
+| `SCHEDULER_TICK`          | Як часто перевіряються задачі: тривалість від `5s` до `5m`                         | `30s`    | Ні                     | [scheduler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts) |
+| `SCHEDULER_DISABLED_JOBS` | Імена задач через кому, які розклад пропускає; невідоме ім'я зупиняє старт         | порожньо | Ні                     | [scheduler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts) |
+
 ## Сховище S3
 
 Жодна змінна з цієї групи не має default (`undefined`). Усі вони потрібні для роботи з файлами в S3.

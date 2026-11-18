@@ -607,6 +607,10 @@ Before merging, go through the full Definition of Done from [AGENTS.md](https://
 - **Returning a `bigint` or a `Date` from a controller.** Always pass rows through the transformer.
 - **Throwing exceptions from a service.** Return `Result.err(...)`, and `mapControllerError` will set the HTTP status.
 
+## Background job
+
+A feature that needs periodic work (a clean-up, a retention) gets a scheduled job on top of a service method: `defineJob` in `app/scheduler/jobs/`, registered in `jobs/index.ts`, with `ctx.checkpoint()` passed down to every SQL step. The job must be idempotent and safe to run as two copies at once. See [Background jobs](/en/backend/scheduler#adding-a-job).
+
 ::: tip Next step
 [Your project on the template](/en/guide/your-project): renaming, the interface and choosing integrations for your product.
 :::
