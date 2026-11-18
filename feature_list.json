@@ -2233,6 +2233,16 @@
             "dependencies": ["feat-222"],
             "status": "not-started",
             "evidence": ""
+        },
+        {
+            "id": "feat-225",
+            "name": "CI Browser Deps Lock Wait",
+            "description": "Found on #685 (feat-223), 2026-11-18: when an attempt of `playwright install-deps` hits `timeout 300`, timeout kills pnpm but not the `sudo apt-get` it started, which keeps the dpkg lock; both retries of scripts/retry.sh then fail at once with `Could not get lock /var/lib/dpkg/lock-frontend` (e2e red three times in a row, tests never ran). Before each retry, wait until apt/dpkg is idle (bounded) and finish an interrupted dpkg run, in the e2e and e2e-live jobs; docs backend/testing.md (both locales).",
+            "owner": "Blazheiko",
+            "branch": "ci/playwright-deps-lock-wait",
+            "dependencies": ["feat-179"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
