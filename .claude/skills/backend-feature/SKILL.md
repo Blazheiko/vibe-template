@@ -518,3 +518,7 @@ Same chain (ADR 0006, `docs/adr/0006-websocket-contracts.md`): contract → regi
 - Never return a `bigint` or `Date` from a controller — always through the transformer.
 - Shared package: types and schemas only, no Node.js imports. Contracts import schemas as types only.
 - Aliases: `#app/*`, `#config/*`, `#vendor/*`, `#database/*`, `#drizzle/*`, `#logger`; no `../../` across layers.
+- Periodic work (a clean-up, a retention) is a scheduled job over a service method, not a cron
+  script: `defineJob` in `app/scheduler/jobs/`, `ctx.checkpoint()` before every SQL step, idempotent
+  and safe for two concurrent runs; `app/scheduler/**` never imports repositories. See
+  `documentation/en/backend/scheduler.md` ("Adding a job").

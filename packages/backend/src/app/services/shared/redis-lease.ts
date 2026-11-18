@@ -70,9 +70,41 @@ export function leaseForDatabaseWrites(lease: Lease): Lease {
 export interface HeldLease {
     /** Aborts when the lease can no longer be trusted: the holder must stop. */
     readonly lost: AbortSignal
-    /** True when this holder still owned the lock and released it. Stops the renewals. */
+    /**
+     * True when this holder still owned the lock and released it. Stops the renewals. After an
+     * earlier release() that reached Redis, or after abandon(), it is a no-op that answers false
+     * without calling Redis; a release() that failed (Redis unavailable) can be tried again.
+     */
     release(): Promise<boolean>
+    /**
+     * feat-222 (scheduler plan Р10): stops the renewals and the deadline timer but leaves the key
+     * to its TTL. For a holder whose last database write may still be in flight: releasing would
+     * hand the lock to someone else in the middle of it. Later release()/abandon() are no-ops.
+     */
+    abandon(): void
+    /**
+     * feat-222 (Р12): throws, synchronously, when `lost` is aborted or the local deadline has
+     * passed, without waiting for the deadline timer (a blocked event loop delays it). Called
+     * immediately before every database step.
+     */
+    checkpoint(): void
+    /**
+     * feat-222 (Р11): runs `script` only while this holder still owns the key, in one Lua call.
+     * In the script KEYS[1] is the lease key and ARGV[1] the owner token; `keys` and `args`
+     * follow them (KEYS[2]…, ARGV[2]…). Answers the string 'not-owner' when the key is gone or
+     * someone else's, and then nothing is run. The token itself is never handed out.
+     */
+    evalAsOwner(
+        script: string,
+        keys: readonly string[],
+        args: readonly (string | number)[],
+    ): Promise<unknown>
 }
+
+/** What evalAsOwner answers when this holder no longer owns the key. */
+export const NOT_OWNER = 'not-owner'
+const OWNER_GUARD_LUA = `if redis.call('GET', KEYS[1]) ~= ARGV[1] then return '${NOT_OWNER}' end
+`
 
 /**
  * Takes the lock at `key`, or returns null when someone holds it. The returned lease renews
@@ -95,7 +127,12 @@ export async function acquireLease(
     let renewing = false
     // feat-130: set by release(); a renewal that answers later must not re-arm the deadline.
     let released = false
+    // feat-222: release() reached Redis, or abandon() left the key to its TTL.
+    let settled = false
     let deadline: ReturnType<typeof setTimeout> | undefined
+    // feat-222: the monotonic moment the holder is told lost, set by armDeadline; checkpoint()
+    // compares against it synchronously.
+    let lostAt = Number.POSITIVE_INFINITY
 
     const stopTimers = (): void => {
         clearInterval(timer)
@@ -116,7 +153,7 @@ export async function acquireLease(
     const armDeadline = (extendedAt: number): void => {
         clearTimeout(deadline)
         const margin = Math.max(lease.renewEveryMs, lease.stopBeforeExpiryMs ?? 0)
-        const lostAt = extendedAt + lease.ttlMs - margin
+        lostAt = extendedAt + lease.ttlMs - margin
         deadline = setTimeout(
             () => {
                 markLost('it could not be renewed')
@@ -156,9 +193,34 @@ export async function acquireLease(
     return {
         lost: lostController.signal,
         release: async (): Promise<boolean> => {
+            if (settled) return false
             released = true
             stopTimers()
-            return (await withRedis(() => redis.eval(RELEASE_LUA, 1, key, token))) === 1
+            const reply = await withRedis(() => redis.eval(RELEASE_LUA, 1, key, token))
+            settled = true
+            return reply === 1
         },
+        abandon: (): void => {
+            released = true
+            settled = true
+            stopTimers()
+        },
+        checkpoint: (): void => {
+            if (!lostController.signal.aborted && now() >= lostAt) {
+                markLost('the local deadline passed')
+            }
+            lostController.signal.throwIfAborted()
+        },
+        evalAsOwner: (script, keys, args): Promise<unknown> =>
+            withRedis(() =>
+                redis.eval(
+                    OWNER_GUARD_LUA + script,
+                    1 + keys.length,
+                    key,
+                    ...keys,
+                    token,
+                    ...args.map(String),
+                ),
+            ),
     }
 }

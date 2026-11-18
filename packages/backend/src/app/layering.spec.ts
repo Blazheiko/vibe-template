@@ -69,6 +69,27 @@ describe('layering', () => {
         ).toEqual([])
     })
 
+    // feat-222: jobs call services, as controllers do.
+    const isRepositoryImport = (specifier: string): boolean =>
+        specifier.startsWith('#app/repositories') || /(^|\/)repositories(\/|$)/.test(specifier)
+
+    it('the scheduler does not import repositories', () => {
+        // The rule itself catches both spellings (negative control).
+        expect(isRepositoryImport('#app/repositories/index.js')).toBe(true)
+        expect(isRepositoryImport('../../repositories/index.js')).toBe(true)
+        expect(isRepositoryImport('#app/services/auth/auth-service.js')).toBe(false)
+        expect(offenders((path) => path.startsWith('scheduler/'), isRepositoryImport)).toEqual([])
+    })
+
+    it('readiness does not depend on the scheduler', () => {
+        const isSchedulerImport = (specifier: string): boolean =>
+            specifier.startsWith('#app/scheduler') || /(^|\/)scheduler\//.test(specifier)
+        expect(isSchedulerImport('#app/scheduler/scheduler.js')).toBe(true)
+        expect(
+            offenders((path) => path === 'services/core/readiness-service.ts', isSchedulerImport),
+        ).toEqual([])
+    })
+
     it('services do not query the database directly', () => {
         expect(
             offenders(

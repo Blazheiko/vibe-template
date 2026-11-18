@@ -284,6 +284,16 @@ Read only by `db:seed --demo` ([run-seed.ts](https://github.com/Blazheiko/vibe-t
 | `REDIS_COMMAND_TIMEOUT_MS`     | Command timeout of the main client (sessions, WS tokens), ms                        | `500`         | No                   | [redis.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/redis.ts) |
 | `REDIS_LOGOUT_ALL_DEADLINE_MS` | Deadline of the whole `SCAN`/`DEL` loop in `logoutAll`, ms                          | `2000`        | No                   | [redis.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/redis.ts) |
 
+## Background jobs
+
+Read by [`config/scheduler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts); an invalid value is the startup error `Invalid scheduler configuration: ...`. How the scheduler works: [Background jobs](/en/backend/scheduler).
+
+| Variable                  | Purpose                                                                                   | Default | Required (condition) | Read by file                                                                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `SCHEDULER_ENABLED`       | Whether this process runs the scheduler ([boolean contract](#boolean-and-integer-values)) | `true`  | No                   | [scheduler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts) |
+| `SCHEDULER_TICK`          | How often the jobs are checked: a duration from `5s` to `5m`                              | `30s`   | No                   | [scheduler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts) |
+| `SCHEDULER_DISABLED_JOBS` | Comma-separated job names the schedule skips; an unknown name stops the startup           | empty   | No                   | [scheduler.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts) |
+
 ## S3 storage
 
 None of the variables in this group has a default (`undefined`). All of them are required to work with files in S3.
