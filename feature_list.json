@@ -601,7 +601,7 @@
             "owner": "Blazheiko",
             "branch": "feat/session-token-cache",
             "dependencies": ["feat-059"],
-            "status": "not-started",
+            "status": "cancelled",
             "evidence": "Not planned: this was optional on the feat-059 benchmark. ADR 0002 records it: the extra users.session_token read costs p50 +0.27 ms / p95 +0.8 ms per authenticated request on local PostgreSQL, which does not justify a cache whose invalidation can fail and leave a revoked session usable. Revisit only if production load shows the read matters."
         },
         {
