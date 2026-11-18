@@ -2203,6 +2203,36 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #673 (merge bcb7e46): a password change closed every WebSocket of the user with 4001 before the controller renewed the session; the client refreshed its WS token with the old cookie, got 401 and went to /login although the change answered sessionRenewed: true. Server: closeUserConnections/revokeConnecting take exceptSessionId, authService.changePassword spares the requesting session, the controller closes its sockets only when the renewal fails (otherwise the client replaces them and the re-check closes what is left). Client: useWebSocketConnection.suspendReconnect()/resumeReconnect() hold back the token refresh; UserAccount suspends around the request and resumes after websocketOpen with the renewed token. Docs backend/auth.md and backend/websocket.md (both locales). make check passing (backend 2988, frontend 614, landing 103, playground 115); new tests for a 4001 that arrives before the HTTP answer, the call order in UserAccount and the spared session on the server; with the suspension disabled the 3 race tests fail (mutation check); frontend e2e 99 passed; docs:build + docs:verify green. CI on e893814: quality, build, e2e, e2e-live, test-pg, test-redis green. Manual browser golden path not run (no Docker locally)."
+        },
+        {
+            "id": "feat-222",
+            "name": "Background Job Scheduler Core",
+            "description": "docs/plan/scheduler-plan.md: in-process scheduler on top of redis-lease.ts, enabled by SCHEDULER_ENABLED. Typed schedules ({ every } on a UTC epoch grid, { dailyAt } UTC; metautil duration() wrapped with validation, parseEvery/nextEvent/delay not used). Guarantee: the latest due slot runs, missed slots collapse into one run, the first start runs at once, a failed run may repeat (jobs idempotent and safe to run concurrently). Per-job lease sched:lease:<job> (leaseForJob: maxLifetime above the job timeout), owner-checked Lua writes of sched:state:<job> (lastSuccessSlot only grows, shared backoff up to 1h), HeldLease.abandon()/checkpoint()/evalAsOwner(), ctx.checkpoint() before every SQL step, outcomes ok/failed/timeout/lease-lost/shutdown/skipped-*, shutdown keeps the lease until its TTL while SQL is in flight, job:run CLI through the same lease, docs backend/scheduler.md (both locales)",
+            "owner": "Blazheiko",
+            "branch": "feat/scheduler-core",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-223",
+            "name": "Expired Auth Token Cleanup Job",
+            "description": "docs/plan/scheduler-plan.md feat-223: audit of code that reads expired or used rows, expires_at indexes (migration) for email_verifications, email_link_verifications, password_reset_tokens and oauth_link_verifications, batched deletes of rows past expires_at + AUTH_TOKEN_RETENTION (default 7d) from these tables and sms_auth_challenges with checkpoint before every query and dry-run counts, job auth-token-cleanup dailyAt 03:30, PG tests incl. two concurrent runs, docs",
+            "owner": "Blazheiko",
+            "branch": "feat/auth-token-cleanup-job",
+            "dependencies": ["feat-222"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-224",
+            "name": "LLM Prompt Retention Job",
+            "description": "docs/plan/scheduler-plan.md feat-224: purgePromptText takes a checkpoint called before every SQL step and reports matched/changed, job llm-prompt-retention dailyAt 04:00 with the existing planPurge, purge-llm-prompts CLI keeps its flags but takes the same job lease (busy -> exit 75, now needs Redis), PG tests, AI usage docs",
+            "owner": "Blazheiko",
+            "branch": "feat/llm-prompt-retention-job",
+            "dependencies": ["feat-222"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
