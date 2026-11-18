@@ -90,6 +90,34 @@ describe.skipIf(!hasRedis)('lease abandon()', () => {
     })
 })
 
+describe.skipIf(!hasRedis)('lease release()', () => {
+    // Two release() calls at once both reach Redis (neither has settled yet); the owner check of
+    // RELEASE_LUA makes that safe: one deletes the key, the other finds nothing of its own.
+    it('two concurrent releases: one removes the key, the other is refused', async () => {
+        const key = freshKey()
+        const held = await acquireLease(key, renewed(5_000), lost)
+
+        const results = await Promise.all([held?.release(), held?.release()])
+
+        expect(results.filter((released) => released === true)).toHaveLength(1)
+        expect(results.filter((released) => released === false)).toHaveLength(1)
+        expect(await admin.exists(key)).toBe(0)
+    })
+
+    // The same two calls after the key expired and another holder took it: neither may delete it.
+    it('two concurrent releases leave the key of another holder alone', async () => {
+        const key = freshKey()
+        const held = await acquireLease(key, renewed(5_000), lost)
+        await admin.set(key, 'someone-else')
+
+        const results = await Promise.all([held?.release(), held?.release()])
+
+        expect(results).toEqual([false, false])
+        expect(await admin.get(key)).toBe('someone-else')
+        await admin.del(key)
+    })
+})
+
 describe.skipIf(!hasRedis)('lease evalAsOwner()', () => {
     it('runs the script for the owner', async () => {
         const key = freshKey()
