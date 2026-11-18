@@ -18,6 +18,7 @@ import rateLimitConfig from '#config/rate-limit.js'
 import redisConfig from '#config/redis.js'
 import { throttlePolicyConfigError } from '#config/throttle-policies.js'
 import sessionConfig from '#config/session.js'
+import schedulerConfig from '#config/scheduler.js'
 import logger from '#logger'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 
@@ -73,6 +74,7 @@ export function validateRuntimeConfig(): void {
         ['push', pushConfig.configError],
         ['Sentry', sentryConfig.configError],
         ['session', sessionConfig.configError],
+        ['scheduler', schedulerConfig.configError],
     ]
     for (const [area, problem] of unreadable) {
         if (problem !== null) throw new Error(`Invalid ${area} configuration: ${problem}`)

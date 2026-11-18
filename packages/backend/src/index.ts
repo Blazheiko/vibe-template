@@ -21,6 +21,13 @@ import { sessionCheckPool } from '#database/session-check-db.js'
 import readinessProbe from '#database/readiness-probe.js'
 import redis, { redisHealth } from '#database/redis.js'
 import rateLimitRedis, { connectRateLimitRedis } from '#database/redis-rate-limit.js'
+import schedulerConfig from '#config/scheduler.js'
+import { createAppScheduler } from '#app/scheduler/app-scheduler.js'
+import type { Scheduler } from '#app/scheduler/scheduler.js'
+
+// feat-222: built at startup (a SCHEDULER_DISABLED_JOBS typo stops it before the server listens),
+// started after initServer when SCHEDULER_ENABLED, stopped before the pools and Redis close.
+let scheduler: Scheduler | null = null
 
 const start = async (): Promise<void> => {
     try {
@@ -38,6 +45,7 @@ const start = async (): Promise<void> => {
                 '.node',
         )
 
+        scheduler = createAppScheduler()
         connectRateLimitRedis()
         await promptService.load()
         // The first login without a password to check would otherwise pay two scrypt calls
@@ -58,6 +66,8 @@ const start = async (): Promise<void> => {
 
         adminWsAccessService.start()
         wsSessionRevocation.start()
+        if (schedulerConfig.enabled) scheduler.start()
+        else logger.info('Scheduler: off on this process (SCHEDULER_ENABLED=false)')
 
         process.on('SIGINT', stopSIGINT)
         process.on('SIGHUP', stopSIGHUP)
@@ -87,6 +97,8 @@ const removeListeners = (): void => {
 const stopHandler = async (type: string): Promise<void> => {
     adminWsAccessService.stop()
     wsSessionRevocation.stop()
+    // Р10: aborts the job in flight and waits for it up to the drain; never throws.
+    await scheduler?.stop()
     await stopServer(type)
 }
 
