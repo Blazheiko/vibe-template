@@ -1,5 +1,5 @@
 import { db } from '#database/db.js'
-import { userPreferences } from '#database/schema.js'
+import { userPreferences, users } from '#database/schema.js'
 import { eq, sql } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
@@ -25,8 +25,21 @@ const presentFields = (patch: UserPreferencesPatch): UserPreferencesPatch => {
     return fields
 }
 
+/** The name and the preferences row of one user, read together. */
+export interface ProfileRow {
+    name: string
+    preferences: UserPreferencesRow | null
+}
+
 export interface IUserPreferencesRepository {
     findByUserId(userId: bigint, executor?: DbExecutor): Promise<UserPreferencesRow | undefined>
+    /**
+     * The name (users) and the preferences (user_preferences) in one statement: a statement
+     * sees one snapshot, so the name and the revision always belong to the same committed state.
+     * Two reads, even in one READ COMMITTED transaction, could see a PATCH commit between them.
+     * Undefined when the user does not exist.
+     */
+    findProfileByUserId(userId: bigint, executor?: DbExecutor): Promise<ProfileRow | undefined>
     /**
      * One upsert (Р12): the first change inserts the row with `revision = 1` and the passed
      * fields; a later one updates only the passed fields and adds one to `revision`. The row
@@ -46,6 +59,16 @@ export const userPreferencesRepository: IUserPreferencesRepository = {
             .select()
             .from(userPreferences)
             .where(eq(userPreferences.userId, userId))
+            .limit(1)
+        return row
+    },
+
+    async findProfileByUserId(userId, executor = db) {
+        const [row] = await executor
+            .select({ name: users.name, preferences: userPreferences })
+            .from(users)
+            .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
+            .where(eq(users.id, userId))
             .limit(1)
         return row
     },

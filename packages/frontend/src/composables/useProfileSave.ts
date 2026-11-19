@@ -290,12 +290,11 @@ export interface ProfileLiveSyncDeps {
 /**
  * Live sync (feat-232, Р9 B). `user_profile_updated` comes to every connection of the user, this
  * tab included; it is applied as any snapshot, by revision, under the pending changes. Events are
- * not replayed, so after every reconnect but the first of an account the profile is read again;
- * an answer that arrives after the account changed is dropped.
+ * not replayed, and one sent between the init snapshot and the registration of a socket reaches
+ * nobody here, so the profile is read again after every connection, the first one included
+ * (review 2026-11-19, item 4). An answer that arrives after the account changed is dropped.
  */
 export function createProfileLiveSync(deps: ProfileLiveSyncDeps) {
-    let connectedFor: string | null = null
-
     return {
         onProfileEvent(profile: Profile): void {
             if (deps.currentUserId() === null) return
@@ -304,9 +303,6 @@ export function createProfileLiveSync(deps: ProfileLiveSyncDeps) {
         async onConnected(): Promise<void> {
             const userId = deps.currentUserId()
             if (userId === null) return
-            const first = connectedFor !== userId
-            connectedFor = userId
-            if (first) return // init has just brought the profile
             const profile = await deps.fetchProfile()
             if (profile !== null && deps.currentUserId() === userId) deps.applyProfile(profile)
         },
@@ -330,12 +326,15 @@ export function useProfileSync(): void {
     const stateStore = useStateStore()
     const queue = useProfileSave()
 
+    // Review 2026-11-19, item 5: before init answers, nobody is signed in only because the
+    // session is not checked yet. The cached look of the last account stays until then; the
+    // device's own shows once the session is known to be anonymous.
     watch(
-        () => userStore.user?.id ?? null,
-        (userId) => {
+        () => [userStore.user?.id ?? null, userStore.anonymousConfirmed] as const,
+        ([userId, anonymous]) => {
             if (queue.ownerId() !== userId) queue.reset(userId)
-            if (userId === null) stateStore.showDevicePreferences()
-            else stateStore.showAccountFromCache(userId)
+            if (userId !== null) stateStore.showAccountFromCache(userId)
+            else if (anonymous) stateStore.showDevicePreferences()
         },
         { immediate: true },
     )

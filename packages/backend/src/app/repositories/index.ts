@@ -18,6 +18,7 @@ export { healthRepository } from './health/health-repository.js'
 export type {
     UserPreferencesRow,
     UserPreferencesPatch,
+    ProfileRow,
 } from './user/user-preferences-repository.js'
 export type {
     UserRow,

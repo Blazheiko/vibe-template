@@ -12,6 +12,7 @@ const userRepositoryMock = {
 }
 const userPreferencesRepositoryMock = {
     findByUserId: vi.fn(),
+    findProfileByUserId: vi.fn(),
     applyPatch: vi.fn(),
 }
 const withTransactionMock = vi.fn((work: (tx: unknown) => Promise<unknown>) => work(TX))
@@ -69,8 +70,10 @@ afterEach(() => {
 
 describe('accountService.getProfile', () => {
     it('a user without a preferences row: every preference null, revision "0"', async () => {
-        userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Ann' })
-        userPreferencesRepositoryMock.findByUserId.mockResolvedValue(undefined)
+        userPreferencesRepositoryMock.findProfileByUserId.mockResolvedValue({
+            name: 'Ann',
+            preferences: null,
+        })
 
         const result = await accountService.getProfile(7n)
 
@@ -89,11 +92,27 @@ describe('accountService.getProfile', () => {
         )
     })
 
-    it('reads a stored zone the runtime no longer knows as null', async () => {
-        userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Ann' })
-        userPreferencesRepositoryMock.findByUserId.mockResolvedValue(
-            row({ timeZone: 'Mars/Base', theme: 'dark', revision: 42n }),
+    // Review 2026-11-19, item 1: two reads could pair an old name with a new revision.
+    it('reads the name and the preferences in one statement, nothing else', async () => {
+        userPreferencesRepositoryMock.findProfileByUserId.mockResolvedValue({
+            name: 'Ann',
+            preferences: row({ revision: 3n }),
+        })
+
+        await accountService.getProfile(7n)
+
+        expect(userPreferencesRepositoryMock.findProfileByUserId).toHaveBeenCalledExactlyOnceWith(
+            7n,
         )
+        expect(userRepositoryMock.findById).not.toHaveBeenCalled()
+        expect(userPreferencesRepositoryMock.findByUserId).not.toHaveBeenCalled()
+    })
+
+    it('reads a stored zone the runtime no longer knows as null', async () => {
+        userPreferencesRepositoryMock.findProfileByUserId.mockResolvedValue({
+            name: 'Ann',
+            preferences: row({ timeZone: 'Mars/Base', theme: 'dark', revision: 42n }),
+        })
 
         const result = await accountService.getProfile(7n)
 
@@ -104,8 +123,7 @@ describe('accountService.getProfile', () => {
     })
 
     it('a missing user is not found', async () => {
-        userRepositoryMock.findById.mockResolvedValue(undefined)
-        userPreferencesRepositoryMock.findByUserId.mockResolvedValue(undefined)
+        userPreferencesRepositoryMock.findProfileByUserId.mockResolvedValue(undefined)
 
         const result = await accountService.getProfile(7n)
 

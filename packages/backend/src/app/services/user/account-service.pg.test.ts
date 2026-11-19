@@ -147,6 +147,37 @@ describe.skipIf(!hasPg)('accountService on PostgreSQL', async () => {
         expect(second.value.revision).toBe('2')
     })
 
+    // Review 2026-11-19, item 1: every name-only PATCH sets the name to the revision it makes,
+    // so a read whose name and revision come from different committed states shows a mismatch.
+    it('a read during concurrent changes pairs each name with its own revision', async () => {
+        const reads: { name: string; revision: string }[] = []
+        let writing = true
+        const writer = (async () => {
+            for (let i = 1; i <= 40; i += 1) {
+                await accountService.updateProfile(
+                    userId,
+                    { name: `rev-${String(i)}` },
+                    token,
+                    stored,
+                )
+            }
+            writing = false
+        })()
+        const readers = Array.from({ length: 3 }, async () => {
+            while (writing) {
+                const read = await accountService.getProfile(userId)
+                if (Result.isOk(read)) reads.push(read.value)
+            }
+        })
+        await Promise.all([writer, ...readers])
+
+        expect(reads.length).toBeGreaterThan(10)
+        for (const read of reads) {
+            const expected = read.revision === '0' ? 'Original' : `rev-${read.revision}`
+            expect(read.name, JSON.stringify(read)).toBe(expected)
+        }
+    })
+
     it('a rotated session token: 401 and nothing is written', async () => {
         const result = await accountService.updateProfile(
             userId,

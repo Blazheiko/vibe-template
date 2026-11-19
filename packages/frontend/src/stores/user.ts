@@ -48,11 +48,17 @@ export const useUserStore = defineStore('user', () => {
     const user = ref<User | null>(null)
     /** The confirmed profile of `user` (the last server snapshot applied); null until init. */
     const profile = ref<Profile | null>(null)
+    /**
+     * Nobody is signed in, and that is known: the server said so (401) or the user signed out.
+     * False while the session is not checked yet, when `user` is null only for lack of an answer.
+     */
+    const anonymousConfirmed = ref(false)
 
     function setUser(userData: User) {
         // Another account: the profile of the previous one never stays (Р10).
         if (user.value?.id !== userData.id) profile.value = null
         user.value = userData
+        anonymousConfirmed.value = false
         sentry.setUser({ id: userData.id })
     }
 
@@ -82,7 +88,13 @@ export const useUserStore = defineStore('user', () => {
     function clearUser() {
         user.value = null
         profile.value = null
+        anonymousConfirmed.value = true
         sentry.setUser(null)
+    }
+
+    /** The server answered that this session has no user. */
+    function markAnonymous() {
+        if (user.value === null) anonymousConfirmed.value = true
     }
 
     function hasUser() {
@@ -105,6 +117,8 @@ export const useUserStore = defineStore('user', () => {
     return {
         user,
         profile,
+        anonymousConfirmed,
+        markAnonymous,
         setUser,
         setInitUser,
         applyProfile,

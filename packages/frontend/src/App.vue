@@ -151,8 +151,10 @@ const initializeApp = async () => {
 
         if (error) {
             console.error('Error in initialization:', error)
-            if (isUnauthorizedError(data, error.transportCode) && !isPublicPath) {
-                await redirectToLogin()
+            if (isUnauthorizedError(data, error.transportCode)) {
+                // The session is known to be anonymous: the device's own look (feat-232).
+                userStore.markAnonymous()
+                if (!isPublicPath) await redirectToLogin()
             }
             return null
         } else if (

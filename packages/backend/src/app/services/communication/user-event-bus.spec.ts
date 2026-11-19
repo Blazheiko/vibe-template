@@ -29,6 +29,7 @@ const setup = () => {
     const deliverLocally = vi.fn(() => 1)
     const bus = createUserEventBus({
         channel: 'test:user-events',
+        instanceId: 'self',
         publish,
         createSubscriber: () => subscriber as unknown as Redis,
         deliverLocally,
@@ -50,33 +51,62 @@ describe('user event bus', () => {
         expect(deliverLocally).toHaveBeenCalledWith('7', 'user_profile_updated', PROFILE)
     })
 
-    it('started: publishes the envelope and leaves delivery to the subscription', async () => {
+    it('started: delivers here at once and publishes the envelope for the other instances', async () => {
         const { bus, subscriber, publish, deliverLocally } = setup()
         await bus.start()
         expect(subscriber.subscribe).toHaveBeenCalledWith('test:user-events')
 
         await bus.publishToUser('7', 'user_profile_updated', PROFILE)
 
+        expect(deliverLocally).toHaveBeenCalledExactlyOnceWith('7', 'user_profile_updated', PROFILE)
         expect(publish).toHaveBeenCalledOnce()
         const [channel, raw] = publish.mock.calls[0]!
         expect(channel).toBe('test:user-events')
         expect(JSON.parse(raw)).toEqual({
             v: 1,
+            origin: 'self',
             userId: '7',
             event: 'user_profile_updated',
             payload: PROFILE,
         })
-        expect(deliverLocally).not.toHaveBeenCalled()
     })
 
-    it('a message of the channel is delivered to the connections of this process', async () => {
+    it('its own echo from Redis is skipped: one delivery per connection', async () => {
+        const { bus, subscriber, publish, deliverLocally } = setup()
+        await bus.start()
+        await bus.publishToUser('7', 'user_profile_updated', PROFILE)
+
+        subscriber.emit('message', 'test:user-events', publish.mock.calls[0]![1])
+
+        expect(deliverLocally).toHaveBeenCalledOnce()
+    })
+
+    // Review 2026-11-19, item 6: the subscriber was set before SUBSCRIBE finished, so an event
+    // published in that gap reached neither the subscription nor the local fallback.
+    it('while SUBSCRIBE is still pending, the event reaches this process', async () => {
+        const { bus, subscriber, deliverLocally } = setup()
+        subscriber.subscribe.mockReturnValueOnce(new Promise(() => undefined))
+        void bus.start()
+
+        await bus.publishToUser('7', 'user_profile_updated', PROFILE)
+
+        expect(deliverLocally).toHaveBeenCalledExactlyOnceWith('7', 'user_profile_updated', PROFILE)
+    })
+
+    it('a message of another instance is delivered to the connections of this process', async () => {
         const { bus, subscriber, deliverLocally } = setup()
         await bus.start()
 
         subscriber.emit(
             'message',
             'test:user-events',
-            JSON.stringify({ v: 1, userId: '7', event: 'user_profile_updated', payload: PROFILE }),
+            JSON.stringify({
+                v: 1,
+                origin: 'other',
+                userId: '7',
+                event: 'user_profile_updated',
+                payload: PROFILE,
+            }),
         )
 
         expect(deliverLocally).toHaveBeenCalledWith('7', 'user_profile_updated', PROFILE)
@@ -85,7 +115,13 @@ describe('user event bus', () => {
     it('another channel, a broken message and an event not allowed on the bus are dropped', async () => {
         const { bus, subscriber, deliverLocally } = setup()
         await bus.start()
-        const valid = { v: 1, userId: '7', event: 'user_profile_updated', payload: PROFILE }
+        const valid = {
+            v: 1,
+            origin: 'other',
+            userId: '7',
+            event: 'user_profile_updated',
+            payload: PROFILE,
+        }
 
         subscriber.emit('message', 'other:user-events', JSON.stringify(valid))
         subscriber.emit('message', 'test:user-events', '{not json')
@@ -95,18 +131,19 @@ describe('user event bus', () => {
             JSON.stringify({ ...valid, event: 'support_chat_token' }),
         )
         subscriber.emit('message', 'test:user-events', JSON.stringify({ ...valid, userId: 'x' }))
+        subscriber.emit('message', 'test:user-events', JSON.stringify({ ...valid, origin: '' }))
 
         expect(deliverLocally).not.toHaveBeenCalled()
     })
 
-    it('a failed publish still reaches this process', async () => {
+    it('a failed publish still reaches this process, once', async () => {
         const { bus, publish, deliverLocally } = setup()
         await bus.start()
         publish.mockRejectedValueOnce(new Error('Redis down'))
 
         await bus.publishToUser('7', 'user_profile_updated', PROFILE)
 
-        expect(deliverLocally).toHaveBeenCalledWith('7', 'user_profile_updated', PROFILE)
+        expect(deliverLocally).toHaveBeenCalledExactlyOnceWith('7', 'user_profile_updated', PROFILE)
     })
 
     it('stop ends the subscription: later events go to this process only', async () => {
@@ -123,15 +160,28 @@ describe('user event bus', () => {
     it('parseEnvelope accepts only version 1 with a user id and a bus event', () => {
         expect(parseEnvelope('[]')).toBeNull()
         expect(
-            parseEnvelope(JSON.stringify({ v: 2, userId: '7', event: 'user_profile_updated' })),
+            parseEnvelope(
+                JSON.stringify({ v: 2, origin: 'a', userId: '7', event: 'user_profile_updated' }),
+            ),
         ).toBeNull()
         expect(
-            parseEnvelope(JSON.stringify({ v: 1, userId: '0', event: 'user_profile_updated' })),
+            parseEnvelope(
+                JSON.stringify({ v: 1, origin: 'a', userId: '0', event: 'user_profile_updated' }),
+            ),
         ).toBeNull()
+        // Without the instance that published it, an echo could not be told from another's.
         expect(
             parseEnvelope(
                 JSON.stringify({ v: 1, userId: '42', event: 'user_profile_updated', payload: 1 }),
             ),
-        ).toEqual({ v: 1, userId: '42', event: 'user_profile_updated', payload: 1 })
+        ).toBeNull()
+        const envelope = {
+            v: 1,
+            origin: 'a',
+            userId: '42',
+            event: 'user_profile_updated',
+            payload: 1,
+        }
+        expect(parseEnvelope(JSON.stringify(envelope))).toEqual(envelope)
     })
 })

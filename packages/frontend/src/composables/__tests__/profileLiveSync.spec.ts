@@ -50,22 +50,23 @@ describe('profile live sync', () => {
         expect(applyProfile).not.toHaveBeenCalled()
     })
 
-    it('reads the profile again after a reconnect, not after the first connection', async () => {
+    // Review 2026-11-19, item 4: a change made between the init snapshot and the first socket
+    // reaches no connection of this tab, so the first connection reads the profile too.
+    it('reads the profile after every connection, the first one included', async () => {
         const { live, shown, fetchProfile } = setup()
-
-        await live.onConnected()
-        expect(fetchProfile).not.toHaveBeenCalled()
 
         await live.onConnected()
         expect(fetchProfile).toHaveBeenCalledOnce()
         expect(shown.value.revision).toBe('8')
+
+        await live.onConnected()
+        expect(fetchProfile).toHaveBeenCalledTimes(2)
     })
 
-    it('the first connection of another account is not a reconnect', async () => {
+    it('a connection while nobody is signed in reads nothing', async () => {
         const { live, userId, fetchProfile } = setup()
-        await live.onConnected()
+        userId.value = null
 
-        userId.value = '9'
         await live.onConnected()
 
         expect(fetchProfile).not.toHaveBeenCalled()
@@ -73,7 +74,6 @@ describe('profile live sync', () => {
 
     it('an answer that arrives after the account changed is dropped', async () => {
         const { live, userId, applyProfile, fetchProfile } = setup()
-        await live.onConnected()
         let answer: (value: Profile | null) => void = () => undefined
         fetchProfile.mockImplementationOnce(
             () =>

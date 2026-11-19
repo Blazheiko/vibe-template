@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import logger from '#vendor/utils/logger.js'
 import redisConfig from '#config/redis.js'
@@ -8,13 +9,15 @@ import type { BroadcastEventName, BroadcastMessage } from 'shared/schemas'
 
 /**
  * Events for every connection of a user, whichever backend instance holds it (feat-232, Р9 B).
- * `broadcastService.broadcastMessageToUser` reaches only the connections of this process, so an
- * event goes through Redis pub/sub: the instance that has it publishes it on one channel, every
- * instance (this one included) is subscribed and delivers it to its own connections.
+ * `broadcastService.broadcastMessageToUser` reaches only the connections of this process. The
+ * instance that has an event delivers it to its own connections at once, whatever Redis does,
+ * and publishes it on one channel for the other instances; each of them is subscribed and
+ * delivers it to its connections. Its own echo from Redis carries its instance id and is
+ * skipped, so a connection of the publishing instance gets the event exactly once, also while
+ * its SUBSCRIBE is still pending or Redis is down.
  *
- * Delivery is best effort, as any broadcast: an event published while an instance is not
- * subscribed is not replayed. The client re-reads the state it shows after a reconnect.
- * When the publish fails (Redis down), the event still reaches the connections of this process.
+ * Delivery to the other instances is best effort, as any broadcast: an event published while an
+ * instance is not subscribed is not replayed. The client re-reads the profile on every connect.
  */
 
 /** The events allowed on the bus; others go through `broadcastService` of their instance. */
@@ -22,6 +25,8 @@ const BUS_EVENTS: ReadonlySet<BroadcastEventName> = new Set(['user_profile_updat
 
 interface BusEnvelope {
     v: 1
+    /** The instance that published it: its own echo is skipped there. */
+    origin: string
     userId: string
     event: BroadcastEventName
     payload: unknown
@@ -39,14 +44,23 @@ export const parseEnvelope = (raw: string): BusEnvelope | null => {
     if (typeof value !== 'object' || value === null) return null
     const record = value as Record<string, unknown>
     if (record['v'] !== 1) return null
-    const { userId, event } = record
+    const { origin, userId, event } = record
+    if (typeof origin !== 'string' || origin === '') return null
     if (typeof userId !== 'string' || !USER_ID.test(userId)) return null
     if (typeof event !== 'string' || !BUS_EVENTS.has(event as BroadcastEventName)) return null
-    return { v: 1, userId, event: event as BroadcastEventName, payload: record['payload'] }
+    return {
+        v: 1,
+        origin,
+        userId,
+        event: event as BroadcastEventName,
+        payload: record['payload'],
+    }
 }
 
 export interface UserEventBusDeps {
     channel: string
+    /** This process; defaults to a random id. */
+    instanceId?: string
     publish(channel: string, message: string): Promise<unknown>
     createSubscriber(): Redis
     /** Delivers to the connections of this process; returns how many got it. */
@@ -62,6 +76,7 @@ export interface UserEventBus {
 
 export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
     let subscriber: Redis | null = null
+    const instanceId = deps.instanceId ?? randomUUID()
 
     const onMessage = (channel: string, raw: string): void => {
         if (channel !== deps.channel) return
@@ -70,6 +85,8 @@ export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
             logger.warn({ channel }, 'User event bus: message dropped, not a known event')
             return
         }
+        // Delivered here when it was published.
+        if (envelope.origin === instanceId) return
         // The payload is checked against the event schema by the broadcast service.
         deps.deliverLocally(
             envelope.userId,
@@ -103,20 +120,18 @@ export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
 
         async publishToUser(userId, ...message): Promise<void> {
             const [event, payload] = message
-            if (subscriber === null || !BUS_EVENTS.has(event)) {
-                // Not subscribed (a script, a test without the bus): this process only.
-                deps.deliverLocally(userId, ...message)
-                return
-            }
-            const envelope: BusEnvelope = { v: 1, userId, event, payload }
+            // This process first, whatever Redis does: a pending SUBSCRIBE or a down Redis
+            // must not lose the event for the connections held here.
+            deps.deliverLocally(userId, ...message)
+            if (subscriber === null || !BUS_EVENTS.has(event)) return
+            const envelope: BusEnvelope = { v: 1, origin: instanceId, userId, event, payload }
             try {
                 await deps.publish(deps.channel, JSON.stringify(envelope))
             } catch (err) {
                 logger.warn(
                     { err, userId, event },
-                    'User event bus publish failed, delivering on this instance only',
+                    'User event bus publish failed: the other instances miss this event',
                 )
-                deps.deliverLocally(userId, ...message)
             }
         },
     }

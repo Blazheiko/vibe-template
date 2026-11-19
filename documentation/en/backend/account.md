@@ -59,6 +59,7 @@ The name stays in `users.name`. The preferences are in the `user_preferences` ta
 
 - no `user_preferences` row: `"0"`;
 - the first successful `PATCH` inserts the row with **1**, each later one adds 1 in the same statement (`INSERT … ON CONFLICT (user_id) DO UPDATE SET <passed fields>, revision = user_preferences.revision + 1 … RETURNING`), also when only the name changed: the row is then created or updated for the revision alone;
+- `GET /account/profile` and `init` read the name and the preferences in **one statement** (`users LEFT JOIN user_preferences`), so the name and the revision always come from one committed state; two reads, even in one transaction at `READ COMMITTED`, could see a `PATCH` commit between them;
 - in JSON it is a **decimal string**, like the ids; clients compare it as a number (`BigInt`), never as a string (`"10"` is after `"9"`).
 
 Concurrent changes of different fields both stay (the upsert writes only the passed fields); of the same field, the commit that comes later wins, and each adds one to the revision: the row lock orders them. The client drops a snapshot whose revision is lower than the one it shows.
@@ -79,7 +80,7 @@ The account page has a profile form (name, language with "Same as the browser", 
 
 ## Live sync
 
-After the commit, `PATCH` sends `broadcast:user_profile_updated` with the new `Profile` to every connection of the user on every instance, the tab that made the change and other tabs of the same session included ([WebSocket → Events to a user on every instance](/en/backend/websocket#events-to-a-user-on-every-instance)). The answer does not wait for it, and a failed event does not fail the change. The client applies it like any snapshot, by `revision`, under its unsaved changes, so an event that arrives late or twice changes nothing. Events are not replayed: after a WS reconnect the client reads `GET /account/profile` again.
+After the commit, `PATCH` sends `broadcast:user_profile_updated` with the new `Profile` to every connection of the user on every instance, the tab that made the change and other tabs of the same session included ([WebSocket → Events to a user on every instance](/en/backend/websocket#events-to-a-user-on-every-instance)). The answer does not wait for it, and a failed event does not fail the change. The client applies it like any snapshot, by `revision`, under its unsaved changes, so an event that arrives late or twice changes nothing. Events are not replayed: after every WS connection, the first one included, the client reads `GET /account/profile` (a change made between the init snapshot and the socket would otherwise be missed).
 
 ## Verification
 

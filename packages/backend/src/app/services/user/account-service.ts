@@ -40,21 +40,17 @@ const preferencesPatch = (body: UpdateProfileInput): UserPreferencesPatch => {
 }
 
 export const accountService = {
-    /** The profile of a user already read (GET /main/init reads the user itself). */
-    async profileOf(user: { id: bigint; name: string }): Promise<Profile> {
-        const row = await userPreferencesRepository.findByUserId(user.id)
-        return profileTransformer.serialize(user.name, row)
-    },
-
+    /**
+     * The profile as one committed state: the name and the revision from a single statement, so
+     * a PATCH that commits meanwhile cannot pair an old name with a new revision (a snapshot
+     * like that would win over the right event of the same revision on the client).
+     */
     async getProfile(userId: bigint): Promise<AppResult<Profile>> {
-        const [user, row] = await Promise.all([
-            userRepository.findById(userId),
-            userPreferencesRepository.findByUserId(userId),
-        ])
-        if (user === undefined) {
+        const row = await userPreferencesRepository.findProfileByUserId(userId)
+        if (row === undefined) {
             return Result.err(notFound('User', 'User not found'))
         }
-        return Result.ok(profileTransformer.serialize(user.name, row))
+        return Result.ok(profileTransformer.serialize(row.name, row.preferences ?? undefined))
     },
 
     /**

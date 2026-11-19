@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useStateStore } from '@/stores/state'
@@ -24,6 +24,7 @@ import {
     type ColorTheme,
 } from 'shared/enums'
 import { allowedTimeZones, UTC_TIME_ZONE } from 'shared/utils'
+import type { Profile } from 'shared'
 
 defineOptions({
     name: 'UserAccount',
@@ -104,12 +105,19 @@ const settingsMessage = computed(() => {
     return t('account.settings.errorSave')
 })
 
-// feat-232: the profile form. Only the fields that differ from the saved profile are sent.
-const profileName = ref('')
-const profileLocale = ref('')
-const profileTimeZone = ref('')
+// feat-232: the profile form. Each field is tracked on its own (review 2026-11-19, items 2-3):
+// a field the user has not touched follows the profile (another tab may change it), and only the
+// fields the user edited are sent. After an answer, a field goes back to following the profile
+// only if it still holds what was sent; text typed while the request was under way stays.
+type ProfileFormField = 'name' | 'locale' | 'timeZone'
+const PROFILE_FORM_FIELDS: readonly ProfileFormField[] = ['name', 'locale', 'timeZone']
+const profileForm = reactive<Record<ProfileFormField, string>>({
+    name: '',
+    locale: '',
+    timeZone: '',
+})
+const editedFields = reactive(new Set<ProfileFormField>())
 const timeZoneSearch = ref('')
-const profileFormDirty = ref(false)
 const isSavingProfile = ref(false)
 const profileMessage = ref('')
 const nameError = ref('')
@@ -123,32 +131,35 @@ const filteredTimeZones = computed(() => {
     const query = timeZoneSearch.value.trim().toLowerCase().replace(/ /g, '_')
     const matches =
         query === '' ? timeZones : timeZones.filter((zone) => zone.toLowerCase().includes(query))
-    const selected = profileTimeZone.value
+    const selected = profileForm.timeZone
     // The chosen zone stays in the list, whatever the search shows.
     return selected !== '' && !matches.includes(selected) ? [selected, ...matches] : matches
 })
 
-function syncProfileForm(): void {
+/** The value of a form field in a profile: '' is "same as the browser" for the selects. */
+function profileValue(profile: Profile, field: ProfileFormField): string {
+    if (field === 'name') return profile.name
+    return profile.preferences[field] ?? ''
+}
+
+/** The untouched fields show the profile as it is now. */
+function syncUntouchedFields(): void {
     const profile = userStore.profile
     if (profile === null) return
-    profileName.value = profile.name
-    profileLocale.value = profile.preferences.locale ?? ''
-    profileTimeZone.value = profile.preferences.timeZone ?? ''
-    profileFormDirty.value = false
+    for (const field of PROFILE_FORM_FIELDS) {
+        if (!editedFields.has(field)) profileForm[field] = profileValue(profile, field)
+    }
 }
 
-watch(
-    () => userStore.profile,
-    () => {
-        if (!profileFormDirty.value) syncProfileForm()
-    },
-    { immediate: true, deep: true },
-)
+watch(() => userStore.profile, syncUntouchedFields, { immediate: true, deep: true })
 
-function markProfileDirty(): void {
-    profileFormDirty.value = true
+function markEdited(field: ProfileFormField): void {
+    editedFields.add(field)
     profileMessage.value = ''
 }
+
+const formValueOf = (field: ProfileFormField): string =>
+    field === 'name' ? profileForm.name.trim() : profileForm[field]
 
 async function saveProfile(): Promise<void> {
     const confirmed = userStore.profile
@@ -156,21 +167,27 @@ async function saveProfile(): Promise<void> {
     nameError.value = ''
     profileMessage.value = ''
 
-    const name = profileName.value.trim()
-    if (name === '') {
+    if (editedFields.has('name') && profileForm.name.trim() === '') {
         nameError.value = t('account.profile.errorNameRequired')
         return
     }
+    // Only what the user edited, and only where it differs from the profile.
     const changes: ProfileChanges = {}
-    if (name !== confirmed.name) changes.name = name
-    const locale = profileLocale.value === '' ? null : profileLocale.value
-    if (locale !== confirmed.preferences.locale) {
-        changes.locale = locale as ProfileChanges['locale']
+    const sent = new Map<ProfileFormField, string>()
+    for (const field of [...editedFields]) {
+        const value = formValueOf(field)
+        if (value === profileValue(confirmed, field)) {
+            editedFields.delete(field)
+            continue
+        }
+        sent.set(field, profileForm[field])
+        if (field === 'name') changes.name = value
+        else if (field === 'locale') {
+            changes.locale = (value === '' ? null : value) as ProfileChanges['locale']
+        } else changes.timeZone = value === '' ? null : value
     }
-    const timeZone = profileTimeZone.value === '' ? null : profileTimeZone.value
-    if (timeZone !== confirmed.preferences.timeZone) changes.timeZone = timeZone
-    if (Object.keys(changes).length === 0) {
-        profileFormDirty.value = false
+    if (sent.size === 0) {
+        syncUntouchedFields()
         profileMessage.value = t('account.profile.nothingToSave')
         return
     }
@@ -179,7 +196,11 @@ async function saveProfile(): Promise<void> {
     try {
         const outcome = await profileSave.change(changes)
         if (outcome.status === 'saved') {
-            syncProfileForm()
+            // A field edited again while the request was under way keeps its new text.
+            for (const [field, value] of sent) {
+                if (profileForm[field] === value) editedFields.delete(field)
+            }
+            syncUntouchedFields()
             profileMessage.value = t('account.profile.saved')
             return
         }
@@ -638,13 +659,13 @@ watch(
                 <label class="field">
                     <span>{{ t('account.profile.name') }}</span>
                     <input
-                        v-model="profileName"
+                        v-model="profileForm.name"
                         name="profile-name"
                         autocomplete="name"
                         maxlength="100"
                         :aria-invalid="nameError !== ''"
                         aria-describedby="profile-name-error"
-                        @input="markProfileDirty"
+                        @input="markEdited('name')"
                     />
                     <small
                         v-if="nameError"
@@ -659,9 +680,9 @@ watch(
                 <label class="field">
                     <span>{{ t('account.profile.language') }}</span>
                     <select
-                        v-model="profileLocale"
+                        v-model="profileForm.locale"
                         name="profile-locale"
-                        @change="markProfileDirty"
+                        @change="markEdited('locale')"
                     >
                         <option value="">{{ t('account.profile.asBrowser') }}</option>
                         <option
@@ -682,9 +703,9 @@ watch(
                         :placeholder="t('account.profile.timeZoneSearch')"
                     />
                     <select
-                        v-model="profileTimeZone"
+                        v-model="profileForm.timeZone"
                         name="profile-time-zone"
-                        @change="markProfileDirty"
+                        @change="markEdited('timeZone')"
                     >
                         <option value="">{{ t('account.profile.asBrowser') }}</option>
                         <option v-for="zone in filteredTimeZones" :key="zone" :value="zone">

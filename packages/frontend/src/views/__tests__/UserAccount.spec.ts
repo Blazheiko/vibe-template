@@ -20,22 +20,25 @@ const { currentUser, resendOAuthEmailLinkMock, signInMethodsMock, unlinkSignInMe
 
 // feat-232: the profile and its save queue. The queue itself is tested in useProfileSave.spec.ts;
 // here it only records what the page asks it to send.
-const profileState = vi.hoisted(() => ({
-    profile: {
-        value: {
-            name: 'Jane',
-            preferences: {
-                locale: null,
-                timeZone: null,
-                theme: 'dark',
-                colorTheme: null,
-                fontSize: null,
-            },
-            revision: '3',
-        },
+const JANE = {
+    name: 'Jane',
+    preferences: {
+        locale: null as string | null,
+        timeZone: null as string | null,
+        theme: 'dark' as string | null,
+        colorTheme: null as string | null,
+        fontSize: null as number | null,
     },
-    change: vi.fn(),
-}))
+    revision: '3',
+}
+// Reactive, as the store is: a profile from a WS event or another answer reaches the page.
+const profileState = await vi.hoisted(async () => {
+    const { ref } = await import('vue')
+    return {
+        profile: ref<Record<string, unknown> | null>(null),
+        change: vi.fn(),
+    }
+})
 vi.mock('@/composables/useProfileSave', async () => {
     const { computed, ref } = await import('vue')
     return {
@@ -114,6 +117,7 @@ const methodsAnswer = (methods: Record<string, unknown>[], hasPassword = true) =
 })
 
 beforeEach(() => {
+    profileState.profile.value = structuredClone(JANE)
     signInMethodsMock.mockReset()
     unlinkSignInMethodMock.mockReset()
     // No linked sign-in method unless a test says otherwise.
@@ -426,6 +430,7 @@ describe('UserAccount password change and the WebSocket', () => {
 // feat-232 T13: the profile form sends only what changed; the settings save through the queue.
 describe('UserAccount profile form and settings', () => {
     beforeEach(() => {
+        profileState.profile.value = structuredClone(JANE)
         currentUser.value = { id: '1', name: 'Jane', email: 'jane@example.com' }
         profileState.change.mockReset()
         profileState.change.mockResolvedValue({
@@ -564,5 +569,84 @@ describe('UserAccount profile form and settings', () => {
         const delay = (profileState.change.mock.calls[0][1] as { delayMs: number }).delayMs
         expect(delay).toBeGreaterThanOrEqual(500)
         expect(delay).toBeLessThanOrEqual(800)
+    })
+})
+
+// Review 2026-11-19, items 2 and 3.
+describe('UserAccount profile form: each field on its own', () => {
+    const form = (wrapper: ReturnType<typeof mountAccount>) =>
+        wrapper.find('[data-testid="profile-form"]')
+    const nameInput = (wrapper: ReturnType<typeof mountAccount>) =>
+        form(wrapper).find('input[name="profile-name"]')
+
+    beforeEach(() => {
+        currentUser.value = { id: '1', name: 'Jane', email: 'jane@example.com' }
+        profileState.profile.value = structuredClone(JANE)
+        profileState.change.mockReset()
+    })
+
+    it('a language changed in another tab is shown and not sent back with the name', async () => {
+        profileState.change.mockResolvedValue({ status: 'saved', profile: JANE })
+        const wrapper = mountAccount()
+        await nameInput(wrapper).setValue('New name')
+
+        // Another tab set the language; the event reached this page.
+        profileState.profile.value = {
+            ...JANE,
+            preferences: { ...JANE.preferences, locale: 'uk' },
+            revision: '4',
+        }
+        await flushPromises()
+        expect(
+            (form(wrapper).find('select[name="profile-locale"]').element as HTMLSelectElement)
+                .value,
+        ).toBe('uk')
+
+        await form(wrapper).find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).toHaveBeenCalledExactlyOnceWith({ name: 'New name' })
+    })
+
+    it('text typed while the save is under way is kept after its answer', async () => {
+        let answer: (value: unknown) => void = () => undefined
+        profileState.change.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    answer = resolve
+                }),
+        )
+        const wrapper = mountAccount()
+        await nameInput(wrapper).setValue('First')
+        await form(wrapper).find('form').trigger('submit')
+        await nameInput(wrapper).setValue('Second')
+
+        const saved = { ...JANE, name: 'First', revision: '4' }
+        profileState.profile.value = saved
+        answer({ status: 'saved', profile: saved })
+        await flushPromises()
+
+        expect((nameInput(wrapper).element as HTMLInputElement).value).toBe('Second')
+
+        profileState.change.mockResolvedValue({ status: 'saved', profile: saved })
+        await form(wrapper).find('form').trigger('submit')
+        await flushPromises()
+        expect(profileState.change).toHaveBeenLastCalledWith({ name: 'Second' })
+    })
+
+    it('a field saved as it was sent follows the profile again', async () => {
+        profileState.change.mockImplementation(() => {
+            profileState.profile.value = { ...JANE, name: 'Ann', revision: '4' }
+            return Promise.resolve({ status: 'saved', profile: profileState.profile.value })
+        })
+        const wrapper = mountAccount()
+        await nameInput(wrapper).setValue('Ann')
+        await form(wrapper).find('form').trigger('submit')
+        await flushPromises()
+
+        profileState.profile.value = { ...JANE, name: 'Renamed elsewhere', revision: '5' }
+        await flushPromises()
+
+        expect((nameInput(wrapper).element as HTMLInputElement).value).toBe('Renamed elsewhere')
     })
 })

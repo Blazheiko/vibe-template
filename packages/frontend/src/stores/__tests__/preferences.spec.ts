@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Profile } from 'shared'
 
 vi.mock('@/utils/sentry-service', () => ({ sentryService: { setUser: vi.fn() } }))
+vi.mock('@/utils/api', () => ({ accountApi: { getProfile: vi.fn(), updateProfile: vi.fn() } }))
 
+import { effectScope, nextTick } from 'vue'
+import { resetProfileSaveForTests, useProfileSync } from '@/composables/useProfileSave'
 import { ACCOUNT_POINTER_KEY, accountCacheKey, useStateStore } from '../state'
 import { isNewerOrSameRevision, useUserStore } from '../user'
 
@@ -228,5 +231,75 @@ describe('profile revision (Р12)', () => {
         expect(users.profile).toBeNull()
         // Revision 1 of the new user is not "older" than 50 of the previous one.
         expect(users.applyProfile({ name: 'Bob', preferences: prefs(), revision: '1' })).toBe(true)
+    })
+})
+
+// Review 2026-11-19, item 5: the sync started with user === null and showed the device look
+// before init answered, which undid the cache meant to prevent the flash.
+describe('the start, with the real stores and useProfileSync', () => {
+    const start = () => {
+        localStorage.setItem(ACCOUNT_POINTER_KEY, '7')
+        localStorage.setItem(accountCacheKey('7'), JSON.stringify(prefs({ colorTheme: 'mint' })))
+        localStorage.setItem('colorTheme', 'sunset')
+        setActivePinia(createPinia())
+        resetProfileSaveForTests()
+        const state = useStateStore()
+        const users = useUserStore()
+        const scope = effectScope()
+        scope.run(() => {
+            useProfileSync()
+        })
+        return { state, users, scope }
+    }
+
+    it('keeps the cached look while the session is not checked yet', async () => {
+        const { state, scope } = start()
+        await nextTick()
+
+        expect(state.colorTheme).toBe('mint')
+        expect(document.documentElement.getAttribute('data-theme')).toBe('mint')
+        scope.stop()
+    })
+
+    it('init of that account replaces the cache with its profile', async () => {
+        const { state, users, scope } = start()
+
+        users.setInitUser({
+            id: '7',
+            name: 'Ann',
+            email: 'ann@example.com',
+            emailVerified: true,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            preferences: prefs({ colorTheme: 'ocean' }),
+            revision: '2',
+        })
+        await nextTick()
+
+        expect(state.colorTheme).toBe('ocean')
+        scope.stop()
+    })
+
+    it('a session known to be anonymous shows the device look', async () => {
+        const { state, users, scope } = start()
+
+        users.markAnonymous()
+        await nextTick()
+
+        expect(state.colorTheme).toBe('sunset')
+        expect(localStorage.getItem(ACCOUNT_POINTER_KEY)).toBeNull()
+        scope.stop()
+    })
+
+    it('a sign-out shows the device look', async () => {
+        const { state, users, scope } = start()
+        users.setUser({ id: '7' })
+        await nextTick()
+
+        users.clearUser()
+        await nextTick()
+
+        expect(state.colorTheme).toBe('sunset')
+        scope.stop()
     })
 })
