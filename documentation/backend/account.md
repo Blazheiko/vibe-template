@@ -1,6 +1,6 @@
 # Акаунт і профіль
 
-Користувач, що увійшов, змінює своє ім'я, мову інтерфейсу й часовий пояс, а тема, колір і розмір шрифту зберігаються на сервері, тож після перезавантаження вони однакові на всіх його пристроях (feat-232). Це роблять два маршрути: `GET /api/account/profile` і `PATCH /api/account/profile`. `GET /api/main/init` несе ті самі налаштування, тож застосунок застосовує їх одразу після старту.
+Користувач, що увійшов, змінює своє ім'я, мову інтерфейсу й часовий пояс, а тема, колір і розмір шрифту зберігаються на сервері, тож вони однакові на всіх його пристроях; відкрита вкладка чи пристрій отримує зміну без перезавантаження (feat-232). Це роблять два маршрути: `GET /api/account/profile` і `PATCH /api/account/profile`. `GET /api/main/init` несе ті самі налаштування, тож застосунок застосовує їх одразу після старту.
 
 Джерела: контракт [`contracts/account.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/account.ts), тіло [`schemas/account/update-profile.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/account/update-profile.ts) і правило імені [`profile-name.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/account/profile-name.ts), відповідь [`responses/account-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/account-controller.ts), правило поясу [`utils/time-zone.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/utils/time-zone.ts); у бекенді [`account-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/user/account-controller.ts), [`account-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.ts), [`user-preferences-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/user/user-preferences-repository.ts) і [`profile-transformer.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/profile-transformer.ts).
 
@@ -77,9 +77,9 @@
 
 Сторінка акаунта має форму профілю (ім'я, мова з пунктом «Як у браузері», часовий пояс з пошуком, `UTC` і «Як у браузері») і панель налаштувань (тема: «Як у системі», світла або темна; колір і шрифт з «За замовчуванням»). Налаштування зберігаються через одну чергу на вкладку; як вона зберігає новіший вибір і що відбувається при зміні обліківки — у [Фронтенд → Налаштування](/frontend/#налаштування-мова-і-часовии-пояс).
 
-::: warning План
-Синхронізація без перезавантаження (подія WS `user.profile_updated` усім з'єднанням користувача) — фіча B [плану](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/profile-editing-plan.md), не реалізована: інший пристрій бачить зміну після перезавантаження. З кількома інстансами бекенду їй спершу потрібна міжпроцесна розсилка.
-:::
+## Жива синхронізація
+
+Після коміту `PATCH` надсилає `broadcast:user_profile_updated` з новим `Profile` усім з'єднанням користувача на всіх інстансах, зокрема вкладці, що зробила зміну, і іншим вкладкам тієї самої сесії ([WebSocket → Події користувачу на всіх інстансах](/backend/websocket#подіі-користувачу-на-всіх-інстансах)). Відповідь його не чекає, і невдала подія не скасовує зміни. Клієнт застосовує подію як будь-який знімок, за `revision`, під своїми ненадісланими змінами, тож подія, що прийшла пізно чи двічі, нічого не псує. Події не повторюються: після перепідключення WS клієнт знову читає `GET /account/profile`.
 
 ## Перевірка
 

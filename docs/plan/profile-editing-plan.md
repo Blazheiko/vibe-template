@@ -1,8 +1,11 @@
 # Повне редагування профілю та синхронізація налаштувань — план реалізації
 
-**Статус: погоджено, фіча A — `feat-232`**, редакція 3 (2026-11-19). Пункт 1 з
+**Статус: погоджено, фічі A і B — одна `feat-232`** (рішення власника 2026-11-19: увесь план
+одним PR), редакція 3 (2026-11-19). Пункт 1 з
 [`future/template-functionality-recommendations.md`](./future/template-functionality-recommendations.md).
-Рішення Р1–Р13 нижче прийнято; фіча B отримає номер, коли її почнуть. Покроковий task list:
+Рішення Р1–Р13 нижче прийнято. Подію названо `user_profile_updated` (snake_case, як інші
+події реєстру), а міжпроцесну розсилку зроблено шиною Redis pub/sub
+(`app/services/communication/user-event-bus.ts`). Покроковий task list:
 [`profile-editing-tasks.md`](./profile-editing-tasks.md).
 
 **Редакція 3** (за рев'ю редакції 2): початкова `revision` і її тип у JSON (Р12); успішна

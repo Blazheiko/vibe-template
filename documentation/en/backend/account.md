@@ -1,6 +1,6 @@
 # Account and profile
 
-The signed-in user changes their name, interface language and time zone, and their theme, color and font size are kept on the server, so they are the same on every device after a reload (feat-232). Two routes do it: `GET /api/account/profile` and `PATCH /api/account/profile`. `GET /api/main/init` carries the same preferences, so the app applies them right after it starts.
+The signed-in user changes their name, interface language and time zone, and their theme, color and font size are kept on the server, so they are the same on every device; an open tab or device gets a change without a reload (feat-232). Two routes do it: `GET /api/account/profile` and `PATCH /api/account/profile`. `GET /api/main/init` carries the same preferences, so the app applies them right after it starts.
 
 Sources: the contract [`contracts/account.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/account.ts), the body [`schemas/account/update-profile.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/account/update-profile.ts) and the name rule [`profile-name.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/schemas/account/profile-name.ts), the answer [`responses/account-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/account-controller.ts), the zone rule [`utils/time-zone.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/utils/time-zone.ts); in the backend [`account-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/user/account-controller.ts), [`account-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.ts), [`user-preferences-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/user/user-preferences-repository.ts) and [`profile-transformer.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/profile-transformer.ts).
 
@@ -77,9 +77,9 @@ A change is written only while the session is current, as with a password change
 
 The account page has a profile form (name, language with "Same as the browser", time zone with a search, `UTC` and "Same as the browser") and the settings panel (theme: "Same as the system", light or dark; color and font size with "Default"). The settings save through one queue per tab; how it keeps the newer choice and what happens when the account changes is in [Frontend → Preferences](/en/frontend/#preferences-language-and-time-zone).
 
-::: warning Plan
-Live sync without a reload (a `user.profile_updated` WS event to every connection of the user) is feature B of [the plan](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/profile-editing-plan.md), not built: another device sees a change after a reload. With several backend instances it needs a cross-process broadcast first.
-:::
+## Live sync
+
+After the commit, `PATCH` sends `broadcast:user_profile_updated` with the new `Profile` to every connection of the user on every instance, the tab that made the change and other tabs of the same session included ([WebSocket → Events to a user on every instance](/en/backend/websocket#events-to-a-user-on-every-instance)). The answer does not wait for it, and a failed event does not fail the change. The client applies it like any snapshot, by `revision`, under its unsaved changes, so an event that arrives late or twice changes nothing. Events are not replayed: after a WS reconnect the client reads `GET /account/profile` again.
 
 ## Verification
 
