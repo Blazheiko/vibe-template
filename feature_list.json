@@ -2253,6 +2253,16 @@
             "dependencies": ["feat-223"],
             "status": "done",
             "evidence": "PR #691 (merge e6dcc44), registry #690. Docs only, both locales: scheduler.md adding a job batches by = ANY(ARRAY(SELECT id ... WHERE <condition> ORDER BY <indexed column> LIMIT n)) with an index on the condition column (IN (SELECT ... LIMIT n) could sort every matching row per batch, measured in the feat-223 review), links expired-rows.ts and the plan test; scheduler.md variables lists job variables (AUTH_TOKEN_RETENTION); deployment.md section Background jobs (replicas and SCHEDULER_ENABLED/SCHEDULER_DISABLED_JOBS, Redis maxmemory-policy noeviction, stop order with stop_grace_period >= 15 s since drain 5 s + user_online 3 s + Sentry 2 s can exceed the 10 s Docker default, job:run in the container) and the graceful-shutdown item starts with the scheduler stop; observability.md section Background jobs (run log fields, levels, Sentry tags job/outcome). Added on the owner request: the scheduler.ts stopDrainMs comment no longer names a non-existent SCHEDULER_STOP_DRAIN_MS; testing.md says 8 *.pg.test.ts files also need REDIS_TEST_URL and skip without it. docs:build + docs:verify green; CI on 978c44f: quality, build, e2e, e2e-live, test-pg, test-redis green. Status went in_progress -> done without a separate review PR (docs only, merged after green CI)."
+        },
+        {
+            "id": "feat-227",
+            "name": "Scheduled Job Skill",
+            "description": "Owner decision 2026-11-19: (1) documentation/{,en/}backend/scheduler.md \"Adding a job\" gains the feat-223 lessons: job variables in their own config/<job>.ts (config/auth.ts is imported widely; loading the duration parser there broke the specs that mock metautil), wired into validate-runtime-config, and the job refuses to run on its config error (job:run skips the startup check); a PG plan test that EXPLAINs the batch statement with enable_seqscan and enable_sort off; a test with rows on either side of the cut-off. (2) .claude/skills/scheduled-job/SKILL.md: a short checklist pointing at that section (service with checkpoint and PurgeCounts, repository with index and = ANY(ARRAY(... ORDER BY ... LIMIT n)), config, defineJob and registry, tests, docs in both locales, manual job:run --dry-run). (3) AGENTS.md: a change to the scheduler contract (defineJob, JobContext, withJobLease, Р13) updates scheduler.md and the skill in the same PR.",
+            "owner": "Blazheiko",
+            "branch": "docs/scheduled-job-skill",
+            "dependencies": ["feat-226"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
