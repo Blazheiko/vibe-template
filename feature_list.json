@@ -2303,6 +2303,16 @@
             "dependencies": ["feat-229"],
             "status": "done",
             "evidence": "PR #702 (merge a5d4342), registry #701. With feat-225/229 the retries worked but a 69-500 kB/s mirror left the ~126 MB of install-deps unable to fit in any 5-minute attempt. scripts/apt-archives.sh points Dir::Cache::Archives at ~/apt-cache and keeps downloads; ci.yml e2e and e2e-live restore ~/apt-cache/*.deb (actions/cache/restore, key apt-e2e[-live]-<os>-<ImageOS-ImageVersion>-pw-<playwright>, restore-keys by os) and save it after the install when not an exact hit; docs backend/testing.md both locales. ubuntu:24.04: cached .deb install with the network cut, control without cache fails. On runners: #702 cold run saved after 7 min 25 s at 284 kB/s; warm rerun restored 186 .deb, \"Need to get 0 B/126 MB\", install about 30 s, e2e 99 passed; restore-keys carried an older image's files to a newer one; after the merge #697 restored the main cache the same way. A PR sees only its own branch's and main's caches: the shared cache is filled by runs on main. Status went in_progress -> done without a separate review PR (owner decisions 2026-11-19; merged after green CI)."
+        },
+        {
+            "id": "feat-232",
+            "name": "Profile Editing",
+            "description": "docs/plan/profile-editing-plan.md feature A (tasks docs/plan/profile-editing-tasks.md T1-T16, decisions R1-R8, R10-R13): the user edits name, interface language and time zone on the account page; theme, color and font size move from browser-wide localStorage to a user_preferences table (1:1, typed columns with CHECK, revision bigint) and are the same on every device after a reload. GET/PATCH /account/profile (session_web, csrf_guard, auth_guard; partial body, absent field unchanged, null resets; per-user rate limit 30/10 min), InitResponse.user.preferences and revision, a shared time-zone rule (UTC + Intl.supportedValuesOf), useDateFormat for the four date views, system theme only when theme = null, prefs:<userId> cache with account-switch rules, an autosave queue with confirmed and pending layers, language priority profile -> browser -> en. Live WS sync (feature B) is out of scope.",
+            "owner": "Blazheiko",
+            "branch": "feat/profile-editing",
+            "dependencies": [],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
