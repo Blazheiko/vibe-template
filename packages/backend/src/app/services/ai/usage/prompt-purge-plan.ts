@@ -1,5 +1,6 @@
-// What `llm:purge-prompts` is asked to do. A purge cannot be undone, so anything it does not
-// understand is an error, not a guess.
+// What a prompt purge is asked to do: the `llm:purge-prompts` CLI (with its flags) and the
+// `llm-prompt-retention` job (with none, feat-224) plan it here, so both follow one rule. A purge
+// cannot be undone, so anything it does not understand is an error, not a guess.
 
 const DAY_MS = 86_400_000
 

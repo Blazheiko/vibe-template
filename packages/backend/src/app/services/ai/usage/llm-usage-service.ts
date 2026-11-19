@@ -9,6 +9,8 @@ import logger from '#logger'
 import { createHash } from 'node:crypto'
 import aiConfig from '#config/ai.js'
 import { UNKNOWN_USAGE } from '#app/services/ai/types.js'
+import type { Checkpoint } from '#app/services/shared/checkpoint.js'
+import type { PurgeCounts } from '#app/services/shared/purge-counts.js'
 import type {
     TextCallStatus,
     TextUsageCompleteHandler,
@@ -139,7 +141,9 @@ export const llmUsageService = {
     purgePromptText(options: {
         olderThan: Date | null
         dryRun: boolean
-    }): Promise<{ matched: number }> {
+        /** feat-224: called right before every statement; throws to stop between batches. */
+        checkpoint?: Checkpoint
+    }): Promise<PurgeCounts> {
         return llmUsageRepository.purgePromptText(options)
     },
 

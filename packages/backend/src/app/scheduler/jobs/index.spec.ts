@@ -19,8 +19,8 @@ describe('job registry', () => {
         expect(new Set(names).size).toBe(names.length)
     })
 
-    it('contains the auth token cleanup (feat-223)', () => {
-        expect(jobs.map((job) => job.name)).toContain('auth-token-cleanup')
+    it('contains the auth token cleanup (feat-223) and the prompt retention (feat-224)', () => {
+        expect(jobs.map((job) => job.name)).toEqual(['auth-token-cleanup', 'llm-prompt-retention'])
     })
 
     // Р13: a job that runs into its timeout must end with `timeout`, not with a lost lease.
