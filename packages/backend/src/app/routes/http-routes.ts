@@ -9,6 +9,7 @@ import AdminKnowledgeBaseController from '#app/controllers/http/admin/admin-know
 import PushSubscriptionController from '#app/controllers/http/notifications/push-subscription-controller.js'
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import AccountController from '#app/controllers/http/user/account-controller.js'
+import AccountSessionsController from '#app/controllers/http/user/account-sessions-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
@@ -329,8 +330,25 @@ export default [
                 description:
                     'Change the name and preferences of the current user (absent field unchanged, null resets)',
             }),
+            defineRoute({
+                contract: accountContracts.listSessions,
+                handler: AccountSessionsController.listSessions.bind(AccountSessionsController),
+                description:
+                    'Active sessions of the current user: the current one, then pages of the others',
+            }),
+            defineRoute({
+                contract: accountContracts.revokeSession,
+                handler: AccountSessionsController.revokeSession.bind(AccountSessionsController),
+                description: 'End one other session of the current user',
+            }),
+            defineRoute({
+                contract: accountContracts.revokeOtherSessions,
+                handler:
+                    AccountSessionsController.revokeOtherSessions.bind(AccountSessionsController),
+                description: 'End every session of the current user but this one, which is renewed',
+            }),
         ],
-        description: 'Account profile routes (feat-232)',
+        description: 'Account profile and session routes (feat-232, feat-233)',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'account',
     },

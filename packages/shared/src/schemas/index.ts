@@ -113,6 +113,11 @@ export {
     type SupportChatHistoryQuery,
     type SupportChatHistoryQueryInput,
 } from './query/support.js'
+export {
+    ListSessionsQuerySchema,
+    type ListSessionsQuery,
+    type ListSessionsQueryInput,
+} from './query/account-sessions.js'
 export { SupportChatInputSchema, type SupportChatInput } from './support/support-chat.js'
 export {
     SupportOpenChatInputSchema,

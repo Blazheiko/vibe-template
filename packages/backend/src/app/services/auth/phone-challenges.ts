@@ -1,4 +1,4 @@
-import { smsAuthChallengeRepository } from '#app/repositories/index.js'
+import { passwordResetRepository, smsAuthChallengeRepository } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import { LINK_PHONE_FLOW, RESET_PHONE_FLOW } from '#app/services/auth/auth-normalize.js'
 
@@ -18,4 +18,20 @@ export async function invalidatePendingPhoneChallenges(
         executor,
     )
     await smsAuthChallengeRepository.invalidatePendingForPhoneFlow(phone, LINK_PHONE_FLOW, executor)
+}
+
+/**
+ * feat-233 (Р9): what every revocation of the other sessions retires in its own transaction: the
+ * pending password-reset links (feat-109) and the SMS challenges of the phone (feat-121, M4).
+ * Logout-all, change-password and "end all other sessions" call it; a reset asked for before
+ * cannot finish after.
+ */
+export async function retirePendingResets(
+    user: { id: bigint; phone: string | null },
+    tx: DbTransaction,
+): Promise<void> {
+    await passwordResetRepository.invalidatePendingByUserId(user.id, tx)
+    if (user.phone !== null && user.phone !== '') {
+        await invalidatePendingPhoneChallenges(user.phone, tx)
+    }
 }

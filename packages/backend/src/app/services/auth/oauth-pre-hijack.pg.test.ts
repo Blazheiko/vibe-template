@@ -178,9 +178,15 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 getPresentedUserToken: () => presented?.token,
                 check: () => presented !== undefined,
                 login: (userId: string | undefined, token: string | undefined) => {
-                    if (userId === undefined || token === undefined) return Promise.resolve(false)
+                    if (userId === undefined || token === undefined) return Promise.resolve(null)
                     state.login = { userId, token }
-                    return Promise.resolve(true)
+                    return Promise.resolve({
+                        publicId: 'p'.repeat(22),
+                        ip: '',
+                        userAgent: '',
+                        method: 'oauth' as const,
+                        signedInAt: new Date().toISOString(),
+                    })
                 },
                 logout: () => Promise.resolve(true),
                 logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),

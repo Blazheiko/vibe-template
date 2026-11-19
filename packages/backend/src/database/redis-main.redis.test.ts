@@ -215,7 +215,8 @@ describe.skipIf(!hasRedis)('main Redis client against a real server', () => {
 
         it('destroySession is not resent: the session stays until a repeated logout', async () => {
             await storage.saveSession(session('logout', 'A'))
-            const outcome = await postponeAndKill(client, 'del', () =>
+            // feat-233: a signed-in session is deleted with its index member by one script.
+            const outcome = await postponeAndKill(client, 'eval', () =>
                 storage.destroySession('logout', USER_TOKEN),
             )
             expect(outcome).toBeInstanceOf(RedisUnavailableError)

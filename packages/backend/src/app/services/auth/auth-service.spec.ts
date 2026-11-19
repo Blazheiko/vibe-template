@@ -38,6 +38,8 @@ const securityNotice = vi.fn()
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: securityNotice, supportReply: vi.fn() },
 }))
+const notifyNewSignIn = vi.fn()
+vi.mock('#app/services/auth/new-sign-in-notice.js', () => ({ notifyNewSignIn }))
 
 const sessionMock = {
     sessionInfo: {
@@ -217,7 +219,7 @@ describe('authService', () => {
             sessionToken: 'session-token',
         })
         sessionMock.destroySession.mockResolvedValue(undefined)
-        authMock.login.mockResolvedValue(true)
+        authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
         generateWsTokenMock.mockResolvedValue('ws-token')
 
         const { authService } = await loadAuthService()
@@ -247,7 +249,7 @@ describe('authService', () => {
         }
         expect(sendVerificationEmailAfterRegistrationMock).toHaveBeenCalledWith(7n)
         expect(sessionMock.destroySession).toHaveBeenCalledWith()
-        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token')
+        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', expect.anything())
         expect(generateWsTokenMock).toHaveBeenCalledWith(sessionMock.sessionInfo, '7')
     })
 
@@ -424,7 +426,7 @@ describe('authService', () => {
             sessionToken: 'session-token',
         })
         validatePasswordMock.mockResolvedValue(true)
-        authMock.login.mockResolvedValue(false)
+        authMock.login.mockResolvedValue(null)
 
         const { authService } = await loadAuthService()
         const result = await authService.login(
@@ -459,7 +461,11 @@ describe('authService', () => {
             sessionToken: 'session-token',
         })
         validatePasswordMock.mockResolvedValue(true)
-        authMock.login.mockResolvedValue(true)
+        const device = { publicId: 'p'.repeat(22), ip: '127.0.0.1', userAgent: 'UA' }
+        authMock.login.mockImplementation(() => {
+            sessionMock.sessionInfo = { id: 'new-session', data: { device } }
+            return Promise.resolve(device)
+        })
 
         const { authService } = await loadAuthService()
         const result = await authService.login(
@@ -470,7 +476,9 @@ describe('authService', () => {
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(securityNotice).toHaveBeenCalledWith(7n, 'new_sign_in')
+        // feat-233 (Р11): the push names the device, the mail follows its own rules.
+        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', { method: 'password' })
+        expect(notifyNewSignIn).toHaveBeenCalledWith(7n, device, { mail: true })
     })
 
     it('starts email linking for a phone-only account after re-authentication', async () => {
@@ -865,7 +873,7 @@ describe('authService', () => {
             sessionToken: 'session-token',
         })
         validatePasswordMock.mockResolvedValue(true)
-        authMock.login.mockResolvedValue(true)
+        authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
         generateWsTokenMock.mockResolvedValue('ws-token')
 
         const { authService } = await loadAuthService()
@@ -880,7 +888,7 @@ describe('authService', () => {
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token')
+        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', expect.anything())
     })
 
     it('renewSession logs the same user into a new session and returns its token', async () => {
@@ -899,7 +907,7 @@ describe('authService', () => {
         const { authService } = await loadAuthService()
         const result = await authService.renewSession(authMock as any, sessionMock as any)
 
-        expect(authMock.login).toHaveBeenCalledWith('7', 'user-session-token')
+        expect(authMock.login).toHaveBeenCalledWith('7', 'user-session-token', expect.anything())
         expect(generateWsTokenMock).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'renewed-session-id' }),
             '7',
@@ -944,7 +952,7 @@ describe('authService', () => {
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(authMock.login).toHaveBeenCalledWith('7', 'rotated-user-token')
+        expect(authMock.login).toHaveBeenCalledWith('7', 'rotated-user-token', expect.anything())
     })
 
     describe('logoutAll rotates the sessionToken first (ADR 0002)', () => {
@@ -1540,7 +1548,7 @@ describe('authService while Redis is unavailable', () => {
             'WS token generation during login',
             () => {
                 arrangeLogin()
-                authMock.login.mockResolvedValue(true)
+                authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
             },
             (s) => s.login(LOGIN_INPUT, authMock as any, sessionMock as any, LOGIN_CONTEXT),
         ],

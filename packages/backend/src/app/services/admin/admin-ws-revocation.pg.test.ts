@@ -146,7 +146,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
             responseData,
         )
         await sessionHandler(context, undefined, undefined)
-        await context.auth.login(String(user.id), user.sessionToken)
+        await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
         const sessionInfo = context.session.sessionInfo
         if (sessionInfo === null) throw new Error('no session after login')
         const token = await generateWsToken(sessionInfo, String(user.id))

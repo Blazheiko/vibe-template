@@ -1,9 +1,9 @@
 import { hashPassword, validatePassword } from 'metautil'
 import { Result } from 'better-result'
 import { nanoid } from 'nanoid'
-import type { Auth, Session } from '#vendor/types/types.js'
+import type { Auth, LoginOrigin, Session } from '#vendor/types/types.js'
+import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import {
-    passwordResetRepository,
     smsAuthChallengeRepository,
     userRepository,
     withTransaction,
@@ -30,7 +30,7 @@ import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceEmailLinkThrottles, enforceThrottle } from '#app/services/auth/enforce-throttle.js'
-import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
+import { retirePendingResets } from '#app/services/auth/phone-challenges.js'
 import {
     confirmChallenge,
     findPendingChallenge,
@@ -214,11 +214,12 @@ async function buildAuthSuccess(
     user: Awaited<ReturnType<typeof userRepository.create>>,
     auth: Auth,
     session: Session,
+    origin: LoginOrigin,
     loginFailureMessage = 'Failed to log in user',
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const loggedInResult = await auth.login(String(user.id), user.sessionToken)
+    const loggedInResult = await auth.login(String(user.id), user.sessionToken, origin)
 
-    if (!loggedInResult) {
+    if (loggedInResult === null) {
         return Result.err(internalMessage(loginFailureMessage))
     }
 
@@ -322,6 +323,7 @@ async function finalizeRegistration(
         userCreatedResult.value,
         auth,
         session,
+        { method: 'register' },
         options.loginFailureMessage ?? 'Failed to log in user',
     )
 }
@@ -1012,8 +1014,11 @@ export const authService = {
         // The correct password resets the per-account budget; the IP budget stays.
         await resetThrottleQuietly(throttlePolicies.loginIdentifier, loginKey.value, 'Login')
 
-        const success = await buildAuthSuccess(user, auth, session)
-        if (Result.isOk(success)) userNotificationService.security(user.id, 'new_sign_in')
+        const success = await buildAuthSuccess(user, auth, session, { method: 'password' })
+        const device = session.sessionInfo?.data.device
+        if (Result.isOk(success) && device !== undefined) {
+            notifyNewSignIn(user.id, device, { mail: true })
+        }
         return success
     },
 
@@ -1063,7 +1068,14 @@ export const authService = {
             return Result.err(internalMessage('No signed-in session to renew'))
         }
 
-        await auth.login(userId, userToken)
+        // feat-233 (Р3): the renewed session keeps how and where the user signed in. Its record is
+        // gone by now, but the request still holds what it read.
+        const device = session.sessionInfo?.data.device
+        await auth.login(
+            userId,
+            userToken,
+            device !== undefined ? { inherit: device } : { method: 'password' },
+        )
 
         const sessionInfo = session.sessionInfo
         const csrfToken = getSessionCsrfToken(sessionInfo)
@@ -1100,17 +1112,9 @@ export const authService = {
                               { sessionToken: nanoid() },
                               tx,
                           )
-                          if (done !== undefined) {
-                              await passwordResetRepository.invalidatePendingByUserId(
-                                  BigInt(userId),
-                                  tx,
-                              )
-                              // feat-121 (M4): the SMS challenges of the phone too, as an email
-                              // reset does: a phone reset started before cannot finish after.
-                              if (done.phone !== null && done.phone !== '') {
-                                  await invalidatePendingPhoneChallenges(done.phone, tx)
-                              }
-                          }
+                          // feat-121 (M4): the SMS challenges of the phone too, as an email
+                          // reset does: a phone reset started before cannot finish after.
+                          if (done !== undefined) await retirePendingResets(done, tx)
                           return done
                       })
             if (rotated === undefined) {
@@ -1229,14 +1233,9 @@ export const authService = {
                 { password: newPasswordHash, sessionToken: rotatedSessionToken },
                 tx,
             )
-            if (changed !== undefined) {
-                await passwordResetRepository.invalidatePendingByUserId(userId, tx)
-                // feat-121 (M4): and the pending SMS challenges of the phone, as an email reset
-                // does: a phone reset started before the change cannot set the password after it.
-                if (changed.phone !== null && changed.phone !== '') {
-                    await invalidatePendingPhoneChallenges(changed.phone, tx)
-                }
-            }
+            // feat-121 (M4): and the pending SMS challenges of the phone, as an email reset does:
+            // a phone reset started before the change cannot set the password after it.
+            if (changed !== undefined) await retirePendingResets(changed, tx)
             return changed
         })
 

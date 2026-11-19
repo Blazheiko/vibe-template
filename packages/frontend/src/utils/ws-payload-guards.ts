@@ -114,6 +114,12 @@ export const isUserProfileUpdatedPayload = (
     typeof value.revision === 'string' &&
     REVISION_PATTERN.test(value.revision)
 
+/** feat-233 (Р12): the session list changed; no data, the client reads the first page again. */
+export const isUserSessionsChangedPayload = (
+    value: unknown,
+): value is BroadcastPayload<'user_sessions_changed'> =>
+    isObject(value) && Object.keys(value).length === 0
+
 /** A guard of each broadcast event, by event (ADR 0006, decision 3, feat-182). */
 export type BroadcastGuards = {
     readonly [E in BroadcastEventName]: (value: unknown) => value is BroadcastContracts[E]
@@ -130,4 +136,5 @@ export const broadcastGuards = {
     admin_user_online_upsert: isWSAdminUserOnlineUpsertPayload,
     admin_user_online_remove: isAdminUserOnlineRemovePayload,
     user_profile_updated: isUserProfileUpdatedPayload,
+    user_sessions_changed: isUserSessionsChangedPayload,
 } as const satisfies BroadcastGuards

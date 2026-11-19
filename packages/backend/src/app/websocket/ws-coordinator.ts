@@ -1,5 +1,7 @@
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
+import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
+import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
 import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-service.js'
 import { userOnlineService } from '#app/services/communication/user-online-service.js'
 import { wsPresenceService } from '#app/services/communication/ws-presence-service.js'
@@ -101,6 +103,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     }
     userData.role = access.role
 
+    const sessionWasOnline = wsConnectionRegistry.hasSessionConnection(userId, sessionId)
     const isFirstConnection = wsConnectionRegistry.registerConnection(userId, userData.uuid, ws, {
         ip: userData.ip,
         userAgent: userData.userAgent,
@@ -111,6 +114,10 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     // feat-232: registered, so events to this user reach the socket from now on; the client reads
     // the state those events keep (the profile) after this signal (review 2026-11-19).
     sendConnectionReady(ws, userData)
+    // feat-233: the first socket of a session turns its "online" badge on (Р12), and opening the
+    // socket counts as activity of the session (Р4).
+    if (!sessionWasOnline) announceSessionListChanged(userId)
+    void touchSessionFromWs(userData)
     const connectSettled = userOnlineService
         .trackConnected({
             userId: BigInt(userId),
@@ -158,6 +165,10 @@ const handleDisconnected = async (
     // anything before unregistering, broadcast loops can still pick up the dead
     // socket and crash on `.send()` with "Invalid access of closed uWS.WebSocket".
     const isLastConnection = wsConnectionRegistry.unregisterConnection(userId, userData.uuid)
+    // feat-233: the last socket of a session turns its "online" badge off.
+    if (!wsConnectionRegistry.hasSessionConnection(userId, sessionId)) {
+        announceSessionListChanged(userId)
+    }
 
     adminWsChannelService.handleConnectionClosed(_ws)
 

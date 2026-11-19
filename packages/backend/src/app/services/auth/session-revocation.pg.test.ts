@@ -143,7 +143,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     const signIn = async (user: { id: bigint; sessionToken: string }) => {
         const { context, responseData } = newContext()
         await sessionHandler(context, undefined, undefined)
-        await context.auth.login(String(user.id), user.sessionToken)
+        await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
         const sessionInfo = context.session.sessionInfo
         if (sessionInfo === null) throw new Error('no session after login')
         return { context, cookie: cookieOf(responseData), sessionId: sessionInfo.id, sessionInfo }
@@ -335,7 +335,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const { context } = await requestWith(a.cookie)
             expect(context.auth.getPresentedUserToken()).toBe(user.sessionToken)
 
-            await context.auth.login(String(other.id), other.sessionToken)
+            await context.auth.login(String(other.id), other.sessionToken, { method: 'password' })
 
             expect(context.auth.getUserId()).toBe(String(other.id))
             expect(context.auth.getPresentedUserToken()).toBe(user.sessionToken)

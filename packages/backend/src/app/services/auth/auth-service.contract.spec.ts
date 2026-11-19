@@ -934,12 +934,12 @@ const ROWS: readonly Row[] = [
         name: 'renewSession · logs in under the rotated token it was given',
         arrange: () => {
             authMock.getUserId.mockReturnValue('7')
-            authMock.login.mockResolvedValue(true)
+            authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
             generateWsTokenMock.mockResolvedValue('ws-token')
         },
         call: (s) => s.renewSession(authMock as never, sessionMock as never, 'rotated'),
         after: () => {
-            expect(authMock.login).toHaveBeenCalledWith('7', 'rotated')
+            expect(authMock.login).toHaveBeenCalledWith('7', 'rotated', expect.anything())
         },
     },
     {
@@ -1289,7 +1289,7 @@ describe('authService · success payloads', () => {
 
     it('renewSession returns the new CSRF token and a WebSocket token', async () => {
         authMock.getUserId.mockReturnValue('7')
-        authMock.login.mockResolvedValue(true)
+        authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
         generateWsTokenMock.mockResolvedValue('ws-token')
         const { authService } = await import('./auth-service.js')
         const result = await authService.renewSession(

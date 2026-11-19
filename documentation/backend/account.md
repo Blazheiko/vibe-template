@@ -1,4 +1,4 @@
-# Акаунт і профіль
+# Акаунт, профіль і сесії
 
 Користувач, що увійшов, змінює своє ім'я, мову інтерфейсу й часовий пояс, а тема, колір і розмір шрифту зберігаються на сервері, тож вони однакові на всіх його пристроях; відкрита вкладка чи пристрій отримує зміну без перезавантаження (feat-232). Це роблять два маршрути: `GET /api/account/profile` і `PATCH /api/account/profile`. `GET /api/main/init` несе ті самі налаштування, тож застосунок застосовує їх одразу після старту.
 
@@ -96,3 +96,103 @@ curl -s -b cookies.txt -X PATCH -H "$O" -H 'content-type: application/json' -H "
 ```
 
 Тести: [`account-service.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.spec.ts), [`account-preferences.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-preferences.pg.test.ts) (upsert, `CHECK`, одночасні зміни), [`account-service.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.pg.test.ts) (відкат імені), [`account-http.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-http.pg.test.ts) (маршрути через HTTP, відкликані сесії), [`account-throttle.redis.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-throttle.redis.test.ts); у фронтенді [`useProfileSave.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/__tests__/useProfileSave.spec.ts) і [`e2e-live/account-profile.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/e2e-live/account-profile.spec.ts).
+
+## Активні сесії
+
+На сторінці акаунта користувач бачить усі свої активні входи: браузер, операційну систему, IP-адресу, як і коли увійшов, коли сесія була активна, яка з них — цей пристрій і які онлайн. Він завершує будь-яку іншу сесію або всі інші одразу, не виходячи сам (feat-233).
+
+Джерела: контракт у [`contracts/account.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/account.ts), відповіді в [`responses/account-sessions-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/responses/account-sessions-controller.ts), парсер User-Agent [`utils/user-agent.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/utils/user-agent.ts); у бекенді [`account-sessions-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/user/account-sessions-controller.ts), [`session-list-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/session-list-service.ts) та індекс у [`session-index.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-index.ts) ([Автентифікація → Список сесій](/backend/auth#список-сесіи)).
+
+| Маршрут                                    | Middleware                                | Що робить                                                                                          |
+| ------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET /api/account/sessions?cursor=<c>`     | `session_web`, `csrf_guard`, `auth_guard` | поточна сесія окремо, потім сторінка інших, від новіших до старіших                                |
+| `DELETE /api/account/sessions/:id`         | `session_web`, `csrf_guard`, `auth_guard` | завершує одну іншу сесію; поточна відповідає `409` з `reason: "current_session"` (для неї є вихід) |
+| `POST /api/account/sessions/revoke-others` | `session_web`, `csrf_guard`, `auth_guard` | завершує всі сесії, крім цієї, а цю перевипускає                                                   |
+
+Повторної автентифікації немає: обидві дії лише зменшують доступ, і ними має змогу скористатися жертва, чию сесію тримає хтось інший.
+
+### Список
+
+```json
+{
+    "status": "success",
+    "current": {
+        "id": "Qm9vZ1hY2c3Rk5nXyZt-Aw",
+        "current": true,
+        "browser": "Chrome",
+        "os": "macOS",
+        "deviceType": "desktop",
+        "userAgent": "Mozilla/5.0 (Macintosh; …) Chrome/131.0.0.0 Safari/537.36",
+        "ip": "203.0.113.7",
+        "method": "oauth",
+        "provider": "github",
+        "signedInAt": "2026-11-19T10:00:00.000Z",
+        "lastSeenAt": "2026-11-19T12:00:00.000Z",
+        "online": true
+    },
+    "others": [],
+    "nextCursor": null
+}
+```
+
+- `id` — **публічний id**, 22 символи base64url від `HMAC-SHA256(APP_KEY, sessionId)`. Сам id сесії (він ходить у логах, WS-токенах і `user_online`) не віддається ніколи. Публічний id обчислюється один раз, під час створення сесії, і зберігається разом з нею, тож повторно його ніхто не обчислює.
+- `browser`, `os` і `deviceType` береться з User-Agent під час читання списку, парсером із `shared`, яким користується й лист про вхід (без залежностей: `ua-parser-js` v2 має AGPL). Чого він не розпізнає, те `unknown`; поруч лежить сирий `userAgent` (обрізаний до 512 символів). IP показується повністю: це власні дані користувача.
+- `method`: `password` (email або телефон), `oauth` з `provider`, `register` (реєстрація за email або телефоном). Перевипущена сесія (зміна пароля, «завершити всі інші») зберігає спосіб, час входу, IP і User-Agent тієї, з якої вона походить.
+- `lastSeenAt` точний до години (нижче). `online` означає, що на інстансі, який відповів, відкрито WebSocket цієї сесії (нижче).
+- `current` заповнене лише на першій сторінці (без `cursor`), на наступних — `null`; серед `others` його немає ніколи. Поля `total` немає: без перевірки кожного члена воно не було б точним.
+
+**Сторінки.** По 50 сесій, порядок `(createdAt desc, publicId desc)`. `nextCursor` — непрозора позиція (`base64url("<createdAt>:<publicId>")`) останнього **переглянутого** члена, живого чи мертвого, або `null`, коли список вичерпано. Сторінка читає щонайбільше 500 членів (константа, як і 50 та партія 64); якщо вона зупинилася на цьому, то може бути коротшою за 50, навіть порожньою, і все одно мати курсор: «Показати ще» продовжує рівно з того місця. Мертвий член (немає поля в meta, немає запису, старший за `SESSION_MAX_AGE_DAYS`) прибирається дорогою. Завершена сесія межі не зсуває, нова з'являється вище за показане, а жива лишається на своєму місці, тож нічого не пропускається і не повторюється. Курсор, якого сервер не видавав, відповідає `400`.
+
+### Завершення однієї сесії
+
+Так само, як вихід із цієї сесії (feat-210): її запис зникає разом із членом індексу, сокети на цьому інстансі закриваються одразу (4001), на інших — на наступній повторній перевірці (≤ `WS_SESSION_RECHECK_INTERVAL_MS`). Токен не ротується. Невідомий id, id іншого користувача і вже завершена сесія відповідають `404`, і ці випадки не розрізняються; фронтенд вважає `404` успіхом. Запис сесії, що просить, має ще існувати (вихід в іншій вкладці його видаляє), інакше `401 session_revoked`. Усі пристрої отримують push `session_revoked`.
+
+### Завершення всіх інших сесій
+
+Шлях зміни пароля, але без пароля:
+
+1. запис сесії, що просить, має ще існувати, інакше `401 session_revoked`;
+2. одна транзакція: `users.session_token` ротується лише тоді, коли він дорівнює пред'явленому (`updateIfSessionToken`, ADR 0002, feat-096), і разом з цим гасяться посилання скидання пароля та SMS-челенджі телефону (`retirePendingResets`, спільний із «вийти всюди» і зміною пароля). Якщо рядок не оновлено: користувача немає (`404`) або токен уже ротовано (`401 session_revoked`);
+3. сокети всіх інших сесій закриваються; сокети цієї лишаються, клієнт замінить їх сам;
+4. записи старого токена видаляються (лише прибирання пам'яті: ротація вже їх відкликала);
+5. ця сесія перевипускається під ротованим токеном зі збереженим пристроєм.
+
+Відповідь — частковий успіх, як у зміни пароля: `{ status: "success", sessionRenewed: true, csrfToken, wsUrl, wsToken }` або `{ status: "success", sessionRenewed: false }`, коли інші сесії завершено, але перевипуск не вдався (наприклад, упав Redis): тоді закриваються й сокети цієї сесії, і клієнт входить знову. Усі пристрої отримують push `logout_all`.
+
+**Гонки** між двома сесіями одного користувача: виграє рівно одна ротація.
+
+| Перший (виграв)   | Другий (програв)  | Що отримує другий                                                                                  |
+| ----------------- | ----------------- | -------------------------------------------------------------------------------------------------- |
+| `revoke-others`   | `revoke-others`   | його сесію відкликано: `401 session_revoked`, або `403 token_mismatch`, коли його запису вже немає |
+| `revoke-others`   | `logout-all`      | те саме                                                                                            |
+| `logout-all`      | `revoke-others`   | те саме                                                                                            |
+| `revoke-others`   | `change-password` | те саме; пароль не змінено                                                                         |
+| `change-password` | `revoke-others`   | те саме                                                                                            |
+| `change-password` | `change-password` | `409` «Password was changed by another request», без змін                                          |
+
+**Запити з однієї сесії.** Перевипуск видаляє сесію, з якої пішли інші запити сторінки, тож вони отримують `401`, який не означає, що користувач вийшов. Фронтенд (`base-api.ts`, опція `renewsSession` у `revoke-others` і `change-password`) вважає `401` застарілим, якщо CSRF-токен, з яким запит надіслано, замінив перевипуск: такий `401` доходить до викликача як `clientCode: "session_renewed"`, безпечний `GET` один раз повторюється з новою сесією, а зміна — ні («Спробуйте ще раз»). `401`, що прийшов, поки перевипуск у польоті, чекає на нього, тож порядок відповідей не має значення; якщо перевипуск не вдався, ці `401` виводять користувача як звичайно.
+
+### Живе оновлення
+
+Broadcast-подія `user_sessions_changed` (без даних) іде шиною подій користувача до всіх його з'єднань ([WebSocket → Події користувачу на всіх інстансах](/backend/websocket#подіі-користувачу-на-всіх-інстансах)) на вхід, вихід, перевипуск, завершення сесії, «завершити всі інші», а також коли відкривається перший сокет сесії або закривається останній. Клієнт на неї перечитує першу сторінку (події, що прийшли підряд, перечитуються один раз, 300 мс) і на кожен `service:connection_ready`, бо шина подій не повторює. Зміни `lastSeenAt` подій не надсилають.
+
+### `lastSeenAt` і `online`
+
+`lastSeenAt` пишеться поруч із записом, а не в нього: разом зі щогодинним оновленням cookie HTTP-запиту (невдалий запис повертає маркер оновлення, тож наступний запит спробує знову), під час відкриття WebSocket і після автентифікованого WS-повідомлення (не heartbeat) не частіше ніж раз на 15 хвилин на з'єднання, причому час зсувається лише після вдалого запису. Поки записи в Redis вдаються, він відстає від останньої дії щонайбільше на годину; сторінка показує його з точністю до години («менше години тому», «3 год тому», «вчора», дата).
+
+`online` береться з реєстру WebSocket-з'єднань інстансу в пам'яті, а не з `user_online`. З одним контейнером застосунку (як у `docker-compose.yml`) він точний; за кількох інстансів сесія, сокет якої на іншому інстансі, показується офлайн.
+
+::: warning План
+Геолокації за IP немає (потрібна зовнішня база і її ліцензія), як і історії входів понад час життя сесії: це пункт 3 рекомендацій («Журнал важливих дій»).
+:::
+
+### Перевірка
+
+```bash
+curl -s -b cookies.txt $B/account/sessions
+curl -s -b cookies.txt -X DELETE -H "$O" -H "x-csrf-token: $CSRF" $B/account/sessions/<id>
+curl -s -b cookies.txt -c cookies.txt -X POST -H "$O" -H 'content-type: application/json' \
+  -H "x-csrf-token: $CSRF" -d '{}' $B/account/sessions/revoke-others
+```
+
+Тести: [`session-index.redis.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/session-index.redis.test.ts) (скрипти, сторінки, рівні `createdAt`, мертві члени), [`account-sessions-http.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-sessions-http.pg.test.ts) (маршрути, сокети, гонки), [`session-list-service.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/session-list-service.spec.ts); у фронтенді [`base-api-session-renewal.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/__tests__/base-api-session-renewal.spec.ts), [`ActiveSessions.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/components/account/__tests__/ActiveSessions.spec.ts) та [`e2e-live/active-sessions.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/e2e-live/active-sessions.spec.ts).

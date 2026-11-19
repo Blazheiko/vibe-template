@@ -52,6 +52,11 @@ vi.mock('@/composables/useProfileSave', async () => {
     }
 })
 
+// feat-233: the session list has its own spec (ActiveSessions.spec.ts).
+vi.mock('@/components/account/ActiveSessions.vue', () => ({
+    default: { name: 'ActiveSessions', template: '<section id="sessions" />' },
+}))
+
 vi.mock('@/utils/api', () => ({
     avatarApi: { upload: vi.fn(), delete: vi.fn() },
     authApi: {

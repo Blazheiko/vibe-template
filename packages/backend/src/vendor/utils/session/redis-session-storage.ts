@@ -6,6 +6,18 @@ import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import redisConfig from '#config/redis.js'
 import { storedSessionTtl } from '#vendor/utils/session/session-ttl.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
+import { ANON_SESSION_NAMESPACE } from '#vendor/utils/session/session-ttl.js'
+import {
+    createIndexedSession,
+    destroyIndexedSession,
+    findIndexedSession,
+    indexKey,
+    listSessionPage,
+    metaKey,
+    touchIndexedSession,
+    type SessionPage,
+} from '#vendor/utils/session/session-index.js'
+import type { IndexPosition } from '#vendor/utils/session/session-page-cursor.js'
 
 /**
  * Sanitizes Redis keys for protection against injections
@@ -45,6 +57,15 @@ export const claimCookieRefresh = async (
 ): Promise<boolean> => {
     const key = sanitizeRedisKey(`session_cookie_refresh:${sessionId}`)
     return (await withRedis(() => redis.set(key, '1', 'EX', ttlSeconds, 'NX'))) === 'OK'
+}
+
+/**
+ * feat-233 (Р4): gives the refresh marker back, so the next request claims it again. Used when
+ * the lastSeenAt write that goes with the refresh failed: that request tries the write again.
+ */
+export const releaseCookieRefresh = async (sessionId: string): Promise<void> => {
+    const key = sanitizeRedisKey(`session_cookie_refresh:${sessionId}`)
+    await withRedis(() => redis.del(key))
 }
 
 /** Marks the cookie of a new session as just issued. */
@@ -141,7 +162,7 @@ export const getSession = async (
     if (isPastMaxAge(session.createdAt)) {
         // Memory cleanup: the record is refused either way, so a failed delete is only logged.
         try {
-            await withRedis(() => redis.del(redisKey))
+            await destroySession(sessionId, userToken, session.data.device?.publicId)
         } catch (err: unknown) {
             logger.warn({ err }, 'Could not delete a session past its maximum age')
         }
@@ -305,14 +326,60 @@ export const changeSessionData = async (
     userToken: string,
 ): Promise<SessionInfo | null> => await writeSessionUpdate(sessionId, userToken, () => newData)
 
+/**
+ * Deletes a session record. A signed-in one goes with its index member and meta field, in one
+ * script (feat-233, Р2); `publicId` may be left out while the record still holds it. Answers
+ * whether a record was deleted.
+ */
 export const destroySession = async (
     sessionId: string | undefined,
     userToken: string,
-): Promise<void> => {
-    if (sessionId === undefined) return
+    publicId?: string,
+): Promise<boolean> => {
+    if (sessionId === undefined) return false
     const redisKey = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
-    await withRedis(() => redis.del(redisKey))
+    if (userToken === ANON_SESSION_NAMESPACE) {
+        return (await withRedis(() => redis.del(redisKey))) === 1
+    }
+    return await destroyIndexedSession(
+        userToken,
+        { sessionId, ...(publicId !== undefined ? { publicId } : {}) },
+        sanitizeRedisKey,
+    )
 }
+
+/**
+ * feat-233: stores a new signed-in session with its index member and meta field (Р2). Fails
+ * before writing anything when one of the keys holds another type.
+ */
+export const createSignedInSession = async (
+    session: SessionInfo,
+    userToken: string,
+    publicId: string,
+    createdAtMs: number,
+): Promise<void> => {
+    await createIndexedSession(session, userToken, publicId, createdAtMs, sanitizeRedisKey)
+}
+
+/** feat-233 (Р4): writes lastSeenAt of a live signed-in session; false when it is gone. */
+export const touchSession = async (
+    sessionId: string,
+    userToken: string,
+    nowMs = Date.now(),
+): Promise<boolean> => await touchIndexedSession(userToken, sessionId, nowMs, sanitizeRedisKey)
+
+/** feat-233: the session id and lastSeenAt behind a public id of this user token. */
+export const findSessionByPublicId = async (
+    userToken: string,
+    publicId: string,
+): Promise<{ sid: string; seen: number | null } | null> =>
+    await findIndexedSession(userToken, publicId, sanitizeRedisKey)
+
+/** feat-233 (Р7): one page of the live sessions of a user token, newest first. */
+export const listSessions = async (
+    userToken: string,
+    options: { after: IndexPosition | null; excludePublicId?: string | undefined },
+): Promise<SessionPage> => await listSessionPage(userToken, options, sanitizeRedisKey)
 
 /**
  * Rejects when `promise` takes longer than `ms`. The command may still run on
@@ -373,6 +440,10 @@ export const destroyAllSessions = async (userToken: string): Promise<DestroyAllS
             }
             cursor = nextCursor
         } while (cursor !== '0')
+        // feat-233: the list of a rotated token goes with its records.
+        await step(() =>
+            redis.del(sanitizeRedisKey(indexKey(userToken)), sanitizeRedisKey(metaKey(userToken))),
+        )
     } catch (err: unknown) {
         if (!(err instanceof RedisUnavailableError)) throw err
         logger.warn(

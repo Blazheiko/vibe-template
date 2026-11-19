@@ -5,6 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const storage = vi.hoisted(() => ({
     saveSession: vi.fn(),
+    // feat-233: a sign-in writes the record with its index member and meta field.
+    createSignedInSession: vi.fn(),
+    touchSession: vi.fn(() => Promise.resolve(true)),
+    releaseCookieRefresh: vi.fn(),
     getSession: vi.fn(),
     updateSessionData: vi.fn(),
     changeSessionData: vi.fn(),
@@ -143,9 +147,11 @@ describe('session beforeSend', () => {
         )
         await sessionHandler(context, undefined, undefined)
 
-        await expect(context.auth.login('7', 'markerUserToken001')).resolves.toBe(true)
+        await expect(
+            context.auth.login('7', 'markerUserToken001', { method: 'password' }),
+        ).resolves.not.toBeNull()
 
-        expect(storage.saveSession).toHaveBeenCalledOnce()
+        expect(storage.createSignedInSession).toHaveBeenCalledOnce()
         expect(context.auth.getUserId()).toBe('7')
         expect(responseData.cookies.has(sessionConfig.cookieName)).toBe(true)
         expect(logger.warn).toHaveBeenCalledWith(
@@ -237,7 +243,7 @@ describe('session beforeSend after the request replaced its own session', () => 
         await sessionHandler(context, undefined, undefined)
         await context.session.updateSessionData({ oauthState: 's' })
 
-        await context.auth.login('7', USER_TOKEN)
+        await context.auth.login('7', USER_TOKEN, { method: 'password' })
         const loginCookie = responseData.cookies.get(sessionConfig.cookieName)
         // The login itself marked the old anonymous session; that must not undo its cookie.
         storage.anonSessionSignedIn.mockResolvedValue(true)
@@ -289,9 +295,11 @@ describe('session auth methods on a storage failure', () => {
 
     it('auth.login rejects and leaves the logging to the caller', async () => {
         const context = await run()
-        storage.saveSession.mockRejectedValue(new RedisDown('save failed'))
+        storage.createSignedInSession.mockRejectedValue(new RedisDown('save failed'))
 
-        await expect(context.auth.login('7', USER_TOKEN)).rejects.toThrow('save failed')
+        await expect(context.auth.login('7', USER_TOKEN, { method: 'password' })).rejects.toThrow(
+            'save failed',
+        )
         expect(loggerError).not.toHaveBeenCalled()
     })
 
@@ -371,5 +379,105 @@ describe('the lifetime of a re-sent stored session cookie', () => {
         const cookie = await restoreWith(USER_TOKEN, { userId: '7', userToken: USER_TOKEN })
 
         expect(cookie?.maxAge).toBe(sessionConfig.age)
+    })
+})
+
+// feat-233 (Р3, Р4): the device written at sign-in, and lastSeenAt riding on the hourly refresh.
+describe('session device and lastSeenAt', () => {
+    const stored = {
+        id: 's1',
+        data: {
+            userId: '7',
+            userToken: USER_TOKEN,
+            csrfToken: 'c'.repeat(43),
+            device: {
+                publicId: 'p'.repeat(22),
+                ip: '198.51.100.1',
+                userAgent: 'Old UA',
+                method: 'oauth',
+                provider: 'github',
+                signedInAt: '2026-11-01T00:00:00.000Z',
+            },
+        },
+        createdAt: new Date().toISOString(),
+    }
+
+    beforeEach(() => {
+        vi.clearAllMocks()
+        storage.getSession.mockResolvedValue(stored)
+        storage.touchSession.mockResolvedValue(true)
+        // Earlier suites left failures behind; these tests sign in.
+        storage.destroySession.mockResolvedValue(true)
+        storage.createSignedInSession.mockResolvedValue(undefined)
+        storage.markCookieIssued.mockResolvedValue(undefined)
+        storage.markAnonSessionSuperseded.mockResolvedValue(undefined)
+    })
+
+    it('a due refresh writes lastSeenAt of the presented session', async () => {
+        storage.claimCookieRefresh.mockResolvedValue(true)
+        await run()
+        expect(storage.touchSession).toHaveBeenCalledWith('s1', USER_TOKEN)
+        expect(storage.releaseCookieRefresh).not.toHaveBeenCalled()
+    })
+
+    it('no refresh due, no write: a request costs no more than before', async () => {
+        storage.claimCookieRefresh.mockResolvedValue(false)
+        await run()
+        expect(storage.touchSession).not.toHaveBeenCalled()
+    })
+
+    it('a failed write gives the marker back, so the next request tries again', async () => {
+        storage.claimCookieRefresh.mockResolvedValue(true)
+        storage.touchSession.mockRejectedValue(new RedisDown('touch failed'))
+        const context = await run()
+        expect(storage.releaseCookieRefresh).toHaveBeenCalledWith('s1')
+        expect(context.auth.getUserId()).toBe('7')
+    })
+
+    it('a sign-in records the address, the User-Agent (cut to 512) and how', async () => {
+        storage.claimCookieRefresh.mockResolvedValue(false)
+        const responseData = createResponseData()
+        const context = createContext(
+            {
+                method: 'post',
+                ip: '203.0.113.9',
+                headers: new Map([['user-agent', 'U'.repeat(600)]]),
+                cookies: new Map(),
+            } as never,
+            responseData,
+        )
+        await sessionHandler(context, undefined, undefined)
+
+        const device = await context.auth.login('7', USER_TOKEN, {
+            method: 'oauth',
+            provider: 'gitlab',
+        })
+
+        expect(device).toEqual({
+            publicId: expect.stringMatching(/^[\w-]{22}$/),
+            ip: '203.0.113.9',
+            userAgent: 'U'.repeat(512),
+            method: 'oauth',
+            provider: 'gitlab',
+            signedInAt: expect.any(String),
+        })
+        const [session, token, publicId] = storage.createSignedInSession.mock.calls[0] ?? []
+        expect(token).toBe(USER_TOKEN)
+        expect(publicId).toBe(device?.publicId)
+        expect(session.data.device).toEqual(device)
+        expect(context.session.sessionInfo?.data.device).toEqual(device)
+    })
+
+    it('a renewal keeps how, where and when the user signed in, under a new public id', async () => {
+        storage.claimCookieRefresh.mockResolvedValue(false)
+        const context = await run()
+        const device = await context.auth.login('7', 'rotatedToken0000001', {
+            inherit: stored.data.device as never,
+        })
+        expect(device).toEqual({
+            ...stored.data.device,
+            publicId: expect.stringMatching(/^[\w-]{22}$/),
+        })
+        expect(device?.publicId).not.toBe(stored.data.device.publicId)
     })
 })

@@ -53,6 +53,7 @@ import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { notifySignInMethodAdded } from '#app/services/auth/sign-in-method-notice.js'
+import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import { PRODUCT } from 'shared/product'
 
@@ -581,8 +582,11 @@ export const oauthService = {
         }
         // The link is committed: announced whatever the sign-in below answers.
         announceLink(verification.userId, linked, verification.provider, verification.providerName)
-        const loggedIn = await auth.login(String(verification.userId), linked.sessionToken)
-        if (!loggedIn) return Result.err(badRequest('Failed to sign in'))
+        const loggedIn = await auth.login(String(verification.userId), linked.sessionToken, {
+            method: 'oauth',
+            provider: verification.provider,
+        })
+        if (loggedIn === null) return Result.err(badRequest('Failed to sign in'))
         return Result.ok({ status: 'success' })
     },
 
@@ -665,16 +669,23 @@ const alreadyLinked = (): AppError =>
 const tooManyLinkMails = (): AppError =>
     rateLimited('Too many emails were sent. Please try again later.', { reason: TOO_MANY_ATTEMPTS })
 
+/**
+ * How a sign-in is announced (feat-233, Р11): `full` is the push and the mail of a new sign-in,
+ * `push` only the push (a claim: the mailbox owner just proved the address), `none` nothing (a
+ * registration, or a link the caller announced more specifically).
+ */
+type SignInNotice = 'full' | 'push' | 'none'
+
 async function finishSignIn(
     auth: Auth,
     userId: bigint,
     sessionToken: string,
-    // False when the caller announced something more specific (a link, a claim).
-    announce = true,
+    provider: string,
+    notice: SignInNotice,
 ): Promise<AppResult<{ redirectUrl: string }>> {
-    const loggedIn = await auth.login(String(userId), sessionToken)
-    if (!loggedIn) return Result.err(badRequest('Failed to sign in'))
-    if (announce) userNotificationService.security(userId, 'new_sign_in')
+    const device = await auth.login(String(userId), sessionToken, { method: 'oauth', provider })
+    if (device === null) return Result.err(badRequest('Failed to sign in'))
+    if (notice !== 'none') notifyNewSignIn(userId, device, { mail: notice === 'full' })
     return Result.ok({ redirectUrl: oauthConfig.frontendSuccessUrl })
 }
 
@@ -716,8 +727,15 @@ async function linkTrusted(
     }
     // The link is committed: announced whatever the sign-in below answers.
     announceLink(userId, linked, identity.provider, identity.providerName)
-    // A claim is followed by the ordinary sign-in notice, as before.
-    return await finishSignIn(auth, userId, linked.sessionToken, linked.claimed)
+    // A claim is followed by the push of a new sign-in; its mail would add nothing to the claim's
+    // notice to the same address (Р11).
+    return await finishSignIn(
+        auth,
+        userId,
+        linked.sessionToken,
+        identity.provider,
+        linked.claimed ? 'push' : 'none',
+    )
 }
 
 /**
@@ -848,7 +866,7 @@ async function signInWithIdentity(
                 badRequest('This sign-in method was removed from the account', OAUTH_LINK_REVOKED),
             )
         }
-        return await finishSignIn(auth, existingOAuth.userId, signIn.sessionToken)
+        return await finishSignIn(auth, existingOAuth.userId, signIn.sessionToken, provider, 'full')
     }
 
     const existingUser = await userRepository.findByEmail(providerEmail)
@@ -906,7 +924,8 @@ async function signInWithIdentity(
         throw err
     }
 
-    const signedIn = await finishSignIn(auth, newUser.id, newUser.sessionToken)
+    // A registration: nobody else could have signed in to this new account (Р11).
+    const signedIn = await finishSignIn(auth, newUser.id, newUser.sessionToken, provider, 'none')
     if (Result.isOk(signedIn) && !authoritative) {
         await sendFirstEmailLinkQuietly(newUser.id, providerEmail, newUser.sessionToken)
     }

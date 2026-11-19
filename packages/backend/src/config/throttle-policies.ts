@@ -233,6 +233,16 @@ export const throttlePolicies = {
         readInt('AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN', 30),
         10 * 60 * 1000,
     ),
+    /**
+     * feat-233 (Р11): mails about a new sign-in, per user. Repeated sign-ins must not turn into a
+     * mail flood; the push is not limited.
+     */
+    newSignInMailUser: fixedWindow(
+        'new_sign_in_mail_user',
+        'user',
+        readInt('AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR', 5),
+        HOUR_MS,
+    ),
     /** Support chat messages: each one costs several language-model calls (feat-063). */
     supportChatUser: fixedWindow(
         'support_chat_user',

@@ -72,6 +72,7 @@ WebSocket: upgrade рівень 1 (memory) → рівень 2 (Redis) → auth (
 | `linkEmailUser`               | прив'язка email, листи OAuth-прив'язки й першої адреси                                                                                        | користувач      | fixed-window | 1 год / 3                              | `AUTH_EMAIL_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR`              | відхилити                                | —            |
 | `linkEmailUserCooldown`       | пауза між листами прив'язки                                                                                                                   | користувач      | fixed-window | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS` / 1 | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS`                            | відхилити                                | —            |
 | `accountProfileUser`          | зміна профілю, `PATCH /account/profile` (feat-232), усі сесії користувача разом                                                               | користувач      | fixed-window | 10 хв / 30                             | `AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN`                | відхилити                                | —            |
+| `newSignInMailUser`           | листи про новий вхід (feat-233); push не обмежується                                                                                          | користувач      | fixed-window | 1 год / 5                              | `AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`                    | відхилити (листа немає)                  | —            |
 | `supportOpenChatUser`         | відкриття чату підтримки (привітання AI)                                                                                                      | користувач      | fixed-window | 60 с / 5                               | `SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_*`                         | відхилити                                | —            |
 | `supportChatUser`             | повідомлення в чат підтримки (feat-063)                                                                                                       | користувач      | fixed-window | 60 с / 20                              | `SUPPORT_CHAT_USER_RATE_LIMIT_*`                              | відхилити                                | —            |
 | `wsUpgradeShared`             | WS upgrade, рівень 2                                                                                                                          | IP              | sliding-log  | 60 с / 60                              | `WS_UPGRADE_SHARED_RATE_LIMIT_*`                              | пропустити, діє рівень 1                 | —            |
@@ -242,6 +243,31 @@ report-uri <CSP_REPORT_URI>        # якщо задано
 | Скидання пароля листом                   | будь-хто з доступом до скриньки                    | на непідтвердженому акаунті це claim                                          |
 
 Claim виконується в одній транзакції під блокуванням рядка користувача: пароль і телефон обнуляються, OAuth-прив'язки й push-підписки видаляються, pending-токени й SMS-челенджі інвалідуються, `session_token` ротується. Запити, допущені до claim, не можуть повернути доступ: вхід за існуючою прив'язкою перевіряє її під тим самим блокуванням, а зміни облікових даних із сесії звіряють пред'явлений токен ([Автентифікація](/backend/auth#зміни-облікових-даних-із-сесіі)). Деталі — [OAuth](/backend/oauth#прив-язка-за-email).
+
+## Повідомлення про новий вхід
+
+Новий вхід оголошується (feat-233, [`new-sign-in-notice.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/new-sign-in-notice.ts)) push `new_sign_in`, що називає пристрій («Signed in from Chrome on macOS»), і, за правилами нижче, листом із часом у часовому поясі користувача (або UTC), браузером, системою, IP, способом входу, кнопкою «Review sessions» на `/account#sessions` і підказкою «Not you? End that session and change your password». Обидва надсилаються без очікування: збій лише логується. Вирішує викликач `auth.login`, а не сам `login`:
+
+| Вхід                                             | Повідомлення                                                  |
+| ------------------------------------------------ | ------------------------------------------------------------- |
+| паролем, email або телефон (`authService.login`) | push з пристроєм + лист за правилами                          |
+| прив'язаним OAuth-провайдером                    | push з пристроєм + лист за правилами                          |
+| реєстрація за email або телефоном                | немає                                                         |
+| реєстрація через OAuth                           | немає: у новий акаунт ніхто інший увійти не міг               |
+| прив'язка за збігом адреси без claim             | немає: `sign_in_method_added` (push і лист) каже більше       |
+| прив'язка з claim                                | `account_claimed` + push `new_sign_in` з пристроєм, без листа |
+| підтвердження прив'язки з листа                  | немає: `sign_in_method_added` або `account_claimed`           |
+| перевипуск (зміна пароля, «завершити всі інші»)  | немає                                                         |
+
+Claim більше нічого не надсилає листом: він щойно видалив усі попередні сесії, а той, хто увійшов, довів адресу через провайдера.
+
+**Правила листа.**
+
+1. Адреса підтверджена (`users.email_verified_at IS NOT NULL`); інакше лише push: непідтверджена адреса може бути чужою.
+2. Пристрій не «знайомий»: жодна інша жива сесія користувача (одна сторінка списку, без нової) не має того самого браузера, системи та IP. **Це евристика, щоб надсилати менше листів, а не підтвердження тотожності**: пристрій того самого типу за тим самим NAT теж пройде. Невідомий браузер чи система знайомими не бувають ніколи.
+3. `newSignInMailUser`: щонайбільше 5 листів на годину на користувача (`AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`), щоб повторні входи не перетворились на розсилку. Push не обмежується.
+
+IP правильний лише з коректним `TRUST_PROXY` ([Trust proxy](#trust-proxy-і-визначення-ip)).
 
 ## Trust proxy і визначення IP
 

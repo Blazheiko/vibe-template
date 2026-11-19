@@ -74,6 +74,8 @@ describe('throttlePolicies registry', () => {
             verification_mail_user_daily: [5, 24 * HOUR, 'user'],
             // feat-232: profile changes of one user, across all their sessions.
             account_profile_user: [30, 600_000, 'user'],
+            // feat-233: mails about a new sign-in to one user.
+            new_sign_in_mail_user: [5, HOUR, 'user'],
         })
     })
 

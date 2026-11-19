@@ -21,7 +21,10 @@ import type { BroadcastEventName, BroadcastMessage } from 'shared/schemas'
  */
 
 /** The events allowed on the bus; others go through `broadcastService` of their instance. */
-const BUS_EVENTS: ReadonlySet<BroadcastEventName> = new Set(['user_profile_updated'])
+const BUS_EVENTS: ReadonlySet<BroadcastEventName> = new Set([
+    'user_profile_updated',
+    'user_sessions_changed',
+])
 
 interface BusEnvelope {
     v: 1

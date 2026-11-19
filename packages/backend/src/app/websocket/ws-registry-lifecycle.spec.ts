@@ -54,6 +54,13 @@ vi.mock('#app/services/communication/ws-presence-service.js', () => ({
 vi.mock('#app/services/admin/admin-ws-channel-service.js', () => ({
     adminWsChannelService: { handleConnectionClosed: vi.fn() },
 }))
+// feat-233: the session list event and the lastSeenAt write of an opened socket.
+const announceSessionListChanged = vi.hoisted(() => vi.fn())
+vi.mock('#app/services/communication/session-list-announcer.js', () => ({
+    announceSessionListChanged,
+}))
+const touchSessionFromWs = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+vi.mock('#vendor/utils/session/ws-session-touch.js', () => ({ touchSessionFromWs }))
 
 const { websocketCoordinator } = await import('./ws-coordinator.js')
 const { wsConnectionRegistry } = await import('./ws-connection-registry.js')
@@ -511,5 +518,49 @@ describe('service:connection_ready', () => {
 
         expect(readyFrames(closed)).toEqual([])
         expect(readyFrames(revoked)).toEqual([])
+    })
+})
+
+describe('session list events of the sockets of a session (feat-233, Р12)', () => {
+    it('announces the first socket of a session and the close of its last one, nothing between', async () => {
+        const first = connection('9301')
+        const second = connection('9301')
+        await connect(first)
+        expect(announceSessionListChanged).toHaveBeenCalledTimes(1)
+        expect(announceSessionListChanged).toHaveBeenLastCalledWith('9301')
+        expect(touchSessionFromWs).toHaveBeenCalledWith(first.userData)
+
+        await connect(second)
+        expect(announceSessionListChanged).toHaveBeenCalledTimes(1)
+        expect(wsConnectionRegistry.hasSessionConnection('9301', 's1')).toBe(true)
+
+        await first.close()
+        expect(announceSessionListChanged).toHaveBeenCalledTimes(1)
+        await second.close()
+        expect(announceSessionListChanged).toHaveBeenCalledTimes(2)
+        expect(wsConnectionRegistry.hasSessionConnection('9301', 's1')).toBe(false)
+    })
+
+    it('a socket of another session of the same user is its own transition', async () => {
+        const a = connection('9302')
+        const b = connection('9302')
+        b.userData.sessionId = 's2'
+        await connect(a)
+        await connect(b)
+        expect(announceSessionListChanged).toHaveBeenCalledTimes(2)
+        expect(wsConnectionRegistry.hasSessionConnection('9302', 's2')).toBe(true)
+        await b.close()
+        expect(announceSessionListChanged).toHaveBeenCalledTimes(3)
+        expect(wsConnectionRegistry.hasSessionConnection('9302', 's1')).toBe(true)
+        await a.close()
+    })
+
+    it('a connection refused at connect announces nothing', async () => {
+        const conn = connection('9303')
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        resolveAccess({ role: 'user', sessionToken: 'rotated' })
+        await connected
+        expect(announceSessionListChanged).not.toHaveBeenCalled()
+        expect(touchSessionFromWs).not.toHaveBeenCalled()
     })
 })

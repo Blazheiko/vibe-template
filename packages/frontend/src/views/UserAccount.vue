@@ -9,6 +9,7 @@ import { buildAvatarUrl } from '@/utils/avatar-url'
 import { passwordLengthProblem } from '@/utils/validate-password'
 import { getErrorReason, getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
 import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
+import ActiveSessions from '@/components/account/ActiveSessions.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
 import { oauthProviderLabel } from '@/utils/oauth-provider-label'
@@ -750,6 +751,8 @@ watch(
             </button>
             <p v-if="passwordMessage" class="form-message">{{ passwordMessage }}</p>
         </section>
+
+        <ActiveSessions />
 
         <section class="panel" data-testid="sign-in-methods">
             <h2>{{ t('account.signInMethods.title') }}</h2>

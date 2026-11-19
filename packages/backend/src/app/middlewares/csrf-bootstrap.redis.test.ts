@@ -224,7 +224,7 @@ describe.skipIf(!hasRedis)('session rotation on login', () => {
 
         const signIn = await mutate(bootstrap.cookie, anonToken)
         expect(signIn.passed).toBe(true)
-        await signIn.context.auth.login('42', 'rotationUserToken01')
+        await signIn.context.auth.login('42', 'rotationUserToken01', { method: 'password' })
         const userToken = String(signIn.context.session.sessionInfo?.data.csrfToken)
         const userCookie = signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value
 
@@ -249,7 +249,7 @@ describe.skipIf(!hasRedis)('session rotation on login', () => {
     it('renewing a signed-in session (password change) replaces ID and token', async () => {
         const bootstrap = await init()
         const signIn = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
-        await signIn.context.auth.login('43', 'renewUserToken0001')
+        await signIn.context.auth.login('43', 'renewUserToken0001', { method: 'password' })
         const firstCookie = signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value
         const firstToken = String(signIn.context.session.sessionInfo?.data.csrfToken)
         const firstId = String(signIn.context.session.sessionInfo?.id)
@@ -257,7 +257,7 @@ describe.skipIf(!hasRedis)('session rotation on login', () => {
         // What authService.renewSession does after a password change.
         const change = await mutate(firstCookie, firstToken)
         expect(change.passed).toBe(true)
-        await change.context.auth.login('43', 'renewUserToken0001')
+        await change.context.auth.login('43', 'renewUserToken0001', { method: 'password' })
         const renewedCookie = change.context.responseData.cookies.get(
             sessionConfig.cookieName,
         )?.value
@@ -276,7 +276,7 @@ describe.skipIf(!hasRedis)('session rotation on login', () => {
     it('session helpers called after login address the new session', async () => {
         const bootstrap = await init()
         const signIn = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
-        await signIn.context.auth.login('44', 'helperUserToken001')
+        await signIn.context.auth.login('44', 'helperUserToken001', { method: 'password' })
 
         const updated = await signIn.context.session.updateSessionData({ marker: 'after-login' })
 
@@ -289,7 +289,7 @@ describe.skipIf(!hasRedis)('session cookie of a slow response', () => {
     const signIn = async (userToken: string) => {
         const bootstrap = await init()
         const response = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
-        await response.context.auth.login('45', userToken)
+        await response.context.auth.login('45', userToken, { method: 'password' })
         return {
             cookie: response.context.responseData.cookies.get(sessionConfig.cookieName)?.value,
             token: String(response.context.session.sessionInfo?.data.csrfToken),
@@ -316,7 +316,7 @@ describe.skipIf(!hasRedis)('session cookie of a slow response', () => {
         expect(slow.cookie).toEqual(expect.any(String))
         // ... a password change renews the session meanwhile (S1 deleted, S2 issued) ...
         const change = await mutate(s1.cookie, s1.token)
-        await change.context.auth.login('45', 'slowCookieToken0002')
+        await change.context.auth.login('45', 'slowCookieToken0002', { method: 'password' })
         // ... and R1 answers after it.
         await slow.context.session.beforeSend?.()
 
@@ -326,7 +326,7 @@ describe.skipIf(!hasRedis)('session cookie of a slow response', () => {
     it('a request that swapped the session itself keeps its cookie', async () => {
         const bootstrap = await init()
         const response = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
-        await response.context.auth.login('46', 'slowCookieToken0003')
+        await response.context.auth.login('46', 'slowCookieToken0003', { method: 'password' })
 
         await response.context.session.beforeSend?.()
 
@@ -442,7 +442,7 @@ describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', ()
     it('a cookie signed for a user session is not read as an anonymous one', async () => {
         const bootstrap = await init()
         const signIn = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
-        await signIn.context.auth.login('47', 'formatUserToken0001')
+        await signIn.context.auth.login('47', 'formatUserToken0001', { method: 'password' })
         const userCookie = String(
             signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value,
         )
@@ -483,7 +483,7 @@ describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', ()
     it('logout hands out a cookie-held anonymous session', async () => {
         const bootstrap = await init()
         const signIn = await mutate(bootstrap.cookie, String(bootstrap.payload?.['csrfToken']))
-        await signIn.context.auth.login('48', 'logoutUserToken0001')
+        await signIn.context.auth.login('48', 'logoutUserToken0001', { method: 'password' })
         const cookie = signIn.context.responseData.cookies.get(sessionConfig.cookieName)?.value
         const token = String(signIn.context.session.sessionInfo?.data.csrfToken)
         const out = await mutate(cookie, token)
@@ -491,7 +491,9 @@ describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', ()
 
         await out.context.auth.logout()
 
-        expect((await ownKeys()).length).toBe(before.length - 1) // only the user session went away
+        // Only the user session went away: its record, and (feat-233) the index and meta keys of
+        // its user token, which held only this session.
+        expect((await ownKeys()).length).toBe(before.length - 3)
         const anonToken = String(out.context.session.sessionInfo?.data.csrfToken)
         const anon = out.context.responseData.cookies.get(sessionConfig.cookieName)?.value
         const next = await mutate(anon, anonToken)
@@ -516,7 +518,7 @@ describe.skipIf(!hasRedis)('stale anonymous cookie refresh (feat-057 review)', (
         expect(slow.cookie).toEqual(expect.any(String))
         // ... R2 logs in with the same cookie ...
         const signIn = await mutate(anon.cookie, anon.csrfToken)
-        await signIn.context.auth.login('49', 'raceUserToken00001')
+        await signIn.context.auth.login('49', 'raceUserToken00001', { method: 'password' })
         // ... and R1 answers after it.
         await slow.context.session.beforeSend?.()
 
@@ -548,7 +550,7 @@ describe.skipIf(!hasRedis)('stale anonymous cookie refresh (feat-057 review)', (
         const stored = oauth.context.responseData.cookies.get(sessionConfig.cookieName)?.value
         // ... R3 logs in from the stored session, which deletes its record ...
         const signIn = await mutate(stored, anon.csrfToken)
-        await signIn.context.auth.login('50', 'raceUserToken00002')
+        await signIn.context.auth.login('50', 'raceUserToken00002', { method: 'password' })
         expect(await admin.exists(`session:anon_session:${anon.sessionId}`)).toBe(0)
         // ... and R1 answers last.
         await slow.context.session.beforeSend?.()
@@ -566,7 +568,7 @@ describe.skipIf(!hasRedis)('stale anonymous cookie refresh (feat-057 review)', (
         await oauth.context.session.updateSessionData({ oauthState: 'state-5' })
         // ... R3 logs in with the same original cookie ...
         const signIn = await mutate(cookie, csrfToken)
-        await signIn.context.auth.login('51', 'raceUserToken00003')
+        await signIn.context.auth.login('51', 'raceUserToken00003', { method: 'password' })
         // ... and R2 answers last.
         await oauth.context.session.beforeSend?.()
 

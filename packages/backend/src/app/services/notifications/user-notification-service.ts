@@ -15,12 +15,13 @@ export type SecurityEvent =
     | 'password_reset'
     | 'logout_all'
     | 'account_claimed'
+    | 'session_revoked'
 
 const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
     new_sign_in: {
         title: 'New sign-in',
         body: 'Your account was just signed in to. If it was not you, change your password.',
-        url: '/account',
+        url: '/account#sessions',
         tag: 'security-sign-in',
     },
     // feat-198: another provider's identity was linked. It signs in after a password change too.
@@ -55,6 +56,13 @@ const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
         url: '/account',
         tag: 'security-sessions',
     },
+    // feat-233: one session was ended from the session list of another.
+    session_revoked: {
+        title: 'Session ended',
+        body: 'One of your sessions was ended from another device. If it was not you, change your password.',
+        url: '/account#sessions',
+        tag: 'security-sessions',
+    },
     account_claimed: {
         title: 'Account secured',
         body: 'Your email was confirmed. Earlier sign-in methods and sessions were removed.',
@@ -75,9 +83,21 @@ const send = (
 }
 
 export const userNotificationService = {
-    /** Security notices go to every device, online or not. */
-    security(userId: bigint, event: SecurityEvent): void {
-        send(userId, SECURITY_MESSAGES[event], { notificationType: 'system' }, event)
+    /**
+     * Security notices go to every device, online or not. `details` replaces the text or the link
+     * of the event (feat-233: the new sign-in names its device).
+     */
+    security(
+        userId: bigint,
+        event: SecurityEvent,
+        details?: Partial<Pick<PushNotificationPayload, 'body' | 'url'>>,
+    ): void {
+        send(
+            userId,
+            { ...SECURITY_MESSAGES[event], ...details },
+            { notificationType: 'system' },
+            event,
+        )
     },
 
     /** A support reply reaches the user only when no device has the app open. */
