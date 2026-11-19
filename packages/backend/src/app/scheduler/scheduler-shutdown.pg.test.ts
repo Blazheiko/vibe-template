@@ -264,8 +264,14 @@ describe.skipIf(!hasPg || !hasRedis)('scheduler shutdown with SQL in flight', as
                 ttlMs + 5_000,
             )
             expect(row.a_active).toBe(false)
+            // B logs its outcome only after run() returned and the success was written to Redis
+            // (scheduler.ts: report() follows await recordSuccess), so its row is visible first.
+            await waitFor(
+                () => Promise.resolve(outcomesB.includes('ok') ? true : undefined),
+                'the ok outcome of B',
+                5_000,
+            )
             expect(outcomesB).toContain('skipped-locked')
-            expect(outcomesB).toContain('ok')
         } finally {
             await replicaB.stop()
             if (!unlockEarly) await locker.query('ROLLBACK')
