@@ -12,6 +12,10 @@ import {
 // mocked: the database is not under test here.
 
 const { redis } = vi.hoisted((): { redis: { client: unknown } } => ({ redis: { client: null } }))
+// The event to the user's connections is not under test here.
+vi.mock('#app/services/communication/user-event-bus.js', () => ({
+    userEventBus: { publishToUser: () => Promise.resolve() },
+}))
 vi.mock('#database/redis-rate-limit.js', () => ({
     get default() {
         return redis.client

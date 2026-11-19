@@ -205,3 +205,38 @@ test('a name with markup is text in the account header and in the admin list and
     await user.context.close()
     await admin.context.close()
 })
+
+test('a change shows in another tab of the session and in another browser without a reload', async ({
+    browser,
+}) => {
+    const a = await newBrowser(browser)
+    await a.page.emulateMedia({ colorScheme: 'light' })
+    await signInClean(a.page, USER_1, NAME_1)
+    // A second tab of the same session: same cookies, its own socket.
+    const tab = await a.context.newPage()
+    await tab.emulateMedia({ colorScheme: 'light' })
+    await tab.goto('/account')
+    await expect(tab.locator('.profile-copy h1')).toHaveText(NAME_1)
+
+    const b = await newBrowser(browser)
+    await b.page.emulateMedia({ colorScheme: 'light' })
+    await loginInUi(b.page, USER_1)
+    // Both sockets are open before the change: events are not replayed.
+    for (const page of [a.page, tab, b.page]) {
+        await expect(page.locator('.websocket-status .status-text')).toHaveText('Connected')
+    }
+    expect(await isDark(tab)).toBe(false)
+    expect(await isDark(b.page)).toBe(false)
+
+    await chooseTheme(a.page, 'dark')
+    await saveProfileForm(a.page, { name: 'Live Synced Name' })
+
+    for (const page of [tab, b.page]) {
+        await expect.poll(() => isDark(page)).toBe(true)
+        await expect(page.locator('.profile-copy h1')).toHaveText('Live Synced Name')
+    }
+
+    await patchProfile(a.page, { name: NAME_1 })
+    await a.context.close()
+    await b.context.close()
+})

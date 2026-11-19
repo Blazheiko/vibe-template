@@ -19,6 +19,10 @@ const silent = vi.hoisted(() => {
     }
     return logger
 })
+// The event to the user's connections is not under test here.
+vi.mock('#app/services/communication/user-event-bus.js', () => ({
+    userEventBus: { publishToUser: () => Promise.resolve() },
+}))
 vi.mock('#logger', () => ({ default: silent }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
 vi.mock('#app/services/auth/enforce-throttle.js', async () => {

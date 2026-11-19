@@ -27,6 +27,17 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
         connectionsCount: 2,
     },
     admin_user_online_remove: { id: '42' },
+    user_profile_updated: {
+        name: 'Ann',
+        preferences: {
+            locale: null,
+            timeZone: null,
+            theme: 'dark',
+            colorTheme: null,
+            fontSize: null,
+        },
+        revision: '3',
+    },
 }
 
 const broadcast = (event: string, payload: unknown): WsBroadcastEnvelope => ({

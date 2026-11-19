@@ -23,12 +23,23 @@ const upsert = {
     connectionsCount: 2,
 }
 
+const profile = {
+    name: 'Ann',
+    preferences: { locale: 'uk', timeZone: 'UTC', theme: 'dark', colorTheme: 'mint', fontSize: 18 },
+    revision: '12',
+}
+const withPreferences = (fields: Record<string, unknown>) => ({
+    ...profile,
+    preferences: { ...profile.preferences, ...fields },
+})
+
 const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     support_chat_token: { token: 'Hel' },
     support_chat_complete: { content: 'Hello', screenshots: ['1', '2'] },
     support_chat_error: { message: 'failed', code: 'chat_failed' },
     admin_user_online_upsert: upsert,
     admin_user_online_remove: { id: '42' },
+    user_profile_updated: profile,
 }
 
 // Event-specific edge cases on top of the generic ones below.
@@ -65,6 +76,33 @@ const specific: Record<BroadcastEventName, [string, unknown][]> = {
     admin_user_online_remove: [
         ['non-numeric id', { id: 'abc' }],
         ['numeric id', { id: 42 }],
+    ],
+    user_profile_updated: [
+        [
+            'every preference null',
+            withPreferences({
+                locale: null,
+                timeZone: null,
+                theme: null,
+                colorTheme: null,
+                fontSize: null,
+            }),
+        ],
+        ['revision 0', { ...profile, revision: '0' }],
+        ['numeric revision', { ...profile, revision: 12 }],
+        ['negative revision', { ...profile, revision: '-1' }],
+        ['revision with a leading zero', { ...profile, revision: '012' }],
+        ['locale not shipped', withPreferences({ locale: 'de' })],
+        ['unknown theme', withPreferences({ theme: 'system' })],
+        ['unknown color', withPreferences({ colorTheme: 'red' })],
+        ['font size 13', withPreferences({ fontSize: 13 })],
+        ['font size 21', withPreferences({ fontSize: 21 })],
+        ['font size 16.5', withPreferences({ fontSize: 16.5 })],
+        ['font size as string', withPreferences({ fontSize: '16' })],
+        ['numeric zone', withPreferences({ timeZone: 1 })],
+        ['extra preference', withPreferences({ language: 'uk' })],
+        ['missing preference', { ...profile, preferences: { locale: 'uk' } }],
+        ['preferences null', { ...profile, preferences: null }],
     ],
 }
 

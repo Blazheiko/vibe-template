@@ -11,6 +11,8 @@ import {
 } from '#app/repositories/index.js'
 import { profileTransformer } from '#app/transformers/index.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import { userEventBus } from '#app/services/communication/user-event-bus.js'
+import logger from '#vendor/utils/logger.js'
 import {
     badRequest,
     notFound,
@@ -110,6 +112,13 @@ export const accountService = {
                 current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
             )
         }
+        // Р9 B: after the commit, to every connection of the user on every instance, this tab
+        // included (the client applies it by revision). The answer does not wait for it.
+        userEventBus
+            .publishToUser(String(userId), 'user_profile_updated', saved)
+            .catch((err: unknown) => {
+                logger.warn({ err, userId: String(userId) }, 'Profile update event not sent')
+            })
         return Result.ok(saved)
     },
 }

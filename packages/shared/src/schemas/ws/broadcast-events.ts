@@ -1,6 +1,7 @@
 import { type } from '@arktype/type'
 import { EntityIdSchema } from '../../brands/index.js'
 import { WSAdminUserOnlineUpsertPayloadSchema } from './ws-admin-user-online-upsert.js'
+import { ProfileSchema } from '../../responses/account-controller.js'
 
 // Payloads of the events the backend pushes without a request (`broadcast:<event>`),
 // docs/plan/archive/ws-async-message-validation-plan.md §4.1. The backend checks every event
@@ -26,6 +27,9 @@ export const BroadcastEventSchemas = {
     }),
     admin_user_online_upsert: WSAdminUserOnlineUpsertPayloadSchema,
     admin_user_online_remove: type({ id: EntityIdSchema }),
+    // feat-232 (Р9 B): the profile after a change, to every connection of the user on every
+    // instance, the one that changed it included. Applied by `revision`: an older one is dropped.
+    user_profile_updated: ProfileSchema,
 } as const
 
 export type BroadcastEventName = keyof typeof BroadcastEventSchemas

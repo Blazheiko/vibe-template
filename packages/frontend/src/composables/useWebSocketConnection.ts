@@ -326,6 +326,9 @@ const { status, send, close, open, ws } = useWebSocket(wsUrl, {
         if (ws.value) {
             ws.value.binaryType = 'arraybuffer'
         }
+        // feat-232: events sent while the socket was down are not replayed; whoever shows pushed
+        // state (the profile) reads it again.
+        eventBus.emit('ws_connected')
         // Check for SW updates on each WS connection (covers reconnects after sleep/offline)
         if (import.meta.env.PROD && 'serviceWorker' in navigator) {
             navigator.serviceWorker

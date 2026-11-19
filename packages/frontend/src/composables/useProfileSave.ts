@@ -4,6 +4,7 @@ import type { UpdateProfileInput } from 'shared/schemas'
 import { accountApi } from '@/utils/api'
 import { useUserStore } from '@/stores/user'
 import { useStateStore } from '@/stores/state'
+import { useEventBus } from '@/utils/event-bus'
 import {
     getErrorCode,
     getErrorReason,
@@ -280,6 +281,46 @@ export function resetProfileSaveForTests(): void {
     tabQueue = null
 }
 
+export interface ProfileLiveSyncDeps {
+    applyProfile(profile: Profile): void
+    currentUserId(): string | null
+    fetchProfile(): Promise<Profile | null>
+}
+
+/**
+ * Live sync (feat-232, Р9 B). `user_profile_updated` comes to every connection of the user, this
+ * tab included; it is applied as any snapshot, by revision, under the pending changes. Events are
+ * not replayed, so after every reconnect but the first of an account the profile is read again;
+ * an answer that arrives after the account changed is dropped.
+ */
+export function createProfileLiveSync(deps: ProfileLiveSyncDeps) {
+    let connectedFor: string | null = null
+
+    return {
+        onProfileEvent(profile: Profile): void {
+            if (deps.currentUserId() === null) return
+            deps.applyProfile(profile)
+        },
+        async onConnected(): Promise<void> {
+            const userId = deps.currentUserId()
+            if (userId === null) return
+            const first = connectedFor !== userId
+            connectedFor = userId
+            if (first) return // init has just brought the profile
+            const profile = await deps.fetchProfile()
+            if (profile !== null && deps.currentUserId() === userId) deps.applyProfile(profile)
+        },
+    }
+}
+
+async function fetchProfile(): Promise<Profile | null> {
+    const { data, error } = await accountApi.getProfile()
+    if (error !== null || data === null || hasResponseError(data) || data.status !== 'success') {
+        return null
+    }
+    return data.profile
+}
+
 /**
  * Called once by App.vue: ends the queue when the account changes and shows the preferences of
  * whoever is signed in (the device's own when nobody is).
@@ -298,6 +339,21 @@ export function useProfileSync(): void {
         },
         { immediate: true },
     )
+
+    const live = createProfileLiveSync({
+        applyProfile: (profile) => {
+            userStore.applyProfile(profile)
+        },
+        currentUserId: () => userStore.user?.id ?? null,
+        fetchProfile,
+    })
+    const eventBus = useEventBus()
+    eventBus.on('user_profile_updated', (profile) => {
+        live.onProfileEvent(profile)
+    })
+    eventBus.on('ws_connected', () => {
+        void live.onConnected()
+    })
 
     watch(
         () => queue.shown.value,

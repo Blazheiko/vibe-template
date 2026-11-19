@@ -25,6 +25,10 @@ vi.mock('#app/repositories/index.js', () => ({
 vi.mock('#app/services/auth/enforce-throttle.js', () => ({
     enforceThrottle: enforceThrottleMock,
 }))
+const publishToUserMock = vi.fn((..._args: unknown[]) => Promise.resolve())
+vi.mock('#app/services/communication/user-event-bus.js', () => ({
+    userEventBus: { publishToUser: publishToUserMock },
+}))
 
 const { accountService } = await import('./account-service.js')
 
@@ -131,6 +135,34 @@ describe('accountService.updateProfile', () => {
         expect(result.value.preferences.fontSize).toBe(18)
         expect(result.value.revision).toBe('1')
         expect(typeof result.value.revision).toBe('string')
+    })
+
+    it('after the commit, the new profile goes to every connection of the user (Р9 B)', async () => {
+        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+
+        if (!Result.isOk(result)) throw new Error('expected ok')
+        expect(publishToUserMock).toHaveBeenCalledExactlyOnceWith(
+            '7',
+            'user_profile_updated',
+            result.value,
+        )
+    })
+
+    it('a failed event does not fail the change', async () => {
+        publishToUserMock.mockRejectedValueOnce(new Error('bus down'))
+
+        const result = await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+
+        expect(Result.isOk(result)).toBe(true)
+    })
+
+    it('a refused change sends no event', async () => {
+        userRepositoryMock.shareIfSessionToken.mockResolvedValue(undefined)
+        userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Ann' })
+        await accountService.updateProfile(7n, { theme: 'dark' }, TOKEN, stored)
+        await accountService.updateProfile(7n, { timeZone: 'Mars/Base' }, TOKEN, stored)
+
+        expect(publishToUserMock).not.toHaveBeenCalled()
     })
 
     it('a change of the name only still upserts the preferences with an empty patch', async () => {

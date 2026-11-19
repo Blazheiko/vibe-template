@@ -9,6 +9,8 @@ export interface Events extends Record<EventType, unknown>, BroadcastContracts {
     init_app: undefined
     unauthorized: undefined
     update_available: undefined
+    /** The WebSocket (re)connected: state pushed while it was down is read again (feat-232). */
+    ws_connected: undefined
 }
 
 const emitter = mitt<Events>()
