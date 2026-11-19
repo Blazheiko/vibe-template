@@ -14,11 +14,14 @@ import {
     real,
     jsonb,
     customType,
+    smallint,
+    check,
 } from 'drizzle-orm/pg-core'
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
-import { sql } from 'drizzle-orm'
+import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
+import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 export const pushNotificationStatusEnum = pgEnum('push_notification_status', [
@@ -82,6 +85,43 @@ export const users = pgTable(
         uniqueIndex('users_email_unique_non_null_idx')
             .on(sql`LOWER(${table.email})`)
             .where(sql`${table.email} IS NOT NULL`),
+    ],
+)
+
+const sqlStringList = (values: readonly string[]): SQL =>
+    sql.raw(values.map((value) => `'${value.replaceAll("'", "''")}'`).join(', '))
+
+/**
+ * The interface preferences of a user (feat-232, Р1): one row per user, created by the first
+ * PATCH /account/profile. A NULL preference is "no choice": the client shows its default (Р2).
+ * Kept out of `users`, whose row every session check reads. `revision` grows by one with every
+ * profile change, the name included (Р12); it has no default, the upsert always sets it.
+ */
+export const userPreferences = pgTable(
+    'user_preferences',
+    {
+        userId: bigint('user_id', { mode: 'bigint' })
+            .primaryKey()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        locale: varchar('locale', { length: 8 }),
+        timeZone: varchar('time_zone', { length: 64 }),
+        theme: varchar('theme', { length: 16 }),
+        colorTheme: varchar('color_theme', { length: 32 }),
+        fontSize: smallint('font_size'),
+        revision: bigint('revision', { mode: 'bigint' }).notNull(),
+        updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    },
+    (table) => [
+        check('user_preferences_theme_check', sql`${table.theme} IN (${sqlStringList(THEMES)})`),
+        check(
+            'user_preferences_color_theme_check',
+            sql`${table.colorTheme} IN (${sqlStringList(COLOR_THEMES)})`,
+        ),
+        check(
+            'user_preferences_font_size_check',
+            sql`${table.fontSize} BETWEEN ${sql.raw(String(FONT_SIZE_MIN))} AND ${sql.raw(String(FONT_SIZE_MAX))}`,
+        ),
+        check('user_preferences_revision_check', sql`${table.revision} >= 1`),
     ],
 )
 

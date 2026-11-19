@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
     escapeHtml,
+    mailAddresseeName,
     mailSafeDisplayName,
     renderBrandedEmail,
     type BrandedEmail,
@@ -160,5 +161,24 @@ describe('mailSafeDisplayName', () => {
 
     it('cuts a long name to 60 characters', () => {
         expect(mailSafeDisplayName('a'.repeat(200))).toBe('a'.repeat(60))
+    })
+})
+
+// feat-232: a name changed on the account page goes into the mails a verified account gets. The
+// profile schema accepts markup (it is a valid name); the mail shows it escaped.
+describe('a name set through PATCH /account/profile', () => {
+    it('is escaped in the html and plain in the text', async () => {
+        const { ProfileNameSchema } = await import('shared/schemas')
+        const name = ProfileNameSchema(' <img src=x onerror=alert(1)> ')
+        expect(name).toBe('<img src=x onerror=alert(1)>')
+
+        const mail = renderBrandedEmail({
+            ...base,
+            name: mailAddresseeName({ name: name as string, emailVerifiedAt: new Date() }),
+        })
+
+        expect(mail.html).toContain('Hello, &lt;img src=x onerror=alert(1)&gt;.')
+        expect(mail.html).not.toContain('<img src=x')
+        expect(mail.text).toContain('Hello, <img src=x onerror=alert(1)>.')
     })
 })

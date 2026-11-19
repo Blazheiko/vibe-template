@@ -3,6 +3,7 @@ import {
     contractWsRouteDefiner,
     mergeContractSchemas,
 } from '#app/routing/contract-registry.js'
+import { accountSchemas } from './account.js'
 import { adminSchemas } from './admin.js'
 import { avatarSchemas } from './avatar.js'
 import { authSchemas } from './auth.js'
@@ -19,6 +20,7 @@ import { adminWsSchemas, supportWsSchemas } from './ws.js'
 // group's file names every contract of the group, or it does not compile. Two contracts with one
 // `<method> <path>` stop the import (feat-186).
 export const contractSchemaRegistry = mergeContractSchemas(
+    accountSchemas,
     adminSchemas,
     avatarSchemas,
     authSchemas,

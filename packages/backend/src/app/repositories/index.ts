@@ -1,4 +1,5 @@
 export { userRepository } from './user/user-repository.js'
+export { userPreferencesRepository } from './user/user-preferences-repository.js'
 export { llmUsageRepository } from './ai/usage/llm-usage-repository.js'
 export { pushSubscriptionRepository } from './notifications/push-subscription-repository.js'
 export { pushNotificationLogRepository } from './notifications/push-notification-log-repository.js'
@@ -14,6 +15,10 @@ export { supportRepository } from './support/support-repository.js'
 export { supportKnowledgeRepository } from './support/support-knowledge-repository.js'
 export { healthRepository } from './health/health-repository.js'
 
+export type {
+    UserPreferencesRow,
+    UserPreferencesPatch,
+} from './user/user-preferences-repository.js'
 export type {
     UserRow,
     UserInsert,

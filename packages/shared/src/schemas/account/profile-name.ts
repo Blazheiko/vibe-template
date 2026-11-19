@@ -5,13 +5,19 @@ export const PROFILE_NAME_MAX_LENGTH = 100
 
 // Control characters (\p{Cc}, which holds \n, \r, \t and \u0085) and the Unicode line and
 // paragraph separators: a name is shown on one line in the header, the admin list and emails.
+const SURROGATE_PAIR = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g
+
+/** Code points, as PostgreSQL counts the characters of a varchar. */
+const codePointLength = (value: string): number =>
+    value.length - (value.match(SURROGATE_PAIR)?.length ?? 0)
+
 const FORBIDDEN_NAME_CHARACTERS = /[\p{Cc}\u2028\u2029]/u
 
 const NormalizedProfileName = type('string')
     .narrow((value, ctx) => value.length > 0 || ctx.reject({ expected: 'non-empty', actual: '""' }))
     .narrow(
         (value, ctx) =>
-            [...value].length <= PROFILE_NAME_MAX_LENGTH ||
+            codePointLength(value) <= PROFILE_NAME_MAX_LENGTH ||
             ctx.reject({ expected: `at most ${String(PROFILE_NAME_MAX_LENGTH)} characters` }),
     )
     .narrow(

@@ -7,6 +7,8 @@ import appConfig from '#config/app.js'
 import { Result } from 'better-result'
 import { notFound, unauthorized, type AppResult } from '#app/services/shared/errors.js'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { accountService } from '#app/services/user/account-service.js'
+import type { ProfilePreferences } from 'shared'
 
 interface StorageConfigPayload {
     cdnUrl: string
@@ -26,6 +28,8 @@ interface InitUserPayload {
     role: 'user' | 'admin'
     createdAt: string
     updatedAt: string
+    preferences: ProfilePreferences
+    revision: string
 }
 
 export const mainService = {
@@ -78,7 +82,10 @@ export const mainService = {
             return Result.err(unauthorized('Session expired'))
         }
 
-        const wsToken = await generateWsToken(sessionInfo, String(user.id))
+        const [wsToken, profile] = await Promise.all([
+            generateWsToken(sessionInfo, String(user.id)),
+            accountService.profileOf(user),
+        ])
 
         const csrfToken = getSessionCsrfToken(sessionInfo)
         return Result.ok({
@@ -95,6 +102,8 @@ export const mainService = {
                 role: user.role,
                 createdAt: user.createdAt.toISOString(),
                 updatedAt: user.updatedAt.toISOString(),
+                preferences: profile.preferences,
+                revision: profile.revision,
             },
             wsUrl: wsToken !== '' ? getWsUrl() : '',
             wsToken,

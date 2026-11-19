@@ -8,12 +8,14 @@ import SupportController from '#app/controllers/http/support/support-controller.
 import AdminKnowledgeBaseController from '#app/controllers/http/admin/admin-knowledge-base-controller.js'
 import PushSubscriptionController from '#app/controllers/http/notifications/push-subscription-controller.js'
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
+import AccountController from '#app/controllers/http/user/account-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
 import { defineRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
+    accountContracts,
     adminContracts,
     authContracts,
     avatarContracts,
@@ -313,6 +315,24 @@ export default [
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'avatar',
         rateLimit: { windowMs: 60_000, maxRequests: 10 },
+    },
+    {
+        group: [
+            defineRoute({
+                contract: accountContracts.getProfile,
+                handler: AccountController.getProfile.bind(AccountController),
+                description: 'Profile of the current user: name, preferences and revision',
+            }),
+            defineRoute({
+                contract: accountContracts.updateProfile,
+                handler: AccountController.updateProfile.bind(AccountController),
+                description:
+                    'Change the name and preferences of the current user (absent field unchanged, null resets)',
+            }),
+        ],
+        description: 'Account profile routes (feat-232)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'account',
     },
     {
         group: [

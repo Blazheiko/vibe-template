@@ -32,6 +32,13 @@ export const relations = defineRelations(schema, (r) => ({
             from: r.users.id,
             to: r.supportChatHistory.userId,
         }),
+        preferences: r.one.userPreferences({
+            from: r.users.id,
+            to: r.userPreferences.userId,
+        }),
+    },
+    userPreferences: {
+        user: r.one.users({ from: r.userPreferences.userId, to: r.users.id }),
     },
     userOnline: {
         user: r.one.users({ from: r.userOnline.userId, to: r.users.id }),

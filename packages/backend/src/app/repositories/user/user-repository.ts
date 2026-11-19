@@ -79,6 +79,26 @@ export interface IUserRepository {
         executor?: DbExecutor,
     ): Promise<UserRow | undefined>
     /**
+     * feat-232: the profile name, written only while users.session_token is still the one the
+     * request presented. Undefined when the user is gone or the session was revoked meanwhile.
+     */
+    updateNameIfSessionToken(
+        id: bigint,
+        expectedSessionToken: string,
+        name: string,
+        tx: DbExecutor,
+    ): Promise<{ name: string } | undefined>
+    /**
+     * feat-232: the name of the user, read FOR SHARE in `tx` while users.session_token is still
+     * the presented one: a revocation (it rotates the token) waits for `tx` to end, so a
+     * profile change let in before it commits before it, never after.
+     */
+    shareIfSessionToken(
+        id: bigint,
+        expectedSessionToken: string,
+        tx: DbExecutor,
+    ): Promise<{ name: string } | undefined>
+    /**
      * Sets the avatar key (or null) while users.session_token is still `expectedSessionToken`,
      * and returns the key it replaced, read from the row locked in the same transaction
      * (feat-116): of two concurrent changes each gets the key the other set, so every object
@@ -286,6 +306,25 @@ export const userRepository: IUserRepository = {
             .set({ ...data, updatedAt: new Date() })
             .where(and(eq(users.id, id), eq(users.sessionToken, expectedSessionToken)))
             .returning()
+        return row
+    },
+
+    async updateNameIfSessionToken(id, expectedSessionToken, name, tx) {
+        const [row] = await tx
+            .update(users)
+            .set({ name, updatedAt: new Date() })
+            .where(and(eq(users.id, id), eq(users.sessionToken, expectedSessionToken)))
+            .returning({ name: users.name })
+        return row
+    },
+
+    async shareIfSessionToken(id, expectedSessionToken, tx) {
+        const [row] = await tx
+            .select({ name: users.name })
+            .from(users)
+            .where(and(eq(users.id, id), eq(users.sessionToken, expectedSessionToken)))
+            .limit(1)
+            .for('share')
         return row
     },
 
