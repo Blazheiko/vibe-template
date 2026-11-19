@@ -11,3 +11,16 @@ export {
     LANGUAGE_NAME_BY_CODE,
     LANGUAGE_NATIVE_NAME_BY_CODE,
 } from './languages.js'
+export {
+    THEMES,
+    type Theme,
+    COLOR_THEMES,
+    type ColorTheme,
+    DEFAULT_COLOR_THEME,
+    FONT_SIZE_MIN,
+    FONT_SIZE_MAX,
+    DEFAULT_FONT_SIZE,
+    isTheme,
+    isColorTheme,
+    clampFontSize,
+} from './preferences.js'

@@ -1,5 +1,6 @@
 export * from './core.js'
 export type { BroadcastContracts, BroadcastEventName } from './broadcast.js'
+export { accountContracts } from './account.js'
 export { avatarContracts } from './avatar.js'
 export { adminContracts } from './admin.js'
 export { authContracts } from './auth.js'

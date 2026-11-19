@@ -1,5 +1,6 @@
 import { type } from '@arktype/type'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
+import { ProfilePreferencesSchema, ProfileRevisionSchema } from './account-controller.js'
 
 export const PingResponseSchema = type({
     status: "'ok'",
@@ -32,6 +33,10 @@ export const InitResponseSchema = type.or(
             'role?': "'user' | 'admin'",
             createdAt: 'string',
             updatedAt: 'string',
+            // The profile preferences and their revision (feat-232, Р6): the same values as
+            // GET /account/profile, so the client applies them right after init.
+            preferences: ProfilePreferencesSchema,
+            revision: ProfileRevisionSchema,
         },
         'wsUrl?': 'string',
         'wsToken?': 'string',
