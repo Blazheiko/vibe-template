@@ -2311,8 +2311,8 @@
             "owner": "Blazheiko",
             "branch": "feat/profile-editing",
             "dependencies": [],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #711 (merge d446ec3), registry #710, review status #712. Plan docs/plan/profile-editing-plan.md features A and B in one PR (owner decision 2026-11-19). A: user_preferences table (migration 20261119141051_user_preferences, CHECKs, revision bigint), GET/PATCH /account/profile (absent field unchanged, null resets; one transaction; written only while the session is current; per-user limit 30/10 min AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN), init carries preferences and revision, name and revision read in one LEFT JOIN statement; frontend profile form with per-field edit tracking, a one-per-tab autosave queue (confirmed + pending layers, account isolation), prefs:<userId> cache kept until the session is known, system theme only for theme = null, language profile -> browser -> en, useDateFormat. B: user_profile_updated to every connection of the user on every instance through a Redis pub/sub user event bus (local delivery first, own echo skipped by instance id), applied by revision, profile re-read on service:connection_ready sent after the socket is registered. External review: 6 P2 findings and 1 follow-up fixed, each with a test failing on the old code. Local: make check (backend 3177, frontend 699 tests), make test-pg 378 passed 0 skipped, make test-redis 153 passed 0 skipped, test:e2e 102, test:e2e:live 21, docs:build + docs:verify. CI on 594cac2: quality, build, e2e, e2e-live, test-pg (https://github.com/Blazheiko/vibe-template/actions/runs/44566724578), test-redis (https://github.com/Blazheiko/vibe-template/actions/runs/44566724743) green. Mutations of atomicity, revision increment, newer-input preservation, account isolation, the live event and the ready ordering each fail their tests. Manual click-through in a browser not done (golden path automated in e2e-live/account-profile.spec.ts)."
         }
     ]
 }
