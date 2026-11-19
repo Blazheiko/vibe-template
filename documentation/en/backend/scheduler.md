@@ -96,7 +96,7 @@ The contract of `ctx` (`{ signal, checkpoint, slot, dryRun, logger }`):
 
 - **`checkpoint()` immediately before every SQL step**, with no `await` between the call and the query, passed down to the loop that does the work. It throws when the signal is aborted (timeout, lost lease, shutdown) or the local lease deadline has passed. A job that does not pass it on keeps working after an abort and holds its lease until the TTL.
 - `signal` is for waits that take an `AbortSignal`.
-- The job is **idempotent** (a failed run repeats) and **safe for two concurrent copies** (see the limits above): delete or update in batches of `… WHERE id IN (SELECT … LIMIT n)`, never read-then-write without a condition.
+- The job is **idempotent** (a failed run repeats) and **safe for two concurrent copies** (see the limits above): delete or update in batches of `… WHERE id = ANY(ARRAY(SELECT id … WHERE <condition> ORDER BY <indexed column of the condition> LIMIT n))`, never read-then-write without a condition. The condition's column needs an index, and `ORDER BY` uses that very column: the batch is then read from the index and costs `n` entries however many other rows the table has. With `IN (SELECT … ORDER BY id LIMIT n)` the PG planner may sort every row matching the condition for each batch (measured in the feat-223 review). Example: [`expired-rows.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/auth/expired-rows.ts); a PG plan test can `EXPLAIN` the statement itself with `enable_seqscan` and `enable_sort` off, as [`auth-token-cleanup.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-token-cleanup.pg.test.ts) does.
 - No synchronous CPU-heavy work: it blocks the uWS event loop and the lease timers.
 - A test that a `checkpoint` that throws after the first batch stops before the next query, and a test of two concurrent runs.
 
@@ -125,4 +125,10 @@ pnpm --filter backend job:run <name> [--dry-run]
 | `SCHEDULER_TICK`          | `30s`   | How often the jobs are checked: a duration from `5s` to `5m`.                             |
 | `SCHEDULER_DISABLED_JOBS` | empty   | Comma-separated job names the schedule skips. An unknown name stops the startup (a typo). |
 
-They are read by [`config/scheduler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts); an invalid value is the startup error `Invalid scheduler configuration: ...`. See also [Configuration](/en/backend/configuration#background-jobs).
+Variables of individual jobs:
+
+| Variable               | Job                  | Default | Description                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | -------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_TOKEN_RETENTION` | `auth-token-cleanup` | `7d`    | How long a one-time token or SMS challenge is kept after `expires_at`; a duration (`7d`, `12h`). An invalid value stops the server start, and the job, `job:run` included, refuses to run with it ([`config/auth-token-cleanup.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/auth-token-cleanup.ts)). |
+
+The scheduler variables are read by [`config/scheduler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts); an invalid value is the startup error `Invalid scheduler configuration: ...`. See also [Configuration](/en/backend/configuration#background-jobs).

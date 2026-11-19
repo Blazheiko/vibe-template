@@ -96,7 +96,7 @@ export const exampleCleanupJob = defineJob({
 
 - **`checkpoint()` безпосередньо перед кожним SQL-кроком**, без `await` між викликом і запитом, і передається аж до циклу, що робить роботу. Він кидає, якщо сигнал перерваний (timeout, втрата lease, shutdown) або минув локальний дедлайн lease. Задача, що його не передає, після abort працює далі і тримає lease до TTL.
 - `signal` — для очікувань, що приймають `AbortSignal`.
-- Задача **ідемпотентна** (невдалий запуск повторюється) і **безпечна для двох одночасних копій** (див. межі вище): видаляйте чи оновлюйте пачками `… WHERE id IN (SELECT … LIMIT n)`, ніколи не «прочитати, потім записати» без умови.
+- Задача **ідемпотентна** (невдалий запуск повторюється) і **безпечна для двох одночасних копій** (див. межі вище): видаляйте чи оновлюйте пачками `… WHERE id = ANY(ARRAY(SELECT id … WHERE <умова> ORDER BY <індексована колонка умови> LIMIT n))`, ніколи не «прочитати, потім записати» без умови. На колонці умови потрібен індекс, а `ORDER BY` — саме по ній: тоді пачка читається з індексу і коштує `n` записів, скільки б інших рядків не було в таблиці. З `IN (SELECT … ORDER BY id LIMIT n)` планувальник PG може на кожну пачку сортувати всі рядки, що підходять під умову (виміряно в рев'ю feat-223). Зразок — [`expired-rows.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/auth/expired-rows.ts); PG-тест плану може робити `EXPLAIN` самого запиту з `enable_seqscan` і `enable_sort` вимкненими, як [`auth-token-cleanup.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-token-cleanup.pg.test.ts).
 - Без синхронної CPU-важкої роботи: вона блокує event loop uWS і таймери lease.
 - Тест, що `checkpoint`, який кидає після першої пачки, зупиняє до наступного запиту, і тест двох одночасних запусків.
 
@@ -125,4 +125,10 @@ pnpm --filter backend job:run <name> [--dry-run]
 | `SCHEDULER_TICK`          | `30s`            | Як часто перевіряються задачі: тривалість від `5s` до `5m`.                            |
 | `SCHEDULER_DISABLED_JOBS` | порожньо         | Імена задач через кому, які розклад пропускає. Невідоме ім'я зупиняє старт (опечатка). |
 
-Їх читає [`config/scheduler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts); недійсне значення — помилка старту `Invalid scheduler configuration: ...`. Див. також [Конфігурація](/backend/configuration#фонові-задачі).
+Змінні окремих задач:
+
+| Змінна                 | Задача               | За замовчуванням | Опис                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | -------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_TOKEN_RETENTION` | `auth-token-cleanup` | `7d`             | Скільки зберігати одноразовий токен або SMS-челендж після `expires_at`; тривалість (`7d`, `12h`). Недійсне значення зупиняє старт сервера, а задача, зокрема через `job:run`, з ним не запускається ([`config/auth-token-cleanup.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/auth-token-cleanup.ts)). |
+
+Змінні планувальника читає [`config/scheduler.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/scheduler.ts); недійсне значення — помилка старту `Invalid scheduler configuration: ...`. Див. також [Конфігурація](/backend/configuration#фонові-задачі).
