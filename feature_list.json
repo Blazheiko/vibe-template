@@ -2321,8 +2321,8 @@
             "owner": "Blazheiko",
             "branch": "feat/active-sessions",
             "dependencies": ["feat-232"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "review",
+            "evidence": "Implementation PR #715 (branch feat/active-sessions), CI green on 8ee4076: quality, build, e2e, e2e-live, test-pg, test-redis. Evidence block in feature-state/feat-233/progress.md on the branch."
         }
     ]
 }
