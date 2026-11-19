@@ -2271,8 +2271,8 @@
             "owner": "Blazheiko",
             "branch": "test/scheduler-shutdown-flaky",
             "dependencies": ["feat-222"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #697 (merge 7704cd7), registry #696. scheduler-shutdown.pg.test.ts waited for B's b-first row and asserted at once that outcomesB held ok, but the scheduler logs the outcome only after run() returned and recordSuccess was written to Redis (report() follows await state.recordSuccess); it now waits for ok with its waitFor. Deterministic reproduction: a temporary 300 ms delay after B's INSERT (not committed) fails both scenarios of the old test with the flaky message (\"expected [ skipped-locked, …(73) ] to include ok\"), the fixed test passes; fixed test 10/10 alone; make test-pg 37 files / 340, 0 skipped. CI on 0800d5f: quality, e2e, e2e-live, test-pg, test-redis green. Test only. Status went in_progress -> done without a separate review PR (owner decisions 2026-11-19; merged after green CI)."
         },
         {
             "id": "feat-229",
@@ -2281,8 +2281,8 @@
             "owner": "Blazheiko",
             "branch": "ci/apt-hang-kill",
             "dependencies": ["feat-225"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #698 (merge 7800391), registry #696 (merged after #698: the registry PR could not pass e2e until the fix was on main). On #695 the apt-get orphaned by a timed-out playwright install-deps attempt ran over 9 minutes (security.ubuntu.com did not answer). scripts/apt-timeouts.sh sets Acquire::http(s)::Timeout 30 and Acquire::Retries 3 before the browser installs of e2e and e2e-live; scripts/wait-apt-idle.sh ends an apt-get/apt still running at its limit (SIGTERM, 30 s, SIGKILL; dpkg is not killed; dpkg --configure -a). Simulated in ubuntu:24.04: hung apt-get ended, a TERM-ignoring one killed after 30 s, the #695 case then exits 0. On runners: #696 (wait ended at apt idle after 50s, retry passed, e2e 99 passed); #697/#700 showed hung apt ended and retries running, but a 69-500 kB/s mirror still exceeded the attempts (fixed by feat-231). docs backend/testing.md both locales. Status went in_progress -> done without a separate review PR (owner decisions 2026-11-19; merged after green CI)."
         },
         {
             "id": "feat-230",
@@ -2291,8 +2291,8 @@
             "owner": "Blazheiko",
             "branch": "fix/scheduler-reject-undefined",
             "dependencies": ["feat-222"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #700 (merge 032c038), registry #699. execute() in app/scheduler/scheduler.ts told a failure by err !== undefined, so a job rejecting with undefined (Promise.reject(), throw undefined) was ok: lastSuccessSlot written, no backoff, no Sentry, runOnce/job:run exit 0. A separate failed flag set in the catch decides; the aborted path is unchanged. 4 new scheduler.spec.ts cases (tick and runOnce, Promise.reject(undefined) and throw undefined) fail on the old code (\"expected [ ok ] to deeply equal [ failed ]\") and pass; scheduler tests 112; make check backend 3135. CI on 7c25dd1: quality, e2e, e2e-live, test-pg, test-redis green. Found by an external review of the scheduler (2026-11-19). Status went in_progress -> done without a separate review PR (owner decisions 2026-11-19; merged after green CI)."
         },
         {
             "id": "feat-231",
@@ -2301,8 +2301,8 @@
             "owner": "Blazheiko",
             "branch": "ci/apt-archives-cache",
             "dependencies": ["feat-229"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #702 (merge a5d4342), registry #701. With feat-225/229 the retries worked but a 69-500 kB/s mirror left the ~126 MB of install-deps unable to fit in any 5-minute attempt. scripts/apt-archives.sh points Dir::Cache::Archives at ~/apt-cache and keeps downloads; ci.yml e2e and e2e-live restore ~/apt-cache/*.deb (actions/cache/restore, key apt-e2e[-live]-<os>-<ImageOS-ImageVersion>-pw-<playwright>, restore-keys by os) and save it after the install when not an exact hit; docs backend/testing.md both locales. ubuntu:24.04: cached .deb install with the network cut, control without cache fails. On runners: #702 cold run saved after 7 min 25 s at 284 kB/s; warm rerun restored 186 .deb, \"Need to get 0 B/126 MB\", install about 30 s, e2e 99 passed; restore-keys carried an older image's files to a newer one; after the merge #697 restored the main cache the same way. A PR sees only its own branch's and main's caches: the shared cache is filled by runs on main. Status went in_progress -> done without a separate review PR (owner decisions 2026-11-19; merged after green CI)."
         }
     ]
 }
