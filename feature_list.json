@@ -2313,6 +2313,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #711 (merge d446ec3), registry #710, review status #712. Plan docs/plan/profile-editing-plan.md features A and B in one PR (owner decision 2026-11-19). A: user_preferences table (migration 20261119141051_user_preferences, CHECKs, revision bigint), GET/PATCH /account/profile (absent field unchanged, null resets; one transaction; written only while the session is current; per-user limit 30/10 min AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN), init carries preferences and revision, name and revision read in one LEFT JOIN statement; frontend profile form with per-field edit tracking, a one-per-tab autosave queue (confirmed + pending layers, account isolation), prefs:<userId> cache kept until the session is known, system theme only for theme = null, language profile -> browser -> en, useDateFormat. B: user_profile_updated to every connection of the user on every instance through a Redis pub/sub user event bus (local delivery first, own echo skipped by instance id), applied by revision, profile re-read on service:connection_ready sent after the socket is registered. External review: 6 P2 findings and 1 follow-up fixed, each with a test failing on the old code. Local: make check (backend 3177, frontend 699 tests), make test-pg 378 passed 0 skipped, make test-redis 153 passed 0 skipped, test:e2e 102, test:e2e:live 21, docs:build + docs:verify. CI on 594cac2: quality, build, e2e, e2e-live, test-pg (https://github.com/Blazheiko/vibe-template/actions/runs/44566724578), test-redis (https://github.com/Blazheiko/vibe-template/actions/runs/44566724743) green. Mutations of atomicity, revision increment, newer-input preservation, account isolation, the live event and the ready ordering each fail their tests. Manual click-through in a browser not done (golden path automated in e2e-live/account-profile.spec.ts)."
+        },
+        {
+            "id": "feat-233",
+            "name": "Active Sessions",
+            "description": "docs/plan/active-sessions-plan.md (decisions R1-R14, tasks T1-T8): the account page lists the user's active sessions (browser, OS, IP, sign-in method, signed in, last seen, current, online) and ends one other session or all others without signing out. Redis only: device metadata in the session record, a session_index:<userToken> ZSET (publicId -> createdAt) and a session_meta:<userToken> HASH (publicId -> sid, lastSeenAt) changed together with the record by type-checked Lua scripts (SESSION_CREATE/DESTROY/TOUCH); keyset pages of 50 by (createdAt, publicId); publicId = HMAC of sessionId stored at creation; own UA parser in shared. GET /account/sessions, DELETE /account/sessions/:id, POST /account/sessions/revoke-others (conditional token rotation, sessionRenewed partial success, shared retirePendingResets); stale-401 rule in base-api.ts (renewsSession) also for password change; new sign-in push with device and an email (verified address, not a familiar device, 5/hour per user); user_sessions_changed bus event incl. socket 0<->1 transitions; online from the WS connection registry.",
+            "owner": "Blazheiko",
+            "branch": "feat/active-sessions",
+            "dependencies": ["feat-232"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
