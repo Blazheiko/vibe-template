@@ -59,6 +59,7 @@ Shared agent skills live in `.claude/skills/<name>/SKILL.md` and are versioned w
 
 - `backend-feature` scaffolds a backend resource through every layer. Its source of truth is `documentation/en/backend/adding-a-feature.md`; agents without skill support read that tutorial directly.
 - A change to the backend layering or route patterns (`AppResult` and the error helpers, the controller helpers, transformers, contracts and the schema registry, `layering.spec.ts`) updates the tutorial (both locales) and `backend-feature` in the same PR.
+- `scheduled-job` adds a job to the backend scheduler. Its source of truth is "Adding a job" in `documentation/en/backend/scheduler.md`. A change to the scheduler contract (`defineJob`, `JobContext`, `withJobLease`, the Р13 lease bound) updates that page (both locales) and `scheduled-job` in the same PR.
 
 ## End of Session
 
