@@ -88,11 +88,17 @@ jobs:
             # (webkit also runs Mobile Safari). System deps are not cached. They come from the
             # runner's apt mirrors, which can be down for a while (2026-11-11): up to 3 attempts of
             # at most 5 minutes each (apt waits long on an unreachable mirror), 30 s and 60 s apart
-            # (scripts/retry.sh, feat-179). The job timeout leaves room for them.
+            # (scripts/retry.sh, feat-179). The job timeout leaves room for them. A timed-out attempt
+            # leaves its `sudo apt-get` running with the dpkg lock, so before each retry
+            # scripts/wait-apt-idle.sh waits up to 4 minutes for apt to finish (feat-225).
             - if: steps.playwright-cache.outputs.cache-hit != 'true'
+              env:
+                  RETRY_BEFORE: scripts/wait-apt-idle.sh 240
               run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install --with-deps
 
             - if: steps.playwright-cache.outputs.cache-hit == 'true'
+              env:
+                  RETRY_BEFORE: scripts/wait-apt-idle.sh 240
               run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps
 
             - run: pnpm --filter frontend test:e2e
@@ -117,7 +123,7 @@ jobs:
     e2e-live:
         runs-on: ubuntu-24.04
         # 20 + room for retried browser dependencies (feat-179).
-        timeout-minutes: 30
+        timeout-minutes: 35
         services:
             postgres:
                 image: pgvector/pgvector:pg16
@@ -168,11 +174,16 @@ jobs:
                   key: playwright-live-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
             # Chromium only: the live specs are about the session, not about the engines. The apt
-            # mirrors can be down for a while: retried as in the e2e job (scripts/retry.sh).
+            # mirrors can be down for a while: retried as in the e2e job (scripts/retry.sh, with
+            # scripts/wait-apt-idle.sh before each retry, feat-225).
             - if: steps.playwright-cache.outputs.cache-hit != 'true'
+              env:
+                  RETRY_BEFORE: scripts/wait-apt-idle.sh 240
               run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install --with-deps chromium
 
             - if: steps.playwright-cache.outputs.cache-hit == 'true'
+              env:
+                  RETRY_BEFORE: scripts/wait-apt-idle.sh 240
               run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps chromium
 
             # Builds shared, the SPA (phone auth off, API at http://localhost:3100) and the backend,
