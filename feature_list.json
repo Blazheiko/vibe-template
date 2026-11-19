@@ -2283,6 +2283,16 @@
             "dependencies": ["feat-225"],
             "status": "in_progress",
             "evidence": ""
+        },
+        {
+            "id": "feat-230",
+            "name": "Scheduler Reject Undefined",
+            "description": "External review of the scheduler, 2026-11-19 (owner decision: separate small feature): execute() in app/scheduler/scheduler.ts told a failed run by `err !== undefined`, so a job that rejects with undefined (`Promise.reject()`, `throw undefined`) was recorded as ok: lastSuccessSlot written, no backoff, no Sentry, runOnce/job:run exit 0. A separate `failed` flag set in the catch; regression tests for the scheduled tick and runOnce.",
+            "owner": "Blazheiko",
+            "branch": "fix/scheduler-reject-undefined",
+            "dependencies": ["feat-222"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
