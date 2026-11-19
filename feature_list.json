@@ -2261,8 +2261,8 @@
             "owner": "Blazheiko",
             "branch": "docs/scheduled-job-skill",
             "dependencies": ["feat-226"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #694 (merge 485d0d5), registry #693. Docs, skill and AGENTS.md only. documentation/{,en/}backend/scheduler.md Adding a job gains steps 3-5: job variables in their own config/<job>.ts with configError in validate-runtime-config and .env.example (a widely imported config broke 394 specs that mock metautil in feat-223), the job refuses to run on its config error since job:run skips the startup check; the full test list (job unit test; PG: cut-off to the minute on either side, batch loop, throwing checkpoint, dry run, overlap with race-barrier.ts, plan with enable_seqscan/enable_sort off); docs and the manual job:run --dry-run check. .claude/skills/scheduled-job/SKILL.md: model-invoked checklist of seven steps with completion checks, pointing at Adding a job as the source of truth and auth-token-cleanup as the model. AGENTS.md Agent Skills: scheduled-job, and a scheduler contract change (defineJob, JobContext, withJobLease, Р13) updates the page and the skill in the same PR. docs:build + docs:verify and format:check green; CI on 33a02d9 green. First real use: feat-224. Status went in_progress -> done without a separate review PR (docs only, merged after green CI)."
         }
     ]
 }
