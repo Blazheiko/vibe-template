@@ -78,6 +78,8 @@ export default defineConfig({
             // The scenarios also load the SPA many times.
             HTTP_GLOBAL_RATE_LIMIT_MAX: '1000000',
             AUTH_LOGIN_MAX_ATTEMPTS_PER_IP: '10000',
+            // account-profile.spec.ts changes the two seeded profiles many times in one run.
+            AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN: '10000',
             // Not left to a developer's .env: the production default, and the SPA is built without phone.
             AUTH_STRICT_REGISTRATION: 'true',
             AUTH_PHONE_ENABLED: 'false',
