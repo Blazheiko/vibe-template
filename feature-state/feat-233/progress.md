@@ -44,7 +44,8 @@ T1–T7 implemented, T8 checks run locally (below). Next: implementation PR, rev
 - Race table (Р9): the loser gets `401 session_revoked` **or** `403 token_mismatch` — the latter when
   the winner's cleanup deleted its record before its request was restored (it is then an anonymous
   session with a mismatching CSRF token; the frontend refreshes and finds itself signed out). Both
-  mean "your session is revoked"; the docs table says so. No new codes.
+  mean "your session is revoked"; the docs table says so, and the plan (Р9 table, "requests of
+  the same session", T4) was synced to it. No new codes.
 - Playwright: the two-browser scenarios are in `e2e-live/active-sessions.spec.ts` (real backend),
   not in the mocked `e2e/`.
 
