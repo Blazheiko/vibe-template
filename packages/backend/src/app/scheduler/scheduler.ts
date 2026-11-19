@@ -45,7 +45,7 @@ export interface SchedulerDeps {
     sentry?: { captureException(err: unknown, ctx?: SentryContext): void }
     /** SCHEDULER_TICK. */
     tickMs?: number
-    /** SCHEDULER_STOP_DRAIN_MS: how long stop() waits for the job in flight. */
+    /** How long stop() waits for the job in flight (default 5 s; not configurable by env, tests only). */
     stopDrainMs?: number
     random?: () => number
     sleep?: (ms: number, signal: AbortSignal) => Promise<void>

@@ -35,9 +35,10 @@ Done; docs only. Ready for review.
 - `prettier --check` on `documentation/`: clean.
 - No code changed, so no `make check` delta beyond format.
 
-## Noticed, not changed
+## Added on request (2026-11-19)
 
-- `scheduler.ts:48` comment names a variable `SCHEDULER_STOP_DRAIN_MS` that does not exist (the
-  drain is fixed at 5 s).
-- `backend/testing.md` lists only `PG_TEST_URL` for `*.pg.test.ts`; 8 PG files also need
-  `REDIS_TEST_URL` (`pg-tests.yml` sets it).
+- `scheduler.ts:48`: the comment named a variable `SCHEDULER_STOP_DRAIN_MS` that does not exist;
+  it now says the drain is 5 s and set by tests only.
+- `backend/testing.md` (both locales): 8 `*.pg.test.ts` files also need `REDIS_TEST_URL`
+  (`describe.skipIf(!hasPg || !hasRedis)`) and skip without it; `pg-tests.yml` starts Redis for
+  them; the local command.
