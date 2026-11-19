@@ -33,6 +33,12 @@ export interface UserConnection extends Record<string, unknown> {
     closed?: boolean
     /** feat-197: the place among the connections of its user and address; freed on close. */
     connectionSlot?: { userId: string; ipKey: string } | undefined
+    /** feat-233 (Р4): when this connection last wrote lastSeenAt of its session. */
+    sessionTouchedAt?: number
+    /** feat-233: a touch of this connection is in flight (one at a time). */
+    sessionTouchInFlight?: boolean
+    /** feat-233: when a failed touch was last logged (at most once a minute). */
+    sessionTouchWarnedAt?: number
     /** feat-149: what the connection sent this minute; created with its first message. */
     messageBudget?: WsMessageBudgetState
 }
@@ -101,7 +107,15 @@ export interface Auth {
      */
     getPresentedUserToken: () => string | undefined
     check: () => boolean
-    login: (userId: string | undefined, userToken: string | undefined) => Promise<boolean>
+    /**
+     * Replaces the session with a new signed-in one (feat-233: with its device). Answers the
+     * device of the new session, or null when nothing was signed in.
+     */
+    login: (
+        userId: string | undefined,
+        userToken: string | undefined,
+        origin: LoginOrigin,
+    ) => Promise<SessionDevice | null>
     logout: () => Promise<boolean>
     logoutAll: () => Promise<DestroyAllSessionsResult>
 }
@@ -147,11 +161,38 @@ export interface Session {
     beforeSend?: () => Promise<void>
 }
 
+/** How a session was signed in (feat-233, Р3); see shared `SIGN_IN_METHODS`. */
+export type SessionSignInMethod = 'password' | 'oauth' | 'register'
+
+/**
+ * The device of a signed-in session (feat-233, Р3), written when it is created. A renewal
+ * (password change, "end all other sessions") keeps every field but `publicId`.
+ */
+export interface SessionDevice {
+    /** HMAC of the session id, computed once at creation (Р5); the id the API shows. */
+    publicId: string
+    ip: string
+    /** At most USER_AGENT_MAX_LENGTH characters. */
+    userAgent: string
+    method: SessionSignInMethod
+    provider?: string
+    /** ISO time of the sign-in this session (or the one it renews) came from. */
+    signedInAt: string
+}
+
+/** What `auth.login` records as the device of the new session. */
+export type LoginOrigin =
+    | { method: 'password' | 'register' }
+    | { method: 'oauth'; provider: string }
+    /** A renewal: the device of the session it replaces, the public id aside. */
+    | { inherit: SessionDevice }
+
 export interface SessionData extends Record<string, unknown> {
     userId?: string
     userToken?: string
     wsToken?: string
     csrfToken?: string
+    device?: SessionDevice
 }
 
 export interface SessionInfo {

@@ -17,6 +17,8 @@ import { pool } from '#database/db.js'
 import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import { userEventBus } from '#app/services/communication/user-event-bus.js'
+import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
+import { onSessionListChanged } from '#vendor/utils/session/session-list-events.js'
 import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
 import readinessProbe from '#database/readiness-probe.js'
@@ -72,6 +74,8 @@ const start = async (): Promise<void> => {
         void userEventBus.start().catch((err: unknown) => {
             logger.warn({ err }, 'User event bus not subscribed at startup')
         })
+        // feat-233: a sign-in or a logout changes the user's session list on every device.
+        onSessionListChanged(announceSessionListChanged)
         if (schedulerConfig.enabled) scheduler.start()
         else logger.info('Scheduler: off on this process (SCHEDULER_ENABLED=false)')
 

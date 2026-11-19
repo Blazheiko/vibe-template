@@ -3,22 +3,28 @@ import crypto from 'node:crypto'
 import type {
     DestroyAllSessionsResult,
     HttpContext,
+    LoginOrigin,
     SessionData,
+    SessionDevice,
     SessionInfo,
 } from '#vendor/types/types.js'
+import { USER_AGENT_MAX_LENGTH } from 'shared/utils'
 import sessionConfig from '#config/session.js'
 import {
     anonSessionSignedIn,
     anonSessionSuperseded,
     changeSessionData,
     claimCookieRefresh,
+    createSignedInSession,
     destroyAllSessions,
     destroySession,
     getSession,
     markAnonSessionSuperseded,
     markCookieIssued,
+    releaseCookieRefresh,
     saveSession,
     sessionExists,
+    touchSession,
     updateSessionData,
     consumeSessionData,
 } from '#vendor/utils/session/redis-session-storage.js'
@@ -29,6 +35,8 @@ import { ANON_SESSION_NAMESPACE, storedSessionTtl } from '#vendor/utils/session/
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { createAnonSessionToken, createSignedToken } from '#vendor/utils/session/token-handler.js'
 import { generateCsrfToken, isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { sessionPublicId } from '#vendor/utils/session/session-public-id.js'
+import { sessionListChanged } from '#vendor/utils/session/session-list-events.js'
 
 /** Storage namespace of a session without a user. */
 const ANON_TOKEN = ANON_SESSION_NAMESPACE
@@ -56,15 +64,24 @@ const newAnonSessionInfo = (): SessionInfo => ({
     createdAt: new Date().toISOString(),
 })
 
-/** A new stored session for a signed-in user. */
-const createSessionInfo = async (data: SessionData): Promise<SessionInfo> => {
+/**
+ * A new stored session for a signed-in user, with its device (feat-233): written together with
+ * its index member and meta field.
+ */
+const createSessionInfo = async (
+    data: SessionData & { userToken: string },
+    device: Omit<SessionDevice, 'publicId'>,
+): Promise<SessionInfo> => {
+    const id = crypto.randomUUID()
+    const publicId = sessionPublicId(id)
+    const now = Date.now()
     const session: SessionInfo = {
-        id: crypto.randomUUID(),
-        data: withCsrfToken(data),
-        createdAt: new Date().toISOString(),
+        id,
+        data: withCsrfToken({ ...data, device: { ...device, publicId } }),
+        createdAt: new Date(now).toISOString(),
     }
 
-    await saveSession(session)
+    await createSignedInSession(session, data.userToken, publicId, now)
     // Its cookie goes out with this response: no refresh for the next hour. The
     // session already exists, so a failed marker only means an earlier refresh.
     try {
@@ -75,6 +92,22 @@ const createSessionInfo = async (data: SessionData): Promise<SessionInfo> => {
 
     return session
 }
+
+const touchSeen = async (sessionId: string, userToken: string): Promise<void> => {
+    try {
+        await touchSession(sessionId, userToken)
+    } catch (err) {
+        logger.warn({ err, sessionId }, 'lastSeenAt of a session not written')
+        try {
+            await releaseCookieRefresh(sessionId)
+        } catch (releaseErr) {
+            logger.warn({ err: releaseErr, sessionId }, 'Cookie refresh marker not released')
+        }
+    }
+}
+
+const clientUserAgent = (context: HttpContext): string =>
+    (context.httpData.headers.get('user-agent') ?? '').slice(0, USER_AGENT_MAX_LENGTH)
 
 // The age check lives with the session store (feat-119); re-exported for existing importers.
 export { isPastMaxAge } from '#vendor/utils/session/session-age.js'
@@ -262,6 +295,9 @@ export class RequestSession {
                     sessionId: info.id,
                     userToken: userToken ?? ANON_TOKEN,
                 })
+                // feat-233 (Р4): lastSeenAt rides on the hourly refresh, so a request writes no
+                // more than it did. A failed write gives the marker back for the next request.
+                if (signedInToken !== undefined) await touchSeen(info.id, signedInToken)
             }
             // Same lifetime as the record: a stored anonymous session presents the
             // anon_session namespace as its user token, not undefined.
@@ -361,12 +397,16 @@ export class RequestSession {
 
     // --- sign-in state -----------------------------------------------------------------
 
-    /** Replaces the current session, whatever it was, with a new signed-in one. */
+    /**
+     * Replaces the current session, whatever it was, with a new signed-in one, and answers its
+     * device (feat-233). A renewal (`inherit`) keeps how and where the user signed in.
+     */
     private async login(
         userId: string | undefined,
         userToken: string | undefined,
-    ): Promise<boolean> {
-        if (userId === undefined || userToken === undefined) return false
+        origin: LoginOrigin,
+    ): Promise<SessionDevice | null> {
+        if (userId === undefined || userToken === undefined) return null
 
         // The previous session goes away whether it was signed in or anonymous: its cookie
         // and CSRF token must not stay usable after the login.
@@ -381,7 +421,7 @@ export class RequestSession {
         // it to Redis.
         await destroySession(previousId, this.storageToken)
 
-        const signedIn = await createSessionInfo({ userId, userToken })
+        const signedIn = await createSessionInfo({ userId, userToken }, this.deviceFor(origin))
         this.issueStoredCookie(signedIn.id, userToken, sessionConfig.age)
         this.setInfo(signedIn)
         this.storageToken = userToken
@@ -389,18 +429,35 @@ export class RequestSession {
         this.swapped = true
 
         logger.info({ userId, sessionId: signedIn.id }, `User logged in`)
-        return true
+        sessionListChanged(userId)
+        return signedIn.data.device ?? null
+    }
+
+    private deviceFor(origin: LoginOrigin): Omit<SessionDevice, 'publicId'> {
+        if ('inherit' in origin) {
+            const { publicId: _publicId, ...kept } = origin.inherit
+            return kept
+        }
+        return {
+            ip: this.context.httpData.ip ?? '',
+            userAgent: clientUserAgent(this.context),
+            method: origin.method,
+            ...(origin.method === 'oauth' ? { provider: origin.provider } : {}),
+            signedInAt: new Date().toISOString(),
+        }
     }
 
     /** Deletes the current signed-in session and starts a new anonymous one. */
     private async logout(): Promise<boolean> {
         const userToken = this.signedInUserToken()
         if (userToken !== undefined) {
-            await destroySession(this.info.id, userToken)
+            await destroySession(this.info.id, userToken, this.info.data.device?.publicId)
             logger.info(
                 { userId: this.info.data.userId, sessionId: this.info.id },
                 `User logged out`,
             )
+            const userId = this.info.data.userId
+            if (typeof userId === 'string') sessionListChanged(userId)
         }
 
         this.becomeAnonymous()

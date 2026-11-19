@@ -89,8 +89,11 @@ describe('route access matrix (code-issues items 48, 67)', () => {
     it('the account routes need a session, CSRF and a signed-in user', async () => {
         const accountRoutes = http.filter((route) => route.url.includes('/account/'))
         expect(accountRoutes.map((route) => `${route.method} ${route.url}`).sort()).toEqual([
+            'del api/account/sessions/:id',
             'get api/account/profile',
+            'get api/account/sessions',
             'patch api/account/profile',
+            'post api/account/sessions/revoke-others',
         ])
         for (const route of accountRoutes) {
             expect(route.middlewares, route.url).toEqual([

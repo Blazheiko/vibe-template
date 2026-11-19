@@ -144,6 +144,16 @@ const unregisterConnection = (userId: string, uuid: string): boolean => {
 
 const isUserOnline = (userId: string): boolean => userStorage.has(userId)
 
+/** feat-233 (Р12, Р13): whether a connection of this session is open on this instance. */
+const hasSessionConnection = (userId: string, sessionId: string): boolean => {
+    const user = userStorage.get(userId)
+    if (user === undefined) return false
+    for (const connection of user.connections.values()) {
+        if (connection.sessionId === sessionId) return true
+    }
+    return false
+}
+
 const findOnlineUsers = (userIds: string[]): string[] => {
     const online: string[] = []
     for (const id of userIds) {
@@ -246,6 +256,7 @@ export const wsConnectionRegistry = {
     revokeConnecting,
     unregisterConnection,
     isUserOnline,
+    hasSessionConnection,
     findOnlineUsers,
     forEachConnection,
     listConnections,

@@ -17,7 +17,6 @@ afterEach(() => {
 
 describe('userNotificationService', () => {
     it.each([
-        'new_sign_in',
         'sign_in_method_added',
         'password_changed',
         'password_reset',
@@ -39,6 +38,34 @@ describe('userNotificationService', () => {
             skipIfOnline: true,
             notificationType: 'mention',
         })
+    })
+
+    it.each(['new_sign_in', 'session_revoked'] as const)(
+        'security %s links to the session list (feat-233)',
+        (event) => {
+            sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
+            userNotificationService.security(7n, event)
+            expect(sendToUser).toHaveBeenCalledWith(
+                7n,
+                expect.objectContaining({ url: '/account#sessions' }),
+                { notificationType: 'system' },
+            )
+        },
+    )
+
+    it('security details replace the text of the event, the rest stays', () => {
+        sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
+        userNotificationService.security(7n, 'new_sign_in', { body: 'Signed in from Chrome on macOS.' })
+        expect(sendToUser).toHaveBeenCalledWith(
+            7n,
+            {
+                title: 'New sign-in',
+                body: 'Signed in from Chrome on macOS.',
+                url: '/account#sessions',
+                tag: 'security-sign-in',
+            },
+            { notificationType: 'system' },
+        )
     })
 
     it('a failing push is logged, not thrown', async () => {

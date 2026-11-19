@@ -117,7 +117,7 @@ describe('authService legacy regressions', () => {
             sessionToken: 'session-token',
         })
         sessionMock.destroySession.mockResolvedValue(undefined)
-        authMock.login.mockResolvedValue(true)
+        authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
         generateWsTokenMock.mockResolvedValue('ws-token')
 
         const { authService } = await loadAuthService()
@@ -216,7 +216,7 @@ describe('authService legacy regressions', () => {
             sessionToken: 'session-token',
         })
         validatePasswordMock.mockResolvedValue(true)
-        authMock.login.mockResolvedValue(true)
+        authMock.login.mockResolvedValue({ publicId: 'p'.repeat(22) })
         generateWsTokenMock.mockResolvedValue('ws-token')
 
         const { authService } = await loadAuthService()
@@ -232,7 +232,7 @@ describe('authService legacy regressions', () => {
 
         expect(userRepositoryMock.findByEmail).toHaveBeenCalledWith('user@example.com')
         expect(validatePasswordMock).toHaveBeenCalledWith('secret123', 'hashed-password')
-        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token')
+        expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', expect.anything())
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
             expect(result.value).toEqual({

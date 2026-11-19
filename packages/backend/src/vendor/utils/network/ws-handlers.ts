@@ -17,6 +17,7 @@ import type {
     WsRoutes,
 } from '#vendor/types/types.js'
 import { wsSessionHandler } from '../session/session-handler.js'
+import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
 import getIP from './get-ip.js'
 import checkUpgradeRateLimit, {
     checkUpgradeRateLimitShared,
@@ -402,6 +403,8 @@ const handleAdmittedMessage = async (
         } else if (sessionResult.kind === 'missing') {
             closeExpiredSession(ws, userData)
         } else {
+            // feat-233 (Р4): an authenticated message (not a heartbeat) counts as activity.
+            void touchSessionFromWs(userData)
             // The dispatcher always answers.
             const result = await wsApiHandler(
                 message,

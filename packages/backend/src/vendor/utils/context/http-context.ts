@@ -17,7 +17,7 @@ const getDefaultAuth = (): Auth => ({
     getUserId: () => null,
     getPresentedUserToken: () => undefined,
     check: () => false,
-    login: () => Promise.resolve(false),
+    login: () => Promise.resolve(null),
     logout: () => Promise.resolve(false),
     logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
 })

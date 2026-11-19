@@ -30,6 +30,9 @@ export const BroadcastEventSchemas = {
     // feat-232 (Р9 B): the profile after a change, to every connection of the user on every
     // instance, the one that changed it included. Applied by `revision`: an older one is dropped.
     user_profile_updated: ProfileSchema,
+    // feat-233 (Р12): the user's session list changed (a sign-in, a renewal, an ended session, a
+    // socket of a session opened or closed). No data: the client reads the first page again.
+    user_sessions_changed: type({}),
 } as const
 
 export type BroadcastEventName = keyof typeof BroadcastEventSchemas
