@@ -83,6 +83,12 @@ const serviceHandlers: Record<WsServiceHandlerName, (message: WsReplyEnvelope) =
         isInitialized.value = true
         console.log('connection_established', message)
     },
+    // feat-232: the server registered this socket; events to the user reach it from now on, so
+    // what they keep up to date is read now (the profile). Not on the browser's `open`: the
+    // server may still be checking the session then, and an event sent meanwhile is lost.
+    connection_ready: () => {
+        eventBus.emit('ws_ready')
+    },
 }
 
 const isServiceHandlerName = (name: string): name is WsServiceHandlerName =>
@@ -326,9 +332,6 @@ const { status, send, close, open, ws } = useWebSocket(wsUrl, {
         if (ws.value) {
             ws.value.binaryType = 'arraybuffer'
         }
-        // feat-232: events sent while the socket was down are not replayed; whoever shows pushed
-        // state (the profile) reads it again.
-        eventBus.emit('ws_connected')
         // Check for SW updates on each WS connection (covers reconnects after sleep/offline)
         if (import.meta.env.PROD && 'serviceWorker' in navigator) {
             navigator.serviceWorker

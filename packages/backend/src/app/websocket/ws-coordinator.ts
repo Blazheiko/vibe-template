@@ -7,6 +7,7 @@ import { userRoleService } from '#app/services/user/user-role-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import logger from '#vendor/utils/logger.js'
 import { endSessionExpired } from '#vendor/utils/network/ws-session-expired.js'
+import { sendConnectionReady } from '#vendor/utils/network/ws-service-events.js'
 
 // feat-124: the connect INSERT of each open connection's user_online row, by socket uuid. It is
 // not awaited; a disconnect that came first would UPDATE nothing and leave the row open for ever,
@@ -107,6 +108,9 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         sessionId,
         userToken: userData.userToken,
     })
+    // feat-232: registered, so events to this user reach the socket from now on; the client reads
+    // the state those events keep (the profile) after this signal (review 2026-11-19).
+    sendConnectionReady(ws, userData)
     const connectSettled = userOnlineService
         .trackConnected({
             userId: BigInt(userId),

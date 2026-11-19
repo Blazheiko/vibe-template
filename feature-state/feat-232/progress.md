@@ -30,6 +30,10 @@ Feature A (T1–T15) and feature B (live sync) done on `feat/profile-editing`; T
 | 5   | the sync showed the device look while the session was not yet checked, undoing the `prefs:<userId>` cache                       | `userStore.anonymousConfirmed` (a 401 at init or a sign-out); until then the cache stays                                              | `preferences.spec.ts` "keeps the cached look while the session is not checked yet" (real stores + `useProfileSync`)                                                       |
 | 6   | the subscriber was set before SUBSCRIBE finished: a PUBLISH in that gap reached nobody here, and the local fallback did not run | `publishToUser` delivers to this process first, always; the envelope carries `origin` (an id per process) and the own echo is skipped | `user-event-bus.spec.ts` "while SUBSCRIBE is still pending, the event reaches this process" (+ "own echo is skipped")                                                     |
 
+### Re-review of 457cd2f: item 4 only partly fixed, now closed
+
+The re-read ran on the browser's `open`, while the server may still be checking the session and role before `registerConnection` (`ws-coordinator.ts`); `service:connection_established` also comes before that. A change saved in that gap reached no socket and the re-read had already answered. Fix: a new service event `service:connection_ready` (`vendor/utils/network/ws-service-events.ts`), sent by the coordinator right after `registerConnection` and never to a socket closed or revoked during the checks; the client emits `ws_ready` on it and only then reads `GET /account/profile`. Tests: `ws-registry-lifecycle.spec.ts` "is sent once the socket is registered, never before" (fails when the send is moved before `registerConnection`) and "is not sent to a socket closed or revoked"; `useWebSocketConnection.spec.ts` "emits ws_ready on service:connection_ready, not on the browser open". The API playground handles the new event too.
+
 ## Files
 
 shared: `schemas/ws/broadcast-events.ts` (`user_profile_updated`), `enums/preferences.ts`, `utils/time-zone.ts`, `schemas/account/{profile-name,update-profile}.ts`, `responses/account-controller.ts`, `responses/main-controller.ts`, `contracts/account.ts`, `test/profile.test.js`.
@@ -42,7 +46,7 @@ docs: `documentation/{,en/}backend/account.md` (new), `websocket.md` (user event
 All on 2026-11-19, local, PostgreSQL `pgvector/pgvector:pg16` and `redis:7-alpine`.
 
 - `./init.sh` at the start: green (backend 3141, frontend 614, landing 103, api-playground 115 tests).
-- `make check` (after the review fixes): exit 0. backend 227 files / 3175 tests, frontend 59 / 698, landing 6 / 103, api-playground 11 / 115, shared 48 pass / 0 fail, documentation 26 / 0.
+- `make check` (after the second review round): exit 0. backend 227 files / 3177 tests, frontend 59 / 699, landing 6 / 103, api-playground 11 / 115, shared 48 pass / 0 fail, documentation 26 / 0.
 - `PG_TEST_URL=… REDIS_TEST_URL=… make test-pg`: 40 files passed, **378 tests passed, 0 skipped** (new: `account-preferences.pg.test.ts` 11, `account-service.pg.test.ts` 7, `account-http.pg.test.ts` 7).
 - `REDIS_TEST_URL=… make test-redis`: 18 files passed, **153 tests passed, 0 skipped** (new: `account-throttle.redis.test.ts` 4, `user-event-bus.redis.test.ts` 2: two instances on one Redis, another prefix isolated).
 - `pnpm --filter frontend test:e2e`: 102 passed (new: `e2e/mock/account-profile.spec.ts` 3).

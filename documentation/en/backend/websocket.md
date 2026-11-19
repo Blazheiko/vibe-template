@@ -284,7 +284,7 @@ Events that are actually sent:
 | `broadcast:support_chat_token`, `support_chat_complete`, `support_chat_error` (with the `clientMessageId` of the message it replies to) | [support-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-service.ts)                                            | the connection the request came from (fallback — all of the user's connections)                                                                     |
 | `broadcast:user_profile_updated` (the `Profile` of the user)                                                                            | [account-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.ts), after a committed `PATCH /account/profile`   | every connection of the user on every instance, the tab that changed it included, through the [user event bus](#events-to-a-user-on-every-instance) |
 
-Presence is published only if the `admin` channel has subscribers (`adminWsChannelService.hasSubscribers()`). Transport service events: `service:connection_established`, `service:error`: the `WsServiceEvent` type in `shared/ws-client` (the heartbeat is not an event but the text `ping` / `pong`).
+Presence is published only if the `admin` channel has subscribers (`adminWsChannelService.hasSubscribers()`). Transport service events: `service:connection_established` (sent on open, before the app checks the session and role), `service:connection_ready` (feat-232: sent by the coordinator right after `registerConnection`, from [ws-service-events.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-service-events.ts); from then on events to the user reach this socket, so a client re-reads pushed state after it, never after the browser's `open`), `service:error`: the `WsServiceEvent` type in `shared/ws-client` (the heartbeat is not an event but the text `ping` / `pong`).
 
 ### Events to a user on every instance
 
@@ -292,7 +292,7 @@ Presence is published only if the `admin` channel has subscribers (`adminWsChann
 
 - Only the events listed in `BUS_EVENTS` go on the bus (now `user_profile_updated`); a message of another event, another version or a malformed one is dropped and logged.
 - When the publish fails (Redis down) or the bus is not started (a script, a test), the event reaches the connections of this process only.
-- Delivery to other instances is best effort and not replayed: a client reads the state it shows after every connection, the first one included (the account profile: `GET /account/profile`).
+- Delivery to other instances is best effort and not replayed: a client reads the state it shows after `service:connection_ready` of every connection, the first one included (the account profile: `GET /account/profile`).
 - The subscription is stopped first in the graceful shutdown, before the scheduler and the server.
 
 ## Heartbeat, timeouts, client
@@ -387,6 +387,8 @@ sequenceDiagram
   C->>W: Upgrade, Sec-WebSocket-Protocol: token, app-web
   W->>R: GETDEL auth:ws:token, GET session
   W-->>C: service:connection_established
+  W->>R: session and role check, then registerConnection
+  W-->>C: service:connection_ready
   C->>W: event api/support/support_chat
   W->>R: session check
   W->>D: message

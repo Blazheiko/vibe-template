@@ -79,7 +79,7 @@ await callWs(adminWsContracts.subscribeOnlineUsers)
 - `support_chat_token`, `support_chat_complete`, `support_chat_error` — потоковый ответ Support AI;
 - `admin_user_online_upsert`, `admin_user_online_remove` — онлайн-статус пользователей в админке.
 
-Служебные события (`connection_established`, `connection_closed`, `pong`) обрабатываются внутри composable.
+Служебные события (`connection_established`, `connection_ready`, `connection_closed`, `pong`) обрабатываются внутри composable. `connection_ready` (feat-232) сервер шлёт после регистрации сокета; по нему composable испускает `ws_ready` в event bus, и профиль перечитывается.
 
 ## Остальные composables
 

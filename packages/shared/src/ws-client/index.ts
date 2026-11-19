@@ -9,7 +9,15 @@ export type WsMessageKind = 'service-error' | 'broadcast' | 'service' | 'api' | 
  * of the transport, not routes (ADR 0006, decision 5). The heartbeat is not one of them: it is
  * the plain text `ping` → `pong`, outside JSON.
  */
-export type WsServiceEvent = 'service:connection_established' | 'service:error'
+export type WsServiceEvent =
+    | 'service:connection_established'
+    /**
+     * feat-232: the server registered this socket, so events to its user reach it from now on.
+     * `connection_established` comes earlier, before the session and role checks; state pushed by
+     * events (the profile) is read again after this one, not after the browser's `open`.
+     */
+    | 'service:connection_ready'
+    | 'service:error'
 
 /** The name after `service:` of a service event the client handles, e.g. `connection_established`. */
 export type WsServiceHandlerName =

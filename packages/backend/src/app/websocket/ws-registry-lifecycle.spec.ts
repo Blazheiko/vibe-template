@@ -462,3 +462,54 @@ describe('draining the user_online disconnects at shutdown (feat-138)', () => {
         await expect(websocketCoordinator.drainDisconnects(20)).resolves.toBe(false)
     })
 })
+
+// feat-232 (review 2026-11-19): the client re-reads the profile on `service:connection_ready`.
+// It must come only once the socket is in the registry: an event sent before that misses it.
+describe('service:connection_ready', () => {
+    const readyFrames = (conn: ReturnType<typeof connection>) =>
+        conn.sent.filter((frame) => frame.includes('service:connection_ready'))
+
+    it('is sent once the socket is registered, never before', async () => {
+        const conn = connection('9201')
+        let registeredWhenSent: boolean | undefined
+        const send = conn.ws.send.bind(conn.ws)
+        ;(conn.ws as unknown as { send: (m: string) => number }).send = (message: string) => {
+            if (message.includes('service:connection_ready')) {
+                registeredWhenSent =
+                    wsConnectionRegistry.getConnection('9201', conn.userData.uuid) === conn.ws
+            }
+            send(message)
+            return 1
+        }
+
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        await Promise.resolve()
+        // The role and session checks are still running: nothing is ready yet.
+        expect(readyFrames(conn)).toEqual([])
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(readyFrames(conn)).toHaveLength(1)
+        expect(registeredWhenSent).toBe(true)
+        expect(JSON.parse(readyFrames(conn)[0]!)).toMatchObject({
+            event: 'service:connection_ready',
+            data: { socket_id: conn.userData.uuid },
+        })
+    })
+
+    it('is not sent to a socket closed or revoked while it was checked', async () => {
+        const closed = connection('9202')
+        const pending = websocketCoordinator.handleConnected(closed.ws, closed.userData)
+        await closed.close()
+        resolveRole('user')
+        await pending
+
+        const revoked = connection('9203')
+        const revokedPending = websocketCoordinator.handleConnected(revoked.ws, revoked.userData)
+        resolveAccess({ role: 'user', sessionToken: 'rotated' })
+        await revokedPending
+
+        expect(readyFrames(closed)).toEqual([])
+        expect(readyFrames(revoked)).toEqual([])
+    })
+})

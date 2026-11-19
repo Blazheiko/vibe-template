@@ -350,7 +350,7 @@ export function useProfileSync(): void {
     eventBus.on('user_profile_updated', (profile) => {
         live.onProfileEvent(profile)
     })
-    eventBus.on('ws_connected', () => {
+    eventBus.on('ws_ready', () => {
         void live.onConnected()
     })
 

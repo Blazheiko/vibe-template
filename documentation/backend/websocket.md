@@ -284,7 +284,7 @@ Support-контролери ([support-controller.ts](https://github.com/Blazhei
 | `broadcast:support_chat_token`, `support_chat_complete`, `support_chat_error` (з `clientMessageId` повідомлення, на яке це відповідь) | [support-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/support/support-service.ts)                                            | з'єднання, з якого прийшов запит (fallback — усі з'єднання користувача)                                                                        |
 | `broadcast:user_profile_updated` (`Profile` користувача)                                                                              | [account-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.ts), після закоміченого `PATCH /account/profile`  | усі з'єднання користувача на всіх інстансах, зокрема вкладка, що змінила, через [шину подій користувача](#подіі-користувачу-на-всіх-інстансах) |
 
-Presence публікується лише якщо в каналі `admin` є підписники (`adminWsChannelService.hasSubscribers()`). Сервісні події транспорту: `service:connection_established`, `service:error` — тип `WsServiceEvent` у `shared/ws-client` (heartbeat — не подія, а текст `ping` / `pong`).
+Presence публікується лише якщо в каналі `admin` є підписники (`adminWsChannelService.hasSubscribers()`). Сервісні події транспорту: `service:connection_established` (при відкритті, до перевірки сесії й ролі застосунком), `service:connection_ready` (feat-232: координатор надсилає її одразу після `registerConnection`, з [ws-service-events.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/network/ws-service-events.ts); відтоді події користувачу доходять до цього сокета, тож клієнт перечитує стан після неї, а не після браузерного `open`), `service:error` — тип `WsServiceEvent` у `shared/ws-client` (heartbeat — не подія, а текст `ping` / `pong`).
 
 ### Події користувачу на всіх інстансах
 
@@ -292,7 +292,7 @@ Presence публікується лише якщо в каналі `admin` є �
 
 - На шину йдуть лише події з `BUS_EVENTS` (зараз `user_profile_updated`); повідомлення іншої події, іншої версії чи зіпсоване відкидається з записом у лог.
 - Коли публікація не вдалася (Redis недоступний) або шину не запущено (скрипт, тест), подія доходить лише до з'єднань цього процесу.
-- Доставка іншим інстансам — best effort, без повторення: клієнт читає стан, який показує, після кожного підключення, зокрема першого (профіль акаунта: `GET /account/profile`).
+- Доставка іншим інстансам — best effort, без повторення: клієнт читає стан, який показує, після `service:connection_ready` кожного підключення, зокрема першого (профіль акаунта: `GET /account/profile`).
 - У graceful shutdown підписка зупиняється першою, до планувальника й сервера.
 
 ## Heartbeat, таймаути, клієнт
@@ -387,6 +387,8 @@ sequenceDiagram
   C->>W: Upgrade, Sec-WebSocket-Protocol: token, app-web
   W->>R: GETDEL auth:ws:token, GET session
   W-->>C: service:connection_established
+  W->>R: перевірка сесії й ролі, потім registerConnection
+  W-->>C: service:connection_ready
   C->>W: event api/support/support_chat
   W->>R: перевірка сесії
   W->>D: message
