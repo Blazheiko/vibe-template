@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { planPurge, purgeConfigError } from './purge-llm-prompts-args.js'
+import { planPurge, purgeConfigError } from './prompt-purge-plan.js'
 
 const NOW = new Date('2026-11-01T12:00:00.000Z')
 const DAY = 86_400_000
