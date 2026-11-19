@@ -2283,6 +2283,26 @@
             "dependencies": ["feat-225"],
             "status": "in_progress",
             "evidence": ""
+        },
+        {
+            "id": "feat-230",
+            "name": "Scheduler Reject Undefined",
+            "description": "External review of the scheduler, 2026-11-19 (owner decision: separate small feature): execute() in app/scheduler/scheduler.ts told a failed run by `err !== undefined`, so a job that rejects with undefined (`Promise.reject()`, `throw undefined`) was recorded as ok: lastSuccessSlot written, no backoff, no Sentry, runOnce/job:run exit 0. A separate `failed` flag set in the catch; regression tests for the scheduled tick and runOnce.",
+            "owner": "Blazheiko",
+            "branch": "fix/scheduler-reject-undefined",
+            "dependencies": ["feat-222"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-231",
+            "name": "CI Apt Archives Cache",
+            "description": "Owner decision 2026-11-19 after #697/#700: with feat-225/229 the retries work, but the runner mirror gave 69-500 kB/s and the ~126 MB of playwright install-deps fit in no 5-minute attempt. Cache the .deb files (scripts/apt-archives.sh points Dir::Cache::Archives at ~/apt-cache and keeps downloads; actions/cache restore/save of ~/apt-cache/*.deb keyed on the runner image and the Playwright version, restore-keys for an older image) in the e2e and e2e-live jobs; docs backend/testing.md (both locales).",
+            "owner": "Blazheiko",
+            "branch": "ci/apt-archives-cache",
+            "dependencies": ["feat-229"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
