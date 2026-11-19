@@ -2,8 +2,14 @@
 
 The backend runs maintenance jobs on a schedule inside the `app` process. While a job's lease key is not lost from Redis, the job never runs twice at the same time, however many `app` replicas run. Schedules live in the code, next to the jobs, and are covered by tests. The design and its decisions are in the internal plan `docs/plan/scheduler-plan.md` (Р1–Р13). Code: [`app/scheduler/`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/scheduler).
 
+## Jobs
+
+| Job                  | Schedule (UTC)         | Timeout | What it does                                                                                                                                                                                                                                                                                                                                           |
+| -------------------- | ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auth-token-cleanup` | `{ dailyAt: '03:30' }` | `10m`   | Deletes one-time tokens and SMS challenges whose `expires_at` is before `now − AUTH_TOKEN_RETENTION` (default `7d`), in batches of 1000 ([`auth-token-cleanup.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/scheduler/jobs/auth-token-cleanup.ts)). See [Authentication](/en/backend/auth#expired-token-cleanup). |
+
 ::: warning Plan
-The registry is empty for now. The first jobs, expired auth token clean-up (`feat-223`) and LLM prompt retention (`feat-224`), come in separate features.
+LLM prompt retention (`feat-224`) comes in a separate feature.
 :::
 
 ## How it works

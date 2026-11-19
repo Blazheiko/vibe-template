@@ -300,6 +300,16 @@ So one account checks at most 3 email addresses and 3 phone numbers per hour, no
 
 The SMS provider is selected with `AUTH_SMS_PROVIDER`. The runtime-config validator forbids `AUTH_SMS_PROVIDER=fake` in production-like environments and requires explicitly setting `AUTH_SMS_PROVIDER_ALLOW_FAKE=true` and `AUTH_FAKE_SMS_CODE`.
 
+## Expired token cleanup
+
+One-time tokens (`email_verifications`, `email_link_verifications`, `password_reset_tokens`, `oauth_link_verifications`) and SMS challenges (`sms_auth_challenges`) are not deleted when used: a used row gets `used_at` (`confirmed_at` / `invalidated_at` for a challenge). Every day at 03:30 UTC the [`auth-token-cleanup`](/en/backend/scheduler#jobs) job deletes the rows whose `expires_at` is before `now − AUTH_TOKEN_RETENTION` (default `7d`), in batches of 1000 ([`auth-token-cleanup-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-token-cleanup-service.ts)). Two overlapping runs delete each row exactly once. To see how many rows would go: `pnpm --filter backend job:run auth-token-cleanup --dry-run`.
+
+What the deletion changes (feat-223 audit):
+
+- **Mailed links.** `findUsableToken` answers "already used" (`used_at` set) or "expired" (`expires_at` passed) only while the row exists. Once it is deleted, the same token answers "link is invalid" (`… link is invalid`; code `invalid_token` for password reset and OAuth). Token lifetimes are far shorter than the retention (password reset 1 h, OAuth link 30 min, email verification 24 h), so this only affects links opened a week after they expired.
+- **SMS challenges.** The resend cooldown reads only a challenge that is still pending and the deletion does not affect it while `AUTH_SMS_RESEND_COOLDOWN_SECONDS` is below `AUTH_SMS_CHALLENGE_TTL_SECONDS` plus `AUTH_TOKEN_RETENTION` (by default 60 s against 10 min + 7 days; the configuration does not check it), and the SMS and attempt budgets live in Redis, not in database rows. A deleted challenge looked up by `challengeId` answers as unknown ("… challenge not found", "… challenge is invalid" for the phone reset) instead of "… no longer valid".
+- No table references these rows with a foreign key, and no counter counts them.
+
 ## WebSocket authorization
 
 1. An authenticated client calls `GET /main/update-ws-token` (`auth_guard`). [`generate-ws-token-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/generate-ws-token-service.ts) puts an `auth:ws:<token>` key into Redis with a 60 s TTL and the data `{ sessionId, userId, userToken }`.

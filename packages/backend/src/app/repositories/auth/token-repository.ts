@@ -1,5 +1,6 @@
 import { db } from '#database/db.js'
 import type { DbExecutor } from '../transaction.js'
+import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
 import type {
     emailLinkVerifications,
     emailVerifications,
@@ -51,7 +52,7 @@ export interface ITokenRepository<TRow, TInsert> {
 export function createTokenRepository<T extends TokenTable>(
     table: T,
     createFailure: string,
-): ITokenRepository<InferSelectModel<T>, InferInsertModel<T>> {
+): ITokenRepository<InferSelectModel<T>, InferInsertModel<T>> & ExpiredRowsRepository {
     // The columns used below exist, with the same types, on all three tables; drizzle cannot
     // resolve a union of tables, so the factory looks at them as one. The types of what comes
     // out are those of the table that went in.
@@ -59,6 +60,8 @@ export function createTokenRepository<T extends TokenTable>(
     type Row = InferSelectModel<T>
 
     return {
+        ...expiredRowsRepository(t, { id: t.id, expiresAt: t.expiresAt }),
+
         async create(data, executor = db): Promise<Row> {
             const [created] = await executor
                 .insert(t)
