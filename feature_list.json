@@ -2243,6 +2243,16 @@
             "dependencies": ["feat-179"],
             "status": "done",
             "evidence": "PR #688 (merge e2d2721), registry #687. A timed-out attempt of playwright install-deps left its sudo apt-get (own session) holding the dpkg lock, so both retries of scripts/retry.sh failed at once (#685: e2e red three times, tests never ran). retry.sh gains RETRY_BEFORE; scripts/wait-apt-idle.sh waits up to 240 s for apt-get/apt/dpkg to finish and runs dpkg --configure -a; set on the four browser install steps of ci.yml; e2e-live timeout 30 -> 35 min; docs backend/testing.md (both locales). Simulated in ubuntu:24.04 (fake 6 s install, 2 s timeout, apt-get under setsid): without the hook 124 -> 100 -> 100 as on #685, with it 124 then 0; retry.sh hook checked by hand. CI on b56c961 green (success path; the failure cannot be forced on a runner); #685 then passed e2e on the updated branch. Status went in_progress -> done without a separate review PR (owner decision 2026-11-18 to fix CI first; merged after green CI)."
+        },
+        {
+            "id": "feat-226",
+            "name": "Scheduler Docs Gaps",
+            "description": "Docs-only follow-up of feat-222/223 (owner decision 2026-11-19): scheduler.md \"how to add a job\" recommends batches as `= ANY(ARRAY(SELECT … ORDER BY <indexed column> LIMIT n))` with an index on the filter column (the `IN (SELECT … LIMIT n)` advice sorted every matching row per batch, found in the #685 review); deployment.md covers the scheduler (SCHEDULER_ENABLED with replicas, the stop with drain in graceful shutdown, job:run in the built image, Redis maxmemory-policy noeviction); the scheduler.md variables table lists job variables (AUTH_TOKEN_RETENTION); observability.md links the scheduler run log and its Sentry tags. Both locales.",
+            "owner": "Blazheiko",
+            "branch": "docs/scheduler-docs-gaps",
+            "dependencies": ["feat-223"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
