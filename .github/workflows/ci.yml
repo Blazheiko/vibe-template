@@ -88,9 +88,27 @@ jobs:
             # costs seconds, not the whole attempt (feat-229).
             - run: scripts/apt-timeouts.sh
 
+            # The .deb files of the browser deps, kept from earlier runs: on 2026-11-19 the mirror
+            # gave 69-500 kB/s and the ~126 MB did not fit in an attempt (feat-231). Keyed on the
+            # runner image and the Playwright version; an older image's files are restored as a
+            # start (apt fetches only what changed) and saved again under the new key.
+            - name: Runner image
+              id: runner-image
+              run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              id: apt-cache
+              with:
+                  path: ~/apt-cache/*.deb
+                  key: apt-e2e-${{ runner.os }}-${{ steps.runner-image.outputs.id }}-pw-${{ steps.playwright.outputs.version }}
+                  restore-keys: |
+                      apt-e2e-${{ runner.os }}-
+
+            - run: scripts/apt-archives.sh ~/apt-cache
+
             # All browsers of playwright.config.ts projects: chromium, firefox, webkit
-            # (webkit also runs Mobile Safari). System deps are not cached. They come from the
-            # runner's apt mirrors, which can be down for a while (2026-11-11): up to 3 attempts of
+            # (webkit also runs Mobile Safari). System deps come from the cached .deb files above
+            # where they can, the rest from the runner's apt mirrors, which can be down for a while (2026-11-11): up to 3 attempts of
             # at most 5 minutes each (apt waits long on an unreachable mirror), 30 s and 60 s apart
             # (scripts/retry.sh, feat-179). The job timeout leaves room for them. A timed-out attempt
             # leaves its `sudo apt-get` running with the dpkg lock, so before each retry
@@ -104,6 +122,12 @@ jobs:
               env:
                   RETRY_BEFORE: scripts/wait-apt-idle.sh 240
               run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps
+
+            - if: steps.apt-cache.outputs.cache-hit != 'true'
+              uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ~/apt-cache/*.deb
+                  key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
             - run: pnpm --filter frontend test:e2e
 
@@ -181,6 +205,24 @@ jobs:
             # costs seconds, not the whole attempt (feat-229).
             - run: scripts/apt-timeouts.sh
 
+            # The .deb files of the browser deps, kept from earlier runs: on 2026-11-19 the mirror
+            # gave 69-500 kB/s and the ~126 MB did not fit in an attempt (feat-231). Keyed on the
+            # runner image and the Playwright version; an older image's files are restored as a
+            # start (apt fetches only what changed) and saved again under the new key.
+            - name: Runner image
+              id: runner-image
+              run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+
+            - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              id: apt-cache
+              with:
+                  path: ~/apt-cache/*.deb
+                  key: apt-e2e-live-${{ runner.os }}-${{ steps.runner-image.outputs.id }}-pw-${{ steps.playwright.outputs.version }}
+                  restore-keys: |
+                      apt-e2e-live-${{ runner.os }}-
+
+            - run: scripts/apt-archives.sh ~/apt-cache
+
             # Chromium only: the live specs are about the session, not about the engines. The apt
             # mirrors can be down for a while: retried as in the e2e job (scripts/retry.sh, with
             # scripts/wait-apt-idle.sh before each retry, feat-225).
@@ -193,6 +235,12 @@ jobs:
               env:
                   RETRY_BEFORE: scripts/wait-apt-idle.sh 240
               run: scripts/retry.sh 3 30 timeout 300 pnpm --filter frontend exec playwright install-deps chromium
+
+            - if: steps.apt-cache.outputs.cache-hit != 'true'
+              uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ~/apt-cache/*.deb
+                  key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
             # Builds shared, the SPA (phone auth off, API at http://localhost:3100) and the backend,
             # then Playwright starts the backend with the database made first.
