@@ -2231,7 +2231,7 @@
             "owner": "Blazheiko",
             "branch": "feat/llm-prompt-retention-job",
             "dependencies": ["feat-222"],
-            "status": "not-started",
+            "status": "review",
             "evidence": ""
         },
         {
