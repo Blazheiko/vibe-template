@@ -2263,6 +2263,26 @@
             "dependencies": ["feat-226"],
             "status": "done",
             "evidence": "PR #694 (merge 485d0d5), registry #693. Docs, skill and AGENTS.md only. documentation/{,en/}backend/scheduler.md Adding a job gains steps 3-5: job variables in their own config/<job>.ts with configError in validate-runtime-config and .env.example (a widely imported config broke 394 specs that mock metautil in feat-223), the job refuses to run on its config error since job:run skips the startup check; the full test list (job unit test; PG: cut-off to the minute on either side, batch loop, throwing checkpoint, dry run, overlap with race-barrier.ts, plan with enable_seqscan/enable_sort off); docs and the manual job:run --dry-run check. .claude/skills/scheduled-job/SKILL.md: model-invoked checklist of seven steps with completion checks, pointing at Adding a job as the source of truth and auth-token-cleanup as the model. AGENTS.md Agent Skills: scheduled-job, and a scheduler contract change (defineJob, JobContext, withJobLease, Р13) updates the page and the skill in the same PR. docs:build + docs:verify and format:check green; CI on 33a02d9 green. First real use: feat-224. Status went in_progress -> done without a separate review PR (docs only, merged after green CI)."
+        },
+        {
+            "id": "feat-228",
+            "name": "Scheduler Shutdown Test Race",
+            "description": "Found while closing feat-223, 2026-11-18/19: scheduler-shutdown.pg.test.ts (feat-222) failed 3 times in about 6 local make test-pg runs (\"expected [ skipped-locked, …(74) ] to include ok\"). It waits for B's b-first row in the database and then asserts at once that outcomesB holds ok, but the scheduler logs the outcome only after run() returned and the success was written to Redis. The test waits for ok as it waits for the row. Test only.",
+            "owner": "Blazheiko",
+            "branch": "test/scheduler-shutdown-flaky",
+            "dependencies": ["feat-222"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-229",
+            "name": "CI Hung Apt",
+            "description": "Follow-up of feat-225, found on #695 (2026-11-19): the apt-get orphaned by a timed-out playwright install-deps attempt ran for over 9 minutes (security.ubuntu.com did not answer), so wait-apt-idle waited its 240 s twice and both retries failed on the dpkg lock. Bound apt's wait per mirror (Acquire::http(s)::Timeout 30, Acquire::Retries 3, scripts/apt-timeouts.sh before the browser installs of e2e and e2e-live) and end an apt-get still running at the wait limit (SIGTERM, then SIGKILL; dpkg is not killed, dpkg --configure -a finishes); docs backend/testing.md (both locales).",
+            "owner": "Blazheiko",
+            "branch": "ci/apt-hang-kill",
+            "dependencies": ["feat-225"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
