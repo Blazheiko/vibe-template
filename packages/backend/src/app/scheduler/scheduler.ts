@@ -191,6 +191,8 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
     ): Promise<{ outcome: Outcome; result?: JobResult; err?: unknown; durationMs: number }> => {
         const startedAt = performance.now()
         let result: JobResult | undefined
+        // feat-230: whether run() threw is its own flag; `err` can be undefined (`Promise.reject()`).
+        let failed = false
         let err: unknown
         try {
             // A stop() or a lost lease while the lease was taken or the state read: no run.
@@ -203,6 +205,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                 logger: jobLogger(job.name),
             })
         } catch (error: unknown) {
+            failed = true
             err = error
         }
         const durationMs = Math.round(performance.now() - startedAt)
@@ -210,7 +213,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
         if (scope.signal.aborted) {
             return { outcome: abortedOutcome(scope.signal.reason), err, durationMs }
         }
-        if (err !== undefined) return { outcome: 'failed', err, durationMs }
+        if (failed) return { outcome: 'failed', err, durationMs }
         return { outcome: 'ok', ...(result === undefined ? {} : { result }), durationMs }
     }
 
