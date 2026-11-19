@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDateFormat } from '@/composables/useDateFormat'
 import { onMounted, ref } from 'vue'
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue'
 import AdminUserDetailModal from '@/components/admin/AdminUserDetailModal.vue'
@@ -91,16 +92,8 @@ function resetFilters() {
     void loadHistory(true)
 }
 
-function formatDate(value: string | null): string {
-    if (value === null) return '—'
-    return new Intl.DateTimeFormat(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(value))
-}
+// feat-232 (Р8): in the time zone of the profile, or of the browser.
+const { formatDateTime: formatDate } = useDateFormat()
 
 function formatDuration(value: number | null, disconnectedAt: string | null): string {
     if (disconnectedAt === null) return 'Active'

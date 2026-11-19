@@ -11,9 +11,9 @@ import en from '../../locales/en'
 
 const { verifyEmailMock, initMock, routeQuery, store } = vi.hoisted(() => {
     const routeQuery: { value: Record<string, unknown> } = { value: { token: 'tok' } }
-    const store: { user: null | { id: string }; setUser: ReturnType<typeof vi.fn> } = {
+    const store: { user: null | { id: string }; setInitUser: ReturnType<typeof vi.fn> } = {
         user: null,
-        setUser: vi.fn(),
+        setInitUser: vi.fn(),
     }
     return { verifyEmailMock: vi.fn(), initMock: vi.fn(), routeQuery, store }
 })
@@ -157,6 +157,7 @@ describe('VerifyEmailView', () => {
         })
         await mountView()
 
-        expect(store.setUser).toHaveBeenCalledWith({ id: '1', email: 'jane@example.com' })
+        // With the profile it carries (feat-232): setInitUser applies both.
+        expect(store.setInitUser).toHaveBeenCalledWith({ id: '1', email: 'jane@example.com' })
     })
 })

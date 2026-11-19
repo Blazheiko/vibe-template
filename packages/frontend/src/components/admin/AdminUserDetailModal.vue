@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useDateFormat } from '@/composables/useDateFormat'
 import { ref, useId } from 'vue'
 import type { AdminOnlineUserDetail } from 'shared/responses'
 import { useModalDialog } from '@/composables/useModalDialog'
@@ -20,16 +21,8 @@ const panel = ref<HTMLElement | null>(null)
 const titleId = useId()
 useModalDialog({ panel, isOpen: () => props.open, close: closeModal })
 
-function formatDate(value: string | null): string {
-    if (value === null) return '—'
-    return new Intl.DateTimeFormat(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    }).format(new Date(value))
-}
+// feat-232 (Р8): in the time zone of the profile, or of the browser.
+const { formatDateTime: formatDate } = useDateFormat()
 
 function formatAppType(appType: 'web' | 'pwa' | null): string {
     if (appType === null) return '—'

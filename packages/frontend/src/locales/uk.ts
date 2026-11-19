@@ -186,6 +186,20 @@ const uk: typeof en = {
     },
 
     account: {
+        profile: {
+            title: 'Профіль',
+            name: "Ім'я",
+            language: 'Мова',
+            timeZone: 'Часовий пояс',
+            timeZoneSearch: 'Пошук часового поясу',
+            asBrowser: 'Як у браузері',
+            save: 'Зберегти профіль',
+            saved: 'Профіль збережено',
+            nothingToSave: 'Нічого не змінено',
+            errorNameRequired: "Введіть ім'я",
+            errorSave: 'Не вдалося зберегти профіль',
+            errorRateLimited: 'Забагато змін. Спробуйте за кілька хвилин.',
+        },
         avatar: {
             delete: 'Видалити аватар',
             closeEditor: 'Закрити редактор аватара',
@@ -248,6 +262,12 @@ const uk: typeof en = {
         },
         settings: {
             title: 'Налаштування',
+            theme: 'Тема',
+            themeSystem: 'Як у системі',
+            themeLight: 'Світла',
+            themeDark: 'Темна',
+            default: 'За замовчуванням',
+            errorSave: 'Не вдалося зберегти налаштування',
             darkMode: 'Темна тема',
             fontSize: 'Розмір шрифту',
             pushNotifications: 'Push-сповіщення',

@@ -12,6 +12,18 @@ import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
 import { oauthProviderLabel } from '@/utils/oauth-provider-label'
+import { useDateFormat } from '@/composables/useDateFormat'
+import { useProfileSave, type ProfileChanges } from '@/composables/useProfileSave'
+import { usePreferences } from '@/composables/usePreferences'
+import {
+    COLOR_THEMES,
+    FONT_SIZE_MAX,
+    FONT_SIZE_MIN,
+    SHIPPED_LOCALE_CODES,
+    resolveLanguageNativeName,
+    type ColorTheme,
+} from 'shared/enums'
+import { allowedTimeZones, UTC_TIME_ZONE } from 'shared/utils'
 
 defineOptions({
     name: 'UserAccount',
@@ -59,21 +71,132 @@ const awaitsEmailConfirmation = computed(
 const pendingEmailMessage = ref('')
 const isResendingPendingEmail = ref(false)
 
-const darkMode = ref(stateStore.darkMode)
-const fontSize = computed({
-    get: () => stateStore.fontSize,
-    set: (value: number) => {
-        stateStore.setFontSize(value)
-    },
+const { formatDate } = useDateFormat()
+const profileSave = useProfileSave()
+const preferences = usePreferences()
+
+// The swatch of each color theme; the list itself is shared/enums COLOR_THEMES (feat-232).
+const COLOR_THEME_LOOK: Record<ColorTheme, { label: string; accent: string }> = {
+    ocean: { label: 'Ocean', accent: '#4E7FA8' },
+    mint: { label: 'Mint', accent: '#3D8A62' },
+    lavender: { label: 'Lavender', accent: '#7059A6' },
+    rose: { label: 'Rose', accent: '#A8627A' },
+    sunset: { label: 'Sunset', accent: '#B8693C' },
+    monochrome: { label: 'Mono', accent: '#5E6B78' },
+}
+const colorThemes = COLOR_THEMES.map((value) => ({ value, ...COLOR_THEME_LOOK[value] }))
+
+// The shown preferences: the confirmed profile with the unsaved changes on top (Р11).
+const shownPreferences = computed(() => profileSave.shown.value?.preferences ?? null)
+const themeChoice = computed(() => shownPreferences.value?.theme ?? null)
+const colorThemeChoice = computed(() => shownPreferences.value?.colorTheme ?? null)
+const fontSizeChoice = computed(() => shownPreferences.value?.fontSize ?? null)
+const fontSize = computed(() => stateStore.fontSize)
+
+function onFontSizeInput(event: Event): void {
+    void preferences.setFontSize(Number((event.target as HTMLInputElement).value))
+}
+
+const settingsMessage = computed(() => {
+    const failure = profileSave.lastFailure.value
+    if (failure === null) return ''
+    if (failure.kind === 'rate_limited') return t('account.profile.errorRateLimited')
+    return t('account.settings.errorSave')
 })
-const colorThemes = [
-    { value: 'ocean', label: 'Ocean', accent: '#4E7FA8' },
-    { value: 'mint', label: 'Mint', accent: '#3D8A62' },
-    { value: 'lavender', label: 'Lavender', accent: '#7059A6' },
-    { value: 'rose', label: 'Rose', accent: '#A8627A' },
-    { value: 'sunset', label: 'Sunset', accent: '#B8693C' },
-    { value: 'monochrome', label: 'Mono', accent: '#5E6B78' },
-]
+
+// feat-232: the profile form. Only the fields that differ from the saved profile are sent.
+const profileName = ref('')
+const profileLocale = ref('')
+const profileTimeZone = ref('')
+const timeZoneSearch = ref('')
+const profileFormDirty = ref(false)
+const isSavingProfile = ref(false)
+const profileMessage = ref('')
+const nameError = ref('')
+
+const localeOptions = SHIPPED_LOCALE_CODES.map((code) => ({
+    value: code,
+    label: resolveLanguageNativeName(code),
+}))
+const timeZones = allowedTimeZones()
+const filteredTimeZones = computed(() => {
+    const query = timeZoneSearch.value.trim().toLowerCase().replace(/ /g, '_')
+    const matches =
+        query === '' ? timeZones : timeZones.filter((zone) => zone.toLowerCase().includes(query))
+    const selected = profileTimeZone.value
+    // The chosen zone stays in the list, whatever the search shows.
+    return selected !== '' && !matches.includes(selected) ? [selected, ...matches] : matches
+})
+
+function syncProfileForm(): void {
+    const profile = userStore.profile
+    if (profile === null) return
+    profileName.value = profile.name
+    profileLocale.value = profile.preferences.locale ?? ''
+    profileTimeZone.value = profile.preferences.timeZone ?? ''
+    profileFormDirty.value = false
+}
+
+watch(
+    () => userStore.profile,
+    () => {
+        if (!profileFormDirty.value) syncProfileForm()
+    },
+    { immediate: true, deep: true },
+)
+
+function markProfileDirty(): void {
+    profileFormDirty.value = true
+    profileMessage.value = ''
+}
+
+async function saveProfile(): Promise<void> {
+    const confirmed = userStore.profile
+    if (confirmed === null || isSavingProfile.value) return
+    nameError.value = ''
+    profileMessage.value = ''
+
+    const name = profileName.value.trim()
+    if (name === '') {
+        nameError.value = t('account.profile.errorNameRequired')
+        return
+    }
+    const changes: ProfileChanges = {}
+    if (name !== confirmed.name) changes.name = name
+    const locale = profileLocale.value === '' ? null : profileLocale.value
+    if (locale !== confirmed.preferences.locale) {
+        changes.locale = locale as ProfileChanges['locale']
+    }
+    const timeZone = profileTimeZone.value === '' ? null : profileTimeZone.value
+    if (timeZone !== confirmed.preferences.timeZone) changes.timeZone = timeZone
+    if (Object.keys(changes).length === 0) {
+        profileFormDirty.value = false
+        profileMessage.value = t('account.profile.nothingToSave')
+        return
+    }
+
+    isSavingProfile.value = true
+    try {
+        const outcome = await profileSave.change(changes)
+        if (outcome.status === 'saved') {
+            syncProfileForm()
+            profileMessage.value = t('account.profile.saved')
+            return
+        }
+        if (outcome.status === 'dropped') return
+        if (outcome.kind === 'rate_limited') {
+            profileMessage.value = t('account.profile.errorRateLimited')
+        } else if (outcome.kind === 'validation' && changes.name !== undefined) {
+            const [first = outcome.message] = outcome.messages
+            nameError.value =
+                outcome.messages.find((message) => message.startsWith('name')) ?? first
+        } else {
+            profileMessage.value = outcome.message || t('account.profile.errorSave')
+        }
+    } finally {
+        isSavingProfile.value = false
+    }
+}
 
 const pushNotificationsEnabled = ref(pushStore.isSubscribedToPush)
 const isPushToggling = ref(false)
@@ -330,11 +453,6 @@ async function startEmailLink(): Promise<void> {
     }
 }
 
-function toggleDarkMode(): void {
-    darkMode.value = !darkMode.value
-    stateStore.setDarkMode(darkMode.value)
-}
-
 function showPushStatus(message: string): void {
     pushStatusMessage.value = message
     window.setTimeout(() => {
@@ -514,6 +632,73 @@ watch(
             </button>
         </section>
 
+        <section class="panel" data-testid="profile-form">
+            <h2>{{ t('account.profile.title') }}</h2>
+            <form class="profile-form" novalidate @submit.prevent="saveProfile">
+                <label class="field">
+                    <span>{{ t('account.profile.name') }}</span>
+                    <input
+                        v-model="profileName"
+                        name="profile-name"
+                        autocomplete="name"
+                        maxlength="100"
+                        :aria-invalid="nameError !== ''"
+                        aria-describedby="profile-name-error"
+                        @input="markProfileDirty"
+                    />
+                    <small
+                        v-if="nameError"
+                        id="profile-name-error"
+                        class="field-error"
+                        data-testid="profile-name-error"
+                        role="alert"
+                    >
+                        {{ nameError }}
+                    </small>
+                </label>
+                <label class="field">
+                    <span>{{ t('account.profile.language') }}</span>
+                    <select
+                        v-model="profileLocale"
+                        name="profile-locale"
+                        @change="markProfileDirty"
+                    >
+                        <option value="">{{ t('account.profile.asBrowser') }}</option>
+                        <option
+                            v-for="option in localeOptions"
+                            :key="option.value"
+                            :value="option.value"
+                        >
+                            {{ option.label }}
+                        </option>
+                    </select>
+                </label>
+                <label class="field">
+                    <span>{{ t('account.profile.timeZone') }}</span>
+                    <input
+                        v-model="timeZoneSearch"
+                        type="search"
+                        name="profile-time-zone-search"
+                        :placeholder="t('account.profile.timeZoneSearch')"
+                    />
+                    <select
+                        v-model="profileTimeZone"
+                        name="profile-time-zone"
+                        @change="markProfileDirty"
+                    >
+                        <option value="">{{ t('account.profile.asBrowser') }}</option>
+                        <option v-for="zone in filteredTimeZones" :key="zone" :value="zone">
+                            {{ zone === UTC_TIME_ZONE ? 'UTC' : zone.replace(/_/g, ' ') }}
+                        </option>
+                    </select>
+                </label>
+                <button class="primary-button" type="submit" :disabled="isSavingProfile">
+                    {{ t('account.profile.save') }}
+                </button>
+                <p v-if="profileMessage" class="form-message" role="status">{{ profileMessage }}</p>
+            </form>
+        </section>
+
         <section class="panel">
             <h2>{{ t('account.security.title') }}</h2>
             <div class="form-grid">
@@ -565,7 +750,7 @@ watch(
                     <span class="sign-in-method-date">
                         {{
                             t('account.signInMethods.linkedAt', {
-                                date: new Date(method.linkedAt).toLocaleDateString(),
+                                date: formatDate(method.linkedAt),
                             })
                         }}
                     </span>
@@ -665,28 +850,87 @@ watch(
             <p v-if="linkEmailMessage" class="form-message">{{ linkEmailMessage }}</p>
         </section>
 
-        <section class="panel">
+        <section class="panel" data-testid="preferences">
             <h2>{{ t('account.settings.title') }}</h2>
-            <label class="setting-row">
-                <span>{{ t('account.settings.darkMode') }}</span>
-                <input type="checkbox" :checked="darkMode" @change="toggleDarkMode" />
-            </label>
-            <label class="setting-row">
-                <span>{{ t('account.settings.fontSize') }}</span>
-                <input v-model.number="fontSize" type="range" min="14" max="20" step="1" />
-            </label>
+            <fieldset class="setting-group">
+                <legend>{{ t('account.settings.theme') }}</legend>
+                <label class="setting-choice">
+                    <input
+                        type="radio"
+                        name="theme"
+                        value="system"
+                        :checked="themeChoice === null"
+                        @change="preferences.setTheme(null)"
+                    />
+                    {{ t('account.settings.themeSystem') }}
+                </label>
+                <label class="setting-choice">
+                    <input
+                        type="radio"
+                        name="theme"
+                        value="light"
+                        :checked="themeChoice === 'light'"
+                        @change="preferences.setTheme('light')"
+                    />
+                    {{ t('account.settings.themeLight') }}
+                </label>
+                <label class="setting-choice">
+                    <input
+                        type="radio"
+                        name="theme"
+                        value="dark"
+                        :checked="themeChoice === 'dark'"
+                        @change="preferences.setTheme('dark')"
+                    />
+                    {{ t('account.settings.themeDark') }}
+                </label>
+            </fieldset>
+            <div class="setting-row">
+                <label for="font-size-range">{{ t('account.settings.fontSize') }}</label>
+                <input
+                    id="font-size-range"
+                    :value="fontSize"
+                    type="range"
+                    name="font-size"
+                    :min="FONT_SIZE_MIN"
+                    :max="FONT_SIZE_MAX"
+                    step="1"
+                    @input="onFontSizeInput"
+                />
+                <button
+                    class="secondary-button"
+                    type="button"
+                    data-testid="font-size-default"
+                    :disabled="fontSizeChoice === null"
+                    @click="preferences.setFontSize(null)"
+                >
+                    {{ t('account.settings.default') }}
+                </button>
+            </div>
             <div class="theme-grid">
                 <button
                     v-for="theme in colorThemes"
                     :key="theme.value"
                     type="button"
                     class="theme-button"
+                    :data-color-theme="theme.value"
+                    :aria-pressed="colorThemeChoice === theme.value"
                     :style="{ '--theme-color': theme.accent }"
-                    @click="stateStore.setColorTheme(theme.value)"
+                    @click="preferences.setColorTheme(theme.value)"
                 >
                     {{ theme.label }}
                 </button>
+                <button
+                    type="button"
+                    class="theme-button"
+                    data-testid="color-theme-default"
+                    :aria-pressed="colorThemeChoice === null"
+                    @click="preferences.setColorTheme(null)"
+                >
+                    {{ t('account.settings.default') }}
+                </button>
             </div>
+            <p v-if="settingsMessage" class="form-message" role="status">{{ settingsMessage }}</p>
         </section>
 
         <section class="panel">
@@ -858,6 +1102,55 @@ input {
     justify-content: space-between;
     gap: 12px;
     min-height: 44px;
+}
+
+.profile-form {
+    display: grid;
+    gap: 12px;
+    max-width: 480px;
+}
+
+.field {
+    display: grid;
+    gap: 6px;
+}
+
+.field select {
+    min-height: 40px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 0 10px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+.field-error {
+    color: var(--danger-color, #c0392b);
+}
+
+.setting-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    border: 0;
+    padding: 0;
+    margin: 0 0 12px;
+}
+
+.setting-choice {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.setting-choice input {
+    width: auto;
+    min-height: 0;
+}
+
+.theme-button[aria-pressed='true'] {
+    outline: 2px solid var(--theme-color, var(--accent-color));
+    outline-offset: 2px;
 }
 
 .theme-grid {

@@ -5,6 +5,9 @@ import en from '@/locales/en'
 import pl from '@/locales/pl'
 import uk from '@/locales/uk'
 
+// The dates of the details use the profile time zone of the state store (feat-232).
+vi.mock('@/stores/state', () => ({ useStateStore: () => ({ timeZone: null }) }))
+
 // feat-164 (review 2026-11-10): the three modals are dialogs for assistive technology and the
 // keyboard; an icon-only button has a name. The behaviour itself is in useModalDialog.spec.ts.
 

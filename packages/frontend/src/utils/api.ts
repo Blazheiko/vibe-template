@@ -58,8 +58,10 @@ import type {
     ResetPhoneCompleteInput,
     SupportKnowledgeBaseCreateInput,
     SupportKnowledgeBaseUpdateInput,
+    UpdateProfileInput,
 } from 'shared/schemas'
 import {
+    accountContracts,
     adminContracts,
     authContracts,
     avatarContracts,
@@ -165,6 +167,12 @@ export const authApi = {
         currentPassword?: string
     }): Promise<ApiResponse<UnlinkSignInMethodResponse>> =>
         callApi(authContracts.unlinkSignInMethod, { body }),
+}
+
+// feat-232: the profile of the signed-in user. Absent field unchanged, `null` resets.
+export const accountApi = {
+    getProfile: () => callApi(accountContracts.getProfile),
+    updateProfile: (body: UpdateProfileInput) => callApi(accountContracts.updateProfile, { body }),
 }
 
 export const mainApi = {

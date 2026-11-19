@@ -18,6 +18,37 @@ const { currentUser, resendOAuthEmailLinkMock, signInMethodsMock, unlinkSignInMe
         }
     })
 
+// feat-232: the profile and its save queue. The queue itself is tested in useProfileSave.spec.ts;
+// here it only records what the page asks it to send.
+const profileState = vi.hoisted(() => ({
+    profile: {
+        value: {
+            name: 'Jane',
+            preferences: {
+                locale: null,
+                timeZone: null,
+                theme: 'dark',
+                colorTheme: null,
+                fontSize: null,
+            },
+            revision: '3',
+        },
+    },
+    change: vi.fn(),
+}))
+vi.mock('@/composables/useProfileSave', async () => {
+    const { computed, ref } = await import('vue')
+    return {
+        useProfileSave: () => ({
+            change: profileState.change,
+            ownerId: () => '1',
+            shown: computed(() => profileState.profile.value),
+            lastFailure: ref(null),
+            saving: ref(false),
+        }),
+    }
+})
+
 vi.mock('@/utils/api', () => ({
     avatarApi: { upload: vi.fn(), delete: vi.fn() },
     authApi: {
@@ -37,16 +68,19 @@ vi.mock('@/stores/user', () => ({
         get user() {
             return currentUser.value
         },
+        get profile() {
+            return profileState.profile.value
+        },
         setUser: vi.fn(),
     }),
 }))
 vi.mock('@/stores/state', () => ({
     useStateStore: () => ({
-        darkMode: false,
+        darkMode: true,
+        theme: 'dark',
         fontSize: 16,
-        setFontSize: vi.fn(),
-        setColorTheme: vi.fn(),
-        setDarkMode: vi.fn(),
+        timeZone: null,
+        setDevicePreference: vi.fn(),
     }),
 }))
 vi.mock('@/stores/push', () => ({
@@ -303,9 +337,14 @@ describe('UserAccount password change and the WebSocket', () => {
         await inputs[0]?.setValue('old-secret-123')
         await inputs[1]?.setValue(NEW_PASSWORD)
         await inputs[2]?.setValue(NEW_PASSWORD)
+        // The first primary button of the security panel (the profile form has its own).
         const button = wrapper
             .findAll('button')
-            .find((candidate) => candidate.attributes('class')?.includes('primary-button'))
+            .find(
+                (candidate) =>
+                    candidate.attributes('class')?.includes('primary-button') &&
+                    candidate.attributes('type') !== 'submit',
+            )
         await button?.trigger('click')
         await flushPromises()
     }
@@ -381,5 +420,149 @@ describe('UserAccount password change and the WebSocket', () => {
 
         expect(ws.calls).toEqual(['suspendReconnect', 'request', 'resumeReconnect'])
         expect(ws.websocketOpen).not.toHaveBeenCalled()
+    })
+})
+
+// feat-232 T13: the profile form sends only what changed; the settings save through the queue.
+describe('UserAccount profile form and settings', () => {
+    beforeEach(() => {
+        currentUser.value = { id: '1', name: 'Jane', email: 'jane@example.com' }
+        profileState.change.mockReset()
+        profileState.change.mockResolvedValue({
+            status: 'saved',
+            profile: profileState.profile.value,
+        })
+    })
+
+    it('shows the saved name, the browser language and the browser zone', () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        expect((form.find('input[name="profile-name"]').element as HTMLInputElement).value).toBe(
+            'Jane',
+        )
+        expect(
+            (form.find('select[name="profile-locale"]').element as HTMLSelectElement).value,
+        ).toBe('')
+        expect(
+            (form.find('select[name="profile-time-zone"]').element as HTMLSelectElement).value,
+        ).toBe('')
+    })
+
+    it('sends only the changed fields', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('select[name="profile-locale"]').setValue('uk')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).toHaveBeenCalledExactlyOnceWith({ locale: 'uk' })
+    })
+
+    it('sends a trimmed new name and a chosen zone, and UTC is on the list', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+        const zones = form.findAll('select[name="profile-time-zone"] option')
+        expect(zones.map((option) => option.attributes('value'))).toContain('UTC')
+
+        await form.find('input[name="profile-name"]').setValue('  Ann  ')
+        await form.find('select[name="profile-time-zone"]').setValue('UTC')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).toHaveBeenCalledWith({ name: 'Ann', timeZone: 'UTC' })
+    })
+
+    it('narrows the zones to the search', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('input[name="profile-time-zone-search"]').setValue('new york')
+
+        const values = form
+            .findAll('select[name="profile-time-zone"] option')
+            .map((option) => option.attributes('value'))
+        expect(values).toEqual(['', 'America/New_York'])
+    })
+
+    it('an empty name is refused before any request', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('input[name="profile-name"]').setValue('   ')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).not.toHaveBeenCalled()
+        expect(form.find('[data-testid="profile-name-error"]').text()).toBe('Enter a name')
+    })
+
+    it('shows the server validation error next to the name field', async () => {
+        profileState.change.mockResolvedValue({
+            status: 'failed',
+            kind: 'validation',
+            message: 'Validation failed',
+            messages: ['name must be free of control characters and line breaks'],
+            reason: undefined,
+        })
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('input[name="profile-name"]').setValue('Bad name')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(form.find('[data-testid="profile-name-error"]').text()).toBe(
+            'name must be free of control characters and line breaks',
+        )
+    })
+
+    it('a rate limit has its own message', async () => {
+        profileState.change.mockResolvedValue({
+            status: 'failed',
+            kind: 'rate_limited',
+            message: 'Too many profile changes.',
+            messages: [],
+            reason: undefined,
+        })
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('select[name="profile-locale"]').setValue('pl')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(form.text()).toContain('Too many changes. Try again in a few minutes.')
+    })
+
+    it('"Same as the system" sends theme: null; a color and its default go through the queue', async () => {
+        const wrapper = mountAccount()
+        const panel = wrapper.find('[data-testid="preferences"]')
+
+        await panel.find('input[name="theme"][value="system"]').setValue(true)
+        await panel.find('[data-color-theme="mint"]').trigger('click')
+        await panel.find('[data-testid="color-theme-default"]').trigger('click')
+
+        expect(profileState.change.mock.calls.map((call) => call[0])).toEqual([
+            { theme: null },
+            { colorTheme: 'mint' },
+            { colorTheme: null },
+        ])
+    })
+
+    it('the font size slider waits for the final value', async () => {
+        const wrapper = mountAccount()
+        const panel = wrapper.find('[data-testid="preferences"]')
+
+        await panel.find('input[name="font-size"]').setValue('18')
+
+        expect(profileState.change).toHaveBeenCalledWith(
+            { fontSize: 18 },
+            { delayMs: expect.any(Number) as number },
+        )
+        const delay = (profileState.change.mock.calls[0][1] as { delayMs: number }).delayMs
+        expect(delay).toBeGreaterThanOrEqual(500)
+        expect(delay).toBeLessThanOrEqual(800)
     })
 })
