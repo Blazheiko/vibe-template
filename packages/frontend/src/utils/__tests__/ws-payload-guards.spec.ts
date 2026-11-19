@@ -40,6 +40,7 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     admin_user_online_upsert: upsert,
     admin_user_online_remove: { id: '42' },
     user_profile_updated: profile,
+    user_sessions_changed: {},
 }
 
 // Event-specific edge cases on top of the generic ones below.
@@ -104,6 +105,7 @@ const specific: Record<BroadcastEventName, [string, unknown][]> = {
         ['missing preference', { ...profile, preferences: { locale: 'uk' } }],
         ['preferences null', { ...profile, preferences: null }],
     ],
+    user_sessions_changed: [['any data', { sessions: [] }]],
 }
 
 const cases = BROADCAST_EVENT_NAMES.flatMap((event) => {

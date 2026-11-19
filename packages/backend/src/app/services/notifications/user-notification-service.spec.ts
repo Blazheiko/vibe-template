@@ -16,20 +16,18 @@ afterEach(() => {
 })
 
 describe('userNotificationService', () => {
-    it.each([
-        'sign_in_method_added',
-        'password_changed',
-        'password_reset',
-        'logout_all',
-    ] as const)('security %s: system push to every device', (event) => {
-        sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
-        userNotificationService.security(7n, event)
-        expect(sendToUser).toHaveBeenCalledWith(
-            7n,
-            expect.objectContaining({ title: expect.any(String), url: '/account' }),
-            { notificationType: 'system' },
-        )
-    })
+    it.each(['sign_in_method_added', 'password_changed', 'password_reset', 'logout_all'] as const)(
+        'security %s: system push to every device',
+        (event) => {
+            sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
+            userNotificationService.security(7n, event)
+            expect(sendToUser).toHaveBeenCalledWith(
+                7n,
+                expect.objectContaining({ title: expect.any(String), url: '/account' }),
+                { notificationType: 'system' },
+            )
+        },
+    )
 
     it('support reply: mention push, skipped while the user is online', () => {
         sendToUser.mockResolvedValue({ sent: 0, failed: 0 })
@@ -55,7 +53,9 @@ describe('userNotificationService', () => {
 
     it('security details replace the text of the event, the rest stays', () => {
         sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
-        userNotificationService.security(7n, 'new_sign_in', { body: 'Signed in from Chrome on macOS.' })
+        userNotificationService.security(7n, 'new_sign_in', {
+            body: 'Signed in from Chrome on macOS.',
+        })
         expect(sendToUser).toHaveBeenCalledWith(
             7n,
             {

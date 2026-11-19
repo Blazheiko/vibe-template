@@ -123,7 +123,8 @@ export const authApi = {
         callApi(authContracts.logoutAll, { body: {} }, { sessionAfter: 'anonymous' }),
 
     changePassword: (body: ChangePasswordInput): Promise<ApiResponse<ChangePasswordResponse>> =>
-        callApi(authContracts.changePassword, { body }),
+        // feat-233: it renews this session; a 401 of a request sent from the old one is stale.
+        callApi(authContracts.changePassword, { body }, { renewsSession: true }),
 
     forgotPassword: (body: ForgotPasswordInput): Promise<ApiResponse<ForgotPasswordResponse>> =>
         callApi(authContracts.forgotPassword, { body }, { csrfRecovery: 'public' }),
@@ -173,6 +174,12 @@ export const authApi = {
 export const accountApi = {
     getProfile: () => callApi(accountContracts.getProfile),
     updateProfile: (body: UpdateProfileInput) => callApi(accountContracts.updateProfile, { body }),
+    // feat-233: the active sessions of the account.
+    listSessions: (cursor?: string) =>
+        callApi(accountContracts.listSessions, cursor === undefined ? {} : { query: { cursor } }),
+    revokeSession: (id: string) => callApi(accountContracts.revokeSession, { params: { id } }),
+    revokeOtherSessions: () =>
+        callApi(accountContracts.revokeOtherSessions, { body: {} }, { renewsSession: true }),
 }
 
 export const mainApi = {

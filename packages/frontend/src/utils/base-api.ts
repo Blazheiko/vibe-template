@@ -35,6 +35,12 @@ export interface HttpOptions {
      * `anonymous` for logout and logout-all.
      */
     sessionAfter?: 'anonymous'
+    /**
+     * feat-233 (Р9): the request renews the session it was sent from (password change, "end all
+     * other sessions"). A 401 of another request sent from the session it replaces is stale, not a
+     * lost session: see `isStaleUnauthorized`.
+     */
+    renewsSession?: boolean
 }
 
 interface ApiMethods {
@@ -113,6 +119,51 @@ export const setReloadHandler = (handler: () => void): void => {
 const onAccountChanged = (): void => {
     enterReloading()
     reloadPage()
+}
+
+// --- session renewal (feat-233, Р9) -------------------------------------------------------
+//
+// A renewal deletes the session it was sent from and issues a new one. Another request sent from
+// the old session meanwhile (a double click, a page that loads its data) gets a 401: its session
+// really is gone, but the user is not signed out. Such a 401 is stale when the CSRF token it was
+// sent with is one a renewal replaced; it then reaches its caller as `session_renewed` instead of
+// signing the user out, and a safe GET is sent once more with the new session. A 401 that arrives
+// while a renewal is in flight waits for it, so the order of the answers does not matter. When the
+// renewal fails (sessionRenewed: false, a network error, its own 401) no token is replaced, and the
+// waiting 401s sign the user out as usual.
+
+let renewalsInFlight = 0
+let renewalSettled: Promise<void> = Promise.resolve()
+let settleRenewal: (() => void) | null = null
+/** CSRF tokens of sessions a renewal replaced in this page. */
+const renewedFrom = new Set<string>()
+
+const beginRenewal = (): (() => void) => {
+    if (renewalsInFlight === 0) {
+        renewalSettled = new Promise((resolve) => {
+            settleRenewal = resolve
+        })
+    }
+    renewalsInFlight += 1
+    let ended = false
+    return () => {
+        if (ended) return
+        ended = true
+        renewalsInFlight -= 1
+        if (renewalsInFlight === 0) {
+            settleRenewal?.()
+            settleRenewal = null
+        }
+    }
+}
+
+const isStaleUnauthorized = async (
+    sentToken: string | null,
+    options: HttpOptions,
+): Promise<boolean> => {
+    // A renewal's own 401 never waits for itself.
+    if (options.renewsSession !== true && renewalsInFlight > 0) await renewalSettled
+    return sentToken !== null && renewedFrom.has(sentToken)
 }
 
 type RefreshResult = { ok: true; token: string; userId: string | null } | { ok: false }
@@ -264,7 +315,7 @@ const localError = (clientCode: CsrfClientCode): HttpApiError => ({
 })
 
 type SendResult<T> =
-    | { response: ApiResponse<T>; tokenMismatch: false }
+    | { response: ApiResponse<T>; tokenMismatch: false; staleUnauthorized?: boolean }
     | { response: { data: T | null; error: HttpApiError }; tokenMismatch: true }
 
 const send = async <T>(
@@ -281,6 +332,8 @@ const send = async <T>(
     }
     // Owner of the token sent: a 2xx proves the session is still theirs.
     const sentFor = token !== null && token === getCsrfToken() ? getConfirmedUserId() : undefined
+    // The session this request goes out from, whatever its method (feat-233).
+    const sentToken = getCsrfToken()
 
     try {
         const response = await fetch(`${BASE_URL}${route}`, buildInit(headers))
@@ -296,6 +349,15 @@ const send = async <T>(
                 confirmCsrfToken(csrfToken, readUserId(responseData))
             }
         } else if (!failed) {
+            const renewedToken = normalizeCsrfToken(csrfToken)
+            if (
+                options.renewsSession === true &&
+                sentToken !== null &&
+                renewedToken !== null &&
+                renewedToken !== sentToken
+            ) {
+                renewedFrom.add(sentToken)
+            }
             const userId = readUserId(responseData)
             if (userId !== null) {
                 confirmCsrfToken(csrfToken, userId)
@@ -328,16 +390,7 @@ const send = async <T>(
                 isRecord(responseData) &&
                 responseData.reason === CsrfRejectReason.TokenMismatch
 
-            // A 401 of a request that runs without a session of its own (sign-in, registration,
-            // a mailed link) is the answer for the form that sent it, not a lost session.
-            if (
-                options.csrfRecovery !== 'public' &&
-                isUnauthorizedError(responseData, normalizedError.transportCode)
-            ) {
-                eventBus.emit('unauthorized')
-            }
-
-            const failure = {
+            const failure: { data: T; error: HttpApiError } = {
                 data: responseData as T,
                 error: {
                     code: normalizedError.code,
@@ -345,6 +398,20 @@ const send = async <T>(
                     message: normalizedError.message,
                 },
             }
+
+            // A 401 of a request that runs without a session of its own (sign-in, registration,
+            // a mailed link) is the answer for the form that sent it, not a lost session.
+            if (
+                options.csrfRecovery !== 'public' &&
+                isUnauthorizedError(responseData, normalizedError.transportCode)
+            ) {
+                if (await isStaleUnauthorized(sentToken, options)) {
+                    failure.error.clientCode = 'session_renewed'
+                    return { response: failure, tokenMismatch: false, staleUnauthorized: true }
+                }
+                eventBus.emit('unauthorized')
+            }
+
             return tokenMismatch
                 ? { response: failure, tokenMismatch: true }
                 : { response: failure, tokenMismatch: false }
@@ -379,7 +446,26 @@ const request = async <T>(
     options: HttpOptions,
     networkMessage: string,
 ): Promise<ApiResponse<T>> => {
+    const endRenewal = options.renewsSession === true ? beginRenewal() : null
+    try {
+        return await requestOnce<T>(method, route, buildInit, options, networkMessage)
+    } finally {
+        endRenewal?.()
+    }
+}
+
+const requestOnce = async <T>(
+    method: HttpMethod,
+    route: string,
+    buildInit: (headers: Record<string, string>) => RequestInit,
+    options: HttpOptions,
+    networkMessage: string,
+): Promise<ApiResponse<T>> => {
     if (!isUnsafeMethod(method)) {
+        const first = await send<T>(method, route, buildInit, null, options, networkMessage)
+        // feat-233: a read sent from a session a renewal replaced is sent once more, now from the
+        // renewed session. A change is not repeated: its caller says "try again".
+        if (first.tokenMismatch || first.staleUnauthorized !== true) return first.response
         return (await send<T>(method, route, buildInit, null, options, networkMessage)).response
     }
 

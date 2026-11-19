@@ -7,8 +7,11 @@ import type { ErrorCode } from 'shared/errors'
  *   in); the action was dropped and the page reloads.
  * - `session_unverified`: the session could not be checked (network, 5xx); the
  *   action was not sent.
+ * - `session_renewed` (feat-233): the request went out from a session that a renewal (password
+ *   change, "end all other sessions") replaced meanwhile; the user is still signed in and the
+ *   action can be tried again.
  */
-export type CsrfClientCode = 'account_changed' | 'session_unverified'
+export type CsrfClientCode = 'account_changed' | 'session_unverified' | 'session_renewed'
 
 /**
  * `code` is what the server answered; it is absent when the request was not sent at

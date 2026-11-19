@@ -4,9 +4,8 @@ vi.hoisted(() => {
     process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
 })
 
-const { decodeSessionCursor, encodeSessionCursor, isAfter } = await import(
-    './session-page-cursor.js'
-)
+const { decodeSessionCursor, encodeSessionCursor, isAfter } =
+    await import('./session-page-cursor.js')
 const { sessionPublicId, isSessionPublicId } = await import('./session-public-id.js')
 
 const ID = 'AbCdEfGhIjKlMnOpQrSt_-'
@@ -15,7 +14,10 @@ describe('session page cursor (feat-233, Р7)', () => {
     it('round-trips a position as opaque base64url', () => {
         const cursor = encodeSessionCursor({ createdAtMs: 1_763_500_000_123, publicId: ID })
         expect(cursor).toMatch(/^[\w-]+$/)
-        expect(decodeSessionCursor(cursor)).toEqual({ createdAtMs: 1_763_500_000_123, publicId: ID })
+        expect(decodeSessionCursor(cursor)).toEqual({
+            createdAtMs: 1_763_500_000_123,
+            publicId: ID,
+        })
     })
 
     it.each([

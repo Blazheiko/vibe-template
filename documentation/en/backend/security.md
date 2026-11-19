@@ -72,6 +72,7 @@ All shared limits are described in the [`config/throttle-policies.ts`](https://g
 | `linkEmailUser`               | email linking, OAuth-linking emails and first-address emails                                                                                         | user          | fixed-window | 1 h / 3                                | `AUTH_EMAIL_LINK_MAX_ATTEMPTS_PER_USER_PER_HOUR`              | reject                                     | —             |
 | `linkEmailUserCooldown`       | pause between linking emails                                                                                                                         | user          | fixed-window | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS` / 1 | `AUTH_EMAIL_LINK_COOLDOWN_SECONDS`                            | reject                                     | —             |
 | `accountProfileUser`          | profile change, `PATCH /account/profile` (feat-232), every session of the user together                                                              | user          | fixed-window | 10 min / 30                            | `AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN`                | reject                                     | —             |
+| `newSignInMailUser`           | mails about a new sign-in (feat-233); the push is not limited                                                                                        | user          | fixed-window | 1 h / 5                                | `AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`                    | reject (no mail)                           | —             |
 | `supportOpenChatUser`         | opening the support chat (AI greeting)                                                                                                               | user          | fixed-window | 60 s / 5                               | `SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_*`                         | reject                                     | —             |
 | `supportChatUser`             | support chat message (feat-063)                                                                                                                      | user          | fixed-window | 60 s / 20                              | `SUPPORT_CHAT_USER_RATE_LIMIT_*`                              | reject                                     | —             |
 | `wsUpgradeShared`             | WS upgrade, level 2                                                                                                                                  | IP            | sliding-log  | 60 s / 60                              | `WS_UPGRADE_SHARED_RATE_LIMIT_*`                              | pass through, level 1 applies              | —             |
@@ -242,6 +243,31 @@ An attacker can create an account with the victim's address in advance (with a p
 | Password reset by email                     | anyone with access to the mailbox                           | on an unverified account this is a claim                                             |
 
 The claim runs in one transaction under a lock on the user row: the password and phone are cleared, OAuth links and push subscriptions are deleted, pending tokens and SMS challenges are invalidated, and `session_token` is rotated. Requests admitted before the claim cannot bring access back: a login through an existing link checks it under the same lock, and credential changes from a session verify the presented token ([Authentication](/en/backend/auth#credential-changes-from-a-session)). Details — [OAuth](/en/backend/oauth#linking-by-email).
+
+## New sign-in notice
+
+A new sign-in is announced (feat-233, [`new-sign-in-notice.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/new-sign-in-notice.ts)) by the push `new_sign_in` that names the device ("Signed in from Chrome on macOS") and, under the rules below, by a mail with the time in the user's time zone (or UTC), the browser, the system, the IP, the method, a "Review sessions" button to `/account#sessions` and "Not you? End that session and change your password". Both are sent without waiting: a failure is only logged. The caller of `auth.login` decides, not `login` itself:
+
+| Sign-in                                             | Notice                                                          |
+| --------------------------------------------------- | --------------------------------------------------------------- |
+| password, email or phone (`authService.login`)      | push with the device + mail under the rules                     |
+| a linked OAuth provider                             | push with the device + mail under the rules                     |
+| email or phone registration                         | none                                                            |
+| OAuth registration                                  | none: nobody else could have signed in to a new account         |
+| link by a matching address without a claim          | none: `sign_in_method_added` (push and mail) says more          |
+| link with a claim                                   | `account_claimed` + push `new_sign_in` with the device, no mail |
+| confirmation of a mailed link                       | none: `sign_in_method_added` or `account_claimed`               |
+| renewal (password change, "end all other sessions") | none                                                            |
+
+A claim mails nothing more: it has just removed every earlier session, and the one who signed in proved the address through the provider.
+
+**The mail rules.**
+
+1. The address is confirmed (`users.email_verified_at IS NOT NULL`); otherwise only the push: an unconfirmed address may be somebody else's.
+2. The device is not "familiar": no other live session of the user (one page of the list, the new one excluded) has the same browser, system and IP. **This is a heuristic to send fewer mails, not proof of identity**: a device of the same kind behind the same NAT passes too. An unknown browser or system is never familiar.
+3. `newSignInMailUser`: at most 5 mails an hour per user (`AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`), so repeated sign-ins do not turn into a mail flood. The push is not limited.
+
+The IP is right only with a correct `TRUST_PROXY` ([Trust proxy](#trust-proxy-and-ip-detection)).
 
 ## Trust proxy and IP detection
 

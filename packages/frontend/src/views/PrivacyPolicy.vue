@@ -6,6 +6,11 @@
                 We process account, authentication, support chat, and service metadata needed to
                 operate retained features.
             </p>
+            <p>
+                Each signed-in session keeps the IP address and the browser User-Agent it signed in
+                from, and when it was last active. They are shown to you on the account page and
+                deleted with the session, when it ends or expires.
+            </p>
         </section>
     </main>
 </template>
@@ -29,7 +34,7 @@ h1 {
 }
 
 p {
-    margin: 0;
+    margin: 0 0 12px;
     color: var(--text-secondary);
 }
 </style>

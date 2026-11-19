@@ -463,7 +463,7 @@ describe('authService', () => {
         validatePasswordMock.mockResolvedValue(true)
         const device = { publicId: 'p'.repeat(22), ip: '127.0.0.1', userAgent: 'UA' }
         authMock.login.mockImplementation(() => {
-            sessionMock.sessionInfo = { id: 'new-session', data: { device } as any }
+            sessionMock.sessionInfo = { id: 'new-session', data: { device } }
             return Promise.resolve(device)
         })
 

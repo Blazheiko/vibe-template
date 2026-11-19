@@ -506,7 +506,11 @@ describe('oauthService.handleCallback', () => {
             expect(order(userRepositoryMock.lockById)).toBeLessThan(
                 order(oauthAccountRepositoryMock.findLinkForUser),
             )
-            expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '7',
+                'session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(notifyNewSignInMock).toHaveBeenCalledWith(7n, DEVICE, { mail: true })
             // The provider tokens are used once, to read the profile, and are not kept.
             expect(oauthAccountRepositoryMock).not.toHaveProperty('updateTokens')
@@ -522,7 +526,11 @@ describe('oauthService.handleCallback', () => {
             const result = await callback('google')
 
             expect(Result.isOk(result)).toBe(true)
-            expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '7',
+                'session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
         })
 
@@ -595,7 +603,11 @@ describe('oauthService.handleCallback', () => {
             expect(order(userRepositoryMock.lockById)).toBeLessThan(order(claimLockedMock))
             expect(order(claimLockedMock)).toBeLessThan(order(oauthAccountRepositoryMock.create))
             expect(destroySessionsQuietlyMock).not.toHaveBeenCalled()
-            expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '5',
+                'existing-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             // feat-198: announced as a new sign-in method, not as an ordinary sign-in.
             expect(securityMock).toHaveBeenCalledTimes(1)
             expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
@@ -640,7 +652,11 @@ describe('oauthService.handleCallback', () => {
                 expect.objectContaining({ userId: 5n, provider: 'google' }),
                 TX,
             )
-            expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '5',
+                'existing-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
         })
 
         it('claims an unverified account: old sessions go, the new token signs in', async () => {
@@ -663,7 +679,11 @@ describe('oauthService.handleCallback', () => {
             expect(securityMock).toHaveBeenCalledWith(5n, 'account_claimed')
             // feat-233 (Р11): a claim pushes the new sign-in but mails nothing more.
             expect(notifyNewSignInMock.mock.calls[0]?.[2]).toEqual({ mail: false })
-            expect(authMock.login).toHaveBeenCalledWith('5', 'rotated-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '5',
+                'rotated-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(order(destroySessionsQuietlyMock)).toBeLessThan(order(authMock.login))
         })
 
@@ -1085,7 +1105,11 @@ describe('oauthService.handleCallback', () => {
                 },
                 TX,
             )
-            expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '8',
+                'new-session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             // feat-233 (Р11): a registration through OAuth announces no sign-in.
             expect(notifyNewSignInMock).not.toHaveBeenCalled()
             expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
@@ -1122,7 +1146,11 @@ describe('oauthService.handleCallback', () => {
                 },
                 TX,
             )
-            expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '8',
+                'new-session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(sendLinkVerificationEmailMock).toHaveBeenCalledWith(
                 8n,
                 'user@example.com',
@@ -1159,7 +1187,11 @@ describe('oauthService.handleCallback', () => {
                 redirectUrl: 'https://app.example.com/oauth/success',
             })
             expect(userRepositoryMock.create).toHaveBeenCalledTimes(1)
-            expect(authMock.login).toHaveBeenCalledExactlyOnceWith('7', 'winner-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledExactlyOnceWith(
+                '7',
+                'winner-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
         })
 
@@ -1195,7 +1227,11 @@ describe('oauthService.handleCallback', () => {
             expect(Result.isOk(result) && result.value).toEqual({
                 redirectUrl: 'https://app.example.com/oauth/success',
             })
-            expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '8',
+                'new-session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(sendLinkVerificationEmailMock).not.toHaveBeenCalled()
         })
 
@@ -1240,7 +1276,11 @@ describe('oauthService.handleCallback', () => {
             const result = await callback('github')
 
             expect(Result.isOk(result)).toBe(true)
-            expect(authMock.login).toHaveBeenCalledWith('8', 'new-session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '8',
+                'new-session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
             expect(loggerMock.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: '8' }),
                 'first email link not sent',
@@ -1379,7 +1419,11 @@ describe('oauthService.handleCallback', () => {
 
             expect(Result.isOk(result)).toBe(true)
             expect(oauthAccountRepositoryMock.create).not.toHaveBeenCalled()
-            expect(authMock.login).toHaveBeenCalledWith('7', 'session-token', expect.objectContaining({ method: 'oauth' }))
+            expect(authMock.login).toHaveBeenCalledWith(
+                '7',
+                'session-token',
+                expect.objectContaining({ method: 'oauth' }),
+            )
         })
     })
 
@@ -1522,7 +1566,11 @@ describe('oauthService.confirmLink', () => {
         )
         expect(order(claimLockedMock)).toBeLessThan(order(oauthAccountRepositoryMock.create))
         expect(destroySessionsQuietlyMock).not.toHaveBeenCalled()
-        expect(authMock.login).toHaveBeenCalledWith('5', 'existing-token', expect.objectContaining({ method: 'oauth' }))
+        expect(authMock.login).toHaveBeenCalledWith(
+            '5',
+            'existing-token',
+            expect.objectContaining({ method: 'oauth' }),
+        )
         // feat-198 (M-2): this used to be announced as an ordinary "new sign-in", by push only.
         expect(securityMock).toHaveBeenCalledTimes(1)
         expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
@@ -1590,7 +1638,11 @@ describe('oauthService.confirmLink', () => {
             TX,
         )
         expect(destroySessionsQuietlyMock).toHaveBeenCalledWith('existing-token', 5n)
-        expect(authMock.login).toHaveBeenCalledWith('5', 'rotated-token', expect.objectContaining({ method: 'oauth' }))
+        expect(authMock.login).toHaveBeenCalledWith(
+            '5',
+            'rotated-token',
+            expect.objectContaining({ method: 'oauth' }),
+        )
         expect(order(destroySessionsQuietlyMock)).toBeLessThan(order(authMock.login))
         expect(securityMock).toHaveBeenCalledTimes(1)
         expect(securityMock).toHaveBeenCalledWith(5n, 'account_claimed')

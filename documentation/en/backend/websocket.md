@@ -290,10 +290,12 @@ Presence is published only if the `admin` channel has subscribers (`adminWsChann
 
 `broadcastMessageToUser` reaches only the connections of its own process. An event every connection of a user must get, wherever it is held, goes through the user event bus ([user-event-bus.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/communication/user-event-bus.ts), feat-232): `userEventBus.publishToUser(userId, event, payload)` first delivers the event to the connections of its own process through `broadcastMessageToUser` (which checks the payload as above), whatever Redis does, then publishes `{ v: 1, origin, userId, event, payload }` on the Redis channel `<REDIS_PREFIX>user-events`. Every instance subscribes to it at startup (a connection of its own, which waits for Redis and subscribes again after a reconnect) and hands the events of the other instances to its local `broadcastMessageToUser`; its own echo carries its `origin` (a random id per process) and is skipped. So a connection of the publishing instance gets the event exactly once, also while SUBSCRIBE is still pending. The channel carries the key prefix because pub/sub ignores `keyPrefix`: deployments or test runs sharing a Redis with different prefixes do not see each other's events.
 
-- Only the events listed in `BUS_EVENTS` go on the bus (now `user_profile_updated`); a message of another event, another version or a malformed one is dropped and logged.
+- Only the events listed in `BUS_EVENTS` go on the bus (now `user_profile_updated` and `user_sessions_changed`); a message of another event, another version or a malformed one is dropped and logged.
 - When the publish fails (Redis down) or the bus is not started (a script, a test), the event reaches the connections of this process only.
 - Delivery to other instances is best effort and not replayed: a client reads the state it shows after `service:connection_ready` of every connection, the first one included (the account profile: `GET /account/profile`).
 - The subscription is stopped first in the graceful shutdown, before the scheduler and the server.
+
+`user_sessions_changed` (feat-233, no data) says the user's session list changed: a sign-in, a logout, a renewal, an ended session, "end all other sessions", and the first socket of a session opened or its last one closed (the coordinator watches the 0 ↔ 1 transitions per session id in the registry). The account page reads the first page of `GET /account/sessions` again on it and on every `service:connection_ready` ([Account → Live updates](/en/backend/account#live-updates)). Changes of `lastSeenAt` send none.
 
 ## Heartbeat, timeouts, client
 

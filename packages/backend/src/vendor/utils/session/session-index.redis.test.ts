@@ -139,7 +139,7 @@ const ordered = (sessions: readonly Created[]): string[] =>
         .map((s) => s.publicId)
 
 const indexState = async (token = TOKEN) => ({
-    members: (await admin.zrange(indexKey(token), 0, -1)).sort(),
+    members: (await admin.zrange(indexKey(token), '0', '-1')).sort(),
     fields: (await admin.hkeys(metaKey(token))).sort(),
 })
 
@@ -195,9 +195,9 @@ describe.skipIf(!hasRedis)('session record, index and meta change together (feat
         await createMany(3, 'rot')
         await storage.destroyAllSessions(TOKEN)
         expect(await admin.exists(indexKey(), metaKey())).toBe(0)
-        expect((await storage.listSessions('rotatedToken00000001', { after: null })).sessions).toEqual(
-            [],
-        )
+        expect(
+            (await storage.listSessions('rotatedToken00000001', { after: null })).sessions,
+        ).toEqual([])
     })
 
     it('a sign-in drops members older than SESSION_MAX_AGE_DAYS from the index and the meta', async () => {
