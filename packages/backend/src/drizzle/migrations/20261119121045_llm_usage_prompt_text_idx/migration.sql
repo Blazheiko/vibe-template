@@ -1,0 +1,1 @@
+CREATE INDEX "llm_text_usage_prompt_text_created_at_idx" ON "llm_text_usage" ("created_at") WHERE "final_prompt" <> '';

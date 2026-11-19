@@ -4,6 +4,7 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
+import { bothReadBeforeEitherWrites } from '../../../../test-support/race-barrier.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -16,6 +17,7 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
     const { db, pool } = await import('#database/db.js')
     const { llmTextUsage } = await import('#database/schema.js')
     const { llmUsageRepository } = await import('#app/repositories/index.js')
+    const { promptPurgeBatch } = await import('#app/repositories/ai/usage/llm-usage-repository.js')
 
     const DAY = 86_400_000
     const model = `retention-test-${String(Date.now())}`
@@ -51,6 +53,20 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
         const [row] = await db.select().from(llmTextUsage).where(eq(llmTextUsage.id, id))
         if (row === undefined) throw new Error('row missing')
         return row
+    }
+
+    const insertAt = async (finalPrompt: string, createdAt: Date): Promise<bigint> => {
+        const id = await insert(finalPrompt, 0)
+        await db.update(llmTextUsage).set({ createdAt }).where(eq(llmTextUsage.id, id))
+        return id
+    }
+    /** Rows of the whole table that still hold text: a purge without a cut-off reaches them all. */
+    const countWithText = async (): Promise<number> => {
+        const [row] = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(llmTextUsage)
+            .where(sql`${llmTextUsage.finalPrompt} <> ''`)
+        return row?.count ?? 0
     }
 
     beforeEach(async () => {
@@ -91,7 +107,7 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
         it('purges in batches until nothing matches, and counts every row', async () => {
             const ids: bigint[] = []
             for (let i = 0; i < 7; i += 1) ids.push(await insert(`batched prompt ${String(i)}`, 40))
-            const update = vi.spyOn(db, 'update')
+            const execute = vi.spyOn(db, 'execute')
 
             const result = await llmUsageRepository.purgePromptText({
                 olderThan: new Date(Date.now() - 30 * DAY),
@@ -100,10 +116,11 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
             })
 
             expect(result.matched).toBeGreaterThanOrEqual(7)
+            expect(result.changed).toBe(result.matched)
             // At least 3 + 3 + 1: one statement per batch, none over the whole table.
-            expect(update.mock.calls.length).toBeGreaterThanOrEqual(3)
+            expect(execute.mock.calls.length).toBeGreaterThanOrEqual(3)
             for (const id of ids) expect((await rowOf(id)).finalPrompt).toBe('')
-            update.mockRestore()
+            execute.mockRestore()
         })
 
         it('blanks the text older than the cut-off and leaves the recent text', async () => {
@@ -189,42 +206,93 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
             expect(again.matched).toBe(0)
         })
 
-        // feat-130 (fifth review): a batch used to look for the next n matching rows from the
-        // start of the table (and the dry run counted the whole table in one statement), so a
-        // large table, or one already purged, still outlasted statement_timeout. Every statement
-        // now covers one page of ids.
-        it('pages the table by id: every statement covers one page, dry run included', async () => {
-            for (let i = 0; i < 7; i += 1) await insert(`paged prompt ${String(i)}`, 40)
-            const statements: string[] = []
-            const query = pool.query.bind(pool)
-            const spy = vi.spyOn(pool, 'query').mockImplementation((...args: unknown[]) => {
-                const first = args[0]
-                const text = typeof first === 'string' ? first : (first as { text: string }).text
-                statements.push(text)
-                return (query as (...a: unknown[]) => unknown)(...args)
+        // feat-224: the batch comes from the partial index of the rows that still hold text, in
+        // created_at order: a purged row leaves it, so a batch reads at most n entries however long
+        // the history is. feat-130 paged the whole table by id on every run instead. The tables are
+        // small and not analysed here, so a sequential scan and a sort are switched off: the
+        // statement must then be able to read its batch from that index in index order.
+        it.each([
+            ['a cut-off', new Date(Date.now() - 30 * DAY)],
+            ['no cut-off', null],
+        ])('reads its batch from the partial index (%s)', async (_name, olderThan) => {
+            const plan = await db.transaction(async (tx) => {
+                await tx.execute(sql`SET LOCAL enable_seqscan = off`)
+                await tx.execute(sql`SET LOCAL enable_sort = off`)
+                const result = await tx.execute<{ 'QUERY PLAN': string }>(
+                    sql`EXPLAIN ${promptPurgeBatch(olderThan, 1000)}`,
+                )
+                return result.rows.map((row) => row['QUERY PLAN']).join('\n')
             })
+            expect(plan).toMatch(/llm_text_usage_prompt_text_created_at_idx/)
+            expect(plan).not.toMatch(/Sort/)
+        })
 
-            await llmUsageRepository.purgePromptText({
-                olderThan: null,
-                dryRun: true,
-                batchSize: 3,
-            })
-            const dryRun = statements.splice(0)
-            await llmUsageRepository.purgePromptText({
-                olderThan: null,
-                dryRun: false,
-                batchSize: 3,
-            })
-            const purge = statements.splice(0)
-            spy.mockRestore()
+        // The cut-off is "at or before": rows a few minutes on either side, and one exactly at it.
+        it('draws the line at the cut-off itself, to the minute', async () => {
+            const cutoff = new Date(Date.now() - 30 * DAY)
+            const minute = 60_000
+            const before = await insertAt(
+                'two minutes before',
+                new Date(cutoff.getTime() - 2 * minute),
+            )
+            const at = await insertAt('at the cut-off', cutoff)
+            const after = await insertAt(
+                'two minutes after',
+                new Date(cutoff.getTime() + 2 * minute),
+            )
 
-            const counts = dryRun.filter((text) => /count\(\*\)/i.test(text))
-            expect(counts.length).toBeGreaterThanOrEqual(3)
-            const updates = purge.filter((text) => /^update/i.test(text))
-            expect(updates.length).toBeGreaterThanOrEqual(3)
-            for (const text of [...counts, ...updates]) {
-                expect(text).toMatch(/"id" >= \$\d+\)? and \(?"llm_text_usage"\."id" <= \$\d+/i)
+            await llmUsageRepository.purgePromptText({ olderThan: cutoff, dryRun: false })
+
+            expect((await rowOf(before)).finalPrompt).toBe('')
+            expect((await rowOf(at)).finalPrompt).toBe('')
+            expect((await rowOf(after)).finalPrompt).toBe('two minutes after')
+        })
+
+        it('runs no statement after a checkpoint throws', async () => {
+            const ids: bigint[] = []
+            for (let i = 0; i < 5; i += 1) ids.push(await insert(`stopped prompt ${String(i)}`, 40))
+            const withText = await countWithText()
+            let calls = 0
+            const checkpoint = (): void => {
+                calls += 1
+                if (calls > 1) throw new Error('stop')
             }
+
+            await expect(
+                llmUsageRepository.purgePromptText({
+                    olderThan: null,
+                    dryRun: false,
+                    batchSize: 2,
+                    checkpoint,
+                }),
+            ).rejects.toThrow('stop')
+
+            // Only the first batch of 2 went.
+            expect(await countWithText()).toBe(withText - 2)
+        })
+
+        it('empties every row exactly once when two runs overlap', async () => {
+            for (let i = 0; i < 7; i += 1) await insert(`overlap prompt ${String(i)}`, 40)
+            const withText = await countWithText()
+            // Both runs are inside their first batch before either goes on.
+            bothReadBeforeEitherWrites(db, 'execute')
+
+            const [first, second] = await Promise.all([
+                llmUsageRepository.purgePromptText({
+                    olderThan: null,
+                    dryRun: false,
+                    batchSize: 2,
+                }),
+                llmUsageRepository.purgePromptText({
+                    olderThan: null,
+                    dryRun: false,
+                    batchSize: 2,
+                }),
+            ])
+            vi.restoreAllMocks()
+
+            expect(first.changed + second.changed).toBe(withText)
+            expect(await countWithText()).toBe(0)
         })
 
         it('counts and changes nothing on a dry run', async () => {
@@ -236,6 +304,8 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
             })
 
             expect(result.matched).toBeGreaterThanOrEqual(1)
+            expect(result.changed).toBe(0)
+            expect(result.matched).toBe(await countWithText())
             const row = await rowOf(id)
             expect(row.finalPrompt).toBe('text to keep for now')
             expect(row.promptSha256).toBeNull()
