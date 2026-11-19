@@ -84,6 +84,10 @@ jobs:
                   path: ~/.cache/ms-playwright
                   key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
+            # apt waits at most 30 s per connection, 3 retries: a mirror that does not answer
+            # costs seconds, not the whole attempt (feat-229).
+            - run: scripts/apt-timeouts.sh
+
             # All browsers of playwright.config.ts projects: chromium, firefox, webkit
             # (webkit also runs Mobile Safari). System deps are not cached. They come from the
             # runner's apt mirrors, which can be down for a while (2026-11-11): up to 3 attempts of
@@ -172,6 +176,10 @@ jobs:
               with:
                   path: ~/.cache/ms-playwright
                   key: playwright-live-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+            # apt waits at most 30 s per connection, 3 retries: a mirror that does not answer
+            # costs seconds, not the whole attempt (feat-229).
+            - run: scripts/apt-timeouts.sh
 
             # Chromium only: the live specs are about the session, not about the engines. The apt
             # mirrors can be down for a while: retried as in the e2e job (scripts/retry.sh, with
