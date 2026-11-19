@@ -85,6 +85,26 @@ describe('route access matrix (code-issues items 48, 67)', () => {
         }
     })
 
+    // feat-232: the profile of the signed-in user, read and changed with a session and CSRF.
+    it('the account routes need a session, CSRF and a signed-in user', async () => {
+        const accountRoutes = http.filter((route) => route.url.includes('/account/'))
+        expect(accountRoutes.map((route) => `${route.method} ${route.url}`).sort()).toEqual([
+            'get api/account/profile',
+            'patch api/account/profile',
+        ])
+        for (const route of accountRoutes) {
+            expect(route.middlewares, route.url).toEqual([
+                'session_web',
+                'csrf_guard',
+                'auth_guard',
+            ])
+            const context = anonymousContext()
+            const passed = await executeMiddlewares(['auth_guard'], context)
+            expect(passed, route.url).toBe(false)
+            expect(context.responseData.status, route.url).toBe(401)
+        }
+    })
+
     it('every admin WS route declares ws_admin_guard', () => {
         const adminWs = ws.filter((route) => route.url.includes('/admin/'))
         expect(adminWs.map((route) => route.url).sort()).toEqual([

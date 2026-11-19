@@ -9,6 +9,11 @@ export interface Events extends Record<EventType, unknown>, BroadcastContracts {
     init_app: undefined
     unauthorized: undefined
     update_available: undefined
+    /**
+     * The server registered the socket (`service:connection_ready`): events to the user reach it
+     * from now on, and state they keep up to date is read again (feat-232).
+     */
+    ws_ready: undefined
 }
 
 const emitter = mitt<Events>()

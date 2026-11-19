@@ -6,12 +6,14 @@ import { useStateStore } from '@/stores/state'
 import PwaInstallButton from '@/components/PwaInstallButton.vue'
 import { usePwaInstallButton } from '@/composables/usePwaInstallButton'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
+import { usePreferences } from '@/composables/usePreferences'
 import { PRODUCT } from 'shared/product'
 
 const router = useRouter()
 //const route = useRoute()
 const stateStore = useStateStore()
 const { logout: logoutSession } = useSessionLifecycle()
+const preferences = usePreferences()
 
 // Состояние меню
 const isMenuOpen = ref(false)
@@ -71,7 +73,7 @@ const goTo = (path: string) => {
 
 // Переключение темы
 const toggleTheme = () => {
-    stateStore.setDarkMode(!stateStore.darkMode)
+    void preferences.toggleDarkMode()
     closeMenu()
 }
 

@@ -31,7 +31,8 @@ export type WsReplyStatus = `${number}` | 'error'
 /**
  * A reply to a request, server → client: the request's event and id, and either `data` (the
  * route's answer, a business error included) or `error` (the request was refused). The service
- * events (`service:connection_established`, `service:error`) come in the same envelope.
+ * events (`service:connection_established`, `service:connection_ready`, `service:error`) come in
+ * the same envelope.
  */
 export interface WsReplyEnvelope<TData = unknown> {
     event: string

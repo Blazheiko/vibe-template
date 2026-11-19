@@ -18,6 +18,40 @@ const { currentUser, resendOAuthEmailLinkMock, signInMethodsMock, unlinkSignInMe
         }
     })
 
+// feat-232: the profile and its save queue. The queue itself is tested in useProfileSave.spec.ts;
+// here it only records what the page asks it to send.
+const JANE = {
+    name: 'Jane',
+    preferences: {
+        locale: null as string | null,
+        timeZone: null as string | null,
+        theme: 'dark' as string | null,
+        colorTheme: null as string | null,
+        fontSize: null as number | null,
+    },
+    revision: '3',
+}
+// Reactive, as the store is: a profile from a WS event or another answer reaches the page.
+const profileState = await vi.hoisted(async () => {
+    const { ref } = await import('vue')
+    return {
+        profile: ref<Record<string, unknown> | null>(null),
+        change: vi.fn(),
+    }
+})
+vi.mock('@/composables/useProfileSave', async () => {
+    const { computed, ref } = await import('vue')
+    return {
+        useProfileSave: () => ({
+            change: profileState.change,
+            ownerId: () => '1',
+            shown: computed(() => profileState.profile.value),
+            lastFailure: ref(null),
+            saving: ref(false),
+        }),
+    }
+})
+
 vi.mock('@/utils/api', () => ({
     avatarApi: { upload: vi.fn(), delete: vi.fn() },
     authApi: {
@@ -37,16 +71,19 @@ vi.mock('@/stores/user', () => ({
         get user() {
             return currentUser.value
         },
+        get profile() {
+            return profileState.profile.value
+        },
         setUser: vi.fn(),
     }),
 }))
 vi.mock('@/stores/state', () => ({
     useStateStore: () => ({
-        darkMode: false,
+        darkMode: true,
+        theme: 'dark',
         fontSize: 16,
-        setFontSize: vi.fn(),
-        setColorTheme: vi.fn(),
-        setDarkMode: vi.fn(),
+        timeZone: null,
+        setDevicePreference: vi.fn(),
     }),
 }))
 vi.mock('@/stores/push', () => ({
@@ -80,6 +117,7 @@ const methodsAnswer = (methods: Record<string, unknown>[], hasPassword = true) =
 })
 
 beforeEach(() => {
+    profileState.profile.value = structuredClone(JANE)
     signInMethodsMock.mockReset()
     unlinkSignInMethodMock.mockReset()
     // No linked sign-in method unless a test says otherwise.
@@ -303,9 +341,14 @@ describe('UserAccount password change and the WebSocket', () => {
         await inputs[0]?.setValue('old-secret-123')
         await inputs[1]?.setValue(NEW_PASSWORD)
         await inputs[2]?.setValue(NEW_PASSWORD)
+        // The first primary button of the security panel (the profile form has its own).
         const button = wrapper
             .findAll('button')
-            .find((candidate) => candidate.attributes('class')?.includes('primary-button'))
+            .find(
+                (candidate) =>
+                    candidate.attributes('class')?.includes('primary-button') &&
+                    candidate.attributes('type') !== 'submit',
+            )
         await button?.trigger('click')
         await flushPromises()
     }
@@ -381,5 +424,229 @@ describe('UserAccount password change and the WebSocket', () => {
 
         expect(ws.calls).toEqual(['suspendReconnect', 'request', 'resumeReconnect'])
         expect(ws.websocketOpen).not.toHaveBeenCalled()
+    })
+})
+
+// feat-232 T13: the profile form sends only what changed; the settings save through the queue.
+describe('UserAccount profile form and settings', () => {
+    beforeEach(() => {
+        profileState.profile.value = structuredClone(JANE)
+        currentUser.value = { id: '1', name: 'Jane', email: 'jane@example.com' }
+        profileState.change.mockReset()
+        profileState.change.mockResolvedValue({
+            status: 'saved',
+            profile: profileState.profile.value,
+        })
+    })
+
+    it('shows the saved name, the browser language and the browser zone', () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        expect((form.find('input[name="profile-name"]').element as HTMLInputElement).value).toBe(
+            'Jane',
+        )
+        expect(
+            (form.find('select[name="profile-locale"]').element as HTMLSelectElement).value,
+        ).toBe('')
+        expect(
+            (form.find('select[name="profile-time-zone"]').element as HTMLSelectElement).value,
+        ).toBe('')
+    })
+
+    it('sends only the changed fields', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('select[name="profile-locale"]').setValue('uk')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).toHaveBeenCalledExactlyOnceWith({ locale: 'uk' })
+    })
+
+    it('sends a trimmed new name and a chosen zone, and UTC is on the list', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+        const zones = form.findAll('select[name="profile-time-zone"] option')
+        expect(zones.map((option) => option.attributes('value'))).toContain('UTC')
+
+        await form.find('input[name="profile-name"]').setValue('  Ann  ')
+        await form.find('select[name="profile-time-zone"]').setValue('UTC')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).toHaveBeenCalledWith({ name: 'Ann', timeZone: 'UTC' })
+    })
+
+    it('narrows the zones to the search', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('input[name="profile-time-zone-search"]').setValue('new york')
+
+        const values = form
+            .findAll('select[name="profile-time-zone"] option')
+            .map((option) => option.attributes('value'))
+        expect(values).toEqual(['', 'America/New_York'])
+    })
+
+    it('an empty name is refused before any request', async () => {
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('input[name="profile-name"]').setValue('   ')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).not.toHaveBeenCalled()
+        expect(form.find('[data-testid="profile-name-error"]').text()).toBe('Enter a name')
+    })
+
+    it('shows the server validation error next to the name field', async () => {
+        profileState.change.mockResolvedValue({
+            status: 'failed',
+            kind: 'validation',
+            message: 'Validation failed',
+            messages: ['name must be free of control characters and line breaks'],
+            reason: undefined,
+        })
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('input[name="profile-name"]').setValue('Bad name')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(form.find('[data-testid="profile-name-error"]').text()).toBe(
+            'name must be free of control characters and line breaks',
+        )
+    })
+
+    it('a rate limit has its own message', async () => {
+        profileState.change.mockResolvedValue({
+            status: 'failed',
+            kind: 'rate_limited',
+            message: 'Too many profile changes.',
+            messages: [],
+            reason: undefined,
+        })
+        const wrapper = mountAccount()
+        const form = wrapper.find('[data-testid="profile-form"]')
+
+        await form.find('select[name="profile-locale"]').setValue('pl')
+        await form.find('form').trigger('submit')
+        await flushPromises()
+
+        expect(form.text()).toContain('Too many changes. Try again in a few minutes.')
+    })
+
+    it('"Same as the system" sends theme: null; a color and its default go through the queue', async () => {
+        const wrapper = mountAccount()
+        const panel = wrapper.find('[data-testid="preferences"]')
+
+        await panel.find('input[name="theme"][value="system"]').setValue(true)
+        await panel.find('[data-color-theme="mint"]').trigger('click')
+        await panel.find('[data-testid="color-theme-default"]').trigger('click')
+
+        expect(profileState.change.mock.calls.map((call) => call[0])).toEqual([
+            { theme: null },
+            { colorTheme: 'mint' },
+            { colorTheme: null },
+        ])
+    })
+
+    it('the font size slider waits for the final value', async () => {
+        const wrapper = mountAccount()
+        const panel = wrapper.find('[data-testid="preferences"]')
+
+        await panel.find('input[name="font-size"]').setValue('18')
+
+        expect(profileState.change).toHaveBeenCalledWith(
+            { fontSize: 18 },
+            { delayMs: expect.any(Number) as number },
+        )
+        const delay = (profileState.change.mock.calls[0][1] as { delayMs: number }).delayMs
+        expect(delay).toBeGreaterThanOrEqual(500)
+        expect(delay).toBeLessThanOrEqual(800)
+    })
+})
+
+// Review 2026-11-19, items 2 and 3.
+describe('UserAccount profile form: each field on its own', () => {
+    const form = (wrapper: ReturnType<typeof mountAccount>) =>
+        wrapper.find('[data-testid="profile-form"]')
+    const nameInput = (wrapper: ReturnType<typeof mountAccount>) =>
+        form(wrapper).find('input[name="profile-name"]')
+
+    beforeEach(() => {
+        currentUser.value = { id: '1', name: 'Jane', email: 'jane@example.com' }
+        profileState.profile.value = structuredClone(JANE)
+        profileState.change.mockReset()
+    })
+
+    it('a language changed in another tab is shown and not sent back with the name', async () => {
+        profileState.change.mockResolvedValue({ status: 'saved', profile: JANE })
+        const wrapper = mountAccount()
+        await nameInput(wrapper).setValue('New name')
+
+        // Another tab set the language; the event reached this page.
+        profileState.profile.value = {
+            ...JANE,
+            preferences: { ...JANE.preferences, locale: 'uk' },
+            revision: '4',
+        }
+        await flushPromises()
+        expect(
+            (form(wrapper).find('select[name="profile-locale"]').element as HTMLSelectElement)
+                .value,
+        ).toBe('uk')
+
+        await form(wrapper).find('form').trigger('submit')
+        await flushPromises()
+
+        expect(profileState.change).toHaveBeenCalledExactlyOnceWith({ name: 'New name' })
+    })
+
+    it('text typed while the save is under way is kept after its answer', async () => {
+        let answer: (value: unknown) => void = () => undefined
+        profileState.change.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    answer = resolve
+                }),
+        )
+        const wrapper = mountAccount()
+        await nameInput(wrapper).setValue('First')
+        await form(wrapper).find('form').trigger('submit')
+        await nameInput(wrapper).setValue('Second')
+
+        const saved = { ...JANE, name: 'First', revision: '4' }
+        profileState.profile.value = saved
+        answer({ status: 'saved', profile: saved })
+        await flushPromises()
+
+        expect((nameInput(wrapper).element as HTMLInputElement).value).toBe('Second')
+
+        profileState.change.mockResolvedValue({ status: 'saved', profile: saved })
+        await form(wrapper).find('form').trigger('submit')
+        await flushPromises()
+        expect(profileState.change).toHaveBeenLastCalledWith({ name: 'Second' })
+    })
+
+    it('a field saved as it was sent follows the profile again', async () => {
+        profileState.change.mockImplementation(() => {
+            profileState.profile.value = { ...JANE, name: 'Ann', revision: '4' }
+            return Promise.resolve({ status: 'saved', profile: profileState.profile.value })
+        })
+        const wrapper = mountAccount()
+        await nameInput(wrapper).setValue('Ann')
+        await form(wrapper).find('form').trigger('submit')
+        await flushPromises()
+
+        profileState.profile.value = { ...JANE, name: 'Renamed elsewhere', revision: '5' }
+        await flushPromises()
+
+        expect((nameInput(wrapper).element as HTMLInputElement).value).toBe('Renamed elsewhere')
     })
 })

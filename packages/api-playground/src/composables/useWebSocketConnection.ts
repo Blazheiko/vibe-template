@@ -75,6 +75,9 @@ const validateMessage = (message: unknown): message is WsIncomingMessage => {
 // Service events of the server (shared/ws-client, ADR 0006): one handler for each of them but
 // `service:error`, which handleServiceError takes. The map must name every one.
 const serviceHandlers: Record<WsServiceHandlerName, (message: WsReplyEnvelope) => void> = {
+    connection_ready: (message) => {
+        console.log('connection_ready', message.data)
+    },
     connection_established: (message) => {
         isInitialized.value = true
         console.log('connection_established', message.data)

@@ -124,3 +124,10 @@ export {
     SupportKnowledgeBaseUpdateSchema,
     type SupportKnowledgeBaseUpdateInput,
 } from './support/support-knowledge-base.js'
+
+export { ProfileNameSchema, PROFILE_NAME_MAX_LENGTH } from './account/profile-name.js'
+export {
+    UpdateProfileInputSchema,
+    PROFILE_TIME_ZONE_MAX_LENGTH,
+    type UpdateProfileInput,
+} from './account/update-profile.js'

@@ -222,6 +222,17 @@ export const throttlePolicies = {
         readInt('AUTH_VERIFY_EMAIL_PASSWORD_MAX_ATTEMPTS_PER_HOUR', 5),
         HOUR_MS,
     ),
+    /**
+     * feat-232 (Р5): profile changes of one user across all their sessions. The account page
+     * saves preferences as they change, so the budget allows a burst; it bounds the writes
+     * (and the emails that show the name) a stolen session can cause.
+     */
+    accountProfileUser: fixedWindow(
+        'account_profile_user',
+        'user',
+        readInt('AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN', 30),
+        10 * 60 * 1000,
+    ),
     /** Support chat messages: each one costs several language-model calls (feat-063). */
     supportChatUser: fixedWindow(
         'support_chat_user',

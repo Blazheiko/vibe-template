@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Главный компонент приложения
-import { onMounted, ref, computed, onBeforeUnmount } from 'vue'
+import { onMounted, ref, computed, onBeforeUnmount, watch } from 'vue'
 import { takePostSignInTarget } from '@/utils/post-sign-in-target'
 import { normalizeRoutePath } from '@/utils/route-path'
 import { safeRedirectTarget } from '@/utils/safe-redirect'
@@ -17,6 +17,8 @@ import UpdateNotification from '@/components/UpdateNotification.vue'
 import AiDisclosureBanner from '@/components/AiDisclosureBanner.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
+import { useProfileSync } from '@/composables/useProfileSave'
+import { applyLocalePreference } from '@/composables/useLocale'
 import { hasResponseError, isUnauthorizedError } from '@/utils/response-normalizer'
 
 const { t } = useI18n()
@@ -32,6 +34,17 @@ const stateStore = useStateStore()
 const eventBus = useEventBus()
 const { websocketOpen } = useWebSocketConnection()
 const { redirectToLogin } = useSessionLifecycle()
+
+// feat-232: the preferences of whoever is signed in (the device's own otherwise), and the
+// interface language they choose: profile, then browser, then English (Р7).
+useProfileSync()
+watch(
+    () => stateStore.locale,
+    (locale) => {
+        void applyLocalePreference(locale)
+    },
+    { immediate: true },
+)
 
 const hasUpdate = ref(false)
 
@@ -78,12 +91,9 @@ onMounted(async () => {
     // Добавляем слушатель изменения размера окна
     // window.addEventListener('resize', handleResize)
 
-    // Слушаем изменения предпочтений системы
+    // Р13 (feat-232): the store follows the system theme only while no theme is chosen.
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-        stateStore.setDarkMode(e.matches)
-        // if (localStorage.getItem('theme') === null) {
-        //     stateStore.setDarkMode(e.matches)
-        // }
+        stateStore.setSystemDark(e.matches)
     })
 
     // Block the router guard until initializeApp completes
@@ -141,8 +151,10 @@ const initializeApp = async () => {
 
         if (error) {
             console.error('Error in initialization:', error)
-            if (isUnauthorizedError(data, error.transportCode) && !isPublicPath) {
-                await redirectToLogin()
+            if (isUnauthorizedError(data, error.transportCode)) {
+                // The session is known to be anonymous: the device's own look (feat-232).
+                userStore.markAnonymous()
+                if (!isPublicPath) await redirectToLogin()
             }
             return null
         } else if (
@@ -153,7 +165,7 @@ const initializeApp = async () => {
             data.wsUrl &&
             data.wsToken
         ) {
-            userStore.setUser(data.user)
+            userStore.setInitUser(data.user)
             stateStore.setStorageConfig({
                 cdnUrl: data.storage?.cdnUrl ?? '',
                 s3Prefix: data.storage?.s3Prefix ?? '',

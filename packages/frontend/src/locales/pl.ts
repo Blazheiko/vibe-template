@@ -191,6 +191,20 @@ const pl: typeof en = {
     },
 
     account: {
+        profile: {
+            title: 'Profil',
+            name: 'Imię',
+            language: 'Język',
+            timeZone: 'Strefa czasowa',
+            timeZoneSearch: 'Szukaj strefy czasowej',
+            asBrowser: 'Jak w przeglądarce',
+            save: 'Zapisz profil',
+            saved: 'Profil zapisany',
+            nothingToSave: 'Nic się nie zmieniło',
+            errorNameRequired: 'Wpisz imię',
+            errorSave: 'Nie udało się zapisać profilu',
+            errorRateLimited: 'Zbyt wiele zmian. Spróbuj ponownie za kilka minut.',
+        },
         avatar: {
             delete: 'Usuń awatar',
             closeEditor: 'Zamknij edytor awatara',
@@ -253,6 +267,12 @@ const pl: typeof en = {
         },
         settings: {
             title: 'Ustawienia',
+            theme: 'Motyw',
+            themeSystem: 'Jak w systemie',
+            themeLight: 'Jasny',
+            themeDark: 'Ciemny',
+            default: 'Domyślnie',
+            errorSave: 'Nie udało się zapisać ustawienia',
             darkMode: 'Tryb ciemny',
             fontSize: 'Rozmiar czcionki',
             pushNotifications: 'Powiadomienia push',

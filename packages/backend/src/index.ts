@@ -16,6 +16,7 @@ import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
 import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
+import { userEventBus } from '#app/services/communication/user-event-bus.js'
 import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
 import readinessProbe from '#database/readiness-probe.js'
@@ -66,6 +67,11 @@ const start = async (): Promise<void> => {
 
         adminWsAccessService.start()
         wsSessionRevocation.start()
+        // feat-232: events to a user's connections on every instance. Not awaited: SUBSCRIBE
+        // waits for Redis, and until it answers events still reach this process's connections.
+        void userEventBus.start().catch((err: unknown) => {
+            logger.warn({ err }, 'User event bus not subscribed at startup')
+        })
         if (schedulerConfig.enabled) scheduler.start()
         else logger.info('Scheduler: off on this process (SCHEDULER_ENABLED=false)')
 
@@ -97,6 +103,7 @@ const removeListeners = (): void => {
 const stopHandler = async (type: string): Promise<void> => {
     adminWsAccessService.stop()
     wsSessionRevocation.stop()
+    await userEventBus.stop()
     // Р10: aborts the job in flight and waits for it up to the drain; never throws.
     await scheduler?.stop()
     await stopServer(type)

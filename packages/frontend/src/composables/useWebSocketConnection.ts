@@ -83,6 +83,12 @@ const serviceHandlers: Record<WsServiceHandlerName, (message: WsReplyEnvelope) =
         isInitialized.value = true
         console.log('connection_established', message)
     },
+    // feat-232: the server registered this socket; events to the user reach it from now on, so
+    // what they keep up to date is read now (the profile). Not on the browser's `open`: the
+    // server may still be checking the session then, and an event sent meanwhile is lost.
+    connection_ready: () => {
+        eventBus.emit('ws_ready')
+    },
 }
 
 const isServiceHandlerName = (name: string): name is WsServiceHandlerName =>

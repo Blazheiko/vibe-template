@@ -1,6 +1,13 @@
 import type { BroadcastContracts, BroadcastEventName } from 'shared/contracts'
 import type { BroadcastPayload } from 'shared/schemas'
 import { ENTITY_ID_PATTERN } from 'shared/patterns'
+import {
+    COLOR_THEMES,
+    FONT_SIZE_MAX,
+    FONT_SIZE_MIN,
+    SHIPPED_LOCALE_CODES,
+    THEMES,
+} from 'shared/enums'
 
 // Hand-written guards for broadcast payloads: importing the ArkType schemas at runtime
 // pulls the whole ArkType engine into the bundle (and its `new Function` JIT probe
@@ -77,6 +84,36 @@ export const isAdminUserOnlineRemovePayload = (
 ): value is BroadcastPayload<'admin_user_online_remove'> =>
     isObject(value) && hasOnlyKeys(value, REMOVE_KEYS) && isEntityId(value.id)
 
+const PROFILE_KEYS = new Set(['name', 'preferences', 'revision'])
+const PREFERENCE_KEYS = new Set(['locale', 'timeZone', 'theme', 'colorTheme', 'fontSize'])
+const REVISION_PATTERN = /^(?:0|[1-9]\d*)$/
+
+const isOneOfOrNull = (values: readonly string[], value: unknown): boolean =>
+    value === null || (typeof value === 'string' && values.includes(value))
+
+const isPreferences = (value: unknown): boolean =>
+    isObject(value) &&
+    hasOnlyKeys(value, PREFERENCE_KEYS) &&
+    isOneOfOrNull(SHIPPED_LOCALE_CODES, value.locale) &&
+    (value.timeZone === null || typeof value.timeZone === 'string') &&
+    isOneOfOrNull(THEMES, value.theme) &&
+    isOneOfOrNull(COLOR_THEMES, value.colorTheme) &&
+    (value.fontSize === null ||
+        (Number.isInteger(value.fontSize) &&
+            (value.fontSize as number) >= FONT_SIZE_MIN &&
+            (value.fontSize as number) <= FONT_SIZE_MAX))
+
+/** feat-232 (Р9 B): the profile after a change, by another tab or device of the user. */
+export const isUserProfileUpdatedPayload = (
+    value: unknown,
+): value is BroadcastPayload<'user_profile_updated'> =>
+    isObject(value) &&
+    hasOnlyKeys(value, PROFILE_KEYS) &&
+    typeof value.name === 'string' &&
+    isPreferences(value.preferences) &&
+    typeof value.revision === 'string' &&
+    REVISION_PATTERN.test(value.revision)
+
 /** A guard of each broadcast event, by event (ADR 0006, decision 3, feat-182). */
 export type BroadcastGuards = {
     readonly [E in BroadcastEventName]: (value: unknown) => value is BroadcastContracts[E]
@@ -92,4 +129,5 @@ export const broadcastGuards = {
     support_chat_error: isSupportChatErrorPayload,
     admin_user_online_upsert: isWSAdminUserOnlineUpsertPayload,
     admin_user_online_remove: isAdminUserOnlineRemovePayload,
+    user_profile_updated: isUserProfileUpdatedPayload,
 } as const satisfies BroadcastGuards

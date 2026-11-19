@@ -184,6 +184,20 @@ export default {
     },
 
     account: {
+        profile: {
+            title: 'Profile',
+            name: 'Name',
+            language: 'Language',
+            timeZone: 'Time zone',
+            timeZoneSearch: 'Search time zones',
+            asBrowser: 'Same as the browser',
+            save: 'Save profile',
+            saved: 'Profile saved',
+            nothingToSave: 'Nothing changed',
+            errorNameRequired: 'Enter a name',
+            errorSave: 'Could not save the profile',
+            errorRateLimited: 'Too many changes. Try again in a few minutes.',
+        },
         avatar: {
             delete: 'Delete avatar',
             closeEditor: 'Close the avatar editor',
@@ -246,6 +260,12 @@ export default {
         },
         settings: {
             title: 'Settings',
+            theme: 'Theme',
+            themeSystem: 'Same as the system',
+            themeLight: 'Light',
+            themeDark: 'Dark',
+            default: 'Default',
+            errorSave: 'Could not save the setting',
             darkMode: 'Dark mode',
             fontSize: 'Font size',
             pushNotifications: 'Push notifications',

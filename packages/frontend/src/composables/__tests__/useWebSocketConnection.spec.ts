@@ -426,3 +426,44 @@ describe('useWebSocketConnection: reconnect suspended while the session is renew
         expect(fake.opens).toBe(1)
     })
 })
+
+// feat-232 (review 2026-11-19): the browser's `open` comes while the server may still check the
+// session; an event sent then misses the socket. The profile is re-read on the server's
+// `service:connection_ready`, sent once the socket is registered.
+describe('useWebSocketConnection: ready signal', () => {
+    it('emits ws_ready on service:connection_ready, not on the browser open', async () => {
+        const { useEventBus } = await import('@/utils/event-bus')
+        const ready = vi.fn()
+        useEventBus().on('ws_ready', ready)
+        const { websocketOpen } = await load()
+        await websocketOpen(URL, 'token-ready')
+        const socket = currentSocket()
+
+        connect(socket)
+        options().onMessage(socket, {
+            data: JSON.stringify({
+                event: 'service:connection_established',
+                status: '200',
+                error: null,
+                timestamp: 1,
+                data: { socket_id: 's', activity_timeout: 30 },
+            }),
+        })
+        await nextTick()
+        expect(ready).not.toHaveBeenCalled()
+
+        options().onMessage(socket, {
+            data: JSON.stringify({
+                event: 'service:connection_ready',
+                status: '200',
+                error: null,
+                timestamp: 2,
+                data: { socket_id: 's' },
+            }),
+        })
+        await vi.waitFor(() => {
+            expect(ready).toHaveBeenCalledOnce()
+        })
+        useEventBus().off('ws_ready', ready)
+    })
+})

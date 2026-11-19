@@ -9,6 +9,15 @@ import type { Locator, Page, Request, Route } from '@playwright/test'
 
 export const CSRF_TOKEN = 'a'.repeat(43)
 
+/** A profile with no preference chosen (feat-232). */
+export const NO_PREFERENCES = {
+    locale: null,
+    timeZone: null,
+    theme: null,
+    colorTheme: null,
+    fontSize: null,
+}
+
 export interface Recorded {
     method: string
     path: string
@@ -84,7 +93,8 @@ export const test = base.extend<{ api: Api }>({
                     contentType: 'application/json',
                     body: JSON.stringify({
                         status: 'ok',
-                        user: session,
+                        // feat-232: init carries the profile preferences and their revision.
+                        user: { preferences: NO_PREFERENCES, revision: '0', ...session },
                         wsUrl: 'ws://127.0.0.1:65535',
                         wsToken: 'e2eWsToken000001',
                         csrfToken: CSRF_TOKEN,

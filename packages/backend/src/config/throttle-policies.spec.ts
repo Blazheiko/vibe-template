@@ -72,6 +72,8 @@ describe('throttlePolicies registry', () => {
             login_unverified_resend: [1, 300_000, 'user'],
             // feat-203: every verification mail sent again to one account in a day.
             verification_mail_user_daily: [5, 24 * HOUR, 'user'],
+            // feat-232: profile changes of one user, across all their sessions.
+            account_profile_user: [30, 600_000, 'user'],
         })
     })
 
