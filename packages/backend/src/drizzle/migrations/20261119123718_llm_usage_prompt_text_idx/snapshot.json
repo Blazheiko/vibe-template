@@ -2,7 +2,7 @@
   "type": "diff",
   "version": "9",
   "dialect": "postgres",
-  "id": "92e60c06-1b1b-4489-9945-72376843542d",
+  "id": "21ed17f7-8420-4c9a-bee3-3f60f6338c50",
   "prevIds": [
     "859dedd4-f286-454f-9f1f-012976bc98cf"
   ],
@@ -24,7 +24,8 @@
       "reads": [
         "n|tbl|public.llm_text_usage",
         "n|sch|public",
-        "n|col|public.llm_text_usage.created_at"
+        "n|col|public.llm_text_usage.created_at",
+        "n|col|public.llm_text_usage.id"
       ]
     }
   ],
@@ -39,6 +40,13 @@
         "columns": [
           {
             "value": "created_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
             "isExpression": false,
             "asc": true,
             "nullsFirst": false,

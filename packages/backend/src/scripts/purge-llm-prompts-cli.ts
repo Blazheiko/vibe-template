@@ -57,7 +57,9 @@ export async function runPromptPurge(plan: PurgePlan, deps: PurgeCliDeps): Promi
     const counts = result.value
     if (result.signal.aborted) {
         // The run returned, but its lease or its time was gone by then: not a success.
-        deps.printError(`Stopped before the end (matched ${String(counts.matched)}).`)
+        deps.printError(
+            `Stopped before the end (matched ${String(counts.matched)}, changed ${String(counts.changed)}).`,
+        )
         return interrupted() ? EXIT_INTERRUPTED : 1
     }
     deps.print(

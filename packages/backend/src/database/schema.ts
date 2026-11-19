@@ -379,10 +379,10 @@ export const llmTextUsage = pgTable(
         index('llm_text_usage_user_id_fkey').on(table.userId),
         index('llm_text_usage_prompt_id_idx').on(table.llmSystemPromptId),
         index('llm_text_usage_created_at_idx').on(table.createdAt),
-        // feat-224: the rows that still hold prompt text, by age: the retention job reads its
-        // batches here, and a purged row leaves the index.
+        // feat-224: the rows that still hold prompt text, by age then id: the retention job walks
+        // it with a keyset cursor, so a batch reads only the next entries.
         index('llm_text_usage_prompt_text_created_at_idx')
-            .on(table.createdAt)
+            .on(table.createdAt, table.id)
             .where(sql`${table.finalPrompt} <> ''`),
     ],
 )

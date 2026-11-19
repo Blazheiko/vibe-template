@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { llmTextUsage } from '#database/schema.js'
-import { eq, sql, desc, and, asc, gte, lte } from 'drizzle-orm'
+import { eq, sql, desc, and, gte, lte } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { noCheckpoint, type Checkpoint } from '#app/services/shared/checkpoint.js'
 import type { PurgeCounts } from '#app/services/shared/purge-counts.js'
@@ -55,35 +55,75 @@ export interface ILlmUsageRepository {
 export const PURGE_BATCH_SIZE = 1000
 
 /** The rows with prompt text created at or before `olderThan` (all of them when null). */
-const withPromptText = (olderThan: Date | null): SQL | undefined =>
-    and(
-        sql`${llmTextUsage.finalPrompt} <> ''`,
-        olderThan === null ? undefined : lte(llmTextUsage.createdAt, olderThan),
-    )
+/**
+ * Where a purge or a dry-run count stands: the last row of the previous batch, in the order of
+ * the index. Kept as the database's text: `created_at` has microseconds a JS Date would drop,
+ * and a cursor that moved back would count rows again.
+ */
+interface PurgeBatchRow {
+    selected: number
+    changed: number
+    last_created_at: string | null
+    last_id: string | null
+}
+
+export interface PromptPurgeCursor {
+    createdAt: string
+    id: string
+}
 
 /**
- * feat-224: one batch of the purge (exported for the plan test). The batch is read from the
- * partial index `llm_text_usage_prompt_text_created_at_idx` (`created_at` WHERE text is kept):
- * a purged row leaves the index, so a batch reads at most `limit` entries however long the
- * history is. The id paging of feat-130 walked the whole table on every run. The outer
- * condition repeats `final_prompt <> ''`, so a row another run emptied meanwhile is not
- * counted twice. The hash and the length are filled only where missing (a row written before
+ * feat-224: one batch of the purge, or of its dry-run count (exported for the plan test). The
+ * batch walks the partial index `llm_text_usage_prompt_text_created_at_idx` (`created_at`,
+ * `id` WHERE text is kept) from the cursor on: every statement reads at most `limit` index
+ * entries, also on a table where every row still holds text (a first run) and while entries of
+ * rows emptied earlier are not yet cleaned up (a long snapshot elsewhere keeps them). feat-130
+ * paged the whole table by id for the same reason; this walks only the rows that hold text.
+ *
+ * The UPDATE repeats `final_prompt <> ''`, so a row another run emptied meanwhile is skipped,
+ * not counted twice. The hash and the length are filled only where missing (a row written before
  * they existed); sha256 of the UTF-8 bytes and char_length agree with what the application
- * computes.
+ * computes. The cut-off goes in as ISO text, the way drizzle writes a Date to this column.
  */
-export function promptPurgeBatch(olderThan: Date | null, limit: number): SQL {
-    const batch = db
-        .select({ id: llmTextUsage.id })
-        .from(llmTextUsage)
-        .where(withPromptText(olderThan))
-        .orderBy(asc(llmTextUsage.createdAt))
-        .limit(limit)
-    return sql`update ${llmTextUsage} set
-        ${sql.identifier('prompt_sha256')} = coalesce(${llmTextUsage.promptSha256}, encode(sha256(convert_to(${llmTextUsage.finalPrompt}, 'UTF8')), 'hex')),
-        ${sql.identifier('prompt_chars')} = coalesce(${llmTextUsage.promptChars}, char_length(${llmTextUsage.finalPrompt})),
-        ${sql.identifier('final_prompt')} = ''
-        where ${llmTextUsage.id} = any(array(${batch})) and ${llmTextUsage.finalPrompt} <> ''
-        returning ${llmTextUsage.id}`
+export function promptPurgeBatch(
+    olderThan: Date | null,
+    cursor: PromptPurgeCursor | null,
+    limit: number,
+    dryRun: boolean,
+): SQL {
+    const t = llmTextUsage
+    const conditions: SQL[] = [sql`${t.finalPrompt} <> ''`]
+    if (olderThan !== null) {
+        conditions.push(sql`${t.createdAt} <= ${olderThan.toISOString()}::timestamp`)
+    }
+    if (cursor !== null) {
+        conditions.push(
+            sql`(${t.createdAt}, ${t.id}) > (${cursor.createdAt}::timestamp, ${cursor.id}::bigint)`,
+        )
+    }
+    const batch = sql`select ${t.id} as id, ${t.createdAt} as created_at from ${t}
+        where ${sql.join(conditions, sql` and `)}
+        order by ${t.createdAt}, ${t.id} limit ${limit}`
+    const changed = dryRun ? sql`0` : sql`(select count(*) from purged)::int`
+    const purged = dryRun
+        ? sql``
+        : sql`, purged as (
+            update ${t} set
+                ${sql.identifier('prompt_sha256')} = coalesce(${t.promptSha256}, encode(sha256(convert_to(${t.finalPrompt}, 'UTF8')), 'hex')),
+                ${sql.identifier('prompt_chars')} = coalesce(${t.promptChars}, char_length(${t.finalPrompt})),
+                ${sql.identifier('final_prompt')} = ''
+            where ${t.id} = any(array(select id from batch)) and ${t.finalPrompt} <> ''
+            returning 1
+        )`
+    return sql`with batch as materialized (${batch})${purged}
+        select (select count(*) from batch)::int as selected,
+               ${changed} as changed,
+               last.created_at::text as last_created_at,
+               last.id::text as last_id
+        from (select 1) one
+        left join lateral (
+            select created_at, id from batch order by created_at desc, id desc limit 1
+        ) last on true`
 }
 
 function buildTextWhere(filter: TextFilter): SQL | undefined {
@@ -120,21 +160,22 @@ export const llmUsageRepository: ILlmUsageRepository = {
         batchSize = PURGE_BATCH_SIZE,
         checkpoint = noCheckpoint,
     }) {
-        if (dryRun) {
-            // One statement over the partial index: it touches only rows that still hold text.
-            checkpoint()
-            const [row] = await db
-                .select({ count: sql<number>`count(*)::int` })
-                .from(llmTextUsage)
-                .where(withPromptText(olderThan))
-            return { matched: row?.count ?? 0, changed: 0 }
-        }
+        let matched = 0
         let changed = 0
+        let cursor: PromptPurgeCursor | null = null
         for (;;) {
             checkpoint()
-            const result = await db.execute<{ id: unknown }>(promptPurgeBatch(olderThan, batchSize))
-            changed += result.rows.length
-            if (result.rows.length < batchSize) return { matched: changed, changed }
+            const result: { rows: PurgeBatchRow[] } = await db.execute<PurgeBatchRow>(
+                promptPurgeBatch(olderThan, cursor, batchSize, dryRun),
+            )
+            const row: PurgeBatchRow | undefined = result.rows[0]
+            const selected = row?.selected ?? 0
+            matched += selected
+            changed += row?.changed ?? 0
+            if (selected < batchSize || row?.last_created_at == null || row.last_id == null) {
+                return { matched, changed }
+            }
+            cursor = { createdAt: row.last_created_at, id: row.last_id }
         }
     },
 
