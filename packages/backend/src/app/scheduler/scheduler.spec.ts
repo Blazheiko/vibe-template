@@ -790,3 +790,43 @@ describe('review fixes', () => {
         expect(t.leases.withLease).toHaveBeenCalledTimes(1)
     })
 })
+
+// feat-230: a run that rejects with undefined is a failure. The failure used to be told by
+// `err !== undefined`, so `Promise.reject()` and `throw undefined` were recorded as successes.
+describe('a run that rejects without a reason', () => {
+    const rejections: [string, Run][] = [
+        [
+            'Promise.reject(undefined)',
+            // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- the case under test
+            () => Promise.reject(undefined),
+        ],
+        [
+            'throw undefined',
+            async () => {
+                await Promise.resolve()
+                // eslint-disable-next-line @typescript-eslint/only-throw-error -- the case under test
+                throw undefined
+            },
+        ],
+    ]
+
+    it.each(rejections)('%s is failed: backoff, Sentry, no success slot', async (_name, run) => {
+        const t = setup([job('a', run)])
+
+        await t.scheduler.tick()
+
+        expect(t.outcomes()).toEqual(['failed'])
+        expect(t.store.state.recordSuccess).not.toHaveBeenCalled()
+        expect(t.store.hashes.get('a')?.lastSuccessSlot).toBeUndefined()
+        expect(t.store.hashes.get('a')?.consecutiveFailures).toBe(1)
+        expect(t.store.hashes.get('a')?.nextRetryAt).toBe(T0 + MINUTE)
+        expect(t.sentry.captureException).toHaveBeenCalledTimes(1)
+        expect(t.sentry.captureException.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+    })
+
+    it.each(rejections)('%s is failed in runOnce (job:run exits 1)', async (_name, run) => {
+        const t = setup([job('a', run)])
+
+        expect((await t.scheduler.runOnce('a')).outcome).toBe('failed')
+    })
+})
