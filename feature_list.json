@@ -2251,8 +2251,8 @@
             "owner": "Blazheiko",
             "branch": "docs/scheduler-docs-gaps",
             "dependencies": ["feat-223"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #691 (merge e6dcc44), registry #690. Docs only, both locales: scheduler.md adding a job batches by = ANY(ARRAY(SELECT id ... WHERE <condition> ORDER BY <indexed column> LIMIT n)) with an index on the condition column (IN (SELECT ... LIMIT n) could sort every matching row per batch, measured in the feat-223 review), links expired-rows.ts and the plan test; scheduler.md variables lists job variables (AUTH_TOKEN_RETENTION); deployment.md section Background jobs (replicas and SCHEDULER_ENABLED/SCHEDULER_DISABLED_JOBS, Redis maxmemory-policy noeviction, stop order with stop_grace_period >= 15 s since drain 5 s + user_online 3 s + Sentry 2 s can exceed the 10 s Docker default, job:run in the container) and the graceful-shutdown item starts with the scheduler stop; observability.md section Background jobs (run log fields, levels, Sentry tags job/outcome). Added on the owner request: the scheduler.ts stopDrainMs comment no longer names a non-existent SCHEDULER_STOP_DRAIN_MS; testing.md says 8 *.pg.test.ts files also need REDIS_TEST_URL and skip without it. docs:build + docs:verify green; CI on 978c44f: quality, build, e2e, e2e-live, test-pg, test-redis green. Status went in_progress -> done without a separate review PR (docs only, merged after green CI)."
         }
     ]
 }
