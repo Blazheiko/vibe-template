@@ -1,65 +1,63 @@
 {
-  "type": "diff",
-  "version": "9",
-  "dialect": "postgres",
-  "id": "21ed17f7-8420-4c9a-bee3-3f60f6338c50",
-  "prevIds": [
-    "859dedd4-f286-454f-9f1f-012976bc98cf"
-  ],
-  "footprints": [
-    {
-      "statementType": "create_index",
-      "statementTarget": [
-        "index",
-        "public",
-        "llm_text_usage",
-        "llm_text_usage_prompt_text_created_at_idx"
-      ],
-      "writes": [
-        "s|idx|public.llm_text_usage_prompt_text_created_at_idx",
-        "n|idx|public.llm_text_usage_prompt_text_created_at_idx",
-        "e|idx|public.llm_text_usage_prompt_text_created_at_idx",
-        "n|rel|public.llm_text_usage_prompt_text_created_at_idx"
-      ],
-      "reads": [
-        "n|tbl|public.llm_text_usage",
-        "n|sch|public",
-        "n|col|public.llm_text_usage.created_at",
-        "n|col|public.llm_text_usage.id"
-      ]
-    }
-  ],
-  "deltas": [
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "llm_text_usage",
-        "name": "llm_text_usage_prompt_text_created_at_idx",
-        "nameExplicit": true,
-        "columns": [
-          {
-            "value": "created_at",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          },
-          {
-            "value": "id",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          }
-        ],
-        "isUnique": false,
-        "where": "\"final_prompt\" <> ''",
-        "with": "",
-        "method": "btree",
-        "concurrently": false,
-        "entityType": "indexes"
-      }
-    }
-  ]
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "21ed17f7-8420-4c9a-bee3-3f60f6338c50",
+    "prevIds": ["859dedd4-f286-454f-9f1f-012976bc98cf"],
+    "footprints": [
+        {
+            "statementType": "create_index",
+            "statementTarget": [
+                "index",
+                "public",
+                "llm_text_usage",
+                "llm_text_usage_prompt_text_created_at_idx"
+            ],
+            "writes": [
+                "s|idx|public.llm_text_usage_prompt_text_created_at_idx",
+                "n|idx|public.llm_text_usage_prompt_text_created_at_idx",
+                "e|idx|public.llm_text_usage_prompt_text_created_at_idx",
+                "n|rel|public.llm_text_usage_prompt_text_created_at_idx"
+            ],
+            "reads": [
+                "n|tbl|public.llm_text_usage",
+                "n|sch|public",
+                "n|col|public.llm_text_usage.created_at",
+                "n|col|public.llm_text_usage.id"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "llm_text_usage",
+                "name": "llm_text_usage_prompt_text_created_at_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "created_at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    },
+                    {
+                        "value": "id",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": "\"final_prompt\" <> ''",
+                "with": "",
+                "method": "btree",
+                "concurrently": false,
+                "entityType": "indexes"
+            }
+        }
+    ]
 }

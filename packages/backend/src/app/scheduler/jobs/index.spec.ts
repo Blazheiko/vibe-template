@@ -19,11 +19,12 @@ describe('job registry', () => {
         expect(new Set(names).size).toBe(names.length)
     })
 
-    it('contains the auth token cleanup (feat-223), the prompt retention (feat-224) and the audit retention (feat-235)', () => {
+    it('contains the auth token cleanup (feat-223), the prompt retention (feat-224) and the audit retention (feat-235) and the notification retention (feat-236)', () => {
         expect(jobs.map((job) => job.name)).toEqual([
             'auth-token-cleanup',
             'llm-prompt-retention',
             'audit-events-retention',
+            'notifications-retention',
         ])
     })
 
