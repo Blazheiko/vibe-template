@@ -2,6 +2,8 @@ import MainController from '#app/controllers/http/core/main-controller.js'
 import AuthController from '#app/controllers/http/auth/auth-controller.js'
 import SignInMethodsController from '#app/controllers/http/auth/sign-in-methods-controller.js'
 import AdminUserController from '#app/controllers/http/admin/admin-user-controller.js'
+import AdminAuditEventsController from '#app/controllers/http/admin/admin-audit-events-controller.js'
+import { AUDIT_EVENTS_QUERY_ARRAYS } from 'shared/schemas'
 import AdminOnlineUserController from '#app/controllers/http/admin/admin-online-user-controller.js'
 import AdminOnlineHistoryController from '#app/controllers/http/admin/admin-online-history-controller.js'
 import SupportController from '#app/controllers/http/support/support-controller.js'
@@ -519,6 +521,19 @@ export default [
             }),
         ],
         description: 'Admin user and online routes',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
+        prefix: 'admin',
+    },
+    {
+        group: [
+            defineRoute({
+                contract: adminContracts.auditEvents,
+                handler: AdminAuditEventsController.list.bind(AdminAuditEventsController),
+                queryArrays: AUDIT_EVENTS_QUERY_ARRAYS,
+                description: 'List the audit log, newest first, by filters (admin)',
+            }),
+        ],
+        description: 'Admin audit log (feat-235)',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
         prefix: 'admin',
     },

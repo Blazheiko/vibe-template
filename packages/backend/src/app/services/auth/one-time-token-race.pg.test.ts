@@ -6,6 +6,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
+import { testProofHolder, testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-060: the reset, email-verification and email-link tokens are single-use. They
 // used to be read, checked, applied and only then marked used, with `UPDATE ... WHERE
@@ -159,7 +160,13 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
     describe('password reset token (email)', () => {
         const reset = (token: string, password: string) =>
-            passwordResetService.resetPassword(token, password, password, META)
+            passwordResetService.resetPassword(
+                token,
+                password,
+                password,
+                META,
+                testProofHolder('email_link'),
+            )
 
         it('lets exactly one of two concurrent resets with one token win', async () => {
             const user = await insertUser()
@@ -256,11 +263,16 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     describe('email verification token', () => {
         // feat-097: a registration link needs the account's password from a signed-out browser.
         const verify = (token: string) =>
-            emailVerificationService.verifyEmail(token, META, {
-                userId: null,
-                presentedSessionToken: undefined,
-                password: OLD_PASSWORD,
-            })
+            emailVerificationService.verifyEmail(
+                token,
+                META,
+                {
+                    userId: null,
+                    presentedSessionToken: undefined,
+                    password: OLD_PASSWORD,
+                },
+                testRequest(),
+            )
 
         it('lets exactly one of two concurrent verifications win', async () => {
             const user = await insertUser(false)
@@ -294,10 +306,15 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     describe('email link token', () => {
         // feat-097: an email link works only from a current session of the account that asked.
         const link = (token: string, user: { id: bigint; sessionToken: string }) =>
-            emailVerificationService.verifyEmail(token, META, {
-                userId: user.id,
-                presentedSessionToken: user.sessionToken,
-            })
+            emailVerificationService.verifyEmail(
+                token,
+                META,
+                {
+                    userId: user.id,
+                    presentedSessionToken: user.sessionToken,
+                },
+                testRequest(),
+            )
 
         it('lets exactly one of two concurrent links win', async () => {
             const user = await insertUser(true, false)

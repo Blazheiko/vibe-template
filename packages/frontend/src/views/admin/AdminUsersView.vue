@@ -121,6 +121,7 @@ onMounted(() => {
                         <th>Name</th>
                         <th>Email</th>
                         <th>Registered At</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -134,9 +135,19 @@ onMounted(() => {
                         <td>{{ user.name }}</td>
                         <td class="cell-email">{{ user.email }}</td>
                         <td>{{ formatDate(user.registeredAt) }}</td>
+                        <td>
+                            <!-- feat-235: what was done to this account, in the audit log. -->
+                            <router-link
+                                class="audit-link"
+                                :to="{ path: '/admin/audit-log', query: { targetUserId: user.id } }"
+                                @click.stop
+                            >
+                                Log
+                            </router-link>
+                        </td>
                     </tr>
                     <tr v-if="users.length === 0">
-                        <td colspan="4" class="empty-row">No users found</td>
+                        <td colspan="5" class="empty-row">No users found</td>
                     </tr>
                 </tbody>
             </table>
@@ -253,6 +264,11 @@ onMounted(() => {
         flex: 1;
     }
 }
+.audit-link {
+    color: var(--accent-color);
+    font-size: 0.8125rem;
+}
+
 .load-more-wrap {
     display: flex;
     justify-content: center;

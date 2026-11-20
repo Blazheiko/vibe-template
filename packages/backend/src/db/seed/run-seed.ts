@@ -1,4 +1,5 @@
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
+import type { RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import { SEED_PROMPTS } from './prompts.js'
 import type { PromptType, SeedPrompt } from './prompts.js'
 
@@ -20,7 +21,11 @@ export interface ExistingUser {
 export interface SeedStore {
     insertPromptIfMissing(prompt: SeedPrompt): Promise<boolean>
     findUserByEmail(normalizedEmail: string): Promise<ExistingUser | undefined>
-    insertUser(user: SeedUser): Promise<void>
+    /**
+     * Inserts the user; for an admin also its `user.admin.created` event, in the same transaction
+     * (feat-235). Answers the events written, to be logged once the transaction committed.
+     */
+    insertUser(user: SeedUser): Promise<RecordedAuditEvent[]>
 }
 
 export type SkipReason =
@@ -32,6 +37,8 @@ export interface SeedReport {
     prompts: Record<PromptType, SeedOutcome>
     admin: SeedOutcome
     user: SeedOutcome
+    /** Written in the seed's transaction; logged after its commit (feat-235, Р12). */
+    auditEvents: RecordedAuditEvent[]
 }
 
 export interface SeedOptions {
@@ -75,6 +82,7 @@ async function seedAccount(
     store: SeedStore,
     account: DemoAccount,
     options: SeedOptions,
+    auditEvents: RecordedAuditEvent[],
 ): Promise<SeedOutcome> {
     if (!options.demo) return skipped('demo_disabled')
 
@@ -93,12 +101,13 @@ async function seedAccount(
             : skipped('already_exists')
     }
 
-    await store.insertUser({
+    const events = await store.insertUser({
         name: account.name,
         email,
         passwordHash: await options.hashPassword(password),
         role: account.kind === 'admin' ? 'admin' : 'user',
     })
+    auditEvents.push(...events)
     return inserted
 }
 
@@ -111,8 +120,9 @@ export async function runSeed(store: SeedStore, options: SeedOptions): Promise<S
     }
 
     const [adminAccount, userAccount] = DEMO_ACCOUNTS as [DemoAccount, DemoAccount]
-    const admin = await seedAccount(store, adminAccount, options)
-    const user = await seedAccount(store, userAccount, options)
+    const auditEvents: RecordedAuditEvent[] = []
+    const admin = await seedAccount(store, adminAccount, options, auditEvents)
+    const user = await seedAccount(store, userAccount, options, auditEvents)
 
-    return { prompts, admin, user }
+    return { prompts, admin, user, auditEvents }
 }

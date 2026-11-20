@@ -11,6 +11,7 @@ const supportKnowledgeRepositoryMock = {
     update: vi.fn(),
     delete: vi.fn(),
     replaceScreenshot: vi.fn(),
+    lockById: vi.fn(),
     setEmbedding: vi.fn(),
     clearEmbedding: vi.fn(),
 }
@@ -32,6 +33,19 @@ const appConfigMock = { cdnUrl: 'https://cdn.test/' }
 vi.mock('#app/repositories/support/support-knowledge-repository.js', () => ({
     supportKnowledgeRepository: supportKnowledgeRepositoryMock,
 }))
+
+// feat-235: the audit write and the transaction are covered by kb-audit.pg.test.ts.
+vi.mock('#app/repositories/transaction.js', () => ({
+    withTransaction: (work: (tx: unknown) => Promise<unknown>) => work({}),
+}))
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
+const actor = { kind: 'user', userId: 1n, logger: { info: vi.fn() } } as never
 
 vi.mock('#app/services/support/support-embedding-service.js', () => ({
     supportEmbeddingService: supportEmbeddingServiceMock,
@@ -156,12 +170,15 @@ describe('knowledgeBaseService', () => {
         })
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.create({
-            title: 'New Article',
-            content: 'Body',
-            category: 'support',
-            isActive: true,
-        })
+        const result = await knowledgeBaseService.create(
+            {
+                title: 'New Article',
+                content: 'Body',
+                category: 'support',
+                isActive: true,
+            },
+            actor,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         expect(supportEmbeddingServiceMock.indexArticle).toHaveBeenCalledWith(
@@ -191,12 +208,16 @@ describe('knowledgeBaseService', () => {
         supportKnowledgeRepositoryMock.replaceScreenshot.mockResolvedValue({ previousKey: null })
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.uploadScreenshot(11n, {
-            name: 'screenshot.png',
-            filename: 'screenshot.png',
-            type: 'image/png',
-            data: PNG_BYTES,
-        })
+        const result = await knowledgeBaseService.uploadScreenshot(
+            11n,
+            {
+                name: 'screenshot.png',
+                filename: 'screenshot.png',
+                type: 'image/png',
+                data: PNG_BYTES,
+            },
+            actor,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         expect(uploadToS3Mock).toHaveBeenCalledWith(
@@ -205,10 +226,11 @@ describe('knowledgeBaseService', () => {
             'image/png',
             { publicRead: true },
         )
-        expect(supportKnowledgeRepositoryMock.replaceScreenshot).toHaveBeenCalledWith(11n, {
-            key: expect.stringContaining('knowledge-base/11/'),
-            mime: 'image/png',
-        })
+        expect(supportKnowledgeRepositoryMock.replaceScreenshot).toHaveBeenCalledWith(
+            11n,
+            { key: expect.stringContaining('knowledge-base/11/'), mime: 'image/png' },
+            expect.any(Function),
+        )
         // Upload first, then the row: a failed upload leaves the article as it was (feat-116).
         expect(uploadToS3Mock.mock.invocationCallOrder[0]).toBeLessThan(
             supportKnowledgeRepositoryMock.replaceScreenshot.mock.invocationCallOrder[0] ?? 0,
@@ -224,12 +246,16 @@ describe('knowledgeBaseService', () => {
 
     it('rejects a screenshot whose bytes do not match the declared type (item 46)', async () => {
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.uploadScreenshot(11n, {
-            name: 'screenshot.png',
-            filename: 'screenshot.png',
-            type: 'image/png',
-            data: JPEG_BYTES,
-        })
+        const result = await knowledgeBaseService.uploadScreenshot(
+            11n,
+            {
+                name: 'screenshot.png',
+                filename: 'screenshot.png',
+                type: 'image/png',
+                data: JPEG_BYTES,
+            },
+            actor,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -242,7 +268,7 @@ describe('knowledgeBaseService', () => {
         supportKnowledgeRepositoryMock.findById.mockResolvedValue(undefined)
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.deleteScreenshot(11n)
+        const result = await knowledgeBaseService.deleteScreenshot(11n, actor)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {

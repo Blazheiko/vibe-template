@@ -315,6 +315,8 @@ sequenceDiagram
 
 Провайдер SMS обирається через `AUTH_SMS_PROVIDER`. Валідатор runtime-конфігурації забороняє `AUTH_SMS_PROVIDER=fake` в середовищах production-like і вимагає явно задати `AUTH_SMS_PROVIDER_ALLOW_FAKE=true` та `AUTH_FAKE_SMS_CODE`.
 
+Кожна зміна способу входу, зміна чи відновлення пароля і масове відкликання сесій пишуть подію в [журнал дій](/backend/audit-log) у власній транзакції.
+
 ## Чистка прострочених токенів
 
 Одноразові токени (`email_verifications`, `email_link_verifications`, `password_reset_tokens`, `oauth_link_verifications`) і SMS-челенджі (`sms_auth_challenges`) не видаляються в момент використання: використаний рядок отримує `used_at` (`confirmed_at` / `invalidated_at` у челенджа). Щодня о 03:30 UTC задача [`auth-token-cleanup`](/backend/scheduler#задачі) видаляє рядки, у яких `expires_at` раніше за `now − AUTH_TOKEN_RETENTION` (за замовчуванням `7d`), пачками по 1000 ([`auth-token-cleanup-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-token-cleanup-service.ts)). Два одночасні запуски видаляють кожен рядок рівно один раз. Перевірити, скільки рядків піде: `pnpm --filter backend job:run auth-token-cleanup --dry-run`.

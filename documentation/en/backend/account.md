@@ -97,6 +97,8 @@ curl -s -b cookies.txt -X PATCH -H "$O" -H 'content-type: application/json' -H "
 
 Tests: [`account-service.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.spec.ts), [`account-preferences.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-preferences.pg.test.ts) (upsert, `CHECK`, concurrent changes), [`account-service.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.pg.test.ts) (rollback of the name), [`account-http.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-http.pg.test.ts) (the routes over HTTP, revoked sessions), [`account-throttle.redis.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-throttle.redis.test.ts); in the frontend [`useProfileSave.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/__tests__/useProfileSave.spec.ts) and [`e2e-live/account-profile.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/e2e-live/account-profile.spec.ts).
 
+Ending all other sessions writes `auth.sessions.revoked_others` to the [audit log](/en/backend/audit-log).
+
 ## Active sessions
 
 The account page lists every active sign-in of the user: browser, operating system, IP address, how and when they signed in, when the session was last active, which one is this device and which are online. The user ends any other session, or all others at once, without signing out (feat-233).

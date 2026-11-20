@@ -48,6 +48,9 @@ vi.mock('#app/repositories/index.js', async (importActual) => {
         // transaction; there is no database in this suite.
         withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
         passwordResetRepository: { invalidatePendingByUserId: () => Promise.resolve(0) },
+        // feat-235: the audit event of the rotation; written nowhere in this suite.
+        readClockTimestamp: () => Promise.resolve('2026-11-20 00:00:00'),
+        auditEventsRepository: { insert: () => Promise.resolve() },
         userRepository: {
             findSessionToken: (id: bigint) => Promise.resolve(fakeUsers.tokens.get(String(id))),
             update: (id: bigint, data: { sessionToken?: string }) => {

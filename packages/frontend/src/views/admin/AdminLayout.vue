@@ -14,6 +14,7 @@ const navItems = [
     { label: 'Users', path: '/admin/users', icon: 'users' },
     { label: 'User Online', path: '/admin/user-online', icon: 'online-users' },
     { label: 'History Online', path: '/admin/history-online', icon: 'history-online' },
+    { label: 'Audit Log', path: '/admin/audit-log', icon: 'audit-log' },
 ]
 
 function goBack() {
@@ -151,6 +152,30 @@ onUnmounted(() => {
                             stroke-width="1.4"
                             stroke-linecap="round"
                             stroke-linejoin="round"
+                        />
+                    </svg>
+                    <svg
+                        v-if="item.icon === 'audit-log'"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        aria-hidden="true"
+                    >
+                        <rect
+                            x="3"
+                            y="2"
+                            width="10"
+                            height="12"
+                            rx="1.5"
+                            stroke="currentColor"
+                            stroke-width="1.4"
+                        />
+                        <path
+                            d="M5.5 5.5h5M5.5 8h5M5.5 10.5h3"
+                            stroke="currentColor"
+                            stroke-width="1.4"
+                            stroke-linecap="round"
                         />
                     </svg>
                     {{ item.label }}

@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -13,6 +14,8 @@ const userRepositoryMock = {
     create: vi.fn(),
     update: vi.fn(),
     updateIfSessionToken: vi.fn(),
+    // feat-235: confirmPhoneLink locks the row it read; by default the lock sees that row.
+    lockById: vi.fn((id: bigint): unknown => userRepositoryMock.findById(id)),
 }
 
 const smsAuthChallengeRepositoryMock = {
@@ -54,6 +57,14 @@ const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
 const issueVerificationCodeMock = vi.fn()
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
@@ -830,6 +841,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -878,7 +890,7 @@ describe('authService phone foundation', () => {
             id: 'link-challenge-1',
             confirmedAt: new Date(),
         })
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue({
+        userRepositoryMock.update.mockResolvedValue({
             id: 7n,
             email: 'user@example.com',
             phone: '+14155550123',
@@ -907,13 +919,17 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, 'session-token', {
-            phone: '+14155550123',
-        })
-        expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        // feat-235: on the row locked in the transaction that confirmed the code.
+        expect(userRepositoryMock.lockById).toHaveBeenCalledWith(7n, expect.anything())
+        expect(userRepositoryMock.update).toHaveBeenCalledWith(
+            7n,
+            { phone: '+14155550123' },
+            expect.anything(),
+        )
     })
 
     it('rejects phone link confirmation when the challenge session does not match', async () => {
@@ -952,6 +968,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -989,6 +1006,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1097,6 +1115,7 @@ describe('phone linking session guard (feat-096)', () => {
                 presentedSessionToken,
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
     }
 
@@ -1142,17 +1161,16 @@ describe('phone linking session guard (feat-096)', () => {
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 
-    it('confirmPhoneLink answers 401 when the session is revoked before the conditional write', async () => {
+    // feat-235: the decisive check is on the locked row, before the code is confirmed.
+    it('confirmPhoneLink answers 401 when the session is revoked before the lock', async () => {
         arrangeConfirm()
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
+        userRepositoryMock.lockById.mockResolvedValueOnce({ ...owner, sessionToken: 'rotated' })
 
         const result = await confirm('session-token')
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
-        expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, 'session-token', {
-            phone: '+14155550123',
-        })
+        expect(smsAuthChallengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
         expect(userRepositoryMock.update).not.toHaveBeenCalled()
     })
 })
@@ -1235,6 +1253,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
                     presentedSessionToken: 'session-token',
                     sessionStored: sessionStillStored,
                 },
+                testUserActor(),
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
@@ -1464,11 +1483,12 @@ describe('phone writes losing the race to the unique index', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
     }
 
     it('confirmPhoneLink answers 409 Phone is already linked to another account', async () => {
-        userRepositoryMock.updateIfSessionToken.mockRejectedValue(uniqueViolation)
+        userRepositoryMock.update.mockRejectedValue(uniqueViolation)
 
         const result = await confirmLink()
 
@@ -1479,7 +1499,7 @@ describe('phone writes losing the race to the unique index', () => {
     })
 
     it('confirmPhoneLink still throws any other database error', async () => {
-        userRepositoryMock.updateIfSessionToken.mockRejectedValue(new Error('connection lost'))
+        userRepositoryMock.update.mockRejectedValue(new Error('connection lost'))
 
         await expect(confirmLink()).rejects.toThrow('connection lost')
     })

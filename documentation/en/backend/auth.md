@@ -315,6 +315,8 @@ So one account checks at most 3 email addresses and 3 phone numbers per hour, no
 
 The SMS provider is selected with `AUTH_SMS_PROVIDER`. The runtime-config validator forbids `AUTH_SMS_PROVIDER=fake` in production-like environments and requires explicitly setting `AUTH_SMS_PROVIDER_ALLOW_FAKE=true` and `AUTH_FAKE_SMS_CODE`.
 
+Every change of a sign-in method, a password change or reset and a mass revocation of sessions writes an event to the [audit log](/en/backend/audit-log) in its own transaction.
+
 ## Expired token cleanup
 
 One-time tokens (`email_verifications`, `email_link_verifications`, `password_reset_tokens`, `oauth_link_verifications`) and SMS challenges (`sms_auth_challenges`) are not deleted when used: a used row gets `used_at` (`confirmed_at` / `invalidated_at` for a challenge). Every day at 03:30 UTC the [`auth-token-cleanup`](/en/backend/scheduler#jobs) job deletes the rows whose `expires_at` is before `now − AUTH_TOKEN_RETENTION` (default `7d`), in batches of 1000 ([`auth-token-cleanup-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-token-cleanup-service.ts)). Two overlapping runs delete each row exactly once. To see how many rows would go: `pnpm --filter backend job:run auth-token-cleanup --dry-run`.

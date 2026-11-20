@@ -11,6 +11,14 @@ const { changePassword, renewSession, closeUserConnections } = vi.hoisted(() => 
     closeUserConnections: vi.fn(() => 0),
 }))
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
     wsSessionRevocation: { closeUserConnections },
 }))
@@ -122,6 +130,8 @@ describe('AuthController.changePassword', () => {
             'presented-token',
             expect.any(Function),
             's1',
+            // feat-235: the signed-in user of the request is the actor of the audit event.
+            expect.objectContaining({ kind: 'user', userId: 7n }),
         )
     })
 

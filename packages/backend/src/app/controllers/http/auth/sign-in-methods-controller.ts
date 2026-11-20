@@ -1,6 +1,7 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
+import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { signInMethodsService } from '#app/services/auth/sign-in-methods-service.js'
 import { unauthorized } from '#app/services/shared/errors.js'
@@ -30,6 +31,7 @@ export default {
             presentedSessionToken: context.auth.getPresentedUserToken(),
             sessionCreatedAt: context.session.sessionInfo?.createdAt,
             sessionStored: () => context.session.isStored(),
+            actor: auditActorFrom(context),
         })
         return respond(context, result, () => ({ status: 'success' as const }))
     },

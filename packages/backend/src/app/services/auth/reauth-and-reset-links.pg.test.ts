@@ -9,6 +9,7 @@ import {
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
 import { appErrorMessage } from '../shared/errors.js'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -169,6 +170,8 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             { currentPassword: PASSWORD, newPassword: 'another-password-456' },
             user.sessionToken,
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(message(change)).toBe('Too many password change attempts. Please try again later.')
@@ -200,6 +203,8 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             { currentPassword: PASSWORD, newPassword: 'another-password-456' },
             user.sessionToken,
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(change.isOk()).toBe(true)
@@ -219,6 +224,8 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
                 { currentPassword: PASSWORD, newPassword: 'another-password-456' },
                 user.sessionToken,
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             ),
         ).rejects.toThrow('injected')
 
@@ -236,6 +243,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
                 logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
             } as never,
             { sessionInfo: { id: 's', data: { csrfToken: 'c'.repeat(43) } } } as never,
+            testUserActor(),
         )
 
     it('logout-all retires the pending reset links', async () => {
@@ -315,6 +323,8 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
             { currentPassword: PASSWORD, newPassword: 'another-password-456' },
             user.sessionToken,
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(change.isOk()).toBe(true)

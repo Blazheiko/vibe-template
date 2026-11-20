@@ -180,6 +180,8 @@ SELECT extversion FROM pg_extension WHERE extname = 'vector';
 | [`20261119123718_llm_usage_prompt_text_idx`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations/20261119123718_llm_usage_prompt_text_idx/migration.sql)                               | `llm_text_usage`: частковий індекс `llm_text_usage_prompt_text_created_at_idx` на `(created_at, id)` `WHERE final_prompt <> ''`. Задача `llm-prompt-retention` проходить його курсором пачками рядків, де текст промпту ще є. `CREATE INDEX` без `CONCURRENTLY`: на час побудови блокує запис у таблицю (на 3 млн рядків — близько 10 с); на великій наявній таблиці створіть індекс заздалегідь `CREATE INDEX CONCURRENTLY` з тим самим іменем і визначенням |
 | [`20261119141051_user_preferences`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations/20261119141051_user_preferences/migration.sql)                                                 | нова порожня таблиця `user_preferences` (рядок на користувача, первинний ключ `user_id` з `ON DELETE CASCADE` від `users`): `locale`, `time_zone`, `theme`, `color_theme`, `font_size`, усі nullable, `revision bigint NOT NULL` без значення за замовчуванням, `updated_at`; `CHECK` на `theme`, `color_theme`, `font_size` (14–20) і `revision >= 1`. Нічого в неї не переноситься ([Акаунт і профіль](/backend/account))                                   |
 
+Таблиця `audit_events` (feat-235) має перший написаний вручну тригер у міграціях, `audit_events_no_update`: snapshot Drizzle його не знає, тож міграція, що перестворює таблицю, додає його знову. Див. [Журнал дій](/backend/audit-log).
+
 ## Скрипти
 
 Запускаються в пакеті backend (`pnpm --filter ./packages/backend <script>`):

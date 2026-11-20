@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 import type * as OtpHash from './otp-verification-hash.js'
+import { testProofHolder, testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -294,6 +295,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
                             presentedSessionToken: user.sessionToken,
                             sessionStored: sessionStillStored,
                         },
+                        testUserActor(),
                     ),
                 ),
             )
@@ -316,6 +318,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
                         'new-password-123',
                         'new-password-123',
                         { ipAddress: '203.0.113.1' },
+                        testProofHolder('sms_code'),
                     ),
                 ),
             )

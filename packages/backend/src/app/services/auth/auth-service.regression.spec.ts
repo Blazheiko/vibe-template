@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -38,6 +39,14 @@ const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
 const sendVerificationEmailAfterRegistrationMock = vi.fn()
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     // feat-109: change-password and logout-all retire the pending reset links.
     passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
@@ -348,6 +357,8 @@ describe('authService legacy regressions', () => {
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -380,6 +391,8 @@ describe('authService legacy regressions', () => {
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password-123')
@@ -442,6 +455,8 @@ describe('change password throttle', () => {
                 { currentPassword: 'guess', newPassword: 'new-password-123' },
                 'previous-session-token',
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
             .then(
                 (result) => Result.isError(result),
@@ -475,6 +490,8 @@ describe('change password throttle', () => {
             { currentPassword: 'secret123', newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
         expect(Result.isOk(result)).toBe(true)
         expect(resetAuthThrottleMock).toHaveBeenCalledWith(

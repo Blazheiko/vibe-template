@@ -258,6 +258,8 @@ describe('OAuthController.callback', () => {
             null,
             context.auth,
             's1',
+            // feat-235: the request, for the audit event.
+            expect.objectContaining({ logger: context.logger }),
         )
     })
 
@@ -325,7 +327,13 @@ describe('OAuthController.confirmLink', () => {
 
         const response = await OAuthController.confirmLink(context)
 
-        expect(confirmLink).toHaveBeenCalledWith('tok', context.auth, 's1')
+        expect(confirmLink).toHaveBeenCalledWith(
+            'tok',
+            context.auth,
+            's1',
+            // feat-235: the request, for the audit event.
+            expect.objectContaining({ logger: context.logger }),
+        )
         expect(response).toEqual({ status: 'success' })
     })
 
@@ -335,7 +343,7 @@ describe('OAuthController.confirmLink', () => {
 
         await OAuthController.confirmLink(context)
 
-        expect(confirmLink).toHaveBeenCalledWith('tok', context.auth, null)
+        expect(confirmLink).toHaveBeenCalledWith('tok', context.auth, null, expect.anything())
     })
 
     it('maps a wrong-session refusal to 403 with its reason', async () => {

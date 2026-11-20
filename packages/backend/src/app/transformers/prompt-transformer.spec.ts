@@ -12,12 +12,15 @@ const row = {
     maxTokens: null,
     createdAt: new Date('2026-10-25T10:00:00.000Z'),
     updatedAt: new Date('2026-10-25T10:01:00.000Z'),
+    revision: 3,
 }
 
 describe('promptTransformer', () => {
     it('sends the id as a string and the dates as ISO strings', () => {
+        const { revision: _revision, ...rest } = row
+        // The revision is the cache's version of the row, not part of the answer.
         expect(promptTransformer.serialize(row)).toEqual({
-            ...row,
+            ...rest,
             id: '5',
             createdAt: '2026-10-25T10:00:00.000Z',
             updatedAt: '2026-10-25T10:01:00.000Z',

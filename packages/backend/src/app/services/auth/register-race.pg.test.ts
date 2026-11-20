@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -323,6 +324,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                             presentedSessionToken: account.sessionToken,
                             sessionStored: sessionStillStored,
                         },
+                        testUserActor(),
                     ),
                 ),
             )
@@ -341,9 +343,10 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                 .from(users)
                 .where(eq(users.id, accounts[loser]!.id))
             expect(loserRow?.phone).toBeNull()
-            // Known trade-off: the code is confirmed before the write, so the loser's challenge
-            // is used up and the user starts the link again.
-            expect((await challengeRow(challenges[loser]!.id))?.confirmedAt).not.toBeNull()
+            // feat-235 (Р3): the code is confirmed in the transaction of the write, so the
+            // unique index rolls the confirmation back with it: the loser's challenge stays
+            // unconfirmed (it used to be used up).
+            expect((await challengeRow(challenges[loser]!.id))?.confirmedAt).toBeNull()
         })
     })
 })

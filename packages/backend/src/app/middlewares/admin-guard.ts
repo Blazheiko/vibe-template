@@ -3,6 +3,7 @@ import { userRoleService } from '#app/services/user/user-role-service.js'
 import { forbidden } from '#app/services/shared/errors.js'
 import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
 import { applyAppErrorStatus } from '#app/services/shared/apply-service-status.js'
+import { rememberActorRole } from '#app/controllers/shared/audit-actor.js'
 
 // The canonical error body ({ status: 'error', code: 'forbidden' }), the same as every other 403.
 function deny(context: HttpContext): void {
@@ -25,6 +26,8 @@ const adminGuard: Middleware = async (
         deny(context)
         return
     }
+    // feat-235: the actor of an audited admin change takes its role from this read.
+    rememberActorRole(context, role)
     await next()
 }
 

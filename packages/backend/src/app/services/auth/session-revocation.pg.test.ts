@@ -10,6 +10,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
+import { testProofHolder, testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -193,6 +194,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 ctxA.auth.getPresentedUserToken(),
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
             expect(Result.isOk(changed)).toBe(true)
             if (!Result.isOk(changed)) return
@@ -240,6 +243,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 user.sessionToken,
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
             expect(Result.isOk(changed)).toBe(true)
             expect(await getSession(session.sessionId, user.sessionToken)).not.toBeNull()
@@ -261,6 +266,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 user.sessionToken,
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
 
             // The change itself succeeded; the records are still in Redis ...
@@ -297,12 +304,16 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                     { currentPassword: OLD_PASSWORD, newPassword: 'winner-one-111' },
                     user.sessionToken,
                     sessionStillStored,
+                    undefined,
+                    testUserActor(),
                 ),
                 authService.changePassword(
                     user.id,
                     { currentPassword: OLD_PASSWORD, newPassword: 'winner-two-222' },
                     user.sessionToken,
                     sessionStillStored,
+                    undefined,
+                    testUserActor(),
                 ),
             ])
 
@@ -350,6 +361,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 context.auth.getPresentedUserToken(),
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
             if (!Result.isOk(changed)) throw new Error('password change failed')
             const renewed = await authService.renewSession(
@@ -405,6 +418,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { newPassword: 'attacker-secret-1' },
                 context.auth.getPresentedUserToken(),
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
 
             expect(Result.isError(result) && result.error).toMatchObject({
@@ -433,6 +448,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { currentPassword: OLD_PASSWORD, newPassword: 'attacker-secret-1' },
                 context.auth.getPresentedUserToken(),
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
 
             expect(Result.isError(result)).toBe(true)
@@ -447,7 +464,11 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const { context } = await requestWith(a.cookie)
             const rotated = await revokeLikeAClaim(user.id)
 
-            const result = await authService.logoutAll(context.auth, context.session)
+            const result = await authService.logoutAll(
+                context.auth,
+                context.session,
+                testUserActor(),
+            )
 
             expect(Result.isError(result) && result.error).toMatchObject({
                 reason: 'session_revoked',
@@ -463,7 +484,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const b = await signIn(user)
             const { context: ctxA } = await requestWith(a.cookie)
 
-            const result = await authService.logoutAll(ctxA.auth, ctxA.session)
+            const result = await authService.logoutAll(ctxA.auth, ctxA.session, testUserActor())
 
             expect(Result.isOk(result)).toBe(true)
             expect(await dbToken(user.id)).not.toBe(user.sessionToken)
@@ -479,7 +500,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             cleanup.fail = true
 
             // feat-101: the rotation is the revocation, the cleanup only memory.
-            const result = await authService.logoutAll(ctxA.auth, ctxA.session)
+            const result = await authService.logoutAll(ctxA.auth, ctxA.session, testUserActor())
             expect(Result.isOk(result) && result.value.deletedCount).toBe(0)
             expect(ctxA.auth.check()).toBe(false)
             // The records are still in Redis ...
@@ -574,7 +595,11 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const socketC = openSocket(bystander.id, c.sessionId, bystander.sessionToken)
 
             const { context } = await requestWith(a.cookie)
-            const result = await authService.logoutAll(context.auth, context.session)
+            const result = await authService.logoutAll(
+                context.auth,
+                context.session,
+                testUserActor(),
+            )
 
             expect(Result.isOk(result)).toBe(true)
             expect(socketA.closedWith).toEqual([4001])
@@ -596,6 +621,8 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
                 context.auth.getPresentedUserToken(),
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
 
             expect(Result.isOk(changed)).toBe(true)
@@ -620,6 +647,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
                 'reset-secret-789',
                 'reset-secret-789',
                 { ipAddress: '203.0.113.9' },
+                testProofHolder('email_link'),
             )
 
             expect(Result.isError(result) ? result.error : null).toBeNull()

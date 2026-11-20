@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-233 (Р7–Р9): the session list service with its storage and repositories replaced. The
 // Redis scripts and the HTTP routes are proved on real servers (session-index.redis.test.ts,
@@ -26,6 +27,14 @@ const sessionListChanged = vi.hoisted(() => vi.fn())
 const listUserConnections = vi.hoisted(() => vi.fn(() => [] as { sessionId: string }[]))
 const TX = vi.hoisted(() => ({ tx: true }))
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => storage)
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: repositories,
@@ -172,6 +181,7 @@ describe('revoke (Р8)', () => {
 describe('revokeOthers (Р9)', () => {
     const revokeOthers = (sessionStored = stored, presented: string | null = 'tok') =>
         sessionListService.revokeOthers({
+            actor: testUserActor(),
             userId: 7n,
             presentedSessionToken: presented ?? undefined,
             requestingSessionId: 'current-sid',

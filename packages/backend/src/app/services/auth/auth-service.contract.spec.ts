@@ -9,6 +9,7 @@ import {
     type AppError,
 } from '#app/services/shared/errors.js'
 import type { authService } from './auth-service.js'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -29,6 +30,7 @@ const userRepositoryMock = {
     updateIfSessionToken: vi.fn(),
     findSessionToken: vi.fn(),
     changePasswordIfCurrent: vi.fn(),
+    lockById: vi.fn(),
 }
 const challengeRepositoryMock = {
     create: vi.fn(),
@@ -66,6 +68,14 @@ const securityNotice = vi.fn()
 const generateWsTokenMock = vi.fn()
 const issueMock = vi.fn()
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     // feat-109: change-password and logout-all retire the pending reset links.
     passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
@@ -228,6 +238,7 @@ const confirmLink =
             7n,
             { challengeId: 'ch-1', code },
             { ...IP, sessionId, presentedSessionToken: TOKEN, sessionStored: sessionStillStored },
+            testUserActor(),
         )
 // feat-096: the same calls as a session presenting `presented` (undefined: none at all).
 const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
@@ -240,6 +251,7 @@ const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
             presentedSessionToken: presented,
             sessionStored: sessionStillStored,
         },
+        testUserActor(),
     )
 const startLinkAs = (presented: string | undefined) => (s: Service) =>
     s.startPhoneLink(
@@ -263,7 +275,14 @@ const startEmailAs = (presented: string | undefined) => (s: Service) =>
 const startEmail = startEmailAs(TOKEN)
 const changeAs =
     (presented: string | undefined, payload: Record<string, unknown>) => (s: Service) =>
-        s.changePassword(7n, payload as never, presented, sessionStillStored)
+        s.changePassword(
+            7n,
+            payload as never,
+            presented,
+            sessionStillStored,
+            undefined,
+            testUserActor(),
+        )
 const change = (payload: Record<string, unknown>) => changeAs(TOKEN, payload)
 
 const account = (over: Record<string, unknown> = {}) => ({
@@ -767,6 +786,7 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
             userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account())
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(undefined)
         },
@@ -798,21 +818,37 @@ const ROWS: readonly Row[] = [
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     })),
+    // feat-235 (Р3): the row is locked and checked again before the code is confirmed; a
+    // revocation or a number linked after the checks above refuses without confirming it.
     {
-        name: 'confirmPhoneLink · the session was revoked before the conditional write',
+        name: 'confirmPhoneLink · the session was revoked before the lock',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
             userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account({ sessionToken: 'rotated' }))
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
         },
         call: confirmLink(),
         error: SESSION_REVOKED,
         after: () => {
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
-                phone: '+380501234567',
-            })
+            expect(challengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'confirmPhoneLink · a number was linked before the lock',
+        arrange: () => {
+            challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
+            userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account({ phone: '+380509999999' }))
+            userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
+            challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
+        },
+        call: confirmLink(),
+        error: badRequest('Phone is already linked to this account'),
+        after: () => {
+            expect(challengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     },
@@ -821,18 +857,23 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
             userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account())
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue(
-                account({ phone: '+380501234567' }),
-            )
+            userRepositoryMock.update.mockResolvedValue(account({ phone: '+380501234567' }))
         },
         call: confirmLink(),
         after: () => {
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
-                phone: '+380501234567',
-            })
-            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            // On the locked row, in the transaction that confirmed the code.
+            expect(userRepositoryMock.update).toHaveBeenCalledWith(
+                7n,
+                { phone: '+380501234567' },
+                expect.anything(),
+            )
+            expect(challengeRepositoryMock.markConfirmed).toHaveBeenCalledWith(
+                'ch-1',
+                expect.anything(),
+            )
         },
     },
     // --- e-mail link ------------------------------------------------------------------------
@@ -949,7 +990,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
             userRepositoryMock.findSessionToken.mockResolvedValue(undefined)
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         error: err(404, 'not_found', 'User not found'),
         after: () => {
             expect(authMock.logoutAll).not.toHaveBeenCalled()
@@ -962,7 +1003,7 @@ const ROWS: readonly Row[] = [
             authMock.getPresentedUserToken.mockReturnValue(undefined)
             userRepositoryMock.findSessionToken.mockResolvedValue('current-token')
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         error: SESSION_REVOKED,
         after: () => {
             expect(userRepositoryMock.updateIfSessionToken).not.toHaveBeenCalled()
@@ -978,7 +1019,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
             userRepositoryMock.findSessionToken.mockResolvedValue('rotated-by-a-claim')
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         error: SESSION_REVOKED,
         after: () => {
             expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
@@ -997,7 +1038,7 @@ const ROWS: readonly Row[] = [
             authMock.getUserId.mockReturnValue('7')
             userRepositoryMock.updateIfSessionToken.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         throws: true,
         after: () => {
             expect(authMock.logoutAll).not.toHaveBeenCalled()
@@ -1011,7 +1052,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
             authMock.logoutAll.mockRejectedValue(new Error('bug'))
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         after: () => {
             expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
                 7n,
@@ -1029,7 +1070,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
             authMock.logoutAll.mockResolvedValue({ deleted: 1, complete: false })
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         after: () => {
             expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
         },
@@ -1041,7 +1082,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
             authMock.logoutAll.mockResolvedValue({ deleted: 3, complete: true })
         },
-        call: (s) => s.logoutAll(authMock as never, sessionMock as never),
+        call: (s) => s.logoutAll(authMock as never, sessionMock as never, testUserActor()),
         after: () => {
             expect(securityNotice).toHaveBeenCalledWith(7n, 'logout_all')
         },
@@ -1107,6 +1148,8 @@ const ROWS: readonly Row[] = [
                 { currentPassword: 'old', newPassword: 'new-password' },
                 TOKEN,
                 () => Promise.resolve(false),
+                undefined,
+                testUserActor(),
             ),
         error: SESSION_REVOKED,
         after: () => {
@@ -1279,7 +1322,11 @@ describe('authService · success payloads', () => {
         userRepositoryMock.updateIfSessionToken.mockResolvedValue(account())
         authMock.logoutAll.mockResolvedValue({ deleted: 3, complete: true })
         const { authService } = await import('./auth-service.js')
-        const result = await authService.logoutAll(authMock as never, sessionMock as never)
+        const result = await authService.logoutAll(
+            authMock as never,
+            sessionMock as never,
+            testUserActor(),
+        )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',
             deletedCount: 3,
@@ -1316,6 +1363,8 @@ describe('authService · success payloads', () => {
             { currentPassword: 'old', newPassword: 'new-password' },
             TOKEN,
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',
@@ -1343,9 +1392,8 @@ describe('authService · success payloads', () => {
         userRepositoryMock.findById.mockResolvedValue(account())
         userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
         challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue(
-            account({ phone: '+380501234567' }),
-        )
+        userRepositoryMock.lockById.mockResolvedValue(account())
+        userRepositoryMock.update.mockResolvedValue(account({ phone: '+380501234567' }))
         const { authService } = await import('./auth-service.js')
         const result = await authService.confirmPhoneLink(
             7n,
@@ -1356,6 +1404,7 @@ describe('authService · success payloads', () => {
                 presentedSessionToken: TOKEN,
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',

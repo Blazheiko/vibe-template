@@ -25,7 +25,8 @@ export interface IOAuthAccountRepository {
     ): Promise<OAuthAccountRow | undefined>
     create(data: OAuthAccountInsert, executor?: DbExecutor): Promise<OAuthAccountRow>
     /** Removes every OAuth link of the user (a claim, feat-097). */
-    deleteByUserId(userId: bigint, executor: DbExecutor): Promise<number>
+    /** Removes every link of the user; answers the provider of each removed link (feat-235). */
+    deleteByUserId(userId: bigint, executor: DbExecutor): Promise<string[]>
     /**
      * Removes one link, only if it belongs to this user (feat-199). False when there is no
      * such link of this user: the id of another account's link removes nothing.
@@ -87,8 +88,8 @@ export const oauthAccountRepository: IOAuthAccountRepository = {
         const rows = await executor
             .delete(oauthAccounts)
             .where(eq(oauthAccounts.userId, userId))
-            .returning({ id: oauthAccounts.id })
-        return rows.length
+            .returning({ provider: oauthAccounts.provider })
+        return rows.map((row) => row.provider)
     },
 
     async deleteByIdForUser(id, userId, executor) {

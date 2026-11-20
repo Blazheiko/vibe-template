@@ -97,6 +97,8 @@ curl -s -b cookies.txt -X PATCH -H "$O" -H 'content-type: application/json' -H "
 
 Тести: [`account-service.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.spec.ts), [`account-preferences.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-preferences.pg.test.ts) (upsert, `CHECK`, одночасні зміни), [`account-service.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-service.pg.test.ts) (відкат імені), [`account-http.pg.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-http.pg.test.ts) (маршрути через HTTP, відкликані сесії), [`account-throttle.redis.test.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/account-throttle.redis.test.ts); у фронтенді [`useProfileSave.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/__tests__/useProfileSave.spec.ts) і [`e2e-live/account-profile.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/e2e-live/account-profile.spec.ts).
 
+Завершення всіх інших сесій пише `auth.sessions.revoked_others` у [журнал дій](/backend/audit-log).
+
 ## Активні сесії
 
 На сторінці акаунта користувач бачить усі свої активні входи: браузер, операційну систему, IP-адресу, як і коли увійшов, коли сесія була активна, яка з них — цей пристрій і які онлайн. Він завершує будь-яку іншу сесію або всі інші одразу, не виходячи сам (feat-233).

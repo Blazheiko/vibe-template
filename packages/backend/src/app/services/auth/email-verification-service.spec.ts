@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -38,6 +39,14 @@ const loggerMock = {
 const originalEnv = { ...process.env }
 
 const consumeAuthThrottleMock = vi.fn()
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     consumeAuthThrottle: consumeAuthThrottleMock,
 }))
@@ -180,6 +189,7 @@ describe('emailVerificationService', () => {
             'expired-token',
             { ipAddress: '127.0.0.1' },
             ANONYMOUS,
+            testRequest(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -226,6 +236,7 @@ describe('emailVerificationService', () => {
             'valid-token',
             { ipAddress: '127.0.0.1' },
             OWN_SESSION_7,
+            testRequest(),
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -334,6 +345,7 @@ describe('emailVerificationService', () => {
             'raced-token',
             { ipAddress: '127.0.0.1' },
             OWN_SESSION_7,
+            testRequest(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -370,6 +382,7 @@ describe('emailVerificationService', () => {
             'raced-link',
             { ipAddress: '127.0.0.1' },
             OWN_SESSION_8,
+            testRequest(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -414,6 +427,7 @@ describe('emailVerificationService', () => {
             'link-token',
             { ipAddress: '127.0.0.1' },
             OWN_SESSION_8,
+            testRequest(),
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -462,6 +476,7 @@ describe('emailVerificationService', () => {
             'link-token',
             { ipAddress: '127.0.0.1' },
             OWN_SESSION_8,
+            testRequest(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -571,6 +586,7 @@ it('maps a unique email race during link verification to a conflict', async () =
         'link-token',
         { ipAddress: '127.0.0.1' },
         OWN_SESSION_8,
+        testRequest(),
     )
 
     expect(Result.isError(result)).toBe(true)
@@ -597,7 +613,7 @@ describe('verification throttles', () => {
         const { emailVerificationService } = await loadEmailVerificationService()
         // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
         const refused = await emailVerificationService
-            .verifyEmail('some-token', { ipAddress: '10.0.0.5' }, ANONYMOUS)
+            .verifyEmail('some-token', { ipAddress: '10.0.0.5' }, ANONYMOUS, testRequest())
             .then(
                 (result) => Result.isError(result),
                 () => true,
@@ -671,6 +687,7 @@ describe('verifyEmail · the owner of a registration link', () => {
             'reg-token',
             { ipAddress: '10.0.0.1' },
             requester,
+            testRequest(),
         )
     }
 
@@ -843,6 +860,7 @@ describe('verifyEmail · the session of an email link', () => {
             'link-token',
             { ipAddress: '10.0.0.1' },
             requester,
+            testRequest(),
         )
     }
 

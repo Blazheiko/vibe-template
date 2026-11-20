@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-199 (security review 2026-11-12, M-2): listing and removing the identities of OAuth
 // providers linked to an account. The row lock and the "not the last one" rule under two
@@ -15,6 +16,14 @@ const mocks = vi.hoisted(() => ({
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: mocks.userRepository,
     oauthAccountRepository: mocks.oauthAccountRepository,
@@ -61,6 +70,7 @@ const request = (over: Record<string, unknown> = {}) => ({
     presentedSessionToken: TOKEN as string | undefined,
     sessionCreatedAt: new Date(NOW - 60_000).toISOString() as string | undefined,
     sessionStored: vi.fn(() => Promise.resolve(true)),
+    actor: testUserActor(),
     now: NOW,
     ...over,
 })

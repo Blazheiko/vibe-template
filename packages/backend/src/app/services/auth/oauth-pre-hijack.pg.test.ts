@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
+import { testProofHolder, testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-097: account pre-hijacking through OAuth, against a real PostgreSQL. The paths are
 // those of docs/plan/archive/oauth-pre-hijack-plan.md («Шляхи атаки»): an attacker prepares an
@@ -198,7 +199,17 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
         providerName: string,
         auth: ReturnType<typeof fakeAuth>['auth'],
         sessionId: string | null = 'browser-session',
-    ) => oauthService.handleCallback(providerName, 'code', 'st', 'st', 'cv', auth, sessionId)
+    ) =>
+        oauthService.handleCallback(
+            providerName,
+            'code',
+            'st',
+            'st',
+            'cv',
+            auth,
+            sessionId,
+            testRequest(),
+        )
 
     const mailedToken = (to: string): string => {
         const message = [...mail.sent].reverse().find((m) => m.to === to)
@@ -337,7 +348,12 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             const token = mailedToken(email)
 
             // Another browser (the attacker's, or a click in a mail app) does nothing.
-            const elsewhere = await oauthService.confirmLink(token, fakeAuth().auth, 'other')
+            const elsewhere = await oauthService.confirmLink(
+                token,
+                fakeAuth().auth,
+                'other',
+                testRequest(),
+            )
             expect(Result.isError(elsewhere) && elsewhere.error).toMatchObject({
                 reason: 'oauth_link_wrong_session',
             })
@@ -348,7 +364,12 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             expect(pending?.usedAt).toBeNull()
 
             const { auth, state } = fakeAuth()
-            const confirmed = await oauthService.confirmLink(token, auth, 'owner-browser')
+            const confirmed = await oauthService.confirmLink(
+                token,
+                auth,
+                'owner-browser',
+                testRequest(),
+            )
 
             expect(Result.isOk(confirmed)).toBe(true)
             const row = await userRow(attacker.id)
@@ -371,7 +392,12 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 .set({ email: address('moved') })
                 .where(eq(users.id, owner.id))
 
-            const result = await oauthService.confirmLink(token, fakeAuth().auth, 'owner-browser')
+            const result = await oauthService.confirmLink(
+                token,
+                fakeAuth().auth,
+                'owner-browser',
+                testRequest(),
+            )
 
             expect(Result.isError(result) && result.error).toMatchObject({
                 reason: 'email_changed',
@@ -396,6 +422,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 raw,
                 { ipAddress: '127.0.0.1' },
                 victim,
+                testRequest(),
             )
 
             expect(Result.isError(clicked) && clicked.error).toMatchObject({
@@ -423,6 +450,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 raw,
                 { ipAddress: '127.0.0.1' },
                 { userId: null, presentedSessionToken: undefined },
+                testRequest(),
             )
 
             expect(Result.isError(clicked) && clicked.error).toMatchObject({
@@ -487,6 +515,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 'owner-secret-1',
                 'owner-secret-1',
                 { ipAddress: '127.0.0.1' },
+                testProofHolder('email_link'),
             )
 
             expect(Result.isOk(result)).toBe(true)

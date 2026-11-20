@@ -8,6 +8,7 @@ import {
     type AppError,
 } from '#app/services/shared/errors.js'
 import type { emailVerificationService } from './email-verification-service.js'
+import { testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -38,6 +39,14 @@ const emailLinkVerificationRepositoryMock = {
 const emailServiceMock = { send: vi.fn() }
 const consumeAuthThrottleMock = vi.fn()
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     emailVerificationRepository: emailVerificationRepositoryMock,
@@ -77,7 +86,7 @@ interface Row {
 const ROWS: readonly Row[] = [
     {
         method: 'verifyEmail · ip',
-        call: (s) => s.verifyEmail('token', IP, ANONYMOUS),
+        call: (s) => s.verifyEmail('token', IP, ANONYMOUS, testRequest()),
         consumed: [['verify_email_ip', '203.0.113.9']],
         blocked: {
             status: 429,
@@ -214,7 +223,7 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
     it('consumes the counters in this order, with these keys', async () => {
         arrangeToken()
         arrange(target, 'blocked')
-        await (await load()).verifyEmail('token', IP, requester)
+        await (await load()).verifyEmail('token', IP, requester, testRequest())
         expect(
             consumeAuthThrottleMock.mock.calls.map(([policy, key]) => [
                 (policy as { scope: string }).scope,
@@ -229,7 +238,7 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
     it('answers a spent counter with the stated error and does not use the link', async () => {
         arrangeToken()
         arrange(target, 'blocked')
-        const result = await (await load()).verifyEmail('token', IP, requester)
+        const result = await (await load()).verifyEmail('token', IP, requester, testRequest())
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
             expect(describeError(result.error)).toEqual({
@@ -244,7 +253,9 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
     it('fails closed when Redis does not answer', async () => {
         arrangeToken()
         arrange(target, 'unavailable')
-        await expect((await load()).verifyEmail('token', IP, requester)).rejects.toThrow()
+        await expect(
+            (await load()).verifyEmail('token', IP, requester, testRequest()),
+        ).rejects.toThrow()
         untouchedAccount()
     })
 
@@ -252,11 +263,16 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
         arrangeToken()
         arrange(target, 'blocked')
         const service = await load()
-        await service.verifyEmail('token', IP, ANONYMOUS)
-        await service.verifyEmail('token', IP, {
-            userId: 7n,
-            presentedSessionToken: 'session-7',
-        })
+        await service.verifyEmail('token', IP, ANONYMOUS, testRequest())
+        await service.verifyEmail(
+            'token',
+            IP,
+            {
+                userId: 7n,
+                presentedSessionToken: 'session-7',
+            },
+            testRequest(),
+        )
         expect(
             consumeAuthThrottleMock.mock.calls.filter(
                 ([policy]) => (policy as { scope: string }).scope === target,
