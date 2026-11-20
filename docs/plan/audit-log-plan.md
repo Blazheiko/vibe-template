@@ -1,9 +1,16 @@
 # Журнал важливих дій — план реалізації
 
-**Статус: погоджено власником**, редакція 3 (2026-11-20). Пункт 3 з
+**Статус: погоджено власником**, редакція 3 (2026-11-20), уточнення T5 для прив'язки телефону. Пункт 3 з
 [`future/template-functionality-recommendations.md`](./future/template-functionality-recommendations.md).
 Пропонований id: `feat-235` (одна фіча, один PR, як `feat-232` і `feat-233`). Рішення Р1–Р14,
 задачі T1–T9.
+
+**Уточнення T5** (за рев'ю редакції 3): прив'язка телефону виконується в `withTransactionResult`,
+бо `withTransaction` комітить і при `Result.err`. Рядок користувача блокується перед
+`confirmChallenge`, і під блокуванням повторно перевіряються токен сесії й відсутність номера.
+`updateIfSessionToken` перевіряє лише id і токен, тож без цього два запити з різними номерами
+проходять початкову перевірку, і другий перезаписує номер першого. Ця гонка є в `main` уже зараз
+(Р3, Р13).
 
 **Редакція 3** (за рев'ю редакції 2):
 
@@ -148,27 +155,47 @@ IP, user-agent, email, телефон і публічний id сесії не �
 `stamp` дає помилку вставки, а не тихий `now()`. Для змін, які блокують один рядок, порядок `stamp`
 збігається з порядком комітів. Між різними об'єктами це лише час годинника сервера БД.
 
-| Дія                                                       | Транзакція, в яку пишемо                                                                |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `auth.sessions.revoked_all`                               | `withTransaction` ротації в `logoutAll` (з `retirePendingResets`)                       |
-| `auth.sessions.revoked_others`                            | `withTransaction` ротації в `revokeOthers`                                              |
-| `auth.password.changed`                                   | транзакція `changePasswordIfCurrent`                                                    |
-| `auth.password.reset` (посилання), `auth.account.claimed` | `runTokenTransaction` у `resetPassword`                                                 |
-| `auth.password.reset` (SMS)                               | `withTransactionResult` у `completePhonePasswordReset` (код підтверджено в ній)         |
-| `auth.oauth.linked`, `auth.account.claimed` (лист)        | `runTokenTransaction` у `confirmLink`                                                   |
-| `auth.oauth.linked`, `auth.account.claimed` (провайдер)   | `withTransaction` у `linkTrusted`                                                       |
-| `auth.email.linked`                                       | `runTokenTransaction` у прив'язці email                                                 |
-| `auth.phone.linked`                                       | **нова** `withTransaction`: `confirmChallenge(tx)` + `updateIfSessionToken(tx)` + подія |
-| `auth.sign_in_method.unlinked`                            | наявна `withTransaction` у `unlink`                                                     |
-| `kb.article.*`, `kb.screenshot.*`                         | нова `withTransaction` (Р5); для скриншота — транзакція `replaceScreenshot`             |
-| `ai.prompt.updated`                                       | нова `withTransaction` (Р5), оновлення кешу — після коміту                              |
-| `user.admin.created`                                      | транзакція вставки користувача в seed                                                   |
+| Дія                                                       | Транзакція, в яку пишемо                                                                                       |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `auth.sessions.revoked_all`                               | `withTransaction` ротації в `logoutAll` (з `retirePendingResets`)                                              |
+| `auth.sessions.revoked_others`                            | `withTransaction` ротації в `revokeOthers`                                                                     |
+| `auth.password.changed`                                   | транзакція `changePasswordIfCurrent`                                                                           |
+| `auth.password.reset` (посилання), `auth.account.claimed` | `runTokenTransaction` у `resetPassword`                                                                        |
+| `auth.password.reset` (SMS)                               | `withTransactionResult` у `completePhonePasswordReset` (код підтверджено в ній)                                |
+| `auth.oauth.linked`, `auth.account.claimed` (лист)        | `runTokenTransaction` у `confirmLink`                                                                          |
+| `auth.oauth.linked`, `auth.account.claimed` (провайдер)   | `withTransaction` у `linkTrusted`                                                                              |
+| `auth.email.linked`                                       | `runTokenTransaction` у прив'язці email                                                                        |
+| `auth.phone.linked`                                       | **нова** `withTransactionResult`: `lockById` → повторні перевірки → `confirmChallenge(tx)` → оновлення + подія |
+| `auth.sign_in_method.unlinked`                            | наявна `withTransaction` у `unlink`                                                                            |
+| `kb.article.*`, `kb.screenshot.*`                         | нова `withTransaction` (Р5); для скриншота — транзакція `replaceScreenshot`                                    |
+| `ai.prompt.updated`                                       | нова `withTransaction` (Р5), оновлення кешу — після коміту                                                     |
+| `user.admin.created`                                      | транзакція вставки користувача в seed                                                                          |
 
 **SMS-код прив'язки телефону.** Зараз `confirmPhoneLink` підтверджує код до запису номера окремим
 запитом. Якби в транзакцію потрапили лише номер і подія, після `500` номер лишився б
 неприв'язаним, а код — уже використаним. Тому `confirmChallenge` переходить у транзакцію разом із
-`updateIfSessionToken` і подією, за зразком відновлення пароля через SMS (feat-106). Погоджена
-поведінка:
+оновленням номера й подією, за зразком відновлення пароля через SMS (feat-106).
+
+Порядок усередині транзакції:
+
+1. Транзакція — `withTransactionResult`, а не `withTransaction`. `withTransaction` комітить, що б
+   не повернула робота, і відкочує лише при винятку
+   (`services/shared/transaction-result.ts:6`). Відмова на півдорозі (`Result.err`) після
+   `confirmChallenge` інакше закомітила б підтвердження коду.
+2. `userRepository.lockById(userId, tx)` — до `confirmChallenge`.
+3. Під блокуванням знову перевіряються: `sessionToken` рядка дорівнює пред'явленому
+   (`session_revoked`), номера ще немає (`Phone is already linked to this account`).
+   Попередні перевірки поза транзакцією лишаються швидкою відмовою, але вирішальні — ці.
+4. `confirmChallenge(challenge, …, tx)`.
+5. Оновлення номера на заблокованому рядку і `auditService.stamp` + `record`.
+
+Без кроків 2–3 це гонка, яка є в `main` уже зараз. `updateIfSessionToken`
+(`user-repository.ts:303`) перевіряє лише id і токен. Два запити з одного акаунта з різними
+номерами (два челенджі) обидва проходять перевірку «номера немає», і другий перезаписує номер
+першого. Блокування серіалізує їх: другий бачить номер першого й отримує відмову, а його
+підтвердження коду відкочується.
+
+Погоджена поведінка:
 
 - збій запису події, умовного оновлення або коміту відкочує підтвердження. Той самий код можна
   ввести знову, поки він не прострочений і не вичерпано спроби;
@@ -393,6 +420,11 @@ ORDER BY occurred_at LIMIT $n))`, без читання й наступного 
   підтверджено (`confirmed_at IS NULL`). Повтор із тим самим кодом прив'язує номер і пише одну
   подію. Лічильник спроб показує спробу першого запиту витраченою. `409` через унікальний індекс
   теж лишає челендж непідтвердженим.
+- Гонка прив'язки телефону для одного акаунта (`race-barrier.ts`): два запити з двома челенджами
+  на різні номери після попередніх перевірок. Рівно один прив'язує номер і пише одну подію `auth.phone.linked`, другий
+  отримує відмову «already linked». Його челендж лишається непідтвердженим, а номер першого не
+  перезаписано. Окремо — відмова `session_revoked` під блокуванням (токен ротовано між
+  попередньою перевіркою і транзакцією) відкочує підтвердження коду.
 - Claim: скидання паролем неперевіреного акаунта з телефоном і двома OAuth-прив'язками пише
   `auth.password.reset` і `auth.account.claimed` з обома провайдерами, з одним `request_id` і
   `occurred_at`. На підтвердженому акаунті `claimed` не пишеться.
@@ -420,7 +452,8 @@ ORDER BY occurred_at LIMIT $n))`, без читання й наступного 
 **Мутації**: прибрати `record` з будь-якої точки запису — падає тест цієї точки. Замінити `FOR
 UPDATE` на звичайне читання — падає тест гонки. Перенести `stamp` до блокування або замінити на
 `now()` — падає тест порядку. Винести `confirmChallenge` з транзакції прив'язки телефону — падає
-тест повтору SMS-коду. Повернути межу 4096 — падає тест найгіршого розміру.
+тест повтору SMS-коду. Замінити `withTransactionResult` на `withTransaction` або прибрати повторну
+перевірку номера під блокуванням — падає тест гонки прив'язки телефону. Повернути межу 4096 — падає тест найгіршого розміру.
 
 ### Р14. Документація
 
@@ -432,17 +465,17 @@ UPDATE` на звичайне читання — падає тест гонки.
 
 ## Задачі
 
-| #   | Задача                                                                                                                                                                                                                             | Залежить |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| T1  | `shared`: `AUDIT_ACTIONS`, типи `changes`/`metadata`, проєкції, перевірка ключів і байтового розміру, `diffAllowed`, схеми контракту + unit                                                                                        | —        |
-| T2  | Схема `audit_events`, enum-и, індекси Р8, тригер Р2, міграція (folder-per-migration), relations                                                                                                                                    | —        |
-| T3  | Репозиторій `audit-events` (`insert/list/purgeBatch`, курсор Р7), `auditService.stamp/record`, `AuditActor`, `auditActorFrom`, лог Р12                                                                                             | T1, T2   |
-| T4  | Промпти й база знань: `executor`, `FOR UPDATE` + `RETURNING`, подія скриншота в `replaceScreenshot`, кеш промпту з `RETURNING`, PG-тести гонок і відкату                                                                           | T3       |
-| T5  | Способи входу й сесії: `ClaimOutcome.effects`, події в транзакціях Р3, `proof_holder`, `confirmChallenge` у транзакції прив'язки телефону, seed `user.admin.created`, PG-тести відкату, claim, шляхів виконавця й повтору SMS-коду | T3       |
-| T6  | `GET /admin/audit-events`: контракт, контролер, transformer, маршрут, HTTP-тести, тести курсора                                                                                                                                    | T3       |
-| T7  | Задача `audit-events-retention` за контрактом планувальника, конфіг-модуль, `.env.example`, PG-тести Р9                                                                                                                            | T3       |
-| T8  | Frontend: `AdminAuditLogView`, пункт меню, посилання з користувачів і статей, `test:e2e` і `test:e2e:live`                                                                                                                         | T6       |
-| T9  | Документація обох локалей (Р14), `docs:build && docs:verify`, evidence                                                                                                                                                             | T4–T8    |
+| #   | Задача                                                                                                                                                                                                                                                                              | Залежить |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| T1  | `shared`: `AUDIT_ACTIONS`, типи `changes`/`metadata`, проєкції, перевірка ключів і байтового розміру, `diffAllowed`, схеми контракту + unit                                                                                                                                         | —        |
+| T2  | Схема `audit_events`, enum-и, індекси Р8, тригер Р2, міграція (folder-per-migration), relations                                                                                                                                                                                     | —        |
+| T3  | Репозиторій `audit-events` (`insert/list/purgeBatch`, курсор Р7), `auditService.stamp/record`, `AuditActor`, `auditActorFrom`, лог Р12                                                                                                                                              | T1, T2   |
+| T4  | Промпти й база знань: `executor`, `FOR UPDATE` + `RETURNING`, подія скриншота в `replaceScreenshot`, кеш промпту з `RETURNING`, PG-тести гонок і відкату                                                                                                                            | T3       |
+| T5  | Способи входу й сесії: `ClaimOutcome.effects`, події в транзакціях Р3, `proof_holder`, `confirmChallenge` під блокуванням у `withTransactionResult` прив'язки телефону, seed `user.admin.created`, PG-тести відкату, claim, шляхів виконавця, повтору SMS-коду й гонки двох номерів | T3       |
+| T6  | `GET /admin/audit-events`: контракт, контролер, transformer, маршрут, HTTP-тести, тести курсора                                                                                                                                                                                     | T3       |
+| T7  | Задача `audit-events-retention` за контрактом планувальника, конфіг-модуль, `.env.example`, PG-тести Р9                                                                                                                                                                             | T3       |
+| T8  | Frontend: `AdminAuditLogView`, пункт меню, посилання з користувачів і статей, `test:e2e` і `test:e2e:live`                                                                                                                                                                          | T6       |
+| T9  | Документація обох локалей (Р14), `docs:build && docs:verify`, evidence                                                                                                                                                                                                              | T4–T8    |
 
 Definition of Done: `make check`; `make test-pg` і `make test-redis` з кількістю виконаних і
 пропущених тестів; `pnpm --filter frontend test:e2e` і `test:e2e:live`;
@@ -460,7 +493,7 @@ API), пароль, відв'язати спосіб входу, «Вийти в
   змінює сигнатуру репозиторію. Покривається тестами `oauth-pre-hijack.pg.test.ts` і новим тестом
   claim.
 - **Прив'язка телефону змінює транзакційну межу.** `confirmChallenge` переходить у транзакцію,
-  тож змінюється й доля челенджу при `409` (feat-100). Наявні тести feat-100 оновлюються свідомо,
+  тож змінюється й доля челенджу при `409` (feat-100), а блокування рядка користувача закриває наявну гонку двох номерів. Наявні тести feat-100 оновлюються свідомо,
   із зазначенням причини в PR.
 - **Fail closed** робить зміни промптів, статей і способів входу залежними від вставки в журнал.
   Це свідомо: та сама БД, той самий коміт.
