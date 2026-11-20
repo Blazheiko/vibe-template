@@ -235,3 +235,91 @@ describe('a stale 401 during a session renewal (feat-233, Р9)', () => {
         expect(emitMock).not.toHaveBeenCalledWith('unauthorized')
     })
 })
+
+// feat-234 (review of feat-233): a change sent from the old session meets csrf_guard once its
+// record is gone and gets 403 token_mismatch. Its CSRF recovery reads main/init; read before the
+// renewal answers, init sees the anonymous session and signs the user out.
+describe('a 403 token_mismatch during a session renewal (feat-234)', () => {
+    const tokenMismatch = (): Response =>
+        json(
+            { status: 'error', code: 'csrf_invalid', message: 'Invalid', reason: 'token_mismatch' },
+            403,
+        )
+    const anonymousInit = (): Response =>
+        json({ status: 'error', code: 'unauthorized', message: 'No session', csrfToken: ANON }, 401)
+    const ANON = 'c'.repeat(43)
+
+    beforeEach(() => {
+        vi.resetModules()
+        vi.clearAllMocks()
+        vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    })
+
+    /** init answers what the cookie holds when it is read: anonymous until the renewal lands. */
+    const server = (renewalReply: () => Response) => {
+        const renewal = deferred()
+        let landed = false
+        const calls: { url: string; token: string | undefined }[] = []
+        const fetchMock = vi.fn((url: string, init?: RequestInit): Promise<Response> => {
+            const headers = init?.headers as Record<string, string> | undefined
+            calls.push({ url, token: headers?.['X-CSRF-Token'] })
+            if (url.endsWith(RENEW)) return renewal.promise
+            if (url.endsWith('/api/main/init')) {
+                return Promise.resolve(
+                    landed
+                        ? json({ status: 'ok', user: { id: '1' }, csrfToken: NEW })
+                        : anonymousInit(),
+                )
+            }
+            const sent = calls[calls.length - 1]?.token
+            return Promise.resolve(sent === NEW ? json({ status: 'success' }) : tokenMismatch())
+        })
+        globalThis.fetch = fetchMock as unknown as typeof fetch
+        const answer = () => {
+            const reply = renewalReply()
+            landed = reply.status === 200 && reply.headers.get('x-renewed') === '1'
+            renewal.resolve(reply)
+        }
+        return { calls, answer }
+    }
+
+    it('the renewal succeeds: the change waits for it and goes out once more from the new session', async () => {
+        const { calls, answer } = server(() => {
+            const reply = renewed()
+            reply.headers.set('x-renewed', '1')
+            return reply
+        })
+        const { api } = await loadApi()
+
+        const renewing = api.http('POST', RENEW, {}, { renewsSession: true })
+        await flush()
+        const change = api.http('PATCH', '/api/account/profile', { name: 'x' })
+        await flush()
+        await flush()
+        // Nothing asked main/init while the renewal was in flight.
+        expect(calls.filter((c) => c.url.endsWith('/api/main/init'))).toHaveLength(0)
+        answer()
+        await renewing
+
+        const result = await change
+        expect(result.error).toBeNull()
+        const patches = calls.filter((c) => c.url.endsWith('/api/account/profile'))
+        expect(patches.map((c) => c.token)).toEqual([OLD, NEW])
+        expect(emitMock).not.toHaveBeenCalledWith('unauthorized')
+    })
+
+    it('the renewal fails: the change signs the user out as before', async () => {
+        const { answer } = server(() => notRenewed())
+        const { api } = await loadApi()
+
+        const renewing = api.http('POST', RENEW, {}, { renewsSession: true })
+        await flush()
+        const change = api.http('PATCH', '/api/account/profile', { name: 'x' })
+        await flush()
+        answer()
+        await renewing
+
+        await change
+        expect(emitMock).toHaveBeenCalledWith('unauthorized')
+    })
+})

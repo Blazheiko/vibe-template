@@ -264,7 +264,7 @@ A claim mails nothing more: it has just removed every earlier session, and the o
 **The mail rules.**
 
 1. The address is confirmed (`users.email_verified_at IS NOT NULL`); otherwise only the push: an unconfirmed address may be somebody else's.
-2. The device is not "familiar": no other live session of the user (one page of the list, the new one excluded) has the same browser, system and IP. **This is a heuristic to send fewer mails, not proof of identity**: a device of the same kind behind the same NAT passes too. An unknown browser or system is never familiar.
+2. The device is not "familiar": no other live session of the user (every page of the list, the new one excluded) has the same browser, system and IP. **This is a heuristic to send fewer mails, not proof of identity**: a device of the same kind behind the same NAT passes too. An unknown browser or system is never familiar.
 3. `newSignInMailUser`: at most 5 mails an hour per user (`AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`), so repeated sign-ins do not turn into a mail flood. The push is not limited.
 
 The IP is right only with a correct `TRUST_PROXY` ([Trust proxy](#trust-proxy-and-ip-detection)).

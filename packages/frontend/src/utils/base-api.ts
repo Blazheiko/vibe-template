@@ -495,6 +495,15 @@ const requestOnce = async <T>(
             error: { ...first.response.error, clientCode: 'account_changed' },
         }
     }
+    // feat-234: a change sent from a session that a renewal is replacing meets csrf_guard once
+    // the old record is gone. main/init read now would see the anonymous session in between and
+    // sign the user out; after the renewal it sees the renewed one (or, when the renewal failed,
+    // no session, and the user is signed out as before). A renewal never waits for itself.
+    if (options.renewsSession !== true && renewalsInFlight > 0) {
+        if ((await waitUnlessAborted(renewalSettled, options.signal)) === ABORTED) {
+            return { data: null, error: abortedError() }
+        }
+    }
     const refreshed = await waitUnlessAborted(refreshSession(), options.signal)
     if (refreshed === ABORTED) return { data: null, error: abortedError() }
     const decision = decide(refreshed, expectedUserId, recovery)

@@ -101,6 +101,35 @@ describe('the mail rules (Р11)', () => {
         expect(consume).not.toHaveBeenCalled()
     })
 
+    it('a familiar device on a later page of the list is found: no mail (feat-234)', async () => {
+        const next = { createdAtMs: 5, publicId: 'p'.repeat(22) }
+        listSessions
+            .mockResolvedValueOnce({ sessions: [otherSession({ ip: '198.51.100.1' })], next })
+            .mockResolvedValueOnce({
+                sessions: [],
+                next: { createdAtMs: 4, publicId: 'q'.repeat(22) },
+            })
+            .mockResolvedValueOnce({ sessions: [otherSession()], next: null })
+        expect(await mailNewSignIn(7n, device())).toBe('familiar')
+        expect(listSessions).toHaveBeenCalledTimes(3)
+        expect(listSessions).toHaveBeenNthCalledWith(2, 'userToken', {
+            after: next,
+            excludePublicId: 'n'.repeat(22),
+        })
+        expect(send).not.toHaveBeenCalled()
+    })
+
+    it('no match until the end of the list: mailed', async () => {
+        listSessions
+            .mockResolvedValueOnce({
+                sessions: [otherSession({ ip: '198.51.100.1' })],
+                next: { createdAtMs: 5, publicId: 'p'.repeat(22) },
+            })
+            .mockResolvedValueOnce({ sessions: [], next: null })
+        expect(await mailNewSignIn(7n, device())).toBe('sent')
+        expect(listSessions).toHaveBeenCalledTimes(2)
+    })
+
     it.each([
         ['another IP', { ip: '198.51.100.1' }],
         ['another browser', { userAgent: FIREFOX_LINUX }],
