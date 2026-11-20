@@ -94,6 +94,14 @@ export {
     type AdminKnowledgeBaseListQueryInput,
 } from './query/admin.js'
 export {
+    AdminAuditEventsQuerySchema,
+    AUDIT_ACTION_FILTER_MAX,
+    AUDIT_CURSOR_MAX_LENGTH,
+    AUDIT_EVENTS_QUERY_ARRAYS,
+    type AdminAuditEventsQuery,
+    type AdminAuditEventsQueryInput,
+} from './query/admin-audit-events.js'
+export {
     LlmTextUsageQuerySchema,
     type LlmTextUsageFeature,
     type LlmTextUsageQuery,
