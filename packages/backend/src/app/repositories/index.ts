@@ -14,6 +14,8 @@ export { promptRepository } from './ai/prompt-repository.js'
 export { supportRepository } from './support/support-repository.js'
 export { supportKnowledgeRepository } from './support/support-knowledge-repository.js'
 export { healthRepository } from './health/health-repository.js'
+export { auditEventsRepository } from './audit/audit-events-repository.js'
+export { readClockTimestamp } from './audit/audit-clock.js'
 
 export type {
     UserPreferencesRow,
@@ -81,5 +83,12 @@ export type {
     KbSearchResult,
     KbListOptions,
 } from './support/support-knowledge-repository.js'
+export type {
+    AuditEventRow,
+    AuditEventInsert,
+    AuditEventListRow,
+    AuditEventFilters,
+    AuditEventCursor,
+} from './audit/audit-events-repository.js'
 export { withTransaction } from './transaction.js'
 export type { DbExecutor, DbTransaction } from './transaction.js'

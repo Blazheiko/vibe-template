@@ -33,7 +33,9 @@ export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number]
  * The keys a payload may have: `true` is a leaf (a primitive, null, or an array of primitives), an
  * object is a nested object whose keys are listed in turn.
  */
-export type AuditShape = { readonly [key: string]: true | AuditShape }
+export interface AuditShape {
+    readonly [key: string]: true | AuditShape
+}
 
 const fromTo = { from: true, to: true } as const
 
@@ -380,7 +382,8 @@ const PROJECTIONS: Projections = {
         metadata: {
             passwordCleared: input.passwordCleared,
             phoneRemoved: input.phoneRemoved,
-            oauthRemoved: [...input.oauthRemoved].map(String),
+            // Distinct names: an account may hold several links of one provider.
+            oauthRemoved: [...new Set(input.oauthRemoved.map(String))].sort(),
             pushSubscriptionsRemoved: input.pushSubscriptionsRemoved,
         },
     }),

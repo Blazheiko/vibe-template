@@ -60,6 +60,18 @@ describe('layering', () => {
         expect(modules.filter((module) => !barrel.includes(`'${module}'`))).toEqual([])
     })
 
+    // feat-235 (Р2): the audit log is append-only; its repository has no update of any kind.
+    it('the audit-events repository only inserts, lists and purges', async () => {
+        const { auditEventsRepository } =
+            await import('#app/repositories/audit/audit-events-repository.js')
+        expect(Object.keys(auditEventsRepository).sort()).toEqual([
+            'countPurgeable',
+            'insert',
+            'list',
+            'purgeBatch',
+        ])
+    })
+
     it('repositories do not log', () => {
         expect(
             offenders(
