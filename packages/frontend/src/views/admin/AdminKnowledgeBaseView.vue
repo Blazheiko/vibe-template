@@ -340,6 +340,16 @@ onUnmounted(() => {
                             <button class="btn-xs btn-danger" @click="deleteArticle(article)">
                                 Delete
                             </button>
+                            <!-- feat-235: the change history of this article in the audit log. -->
+                            <router-link
+                                class="btn-xs btn-secondary"
+                                :to="{
+                                    path: '/admin/audit-log',
+                                    query: { targetType: 'kb_article', targetId: article.id },
+                                }"
+                            >
+                                History
+                            </router-link>
                         </td>
                     </tr>
                     <tr v-if="articles.length === 0">

@@ -129,6 +129,12 @@ const routes: RouteRecordRaw[] = [
                 name: 'AdminHistoryOnline',
                 component: AdminHistoryOnlineView,
             },
+            {
+                // feat-235: a lazy chunk of the admin area.
+                path: 'audit-log',
+                name: 'AdminAuditLog',
+                component: () => import('@/views/admin/AdminAuditLogView.vue'),
+            },
         ],
     },
 ]

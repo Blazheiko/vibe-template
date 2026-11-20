@@ -23,6 +23,7 @@ import type {
     AdminOnlineUserListResponse,
     AdminOnlineUserDetailResponse,
     AdminOnlineHistoryListResponse,
+    AdminAuditEventsResponse,
     RegisterEmailResponse,
     RegisterPhoneStartResponse,
     RegisterPhoneConfirmResponse,
@@ -45,6 +46,7 @@ import type {
     OAuthLinkConfirmInput,
     AdminKnowledgeBaseListQueryInput,
     AdminOnlineHistoryListQueryInput,
+    AdminAuditEventsQueryInput,
     AdminUserListQueryInput,
     PushSubscriptionTestInput,
     RegisterEmailInput,
@@ -383,4 +385,10 @@ export const adminOnlineHistoryApi = {
         callApi(adminContracts.onlineHistory, {
             query: { ...params, userId: params?.userId?.trim() },
         }),
+}
+
+// feat-235 (Р7, Р10): the audit log, newest first; `cursor` is the `nextCursor` of the page shown.
+export const adminAuditEventsApi = {
+    list: (query: AdminAuditEventsQueryInput): Promise<ApiResponse<AdminAuditEventsResponse>> =>
+        callApi(adminContracts.auditEvents, { query }),
 }
