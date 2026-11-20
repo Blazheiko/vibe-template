@@ -31,7 +31,13 @@ vi.mock('#config/ai.js', () => ({ default: { promptCacheTtlMs: 60_000 } }))
 const warn = vi.fn()
 vi.mock('#logger', () => ({ default: { info: vi.fn(), warn, error: vi.fn() } }))
 
-const row = (content: string) => ({ id: 1n, type: 'SUPPORT_SYSTEM', content })
+// `revision` is the version of the row, raised by every UPDATE (feat-235 review).
+const row = (content: string, revision = 1) => ({
+    id: 1n,
+    type: 'SUPPORT_SYSTEM',
+    content,
+    revision,
+})
 
 beforeEach(() => {
     vi.useFakeTimers()
@@ -60,7 +66,7 @@ describe('promptService cache TTL', () => {
 
     it('after the TTL returns the cached value and picks up the new one in the background', async () => {
         const promptService = await load()
-        findAll.mockResolvedValueOnce([row('v2')])
+        findAll.mockResolvedValueOnce([row('v2', 2)])
         vi.advanceTimersByTime(60_001)
 
         expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('v1')
@@ -80,7 +86,7 @@ describe('promptService cache TTL', () => {
         promptService.get('SUPPORT_SYSTEM')
         promptService.getModel('SUPPORT_SYSTEM')
         expect(findAll).toHaveBeenCalledTimes(2)
-        finish([row('v2')])
+        finish([row('v2', 2)])
     })
 
     it('keeps the old values when the refresh fails', async () => {
@@ -98,7 +104,7 @@ describe('promptService cache TTL', () => {
     it('update() is visible at once on this instance', async () => {
         const promptService = await load()
         lockByType.mockResolvedValue(row('v1'))
-        update.mockResolvedValue(row('edited'))
+        update.mockResolvedValue(row('edited', 2))
 
         await promptService.update('SUPPORT_SYSTEM', { content: 'edited' }, actor)
 
@@ -120,7 +126,7 @@ describe('promptService cache TTL', () => {
         promptService.getContent('SUPPORT_SYSTEM') // starts the refresh, which reads 'v1'
 
         lockByType.mockResolvedValue(row('v1'))
-        update.mockResolvedValue(row('edited'))
+        update.mockResolvedValue(row('edited', 2))
         await promptService.update('SUPPORT_SYSTEM', { content: 'edited' }, actor)
         finishRefresh([row('v1')])
         await vi.runAllTimersAsync()
@@ -156,7 +162,7 @@ describe('promptService cache TTL', () => {
     it('the answer of an older commit arriving last does not replace a newer row', async () => {
         const promptService = await load()
         lockByType.mockResolvedValue(row('v1'))
-        update.mockResolvedValueOnce(row('older')).mockResolvedValueOnce(row('newer'))
+        update.mockResolvedValueOnce(row('older', 2)).mockResolvedValueOnce(row('newer', 3))
         tx.stamps.push('2026-11-20 10:00:00.1', '2026-11-20 10:00:00.25')
         let releaseOlder: () => void = () => undefined
         const olderHeld = new Promise<void>((resolve) => {
@@ -183,10 +189,50 @@ describe('promptService cache TTL', () => {
 
     it('an edit without changes does not publish the row it read', async () => {
         const promptService = await load()
-        lockByType.mockResolvedValue(row('stale read'))
+        lockByType.mockResolvedValue(row('stale read', 0))
 
         await promptService.update('SUPPORT_SYSTEM', { content: 'stale read' }, actor)
 
         expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('v1')
+    })
+
+    // feat-235 review: edit A of this instance committed but its answer is late; meanwhile another
+    // instance applied edit B and a reload brought B here. A must not replace B.
+    it('a late answer of a local edit does not replace a newer row a reload brought', async () => {
+        const promptService = await load()
+        lockByType.mockResolvedValue(row('v1'))
+        update.mockResolvedValueOnce(row('A, this instance', 2))
+        let releaseA: () => void = () => undefined
+        const aHeld = new Promise<void>((resolve) => {
+            releaseA = resolve
+        })
+        tx.run = async (work) => {
+            const result = await work({})
+            await aHeld
+            return result
+        }
+
+        const a = promptService.update('SUPPORT_SYSTEM', { content: 'A, this instance' }, actor)
+        await vi.advanceTimersByTimeAsync(0)
+        findAll.mockResolvedValueOnce([row('B, another instance', 3)])
+        await promptService.load()
+        expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('B, another instance')
+        releaseA()
+        await a
+
+        expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('B, another instance')
+        tx.run = (work) => work({})
+    })
+
+    it('a reload does not replace a newer row of a local edit with the older row it read', async () => {
+        const promptService = await load()
+        lockByType.mockResolvedValue(row('v1'))
+        update.mockResolvedValueOnce(row('edited', 2))
+        await promptService.update('SUPPORT_SYSTEM', { content: 'edited' }, actor)
+
+        findAll.mockResolvedValueOnce([row('v1', 1)])
+        await promptService.load()
+
+        expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('edited')
     })
 })

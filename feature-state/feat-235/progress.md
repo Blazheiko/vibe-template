@@ -68,6 +68,17 @@ T0–T10 verification done; implementation PR open, waiting for review.
    superfluous proof. Tests in `audit-service.spec.ts` and `shared/test/audit.test.js`.
 6. `kb.article.created`: the stamp is taken after `INSERT … RETURNING`.
 
+Second review (on `89f5212`): a late answer of a local edit could still replace a newer row that
+`load()` brought from another instance. Fixed with a monotonic row version: migration
+`llm_prompt_revision` adds `llm_system_prompts.revision` (bigint, default 1), every UPDATE raises
+it under the row lock, and the cache takes a row — from an edit or from a reload — only with a
+higher revision (`publish` in `prompt-service.ts`; `load()` goes through it, the stamp map and
+`writeSeq` are gone). `revision` is not part of the API (`promptTransformer`). Tests: "a late
+answer of a local edit does not replace a newer row a reload brought", "a reload does not
+replace a newer row of a local edit…"; both fail when the revision check is removed from
+`publish`, the second also when `load()` bypasses it. `prompt-audit.pg` checks the revision of
+the row and of the cache.
+
 ## Mutations (Р13)
 
 | Mutation                                                 | Fails                                                                                                 |
@@ -95,7 +106,13 @@ backend reads `shared` from `dist`, so a mutation of `shared/src` needs `pnpm --
 
 ## Evidence of Completion
 
-After the review fixes (2026-11-20): `make check` green (backend 3328, frontend 739, shared 99,
+After the second review fix: `make check` green (backend 3330); `make test-pg` 50 files, **452
+executed, 0 skipped**; `test:e2e:live` 27 passed twice in a row. One earlier full live run had a
+single failure in `sign-in-redirect.spec.ts` (`createVerifiedAccount`: `verify-email` answered 400);
+the spec passed 3 of 3 alone and the full suite passed twice after it. Cause not established;
+recorded as a flake.
+
+After the first review fixes (2026-11-20): `make check` green (backend 3328, frontend 739, shared 99,
 landing 103, api-playground 115, docs 26, bundle graph clean); `make test-pg` 50 files, **452
 executed, 0 skipped**; `make test-redis` **174**; `test:e2e:live` **27 passed**;
 `admin-audit-log` mocked e2e passed; `docs:build && docs:verify` passed. One live run failed

@@ -62,9 +62,13 @@ describe.skipIf(!hasPg)('prompt edits in the audit log', async () => {
 
     it('records one event with the changed fields and the text as a hash and a length', async () => {
         const actor = testAdminActor(7n)
+        const revisionBefore = (await stored()).revision
         expect(
             await promptService.update(type, { content: 'secret new text', model: 'm2' }, actor),
         ).toBe(true)
+        // Every UPDATE raises the revision the cache compares (feat-235 review).
+        expect((await stored()).revision).toBe(revisionBefore + 1)
+        expect(promptService.get(type)?.revision).toBe(revisionBefore + 1)
 
         const events = await eventsOf(actor.requestId)
         expect(events).toHaveLength(1)
@@ -113,6 +117,7 @@ describe.skipIf(!hasPg)('prompt edits in the audit log', async () => {
 
         expect(update).not.toHaveBeenCalled()
         expect((await stored()).updatedAt).toEqual(before.updatedAt)
+        expect((await stored()).revision).toBe(before.revision)
         expect(await eventsOf(actor.requestId)).toEqual([])
         expect(auditLogLines(actor.logger)).toEqual([])
     })

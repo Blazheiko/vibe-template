@@ -11,29 +11,18 @@ export type { PromptType, PromptUpdate }
 const cache = new Map<PromptType, PromptRow>()
 let loadedAt = 0
 let refreshing: Promise<void> | null = null
-// update() bumps writeSeq: a load() that started before a local update must not
-// overwrite the fresh row with the one it read earlier.
-let writeSeq = 0
-const writtenAt = new Map<PromptType, number>()
-// feat-235 (review): the audit stamp of the change each cached row came from. Edits of one prompt
-// commit in the order of its row lock, but their answers can come back here in another order; the
-// row of an older change must not replace the row of a newer one.
-const appliedStamp = new Map<PromptType, string>()
 
-/** `clock_timestamp()::text` with the fraction padded, so two stamps compare as strings. */
-const comparableStamp = (stamp: string): string => {
-    const [whole = '', fraction = ''] = stamp.split('.')
-    return `${whole}.${fraction.padEnd(6, '0')}`
-}
-
-/** Caches the row of a change unless a newer change of the same prompt is cached already. */
-function publish(type: PromptType, row: PromptRow, stamp: string): boolean {
-    const current = appliedStamp.get(type)
-    if (current !== undefined && comparableStamp(current) >= comparableStamp(stamp)) return false
-    appliedStamp.set(type, stamp)
-    cache.set(type, row)
-    writeSeq++
-    writtenAt.set(type, writeSeq)
+/**
+ * Caches `row` unless the cache holds a newer revision of the same prompt (feat-235 review). Both
+ * ways a row arrives go through here: the answer of a local edit and a reload from the database.
+ * Edits of one prompt are applied in the order of its row lock, each raising `revision`, but
+ * their answers (and a reload that already read a newer edit, made on another instance) can come
+ * back in any order.
+ */
+function publish(row: PromptRow): boolean {
+    const current = cache.get(row.type)
+    if (current !== undefined && current.revision >= row.revision) return false
+    cache.set(row.type, row)
     return true
 }
 
@@ -75,20 +64,10 @@ function changedFields(row: PromptRow, data: PromptUpdate): PromptUpdate {
 
 export const promptService = {
     async load(): Promise<void> {
-        const startSeq = writeSeq
         const rows = await promptRepository.findAll()
-        const next = new Map<PromptType, PromptRow>()
-        for (const row of rows) {
-            next.set(row.type, row)
-        }
-        for (const [type, seq] of writtenAt) {
-            const fresh = cache.get(type)
-            if (seq > startSeq && fresh !== undefined) next.set(type, fresh)
-        }
-        cache.clear()
-        for (const [type, row] of next) {
-            cache.set(type, row)
-        }
+        // Row by row, by revision: a local edit that landed while this read was in flight is not
+        // replaced by the older row it read.
+        for (const row of rows) publish(row)
         loadedAt = Date.now()
         logger.info(`PromptService: loaded ${String(rows.length)} prompts`)
     },
@@ -124,7 +103,7 @@ export const promptService = {
             async (
                 tx,
             ): Promise<
-                { row: PromptRow; stamp: string | null; events: RecordedAuditEvent[] } | undefined
+                { row: PromptRow; changed: boolean; events: RecordedAuditEvent[] } | undefined
             > => {
                 const locked = await promptRepository.lockByType(type, tx)
                 if (locked === undefined) return undefined
@@ -132,7 +111,7 @@ export const promptService = {
                 // Nothing changed: no UPDATE, no event, and nothing to publish (the cache may
                 // hold a newer row than this read by the time it returns).
                 if (Object.keys(changed).length === 0)
-                    return { row: locked, stamp: null, events: [] }
+                    return { row: locked, changed: false, events: [] }
                 const stamp = await auditService.stamp(tx)
                 const updated = await promptRepository.update(type, changed, tx)
                 if (updated === undefined) throw new Error('Locked prompt row was not updated')
@@ -147,12 +126,12 @@ export const promptService = {
                         },
                     },
                 ])
-                return { row: updated, stamp: stamp.occurredAt, events }
+                return { row: updated, changed: true, events }
             },
         )
         if (outcome === undefined) return false
         // The row the UPDATE returned is the cached one: no second read.
-        if (outcome.stamp !== null) publish(type, outcome.row, outcome.stamp)
+        if (outcome.changed) publish(outcome.row)
         auditService.logCommitted(actor.logger, outcome.events)
         return true
     },

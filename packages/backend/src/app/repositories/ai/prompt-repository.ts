@@ -1,6 +1,6 @@
 import { db } from '#database/db.js'
 import { llmSystemPrompts } from '#database/schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor, DbTransaction } from '#app/repositories/transaction.js'
 
@@ -53,7 +53,12 @@ export const promptRepository: IPromptRepository = {
     async update(type, data, executor) {
         const [updated] = await executor
             .update(llmSystemPrompts)
-            .set({ ...data, updatedAt: new Date() })
+            .set({
+                ...data,
+                // Monotonic for the row: two updates of it are serialized by its lock.
+                revision: sql`${llmSystemPrompts.revision} + 1`,
+                updatedAt: new Date(),
+            })
             .where(eq(llmSystemPrompts.type, type))
             .returning()
         return updated

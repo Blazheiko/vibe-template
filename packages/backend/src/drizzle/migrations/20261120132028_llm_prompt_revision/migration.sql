@@ -1,0 +1,1 @@
+ALTER TABLE "llm_system_prompts" ADD COLUMN "revision" bigint DEFAULT 1 NOT NULL;

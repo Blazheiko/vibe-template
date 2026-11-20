@@ -375,6 +375,11 @@ export const llmSystemPrompts = pgTable('llm_system_prompts', {
     model: varchar('model', { length: 100 }),
     temperature: real('temperature'),
     maxTokens: integer('max_tokens'),
+    // feat-235 (review): the version of the row, raised by every UPDATE under its row lock. The
+    // prompt cache of each instance keeps the row of the highest revision it has seen, whether it
+    // came from its own edit or from a reload: an answer that comes back late cannot replace a
+    // newer row (another instance's edit included).
+    revision: bigint('revision', { mode: 'number' }).notNull().default(1),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at')
         .notNull()
