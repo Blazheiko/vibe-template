@@ -39,6 +39,8 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
         revision: '3',
     },
     user_sessions_changed: {},
+    notifications_changed: {},
+    notification_preferences_changed: {},
 }
 
 const broadcast = (event: string, payload: unknown): WsBroadcastEnvelope => ({

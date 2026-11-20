@@ -120,6 +120,18 @@ export const isUserSessionsChangedPayload = (
 ): value is BroadcastPayload<'user_sessions_changed'> =>
     isObject(value) && Object.keys(value).length === 0
 
+/** feat-236 (Р8): the notifications changed; no data, the client reads the count again. */
+export const isNotificationsChangedPayload = (
+    value: unknown,
+): value is BroadcastPayload<'notifications_changed'> =>
+    isObject(value) && Object.keys(value).length === 0
+
+/** feat-236 (Р8): the notification preferences changed; an open matrix reads them again. */
+export const isNotificationPreferencesChangedPayload = (
+    value: unknown,
+): value is BroadcastPayload<'notification_preferences_changed'> =>
+    isObject(value) && Object.keys(value).length === 0
+
 /** A guard of each broadcast event, by event (ADR 0006, decision 3, feat-182). */
 export type BroadcastGuards = {
     readonly [E in BroadcastEventName]: (value: unknown) => value is BroadcastContracts[E]
@@ -137,4 +149,6 @@ export const broadcastGuards = {
     admin_user_online_remove: isAdminUserOnlineRemovePayload,
     user_profile_updated: isUserProfileUpdatedPayload,
     user_sessions_changed: isUserSessionsChangedPayload,
+    notifications_changed: isNotificationsChangedPayload,
+    notification_preferences_changed: isNotificationPreferencesChangedPayload,
 } as const satisfies BroadcastGuards

@@ -126,6 +126,19 @@ export {
     type ListSessionsQuery,
     type ListSessionsQueryInput,
 } from './query/account-sessions.js'
+export {
+    ListNotificationsQuerySchema,
+    type ListNotificationsQuery,
+    type ListNotificationsQueryInput,
+} from './query/notifications.js'
+export { NotificationParamsSchemas } from './notifications/params.js'
+export {
+    NOTIFICATION_ID_PATTERN,
+    ReadAllNotificationsInputSchema,
+    UpdateNotificationPreferenceInputSchema,
+    type ReadAllNotificationsInput,
+    type UpdateNotificationPreferenceInput,
+} from './notifications/requests.js'
 export { SupportChatInputSchema, type SupportChatInput } from './support/support-chat.js'
 export {
     SupportOpenChatInputSchema,

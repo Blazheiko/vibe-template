@@ -41,6 +41,8 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     admin_user_online_remove: { id: '42' },
     user_profile_updated: profile,
     user_sessions_changed: {},
+    notifications_changed: {},
+    notification_preferences_changed: {},
 }
 
 // Event-specific edge cases on top of the generic ones below.
@@ -106,6 +108,8 @@ const specific: Record<BroadcastEventName, [string, unknown][]> = {
         ['preferences null', { ...profile, preferences: null }],
     ],
     user_sessions_changed: [['any data', { sessions: [] }]],
+    notifications_changed: [['a count', { unreadCount: 3 }]],
+    notification_preferences_changed: [['any data', { push: true }]],
 }
 
 const cases = BROADCAST_EVENT_NAMES.flatMap((event) => {
