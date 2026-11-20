@@ -49,6 +49,8 @@ Indexes: `(occurred_at, id)` for the feed, the cursor and the retention job; the
 - `proof_holder`: no session of the account, only a proof. `actor_user_id` is `NULL`, the proof is required: `email_link` (password reset by link), `sms_code` (password reset by SMS), `oauth_email_link` (an OAuth link confirmed by mail in the browser of the sign-in), `oauth_provider_email` (the provider proved the address).
 - `system`: the seed or a CLI; `request_id` is `NULL`, `metadata.source` names it.
 
+The catalog also lists the proofs each action accepts, and `record` refuses anything else: a proof holder needs one of them, `auth.phone.linked` needs `sms_code`, `auth.email.linked` needs `email_link`, and an action without proofs refuses one. A `user` or `proof_holder` actor always carries the request ID: the services take the actor (or the request) as a required parameter.
+
 ## What is stored
 
 Every action names the fields it keeps; a projection never copies a row. The texts of an article and of a prompt go in as `{ changed, sha256Before, sha256After, charsBefore, charsAfter }`. **Never** stored: password hashes, tokens, codes, session ids, S3 keys, e-mail addresses, phone numbers, IP addresses, the identifiers or addresses at the provider. Before the insert the payload passes a key check (every key at every depth must be in the catalog of the action) and a size check: the serialized `{ changes, metadata }` is at most **8192 bytes**. The bound comes from the worst case: a control character takes 6 bytes in JSON (`\u0001`), so an article update with the longest title and category takes about 4.6 KB. A test builds the worst case of every action.
@@ -78,7 +80,7 @@ After the commit each event is logged at `info` as `audit event` with `action`, 
 | `from`, `to`             | ISO 8601; `occurred_at >= from`, `occurred_at < to`                        |
 | `cursor`                 | the `nextCursor` of the previous page                                      |
 
-Pages of 50, newest first by `(occurred_at, id)`; no total is counted. The cursor carries `occurred_at` as PostgreSQL prints it, so microseconds are not lost in a JS `Date`; an invalid cursor answers `400`. `from` and `to` have millisecond precision: `from` includes its whole millisecond, `to` excludes its own. The actor and the account get their names from one read of `users`; a deleted account comes as `deleted: true` with its id. No e-mail is returned.
+Pages of 50, newest first by `(occurred_at, id)`; no total is counted. The cursor carries `occurred_at` as PostgreSQL prints it, so microseconds are not lost in a JS `Date`; an invalid cursor answers `400`, as do a user id PostgreSQL's `bigint` cannot hold and a cursor with a date that does not exist (a malformed query is `422`). `from` and `to` have millisecond precision: `from` includes its whole millisecond, `to` excludes its own. The actor and the account get their names from one read of `users`; a deleted account comes as `deleted: true` with its id. No e-mail is returned.
 
 ## Retention
 
@@ -90,4 +92,4 @@ pnpm --filter backend job:run audit-events-retention --dry-run
 
 ## The admin page
 
-`/admin/audit-log`: the table (time, actor, action, object, request ID), the filters in the address of the page, "Load more". A row opens its changes as field / was / became and the copy button of the request ID; a proof holder shows as "without sign-in" with its proof. The user list links to the log of an account, the knowledge base to the history of an article.
+`/admin/audit-log`: the table (time, actor, action, object, request ID), the filters in the address of the page (several actions at once), "Load more". An answer to a page asked for before the filters changed is dropped. A row opens its changes as field / was / became and the copy button of the request ID; a proof holder shows as "without sign-in" with its proof. The user list links to the log of an account, the knowledge base to the history of an article.

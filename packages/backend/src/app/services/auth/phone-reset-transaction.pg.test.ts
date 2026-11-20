@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { appErrorMessage } from '../shared/errors.js'
+import { testProofHolder } from '../../../test-support/audit-actor.js'
 
 // feat-106 (R06a): the phone password reset locks the user, re-checks the account on the locked
 // row and confirms the challenge, retires the challenges and reset links and rotates the password
@@ -114,6 +115,7 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
             {
                 ipAddress: '203.0.113.1',
             },
+            testProofHolder('sms_code'),
         )
 
     const userRow = async (id: bigint) => {

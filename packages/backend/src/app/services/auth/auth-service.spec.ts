@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -976,7 +977,7 @@ describe('authService', () => {
             })
 
             const { authService } = await loadAuthService()
-            await authService.logoutAll(authMock as any, sessionMock as any)
+            await authService.logoutAll(authMock as any, sessionMock as any, testUserActor())
 
             expect(order).toEqual(['rotate', 'delete records'])
             expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(
@@ -994,7 +995,7 @@ describe('authService', () => {
             const { authService } = await loadAuthService()
             // ADR 0004: the failure propagates; the transport answers 500 / 503.
             await expect(
-                authService.logoutAll(authMock as any, sessionMock as any),
+                authService.logoutAll(authMock as any, sessionMock as any, testUserActor()),
             ).rejects.toThrow()
             expect(authMock.logoutAll).not.toHaveBeenCalled()
             expect(securityNotice).not.toHaveBeenCalled()
@@ -1010,7 +1011,11 @@ describe('authService', () => {
             })
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+            const result = await authService.logoutAll(
+                authMock as any,
+                sessionMock as any,
+                testUserActor(),
+            )
 
             expect(Result.isOk(result)).toBe(true)
             if (Result.isOk(result)) {
@@ -1038,7 +1043,11 @@ describe('authService', () => {
             })
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+            const result = await authService.logoutAll(
+                authMock as any,
+                sessionMock as any,
+                testUserActor(),
+            )
 
             expect(Result.isOk(result)).toBe(true)
             if (Result.isOk(result)) {
@@ -1063,7 +1072,11 @@ describe('authService', () => {
             userRepositoryMock.findSessionToken.mockResolvedValue('current-token')
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+            const result = await authService.logoutAll(
+                authMock as any,
+                sessionMock as any,
+                testUserActor(),
+            )
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
@@ -1078,7 +1091,11 @@ describe('authService', () => {
             userRepositoryMock.findSessionToken.mockResolvedValue('rotated-by-a-claim')
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+            const result = await authService.logoutAll(
+                authMock as any,
+                sessionMock as any,
+                testUserActor(),
+            )
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(SESSION_REVOKED_ERROR)
@@ -1098,7 +1115,11 @@ describe('authService', () => {
             userRepositoryMock.findSessionToken.mockResolvedValue(undefined)
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+            const result = await authService.logoutAll(
+                authMock as any,
+                sessionMock as any,
+                testUserActor(),
+            )
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error._tag).toBe('NotFound')
@@ -1169,7 +1190,7 @@ describe('authService', () => {
             })
 
             const { authService } = await loadAuthService()
-            await authService.logoutAll(authMock as any, sessionMock as any)
+            await authService.logoutAll(authMock as any, sessionMock as any, testUserActor())
 
             expect(order).toEqual(['rotate', 'close sockets'])
             expect(closeUserConnections).toHaveBeenCalledWith('7')
@@ -1180,7 +1201,11 @@ describe('authService', () => {
             userRepositoryMock.findSessionToken.mockResolvedValue('rotated-elsewhere')
 
             const { authService } = await loadAuthService()
-            const result = await authService.logoutAll(authMock as any, sessionMock as any)
+            const result = await authService.logoutAll(
+                authMock as any,
+                sessionMock as any,
+                testUserActor(),
+            )
 
             expect(Result.isError(result)).toBe(true)
             expect(closeUserConnections).not.toHaveBeenCalled()
@@ -1204,6 +1229,7 @@ describe('authService', () => {
                 'previous-session-token',
                 sessionStillStored,
                 'asking-session',
+                testUserActor(),
             )
 
             expect(Result.isOk(result)).toBe(true)
@@ -1231,6 +1257,8 @@ describe('authService', () => {
                 { currentPassword: 'old-secret', newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
 
             expect(closeUserConnections).toHaveBeenCalledWith('7', {})
@@ -1252,6 +1280,8 @@ describe('authService', () => {
                 { currentPassword: 'old-secret', newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
 
             expect(Result.isError(result)).toBe(true)
@@ -1270,7 +1300,11 @@ describe('authService', () => {
         })
 
         const { authService } = await loadAuthService()
-        const result = await authService.logoutAll(authMock as any, sessionMock as any)
+        const result = await authService.logoutAll(
+            authMock as any,
+            sessionMock as any,
+            testUserActor(),
+        )
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -1293,6 +1327,8 @@ describe('authService', () => {
             { currentPassword: 'old-secret', newPassword: 'new-secret' },
             PRESENTED_TOKEN,
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1328,6 +1364,8 @@ describe('authService', () => {
                 { currentPassword: 'old-secret', newPassword: 'new-secret' },
                 presented,
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
         }
 

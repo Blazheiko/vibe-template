@@ -203,7 +203,7 @@ export const emailVerificationService = {
             password?: string
         },
         /** feat-235: the request, for the audit event of an e-mail link. */
-        request?: AuditRequest,
+        request: AuditRequest,
     ): Promise<AppResult<{ message: string }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.verifyEmailIp,

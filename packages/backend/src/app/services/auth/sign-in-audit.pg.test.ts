@@ -5,7 +5,7 @@ import { asc, eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
-import { auditLogLines, testAdminActor } from '../../../test-support/audit-actor.js'
+import { auditLogLines, testAdminActor, testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-235 (Р3, Р4, Р6, Р13) on a real PostgreSQL: every change of the ways into an account and
 // every mass revocation of its sessions writes exactly its events, with the right kind of actor
@@ -622,6 +622,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
                 'cv',
                 fakeAuth(),
                 'owner-browser',
+                testRequest(),
             )
             expect(Result.isOk(started)).toBe(true)
             return mailedToken(email)

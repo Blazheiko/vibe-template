@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -840,6 +841,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -917,6 +919,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -965,6 +968,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1002,6 +1006,7 @@ describe('authService phone foundation', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1110,6 +1115,7 @@ describe('phone linking session guard (feat-096)', () => {
                 presentedSessionToken,
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
     }
 
@@ -1247,6 +1253,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
                     presentedSessionToken: 'session-token',
                     sessionStored: sessionStillStored,
                 },
+                testUserActor(),
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
@@ -1476,6 +1483,7 @@ describe('phone writes losing the race to the unique index', () => {
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
             },
+            testUserActor(),
         )
     }
 

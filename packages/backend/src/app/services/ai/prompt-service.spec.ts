@@ -7,14 +7,21 @@ const findAll = vi.fn()
 const findByType = vi.fn()
 const update = vi.fn()
 const lockByType = vi.fn()
+// The transaction and the stamp a test can hold or set (feat-235 review: answers out of order).
+const tx = vi.hoisted(() => ({
+    run: (work: (tx: unknown) => Promise<unknown>): Promise<unknown> => work({}),
+    stamps: [] as string[],
+}))
 vi.mock('#app/repositories/index.js', () => ({
     promptRepository: { findAll, findByType, update, lockByType },
-    withTransaction: (work: (tx: unknown) => Promise<unknown>) => work({}),
+    withTransaction: (work: (t: unknown) => Promise<unknown>) => tx.run(work),
 }))
 // feat-235: the audit write itself is covered by prompt-audit.pg.test.ts.
 vi.mock('#app/services/audit/audit-service.js', () => ({
     auditService: {
-        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        stamp: vi.fn(() =>
+            Promise.resolve({ occurredAt: tx.stamps.shift() ?? '2026-11-20 00:00:00' }),
+        ),
         record: vi.fn(() => Promise.resolve([])),
         logCommitted: vi.fn(),
     },
@@ -142,5 +149,44 @@ describe('promptService cache TTL', () => {
 
         expect(await promptService.update('SUPPORT_SYSTEM', { content: 'x' }, actor)).toBe(false)
         expect(update).not.toHaveBeenCalled()
+    })
+
+    // feat-235 review: two edits commit in the order of the row lock, but the answer of the
+    // older commit may reach the cache last. The cache keeps the newer row.
+    it('the answer of an older commit arriving last does not replace a newer row', async () => {
+        const promptService = await load()
+        lockByType.mockResolvedValue(row('v1'))
+        update.mockResolvedValueOnce(row('older')).mockResolvedValueOnce(row('newer'))
+        tx.stamps.push('2026-11-20 10:00:00.1', '2026-11-20 10:00:00.25')
+        let releaseOlder: () => void = () => undefined
+        const olderHeld = new Promise<void>((resolve) => {
+            releaseOlder = resolve
+        })
+        let calls = 0
+        tx.run = async (work) => {
+            calls += 1
+            const call = calls
+            const result = await work({})
+            // The first (older) commit answers only after the second one did.
+            if (call === 1) await olderHeld
+            return result
+        }
+
+        const older = promptService.update('SUPPORT_SYSTEM', { content: 'older' }, actor)
+        await promptService.update('SUPPORT_SYSTEM', { content: 'newer' }, actor)
+        releaseOlder()
+        await older
+
+        expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('newer')
+        tx.run = (work) => work({})
+    })
+
+    it('an edit without changes does not publish the row it read', async () => {
+        const promptService = await load()
+        lockByType.mockResolvedValue(row('stale read'))
+
+        await promptService.update('SUPPORT_SYSTEM', { content: 'stale read' }, actor)
+
+        expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('v1')
     })
 })

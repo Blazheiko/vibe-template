@@ -15,6 +15,27 @@ let refreshing: Promise<void> | null = null
 // overwrite the fresh row with the one it read earlier.
 let writeSeq = 0
 const writtenAt = new Map<PromptType, number>()
+// feat-235 (review): the audit stamp of the change each cached row came from. Edits of one prompt
+// commit in the order of its row lock, but their answers can come back here in another order; the
+// row of an older change must not replace the row of a newer one.
+const appliedStamp = new Map<PromptType, string>()
+
+/** `clock_timestamp()::text` with the fraction padded, so two stamps compare as strings. */
+const comparableStamp = (stamp: string): string => {
+    const [whole = '', fraction = ''] = stamp.split('.')
+    return `${whole}.${fraction.padEnd(6, '0')}`
+}
+
+/** Caches the row of a change unless a newer change of the same prompt is cached already. */
+function publish(type: PromptType, row: PromptRow, stamp: string): boolean {
+    const current = appliedStamp.get(type)
+    if (current !== undefined && comparableStamp(current) >= comparableStamp(stamp)) return false
+    appliedStamp.set(type, stamp)
+    cache.set(type, row)
+    writeSeq++
+    writtenAt.set(type, writeSeq)
+    return true
+}
 
 // Reads stay synchronous: a stale cache answers with what it has and refreshes in
 // the background, so another instance's update shows up within PROMPT_CACHE_TTL_MS
@@ -100,11 +121,18 @@ export const promptService = {
      */
     async update(type: PromptType, data: PromptUpdate, actor: AuditActor): Promise<boolean> {
         const outcome = await withTransaction(
-            async (tx): Promise<{ row: PromptRow; events: RecordedAuditEvent[] } | undefined> => {
+            async (
+                tx,
+            ): Promise<
+                { row: PromptRow; stamp: string | null; events: RecordedAuditEvent[] } | undefined
+            > => {
                 const locked = await promptRepository.lockByType(type, tx)
                 if (locked === undefined) return undefined
                 const changed = changedFields(locked, data)
-                if (Object.keys(changed).length === 0) return { row: locked, events: [] }
+                // Nothing changed: no UPDATE, no event, and nothing to publish (the cache may
+                // hold a newer row than this read by the time it returns).
+                if (Object.keys(changed).length === 0)
+                    return { row: locked, stamp: null, events: [] }
                 const stamp = await auditService.stamp(tx)
                 const updated = await promptRepository.update(type, changed, tx)
                 if (updated === undefined) throw new Error('Locked prompt row was not updated')
@@ -119,14 +147,12 @@ export const promptService = {
                         },
                     },
                 ])
-                return { row: updated, events }
+                return { row: updated, stamp: stamp.occurredAt, events }
             },
         )
         if (outcome === undefined) return false
         // The row the UPDATE returned is the cached one: no second read.
-        cache.set(type, outcome.row)
-        writeSeq++
-        writtenAt.set(type, writeSeq)
+        if (outcome.stamp !== null) publish(type, outcome.row, outcome.stamp)
         auditService.logCommitted(actor.logger, outcome.events)
         return true
     },

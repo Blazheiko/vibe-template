@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -323,6 +324,7 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                             presentedSessionToken: account.sessionToken,
                             sessionStored: sessionStillStored,
                         },
+                        testUserActor(),
                     ),
                 ),
             )

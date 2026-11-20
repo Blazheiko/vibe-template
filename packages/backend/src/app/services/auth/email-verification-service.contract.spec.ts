@@ -7,6 +7,7 @@ import {
     type AppError,
 } from '#app/services/shared/errors.js'
 import type { emailVerificationService } from './email-verification-service.js'
+import { testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -134,7 +135,7 @@ const OWN_SESSION = { userId: 7n, presentedSessionToken: SESSION }
 const verify =
     (token = 'tok') =>
     (s: Service) =>
-        s.verifyEmail(token, IP, OWN_SESSION)
+        s.verifyEmail(token, IP, OWN_SESSION, testRequest())
 
 /** A verification token (not a link token) that is found, and a user to confirm. */
 function arrangeVerify(over: Record<string, unknown> = {}): void {

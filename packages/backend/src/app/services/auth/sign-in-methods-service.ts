@@ -18,11 +18,7 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import logger from '#vendor/utils/logger.js'
-import {
-    userActorWithoutRequest,
-    withRole,
-    type UserAuditActor,
-} from '#app/services/audit/audit-actor.js'
+import { withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 
 // feat-199 (security review 2026-11-12, M-2): an identity of an OAuth provider linked to an
@@ -79,8 +75,8 @@ export interface UnlinkRequest {
     /** Asked right before the link is removed: a logout in another tab ends the request. */
     sessionStored: () => Promise<boolean>
     now?: number
-    /** feat-235: who removes it; without it, the user without a request id. */
-    actor?: UserAuditActor
+    /** feat-235: who removes it: the signed-in user of the request. */
+    actor: UserAuditActor
 }
 
 export const signInMethodsService = {
@@ -145,7 +141,7 @@ export const signInMethodsService = {
 
         // Under the user's row lock: two removals at once must not both see "one more is left",
         // and a password change or a claim running meanwhile is seen.
-        const actor = request.actor ?? userActorWithoutRequest(userId)
+        const { actor } = request
         const removed = await withTransaction(
             async (tx): Promise<AppResult<{ provider: string; events: RecordedAuditEvent[] }>> => {
                 const locked = await userRepository.lockById(userId, tx)

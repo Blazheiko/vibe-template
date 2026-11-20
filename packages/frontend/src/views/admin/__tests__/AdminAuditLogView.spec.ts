@@ -77,12 +77,12 @@ describe('AdminAuditLogView', () => {
             '7',
         )
 
-        await wrapper.find('select[name="action"]').setValue('auth.password.changed')
+        await wrapper.find('select[name="action"]').setValue(['auth.password.changed'])
         await wrapper.find('form').trigger('submit')
         await flushPromises()
 
         expect(router.currentRoute.value.query).toEqual({
-            action: 'auth.password.changed',
+            action: ['auth.password.changed'],
             group: 'sessions',
             targetUserId: '7',
         })
@@ -167,5 +167,59 @@ describe('AdminAuditLogView', () => {
         })
         const failed = await mountAt('/admin/audit-log')
         expect(failed.wrapper.find('[data-testid="audit-error"]').text()).toContain('Database down')
+    })
+
+    // feat-235 review: every repeated `action` of the URL is kept, in the form, the request and
+    // the request of the next page.
+    it('keeps every action of the URL', async () => {
+        api.list.mockResolvedValueOnce(page([event('2')], 'cursor-1'))
+        const { wrapper, router } = await mountAt(
+            '/admin/audit-log?action=auth.password.changed&action=auth.sessions.revoked_all',
+        )
+        const both = ['auth.password.changed', 'auth.sessions.revoked_all']
+
+        expect(api.list).toHaveBeenLastCalledWith({ action: both })
+        const selected = [
+            ...(wrapper.find('select[name="action"]').element as HTMLSelectElement).selectedOptions,
+        ].map((option) => option.value)
+        expect(selected).toEqual(both)
+
+        await wrapper.find('[data-testid="audit-load-more"]').trigger('click')
+        await flushPromises()
+        expect(api.list).toHaveBeenLastCalledWith({ action: both, cursor: 'cursor-1' })
+
+        await wrapper.find('input[name="targetId"]').setValue('9')
+        await wrapper.find('form').trigger('submit')
+        await flushPromises()
+        expect(router.currentRoute.value.query).toEqual({ action: both, targetId: '9' })
+    })
+
+    // feat-235 review: a "Load more" of the old filters that answers after the filters changed
+    // must not append its events to the new list or replace its cursor.
+    it('drops the answer of a page asked for before the filters changed', async () => {
+        api.list.mockResolvedValueOnce(page([event('2')], 'old-cursor'))
+        const { wrapper, router } = await mountAt('/admin/audit-log?group=kb')
+
+        let answerOldPage: (value: unknown) => void = () => undefined
+        api.list.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answerOldPage = resolve
+            }),
+        )
+        await wrapper.find('[data-testid="audit-load-more"]').trigger('click')
+
+        api.list.mockResolvedValueOnce(page([event('9', { action: 'auth.password.changed' })]))
+        await router.replace({ query: { group: 'sign-in' } })
+        await flushPromises()
+        expect(wrapper.findAll('[data-testid="audit-row"]')).toHaveLength(1)
+
+        // The old page answers last.
+        answerOldPage(page([event('1')], 'stale-cursor'))
+        await flushPromises()
+
+        const rows = wrapper.findAll('[data-testid="audit-row"]')
+        expect(rows).toHaveLength(1)
+        expect(rows[0]?.text()).toContain('Password changed')
+        expect(wrapper.find('[data-testid="audit-load-more"]').exists()).toBe(false)
     })
 })

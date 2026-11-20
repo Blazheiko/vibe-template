@@ -424,13 +424,27 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
         })
     })
 
-    it('refuses an invalid cursor, time, action or an unknown key', async () => {
+    it('refuses an invalid cursor, time, action, id or an unknown key, never with a 500', async () => {
         const { browser } = await signedIn('admin')
-        const forged = Buffer.from('not a cursor', 'utf8').toString('base64url')
-        const badStamp = Buffer.from('2026-13-45 99:00:00|1', 'utf8').toString('base64url')
+        const cursorOf = (text: string) => Buffer.from(text, 'utf8').toString('base64url')
 
-        expect((await browser.list(`cursor=${forged}`)).status).toBe(400)
-        expect((await browser.list(`cursor=${badStamp}`)).status).toBe(400)
+        // What the query schema accepts by shape but PostgreSQL could not take: 400 from the
+        // service, before any query.
+        for (const query of [
+            `cursor=${cursorOf('not a cursor')}`,
+            `cursor=${cursorOf('2026-13-45 99:00:00|1')}`,
+            // February 30th: Date.parse rolls it over to March 2nd.
+            `cursor=${cursorOf('2026-02-30 10:00:00|1')}`,
+            `cursor=${cursorOf('2026-11-20 10:00:00|9223372036854775808')}`,
+            'actorUserId=9223372036854775808',
+            'targetUserId=99999999999999999999',
+            'from=2026-10-02T00:00:00Z&to=2026-10-01T00:00:00Z',
+        ]) {
+            const reply = await browser.list(query)
+            expect(reply.status, query).toBe(400)
+            expect(reply.body['items'], query).toBeUndefined()
+        }
+        // What the query schema refuses by shape: the framework's 422.
         for (const query of [
             'cursor=has%20space',
             'from=yesterday',
@@ -441,13 +455,11 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             'unknown=1',
         ]) {
             const reply = await browser.list(query)
-            expect(reply.status, query).toBeGreaterThanOrEqual(400)
-            expect(reply.status, query).toBeLessThan(500)
+            expect(reply.status, query).toBe(422)
             expect(reply.body['items'], query).toBeUndefined()
         }
-        expect(
-            (await browser.list('from=2026-10-02T00:00:00Z&to=2026-10-01T00:00:00Z')).status,
-        ).toBe(400)
+        // The largest id PostgreSQL holds is a valid filter.
+        expect((await browser.list('actorUserId=9223372036854775807')).status).toBe(200)
     })
 
     // T6a (Р7, Р13): the history of one object reads in the order its changes were applied.

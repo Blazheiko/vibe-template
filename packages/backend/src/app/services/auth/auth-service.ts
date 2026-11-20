@@ -9,12 +9,7 @@ import {
     withTransaction,
 } from '#app/repositories/index.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
-import {
-    userActorWithoutRequest,
-    withProof,
-    withRole,
-    type UserAuditActor,
-} from '#app/services/audit/audit-actor.js'
+import { withProof, withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import type { UserRow } from '#app/repositories/index.js'
 import { userTransformer } from '#app/transformers/index.js'
@@ -786,8 +781,8 @@ export const authService = {
             /** feat-123: checked right before the irreversible step. */
             sessionStored: SessionStillStored
         },
-        /** feat-235: who links it; without it, the user without a request id. */
-        actor: UserAuditActor = userActorWithoutRequest(userId),
+        /** feat-235: who links it: the signed-in user of the request. */
+        actor: UserAuditActor,
     ): Promise<
         AppResult<{
             status: 'success'
@@ -1138,8 +1133,8 @@ export const authService = {
     async logoutAll(
         auth: Auth,
         session: Session,
-        /** feat-235: who ends the sessions; without it, the session's user without a request id. */
-        actor?: UserAuditActor,
+        /** feat-235: who ends the sessions: the signed-in user of the request. */
+        actor: UserAuditActor,
     ): Promise<AppResult<{ status: 'success'; deletedCount: number; csrfToken: string }>> {
         const userId = auth.getUserId()
         // ADR 0002: rotating the sessionToken is the revocation. It comes first and its
@@ -1171,7 +1166,7 @@ export const authService = {
                           const events = await auditService.record(
                               tx,
                               stamp,
-                              withRole(actor ?? userActorWithoutRequest(done.id), done.role),
+                              withRole(actor, done.role),
                               [
                                   {
                                       action: 'auth.sessions.revoked_all',
@@ -1189,10 +1184,7 @@ export const authService = {
                     current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
                 )
             }
-            auditService.logCommitted(
-                (actor ?? userActorWithoutRequest(BigInt(userId))).logger,
-                rotated.events,
-            )
+            auditService.logCommitted(actor.logger, rotated.events)
         }
         // feat-195: every session is revoked, so every WebSocket connection of the user closes.
         if (userId !== null) wsSessionRevocation.closeUserConnections(userId)
@@ -1241,9 +1233,9 @@ export const authService = {
          * feat-221: the session that asks. Its connections are not closed here: the controller
          * renews it first, and its client then replaces the socket itself.
          */
-        requestingSessionId?: string,
-        /** feat-235: who changes it; without it, the user without a request id. */
-        actor: UserAuditActor = userActorWithoutRequest(userId),
+        requestingSessionId: string | undefined,
+        /** feat-235: who changes it: the signed-in user of the request. */
+        actor: UserAuditActor,
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
         const throttle = await enforceThrottle(

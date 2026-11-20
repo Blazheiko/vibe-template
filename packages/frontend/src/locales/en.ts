@@ -331,7 +331,6 @@ export default {
         filters: {
             action: 'Action',
             group: 'Group',
-            anyAction: 'Any action',
             anyGroup: 'Any group',
             actorUserId: 'Actor user ID',
             targetUserId: 'Account ID',

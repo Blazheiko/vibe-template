@@ -284,3 +284,13 @@ test('the response schema accepts a page', () => {
         ),
     )
 })
+
+test('every action lists the proofs its actor may carry', () => {
+    for (const action of AUDIT_ACTION_NAMES) {
+        const { actorKinds, proofs } = AUDIT_ACTIONS[action]
+        // A proof holder acts by its proof alone: one is always required.
+        if (actorKinds.includes('proof_holder')) assert.ok(proofs.length > 0, action)
+    }
+    assert.deepEqual(AUDIT_ACTIONS['auth.phone.linked'].proofs, ['sms_code'])
+    assert.deepEqual(AUDIT_ACTIONS['auth.sessions.revoked_all'].proofs, [])
+})

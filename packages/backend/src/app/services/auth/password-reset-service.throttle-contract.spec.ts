@@ -8,6 +8,7 @@ import {
     type AppError,
 } from '#app/services/shared/errors.js'
 import type { passwordResetService } from './password-reset-service.js'
+import { testProofHolder } from '../../../test-support/audit-actor.js'
 
 // feat-069 (G1): the throttle steps of passwordResetService as a table, before they are folded
 // into `enforceThrottle()` (H1). Same reading as auth-service.throttle-contract.spec.ts. The
@@ -158,14 +159,28 @@ const ROWS: readonly Row[] = [
     },
     {
         method: 'resetPassword · ip',
-        call: (s) => s.resetPassword('tok', 'new-password', 'new-password', IP),
+        call: (s) =>
+            s.resetPassword(
+                'tok',
+                'new-password',
+                'new-password',
+                IP,
+                testProofHolder('email_link'),
+            ),
         consumed: [['reset_password_ip', '203.0.113.9']],
         blocked: rateLimited('Too many password reset attempts. Please try again later.'),
     },
     {
         method: 'completePhonePasswordReset · ip',
         call: (s) =>
-            s.completePhonePasswordReset('c', '123456', 'new-password', 'new-password', IP),
+            s.completePhonePasswordReset(
+                'c',
+                '123456',
+                'new-password',
+                'new-password',
+                IP,
+                testProofHolder('sms_code'),
+            ),
         consumed: [['confirm_reset_phone_ip', '203.0.113.9']],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },

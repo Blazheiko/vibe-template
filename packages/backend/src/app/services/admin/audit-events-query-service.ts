@@ -28,15 +28,40 @@ export function encodeAuditCursor(cursor: AuditEventCursor): string {
     return Buffer.from(`${cursor.occurredAt}|${String(cursor.id)}`, 'utf8').toString('base64url')
 }
 
+const MAX_POSTGRES_BIGINT = 9223372036854775807n
+
+/** Whether `text` (`YYYY-MM-DD HH:MM:SS[.ffffff]`) names a real instant, not one Date would roll over. */
+function isCalendarTimestamp(text: string): boolean {
+    const [date = '', time = ''] = text.split(' ')
+    const [year, month, day] = date.split('-').map(Number)
+    const [hours, minutes, seconds] = time.split(':').map((part) => Math.floor(Number(part)))
+    if (
+        year === undefined ||
+        month === undefined ||
+        day === undefined ||
+        hours === undefined ||
+        minutes === undefined ||
+        seconds === undefined
+    ) {
+        return false
+    }
+    if (hours > 23 || minutes > 59 || seconds > 59) return false
+    const at = new Date(Date.UTC(year, month - 1, day))
+    // Date.UTC(2026, 1, 30) is March 2: a day that does not exist comes back as another one.
+    return at.getUTCFullYear() === year && at.getUTCMonth() === month - 1 && at.getUTCDate() === day
+}
+
 /** The position a cursor names, or null when it is not one this service made. */
 export function decodeAuditCursor(text: string): AuditEventCursor | null {
     const decoded = Buffer.from(text, 'base64url').toString('utf8')
     const [occurredAt, id, ...rest] = decoded.split('|')
     if (rest.length > 0 || occurredAt === undefined || id === undefined) return null
     if (!OCCURRED_AT_TEXT.test(occurredAt) || !ID_TEXT.test(id)) return null
-    // A real timestamp, not just its shape: PostgreSQL would refuse 2026-13-45 with a 500.
-    if (Number.isNaN(Date.parse(`${occurredAt.replace(' ', 'T')}Z`))) return null
-    return { occurredAt, id: BigInt(id) }
+    // A real timestamp and an id PostgreSQL can hold: anything else would come back as a 500.
+    if (!isCalendarTimestamp(occurredAt)) return null
+    const value = BigInt(id)
+    if (value > MAX_POSTGRES_BIGINT) return null
+    return { occurredAt, id: value }
 }
 
 export interface AuditEventsQuery {

@@ -8,6 +8,7 @@ import {
     type AppError,
 } from '#app/services/shared/errors.js'
 import type { authService } from './auth-service.js'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -322,6 +323,7 @@ const ROWS: readonly Row[] = [
                     presentedSessionToken: TOKEN,
                     sessionStored: sessionStillStored,
                 },
+                testUserActor(),
             ),
         consumed: [['confirm_link_phone_ip', '203.0.113.9']],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
@@ -406,6 +408,8 @@ const ROWS: readonly Row[] = [
                 { currentPassword: 'old', newPassword: 'new-password' },
                 TOKEN,
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             ),
         consumed: [['change_password_user', '7']],
         blocked: rateLimited('Too many password change attempts. Please try again later.'),

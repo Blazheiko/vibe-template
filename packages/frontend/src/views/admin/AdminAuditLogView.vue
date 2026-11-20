@@ -20,7 +20,8 @@ import { getResponseMessage } from '@/utils/response-normalizer'
 // a reload, a link from the users or the knowledge base and the back button keep them.
 
 interface Filters {
-    action: string
+    /** Every `action` of the URL: `?action=a&action=b` asks for both. */
+    action: string[]
     group: string
     actorUserId: string
     targetUserId: string
@@ -31,8 +32,8 @@ interface Filters {
     to: string
 }
 
-const FILTER_KEYS = [
-    'action',
+/** The filters that take one value; `action` repeats. */
+const SINGLE_KEYS = [
     'group',
     'actorUserId',
     'targetUserId',
@@ -41,7 +42,7 @@ const FILTER_KEYS = [
     'requestId',
     'from',
     'to',
-] as const satisfies readonly (keyof Filters)[]
+] as const satisfies readonly Exclude<keyof Filters, 'action'>[]
 
 const { t } = useI18n()
 const route = useRoute()
@@ -49,7 +50,7 @@ const router = useRouter()
 const { formatDateTime } = useDateFormat()
 
 const emptyFilters = (): Filters => ({
-    action: '',
+    action: [],
     group: '',
     actorUserId: '',
     targetUserId: '',
@@ -65,9 +66,17 @@ const firstOf = (value: LocationQuery[string]): string => {
     return typeof item === 'string' ? item : ''
 }
 
+const KNOWN_ACTIONS: ReadonlySet<string> = new Set(AUDIT_ACTION_NAMES)
+
+const allOf = (value: LocationQuery[string]): string[] =>
+    (Array.isArray(value) ? value : [value]).filter(
+        (item): item is string => typeof item === 'string' && KNOWN_ACTIONS.has(item),
+    )
+
 const filtersFromQuery = (query: LocationQuery): Filters => {
     const filters = emptyFilters()
-    for (const key of FILTER_KEYS) filters[key] = firstOf(query[key])
+    filters.action = allOf(query.action)
+    for (const key of SINGLE_KEYS) filters[key] = firstOf(query[key])
     return filters
 }
 
@@ -88,7 +97,7 @@ const toIso = (value: string): string | undefined => {
 }
 
 const queryOf = (filters: Filters, cursor?: string): AdminAuditEventsQueryInput => ({
-    ...(filters.action !== '' && { action: [filters.action as AuditAction] }),
+    ...(filters.action.length > 0 && { action: filters.action as AuditAction[] }),
     ...(filters.group !== '' && { group: filters.group as AuditGroup }),
     ...(filters.actorUserId.trim() !== '' && { actorUserId: filters.actorUserId.trim() }),
     ...(filters.targetUserId.trim() !== '' && { targetUserId: filters.targetUserId.trim() }),
@@ -100,13 +109,25 @@ const queryOf = (filters: Filters, cursor?: string): AdminAuditEventsQueryInput 
     ...(cursor !== undefined && { cursor }),
 })
 
+// feat-235 review: every first page starts a new generation. An answer of an older one (a "Load
+// more" sent before the filters changed, a first page overtaken by the next) is dropped: it would
+// append events of the old filters to the new list and replace its cursor.
+let generation = 0
+
 async function load(reset: boolean): Promise<void> {
-    if (reset) loading.value = true
-    else loadingMore.value = true
+    if (reset) {
+        generation += 1
+        loading.value = true
+        loadingMore.value = false
+    } else {
+        loadingMore.value = true
+    }
+    const mine = generation
     error.value = null
     const filters = filtersFromQuery(route.query)
     const cursor = reset ? undefined : (nextCursor.value ?? undefined)
     const res = await adminAuditEventsApi.list(queryOf(filters, cursor))
+    if (mine !== generation) return
     loading.value = false
     loadingMore.value = false
     if (res.data?.status === 'success') {
@@ -123,8 +144,9 @@ async function load(reset: boolean): Promise<void> {
 }
 
 function apply(): void {
-    const query: Record<string, string> = {}
-    for (const key of FILTER_KEYS) {
+    const query: Record<string, string | string[]> = {}
+    if (form.value.action.length > 0) query.action = [...form.value.action]
+    for (const key of SINGLE_KEYS) {
         const value = form.value[key].trim()
         if (value !== '') query[key] = value
     }
@@ -246,8 +268,7 @@ async function copyRequestId(requestId: string): Promise<void> {
         <form class="audit-filters" data-testid="audit-filters" @submit.prevent="apply">
             <label>
                 <span>{{ t('auditLog.filters.action') }}</span>
-                <select v-model="form.action" name="action">
-                    <option value="">{{ t('auditLog.filters.anyAction') }}</option>
+                <select v-model="form.action" name="action" multiple size="4">
                     <option
                         v-for="option in actionOptions"
                         :key="option.value"

@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 
@@ -72,6 +73,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         presentedSessionToken: user.sessionToken,
         sessionCreatedAt: new Date().toISOString(),
         sessionStored: () => Promise.resolve(true),
+        actor: testUserActor(),
         ...over,
     })
 

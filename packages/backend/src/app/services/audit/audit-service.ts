@@ -58,13 +58,25 @@ export function assertAuditPayloadSize(payload: AuditPayload): void {
 }
 
 function assertActor(action: AuditAction, actor: AuditActor): void {
-    const allowed: readonly string[] = AUDIT_ACTIONS[action].actorKinds
+    const definition = AUDIT_ACTIONS[action]
+    const allowed: readonly string[] = definition.actorKinds
     if (!allowed.includes(actor.kind)) {
         throw new AuditPayloadError(`audit: ${action} cannot be done by a ${actor.kind} actor`)
     }
-    // The type says so already; this holds for a caller that went around it.
-    if (actor.kind === 'proof_holder' && (actor.proof as string | null) == null) {
-        throw new AuditPayloadError(`audit: ${action} by a proof holder needs its proof`)
+    // The types say so already; this holds for a caller that went around them (Р6).
+    if (actor.kind !== 'system' && (actor.requestId as string | null) == null) {
+        throw new AuditPayloadError(`audit: ${action} by a ${actor.kind} needs its request id`)
+    }
+    const proofs: readonly string[] = definition.proofs
+    const proof = actor.proof as string | null
+    if (proofs.length === 0) {
+        if (proof != null) {
+            throw new AuditPayloadError(`audit: ${action} takes no proof, got ${proof}`)
+        }
+    } else if (proof == null || !proofs.includes(proof)) {
+        throw new AuditPayloadError(
+            `audit: ${action} needs one of the proofs ${proofs.join(', ')}, got ${String(proof)}`,
+        )
     }
 }
 

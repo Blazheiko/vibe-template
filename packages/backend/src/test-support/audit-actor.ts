@@ -4,7 +4,13 @@
 import { randomUUID } from 'node:crypto'
 import { vi, type Mock } from 'vitest'
 
-import type { UserAuditActor } from '#app/services/audit/audit-actor.js'
+import type { AuditProof } from 'shared/audit'
+
+import type {
+    AuditRequest,
+    ProofHolderAuditActor,
+    UserAuditActor,
+} from '#app/services/audit/audit-actor.js'
 
 type LogSpy = Mock<(obj: unknown, msg?: unknown, ...args: unknown[]) => void>
 
@@ -30,3 +36,26 @@ export const testAdminActor = (userId = 1n): TestAuditActor => ({
 /** The `audit event` lines a spy logger received. */
 export const auditLogLines = (logger: { info: LogSpy }): unknown[] =>
     logger.info.mock.calls.filter((call) => call[1] === 'audit event').map((call) => call[0])
+
+/** A signed-in user of a request, for a service test that does not look at its events. */
+export const testUserActor = (userId = 1n): TestAuditActor => ({
+    ...testAdminActor(userId),
+    role: 'user',
+})
+
+/** The holder of `proof` in a request of its own. */
+export const testProofHolder = (proof: AuditProof): ProofHolderAuditActor => ({
+    kind: 'proof_holder',
+    userId: null,
+    role: null,
+    requestId: randomUUID(),
+    proof,
+    source: null,
+    logger: { info: vi.fn<(obj: unknown, msg?: unknown, ...args: unknown[]) => void>() },
+})
+
+/** A request of its own, for a service that learns its actor itself. */
+export const testRequest = (): AuditRequest => ({
+    requestId: randomUUID(),
+    logger: { info: vi.fn<(obj: unknown, msg?: unknown, ...args: unknown[]) => void>() },
+})

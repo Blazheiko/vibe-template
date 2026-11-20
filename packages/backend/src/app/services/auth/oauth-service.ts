@@ -405,7 +405,7 @@ export const oauthService = {
         auth: Auth,
         sessionId: string | null,
         /** feat-235: the request, for the audit event of a link made by the provider's proof. */
-        request?: AuditRequest,
+        request: AuditRequest,
     ): Promise<AppResult<{ redirectUrl: string }>> {
         if (!isValidProvider(provider)) {
             return Result.err(badRequest(`Unsupported provider: ${provider}`))
@@ -518,7 +518,7 @@ export const oauthService = {
         auth: Auth,
         sessionId: string | null,
         /** feat-235: the request, for the audit event. */
-        request?: AuditRequest,
+        request: AuditRequest,
     ): Promise<AppResult<{ status: 'success' }>> {
         const used = badRequest('This link has already been used', 'used_token')
         const expired = badRequest('This link has expired', 'expired_token')
@@ -732,7 +732,7 @@ async function linkTrusted(
     auth: Auth,
     userId: bigint,
     identity: OAuthIdentity,
-    request: AuditRequest | undefined,
+    request: AuditRequest,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     // feat-235: nobody is signed in; the provider's proof of the address allows the link.
     const actor = proofHolderOf('oauth_provider_email', request)
@@ -888,8 +888,8 @@ async function signInWithIdentity(
     identity: OAuthIdentity,
     emailTrust: OAuthUserInfo['emailTrust'],
     sessionId: string | null,
-    isRetry = false,
-    request?: AuditRequest,
+    isRetry: boolean,
+    request: AuditRequest,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     const { provider, providerUserId, providerEmail } = identity
     const existingOAuth = await oauthAccountRepository.findByProviderAndProviderId(

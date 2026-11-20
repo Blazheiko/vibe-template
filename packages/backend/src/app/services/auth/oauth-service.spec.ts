@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import type * as Arctic from 'arctic'
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testRequest } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -293,6 +294,7 @@ async function callback(provider: string, sessionId: string | null = SESSION_ID)
         provider === 'facebook' ? null : 'code-verifier',
         authMock as never,
         sessionId,
+        testRequest(),
     )
 }
 
@@ -1335,6 +1337,7 @@ describe('oauthService.handleCallback', () => {
             null,
             authMock as never,
             SESSION_ID,
+            testRequest(),
         )
 
         expectError(result, { _tag: 'BadRequest', message: 'OAuth state mismatch' })
@@ -1537,7 +1540,7 @@ describe('oauthService.confirmLink', () => {
 
     const confirm = async (token = RAW, sessionId: string | null = SESSION_ID) => {
         const { oauthService } = await loadOauthService()
-        return oauthService.confirmLink(token, authMock as never, sessionId)
+        return oauthService.confirmLink(token, authMock as never, sessionId, testRequest())
     }
 
     const expectNotConsumed = (): void => {
@@ -2173,6 +2176,7 @@ describe('oauthService hardening (feat-200)', () => {
                     null,
                     authMock as never,
                     SESSION_ID,
+                    testRequest(),
                 )
 
                 expectError(result, { _tag: 'BadRequest', message: 'Missing OAuth parameters' })

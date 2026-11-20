@@ -68,6 +68,11 @@ interface AuditActionDefinition {
     readonly group: AuditGroup
     readonly targetType: AuditTargetType
     readonly actorKinds: readonly AuditActorKind[]
+    /**
+     * The proofs the actor may carry (Р6): non-empty means one of them is required, empty means
+     * the action takes none.
+     */
+    readonly proofs: readonly AuditProof[]
     readonly changes: AuditShape | null
     readonly metadata: AuditShape | null
 }
@@ -77,6 +82,7 @@ export const AUDIT_ACTIONS = {
         group: 'rights',
         targetType: 'user',
         actorKinds: ['system'],
+        proofs: [],
         changes: { role: fromTo },
         metadata: { source: true },
     },
@@ -84,6 +90,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
+        proofs: [],
         changes: null,
         metadata: { sessionsRevoked: true },
     },
@@ -91,6 +98,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['proof_holder'],
+        proofs: ['email_link', 'sms_code'],
         changes: null,
         metadata: { proof: true, claimed: true },
     },
@@ -98,6 +106,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['proof_holder'],
+        proofs: ['email_link', 'oauth_email_link', 'oauth_provider_email'],
         changes: null,
         metadata: {
             proof: true,
@@ -111,6 +120,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
+        proofs: ['sms_code'],
         changes: null,
         metadata: { method: true, proof: true },
     },
@@ -118,6 +128,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
+        proofs: ['email_link'],
         changes: null,
         metadata: { method: true, proof: true },
     },
@@ -125,6 +136,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['proof_holder'],
+        proofs: ['oauth_email_link', 'oauth_provider_email'],
         changes: null,
         metadata: { method: true, provider: true, proof: true },
     },
@@ -132,6 +144,7 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
+        proofs: [],
         changes: null,
         metadata: { method: true, provider: true },
     },
@@ -139,6 +152,7 @@ export const AUDIT_ACTIONS = {
         group: 'sessions',
         targetType: 'user',
         actorKinds: ['user'],
+        proofs: [],
         changes: null,
         metadata: null,
     },
@@ -146,6 +160,7 @@ export const AUDIT_ACTIONS = {
         group: 'sessions',
         targetType: 'user',
         actorKinds: ['user'],
+        proofs: [],
         changes: null,
         metadata: null,
     },
@@ -153,6 +168,7 @@ export const AUDIT_ACTIONS = {
         group: 'kb',
         targetType: 'kb_article',
         actorKinds: ['user'],
+        proofs: [],
         changes: ARTICLE_CHANGES_SHAPE,
         metadata: null,
     },
@@ -160,6 +176,7 @@ export const AUDIT_ACTIONS = {
         group: 'kb',
         targetType: 'kb_article',
         actorKinds: ['user'],
+        proofs: [],
         changes: ARTICLE_CHANGES_SHAPE,
         metadata: null,
     },
@@ -167,6 +184,7 @@ export const AUDIT_ACTIONS = {
         group: 'kb',
         targetType: 'kb_article',
         actorKinds: ['user'],
+        proofs: [],
         changes: ARTICLE_CHANGES_SHAPE,
         metadata: null,
     },
@@ -174,6 +192,7 @@ export const AUDIT_ACTIONS = {
         group: 'kb',
         targetType: 'kb_article',
         actorKinds: ['user'],
+        proofs: [],
         changes: SCREENSHOT_CHANGES_SHAPE,
         metadata: { mime: true },
     },
@@ -181,6 +200,7 @@ export const AUDIT_ACTIONS = {
         group: 'kb',
         targetType: 'kb_article',
         actorKinds: ['user'],
+        proofs: [],
         changes: SCREENSHOT_CHANGES_SHAPE,
         metadata: { mime: true },
     },
@@ -188,6 +208,7 @@ export const AUDIT_ACTIONS = {
         group: 'ai',
         targetType: 'llm_prompt',
         actorKinds: ['user'],
+        proofs: [],
         changes: PROMPT_CHANGES_SHAPE,
         metadata: null,
     },

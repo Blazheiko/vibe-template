@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -356,6 +357,8 @@ describe('authService legacy regressions', () => {
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -388,6 +391,8 @@ describe('authService legacy regressions', () => {
             { newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password-123')
@@ -450,6 +455,8 @@ describe('change password throttle', () => {
                 { currentPassword: 'guess', newPassword: 'new-password-123' },
                 'previous-session-token',
                 sessionStillStored,
+                undefined,
+                testUserActor(),
             )
             .then(
                 (result) => Result.isError(result),
@@ -483,6 +490,8 @@ describe('change password throttle', () => {
             { currentPassword: 'secret123', newPassword: 'new-password-123' },
             'previous-session-token',
             sessionStillStored,
+            undefined,
+            testUserActor(),
         )
         expect(Result.isOk(result)).toBe(true)
         expect(resetAuthThrottleMock).toHaveBeenCalledWith(

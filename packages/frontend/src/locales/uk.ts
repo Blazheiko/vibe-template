@@ -332,7 +332,6 @@ const uk: typeof en = {
         filters: {
             action: 'Дія',
             group: 'Група',
-            anyAction: 'Будь-яка дія',
             anyGroup: 'Будь-яка група',
             actorUserId: 'ID виконавця',
             targetUserId: 'ID акаунта',

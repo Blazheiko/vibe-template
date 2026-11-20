@@ -163,8 +163,9 @@ export const knowledgeBaseService = {
         actor: AuditActor,
     ): Promise<AppResult<{ item: KbItemData }>> {
         const { created, events } = await withTransaction(async (tx) => {
-            const stamp = await auditService.stamp(tx)
             const row = await supportKnowledgeRepository.create(data, tx)
+            // After the INSERT … RETURNING, as every other point stamps after its row statement.
+            const stamp = await auditService.stamp(tx)
             const recorded = await auditService.record(tx, stamp, actor, [
                 {
                     action: 'kb.article.created',

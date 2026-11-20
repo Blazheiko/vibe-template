@@ -4,11 +4,7 @@ import { CURRENT_SESSION_REASON } from 'shared/errors'
 import type { SessionView } from 'shared'
 
 import { userRepository, withTransaction } from '#app/repositories/index.js'
-import {
-    userActorWithoutRequest,
-    withRole,
-    type UserAuditActor,
-} from '#app/services/audit/audit-actor.js'
+import { withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService } from '#app/services/audit/audit-service.js'
 import { sessionTransformer } from '#app/transformers/index.js'
 import { retirePendingResets } from '#app/services/auth/phone-challenges.js'
@@ -153,11 +149,11 @@ export const sessionListService = {
         presentedSessionToken: string | undefined
         requestingSessionId: string | undefined
         sessionStored: SessionStillStored
-        /** feat-235: who ends them; without it, the user without a request id. */
-        actor?: UserAuditActor
+        /** feat-235: who ends them: the signed-in user of the request. */
+        actor: UserAuditActor
     }): Promise<AppResult<{ sessionToken: string }>> {
         const { userId, presentedSessionToken: presented } = input
-        const actor = input.actor ?? userActorWithoutRequest(userId)
+        const { actor } = input
         if (presented === undefined) return Result.err(sessionRevoked())
         if (!(await input.sessionStored())) return Result.err(sessionRevoked())
 

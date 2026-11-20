@@ -21,12 +21,10 @@ T0–T10 verification done; implementation PR open, waiting for review.
 
 ## Deviations from the task list (deliberate)
 
-- **Actor parameter is optional in the auth services** (`logoutAll`, `changePassword`,
-  `confirmPhoneLink`, `revokeOthers`, `unlink`, `resetPassword`, `completePhonePasswordReset`;
-  `request?` for `verifyEmail`, `handleCallback`, `confirmLink`). Without it the service builds an
-  actor without a request id (`userActorWithoutRequest` / `proofHolderWithoutRequest`) and still
-  writes the event. This keeps the existing PG race tests (T5.8) unchanged; every controller
-  passes the request actor.
+- **The actor (or the request) is a required parameter** of every audited service since the
+  review of 2026-11-20; the existing auth tests (PG race suites included) were changed
+  mechanically to pass `testUserActor()`, `testProofHolder(proof)` or `testRequest()` — no
+  assertion changed. Earlier it was optional with a fallback actor without a request id.
 - **Screenshot rollback**: the task list describes a `reachedCommit` flag. With the swap
   transaction owned by `supportKnowledgeRepository.replaceScreenshot` (kept so that
   `storage-object-replacement.pg.test.ts` stays unchanged), the audit work runs in its
@@ -47,6 +45,28 @@ T0–T10 verification done; implementation PR open, waiting for review.
   insert.
 - Seed: `SeedStore.insertUser` returns the events; `seedCommitted` logs them after the outer
   transaction (`db/seed/seed-transaction.ts`).
+
+## Review 2026-11-20 (REQUEST CHANGES on `668cba6`) — fixes
+
+1. **Stale answer in the log page** (high): every first page starts a new generation; an answer
+   of an older one is dropped (`AdminAuditLogView.vue`). Test "drops the answer of a page asked
+   for before the filters changed"; removing the guard fails it.
+2. **Prompt cache could go back to an older row** (high): the cache keeps the audit stamp of the
+   change each row came from and takes a row only from a newer change; an edit without changes
+   publishes nothing. Unit tests "the answer of an older commit arriving last…" and "an edit
+   without changes does not publish…" (both fail on a mutation of the guard);
+   `prompt-audit.pg` race now also checks the final cache.
+3. **Out-of-range ids and impossible cursor dates gave 500** (medium): `actorUserId` /
+   `targetUserId` through `parseEntityId` (400), the cursor id against the `bigint` maximum and
+   its date against the calendar (400). The HTTP test asserts exact codes (400 / 422); the
+   February-30 cursor answered 500 before the fix.
+4. **Repeated `action` lost in the UI** (medium): all values kept in the form (multi-select), the
+   URL and the requests of next pages; test "keeps every action of the URL".
+5. **Attribution contract not enforced by the service** (medium): actor / request required,
+   `requestId: string` in the `user` and `proof_holder` types and checked by `record`; the
+   catalog lists the proofs of each action (`proofs`), and `record` refuses a missing, wrong or
+   superfluous proof. Tests in `audit-service.spec.ts` and `shared/test/audit.test.js`.
+6. `kb.article.created`: the stamp is taken after `INSERT … RETURNING`.
 
 ## Mutations (Р13)
 
@@ -74,6 +94,17 @@ backend reads `shared` from `dist`, so a mutation of `shared/src` needs `pnpm --
 - `job:run` was exercised on a throwaway database in that container, never on the dev database.
 
 ## Evidence of Completion
+
+After the review fixes (2026-11-20): `make check` green (backend 3328, frontend 739, shared 99,
+landing 103, api-playground 115, docs 26, bundle graph clean); `make test-pg` 50 files, **452
+executed, 0 skipped**; `make test-redis` **174**; `test:e2e:live` **27 passed**;
+`admin-audit-log` mocked e2e passed; `docs:build && docs:verify` passed. One live run failed
+`account-profile.spec.ts` ("a name with markup…"): the local throwaway database `vibe_e2e_live`
+had 132 users from earlier runs, so the seeded account was off the first page of 100 of the
+admin list. Not a code issue (CI creates the database fresh); after dropping that database the
+whole live suite passed.
+
+Before the review:
 
 - T0 baseline `./init.sh` on `d911394`: backend 3237, frontend 732, landing 103, green.
 - `make check` on `f5b3b95`: green — shared 98, documentation 26, api-playground 115, landing 103,

@@ -2,6 +2,7 @@ import { Result } from 'better-result'
 import { createHmac } from 'node:crypto'
 import { PENDING_SMS_CODE_HASH_PLACEHOLDER } from './sms-auth-challenge-constants.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { testProofHolder } from '../../../test-support/audit-actor.js'
 
 const userRepositoryMock = {
     findByEmail: vi.fn(),
@@ -284,6 +285,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -316,6 +318,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -338,6 +341,7 @@ describe('passwordResetService', () => {
             'new-password',
             'different-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -385,6 +389,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password')
@@ -590,6 +595,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -643,6 +649,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isError(result) && result.error).toEqual({
@@ -673,6 +680,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isError(result) && result.error).toMatchObject({ _tag: 'NotFound' })
@@ -714,6 +722,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('email_link'),
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -773,6 +782,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('sms_code'),
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -843,6 +853,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('sms_code'),
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -903,6 +914,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('sms_code'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -949,6 +961,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('sms_code'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -989,6 +1002,7 @@ describe('passwordResetService', () => {
             'new-password',
             'new-password',
             { ipAddress: '127.0.0.1' },
+            testProofHolder('sms_code'),
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1281,6 +1295,7 @@ describe('auth throttle fail-closed (phone reset)', () => {
                 'new-password',
                 'new-password',
                 { ipAddress: '127.0.0.1' },
+                testProofHolder('sms_code'),
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
@@ -1358,7 +1373,13 @@ describe('forgot password and reset password throttles', () => {
         const { passwordResetService } = await loadPasswordResetService()
         // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
         const refused = await passwordResetService
-            .resetPassword('some-token', 'new-password', 'new-password', { ipAddress: '10.0.0.4' })
+            .resetPassword(
+                'some-token',
+                'new-password',
+                'new-password',
+                { ipAddress: '10.0.0.4' },
+                testProofHolder('email_link'),
+            )
             .then(
                 (result) => Result.isError(result),
                 () => true,

@@ -337,7 +337,6 @@ const pl: typeof en = {
         filters: {
             action: 'Akcja',
             group: 'Grupa',
-            anyAction: 'Dowolna akcja',
             anyGroup: 'Dowolna grupa',
             actorUserId: 'ID wykonawcy',
             targetUserId: 'ID konta',

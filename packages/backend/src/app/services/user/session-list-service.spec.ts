@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-233 (Р7–Р9): the session list service with its storage and repositories replaced. The
 // Redis scripts and the HTTP routes are proved on real servers (session-index.redis.test.ts,
@@ -180,6 +181,7 @@ describe('revoke (Р8)', () => {
 describe('revokeOthers (Р9)', () => {
     const revokeOthers = (sessionStored = stored, presented: string | null = 'tok') =>
         sessionListService.revokeOthers({
+            actor: testUserActor(),
             userId: 7n,
             presentedSessionToken: presented ?? undefined,
             requestingSessionId: 'current-sid',

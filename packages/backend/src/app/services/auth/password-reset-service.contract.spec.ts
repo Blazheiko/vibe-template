@@ -9,6 +9,7 @@ import {
     type AppError,
 } from '#app/services/shared/errors.js'
 import type { passwordResetService } from './password-reset-service.js'
+import { testProofHolder } from '../../../test-support/audit-actor.js'
 
 // feat-069 (G1): passwordResetService, state -> answer, before it is split (H2-H5). Every row
 // names a state of the repositories and what the caller is told (status, code, message,
@@ -216,11 +217,24 @@ const token = (over: Record<string, unknown> = {}) => ({
 const reset =
     (over: { token?: string; confirm?: string } = {}) =>
     (s: Service) =>
-        s.resetPassword(over.token ?? 'tok', 'new-password', over.confirm ?? 'new-password', IP)
+        s.resetPassword(
+            over.token ?? 'tok',
+            'new-password',
+            over.confirm ?? 'new-password',
+            IP,
+            testProofHolder('email_link'),
+        )
 const completePhone =
     (code = '123456', confirm = 'new-password') =>
     (s: Service) =>
-        s.completePhonePasswordReset('ch-1', code, 'new-password', confirm, IP)
+        s.completePhonePasswordReset(
+            'ch-1',
+            code,
+            'new-password',
+            confirm,
+            IP,
+            testProofHolder('sms_code'),
+        )
 const startPhone =
     (sessionId: string | null = 'sess-1') =>
     (s: Service) =>

@@ -266,7 +266,48 @@ describe('auditService.record', () => {
             auditService.record(tx, stamp, { ...proofHolder, proof: null } as never, [
                 { action: 'auth.password.reset', targetId: '9', input: { claimed: false } },
             ]),
-        ).rejects.toThrow(/needs its proof/)
+        ).rejects.toThrow(/needs one of the proofs email_link, sms_code/)
+        expect(insert).not.toHaveBeenCalled()
+    })
+
+    // feat-235 review: the proof must be one the action allows, not just any proof.
+    it('refuses a proof the action does not allow, and a proof on an action that takes none', async () => {
+        const stamp = await auditService.stamp(tx)
+        await expect(
+            auditService.record(tx, stamp, { ...proofHolder, proof: 'sms_code' }, [
+                { action: 'auth.oauth.linked', targetId: '9', input: { provider: 'google' } },
+            ]),
+        ).rejects.toThrow(/needs one of the proofs oauth_email_link, oauth_provider_email/)
+        await expect(
+            auditService.record(tx, stamp, { ...userActor, proof: 'email_link' }, [
+                { action: 'auth.phone.linked', targetId: '9', input: {} },
+            ]),
+        ).rejects.toThrow(/needs one of the proofs sms_code/)
+        await expect(
+            auditService.record(tx, stamp, userActor, [
+                { action: 'auth.email.linked', targetId: '9', input: {} },
+            ]),
+        ).rejects.toThrow(/needs one of the proofs email_link/)
+        await expect(
+            auditService.record(tx, stamp, { ...userActor, proof: 'sms_code' }, [
+                { action: 'auth.sessions.revoked_all', targetId: '9', input: {} },
+            ]),
+        ).rejects.toThrow(/takes no proof/)
+        expect(insert).not.toHaveBeenCalled()
+    })
+
+    it('refuses a user or a proof holder without a request id', async () => {
+        const stamp = await auditService.stamp(tx)
+        await expect(
+            auditService.record(tx, stamp, { ...userActor, requestId: null } as never, [
+                { action: 'auth.sessions.revoked_all', targetId: '9', input: {} },
+            ]),
+        ).rejects.toThrow(/needs its request id/)
+        await expect(
+            auditService.record(tx, stamp, { ...proofHolder, requestId: null } as never, [
+                { action: 'auth.password.reset', targetId: '9', input: { claimed: false } },
+            ]),
+        ).rejects.toThrow(/needs its request id/)
         expect(insert).not.toHaveBeenCalled()
     })
 

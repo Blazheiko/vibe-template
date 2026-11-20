@@ -169,5 +169,7 @@ describe.skipIf(!hasPg)('prompt edits in the audit log', async () => {
         expect(eventA !== undefined && eventB !== undefined).toBe(true)
         expect(eventA!.occurredAt.getTime()).toBeGreaterThanOrEqual(eventB!.occurredAt.getTime())
         expect((await stored()).model).toBe('from-first')
+        // The cache ends on the row applied last, whatever order the answers came back in.
+        expect(promptService.get(type)?.model).toBe('from-first')
     })
 })

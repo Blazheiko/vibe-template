@@ -27,10 +27,7 @@ import {
     splitSessionChallenges,
     verifySmsCode,
 } from '#app/services/auth/sms-challenge.js'
-import {
-    proofHolderWithoutRequest,
-    type ProofHolderAuditActor,
-} from '#app/services/audit/audit-actor.js'
+import { type ProofHolderAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService } from '#app/services/audit/audit-service.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
 import {
@@ -350,8 +347,8 @@ export const passwordResetService = {
         password: string,
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
-        /** feat-235: the holder of the mailed link; without it, one without a request id. */
-        actor: ProofHolderAuditActor = proofHolderWithoutRequest('email_link'),
+        /** feat-235: the holder of the mailed link, in its request. */
+        actor: ProofHolderAuditActor,
     ): Promise<AppResult<{ status: 'success'; signInMethods: string[] }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.resetPasswordIp,
@@ -468,8 +465,8 @@ export const passwordResetService = {
         password: string,
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
-        /** feat-235: the holder of the SMS code; without it, one without a request id. */
-        actor: ProofHolderAuditActor = proofHolderWithoutRequest('sms_code'),
+        /** feat-235: the holder of the SMS code, in its request. */
+        actor: ProofHolderAuditActor,
     ): Promise<AppResult<{ status: 'success'; signInMethods: string[] }>> {
         if (!authConfig.phoneAuthEnabled) {
             return Result.err(badRequest('Phone authentication is disabled'))
