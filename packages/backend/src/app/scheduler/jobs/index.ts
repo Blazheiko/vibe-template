@@ -1,10 +1,15 @@
 import type { Job } from '../job.js'
 import { authTokenCleanupJob } from './auth-token-cleanup.js'
 import { llmPromptRetentionJob } from './llm-prompt-retention.js'
+import { auditEventsRetentionJob } from './audit-events-retention.js'
 
 // feat-222: the registry of scheduled jobs, run in this order. A job is added here with
 // defineJob (documentation/backend/scheduler.md). Names are unique; createScheduler checks it.
-export const jobs: readonly Job[] = [authTokenCleanupJob, llmPromptRetentionJob]
+export const jobs: readonly Job[] = [
+    authTokenCleanupJob,
+    llmPromptRetentionJob,
+    auditEventsRetentionJob,
+]
 
 /**
  * SCHEDULER_DISABLED_JOBS against the registry: an unknown name stops the startup, so a typo

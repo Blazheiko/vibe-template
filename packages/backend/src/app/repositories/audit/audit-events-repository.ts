@@ -57,6 +57,19 @@ function conditionsOf(filters: AuditEventFilters, cursor: AuditEventCursor | nul
     return conditions
 }
 
+/**
+ * The batch DELETE of the retention job (Р9), exported for its EXPLAIN test. `ORDER BY
+ * occurred_at` reads audit_events_occurred_at_idx backwards: the batch costs `limit` entries.
+ */
+export function auditEventsPurgeBatch(cutoff: Date, limit: number): SQL {
+    return sql`DELETE FROM ${t} WHERE ${t.id} = ANY(ARRAY(
+        SELECT ${t.id} FROM ${t}
+        WHERE ${t.occurredAt} < ${cutoff.toISOString()}::timestamp
+        ORDER BY ${t.occurredAt}
+        LIMIT ${limit}
+    )) RETURNING ${t.id}`
+}
+
 // feat-235 (Р2): the log has no update. The only writes are the insert of the events of one change
 // and the retention job's delete; layering.spec.ts keeps it that way.
 export const auditEventsRepository = {
@@ -109,19 +122,13 @@ export const auditEventsRepository = {
      *
      * @returns how many rows this statement deleted
      */
-    async purgeBatch(cutoff: Date, limit: number, executor: DbExecutor = db): Promise<number> {
-        const deleted = await executor
-            .delete(t)
-            .where(
-                sql`${t.id} = ANY(ARRAY(
-                    SELECT ${t.id} FROM ${t}
-                    WHERE ${t.occurredAt} < ${cutoff.toISOString()}::timestamp
-                    ORDER BY ${t.occurredAt}
-                    LIMIT ${limit}
-                ))`,
-            )
-            .returning({ id: t.id })
-        return deleted.length
+    async purgeBatch(
+        cutoff: Date,
+        limit: number,
+        executor: Pick<typeof db, 'execute'> = db,
+    ): Promise<number> {
+        const result = await executor.execute<{ id: string }>(auditEventsPurgeBatch(cutoff, limit))
+        return result.rows.length
     },
 
     /** The events a purge with this cutoff would delete (the dry run of the retention job). */
