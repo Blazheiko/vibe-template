@@ -1,5 +1,11 @@
 # Журнал важливих дій — покроковий task list
 
+**Редакція 2** (за рев'ю редакції 1): оновлення без змін не робить `UPDATE` (T4); новий об'єкт S3
+прибирається за будь-якого відомого відкату (T4.3); лог після коміту — вимога для кожної точки
+запису; перевірка порядку через HTTP — окремий крок T6a; T8 залежить від T4 і T5; матриця
+позитивних тестів, щоб кожна заявлена мутація справді ламала тест; `countPurgeable` узгоджено з
+планом.
+
 Джерело: [`audit-log-plan.md`](./audit-log-plan.md) (редакція 3 з уточненням T5, рішення Р1–Р14).
 Фіча `feat-235`, гілка `feat/audit-log`. Базовий шлях: `packages/`, якщо не вказано інше. Коміт для
 посилань: `365c335`.
@@ -21,17 +27,34 @@ T0 і T10 — старт і закриття. Задача або підзада
 `--dry-run` і без нього; ручний прохід golden path. Усе це в `feature-state/feat-235/progress.md` →
 Evidence of Completion.
 
-**Правило для всіх точок запису (T4, T5):** подія пишеться лише в гілці, де зміна справді
-відбулася, всередині її транзакції, з часом `auditService.stamp(tx)`, узятим після блокування.
+**Правило для всіх точок запису (T4, T5):**
+
+1. Подія пишеться лише в гілці, де зміна справді відбулася, всередині її транзакції, з часом
+   `auditService.stamp(tx)`, узятим після блокування.
+2. Після коміту — `auditService.logCommitted(actor.logger, events)`. Для HTTP `actor.logger` —
+   логер запиту з `requestId`. Seed логує після завершення своєї зовнішньої транзакції
+   (`db/seed.ts:56`). Після відкату рядка в лозі немає.
+3. Точка запису має позитивний тест на рівно одну очікувану подію й тест відкату (матриця нижче).
+
 Наявна поведінка (коди відповідей, гонки feat-096/097/099/100/233) не змінюється, крім явно
 названих місць: прив'язка телефону (T5.5) і порядок читань у промптах і статтях (T4).
 
 ## Порядок
 
-T0 → T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10.
+T0 → T0 → T1 → T2 → T3 → T4 → T5 → T6 → T6a → T7 → T8 → T9 → T10.
 
-T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T3 і можуть іти в будь-якому порядку. T8
-залежить від T6, T9 — від усіх.
+| Задача | Залежить від |
+| ------ | ------------ |
+| T1, T2 | T0           |
+| T3     | T1, T2       |
+| T4, T5 | T3           |
+| T6, T7 | T3           |
+| T6a    | T4, T6       |
+| T8     | T4, T5, T6   |
+| T9     | T4–T8        |
+| T10    | усі          |
+
+T8 залежить від T4 і T5, бо live e2e чекає справжніх подій від цих точок запису.
 
 ---
 
@@ -110,7 +133,7 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
       `proof_holder`, один `insert`;
     - `logCommitted(logger, events)` — після коміту `logger.info` з `action`, `targetType`,
       `targetId`, без `changes` (Р12).
-- [ ] `AuditActor` (`kind`, `userId`, `role`, `requestId`, `proof`, `source`) і хелпери в
+- [ ] `AuditActor` (`kind`, `userId`, `role`, `requestId`, `proof`, `source`, `logger`) і хелпери в
       `controllers/shared/audit-actor.ts`: `auditActorFrom(context, role)` для `user`,
       `proofHolderActor(context, proof)`, `systemActor('seed')`. Роль адміна — з того самого
       читання, що робить `admin_guard` (передати через контекст, без другого запиту); для інших
@@ -120,7 +143,8 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
     - **найгірший розмір** для кожної дії: рядки максимальної довжини схеми з `\u0001`, `\"` і
       `😀`, числа на межах схеми. Кожен варіант ≤ 8192. Очікувані порядки: оновлення статті
       ≈ 4613 байтів, промпт ≈ 2844, створення статті ≈ 2423;
-    - payload на 1 байт більший за межу — виняток.
+    - payload на 1 байт більший за межу — виняток;
+    - `logCommitted` пише `action`, `targetType`, `targetId` і `requestId` логера, без `changes`.
 - [ ] PG (`audit-events-repository.pg.test.ts`):
     - кілька подій з рівним `occurred_at` (один `stamp`) і сторінки по 2 — нічого не губиться
       й не повторюється;
@@ -134,10 +158,15 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
 
 - [ ] `prompt-repository.ts`: `lockByType(type, tx)` з `FOR UPDATE`; `update(type, data, tx)`
       повертає рядок з `RETURNING`.
-- [ ] `prompt-service.update(type, data, actor)` у `withTransaction`: `lockByType` → `stamp` →
-      `UPDATE … RETURNING` → diff (`model`, `temperature`, `maxTokens`, `topic`) + відбиток
-      `content` → `record`. Порожній diff — без `UPDATE` і без події.
-- [ ] Кеш оновлюється рядком з `RETURNING` **після** коміту; повторне читання прибрати.
+- [ ] `prompt-service.update(type, data, actor)` у `withTransaction`:
+    1. `lockByType`;
+    2. порівняти запропоновані значення із заблокованим рядком і лишити лише ті, що відрізняються;
+       якщо не лишилось нічого — повернути поточний рядок без `UPDATE` і без події;
+    3. `stamp` → `UPDATE … RETURNING` лише змінених полів;
+    4. diff між заблокованим рядком і `RETURNING` (`model`, `temperature`, `maxTokens`, `topic`)
+        - відбиток `content` → `record`.
+- [ ] Після коміту: кеш оновлюється рядком з `RETURNING` (повторне читання прибрати) і
+      `logCommitted`.
 - [ ] `prompt-controller.ts` передає `actor` (`PUT /prompts/:type`).
 - [ ] `prompt-service.spec.ts` зелений (моки під нову сигнатуру).
 
@@ -145,11 +174,17 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
 
 - [ ] `support-knowledge-repository.ts`: `create`, `update`, `delete` приймають `executor`;
       новий `lockById(id, tx)`; `update` і `delete` повертають рядок з `RETURNING`.
-- [ ] `knowledge-base-service` — `create`, `update`, `delete` з `actor` у `withTransaction`: для
-      `update` і `delete` спершу `lockById` → `stamp` → зміна з `RETURNING` → diff (`title`,
-      `category`, `isActive`, відбиток `content`) → `record`. Порожній diff — без `UPDATE` і без
-      події.
-- [ ] Переіндексація (`indexArticle`) — після коміту, як зараз. `requireArticle` до транзакції
+- [ ] `knowledge-base-service` — `create`, `update`, `delete` з `actor` у `withTransaction`:
+    - `create`: `stamp` → `INSERT … RETURNING` → `record` (`after`);
+    - `delete`: `lockById` → `stamp` → `DELETE … RETURNING` → `record` (`before`);
+    - `update`: `lockById` → порівняння із заблокованим рядком, лишаються лише поля, що
+      відрізняються; якщо нічого — поточний рядок без `UPDATE` і без події. Інакше `stamp` →
+      `UPDATE … RETURNING` лише змінених полів → diff (`title`, `category`, `isActive`, відбиток
+      `content`) → `record`.
+- [ ] `textChanged` у репозиторії (зростання `contentVersion`, скидання embedding, feat-114)
+      рахується з полів, що справді змінились, а не з присутності `title` чи `content` у запиті.
+- [ ] Після коміту — `logCommitted` і переіндексація (`indexArticle`), лише якщо текст справді
+      змінився. `requireArticle` до транзакції
       лишається лише як швидкий `404`; джерело `before` — заблокований рядок.
 
 **T4.3 · Скриншоти**
@@ -158,7 +193,15 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
       `stamp` і `record` (`kb.screenshot.uploaded` або `kb.screenshot.removed`). У payload лише
       наявність скриншота до й після та `mime`; ключі S3 не потрапляють.
 - [ ] Порядок S3 не змінюється: новий об'єкт до транзакції, старий видаляється після коміту.
-      Збій `record` відкочує заміну, а новий об'єкт прибирає наявна гілка `isServerRejection`.
+- [ ] Відкат: `isServerRejection` бачить лише відмову PostgreSQL. Виняток із нашого коду (`record`,
+      перевірка payload) у цю гілку не потрапляє, і новий об'єкт лишився б у S3. Тому транзакція
+      ставить прапорець `reachedCommit` останньою інструкцією перед поверненням:
+    - виняток при `reachedCommit = false` — `COMMIT` не надсилався, відкат відомий → прибрати
+      новий об'єкт;
+    - `reachedCommit = true` і `isServerRejection` — PostgreSQL відхилив `COMMIT` → прибрати;
+    - `reachedCommit = true` без відповіді — результат `COMMIT` невідомий → об'єкт лишається
+      (feat-130), попередження в лог.
+- [ ] Після коміту — `logCommitted`, потім видалення старого об'єкта.
 
 **T4.4 · Контролери й тести**
 
@@ -167,9 +210,16 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
     - атомарність: `record`, що кидає, лишає промпт, статтю й скриншот без змін;
     - гонка (`race-barrier.ts`): дві зміни одного промпту і однієї статті; транзакція, що
       почалася першою, отримує блокування другою. `after` першої застосованої зміни дорівнює
-      `before` другої, а `list` за `targetType` і `targetId` повертає їх у порядку застосування;
-    - порожній diff не створює події;
-    - `content` у payload лише як хеш і довжина.
+      `before` другої, а `list` за `targetType` і `targetId` повертає їх у порядку застосування
+      (перевірка через HTTP — T6a);
+    - оновлення без змін (ті самі значення, що в рядку): ні `UPDATE`, ні події; `updatedAt` той
+      самий, для статті — той самий `contentVersion` і embedding;
+    - зміна лише `category` статті не скидає embedding і не збільшує `contentVersion`;
+    - `content` у payload лише як хеш і довжина;
+    - скриншот з in-memory S3 (як `storage-object-replacement.pg.test.ts`): `record`, що кидає, —
+      рядок з попереднім ключем і **нового об'єкта в S3 немає**; збій `COMMIT` без відповіді —
+      об'єкт лишається; успіх — новий ключ у рядку, старий об'єкт видалено;
+    - лог: успішна зміна пише один рядок `audit event` з `requestId`, відкат — жодного.
 - [ ] Наявні `kb-embedding-consistency.pg.test.ts`, `knowledge-base-service.spec.ts`,
       `storage-object-replacement.pg.test.ts` зелені.
 
@@ -213,7 +263,8 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
       `auth.password.reset` і `auth.account.claimed` з обома провайдерами, з одним `request_id`
       і `occurred_at`;
     - для підтвердженого акаунта `auth.account.claimed` не пишеться;
-    - збій `record` лишає посилання чинним і пароль старим.
+    - SMS-скидання пише рівно одну `auth.password.reset` з `proof_holder` і `sms_code`;
+    - збій `record` лишає посилання чинним і пароль старим; для SMS — челендж непідтверджений.
 
 **T5.5 · Прив'язка телефону (`confirmPhoneLink`) — уточнення T5 плану**
 
@@ -223,7 +274,9 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
        номера ще немає (інакше «Phone is already linked to this account»);
     3. `confirmChallenge(challenge, answers, tx)`;
     4. `userRepository.update` номера на заблокованому рядку (з `tx`);
-    5. `stamp` + `record` (`auth.phone.linked`, `user`, `proof: 'sms_code'`).
+    5. `stamp` + `record` (`auth.phone.linked`, `user`, `proof: 'sms_code'`). Якщо оновлення
+       не повернуло рядок — `Result.err`, а не виняток: транзакцію відкочує
+       `withTransactionResult`.
 - [ ] Перевірки до транзакції лишаються як швидка відмова; `requireSessionStored` — до
       транзакції, як зараз.
 - [ ] `409` від унікального індексу (`isUniqueViolation`) ловиться поза `withTransactionResult`:
@@ -237,7 +290,13 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
       linked», його челендж непідтверджений, номер першого не перезаписано;
     - токен ротовано між попередньою перевіркою і транзакцією → `session_revoked`,
       підтвердження відкочено;
-    - `409` від унікального індексу лишає челендж непідтвердженим, відповідь та сама.
+    - `409` від унікального індексу лишає челендж непідтвердженим, відповідь та сама;
+    - **відмова після підтвердження**: оновлення номера (підмінений репозиторій) не повертає
+      рядка після `confirmChallenge` → `Result.err`, челендж непідтверджений. Це єдиний сценарій,
+      що ловить мутацію `withTransactionResult` → `withTransaction`: відмови під блокуванням
+      стаються до підтвердження, а `409` і збій `record` кидають винятки, які відкочують обидва
+      варіанти;
+    - успіх пише рівно одну `auth.phone.linked`.
 - [ ] Тести feat-100 оновлюються свідомо; причина — у PR і `progress.md`.
 
 **T5.6 · Прив'язка email, OAuth, відв'язка**
@@ -259,11 +318,15 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
 
 **T5.7 · Seed**
 
-- [ ] `drizzle-seed-store.ts`: вставка адміністратора — у транзакції разом із
-      `user.admin.created` (`system`, `source: 'seed'`, без `request_id`, роль `null` → `admin`).
-      Демо-користувач події не пише.
+- [ ] `drizzle-seed-store.ts`: вставка адміністратора й `user.admin.created` (`system`,
+      `source: 'seed'`, без `request_id`, роль `null` → `admin`) — у тій самій зовнішній
+      транзакції seed (`db/seed.ts:56`), через `tx`, який store уже отримує. Демо-користувач події
+      не пише.
+- [ ] `runSeed` повертає події у звіті; `db/seed.ts` викликає `logCommitted` після завершення
+      `db.transaction`, а не всередині.
 - [ ] `run-seed.spec.ts`: подія для створеного адміна; для `already_exists` і
-      `exists_without_admin_role` — немає.
+      `exists_without_admin_role` — немає. Збій зовнішньої транзакції — ні адміна, ні події, ні
+      рядка в лозі.
 
 **T5.8 · Регресії**
 
@@ -287,6 +350,42 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
       фільтр і їх поєднання; невалідні `cursor`, `from`, `to`, `action`; порядок і сторінки на
       подіях з рівним `occurred_at`.
 - [ ] `route-access.spec.ts` і `route-contracts.spec.ts` оновлені й зелені.
+
+### T6a · Порядок через API — Р7, Р13 (після T4 і T6)
+
+- [ ] PG/HTTP (`audit-order-http.pg.test.ts`): гонка (`race-barrier.ts`) двох змін одного промпту
+      і двох змін однієї статті; транзакція, що почалася першою, отримує блокування другою.
+      `GET /admin/audit-events?targetType=…&targetId=…` повертає події в порядку застосування
+      змін (новіша першою), `after` застосованої першою дорівнює `before` другої.
+- [ ] Ловить мутацію «`stamp` до блокування або `now()`» на рівні API.
+
+### Матриця точок запису
+
+Кожен рядок — позитивний тест (рівно одна очікувана подія з правильними `actorKind`, `proof`,
+`target`) і тест відкату (збій `record` → зміни немає, події й рядка в лозі немає). Без
+позитивного тесту мутація «прибрати `record`» у цій точці нічого не ламає.
+
+| Точка запису                    | Подія                              | Задача |
+| ------------------------------- | ---------------------------------- | ------ |
+| `logoutAll`                     | `auth.sessions.revoked_all`        | T5.1   |
+| `revokeOthers`                  | `auth.sessions.revoked_others`     | T5.1   |
+| `changePassword`                | `auth.password.changed`            | T5.2   |
+| `resetPassword`, підтверджений  | `auth.password.reset`              | T5.4   |
+| `resetPassword`, неперевірений  | `auth.password.reset` + `claimed`  | T5.4   |
+| `completePhonePasswordReset`    | `auth.password.reset` (`sms_code`) | T5.4   |
+| `confirmPhoneLink`              | `auth.phone.linked`                | T5.5   |
+| прив'язка email                 | `auth.email.linked`                | T5.6   |
+| `confirmLink`                   | `auth.oauth.linked` (+ `claimed`)  | T5.6   |
+| `linkTrusted`, підтверджений    | `auth.oauth.linked`                | T5.6   |
+| `linkTrusted`, неперевірений    | `auth.oauth.linked` + `claimed`    | T5.6   |
+| `unlink`                        | `auth.sign_in_method.unlinked`     | T5.6   |
+| seed                            | `user.admin.created`               | T5.7   |
+| `knowledge-base-service.create` | `kb.article.created`               | T4.2   |
+| `knowledge-base-service.update` | `kb.article.updated`               | T4.2   |
+| `knowledge-base-service.delete` | `kb.article.deleted`               | T4.2   |
+| `uploadScreenshot`              | `kb.screenshot.uploaded`           | T4.3   |
+| `deleteScreenshot`              | `kb.screenshot.removed`            | T4.3   |
+| `prompt-service.update`         | `ai.prompt.updated`                | T4.1   |
 
 ### T7 · Задача `audit-events-retention` — Р9
 
@@ -352,13 +451,21 @@ T1 і T2 незалежні. T4, T5, T6 і T7 залежать лише від T
 
 - [ ] `make check`; `make test-pg` і `make test-redis` з кількістю виконаних і пропущених;
       `test:e2e`, `test:e2e:live`; `pnpm docs:build && pnpm docs:verify`.
-- [ ] Мутації (Р13) — кожна ламає свій тест, результат у `progress.md`:
-    - прибрати `record` з будь-якої точки запису;
-    - `FOR UPDATE` → звичайне читання;
-    - `stamp` до блокування або `now()`;
-    - `confirmChallenge` поза транзакцією;
-    - `withTransactionResult` → `withTransaction` або прибрати повторну перевірку номера;
-    - межа 4096.
+- [ ] Мутації (Р13) — кожна ламає названий тест, результат у `progress.md`:
+
+    | Мутація                                            | Тест, що падає                             |
+    | -------------------------------------------------- | ------------------------------------------ |
+    | прибрати `record` з точки запису                   | позитивний тест цієї точки (матриця)       |
+    | `FOR UPDATE` → звичайне читання                    | гонка T4.4 (`after` ≠ `before`)            |
+    | `stamp` до блокування або `now()`                  | порядок T6a                                |
+    | `confirmChallenge` поза транзакцією                | повтор SMS-коду після збою `record` (T5.5) |
+    | `withTransactionResult` → `withTransaction`        | відмова після підтвердження (T5.5)         |
+    | прибрати повторну перевірку номера                 | гонка двох номерів (T5.5)                  |
+    | `UPDATE` без порівняння з рядком                   | оновлення без змін, `updatedAt` (T4.4)     |
+    | прибирати новий об'єкт лише за `isServerRejection` | `record`, що кидає, — об'єкт у S3 (T4.4)   |
+    | `logCommitted` усередині транзакції                | тест відкату: рядок у лозі (T4.4, T5.7)    |
+    | межа 4096                                          | найгірший розмір (T3)                      |
+
 - [ ] `job:run audit-events-retention --dry-run` на сидованих старих рядках, потім без
       `--dry-run`: лічильники збігаються.
 - [ ] Ручний прохід: змінити статтю, промпт (API), пароль, відв'язати спосіб входу, «Вийти
