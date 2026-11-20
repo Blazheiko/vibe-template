@@ -10,6 +10,7 @@ import {
 } from '#app/repositories/index.js'
 import {
     addressMatches,
+    claimEvent,
     claimLocked,
     destroySessionsQuietly,
     invalidatePendingPhoneChallenges,
@@ -26,6 +27,11 @@ import {
     splitSessionChallenges,
     verifySmsCode,
 } from '#app/services/auth/sms-challenge.js'
+import {
+    proofHolderWithoutRequest,
+    type ProofHolderAuditActor,
+} from '#app/services/audit/audit-actor.js'
+import { auditService } from '#app/services/audit/audit-service.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
 import {
     findUsableToken,
@@ -344,6 +350,8 @@ export const passwordResetService = {
         password: string,
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
+        /** feat-235: the holder of the mailed link; without it, one without a request id. */
+        actor: ProofHolderAuditActor = proofHolderWithoutRequest('email_link'),
     ): Promise<AppResult<{ status: 'success'; signInMethods: string[] }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.resetPasswordIp,
@@ -401,12 +409,25 @@ export const passwordResetService = {
                 if (!outcome.claimed && user.phone !== null && user.phone !== '') {
                     await invalidatePendingPhoneChallenges(user.phone, tx)
                 }
+                // feat-235: the reset and, for an unverified account, the claim, as one change of
+                // the locked row: one stamp, committed with it.
+                const stamp = await auditService.stamp(tx)
+                const events = await auditService.record(tx, stamp, actor, [
+                    {
+                        action: 'auth.password.reset',
+                        targetId: String(user.id),
+                        targetUserId: user.id,
+                        input: { claimed: outcome.claimed },
+                    },
+                    ...claimEvent(outcome),
+                ])
                 return {
                     userId: user.id,
                     previousSessionToken: outcome.previousSessionToken,
                     claimed: outcome.claimed,
                     email: outcome.user.email,
                     name: outcome.user.name,
+                    events,
                 }
             },
             invalidate: [passwordResetRepository],
@@ -425,6 +446,7 @@ export const passwordResetService = {
             )
         }
         const user = applied.value
+        auditService.logCommitted(actor.logger, user.events)
 
         // ADR 0002: the rotated sessionToken is the revocation. This only deletes records
         // that are already rejected, so a failure is logged and must not fail a reset that
@@ -446,6 +468,8 @@ export const passwordResetService = {
         password: string,
         passwordConfirm: string,
         requestMeta: { ipAddress: string },
+        /** feat-235: the holder of the SMS code; without it, one without a request id. */
+        actor: ProofHolderAuditActor = proofHolderWithoutRequest('sms_code'),
     ): Promise<AppResult<{ status: 'success'; signInMethods: string[] }>> {
         if (!authConfig.phoneAuthEnabled) {
             return Result.err(badRequest('Phone authentication is disabled'))
@@ -537,12 +561,28 @@ export const passwordResetService = {
                 return Result.err(internalMessage('Failed to update password'))
             }
 
-            return Result.ok({ updatedUser: updated, previousSessionToken: user.sessionToken })
+            // feat-235: committed with the reset; a failed insert leaves the code unconfirmed.
+            const stamp = await auditService.stamp(tx)
+            const events = await auditService.record(tx, stamp, actor, [
+                {
+                    action: 'auth.password.reset',
+                    targetId: String(user.id),
+                    targetUserId: user.id,
+                    input: { claimed: false },
+                },
+            ])
+
+            return Result.ok({
+                updatedUser: updated,
+                previousSessionToken: user.sessionToken,
+                events,
+            })
         })
         if (Result.isError(reset)) {
             return Result.err(reset.error)
         }
-        const { updatedUser, previousSessionToken } = reset.value
+        const { updatedUser, previousSessionToken, events } = reset.value
+        auditService.logCommitted(actor.logger, events)
 
         // ADR 0002: best-effort memory cleanup, see the email reset above.
         await destroySessionsQuietly(previousSessionToken, updatedUser.id)

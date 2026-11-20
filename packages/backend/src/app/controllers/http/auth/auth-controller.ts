@@ -1,6 +1,7 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
+import { auditActorFrom, proofHolderActor } from '#app/controllers/shared/audit-actor.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { authService } from '#app/services/auth/auth-service.js'
 import { Result } from 'better-result'
@@ -138,7 +139,11 @@ export default {
     },
 
     async logoutAll(context: HttpContext<EmptyFormInput>): Promise<LogoutAllResponse> {
-        const result = await authService.logoutAll(context.auth, context.session)
+        const result = await authService.logoutAll(
+            context.auth,
+            context.session,
+            auditActorFrom(context),
+        )
         return respond(context, result)
     },
 
@@ -159,6 +164,7 @@ export default {
             context.auth.getPresentedUserToken(),
             () => context.session.isStored(),
             sessionId,
+            auditActorFrom(context),
         )
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -223,6 +229,7 @@ export default {
             payload.password,
             payload.passwordConfirm,
             { ipAddress: context.httpData.ip ?? '' },
+            proofHolderActor(context, 'email_link'),
         )
         // The service's reasons (invalid_token, expired_token, used_token, token_required,
         // passwords_mismatch) pass through the canonical error body as they are.
@@ -242,6 +249,7 @@ export default {
             payload.password,
             payload.passwordConfirm,
             { ipAddress: context.httpData.ip ?? '' },
+            proofHolderActor(context, 'sms_code'),
         )
         return respond(context, result, ({ signInMethods }) => ({
             status: 'success' as const,
@@ -261,6 +269,7 @@ export default {
                 presentedSessionToken: context.auth.getPresentedUserToken(),
                 ...(payload.password !== undefined ? { password: payload.password } : {}),
             },
+            { requestId: context.requestId, logger: context.logger },
         )
         return respond(context, result, (value) => ({ status: 'success', message: value.message }))
     },
@@ -306,12 +315,17 @@ export default {
         }
 
         const payload = getTypedPayload(context)
-        const result = await authService.confirmPhoneLink(userId, payload, {
-            ipAddress: context.httpData.ip ?? '',
-            sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
-            presentedSessionToken: context.auth.getPresentedUserToken(),
-            sessionStored: () => context.session.isStored(),
-        })
+        const result = await authService.confirmPhoneLink(
+            userId,
+            payload,
+            {
+                ipAddress: context.httpData.ip ?? '',
+                sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
+                presentedSessionToken: context.auth.getPresentedUserToken(),
+                sessionStored: () => context.session.isStored(),
+            },
+            auditActorFrom(context),
+        )
         return respond(context, result)
     },
 

@@ -46,6 +46,7 @@ const PHONE = '+380501234567'
 const {
     ALL_TOKEN_REPOSITORIES,
     addressMatches,
+    claimEvent,
     claimLocked,
     destroySessionsQuietly,
     invalidatePendingPhoneChallenges,
@@ -112,6 +113,7 @@ describe('claimLocked', () => {
             claimed: false,
             user: verified,
             previousSessionToken: 'old-token',
+            effects: null,
         })
         expect(mocks.userRepository.update).not.toHaveBeenCalled()
         expectNothingTakenAway()
@@ -133,6 +135,30 @@ describe('claimLocked', () => {
         expect(outcome.user).toMatchObject({ password: 'new-hash', sessionToken: 'rotated-token' })
         // The phone, the links and the subscriptions belong to the verified owner.
         expectNothingTakenAway()
+    })
+
+    // feat-235 (Р4): what the claim took away, from the row before it and the rows it deleted.
+    it('a claim reports what it took away, for the audit event', async () => {
+        mocks.oauthAccountRepository.deleteByUserId.mockResolvedValueOnce(['google', 'github'])
+        mocks.pushSubscriptionRepository.deleteByUserId.mockResolvedValueOnce(2)
+
+        const outcome = await claimLocked(TX, user())
+
+        expect(outcome.effects).toEqual({
+            passwordCleared: true,
+            phoneRemoved: true,
+            oauthRemoved: ['google', 'github'],
+            pushSubscriptionsRemoved: 2,
+        })
+        expect(claimEvent(outcome)).toEqual([
+            {
+                action: 'auth.account.claimed',
+                targetId: '5',
+                targetUserId: 5n,
+                input: outcome.effects,
+            },
+        ])
+        expect(claimEvent({ ...outcome, claimed: false })).toEqual([])
     })
 
     it('an unverified account is claimed: everything set up before the proof goes', async () => {

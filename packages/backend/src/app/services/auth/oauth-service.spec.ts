@@ -78,6 +78,14 @@ const gitlabCreateAuthorizationUrlMock = vi.fn(
     (..._args: unknown[]) => new URL('https://gitlab.com/oauth/authorize'),
 )
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#config/oauth.js', () => ({
     default: {
         google: {
@@ -119,6 +127,7 @@ vi.mock('#app/services/auth/account-claim-service.js', () => ({
     addressMatches: (user: { email: string | null }, proven: string) =>
         user.email !== null && user.email.trim().toLowerCase() === proven.trim().toLowerCase(),
     claimLocked: claimLockedMock,
+    claimEvent: () => [],
     destroySessionsQuietly: destroySessionsQuietlyMock,
 }))
 

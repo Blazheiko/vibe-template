@@ -205,6 +205,7 @@ export default {
                 codeVerifier,
                 auth,
                 session.sessionInfo?.id ?? null,
+                { requestId: context.requestId, logger: context.logger },
             )
         } catch (err: unknown) {
             // ADR 0004: an infrastructure failure throws, but this is a browser navigation:
@@ -231,6 +232,7 @@ export default {
             payload.token,
             context.auth,
             context.session.sessionInfo?.id ?? null,
+            { requestId: context.requestId, logger: context.logger },
         )
         return respond(context, result)
     },

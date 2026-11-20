@@ -29,6 +29,7 @@ const userRepositoryMock = {
     updateIfSessionToken: vi.fn(),
     findSessionToken: vi.fn(),
     changePasswordIfCurrent: vi.fn(),
+    lockById: vi.fn(),
 }
 const challengeRepositoryMock = {
     create: vi.fn(),
@@ -66,6 +67,14 @@ const securityNotice = vi.fn()
 const generateWsTokenMock = vi.fn()
 const issueMock = vi.fn()
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     // feat-109: change-password and logout-all retire the pending reset links.
     passwordResetRepository: { invalidatePendingByUserId: vi.fn().mockResolvedValue(0) },
@@ -767,6 +776,7 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
             userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account())
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(undefined)
         },
@@ -798,21 +808,37 @@ const ROWS: readonly Row[] = [
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     })),
+    // feat-235 (Р3): the row is locked and checked again before the code is confirmed; a
+    // revocation or a number linked after the checks above refuses without confirming it.
     {
-        name: 'confirmPhoneLink · the session was revoked before the conditional write',
+        name: 'confirmPhoneLink · the session was revoked before the lock',
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
             userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account({ sessionToken: 'rotated' }))
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue(undefined)
         },
         call: confirmLink(),
         error: SESSION_REVOKED,
         after: () => {
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
-                phone: '+380501234567',
-            })
+            expect(challengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
+            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'confirmPhoneLink · a number was linked before the lock',
+        arrange: () => {
+            challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
+            userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account({ phone: '+380509999999' }))
+            userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
+            challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
+        },
+        call: confirmLink(),
+        error: badRequest('Phone is already linked to this account'),
+        after: () => {
+            expect(challengeRepositoryMock.markConfirmed).not.toHaveBeenCalled()
             expect(userRepositoryMock.update).not.toHaveBeenCalled()
         },
     },
@@ -821,18 +847,23 @@ const ROWS: readonly Row[] = [
         arrange: () => {
             challengeRepositoryMock.findById.mockResolvedValue(linkChallenge())
             userRepositoryMock.findById.mockResolvedValue(account())
+            userRepositoryMock.lockById.mockResolvedValue(account())
             userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
             challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
-            userRepositoryMock.updateIfSessionToken.mockResolvedValue(
-                account({ phone: '+380501234567' }),
-            )
+            userRepositoryMock.update.mockResolvedValue(account({ phone: '+380501234567' }))
         },
         call: confirmLink(),
         after: () => {
-            expect(userRepositoryMock.updateIfSessionToken).toHaveBeenCalledWith(7n, TOKEN, {
-                phone: '+380501234567',
-            })
-            expect(userRepositoryMock.update).not.toHaveBeenCalled()
+            // On the locked row, in the transaction that confirmed the code.
+            expect(userRepositoryMock.update).toHaveBeenCalledWith(
+                7n,
+                { phone: '+380501234567' },
+                expect.anything(),
+            )
+            expect(challengeRepositoryMock.markConfirmed).toHaveBeenCalledWith(
+                'ch-1',
+                expect.anything(),
+            )
         },
     },
     // --- e-mail link ------------------------------------------------------------------------
@@ -1343,9 +1374,8 @@ describe('authService · success payloads', () => {
         userRepositoryMock.findById.mockResolvedValue(account())
         userRepositoryMock.phoneExistsForOtherUser.mockResolvedValue(false)
         challengeRepositoryMock.markConfirmed.mockResolvedValue(linkChallenge())
-        userRepositoryMock.updateIfSessionToken.mockResolvedValue(
-            account({ phone: '+380501234567' }),
-        )
+        userRepositoryMock.lockById.mockResolvedValue(account())
+        userRepositoryMock.update.mockResolvedValue(account({ phone: '+380501234567' }))
         const { authService } = await import('./auth-service.js')
         const result = await authService.confirmPhoneLink(
             7n,

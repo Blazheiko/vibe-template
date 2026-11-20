@@ -11,6 +11,7 @@ import {
     type UserRow,
 } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
+import type { AuditEventInput } from '#app/services/audit/audit-service.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { invalidatePendingPhoneChallenges } from '#app/services/auth/phone-challenges.js'
@@ -61,12 +62,40 @@ export async function destroySessionsQuietly(
     }
 }
 
+/**
+ * What a claim took away (feat-235, Р4), read from the row before the change and from the rows the
+ * claim itself deleted, so the audit event cannot disagree with what happened.
+ */
+export interface ClaimEffects {
+    /** The account had a password before; it no longer works (dropped, or replaced by a reset). */
+    passwordCleared: boolean
+    phoneRemoved: boolean
+    /** The provider of every OAuth link removed. */
+    oauthRemoved: string[]
+    pushSubscriptionsRemoved: number
+}
+
 export interface ClaimOutcome {
     /** False: the address was verified already, nothing was taken away. */
     claimed: boolean
     user: UserRow
     /** The token whose sessions are revoked by the claim (destroy them after commit). */
     previousSessionToken: string
+    /** Set when `claimed`. */
+    effects: ClaimEffects | null
+}
+
+/** The `auth.account.claimed` event of a claim; none when nothing was claimed. */
+export function claimEvent(outcome: ClaimOutcome): AuditEventInput[] {
+    if (!outcome.claimed || outcome.effects === null) return []
+    return [
+        {
+            action: 'auth.account.claimed',
+            targetId: String(outcome.user.id),
+            targetUserId: outcome.user.id,
+            input: outcome.effects,
+        },
+    ]
 }
 
 /**
@@ -83,7 +112,7 @@ export async function claimLocked(
 ): Promise<ClaimOutcome> {
     if (user.emailVerifiedAt !== null) {
         if (options.newPasswordHash === undefined) {
-            return { claimed: false, user, previousSessionToken: user.sessionToken }
+            return { claimed: false, user, previousSessionToken: user.sessionToken, effects: null }
         }
         const updated = await userRepository.update(
             user.id,
@@ -91,7 +120,12 @@ export async function claimLocked(
             tx,
         )
         if (updated === undefined) throw new Error('User disappeared during the claim')
-        return { claimed: false, user: updated, previousSessionToken: user.sessionToken }
+        return {
+            claimed: false,
+            user: updated,
+            previousSessionToken: user.sessionToken,
+            effects: null,
+        }
     }
 
     const updated = await userRepository.update(
@@ -106,8 +140,8 @@ export async function claimLocked(
     )
     if (updated === undefined) throw new Error('User disappeared during the claim')
 
-    await oauthAccountRepository.deleteByUserId(user.id, tx)
-    await pushSubscriptionRepository.deleteByUserId(user.id, tx)
+    const oauthRemoved = await oauthAccountRepository.deleteByUserId(user.id, tx)
+    const pushSubscriptionsRemoved = await pushSubscriptionRepository.deleteByUserId(user.id, tx)
     for (const repository of ALL_TOKEN_REPOSITORIES) {
         await repository.invalidatePendingByUserId(user.id, tx)
     }
@@ -116,5 +150,15 @@ export async function claimLocked(
     }
 
     logger.info({ userId: String(user.id) }, 'unverified account claimed by the mailbox owner')
-    return { claimed: true, user: updated, previousSessionToken: user.sessionToken }
+    return {
+        claimed: true,
+        user: updated,
+        previousSessionToken: user.sessionToken,
+        effects: {
+            passwordCleared: user.password !== null && user.password !== '',
+            phoneRemoved: user.phone !== null && user.phone !== '',
+            oauthRemoved,
+            pushSubscriptionsRemoved,
+        },
+    }
 }

@@ -43,6 +43,14 @@ const loggerMock = { warn: vi.fn(), error: vi.fn(), info: vi.fn() }
 const TX = vi.hoisted(() => ({ transaction: true }))
 const withTransactionMock = vi.fn(<T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(TX))
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     emailVerificationRepository: verificationRepositoryMock,

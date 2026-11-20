@@ -14,6 +14,8 @@ import {
     userRepository,
     withTransaction,
 } from '#app/repositories/index.js'
+import { proofHolderOf, type AuditRequest } from '#app/services/audit/audit-actor.js'
+import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import type { UserRow } from '#app/repositories/index.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { Result } from 'better-result'
@@ -29,6 +31,7 @@ import {
 } from '#app/services/shared/errors.js'
 import {
     addressMatches,
+    claimEvent,
     claimLocked,
     destroySessionsQuietly,
 } from '#app/services/auth/account-claim-service.js'
@@ -401,6 +404,8 @@ export const oauthService = {
         codeVerifier: string | null,
         auth: Auth,
         sessionId: string | null,
+        /** feat-235: the request, for the audit event of a link made by the provider's proof. */
+        request?: AuditRequest,
     ): Promise<AppResult<{ redirectUrl: string }>> {
         if (!isValidProvider(provider)) {
             return Result.err(badRequest(`Unsupported provider: ${provider}`))
@@ -493,7 +498,14 @@ export const oauthService = {
             providerAvatar: providerAvatarUrl(userInfo.avatar),
         }
 
-        return await signInWithIdentity(auth, identity, userInfo.emailTrust, sessionId)
+        return await signInWithIdentity(
+            auth,
+            identity,
+            userInfo.emailTrust,
+            sessionId,
+            false,
+            request,
+        )
     },
 
     /**
@@ -505,6 +517,8 @@ export const oauthService = {
         token: string,
         auth: Auth,
         sessionId: string | null,
+        /** feat-235: the request, for the audit event. */
+        request?: AuditRequest,
     ): Promise<AppResult<{ status: 'success' }>> {
         const used = badRequest('This link has already been used', 'used_token')
         const expired = badRequest('This link has expired', 'expired_token')
@@ -530,8 +544,15 @@ export const oauthService = {
             )
         }
 
+        const actor = proofHolderOf('oauth_email_link', request)
         let outcome: Awaited<
-            ReturnType<typeof runTokenTransaction<typeof verification, never, ClaimedLink>>
+            ReturnType<
+                typeof runTokenTransaction<
+                    typeof verification,
+                    never,
+                    ClaimedLink & { events: RecordedAuditEvent[] }
+                >
+            >
         >
         try {
             outcome = await runTokenTransaction(oauthLinkVerificationRepository, verification, {
@@ -552,11 +573,23 @@ export const oauthService = {
                         },
                         tx,
                     )
+                    // feat-235: the link and the claim it made, committed with them.
+                    const stamp = await auditService.stamp(tx)
+                    const events = await auditService.record(tx, stamp, actor, [
+                        {
+                            action: 'auth.oauth.linked',
+                            targetId: String(user.id),
+                            targetUserId: user.id,
+                            input: { provider: verification.provider },
+                        },
+                        ...claimEvent(claim),
+                    ])
                     return {
                         claimed: claim.claimed,
                         sessionToken: claim.user.sessionToken,
                         previousSessionToken: claim.previousSessionToken,
                         account: { email: claim.user.email, name: claim.user.name },
+                        events,
                     }
                 },
             })
@@ -577,6 +610,7 @@ export const oauthService = {
         }
 
         const linked = outcome.value
+        auditService.logCommitted(actor.logger, linked.events)
         if (linked.claimed) {
             await destroySessionsQuietly(linked.previousSessionToken, verification.userId)
         }
@@ -698,8 +732,14 @@ async function linkTrusted(
     auth: Auth,
     userId: bigint,
     identity: OAuthIdentity,
+    request: AuditRequest | undefined,
 ): Promise<AppResult<{ redirectUrl: string }>> {
-    let linked: { kind: 'missing' } | { kind: 'changed' } | ({ kind: 'ok' } & ClaimedLink)
+    // feat-235: nobody is signed in; the provider's proof of the address allows the link.
+    const actor = proofHolderOf('oauth_provider_email', request)
+    let linked:
+        | { kind: 'missing' }
+        | { kind: 'changed' }
+        | ({ kind: 'ok'; events: RecordedAuditEvent[] } & ClaimedLink)
     try {
         linked = await withTransaction(async (tx) => {
             const user = await userRepository.lockById(userId, tx)
@@ -707,8 +747,20 @@ async function linkTrusted(
             if (!addressMatches(user, identity.providerEmail)) return { kind: 'changed' as const }
             const claim = await claimLocked(tx, user)
             await oauthAccountRepository.create({ userId: user.id, ...identity }, tx)
+            // Only on this branch: a missing or changed account links nothing.
+            const stamp = await auditService.stamp(tx)
+            const events = await auditService.record(tx, stamp, actor, [
+                {
+                    action: 'auth.oauth.linked',
+                    targetId: String(user.id),
+                    targetUserId: user.id,
+                    input: { provider: identity.provider },
+                },
+                ...claimEvent(claim),
+            ])
             return {
                 kind: 'ok' as const,
+                events,
                 claimed: claim.claimed,
                 sessionToken: claim.user.sessionToken,
                 previousSessionToken: claim.previousSessionToken,
@@ -721,6 +773,7 @@ async function linkTrusted(
     }
     if (linked.kind === 'missing') return Result.err(notFound('User', 'User not found'))
     if (linked.kind === 'changed') return Result.err(emailChanged())
+    auditService.logCommitted(actor.logger, linked.events)
 
     if (linked.claimed) {
         await destroySessionsQuietly(linked.previousSessionToken, userId)
@@ -836,6 +889,7 @@ async function signInWithIdentity(
     emailTrust: OAuthUserInfo['emailTrust'],
     sessionId: string | null,
     isRetry = false,
+    request?: AuditRequest,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     const { provider, providerUserId, providerEmail } = identity
     const existingOAuth = await oauthAccountRepository.findByProviderAndProviderId(
@@ -881,7 +935,7 @@ async function signInWithIdentity(
 
     if (existingUser !== undefined) {
         if (emailTrust === 'authoritative') {
-            return await linkTrusted(auth, existingUser.id, identity)
+            return await linkTrusted(auth, existingUser.id, identity, request)
         }
         // Any other provider: the account's owner confirms the link by mail, from this
         // browser session (feat-097).
@@ -919,7 +973,7 @@ async function signInWithIdentity(
         // The link (or, for Google, the address) was taken by a concurrent callback.
         if (isUniqueViolation(err) && !isRetry) {
             logger.info({ provider }, 'oauth new user lost a race, deciding again')
-            return await signInWithIdentity(auth, identity, emailTrust, sessionId, true)
+            return await signInWithIdentity(auth, identity, emailTrust, sessionId, true, request)
         }
         throw err
     }

@@ -4,6 +4,12 @@ import { CURRENT_SESSION_REASON } from 'shared/errors'
 import type { SessionView } from 'shared'
 
 import { userRepository, withTransaction } from '#app/repositories/index.js'
+import {
+    userActorWithoutRequest,
+    withRole,
+    type UserAuditActor,
+} from '#app/services/audit/audit-actor.js'
+import { auditService } from '#app/services/audit/audit-service.js'
 import { sessionTransformer } from '#app/transformers/index.js'
 import { retirePendingResets } from '#app/services/auth/phone-challenges.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
@@ -147,8 +153,11 @@ export const sessionListService = {
         presentedSessionToken: string | undefined
         requestingSessionId: string | undefined
         sessionStored: SessionStillStored
+        /** feat-235: who ends them; without it, the user without a request id. */
+        actor?: UserAuditActor
     }): Promise<AppResult<{ sessionToken: string }>> {
         const { userId, presentedSessionToken: presented } = input
+        const actor = input.actor ?? userActorWithoutRequest(userId)
         if (presented === undefined) return Result.err(sessionRevoked())
         if (!(await input.sessionStored())) return Result.err(sessionRevoked())
 
@@ -160,8 +169,19 @@ export const sessionListService = {
                 { sessionToken: rotatedSessionToken },
                 tx,
             )
-            if (done !== undefined) await retirePendingResets(done, tx)
-            return done
+            if (done === undefined) return undefined
+            await retirePendingResets(done, tx)
+            // feat-235: the event commits with the rotation; a failed insert leaves the previous
+            // token valid.
+            const stamp = await auditService.stamp(tx)
+            return auditService.record(tx, stamp, withRole(actor, done.role), [
+                {
+                    action: 'auth.sessions.revoked_others',
+                    targetId: String(userId),
+                    targetUserId: userId,
+                    input: {},
+                },
+            ])
         })
         if (rotated === undefined) {
             const currentToken = await userRepository.findSessionToken(userId)
@@ -169,6 +189,7 @@ export const sessionListService = {
                 currentToken === undefined ? notFound('User', 'User not found') : sessionRevoked(),
             )
         }
+        auditService.logCommitted(actor.logger, rotated)
 
         // feat-221: the sockets of the session that asks stay; the controller renews it and the
         // client replaces its socket. Without a renewal the controller closes them.

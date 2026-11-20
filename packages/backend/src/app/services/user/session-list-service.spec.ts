@@ -26,6 +26,14 @@ const sessionListChanged = vi.hoisted(() => vi.fn())
 const listUserConnections = vi.hoisted(() => vi.fn(() => [] as { sessionId: string }[]))
 const TX = vi.hoisted(() => ({ tx: true }))
 
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => storage)
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: repositories,

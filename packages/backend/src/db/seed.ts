@@ -9,6 +9,8 @@ import { resolveDatabaseConfig, toPgSsl } from '../config/database.js'
 import { reportSeedFailure } from './seed/describe-error.js'
 import { createDrizzleSeedStore } from './seed/drizzle-seed-store.js'
 import { runSeed } from './seed/run-seed.js'
+import { seedCommitted } from './seed/seed-transaction.js'
+import logger from '#logger'
 import type { SeedOutcome, SeedReport } from './seed/run-seed.js'
 
 // Reference data (LLM prompts) is always seeded; demo accounts only with --demo.
@@ -54,8 +56,11 @@ async function main(): Promise<void> {
     })
     try {
         const db = drizzle({ client: pool })
-        const report = await db.transaction((tx) =>
-            runSeed(createDrizzleSeedStore(tx), { demo, env, hashPassword }),
+        type SeedTx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+        const report = await seedCommitted<SeedTx>(
+            (work) => db.transaction((tx) => work(tx)),
+            (tx) => runSeed(createDrizzleSeedStore(tx), { demo, env, hashPassword }),
+            logger,
         )
         printReport(report)
     } finally {

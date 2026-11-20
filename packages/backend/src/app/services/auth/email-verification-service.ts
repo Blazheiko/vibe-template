@@ -5,6 +5,13 @@ import {
     emailVerificationRepository,
     userRepository,
 } from '#app/repositories/index.js'
+import {
+    userActorOf,
+    withProof,
+    withRole,
+    type AuditRequest,
+} from '#app/services/audit/audit-actor.js'
+import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { PRODUCT } from 'shared/product'
 import { Result } from 'better-result'
@@ -195,6 +202,8 @@ export const emailVerificationService = {
             presentedSessionToken: string | undefined
             password?: string
         },
+        /** feat-235: the request, for the audit event of an e-mail link. */
+        request?: AuditRequest,
     ): Promise<AppResult<{ message: string }>> {
         const throttle = await enforceThrottle(
             throttlePolicies.verifyEmailIp,
@@ -262,7 +271,7 @@ export const emailVerificationService = {
             // feat-096: lock the user, check the row, consume the token and link the
             // address in ONE transaction; a failure rolls all of it back (the link stays
             // usable).
-            let linked: TokenTransactionOutcome<void>
+            let linked: TokenTransactionOutcome<RecordedAuditEvent[]>
             try {
                 linked = await runTokenTransaction(
                     emailLinkVerificationRepository,
@@ -291,6 +300,21 @@ export const emailVerificationService = {
                             )
                             if (updated === undefined)
                                 throw new Error('User disappeared during linking')
+                            // feat-235: the owner of the session that opened the link, with the
+                            // link as its proof; committed with the address.
+                            const actor = withProof(
+                                withRole(userActorOf(user.id, request), user.role),
+                                'email_link',
+                            )
+                            const stamp = await auditService.stamp(tx)
+                            return auditService.record(tx, stamp, actor, [
+                                {
+                                    action: 'auth.email.linked',
+                                    targetId: String(user.id),
+                                    targetUserId: user.id,
+                                    input: {},
+                                },
+                            ])
                         },
                         invalidate: [emailLinkVerificationRepository],
                     },
@@ -305,6 +329,12 @@ export const emailVerificationService = {
             }
             const linkError = tokenOutcomeError(linked, usedMessage, expiredMessage)
             if (linkError !== undefined) return Result.err(linkError)
+            if (linked.kind === 'applied') {
+                auditService.logCommitted(
+                    userActorOf(linkVerification.userId, request).logger,
+                    linked.value,
+                )
+            }
 
             return Result.ok({ message: 'Email linked successfully' })
         }

@@ -1,10 +1,11 @@
 import { hashPassword, validatePassword } from 'metautil'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import supportConfig from '../../config/support.js'
 import { llmPromptTypeEnum } from '../../database/schema.js'
 import { SEED_PROMPTS } from './prompts.js'
 import { runSeed } from './run-seed.js'
+import { seedCommitted } from './seed-transaction.js'
 import type { ExistingUser, SeedStore, SeedUser } from './run-seed.js'
 
 type FakeStore = SeedStore & {
@@ -31,8 +32,14 @@ function createFakeStore(existingUsers: Record<string, ExistingUser> = {}): Fake
         },
         insertUser(user) {
             insertedUsers.push(user)
-            users.set(user.email, { id: BigInt(users.size + 1), role: user.role })
-            return Promise.resolve()
+            const id = BigInt(users.size + 1)
+            users.set(user.email, { id, role: user.role })
+            // feat-235: the Drizzle store writes the event of an admin in the same transaction.
+            return Promise.resolve(
+                user.role === 'admin'
+                    ? [{ action: 'user.admin.created', targetType: 'user', targetId: String(id) }]
+                    : [],
+            )
         },
     }
 }
@@ -197,5 +204,65 @@ describe('runSeed', () => {
         await expect(
             runSeed(store, { demo: true, env: demoEnv, hashPassword: fakeHash }),
         ).rejects.toThrow('insert failed')
+    })
+
+    // feat-235 (Р12): the event of the created admin comes back in the report, to be logged once
+    // the seed's transaction committed; an admin that already exists writes none.
+    it('reports the user.admin.created event of the created admin only', async () => {
+        const store = createFakeStore()
+        const options = { demo: true, env: demoEnv, hashPassword: fakeHash }
+
+        const first = await runSeed(store, options)
+        expect(first.auditEvents).toEqual([
+            { action: 'user.admin.created', targetType: 'user', targetId: '1' },
+        ])
+
+        const second = await runSeed(store, options)
+        expect(second.admin).toEqual({ status: 'skipped', reason: 'already_exists' })
+        expect(second.auditEvents).toEqual([])
+    })
+
+    it('an existing non-admin with the admin address writes no event', async () => {
+        const store = createFakeStore({ 'admin@example.test': { id: 7n, role: 'user' } })
+        const report = await runSeed(store, { demo: true, env: demoEnv, hashPassword: fakeHash })
+        expect(report.admin).toEqual({ status: 'skipped', reason: 'exists_without_admin_role' })
+        expect(report.auditEvents).toEqual([])
+    })
+})
+
+describe('seedCommitted', () => {
+    const report = {
+        prompts: {},
+        admin: { status: 'inserted' },
+        user: { status: 'inserted' },
+        auditEvents: [{ action: 'user.admin.created', targetType: 'user', targetId: '1' }],
+    } as never
+
+    it('logs the events once the transaction committed', async () => {
+        const log = { info: vi.fn() }
+        await seedCommitted(
+            (work) => work(undefined),
+            () => Promise.resolve(report),
+            log,
+        )
+        expect(log.info).toHaveBeenCalledWith(
+            { audit: { action: 'user.admin.created', targetType: 'user', targetId: '1' } },
+            'audit event',
+        )
+    })
+
+    it('a transaction that fails logs nothing', async () => {
+        const log = { info: vi.fn() }
+        await expect(
+            seedCommitted(
+                async (work) => {
+                    await work(undefined)
+                    throw new Error('commit failed')
+                },
+                () => Promise.resolve(report),
+                log,
+            ),
+        ).rejects.toThrow('commit failed')
+        expect(log.info).not.toHaveBeenCalled()
     })
 })

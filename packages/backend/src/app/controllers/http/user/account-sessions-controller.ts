@@ -9,6 +9,7 @@ import type {
 import type { HttpContext } from '#vendor/types/types.js'
 import { isSessionPublicId } from '#vendor/utils/session/session-public-id.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
+import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { authService } from '#app/services/auth/auth-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
@@ -68,6 +69,7 @@ export default {
             presentedSessionToken: context.auth.getPresentedUserToken(),
             requestingSessionId: sessionId,
             sessionStored: () => context.session.isStored(),
+            actor: auditActorFrom(context),
         })
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)

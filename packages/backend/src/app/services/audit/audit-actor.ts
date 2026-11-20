@@ -74,3 +74,63 @@ export function withProof(actor: UserAuditActor, proof: AuditProof): UserAuditAc
 export function withRole(actor: UserAuditActor, role: AuditActorRole): UserAuditActor {
     return { ...actor, role }
 }
+
+/**
+ * The signed-in user of a call made without a request (a script, a test of the service): the
+ * event is written all the same, without a request id. Controllers pass `auditActorFrom(context)`.
+ */
+export function userActorWithoutRequest(userId: bigint): UserAuditActor {
+    return {
+        kind: 'user',
+        userId,
+        role: null,
+        requestId: null,
+        proof: null,
+        source: null,
+        logger,
+    }
+}
+
+/** A proof holder of a call made without a request; see `userActorWithoutRequest`. */
+export function proofHolderWithoutRequest(proof: AuditProof): ProofHolderAuditActor {
+    return {
+        kind: 'proof_holder',
+        userId: null,
+        role: null,
+        requestId: null,
+        proof,
+        source: null,
+        logger,
+    }
+}
+
+/** The request a service acts for, when it learns the actor itself (feat-235). */
+export interface AuditRequest {
+    requestId: string | null
+    logger: AuditLogger
+}
+
+/** The signed-in user `userId` of `request` (the e-mail link: the account is known once found). */
+export function userActorOf(userId: bigint, request: AuditRequest | undefined): UserAuditActor {
+    return request === undefined
+        ? userActorWithoutRequest(userId)
+        : {
+              ...userActorWithoutRequest(userId),
+              requestId: request.requestId,
+              logger: request.logger,
+          }
+}
+
+/** The proof holder of `request`; see `userActorOf`. */
+export function proofHolderOf(
+    proof: AuditProof,
+    request: AuditRequest | undefined,
+): ProofHolderAuditActor {
+    return request === undefined
+        ? proofHolderWithoutRequest(proof)
+        : {
+              ...proofHolderWithoutRequest(proof),
+              requestId: request.requestId,
+              logger: request.logger,
+          }
+}

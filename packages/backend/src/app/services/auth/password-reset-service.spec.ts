@@ -64,6 +64,14 @@ const claimRepositoryMocks = vi.hoisted(() => ({
 }))
 // feat-199: what the reset says about the sign-in methods still linked (own spec).
 const announcePasswordResetMock = vi.hoisted(() => vi.fn(() => Promise.resolve(['github'])))
+// feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
 vi.mock('#app/services/auth/password-reset-notice.js', () => ({
     announcePasswordReset: announcePasswordResetMock,
 }))

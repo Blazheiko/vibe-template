@@ -8,6 +8,14 @@ import {
     userRepository,
     withTransaction,
 } from '#app/repositories/index.js'
+import { withTransactionResult } from '#app/services/shared/transaction-result.js'
+import {
+    userActorWithoutRequest,
+    withProof,
+    withRole,
+    type UserAuditActor,
+} from '#app/services/audit/audit-actor.js'
+import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import type { UserRow } from '#app/repositories/index.js'
 import { userTransformer } from '#app/transformers/index.js'
 import {
@@ -778,6 +786,8 @@ export const authService = {
             /** feat-123: checked right before the irreversible step. */
             sessionStored: SessionStillStored
         },
+        /** feat-235: who links it; without it, the user without a request id. */
+        actor: UserAuditActor = userActorWithoutRequest(userId),
     ): Promise<
         AppResult<{
             status: 'success'
@@ -856,36 +866,73 @@ export const authService = {
         if (Result.isError(stillStored)) {
             return Result.err(stillStored.error)
         }
-        const confirmedResult = await confirmChallenge(challenge, {
-            noLongerValid: 'Phone linking challenge is no longer valid',
-        })
-        if (Result.isError(confirmedResult)) {
-            return Result.err(confirmedResult.error)
-        }
 
-        // feat-096: linked only while the session that asked is still current, in the same
-        // statement: a revocation that committed after the check above wins.
-        let updatedUser: UserRow | undefined
+        // feat-235 (Р3): the code is confirmed in the transaction that links the number and
+        // records the event, so a failure of either leaves the code unconfirmed and usable again.
+        // withTransactionResult, not withTransaction: a refusal after the confirmation must roll
+        // it back too. The row is locked first and checked again under the lock: two requests of
+        // one account with two numbers both passed the checks above, and the second used to
+        // overwrite the number of the first.
+        let linked: AppResult<{ user: UserRow; events: RecordedAuditEvent[] }>
         try {
-            updatedUser = await userRepository.updateIfSessionToken(userId, presentedSessionToken, {
-                phone: challenge.phone,
+            linked = await withTransactionResult(async (tx) => {
+                const locked = await userRepository.lockById(userId, tx)
+                if (locked === undefined) {
+                    return Result.err(notFound('User', 'User not found'))
+                }
+                // feat-096: a revocation that committed after the check above wins.
+                if (locked.sessionToken !== presentedSessionToken) {
+                    return Result.err(sessionRevoked())
+                }
+                if (locked.phone !== null && locked.phone !== '') {
+                    return Result.err(badRequest('Phone is already linked to this account'))
+                }
+                const confirmedResult = await confirmChallenge(
+                    challenge,
+                    { noLongerValid: 'Phone linking challenge is no longer valid' },
+                    tx,
+                )
+                if (Result.isError(confirmedResult)) {
+                    return Result.err(confirmedResult.error)
+                }
+                const updated = await userRepository.update(userId, { phone: challenge.phone }, tx)
+                if (updated === undefined) {
+                    return Result.err(notFound('User', 'User not found'))
+                }
+                const stamp = await auditService.stamp(tx)
+                const events = await auditService.record(
+                    tx,
+                    stamp,
+                    withProof(withRole(actor, locked.role), 'sms_code'),
+                    [
+                        {
+                            action: 'auth.phone.linked',
+                            targetId: String(userId),
+                            targetUserId: userId,
+                            input: {},
+                        },
+                    ],
+                )
+                return Result.ok({ user: updated, events })
             })
         } catch (err: unknown) {
             // feat-100: another account linked or registered the number after the check above;
-            // the unique index answers. The challenge stays confirmed: the user starts again.
+            // the unique index answers. The transaction rolled back with it, so the challenge is
+            // not confirmed; the same code meets the check above again.
             if (isUniqueViolation(err)) {
                 return Result.err(conflict('Phone is already linked to another account'))
             }
             throw err
         }
-        if (updatedUser === undefined) {
-            return Result.err(sessionRevoked())
+        if (Result.isError(linked)) {
+            return Result.err(linked.error)
         }
+        auditService.logCommitted(actor.logger, linked.value.events)
 
         return Result.ok({
             status: 'success',
             message: 'Phone linked successfully',
-            user: userTransformer.serialize(updatedUser),
+            user: userTransformer.serialize(linked.value.user),
         })
     },
 
@@ -1091,6 +1138,8 @@ export const authService = {
     async logoutAll(
         auth: Auth,
         session: Session,
+        /** feat-235: who ends the sessions; without it, the session's user without a request id. */
+        actor?: UserAuditActor,
     ): Promise<AppResult<{ status: 'success'; deletedCount: number; csrfToken: string }>> {
         const userId = auth.getUserId()
         // ADR 0002: rotating the sessionToken is the revocation. It comes first and its
@@ -1112,10 +1161,27 @@ export const authService = {
                               { sessionToken: nanoid() },
                               tx,
                           )
+                          if (done === undefined) return undefined
                           // feat-121 (M4): the SMS challenges of the phone too, as an email
                           // reset does: a phone reset started before cannot finish after.
-                          if (done !== undefined) await retirePendingResets(done, tx)
-                          return done
+                          await retirePendingResets(done, tx)
+                          // feat-235: the event commits with the rotation; a failed insert
+                          // leaves the previous token valid.
+                          const stamp = await auditService.stamp(tx)
+                          const events = await auditService.record(
+                              tx,
+                              stamp,
+                              withRole(actor ?? userActorWithoutRequest(done.id), done.role),
+                              [
+                                  {
+                                      action: 'auth.sessions.revoked_all',
+                                      targetId: String(done.id),
+                                      targetUserId: done.id,
+                                      input: {},
+                                  },
+                              ],
+                          )
+                          return { done, events }
                       })
             if (rotated === undefined) {
                 const current = await userRepository.findSessionToken(BigInt(userId))
@@ -1123,6 +1189,10 @@ export const authService = {
                     current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
                 )
             }
+            auditService.logCommitted(
+                (actor ?? userActorWithoutRequest(BigInt(userId))).logger,
+                rotated.events,
+            )
         }
         // feat-195: every session is revoked, so every WebSocket connection of the user closes.
         if (userId !== null) wsSessionRevocation.closeUserConnections(userId)
@@ -1172,6 +1242,8 @@ export const authService = {
          * renews it first, and its client then replaces the socket itself.
          */
         requestingSessionId?: string,
+        /** feat-235: who changes it; without it, the user without a request id. */
+        actor: UserAuditActor = userActorWithoutRequest(userId),
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
         // Consumed before the current-password check, same scheme as login.
         const throttle = await enforceThrottle(
@@ -1233,10 +1305,22 @@ export const authService = {
                 { password: newPasswordHash, sessionToken: rotatedSessionToken },
                 tx,
             )
+            if (changed === undefined) return undefined
             // feat-121 (M4): and the pending SMS challenges of the phone, as an email reset does:
             // a phone reset started before the change cannot set the password after it.
-            if (changed !== undefined) await retirePendingResets(changed, tx)
-            return changed
+            await retirePendingResets(changed, tx)
+            // feat-235: the event commits with the change; a failed insert keeps the old
+            // password and token.
+            const stamp = await auditService.stamp(tx)
+            const events = await auditService.record(tx, stamp, withRole(actor, changed.role), [
+                {
+                    action: 'auth.password.changed',
+                    targetId: String(userId),
+                    targetUserId: userId,
+                    input: {},
+                },
+            ])
+            return { changed, events }
         })
 
         if (updated === undefined) {
@@ -1254,6 +1338,8 @@ export const authService = {
             }
             return Result.err(sessionRevoked())
         }
+
+        auditService.logCommitted(actor.logger, updated.events)
 
         await resetThrottleQuietly(
             throttlePolicies.changePasswordUser,
