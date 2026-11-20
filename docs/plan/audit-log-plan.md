@@ -1,9 +1,27 @@
 # Журнал важливих дій — план реалізації
 
-**Статус: погоджено власником**, редакція 2 (2026-11-20). Пункт 3 з
+**Статус: погоджено власником**, редакція 3 (2026-11-20). Пункт 3 з
 [`future/template-functionality-recommendations.md`](./future/template-functionality-recommendations.md).
 Пропонований id: `feat-235` (одна фіча, один PR, як `feat-232` і `feat-233`). Рішення Р1–Р14,
 задачі T1–T9.
+
+**Редакція 3** (за рев'ю редакції 2):
+
+- Ліміт розміру payload виведено з найгіршого серіалізованого випадку. Керівний символ
+  серіалізується в JSON як `\u0001`, тобто 6 байтів. Максимальні `title` і `category` до та після
+  дають 4613 байтів, тож межа 4096 відкинула б допустиме оновлення статті. Нова межа 8192 байти і
+  тест найгіршого випадку для кожної дії (Р5).
+- OAuth ніколи не прив'язується з автентифікованої сесії: і `linkTrusted` (провайдер підтвердив
+  адресу), і `confirmLink` (посилання з листа) виконуються під час анонімного входу. Тип
+  виконавця `token_holder` перейменовано на `proof_holder`, додано доказ `oauth_provider_email`
+  для `linkTrusted`. Прив'язка email вимагає чинної сесії цільового акаунта, тому її виконавець —
+  `user` з `proof: 'email_link'` (Р4, Р6).
+- У `confirmPhoneLink` підтвердження SMS-коду переходить у транзакцію зі зміною номера й подією,
+  як уже зроблено у відновленні пароля через SMS (feat-106). Збій журналу відкочує й підтвердження,
+  тож код можна використати знову. Таблицю Р3 розділено за реальними транзакціями (Р3, Р13).
+- Час події фіксується один раз після отримання блокування (`clock_timestamp()`), а не на початку
+  транзакції (`now()`). Тож історія об'єкта показує редагування в порядку їх застосування (Р1, Р3,
+  Р7, Р13).
 
 **Редакція 2** (за рев'ю редакції 1):
 
@@ -15,7 +33,7 @@
 - IP, маски email і телефону й публічний id сесії з першої версії прибрано. Записуються лише id і
   тип способу входу, тож суперечності між незмінністю (Р2) і очищенням даних немає (Р11).
 - Додано подію `auth.account.claimed` для наслідків `claimLocked` і тип виконавця
-  `token_holder` для дій, де відомий лише цільовий акаунт (Р4, Р6).
+  `token_holder` (у редакції 3 — `proof_holder`) для дій, де відомий лише цільовий акаунт (Р4, Р6).
 - Payload перевіряється в рантаймі: явна проєкція полів на кожну дію, перевірка ключів і розміру
   JSON у байтах. Обрізання рядків прибрано: межу дають розміри колонок (Р5).
 - Задачу строку зберігання прив'язано до контракту планувальника. Уточнено точність `from`/`to` і
@@ -61,10 +79,20 @@
   ротує `session_token`. Його викликають відновлення пароля за посиланням
   (`password-reset-service.ts:381`) і підтвердження OAuth-прив'язки поштою
   (`oauth-service.ts:537`). На підтвердженому акаунті скидання лише змінює пароль і ротує токен.
-- **Інші зміни способів входу**: `changePassword`, `confirmPhoneLink` (`auth-service.ts`),
-  підтвердження прив'язки email (`email-verification-service.ts`), `handleCallback` з прив'язкою
-  (`oauth-service.ts`), `completePhonePasswordReset` (`password-reset-service.ts`),
-  `sign-in-methods-service.unlink`.
+- **Інші зміни способів входу**: `changePassword` (`auth-service.ts`), `confirmPhoneLink`
+  (`auth-service.ts:771`), підтвердження прив'язки email (`email-verification-service.ts:249`),
+  `completePhonePasswordReset` (`password-reset-service.ts:506`), `sign-in-methods-service.unlink`.
+- **OAuth прив'язується лише під час анонімного входу.** `signInWithIdentity` для наявного акаунта
+  або одразу викликає `linkTrusted`, якщо провайдер підтверджує адресу (`emailTrust ===
+'authoritative'`, `oauth-service.ts:697`), або надсилає лист для `confirmLink`. Обидва шляхи
+  можуть виконати `claimLocked`. Прив'язки OAuth з уже автентифікованої сесії немає.
+- **Прив'язка email** (`email-verification-service.ts:249`) вимагає, щоб посилання відкрила чинна
+  сесія того самого акаунта (`EMAIL_LINK_WRONG_SESSION`, перевірка `presentedSessionToken`), і
+  додає адресу лише акаунту без email.
+- **Прив'язка телефону** (`confirmPhoneLink`) підтверджує SMS-код (`confirmChallenge`) окремим
+  запитом **до** запису номера (`updateIfSessionToken`), без спільної транзакції. Відновлення пароля
+  через SMS уже підтверджує код у транзакції `withTransactionResult` разом зі зміною пароля
+  (feat-106, `password-reset-service.ts:513`), і `confirmChallenge` приймає `executor`.
 - **База знань.** `knowledge-base-service.update` читає статтю окремо (`requireArticle`) перед
   `UPDATE` без транзакції (`knowledge-base-service.ts:137`). Заміна скриншота вже транзакційна:
   `replaceScreenshot` блокує рядок `FOR UPDATE` і повертає попередній ключ, а старий об'єкт S3
@@ -82,20 +110,20 @@
 
 Назва `audit_events`, щоб не плутати з обліком AI, який у документації вже зветься «audit».
 
-| Колонка          | Тип                                 | Призначення                                                    |
-| ---------------- | ----------------------------------- | -------------------------------------------------------------- |
-| `id`             | `bigserial` PK                      | друга частина ключа порядку                                    |
-| `occurred_at`    | `timestamp`, `now()`                | час транзакції зміни; події однієї транзакції мають рівний час |
-| `actor_kind`     | enum `user / token_holder / system` | хто виконав (Р6)                                               |
-| `actor_user_id`  | `bigint`, **без FK**, NULL          | лише для `user`; без FK, щоб запис пережив видалення акаунта   |
-| `actor_role`     | enum ролі, NULL                     | роль виконавця на момент дії, лише для `user`                  |
-| `action`         | `varchar(64)`                       | ключ з каталогу Р4                                             |
-| `target_type`    | `varchar(32)`                       | `user`, `kb_article`, `llm_prompt`                             |
-| `target_id`      | `varchar(64)`                       | id об'єкта як рядок (bigint або тип промпту)                   |
-| `target_user_id` | `bigint`, без FK, NULL              | чий акаунт зачеплено                                           |
-| `request_id`     | `uuid`, NULL                        | зв'язок із логами; NULL для `system`                           |
-| `changes`        | `jsonb`, NULL                       | «до/після» дозволених полів (Р5)                               |
-| `metadata`       | `jsonb`, NULL                       | контекст без змін: тип способу входу, провайдер, доказ (Р6)    |
+| Колонка          | Тип                                 | Призначення                                                   |
+| ---------------- | ----------------------------------- | ------------------------------------------------------------- |
+| `id`             | `bigserial` PK                      | друга частина ключа порядку                                   |
+| `occurred_at`    | `timestamp`, задається явно         | час після отримання блокування (Р3); спільний для подій зміни |
+| `actor_kind`     | enum `user / proof_holder / system` | хто виконав (Р6)                                              |
+| `actor_user_id`  | `bigint`, **без FK**, NULL          | лише для `user`; без FK, щоб запис пережив видалення акаунта  |
+| `actor_role`     | enum ролі, NULL                     | роль виконавця на момент дії, лише для `user`                 |
+| `action`         | `varchar(64)`                       | ключ з каталогу Р4                                            |
+| `target_type`    | `varchar(32)`                       | `user`, `kb_article`, `llm_prompt`                            |
+| `target_id`      | `varchar(64)`                       | id об'єкта як рядок (bigint або тип промпту)                  |
+| `target_user_id` | `bigint`, без FK, NULL              | чий акаунт зачеплено                                          |
+| `request_id`     | `uuid`, NULL                        | зв'язок із логами; NULL для `system`                          |
+| `changes`        | `jsonb`, NULL                       | «до/після» дозволених полів (Р5)                              |
+| `metadata`       | `jsonb`, NULL                       | контекст без змін: тип способу входу, провайдер, доказ (Р6)   |
 
 IP, user-agent, email, телефон і публічний id сесії не зберігаються (Р11).
 
@@ -112,17 +140,42 @@ IP, user-agent, email, телефон і публічний id сесії не �
 Усі події першого релізу описують зміни в PostgreSQL. Кожна пишеться `auditService.record(tx, …)`
 **у тій самій транзакції**, що й зміна. Збій вставки відкочує зміну, і клієнт отримує `500`.
 
-| Дія                                                                      | Транзакція, в яку пишемо                                                       |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `auth.sessions.revoked_all`                                              | `withTransaction` ротації в `logoutAll` (з `retirePendingResets`)              |
-| `auth.sessions.revoked_others`                                           | `withTransaction` ротації в `revokeOthers`                                     |
-| `auth.password.changed`                                                  | транзакція `changePasswordIfCurrent`                                           |
-| `auth.password.reset`, `auth.account.claimed`                            | `runTokenTransaction` відновлення пароля (посилання / SMS)                     |
-| `auth.oauth.linked`, `auth.account.claimed`                              | `runTokenTransaction` у `confirmLink`; транзакція прив'язки в `handleCallback` |
-| `auth.phone.linked`, `auth.email.linked`, `auth.sign_in_method.unlinked` | наявні транзакції цих методів; де її немає — нова `withTransaction`            |
-| `kb.article.*`, `kb.screenshot.*`                                        | нова `withTransaction` (Р5); для скриншота — транзакція `replaceScreenshot`    |
-| `ai.prompt.updated`                                                      | нова `withTransaction` (Р5), оновлення кешу — після коміту                     |
-| `user.admin.created`                                                     | транзакція вставки користувача в seed                                          |
+**Час події.** `now()` у PostgreSQL — час початку транзакції. Транзакція, що почалася раніше, але
+отримала блокування рядка пізніше, отримала б менший час, і історія об'єкта показала б дві зміни в
+зворотному порядку. Тому `auditService.stamp(tx)` виконує `SELECT clock_timestamp()` **після**
+інструкції, що бере блокування (`SELECT … FOR UPDATE`, `lockById`, умовний `UPDATE`). Отриманий
+час передається в усі події цієї зміни. Колонка не має значення за замовчуванням, тож забутий
+`stamp` дає помилку вставки, а не тихий `now()`. Для змін, які блокують один рядок, порядок `stamp`
+збігається з порядком комітів. Між різними об'єктами це лише час годинника сервера БД.
+
+| Дія                                                       | Транзакція, в яку пишемо                                                                |
+| --------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `auth.sessions.revoked_all`                               | `withTransaction` ротації в `logoutAll` (з `retirePendingResets`)                       |
+| `auth.sessions.revoked_others`                            | `withTransaction` ротації в `revokeOthers`                                              |
+| `auth.password.changed`                                   | транзакція `changePasswordIfCurrent`                                                    |
+| `auth.password.reset` (посилання), `auth.account.claimed` | `runTokenTransaction` у `resetPassword`                                                 |
+| `auth.password.reset` (SMS)                               | `withTransactionResult` у `completePhonePasswordReset` (код підтверджено в ній)         |
+| `auth.oauth.linked`, `auth.account.claimed` (лист)        | `runTokenTransaction` у `confirmLink`                                                   |
+| `auth.oauth.linked`, `auth.account.claimed` (провайдер)   | `withTransaction` у `linkTrusted`                                                       |
+| `auth.email.linked`                                       | `runTokenTransaction` у прив'язці email                                                 |
+| `auth.phone.linked`                                       | **нова** `withTransaction`: `confirmChallenge(tx)` + `updateIfSessionToken(tx)` + подія |
+| `auth.sign_in_method.unlinked`                            | наявна `withTransaction` у `unlink`                                                     |
+| `kb.article.*`, `kb.screenshot.*`                         | нова `withTransaction` (Р5); для скриншота — транзакція `replaceScreenshot`             |
+| `ai.prompt.updated`                                       | нова `withTransaction` (Р5), оновлення кешу — після коміту                              |
+| `user.admin.created`                                      | транзакція вставки користувача в seed                                                   |
+
+**SMS-код прив'язки телефону.** Зараз `confirmPhoneLink` підтверджує код до запису номера окремим
+запитом. Якби в транзакцію потрапили лише номер і подія, після `500` номер лишився б
+неприв'язаним, а код — уже використаним. Тому `confirmChallenge` переходить у транзакцію разом із
+`updateIfSessionToken` і подією, за зразком відновлення пароля через SMS (feat-106). Погоджена
+поведінка:
+
+- збій запису події, умовного оновлення або коміту відкочує підтвердження. Той самий код можна
+  ввести знову, поки він не прострочений і не вичерпано спроби;
+- спроба, витрачена `verifySmsCode` до транзакції, лишається витраченою, як у feat-106;
+- `409` через унікальний індекс номера (feat-100) тепер теж відкочує підтвердження. Відповідь
+  клієнту та сама. Повтор з тим самим кодом знову отримає `409` на попередній перевірці, тож
+  коментар feat-100 «the challenge stays confirmed» оновлюється.
 
 Подія пишеться лише тоді, коли умовна зміна відбулася (наприклад, `updateIfSessionToken` повернув
 рядок). Відмова `session_revoked` або `token_mismatch` події не створює.
@@ -136,26 +189,28 @@ IP, user-agent, email, телефон і публічний id сесії не �
 `shared/src/audit/audit-actions.ts`: `AUDIT_ACTIONS` як `const`-об'єкт і тип `AuditAction`. Для
 кожної дії задано тип `changes` і `metadata` та функцію проєкції (Р5).
 
-| Група      | Дія                              | Виконавець (Р6)           | Ціль         | `metadata` / `changes`                                                                        |
-| ---------- | -------------------------------- | ------------------------- | ------------ | --------------------------------------------------------------------------------------------- |
-| Права      | `user.admin.created`             | `system` (`seed`)         | `user`       | `changes: { role: { from: null, to: 'admin' } }`                                              |
-| Вхід       | `auth.password.changed`          | `user`                    | `user`       | `{ sessionsRevoked: 'others' }`                                                               |
-| Вхід       | `auth.password.reset`            | `token_holder`            | `user`       | `{ proof: 'email_link' \| 'sms_code', claimed }`                                              |
-| Вхід       | `auth.account.claimed`           | `token_holder`            | `user`       | `{ via, passwordCleared, phoneRemoved, oauthRemoved: [providers], pushSubscriptionsRemoved }` |
-| Вхід       | `auth.phone.linked`              | `user`                    | `user`       | `{ method: 'phone', replaced: boolean }`                                                      |
-| Вхід       | `auth.email.linked`              | `token_holder` (Р6)       | `user`       | `{ method: 'email', replaced: boolean }`                                                      |
-| Вхід       | `auth.oauth.linked`              | `user` або `token_holder` | `user`       | `{ method: 'oauth', provider, proof }`                                                        |
-| Вхід       | `auth.sign_in_method.unlinked`   | `user`                    | `user`       | `{ method, provider? }`                                                                       |
-| Сесії      | `auth.sessions.revoked_all`      | `user`                    | `user`       | без полів                                                                                     |
-| Сесії      | `auth.sessions.revoked_others`   | `user`                    | `user`       | без полів                                                                                     |
-| База знань | `kb.article.created`             | `user`                    | `kb_article` | `changes` з `after`                                                                           |
-| База знань | `kb.article.updated`             | `user`                    | `kb_article` | змінені поля (Р5)                                                                             |
-| База знань | `kb.article.deleted`             | `user`                    | `kb_article` | `changes` з `before`                                                                          |
-| База знань | `kb.screenshot.uploaded/removed` | `user`                    | `kb_article` | `{ screenshot: { from: present, to: present } }`, `mime`                                      |
-| AI         | `ai.prompt.updated`              | `user`                    | `llm_prompt` | змінені поля (Р5)                                                                             |
+| Група      | Дія                              | Виконавець (Р6)   | Ціль         | `metadata` / `changes`                                                                          |
+| ---------- | -------------------------------- | ----------------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| Права      | `user.admin.created`             | `system` (`seed`) | `user`       | `changes: { role: { from: null, to: 'admin' } }`                                                |
+| Вхід       | `auth.password.changed`          | `user`            | `user`       | `{ sessionsRevoked: 'others' }`                                                                 |
+| Вхід       | `auth.password.reset`            | `proof_holder`    | `user`       | `{ proof: 'email_link' \| 'sms_code', claimed }`                                                |
+| Вхід       | `auth.account.claimed`           | `proof_holder`    | `user`       | `{ proof, passwordCleared, phoneRemoved, oauthRemoved: [providers], pushSubscriptionsRemoved }` |
+| Вхід       | `auth.phone.linked`              | `user`            | `user`       | `{ method: 'phone', proof: 'sms_code' }`                                                        |
+| Вхід       | `auth.email.linked`              | `user`            | `user`       | `{ method: 'email', proof: 'email_link' }`                                                      |
+| Вхід       | `auth.oauth.linked`              | `proof_holder`    | `user`       | `{ method: 'oauth', provider, proof: 'oauth_email_link' \| 'oauth_provider_email' }`            |
+| Вхід       | `auth.sign_in_method.unlinked`   | `user`            | `user`       | `{ method, provider? }`                                                                         |
+| Сесії      | `auth.sessions.revoked_all`      | `user`            | `user`       | без полів                                                                                       |
+| Сесії      | `auth.sessions.revoked_others`   | `user`            | `user`       | без полів                                                                                       |
+| База знань | `kb.article.created`             | `user`            | `kb_article` | `changes` з `after`                                                                             |
+| База знань | `kb.article.updated`             | `user`            | `kb_article` | змінені поля (Р5)                                                                               |
+| База знань | `kb.article.deleted`             | `user`            | `kb_article` | `changes` з `before`                                                                            |
+| База знань | `kb.screenshot.uploaded/removed` | `user`            | `kb_article` | `{ screenshot: { from: present, to: present } }`, `mime`                                        |
+| AI         | `ai.prompt.updated`              | `user`            | `llm_prompt` | змінені поля (Р5)                                                                               |
 
 `auth.account.claimed` пишеться окремою подією поряд із подією, яка спричинила підтвердження
-(`auth.password.reset` або `auth.oauth.linked`), з тим самим `request_id` і `occurred_at`.
+(`auth.password.reset` або `auth.oauth.linked`), з тим самим `request_id`, `occurred_at` і
+`proof`. `replaced` прибрано з подій прив'язки: телефон і email прив'язуються лише до акаунта, де їх
+немає, тож заміни не буває.
 `claimLocked` повертає опис наслідків (`ClaimOutcome.effects`): які OAuth-провайдери й скільки
 підписок прибрано, чи був телефон і пароль. Цей опис будується з рядків, які він сам видаляє
 (`DELETE … RETURNING provider`), тому не розходиться з фактичною зміною. Подія не пишеться, коли
@@ -195,9 +250,20 @@ IP, user-agent, email, телефон і публічний id сесії не �
    (`{ title: row.title }`, а не `{ ...row }`).
 2. Перевірка ключів: рекурсивно, кожен ключ `changes` і `metadata` має бути в переліку дії, інакше
    виняток (транзакція відкочується).
-3. Розмір: `Buffer.byteLength(JSON.stringify(...)) ≤ 4096` для `changes` і `metadata` разом,
-   інакше виняток. Тест будує payload кожної дії з максимальними значеннями колонок
-   (багатобайтові символи) і перевіряє, що межа не досягається.
+3. Розмір: `Buffer.byteLength(JSON.stringify({ changes, metadata })) ≤ AUDIT_PAYLOAD_MAX_BYTES`
+   (8192), інакше виняток. Межу виведено з найгіршого серіалізованого випадку, а не з довжини
+   колонок. Схема дозволяє керівні символи, і JSON серіалізує кожен як `\u0001` — 6 байтів на
+   символ. Це найбільше з можливого: символ поза BMP займає 4 байти, а одиночних сурогатів UTF-8 у
+   PostgreSQL не зберігає. Найгірші випадки, виміряні на рядках із `\u0001` максимальної довжини:
+   оновлення статті (`title` і `category` до та після, хеші й довжини `content`) — 4613 байтів,
+   оновлення промпту — 2844, створення статті — 2423. Межа 8192 дає запас без ризику відкинути
+   допустимий запит.
+
+    Тест найгіршого випадку для **кожної** дії каталогу будує payload з усіма рядками максимальної
+    довжини трьох видів — `\u0001`, `\"`, символ поза BMP (`😀`) — і числами на межах схеми, і
+    перевіряє, що він вкладається в межу. Поле, додане до дії пізніше, переповнить межу в тесті, а
+    не в рантаймі.
+
 4. Порожній diff (оновлення без змін) не створює події й не робить `UPDATE`.
 
 ### Р6. Виконавець: хто підтверджений, а хто лише цільовий акаунт
@@ -208,13 +274,22 @@ IP, user-agent, email, телефон і публічний id сесії не �
 - `user` — запит з автентифікованою сесією (`auth_guard`). `actor_user_id` дорівнює користувачу
   сесії, `actor_role` — роль з того самого читання, що робить `admin_guard` (або з рядка, який
   сервіс уже прочитав).
-- `token_holder` — сесії немає або вона не доводить особу, доказом слугує одноразовий секрет:
-  посилання з листа, SMS-код, посилання підтвердження OAuth. `actor_user_id = NULL`, відомий лише
-  `target_user_id`, а `metadata.proof` називає доказ (`email_link`, `sms_code`,
-  `oauth_email_link`). Так пишуться відновлення пароля, `auth.account.claimed`, `confirmLink` і
-  підтвердження прив'язки email, навіть якщо посилання відкрили в браузері із сесією: доводить
-  дію саме секрет, а не сесія.
+  Дія, яка додатково вимагає одноразового доказу, записує його в `metadata.proof`, але виконавець
+  лишається відомим: прив'язка email (`email_link`, посилання діє лише в чинній сесії того самого
+  акаунта) і прив'язка телефону (`sms_code`, челендж прив'язаний до сесії).
+- `proof_holder` — автентифікованої сесії акаунта немає, дію дозволяє лише доказ. Поле
+  `actor_user_id` порожнє (`NULL`), відомий лише `target_user_id`, а `metadata.proof`
+  обов'язковий (таблиця нижче). `auth.account.claimed` бере `proof` події, яка його спричинила.
 - `system` — seed, CLI. `request_id = NULL`, `metadata.source` (`seed`).
+
+Докази `proof_holder`:
+
+| Доказ                  | Де                                                            |
+| ---------------------- | ------------------------------------------------------------- |
+| `email_link`           | `resetPassword` (посилання з листа)                           |
+| `sms_code`             | `completePhonePasswordReset`                                  |
+| `oauth_email_link`     | `confirmLink` (посилання з листа в браузері, де почався вхід) |
+| `oauth_provider_email` | `linkTrusted` (провайдер підтвердив адресу, ще до входу)      |
 
 ### Р7. API читання — `GET /admin/audit-events`
 
@@ -226,8 +301,10 @@ IP, user-agent, email, телефон і публічний id сесії не �
   усією мілісекундою `from`, без усієї мілісекунди `to`».
 - **Курсор**: порядок `(occurred_at DESC, id DESC)`, сторінка 50. Курсор несе `occurred_at` як
   рядок, прочитаний у SQL (`occurred_at::text`), і `id`, тож мікросекунди не губляться в JS `Date`.
-  Події однієї транзакції мають рівний `occurred_at` (наприклад, `auth.password.reset` і
+  Події однієї зміни мають рівний `occurred_at` (наприклад, `auth.password.reset` і
   `auth.account.claimed`), і саме на них перевіряється курсор (Р13). `COUNT(*)` не рахуємо.
+- **Порядок історії об'єкта** (`targetType` + `targetId`) — порядок, у якому зміни отримали
+  блокування рядка, тобто порядок їх застосування (Р3). Для подій однієї зміни порядок задає `id`.
 - Відповідь через transformer: `actor` і `targetUser` збагачуються `name` одним запитом по `users`
   для id на сторінці; видалений користувач показується як «видалений #id». Email у відповіді не
   повертаємо.
@@ -264,8 +341,8 @@ ORDER BY occurred_at LIMIT $n))`, без читання й наступного 
 - Пункт у `AdminLayout`, сторінка `AdminAuditLogView.vue`: таблиця (час, виконавець, дія, об'єкт,
   request ID), фільтри з Р7 у query-рядку URL, кнопка «Показати ще».
 - Розгорнутий рядок показує `changes` як таблицю «поле / було / стало», `metadata` і кнопку
-  копіювання request ID. Для `token_holder` виконавець показується як «власник посилання / коду
-  (доказ)».
+  копіювання request ID. Для `proof_holder` виконавець показується як «без входу» з назвою доказу
+  («посилання з листа», «SMS-код», «підтвердження провайдера»).
 - У `AdminUsersView` — посилання «Журнал» на `?targetUserId=…`. У редакторі статті бази знань —
   «Історія змін» на `?targetType=kb_article&targetId=…`.
 - Назви дій беруться зі словника frontend за ключами `AUDIT_ACTIONS`.
@@ -292,17 +369,30 @@ ORDER BY occurred_at LIMIT $n))`, без читання й наступного 
 
 - `auditPayload.build` для кожної дії каталогу: вхід із зайвими полями (`password`, `sessionToken`,
   `providerEmail`, `screenshotKey`) не потрапляє в серіалізований JSON. Невідомий ключ дає
-  виняток. Максимальні значення колонок у багатобайтових символах вкладаються в 4096 байт.
+  виняток.
+- Найгірший розмір (Р5) для кожної дії: рядки максимальної довжини з `\u0001`, `\"` і `😀`, числа
+  на межах схеми. Кожен варіант вкладається в `AUDIT_PAYLOAD_MAX_BYTES`. Окремий тест перевіряє,
+  що payload на 1 байт більший за межу дає виняток.
 - `diffAllowed` і порожній diff.
-- Контролери будують `AuditActor` правильного типу для `user`, `token_holder` і `system`.
+- Контролери будують `AuditActor` правильного типу для `user`, `proof_holder` і `system`.
 
 **PG (`*.pg.test.ts`)**
 
 - Атомарність: збій вставки події (підмінений `record`, що кидає) відкочує зміну промпту, статті,
   скриншота, пароля, відв'язки. Для `logout-all` і `revoke-others` **попередній `session_token`
   лишається чинним**, а посилання скидання не погашені.
-- Гонки: дві одночасні зміни одного промпту і однієї статті (`race-barrier.ts`) дають `after`
-  першої події, рівний `before` другої.
+- Гонки: дві одночасні зміни одного промпту і однієї статті (`race-barrier.ts`). Транзакція, що
+  почалася першою, отримує блокування другою. Перевіряється, що `after` події застосованої першою
+  зміни дорівнює `before` другої **і** що `GET /admin/audit-events?targetType=…&targetId=…`
+  повертає їх у порядку застосування, а не початку транзакцій.
+- Виконавець за шляхами: `linkTrusted` пише `auth.oauth.linked` (і `auth.account.claimed` для
+  неперевіреного акаунта) з `proof_holder`, `proof: 'oauth_provider_email'`, без `actor_user_id`.
+  `confirmLink` — те саме з `oauth_email_link`. Прив'язка email — `user` з `actor_user_id`
+  власника сесії та `proof: 'email_link'`. Прив'язка телефону — `user` з `proof: 'sms_code'`.
+- SMS-код прив'язки телефону: збій запису події дає `500`, номер не прив'язано, челендж не
+  підтверджено (`confirmed_at IS NULL`). Повтор із тим самим кодом прив'язує номер і пише одну
+  подію. Лічильник спроб показує спробу першого запиту витраченою. `409` через унікальний індекс
+  теж лишає челендж непідтвердженим.
 - Claim: скидання паролем неперевіреного акаунта з телефоном і двома OAuth-прив'язками пише
   `auth.password.reset` і `auth.account.claimed` з обома провайдерами, з одним `request_id` і
   `occurred_at`. На підтвердженому акаунті `claimed` не пишеться.
@@ -328,7 +418,9 @@ ORDER BY occurred_at LIMIT $n))`, без читання й наступного 
 - Відкат при збої запису доводять PG-тести, не e2e.
 
 **Мутації**: прибрати `record` з будь-якої точки запису — падає тест цієї точки. Замінити `FOR
-UPDATE` на звичайне читання — падає тест гонки.
+UPDATE` на звичайне читання — падає тест гонки. Перенести `stamp` до блокування або замінити на
+`now()` — падає тест порядку. Винести `confirmChallenge` з транзакції прив'язки телефону — падає
+тест повтору SMS-коду. Повернути межу 4096 — падає тест найгіршого розміру.
 
 ### Р14. Документація
 
@@ -340,17 +432,17 @@ UPDATE` на звичайне читання — падає тест гонки.
 
 ## Задачі
 
-| #   | Задача                                                                                                                                                   | Залежить |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| T1  | `shared`: `AUDIT_ACTIONS`, типи `changes`/`metadata`, проєкції, перевірка ключів і байтового розміру, `diffAllowed`, схеми контракту + unit              | —        |
-| T2  | Схема `audit_events`, enum-и, індекси Р8, тригер Р2, міграція (folder-per-migration), relations                                                          | —        |
-| T3  | Репозиторій `audit-events` (`insert/list/purgeBatch`, курсор Р7), `auditService.record`, `AuditActor`, `auditActorFrom`, лог Р12                         | T1, T2   |
-| T4  | Промпти й база знань: `executor`, `FOR UPDATE` + `RETURNING`, подія скриншота в `replaceScreenshot`, кеш промпту з `RETURNING`, PG-тести гонок і відкату | T3       |
-| T5  | Способи входу й сесії: `ClaimOutcome.effects`, події в транзакціях Р3, `token_holder`, seed `user.admin.created`, PG-тести відкату й claim               | T3       |
-| T6  | `GET /admin/audit-events`: контракт, контролер, transformer, маршрут, HTTP-тести, тести курсора                                                          | T3       |
-| T7  | Задача `audit-events-retention` за контрактом планувальника, конфіг-модуль, `.env.example`, PG-тести Р9                                                  | T3       |
-| T8  | Frontend: `AdminAuditLogView`, пункт меню, посилання з користувачів і статей, `test:e2e` і `test:e2e:live`                                               | T6       |
-| T9  | Документація обох локалей (Р14), `docs:build && docs:verify`, evidence                                                                                   | T4–T8    |
+| #   | Задача                                                                                                                                                                                                                             | Залежить |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| T1  | `shared`: `AUDIT_ACTIONS`, типи `changes`/`metadata`, проєкції, перевірка ключів і байтового розміру, `diffAllowed`, схеми контракту + unit                                                                                        | —        |
+| T2  | Схема `audit_events`, enum-и, індекси Р8, тригер Р2, міграція (folder-per-migration), relations                                                                                                                                    | —        |
+| T3  | Репозиторій `audit-events` (`insert/list/purgeBatch`, курсор Р7), `auditService.stamp/record`, `AuditActor`, `auditActorFrom`, лог Р12                                                                                             | T1, T2   |
+| T4  | Промпти й база знань: `executor`, `FOR UPDATE` + `RETURNING`, подія скриншота в `replaceScreenshot`, кеш промпту з `RETURNING`, PG-тести гонок і відкату                                                                           | T3       |
+| T5  | Способи входу й сесії: `ClaimOutcome.effects`, події в транзакціях Р3, `proof_holder`, `confirmChallenge` у транзакції прив'язки телефону, seed `user.admin.created`, PG-тести відкату, claim, шляхів виконавця й повтору SMS-коду | T3       |
+| T6  | `GET /admin/audit-events`: контракт, контролер, transformer, маршрут, HTTP-тести, тести курсора                                                                                                                                    | T3       |
+| T7  | Задача `audit-events-retention` за контрактом планувальника, конфіг-модуль, `.env.example`, PG-тести Р9                                                                                                                            | T3       |
+| T8  | Frontend: `AdminAuditLogView`, пункт меню, посилання з користувачів і статей, `test:e2e` і `test:e2e:live`                                                                                                                         | T6       |
+| T9  | Документація обох локалей (Р14), `docs:build && docs:verify`, evidence                                                                                                                                                             | T4–T8    |
 
 Definition of Done: `make check`; `make test-pg` і `make test-redis` з кількістю виконаних і
 пропущених тестів; `pnpm --filter frontend test:e2e` і `test:e2e:live`;
@@ -367,6 +459,9 @@ API), пароль, відв'язати спосіб входу, «Вийти в
 - **`claimLocked` повертає наслідки.** Заміна `deleteByUserId` на `DELETE … RETURNING provider`
   змінює сигнатуру репозиторію. Покривається тестами `oauth-pre-hijack.pg.test.ts` і новим тестом
   claim.
+- **Прив'язка телефону змінює транзакційну межу.** `confirmChallenge` переходить у транзакцію,
+  тож змінюється й доля челенджу при `409` (feat-100). Наявні тести feat-100 оновлюються свідомо,
+  із зазначенням причини в PR.
 - **Fail closed** робить зміни промптів, статей і способів входу залежними від вставки в журнал.
   Це свідомо: та сама БД, той самий коміт.
 - **Блокування `FOR UPDATE`** на статтях і промптах серіалізує їх паралельні зміни. Обсяг — одиниці
