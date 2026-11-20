@@ -182,6 +182,8 @@ SELECT extversion FROM pg_extension WHERE extname = 'vector';
 
 Таблиця `audit_events` (feat-235) має перший написаний вручну тригер у міграціях, `audit_events_no_update`: snapshot Drizzle його не знає, тож міграція, що перестворює таблицю, додає його знову. Див. [Журнал дій](/backend/audit-log).
 
+Таблиці `notifications` і `notification_preferences` (feat-236) — історія сповіщень користувача і його налаштування каналів за категоріями; `CHECK` колонок `kind`, `category` і `channel` будуються з каталогу `shared/notifications`, тож новий вид потребує нової міграції. Та сама міграція прибрала `push_subscriptions.notification_types`. Див. [Центр сповіщень](/backend/notifications).
+
 ## Скрипти
 
 Запускаються в пакеті backend (`pnpm --filter ./packages/backend <script>`):

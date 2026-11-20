@@ -182,6 +182,8 @@ Migrations live in [`src/drizzle/migrations`](https://github.com/Blazheiko/vibe-
 
 The table `audit_events` (feat-235) carries the first hand-written trigger of the migrations, `audit_events_no_update`: the Drizzle snapshot does not know it, so a migration that recreates the table adds it again. See [Audit log](/en/backend/audit-log).
 
+The tables `notifications` and `notification_preferences` (feat-236) hold a user's notification history and channel preferences per category; the `CHECK`s of `kind`, `category` and `channel` are built from the `shared/notifications` catalog, so a new kind needs a new migration. The same migration dropped `push_subscriptions.notification_types`. See [Notification center](/en/backend/notifications).
+
 ## Scripts
 
 Run in the backend package (`pnpm --filter ./packages/backend <script>`):

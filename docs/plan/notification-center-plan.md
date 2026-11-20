@@ -5,6 +5,18 @@
 Пропонований id: `feat-236` (одна фіча, один PR, як `feat-232`, `feat-233`, `feat-235`). Рішення
 Р1–Р13, задачі T1–T9. Покроковий task list — [`notification-center-tasks.md`](./notification-center-tasks.md).
 
+**Уточнення під час реалізації** (feat-236, гілка `feat/notification-center`):
+
+- Заблокований чи відсутній канал (Р4) і `before`/`upTo` поза межею `bigint` (Р6) — `400` з
+  `reason` (`channel_locked`, `channel_unavailable`, `invalid_cursor`, `invalid_up_to`), а не
+  `422`: у наборі `AppError` немає 422, він лишається за валідацією схеми (`limit=51`).
+- Окремого `isPgBigintId` у `shared` немає: межу `bigint` перевіряє наявний `parseEntityId`
+  бекенду (feat-161), схеми — лише форму id.
+- `userNotificationService.security` зберіг назви подій і перекладає їх на види каталогу;
+  `params` стали типізованими й обов'язковими там, де вид їх потребує.
+- Прокрутка до фрагмента — через `router.afterEach`, бо `scrollBehavior` у цій версії
+  vue-router deprecated.
+
 **Уточнення 3.1** (за рев'ю редакції 3):
 
 - `ws_ready` однаково описано в Р8 і Р11: перечитуються лічильник, перша сторінка відкритого
