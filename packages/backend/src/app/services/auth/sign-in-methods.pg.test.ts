@@ -147,7 +147,9 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         expect(
             await oauthAccountRepository.findByProviderAndProviderId('github', link.providerUserId),
         ).toBeUndefined()
-        expect(security).toHaveBeenCalledWith(owner.id, 'sign_in_method_removed')
+        expect(security).toHaveBeenCalledWith(owner.id, 'sign_in_method_removed', {
+            provider: 'github',
+        })
     })
 
     it('an account without a password keeps its last link', async () => {

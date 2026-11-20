@@ -7,6 +7,7 @@ import type { OAuthAccountRow } from '#app/repositories/index.js'
 import { resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { mailSafeDisplayName } from '#app/services/notifications/email-templates.js'
+import { asNotificationProvider } from '#app/services/notifications/notification-provider.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import {
     badRequest,
@@ -187,7 +188,10 @@ export const signInMethodsService = {
             { userId: String(userId), provider: removed.value.provider },
             'sign-in method unlinked',
         )
-        userNotificationService.security(userId, 'sign_in_method_removed')
+        const provider = asNotificationProvider(removed.value.provider)
+        if (provider !== null) {
+            userNotificationService.security(userId, 'sign_in_method_removed', { provider })
+        }
         return Result.ok({ provider: removed.value.provider })
     },
 }

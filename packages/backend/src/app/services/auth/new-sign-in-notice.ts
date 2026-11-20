@@ -173,8 +173,7 @@ export function notifyNewSignIn(
     options: { mail: boolean },
 ): void {
     userNotificationService.security(userId, 'new_sign_in', {
-        body: `Signed in from ${deviceLabel(device.userAgent)}. If it was not you, end that session and change your password.`,
-        url: SESSIONS_PAGE_PATH,
+        device: deviceLabel(device.userAgent),
     })
     if (!options.mail) return
     mailNewSignIn(userId, device)

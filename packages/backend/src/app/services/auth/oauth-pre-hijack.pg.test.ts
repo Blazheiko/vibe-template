@@ -555,7 +555,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
 
             const result = await pushSubscriptionService.createSubscription(
                 attacker.id,
-                subscription('after-claim') as never,
+                subscription('after-claim'),
                 attacker.sessionToken,
             )
 
@@ -577,7 +577,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 const pending = pushSubscriptionService
                     .createSubscription(
                         attacker.id,
-                        subscription('during-claim') as never,
+                        subscription('during-claim'),
                         attacker.sessionToken,
                     )
                     .finally(() => {
@@ -610,7 +610,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
 
             const result = await pushSubscriptionService.createSubscription(
                 owner.id,
-                subscription('current') as never,
+                subscription('current'),
                 owner.sessionToken,
             )
 

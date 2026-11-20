@@ -61,7 +61,10 @@ export const notificationRepository = {
             .limit(options.limit + 1)
         const page = rows.slice(0, options.limit)
         const last = page.at(-1)
-        return { rows: page, next: rows.length > options.limit && last !== undefined ? last.id : null }
+        return {
+            rows: page,
+            next: rows.length > options.limit && last !== undefined ? last.id : null,
+        }
     },
 
     /**

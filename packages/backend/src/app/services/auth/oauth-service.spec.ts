@@ -621,7 +621,9 @@ describe('oauthService.handleCallback', () => {
             )
             // feat-198: announced as a new sign-in method, not as an ordinary sign-in.
             expect(securityMock).toHaveBeenCalledTimes(1)
-            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added', {
+                provider: 'google',
+            })
             // No confirmation link is mailed: Google proved the mailbox. The notice is.
             expect(oauthLinkVerificationRepositoryMock.create).not.toHaveBeenCalled()
             expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
@@ -646,7 +648,9 @@ describe('oauthService.handleCallback', () => {
 
             expect(Result.isError(result)).toBe(true)
             // The link is committed whatever the sign-in answers.
-            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+            expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added', {
+                provider: 'google',
+            })
             expect(securityMock).not.toHaveBeenCalledWith(5n, 'new_sign_in')
             expect(notifyNewSignInMock).not.toHaveBeenCalled()
             expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
@@ -1585,7 +1589,9 @@ describe('oauthService.confirmLink', () => {
         )
         // feat-198 (M-2): this used to be announced as an ordinary "new sign-in", by push only.
         expect(securityMock).toHaveBeenCalledTimes(1)
-        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added', {
+            provider: 'github',
+        })
         expect(emailServiceMock.send).toHaveBeenCalledTimes(1)
         const notice = emailServiceMock.send.mock.calls[0]![0] as {
             to: string
@@ -1620,7 +1626,9 @@ describe('oauthService.confirmLink', () => {
         const result = await confirm()
 
         expect(Result.isOk(result)).toBe(true)
-        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added', {
+            provider: 'github',
+        })
     })
 
     it('a claim is announced as a claim and mails no notice', async () => {
@@ -1799,7 +1807,9 @@ describe('oauthService.confirmLink', () => {
 
         expectError(result, { _tag: 'BadRequest', message: 'Failed to sign in' })
         expect(securityMock).toHaveBeenCalledTimes(1)
-        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(securityMock).toHaveBeenCalledWith(5n, 'sign_in_method_added', {
+            provider: 'github',
+        })
     })
 })
 

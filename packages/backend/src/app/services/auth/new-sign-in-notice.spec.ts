@@ -162,10 +162,7 @@ describe('the mail rules (Р11)', () => {
 describe('notifyNewSignIn', () => {
     it('pushes the device and links the session list; the mail follows its rules', async () => {
         notifyNewSignIn(7n, device(), { mail: true })
-        expect(security).toHaveBeenCalledWith(7n, 'new_sign_in', {
-            body: 'Signed in from Chrome on macOS. If it was not you, end that session and change your password.',
-            url: '/account#sessions',
-        })
+        expect(security).toHaveBeenCalledWith(7n, 'new_sign_in', { device: 'Chrome on macOS' })
         await vi.waitFor(() => {
             expect(send).toHaveBeenCalledOnce()
         })
@@ -191,11 +188,7 @@ describe('notifyNewSignIn', () => {
 
     it('an unknown device is named neutrally', () => {
         notifyNewSignIn(7n, device({ userAgent: '' }), { mail: false })
-        expect(security).toHaveBeenCalledWith(
-            7n,
-            'new_sign_in',
-            expect.objectContaining({ body: expect.stringContaining('an unknown device') }),
-        )
+        expect(security).toHaveBeenCalledWith(7n, 'new_sign_in', { device: 'an unknown device' })
     })
 })
 

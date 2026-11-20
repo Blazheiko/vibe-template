@@ -85,8 +85,11 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: securityNotice, supportReply: vi.fn() },
 }))
 // feat-199: what the reset says about the sign-in methods still linked (own spec).
+const announcePasswordResetMock = vi.hoisted(() =>
+    vi.fn((_account: { userId: bigint }) => Promise.resolve(['github'])),
+)
 vi.mock('#app/services/auth/password-reset-notice.js', () => ({
-    announcePasswordReset: () => Promise.resolve(['github']),
+    announcePasswordReset: announcePasswordResetMock,
 }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: destroyAllSessionsMock,
@@ -700,6 +703,9 @@ const ROWS: readonly Row[] = [
             expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-token')
             expect(securityNotice).toHaveBeenCalledTimes(1)
             expect(securityNotice).toHaveBeenCalledWith(7n, 'account_claimed')
+            // feat-236 (Р5): the claim branch mails the reset notice too, apart from the push.
+            expect(announcePasswordResetMock).toHaveBeenCalledOnce()
+            expect(announcePasswordResetMock.mock.calls[0]?.[0]).toMatchObject({ userId: 7n })
         },
     },
     {
@@ -720,6 +726,7 @@ const ROWS: readonly Row[] = [
                 claimRepositoryMocks.emailVerificationRepository.invalidatePendingByUserId,
             ).not.toHaveBeenCalled()
             expect(securityNotice).toHaveBeenCalledWith(7n, 'password_reset')
+            expect(announcePasswordResetMock).toHaveBeenCalledOnce()
         },
     },
     // --- startPhonePasswordReset ------------------------------------------------------------

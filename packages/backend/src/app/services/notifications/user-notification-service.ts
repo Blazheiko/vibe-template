@@ -1,112 +1,42 @@
-import logger from '#vendor/utils/logger.js'
-import {
-    pushNotificationSenderService,
-    type PushNotificationPayload,
-} from '#app/services/notifications/push-notification-sender-service.js'
+import type { NotificationKind, NotificationParams } from 'shared/notifications'
 
-// Business events that send a push (code-issues item 72). Fire-and-forget: a push
-// failure or slow push service never changes or delays the response that triggered it.
+import { notificationService } from '#app/services/notifications/notification-service.js'
 
-export type SecurityEvent =
-    | 'new_sign_in'
-    | 'sign_in_method_added'
-    | 'sign_in_method_removed'
-    | 'password_changed'
-    | 'password_reset'
-    | 'logout_all'
-    | 'account_claimed'
-    | 'session_revoked'
+// Business events that notify the user (code-issues item 72, feat-236). Each one is stored in the
+// notification center and pushed under the user's preferences (notification-service.ts). Never
+// awaited and never throws: a failure does not change or delay the response that triggered it.
 
-const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
-    new_sign_in: {
-        title: 'New sign-in',
-        body: 'Your account was just signed in to. If it was not you, change your password.',
-        url: '/account#sessions',
-        tag: 'security-sign-in',
-    },
-    // feat-198: another provider's identity was linked. It signs in after a password change too.
-    sign_in_method_added: {
-        title: 'New sign-in method',
-        body: 'A new way to sign in was added to your account. If it was not you, remove it on the account page.',
-        url: '/account',
-        tag: 'security-sign-in-method',
-    },
-    // feat-199: a linked identity was removed on the account page.
-    sign_in_method_removed: {
-        title: 'Sign-in method removed',
-        body: 'A way to sign in was removed from your account. If it was not you, change your password.',
-        url: '/account',
-        tag: 'security-sign-in-method',
-    },
-    password_changed: {
-        title: 'Password changed',
-        body: 'Your password was changed. If it was not you, reset it now.',
-        url: '/account',
-        tag: 'security-password',
-    },
-    password_reset: {
-        title: 'Password reset',
-        body: 'Your password was reset and other sessions were signed out.',
-        url: '/account',
-        tag: 'security-password',
-    },
-    logout_all: {
-        title: 'Signed out everywhere',
-        body: 'All sessions of your account were signed out.',
-        url: '/account',
-        tag: 'security-sessions',
-    },
-    // feat-233: one session was ended from the session list of another.
-    session_revoked: {
-        title: 'Session ended',
-        body: 'One of your sessions was ended from another device. If it was not you, change your password.',
-        url: '/account#sessions',
-        tag: 'security-sessions',
-    },
-    account_claimed: {
-        title: 'Account secured',
-        body: 'Your email was confirmed. Earlier sign-in methods and sessions were removed.',
-        url: '/account',
-        tag: 'security-sessions',
-    },
-}
+/** The security events of the call sites and the kind of the catalog each one is. */
+const SECURITY_KINDS = {
+    new_sign_in: 'security.new_sign_in',
+    sign_in_method_added: 'security.method_added',
+    sign_in_method_removed: 'security.method_removed',
+    password_changed: 'security.password_changed',
+    password_reset: 'security.password_reset',
+    logout_all: 'security.logout_all',
+    account_claimed: 'security.account_claimed',
+    session_revoked: 'security.session_revoked',
+} as const satisfies Record<string, NotificationKind>
 
-const send = (
-    userId: bigint,
-    payload: PushNotificationPayload,
-    options: { skipIfOnline?: boolean },
-    event: string,
-): void => {
-    pushNotificationSenderService.sendToUser(userId, payload, options).catch((err: unknown) => {
-        logger.warn({ err, userId: String(userId), event }, 'Push for a business event failed')
-    })
-}
+export type SecurityEvent = keyof typeof SECURITY_KINDS
+type SecurityKindOf<E extends SecurityEvent> = (typeof SECURITY_KINDS)[E]
+
+/** The arguments of an event: its params, which may be left out when none is required. */
+type SecurityArgs<E extends SecurityEvent> =
+    Partial<NotificationParams<SecurityKindOf<E>>> extends NotificationParams<SecurityKindOf<E>>
+        ? [params?: NotificationParams<SecurityKindOf<E>>]
+        : [params: NotificationParams<SecurityKindOf<E>>]
 
 export const userNotificationService = {
-    /**
-     * Security notices go to every device, online or not. `details` replaces the text or the link
-     * of the event (feat-233: the new sign-in names its device).
-     */
-    security(
-        userId: bigint,
-        event: SecurityEvent,
-        details?: Partial<Pick<PushNotificationPayload, 'body' | 'url'>>,
-    ): void {
-        send(userId, { ...SECURITY_MESSAGES[event], ...details }, {}, event)
+    /** Security notices go to every device, online or not (Р5). */
+    security<E extends SecurityEvent>(userId: bigint, event: E, ...args: SecurityArgs<E>): void {
+        const kind: SecurityKindOf<E> = SECURITY_KINDS[event]
+        const params = (args[0] ?? {}) as NotificationParams<SecurityKindOf<E>>
+        notificationService.notify(userId, kind, params)
     },
 
-    /** A support reply reaches the user only when no device has the app open. */
+    /** A support reply is pushed only when no device has the app open on this instance. */
     supportReply(userId: bigint): void {
-        send(
-            userId,
-            {
-                title: 'Support replied',
-                body: 'A new answer is waiting in the support chat.',
-                url: '/support',
-                tag: 'support-reply',
-            },
-            { skipIfOnline: true },
-            'support_reply',
-        )
+        notificationService.notify(userId, 'support.reply', {})
     },
 }

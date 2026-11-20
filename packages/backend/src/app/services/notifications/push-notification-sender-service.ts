@@ -2,10 +2,12 @@ import webpush from 'web-push'
 import pushConfig from '#config/push.js'
 import logger from '#logger'
 import {
+    notificationPreferenceRepository,
     pushNotificationLogRepository,
     pushSubscriptionRepository,
     type PushNotificationLogInsert,
 } from '#app/repositories/index.js'
+import { resolveNotificationPreferences, type NotificationCategory } from 'shared/notifications'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
 import { sendPush } from './push-transport.js'
@@ -68,6 +70,23 @@ function isUserOnline(userId: string): boolean {
     return wsConnectionRegistry.isUserOnline(userId)
 }
 
+async function pushAllowed(userId: bigint, category: NotificationCategory): Promise<boolean> {
+    let rows
+    try {
+        rows = await notificationPreferenceRepository.findByUserId(userId)
+    } catch (err: unknown) {
+        logger.warn(
+            { err, userId: String(userId), category },
+            'Notification preferences not read: the push is skipped',
+        )
+        return false
+    }
+    const cell = resolveNotificationPreferences(rows).find(
+        (preference) => preference.category === category && preference.channel === 'push',
+    )
+    return cell?.enabled ?? false
+}
+
 export const pushNotificationSenderService = {
     isConfigured(): boolean {
         return ensureVapidConfigured()
@@ -80,9 +99,16 @@ export const pushNotificationSenderService = {
     async sendToUser(
         userId: bigint,
         payload: PushNotificationPayload,
-        options: { skipIfOnline?: boolean } = {},
+        options: { skipIfOnline?: boolean; category?: NotificationCategory } = {},
     ): Promise<{ sent: number; failed: number }> {
         if (!ensureVapidConfigured()) {
+            return { sent: 0, failed: 0 }
+        }
+
+        // feat-236 (Р4): a push of a category the user turned off reaches no device. When the
+        // preferences cannot be read the push is skipped: the default could override a stored
+        // `false`. The test push has no category and does not ask.
+        if (options.category !== undefined && !(await pushAllowed(userId, options.category))) {
             return { sent: 0, failed: 0 }
         }
 

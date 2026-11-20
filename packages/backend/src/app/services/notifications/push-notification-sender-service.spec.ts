@@ -26,10 +26,14 @@ const pushSubscriptionRepository = {
     deactivate: vi.fn(),
 }
 const pushNotificationLogRepository = { insertMany: vi.fn() }
+const notificationPreferenceRepository = { findByUserId: vi.fn() }
 vi.mock('#app/repositories/index.js', () => ({
     pushSubscriptionRepository,
     pushNotificationLogRepository,
+    notificationPreferenceRepository,
 }))
+const { wsConnectionRegistry } = await import('#app/websocket/ws-connection-registry.js')
+const logger = (await import('#logger')).default
 
 const { pushNotificationSenderService, PUSH_SEND_CONCURRENCY } =
     await import('./push-notification-sender-service.js')
@@ -50,6 +54,7 @@ beforeEach(() => {
     pushNotificationLogRepository.insertMany.mockResolvedValue(undefined)
     pushSubscriptionRepository.touchLastUsed.mockResolvedValue(undefined)
     pushSubscriptionRepository.deactivate.mockResolvedValue(undefined)
+    notificationPreferenceRepository.findByUserId.mockResolvedValue([])
 })
 
 afterEach(() => {
@@ -253,5 +258,82 @@ describe('pushNotificationSenderService.sendToUser: what a failed send logs', ()
             statusCode: 403,
             errorName: 'WebPushError',
         })
+    })
+})
+
+// feat-236 (Р4): the push of a category follows the user's preferences.
+describe('pushNotificationSenderService.sendToUser by category', () => {
+    beforeEach(() => {
+        pushSubscriptionRepository.findByUserId.mockResolvedValue([
+            subscription(1),
+            subscription(2),
+        ])
+        sendNotification.mockResolvedValue({ statusCode: 201 })
+    })
+
+    it('no stored row: the default of the category applies and the push goes', async () => {
+        await expect(
+            pushNotificationSenderService.sendToUser(7n, payload, { category: 'support' }),
+        ).resolves.toEqual({ sent: 2, failed: 0 })
+        expect(notificationPreferenceRepository.findByUserId).toHaveBeenCalledWith(7n)
+    })
+
+    it('a category turned off reaches no device', async () => {
+        notificationPreferenceRepository.findByUserId.mockResolvedValue([
+            { category: 'support', channel: 'push', enabled: false },
+        ])
+
+        await expect(
+            pushNotificationSenderService.sendToUser(7n, payload, { category: 'support' }),
+        ).resolves.toEqual({ sent: 0, failed: 0 })
+        expect(sendNotification).not.toHaveBeenCalled()
+        expect(pushSubscriptionRepository.findByUserId).not.toHaveBeenCalled()
+    })
+
+    it('another category turned off does not stop this one', async () => {
+        notificationPreferenceRepository.findByUserId.mockResolvedValue([
+            { category: 'support', channel: 'push', enabled: false },
+        ])
+
+        await expect(
+            pushNotificationSenderService.sendToUser(7n, payload, { category: 'security' }),
+        ).resolves.toEqual({ sent: 2, failed: 0 })
+    })
+
+    it('preferences that cannot be read skip the push, not fall back to the default', async () => {
+        notificationPreferenceRepository.findByUserId.mockRejectedValue(new Error('db down'))
+
+        await expect(
+            pushNotificationSenderService.sendToUser(7n, payload, { category: 'support' }),
+        ).resolves.toEqual({ sent: 0, failed: 0 })
+        expect(sendNotification).not.toHaveBeenCalled()
+        expect(logger.warn).toHaveBeenCalledWith(
+            expect.objectContaining({ userId: '7', category: 'support' }),
+            'Notification preferences not read: the push is skipped',
+        )
+    })
+
+    it('without a category (the test push) the preferences are not read', async () => {
+        await pushNotificationSenderService.sendToUser(7n, payload)
+        expect(notificationPreferenceRepository.findByUserId).not.toHaveBeenCalled()
+        expect(sendNotification).toHaveBeenCalledTimes(2)
+    })
+
+    it('skipIfOnline: online on this instance, nothing; offline, the push', async () => {
+        vi.mocked(wsConnectionRegistry.isUserOnline).mockReturnValueOnce(true)
+        await expect(
+            pushNotificationSenderService.sendToUser(7n, payload, {
+                category: 'support',
+                skipIfOnline: true,
+            }),
+        ).resolves.toEqual({ sent: 0, failed: 0 })
+        expect(sendNotification).not.toHaveBeenCalled()
+
+        await expect(
+            pushNotificationSenderService.sendToUser(7n, payload, {
+                category: 'support',
+                skipIfOnline: true,
+            }),
+        ).resolves.toEqual({ sent: 2, failed: 0 })
     })
 })
