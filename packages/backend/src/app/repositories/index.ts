@@ -3,6 +3,13 @@ export { userPreferencesRepository } from './user/user-preferences-repository.js
 export { llmUsageRepository } from './ai/usage/llm-usage-repository.js'
 export { pushSubscriptionRepository } from './notifications/push-subscription-repository.js'
 export { pushNotificationLogRepository } from './notifications/push-notification-log-repository.js'
+export type {
+    NotificationInsert,
+    NotificationPage,
+    NotificationRow,
+} from './notifications/notification-repository.js'
+export { notificationRepository } from './notifications/notification-repository.js'
+export { notificationPreferenceRepository } from './notifications/notification-preference-repository.js'
 export { oauthAccountRepository } from './auth/oauth-account-repository.js'
 export { emailVerificationRepository } from './auth/email-verification-repository.js'
 export { emailLinkVerificationRepository } from './auth/email-link-verification-repository.js'
