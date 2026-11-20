@@ -31,6 +31,8 @@ The admin routes of the `prompts` group ([`http-routes.ts`](https://github.com/B
 - `PUT /prompts/:type` updates the DB, after which `promptService.update()` reloads the row into the cache;
 - `POST /prompts/:type/test` runs the prompt with an arbitrary message through [`prompt-test-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/ai/prompt-test-service.ts) and `textAdapter` — without its own `fetch` and without a fallback OpenAI call. Provider not configured → `503 service_unavailable`; provider responded with an error → `502 upstream_error`; did not finish within `AI_REQUEST_TIMEOUT_MS` → `504 upstream_timeout`. The provider's error text goes only to the log. If the client closed the request, the provider call is cancelled (`HttpContext.signal`).
 
+A change of a prompt (`PUT /prompts/:type`) and of a knowledge-base article writes an event to the [audit log](/en/backend/audit-log): the changed fields, the text as a hash and a length.
+
 ## Usage accounting
 
 [`llm-usage-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/ai/usage/llm-usage-service.ts) writes to the `llm_text_usage` table through `recordText()`; for adapter calls there is `textUsageRecorder(feature, userId, promptId)`, which returns a ready `onComplete`. The write is fire-and-forget: an insert error goes only to `logger.warn`. Each row stores `user_id`, `llm_system_prompt_id`, `model`, `feature`, three token counters and a **prompt fingerprint**: `prompt_sha256` (SHA-256 in hex) and `prompt_chars` (length in characters). The prompt text (`final_prompt`) is **not stored** by default (see [below](#what-the-log-stores-from-the-prompt)).

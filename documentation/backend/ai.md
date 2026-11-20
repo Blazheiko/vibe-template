@@ -31,6 +31,8 @@
 - `PUT /prompts/:type` оновлює БД, після чого `promptService.update()` перечитує рядок у кеш;
 - `POST /prompts/:type/test` проганяє промпт із довільним повідомленням через [`prompt-test-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/ai/prompt-test-service.ts) і `textAdapter` — без власного `fetch` і без запасного виклику OpenAI. Провайдер не налаштований → `503 service_unavailable`; провайдер відповів помилкою → `502 upstream_error`; не вклався в `AI_REQUEST_TIMEOUT_MS` → `504 upstream_timeout`. Текст помилки провайдера йде лише в лог. Якщо клієнт закрив запит, виклик провайдера скасовується (`HttpContext.signal`).
 
+Зміна промпту (`PUT /prompts/:type`) і статті бази знань пише подію в [журнал дій](/backend/audit-log): змінені поля, текст як хеш і довжина.
+
 ## Облік використання
 
 [`llm-usage-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/ai/usage/llm-usage-service.ts) пише в таблицю `llm_text_usage` через `recordText()`; для викликів адаптерів є `textUsageRecorder(feature, userId, promptId)`, що повертає готовий `onComplete`. Запис іде у fire-and-forget режимі: помилка вставки потрапляє лише в `logger.warn`. У кожному рядку зберігаються `user_id`, `llm_system_prompt_id`, `model`, `feature`, три лічильники токенів і **відбиток промпту**: `prompt_sha256` (SHA-256 у hex) та `prompt_chars` (довжина в символах). Текст промпту (`final_prompt`) за замовчуванням **не зберігається** (див. [нижче](#що-журнал-зберігає-від-промпту)).
