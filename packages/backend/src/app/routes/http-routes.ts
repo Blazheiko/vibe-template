@@ -12,6 +12,7 @@ import PushSubscriptionController from '#app/controllers/http/notifications/push
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import AccountController from '#app/controllers/http/user/account-controller.js'
 import AccountSessionsController from '#app/controllers/http/user/account-sessions-controller.js'
+import NotificationController from '#app/controllers/http/notifications/notification-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
 import LlmUsageController from '#app/controllers/http/ai/usage/llm-usage-controller.js'
@@ -24,6 +25,7 @@ import {
     avatarContracts,
     knowledgeBaseContracts,
     mainContracts,
+    notificationContracts,
     oauthContracts,
     promptContracts,
     pushSubscriptionContracts,
@@ -353,6 +355,43 @@ export default [
         description: 'Account profile and session routes (feat-232, feat-233)',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'account',
+    },
+    {
+        group: [
+            defineRoute({
+                contract: notificationContracts.list,
+                handler: NotificationController.list.bind(NotificationController),
+                description: 'A page of the notifications of the current user, newest first',
+            }),
+            defineRoute({
+                contract: notificationContracts.unreadCount,
+                handler: NotificationController.unreadCount.bind(NotificationController),
+                description: 'The unread notification count of the current user, up to 100',
+            }),
+            defineRoute({
+                contract: notificationContracts.readAll,
+                handler: NotificationController.readAll.bind(NotificationController),
+                description: 'Mark every notification up to an id read',
+            }),
+            defineRoute({
+                contract: notificationContracts.getPreferences,
+                handler: NotificationController.getPreferences.bind(NotificationController),
+                description: 'The notification channels of each category',
+            }),
+            defineRoute({
+                contract: notificationContracts.updatePreference,
+                handler: NotificationController.updatePreference.bind(NotificationController),
+                description: 'Turn one channel of a category on or off',
+            }),
+            defineRoute({
+                contract: notificationContracts.markRead,
+                handler: NotificationController.markRead.bind(NotificationController),
+                description: 'Mark one notification read; answers its link (idempotent)',
+            }),
+        ],
+        description: 'Notification center (feat-236)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'notifications',
     },
     {
         group: [

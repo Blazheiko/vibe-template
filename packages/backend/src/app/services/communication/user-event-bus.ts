@@ -24,6 +24,8 @@ import type { BroadcastEventName, BroadcastMessage } from 'shared/schemas'
 const BUS_EVENTS: ReadonlySet<BroadcastEventName> = new Set([
     'user_profile_updated',
     'user_sessions_changed',
+    'notifications_changed',
+    'notification_preferences_changed',
 ])
 
 interface BusEnvelope {

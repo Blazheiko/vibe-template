@@ -84,6 +84,13 @@ export const NOTIFICATIONS_PAGE_MAX = 50
 /** The unread count stops at this number; the client shows "99+" (Р6). */
 export const NOTIFICATIONS_UNREAD_COUNT_CAP = 100
 
+/**
+ * The `reason` of a 400 for PUT /notifications/preferences (Р4): the channel is locked on, or
+ * the category does not have it.
+ */
+export const NOTIFICATION_CHANNEL_LOCKED_REASON = 'channel_locked'
+export const NOTIFICATION_CHANNEL_UNAVAILABLE_REASON = 'channel_unavailable'
+
 interface ChannelPolicy {
     /** A locked channel is always on: the user cannot turn it off (Р4). */
     readonly locked: boolean
