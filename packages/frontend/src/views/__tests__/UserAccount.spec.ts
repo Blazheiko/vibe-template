@@ -70,6 +70,13 @@ vi.mock('@/utils/api', () => ({
         unlinkSignInMethod: unlinkSignInMethodMock,
     },
     pushSubscriptionApi: { testPush: vi.fn() },
+    // feat-236: the notification preferences on the page (own spec).
+    notificationsApi: {
+        getPreferences: vi.fn(() =>
+            Promise.resolve({ data: { status: 'success', preferences: [] }, error: null }),
+        ),
+        updatePreference: vi.fn(),
+    },
 }))
 vi.mock('@/stores/user', () => ({
     useUserStore: () => ({

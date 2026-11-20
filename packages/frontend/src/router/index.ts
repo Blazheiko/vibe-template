@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { redirectWithoutUrlToken } from '@/utils/one-time-url-token'
+import { scrollToHash } from '@/utils/scroll-to-hash'
 import type { RouteRecordRaw } from 'vue-router'
 import Login from '@/views/Login.vue'
 import UserAccount from '@/views/UserAccount.vue'
@@ -74,6 +75,19 @@ const routes: RouteRecordRaw[] = [
             showBack: true,
         },
     },
+    // feat-236 (Р7, Р11): the notification center.
+    {
+        path: '/notifications',
+        name: 'Notifications',
+        component: () => import('@/views/NotificationsView.vue'),
+        meta: { requiresAuth: true, title: 'Notifications', showBack: true },
+    },
+    {
+        path: '/notifications/:id/open',
+        name: 'NotificationOpen',
+        component: () => import('@/views/NotificationOpenView.vue'),
+        meta: { requiresAuth: true, title: 'Notifications' },
+    },
     {
         path: '/about',
         name: 'About',
@@ -142,6 +156,11 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
     routes,
+})
+
+// feat-236 (Р7): `/account#sessions` from a notification opens the page at that section.
+router.afterEach((to) => {
+    if (to.hash !== '') void scrollToHash(to.hash)
 })
 
 // feat-205: the one-time token of a mailed link does not stay in the address. main.ts takes it

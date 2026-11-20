@@ -10,6 +10,7 @@ import { passwordLengthProblem } from '@/utils/validate-password'
 import { getErrorReason, getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
 import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import ActiveSessions from '@/components/account/ActiveSessions.vue'
+import NotificationPreferences from '@/components/account/NotificationPreferences.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
 import { oauthProviderLabel } from '@/utils/oauth-provider-label'
@@ -974,6 +975,8 @@ watch(
             <p v-if="pushStatusMessage" class="form-message">{{ pushStatusMessage }}</p>
             <p v-if="testPushResult" class="form-message">{{ testPushResult }}</p>
         </section>
+
+        <NotificationPreferences />
 
         <AvatarEditorModal
             v-if="showAvatarEditor && selectedFile"

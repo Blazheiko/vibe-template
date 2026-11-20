@@ -61,6 +61,7 @@ import type {
     SupportKnowledgeBaseCreateInput,
     SupportKnowledgeBaseUpdateInput,
     UpdateProfileInput,
+    UpdateNotificationPreferenceInput,
 } from 'shared/schemas'
 import {
     accountContracts,
@@ -69,6 +70,7 @@ import {
     avatarContracts,
     knowledgeBaseContracts,
     mainContracts,
+    notificationContracts,
     oauthContracts,
     pushSubscriptionContracts,
     supportContracts,
@@ -182,6 +184,24 @@ export const accountApi = {
     revokeSession: (id: string) => callApi(accountContracts.revokeSession, { params: { id } }),
     revokeOtherSessions: () =>
         callApi(accountContracts.revokeOtherSessions, { body: {} }, { renewsSession: true }),
+}
+
+// feat-236: the notification center (Р4, Р6).
+export const notificationsApi = {
+    list: (query: { unread?: boolean; before?: string; limit?: number } = {}) =>
+        callApi(notificationContracts.list, {
+            query: {
+                ...(query.unread === true ? { unread: '1' as const } : {}),
+                ...(query.before !== undefined ? { before: query.before } : {}),
+                ...(query.limit !== undefined ? { limit: query.limit } : {}),
+            },
+        }),
+    unreadCount: () => callApi(notificationContracts.unreadCount),
+    markRead: (id: string) => callApi(notificationContracts.markRead, { params: { id }, body: {} }),
+    readAll: (upTo: string) => callApi(notificationContracts.readAll, { body: { upTo } }),
+    getPreferences: () => callApi(notificationContracts.getPreferences),
+    updatePreference: (body: UpdateNotificationPreferenceInput) =>
+        callApi(notificationContracts.updatePreference, { body }),
 }
 
 export const mainApi = {
