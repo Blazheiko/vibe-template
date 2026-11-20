@@ -16,12 +16,14 @@ import {
     customType,
     smallint,
     check,
+    uuid,
 } from 'drizzle-orm/pg-core'
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
 import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
+import { AUDIT_ACTOR_KINDS } from 'shared/audit'
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 export const pushNotificationStatusEnum = pgEnum('push_notification_status', [
@@ -46,6 +48,7 @@ export const llmTextFeatureEnum = pgEnum('llm_text_feature', [
     'SUPPORT_QUERY_TRANSLATION',
     'SUPPORT_EMBEDDING',
 ])
+export const auditActorKindEnum = pgEnum('audit_actor_kind', AUDIT_ACTOR_KINDS)
 export const userAppTypeEnum = pgEnum('user_app_type', ['web', 'pwa'])
 // feat-118: how a started provider call ended (ADR 0003, «Аудит викликів»).
 export const llmTextUsageStatusEnum = pgEnum('llm_text_usage_status', [
@@ -474,5 +477,61 @@ export const supportChatHistory = pgTable(
             table.userId,
             table.clientMessageId,
         ),
+    ],
+)
+
+// feat-235 (Р1, Р2, Р8): the audit log. Rows are only inserted (a trigger of the migration refuses
+// UPDATE) and deleted by the retention job. The user ids have no foreign key: an entry outlives
+// the account it names. `occurred_at` has no default: every event is stamped with
+// clock_timestamp() taken after the row lock of its change, so a forgotten stamp fails the insert
+// instead of falling back to the start of the transaction. No IP, e-mail, phone or session id.
+export const auditEvents = pgTable(
+    'audit_events',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        occurredAt: timestamp('occurred_at', { precision: 6 }).notNull(),
+        actorKind: auditActorKindEnum('actor_kind').notNull(),
+        actorUserId: bigint('actor_user_id', { mode: 'bigint' }),
+        actorRole: userRoleEnum('actor_role'),
+        action: varchar('action', { length: 64 }).notNull(),
+        targetType: varchar('target_type', { length: 32 }).notNull(),
+        targetId: varchar('target_id', { length: 64 }).notNull(),
+        targetUserId: bigint('target_user_id', { mode: 'bigint' }),
+        requestId: uuid('request_id'),
+        changes: jsonb('changes'),
+        metadata: jsonb('metadata'),
+    },
+    // DESC NULLS FIRST is what a plain `ORDER BY occurred_at DESC, id DESC` asks for, so the list
+    // reads an index in its order; the retention job reads the first one backwards.
+    (table) => [
+        // The feed, the cursor and the retention job.
+        index('audit_events_occurred_at_idx').on(
+            table.occurredAt.desc().nullsFirst(),
+            table.id.desc().nullsFirst(),
+        ),
+        index('audit_events_target_user_idx').on(
+            table.targetUserId,
+            table.occurredAt.desc().nullsFirst(),
+            table.id.desc().nullsFirst(),
+        ),
+        index('audit_events_actor_user_idx').on(
+            table.actorUserId,
+            table.occurredAt.desc().nullsFirst(),
+            table.id.desc().nullsFirst(),
+        ),
+        index('audit_events_target_idx').on(
+            table.targetType,
+            table.targetId,
+            table.occurredAt.desc().nullsFirst(),
+            table.id.desc().nullsFirst(),
+        ),
+        index('audit_events_action_idx').on(
+            table.action,
+            table.occurredAt.desc().nullsFirst(),
+            table.id.desc().nullsFirst(),
+        ),
+        index('audit_events_request_id_idx')
+            .on(table.requestId)
+            .where(sql`${table.requestId} IS NOT NULL`),
     ],
 )
