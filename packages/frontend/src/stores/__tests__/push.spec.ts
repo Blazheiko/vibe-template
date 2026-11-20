@@ -163,7 +163,6 @@ describe('push store: subscribing', () => {
                 p256dhKey: 'AQID',
                 authKey: 'AQID',
                 userAgent: navigator.userAgent,
-                notificationTypes: ['mention', 'system'],
             }),
         )
         expect(store.pushSubscriptionId).toBe('sub-7')

@@ -541,7 +541,6 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             endpoint: `https://fcm.googleapis.com/fcm/send/${label}-${String(now)}-${String(counter)}`,
             p256dhKey: 'attacker-key',
             authKey: 'attacker-auth',
-            notificationTypes: ['system'],
         })
         const devicesOf = async (userId: bigint) =>
             db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId))

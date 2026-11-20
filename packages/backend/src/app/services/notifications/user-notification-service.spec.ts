@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// Business-event pushes (code-issues item 72): security notices as `system` to every
-// device, support replies as `mention` only when the user is offline; never awaited.
+// Business-event pushes (code-issues item 72): security notices to every device, support
+// replies only when the user is offline; never awaited.
 const sendToUser = vi.fn()
 vi.mock('#app/services/notifications/push-notification-sender-service.js', () => ({
     pushNotificationSenderService: { sendToUser },
@@ -17,24 +17,23 @@ afterEach(() => {
 
 describe('userNotificationService', () => {
     it.each(['sign_in_method_added', 'password_changed', 'password_reset', 'logout_all'] as const)(
-        'security %s: system push to every device',
+        'security %s: push to every device',
         (event) => {
             sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
             userNotificationService.security(7n, event)
             expect(sendToUser).toHaveBeenCalledWith(
                 7n,
                 expect.objectContaining({ title: expect.any(String), url: '/account' }),
-                { notificationType: 'system' },
+                {},
             )
         },
     )
 
-    it('support reply: mention push, skipped while the user is online', () => {
+    it('support reply: push skipped while the user is online', () => {
         sendToUser.mockResolvedValue({ sent: 0, failed: 0 })
         userNotificationService.supportReply(7n)
         expect(sendToUser).toHaveBeenCalledWith(7n, expect.objectContaining({ url: '/support' }), {
             skipIfOnline: true,
-            notificationType: 'mention',
         })
     })
 
@@ -46,7 +45,7 @@ describe('userNotificationService', () => {
             expect(sendToUser).toHaveBeenCalledWith(
                 7n,
                 expect.objectContaining({ url: '/account#sessions' }),
-                { notificationType: 'system' },
+                {},
             )
         },
     )
@@ -64,7 +63,7 @@ describe('userNotificationService', () => {
                 url: '/account#sessions',
                 tag: 'security-sign-in',
             },
-            { notificationType: 'system' },
+            {},
         )
     })
 

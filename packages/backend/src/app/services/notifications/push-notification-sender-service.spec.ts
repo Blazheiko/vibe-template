@@ -41,7 +41,6 @@ const subscription = (id: number, extra: Record<string, unknown> = {}) => ({
     p256dhKey: `p${String(id)}`,
     authKey: `a${String(id)}`,
     isActive: true,
-    notificationTypes: null,
     ...extra,
 })
 
@@ -154,28 +153,6 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
         expect(pushNotificationLogRepository.insertMany).toHaveBeenCalledOnce()
         expect(pushSubscriptionRepository.touchLastUsed).toHaveBeenCalledOnce()
         expect(pushSubscriptionRepository.deactivate).toHaveBeenCalledWith(2n, 7n)
-    })
-
-    it('filters by notificationType as before', async () => {
-        pushSubscriptionRepository.findByUserId.mockResolvedValue([
-            subscription(1, { notificationTypes: ['system'] }),
-            subscription(2, { notificationTypes: ['mention'] }),
-            subscription(3, { notificationTypes: [] }),
-        ])
-        sendNotification.mockResolvedValue({ statusCode: 201 })
-
-        const result = await pushNotificationSenderService.sendToUser(7n, payload, {
-            notificationType: 'system',
-        })
-
-        expect(result).toEqual({ sent: 2, failed: 0 })
-        const endpoints = sendNotification.mock.calls.map(
-            (call) => (call[0] as { endpoint: string }).endpoint,
-        )
-        expect(endpoints.sort()).toEqual([
-            'https://fcm.googleapis.com/fcm/send/1',
-            'https://fcm.googleapis.com/fcm/send/3',
-        ])
     })
 
     it('does not write logs when nothing was sent', async () => {

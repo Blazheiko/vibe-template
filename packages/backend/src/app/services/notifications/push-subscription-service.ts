@@ -96,9 +96,6 @@ export const pushSubscriptionService = {
     > {
         const updateData = {
             ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
-            ...(payload.notificationTypes !== undefined
-                ? { notificationTypes: payload.notificationTypes }
-                : {}),
             ...(payload.timezone !== undefined ? { timezone: payload.timezone } : {}),
             ...(payload.deviceType !== undefined ? { deviceType: payload.deviceType } : {}),
             ...(payload.browserName !== undefined ? { browserName: payload.browserName } : {}),
@@ -243,7 +240,6 @@ async function upsertSubscription(
                 browserVersion: payload.browserVersion,
                 osName: payload.osName,
                 osVersion: payload.osVersion,
-                notificationTypes: payload.notificationTypes,
                 timezone: payload.timezone,
                 isActive: true,
             },
@@ -273,7 +269,6 @@ async function upsertSubscription(
             browserVersion: payload.browserVersion ?? null,
             osName: payload.osName ?? null,
             osVersion: payload.osVersion ?? null,
-            notificationTypes: payload.notificationTypes,
             timezone: payload.timezone ?? null,
             userId,
         },

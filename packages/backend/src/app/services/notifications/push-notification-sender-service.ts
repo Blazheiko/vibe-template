@@ -5,7 +5,6 @@ import {
     pushNotificationLogRepository,
     pushSubscriptionRepository,
     type PushNotificationLogInsert,
-    type PushSubscriptionRow,
 } from '#app/repositories/index.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
@@ -41,16 +40,6 @@ async function forEachWithConcurrency<T>(
         }
     }
     await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
-}
-
-function acceptsType(subscription: PushSubscriptionRow, notificationType?: string): boolean {
-    const types = subscription.notificationTypes
-    return (
-        notificationType === undefined ||
-        !Array.isArray(types) ||
-        types.length === 0 ||
-        (types as string[]).includes(notificationType)
-    )
 }
 
 function ensureVapidConfigured(): boolean {
@@ -91,7 +80,7 @@ export const pushNotificationSenderService = {
     async sendToUser(
         userId: bigint,
         payload: PushNotificationPayload,
-        options: { skipIfOnline?: boolean; notificationType?: string } = {},
+        options: { skipIfOnline?: boolean } = {},
     ): Promise<{ sent: number; failed: number }> {
         if (!ensureVapidConfigured()) {
             return { sent: 0, failed: 0 }
@@ -145,74 +134,74 @@ export const pushNotificationSenderService = {
             },
         })
 
-        const targets = activeSubscriptions.filter((subscription) =>
-            acceptsType(subscription, options.notificationType),
-        )
-
-        await forEachWithConcurrency(targets, PUSH_SEND_CONCURRENCY, async (subscription) => {
-            const base = {
-                userId,
-                subscriptionId: subscription.id,
-                messageTitle: payload.title,
-                messageBody: payload.body,
-                messageData: payload.data ?? null,
-            }
-            try {
-                const response = await sendPush(
-                    {
-                        endpoint: subscription.endpoint,
-                        keys: {
-                            p256dh: subscription.p256dhKey,
-                            auth: subscription.authKey,
-                        },
-                    },
-                    pushPayload,
-                    // feat-138 (L13), feat-139 (Q4): a push service that hangs or trickles must not
-                    // hold the send (and the loop over the user's subscriptions): one deadline over
-                    // the whole request. No proxy or agent (feat-104).
-                    { deadlineMs: PUSH_SEND_TIMEOUT_MS },
-                )
-                logs.push({
-                    ...base,
-                    status: 'SENT',
-                    responseData: { statusCode: response.statusCode },
-                    sentAt: new Date(),
-                })
-                usedIds.push(subscription.id)
-                sent++
-            } catch (error: unknown) {
-                const statusCode = (error as { statusCode?: number }).statusCode
-                const errorMessage = error instanceof Error ? error.message : String(error)
-                logs.push({
-                    ...base,
-                    status: 'FAILED',
-                    errorMessage,
-                    responseData: { statusCode: statusCode ?? null },
-                    sentAt: new Date(),
-                })
-                failed++
-                // Not the error object: a WebPushError carries the subscription's endpoint and
-                // the headers and body of the push service answer as own fields (feat-150). The
-                // text of the error stays in the notification log row.
-                logger.error(
-                    {
-                        subscriptionId: String(subscription.id),
-                        statusCode: statusCode ?? null,
-                        errorName: error instanceof Error ? error.name : typeof error,
-                    },
-                    'Failed to send push notification',
-                )
-
-                // 410 Gone or 404 — subscription expired, deactivate
-                if (statusCode === 410 || statusCode === 404) {
-                    logger.info(
-                        { subscriptionId: String(subscription.id), statusCode },
-                        'Push subscription expired, deactivating',
-                    )
-                    expiredIds.push(subscription.id)
+        await forEachWithConcurrency(
+            activeSubscriptions,
+            PUSH_SEND_CONCURRENCY,
+            async (subscription) => {
+                const base = {
+                    userId,
+                    subscriptionId: subscription.id,
+                    messageTitle: payload.title,
+                    messageBody: payload.body,
+                    messageData: payload.data ?? null,
                 }
-            }
-        })
+                try {
+                    const response = await sendPush(
+                        {
+                            endpoint: subscription.endpoint,
+                            keys: {
+                                p256dh: subscription.p256dhKey,
+                                auth: subscription.authKey,
+                            },
+                        },
+                        pushPayload,
+                        // feat-138 (L13), feat-139 (Q4): a push service that hangs or trickles must not
+                        // hold the send (and the loop over the user's subscriptions): one deadline over
+                        // the whole request. No proxy or agent (feat-104).
+                        { deadlineMs: PUSH_SEND_TIMEOUT_MS },
+                    )
+                    logs.push({
+                        ...base,
+                        status: 'SENT',
+                        responseData: { statusCode: response.statusCode },
+                        sentAt: new Date(),
+                    })
+                    usedIds.push(subscription.id)
+                    sent++
+                } catch (error: unknown) {
+                    const statusCode = (error as { statusCode?: number }).statusCode
+                    const errorMessage = error instanceof Error ? error.message : String(error)
+                    logs.push({
+                        ...base,
+                        status: 'FAILED',
+                        errorMessage,
+                        responseData: { statusCode: statusCode ?? null },
+                        sentAt: new Date(),
+                    })
+                    failed++
+                    // Not the error object: a WebPushError carries the subscription's endpoint and
+                    // the headers and body of the push service answer as own fields (feat-150). The
+                    // text of the error stays in the notification log row.
+                    logger.error(
+                        {
+                            subscriptionId: String(subscription.id),
+                            statusCode: statusCode ?? null,
+                            errorName: error instanceof Error ? error.name : typeof error,
+                        },
+                        'Failed to send push notification',
+                    )
+
+                    // 410 Gone or 404 — subscription expired, deactivate
+                    if (statusCode === 410 || statusCode === 404) {
+                        logger.info(
+                            { subscriptionId: String(subscription.id), statusCode },
+                            'Push subscription expired, deactivating',
+                        )
+                        expiredIds.push(subscription.id)
+                    }
+                }
+            },
+        )
 
         // Bookkeeping after the sends: a failed write must not turn a delivered
         // notification into a failure in the result.

@@ -15,8 +15,6 @@ export const CreateSubscriptionInputSchema = type({
     'browserVersion?': 'string <= 50',
     'osName?': 'string <= 100',
     'osVersion?': 'string <= 50',
-    // Two kinds exist; a longer list is repetition.
-    'notificationTypes?': "('mention' | 'system')[] <= 10",
     'timezone?': 'string <= 50',
     '+': 'reject',
 })

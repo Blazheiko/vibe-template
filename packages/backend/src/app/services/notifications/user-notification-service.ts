@@ -74,7 +74,7 @@ const SECURITY_MESSAGES: Record<SecurityEvent, PushNotificationPayload> = {
 const send = (
     userId: bigint,
     payload: PushNotificationPayload,
-    options: { skipIfOnline?: boolean; notificationType: 'system' | 'mention' },
+    options: { skipIfOnline?: boolean },
     event: string,
 ): void => {
     pushNotificationSenderService.sendToUser(userId, payload, options).catch((err: unknown) => {
@@ -92,12 +92,7 @@ export const userNotificationService = {
         event: SecurityEvent,
         details?: Partial<Pick<PushNotificationPayload, 'body' | 'url'>>,
     ): void {
-        send(
-            userId,
-            { ...SECURITY_MESSAGES[event], ...details },
-            { notificationType: 'system' },
-            event,
-        )
+        send(userId, { ...SECURITY_MESSAGES[event], ...details }, {}, event)
     },
 
     /** A support reply reaches the user only when no device has the app open. */
@@ -110,7 +105,7 @@ export const userNotificationService = {
                 url: '/support',
                 tag: 'support-reply',
             },
-            { skipIfOnline: true, notificationType: 'mention' },
+            { skipIfOnline: true },
             'support_reply',
         )
     },
