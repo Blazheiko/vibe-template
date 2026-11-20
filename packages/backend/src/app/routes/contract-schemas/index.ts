@@ -9,6 +9,7 @@ import { avatarSchemas } from './avatar.js'
 import { authSchemas } from './auth.js'
 import { knowledgeBaseSchemas } from './knowledge-base.js'
 import { mainSchemas } from './main.js'
+import { notificationSchemas } from './notifications.js'
 import { oauthSchemas } from './oauth.js'
 import { promptSchemas } from './prompts.js'
 import { pushSubscriptionSchemas } from './push-subscriptions.js'
@@ -26,6 +27,7 @@ export const contractSchemaRegistry = mergeContractSchemas(
     authSchemas,
     knowledgeBaseSchemas,
     mainSchemas,
+    notificationSchemas,
     oauthSchemas,
     promptSchemas,
     pushSubscriptionSchemas,

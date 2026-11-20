@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-// Business-event pushes (code-issues item 72): security notices as `system` to every
-// device, support replies as `mention` only when the user is offline; never awaited.
-const sendToUser = vi.fn()
-vi.mock('#app/services/notifications/push-notification-sender-service.js', () => ({
-    pushNotificationSenderService: { sendToUser },
+// Business-event notices (code-issues item 72, feat-236): each security event becomes a kind of
+// the notification catalog with its params, and a support reply is `support.reply`. The delivery
+// itself (row, signal, push) is notification-service.ts; here only what is handed to it.
+const notify = vi.fn()
+vi.mock('#app/services/notifications/notification-service.js', () => ({
+    notificationService: { notify },
 }))
-const warn = vi.fn()
-vi.mock('#vendor/utils/logger.js', () => ({ default: { warn, info: vi.fn(), error: vi.fn() } }))
 
 const { userNotificationService } = await import('./user-notification-service.js')
 
@@ -16,65 +15,32 @@ afterEach(() => {
 })
 
 describe('userNotificationService', () => {
-    it.each(['sign_in_method_added', 'password_changed', 'password_reset', 'logout_all'] as const)(
-        'security %s: system push to every device',
-        (event) => {
-            sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
-            userNotificationService.security(7n, event)
-            expect(sendToUser).toHaveBeenCalledWith(
-                7n,
-                expect.objectContaining({ title: expect.any(String), url: '/account' }),
-                { notificationType: 'system' },
-            )
-        },
-    )
+    it.each([
+        ['password_changed', 'security.password_changed'],
+        ['password_reset', 'security.password_reset'],
+        ['logout_all', 'security.logout_all'],
+        ['account_claimed', 'security.account_claimed'],
+    ] as const)('security %s → %s with no params', (event, kind) => {
+        userNotificationService.security(7n, event)
+        expect(notify).toHaveBeenCalledWith(7n, kind, {})
+    })
 
-    it('support reply: mention push, skipped while the user is online', () => {
-        sendToUser.mockResolvedValue({ sent: 0, failed: 0 })
+    it('passes the params of the kind', () => {
+        userNotificationService.security(7n, 'new_sign_in', { device: 'Chrome on macOS' })
+        userNotificationService.security(7n, 'sign_in_method_added', { provider: 'github' })
+        userNotificationService.security(7n, 'sign_in_method_removed', { provider: 'gitlab' })
+        userNotificationService.security(7n, 'session_revoked')
+
+        expect(notify.mock.calls).toEqual([
+            [7n, 'security.new_sign_in', { device: 'Chrome on macOS' }],
+            [7n, 'security.method_added', { provider: 'github' }],
+            [7n, 'security.method_removed', { provider: 'gitlab' }],
+            [7n, 'security.session_revoked', {}],
+        ])
+    })
+
+    it('support reply is support.reply', () => {
         userNotificationService.supportReply(7n)
-        expect(sendToUser).toHaveBeenCalledWith(7n, expect.objectContaining({ url: '/support' }), {
-            skipIfOnline: true,
-            notificationType: 'mention',
-        })
-    })
-
-    it.each(['new_sign_in', 'session_revoked'] as const)(
-        'security %s links to the session list (feat-233)',
-        (event) => {
-            sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
-            userNotificationService.security(7n, event)
-            expect(sendToUser).toHaveBeenCalledWith(
-                7n,
-                expect.objectContaining({ url: '/account#sessions' }),
-                { notificationType: 'system' },
-            )
-        },
-    )
-
-    it('security details replace the text of the event, the rest stays', () => {
-        sendToUser.mockResolvedValue({ sent: 1, failed: 0 })
-        userNotificationService.security(7n, 'new_sign_in', {
-            body: 'Signed in from Chrome on macOS.',
-        })
-        expect(sendToUser).toHaveBeenCalledWith(
-            7n,
-            {
-                title: 'New sign-in',
-                body: 'Signed in from Chrome on macOS.',
-                url: '/account#sessions',
-                tag: 'security-sign-in',
-            },
-            { notificationType: 'system' },
-        )
-    })
-
-    it('a failing push is logged, not thrown', async () => {
-        sendToUser.mockRejectedValue(new Error('db down'))
-        expect(() => {
-            userNotificationService.security(7n, 'new_sign_in')
-        }).not.toThrow()
-        await vi.waitFor(() => {
-            expect(warn).toHaveBeenCalledOnce()
-        })
+        expect(notify).toHaveBeenCalledWith(7n, 'support.reply', {})
     })
 })

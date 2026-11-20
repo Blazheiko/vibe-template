@@ -412,4 +412,73 @@ export default {
             ai_prompt_updated: 'AI prompt updated',
         },
     },
+
+    // feat-236: the notification center. Kind keys are those of shared/notifications with '_'
+    // for '.'; {device} is "Chrome on macOS", {provider} the provider's name.
+    notifications: {
+        title: 'Notifications',
+        bell: 'Notifications',
+        unreadLabel: '{count} unread',
+        all: 'All',
+        unread: 'Unread',
+        markAllRead: 'Mark all as read',
+        showAll: 'All notifications',
+        showMore: 'Show more',
+        empty: 'No notifications yet',
+        emptyUnread: 'No unread notifications',
+        errorLoad: 'Could not load notifications',
+        retry: 'Try again',
+        opening: 'Opening…',
+        notice: {
+            gone: 'This notification no longer exists',
+            error: 'Could not open the notification. Try again.',
+        },
+        preferences: {
+            title: 'Notification settings',
+            hint: 'Notifications always appear here, in the app. Choose where else they reach you.',
+            categories: { security: 'Security', support: 'Support' },
+            channels: { push: 'Push', email: 'Email' },
+            locked: 'Always on for security',
+            errorLoad: 'Could not load the settings',
+            errorSave: 'Could not save the setting',
+        },
+        kinds: {
+            security_new_sign_in: {
+                title: 'New sign-in',
+                body: 'Signed in from {device}. If it was not you, end that session and change your password.',
+            },
+            security_method_added: {
+                title: 'New sign-in method',
+                body: '{provider} was linked to your account. If it was not you, remove it.',
+            },
+            security_method_removed: {
+                title: 'Sign-in method removed',
+                body: '{provider} was removed from your account. If it was not you, change your password.',
+            },
+            security_password_changed: {
+                title: 'Password changed',
+                body: 'Your password was changed. If it was not you, reset it now.',
+            },
+            security_password_reset: {
+                title: 'Password reset',
+                body: 'Your password was reset and other sessions were signed out.',
+            },
+            security_logout_all: {
+                title: 'Signed out everywhere',
+                body: 'All sessions of your account were signed out.',
+            },
+            security_session_revoked: {
+                title: 'Session ended',
+                body: 'One of your sessions was ended from another device. If it was not you, change your password.',
+            },
+            security_account_claimed: {
+                title: 'Account secured',
+                body: 'Your email was confirmed. Earlier sign-in methods and sessions were removed.',
+            },
+            support_reply: {
+                title: 'Support replied',
+                body: 'A new answer is waiting in the support chat.',
+            },
+        },
+    },
 }

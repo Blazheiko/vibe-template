@@ -166,7 +166,9 @@ describe('signInMethodsService.unlink: an account with a password', () => {
         expect(mocks.userRepository.lockById).toHaveBeenCalledWith(5n, TX)
         expect(mocks.oauthAccountRepository.findByUserId).toHaveBeenCalledWith(5n, TX)
         expect(mocks.oauthAccountRepository.deleteByIdForUser).toHaveBeenCalledWith(31n, 5n, TX)
-        expect(mocks.security).toHaveBeenCalledWith(5n, 'sign_in_method_removed')
+        expect(mocks.security).toHaveBeenCalledWith(5n, 'sign_in_method_removed', {
+            provider: 'github',
+        })
     })
 
     it('removes the only link: the password still signs in', async () => {

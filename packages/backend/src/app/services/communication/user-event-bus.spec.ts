@@ -183,5 +183,13 @@ describe('user event bus', () => {
             payload: 1,
         }
         expect(parseEnvelope(JSON.stringify(envelope))).toEqual(envelope)
+        // feat-236 (Р8): the notification signals are bus events; an unknown event is not.
+        for (const event of ['notifications_changed', 'notification_preferences_changed']) {
+            const signal = { ...envelope, event, payload: {} }
+            expect(parseEnvelope(JSON.stringify(signal))).toEqual(signal)
+        }
+        expect(
+            parseEnvelope(JSON.stringify({ ...envelope, event: 'notification_created' })),
+        ).toBeNull()
     })
 })

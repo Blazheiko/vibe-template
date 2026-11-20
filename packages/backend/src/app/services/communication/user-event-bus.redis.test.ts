@@ -66,6 +66,26 @@ describe.skipIf(!hasRedis)('user event bus across instances', () => {
         await b.bus.stop()
     })
 
+    // feat-236 (Р8): the notification signals cross instances like the profile event.
+    it.each(['notifications_changed', 'notification_preferences_changed'] as const)(
+        '%s of instance A reaches B',
+        async (event) => {
+            const channel = `test:${randomUUID()}:user-events`
+            const a = instance(channel)
+            const b = instance(channel)
+            await a.bus.start()
+            await b.bus.start()
+
+            await a.bus.publishToUser('7', event, {})
+
+            await vi.waitFor(() => {
+                expect(b.delivered).toEqual([['7', event, {}]])
+            })
+            await a.bus.stop()
+            await b.bus.stop()
+        },
+    )
+
     it('a deployment with another prefix (channel) does not get the event', async () => {
         const a = instance(`test:${randomUUID()}:user-events`)
         const other = instance(`test:${randomUUID()}:user-events`)

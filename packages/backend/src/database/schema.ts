@@ -17,6 +17,7 @@ import {
     smallint,
     check,
     uuid,
+    primaryKey,
 } from 'drizzle-orm/pg-core'
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
@@ -24,6 +25,11 @@ import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
 import { AUDIT_ACTOR_KINDS } from 'shared/audit'
+import {
+    NOTIFICATION_CATEGORIES,
+    NOTIFICATION_CHANNELS,
+    NOTIFICATION_KIND_NAMES,
+} from 'shared/notifications'
 
 export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
 export const pushNotificationStatusEnum = pgEnum('push_notification_status', [
@@ -185,8 +191,6 @@ export const pushSubscriptions = pgTable(
         browserVersion: varchar('browser_version', { length: 50 }),
         osName: varchar('os_name', { length: 100 }),
         osVersion: varchar('os_version', { length: 50 }),
-        // Validated on input as ('mention' | 'system')[] (shared/schemas/push-subscription).
-        notificationTypes: jsonb('notification_types').$type<('mention' | 'system')[]>(),
         timezone: varchar('timezone', { length: 50 }),
     },
     (table) => [index('push_subscriptions_user_id_fkey').on(table.userId)],
@@ -215,6 +219,65 @@ export const pushNotificationLogs = pgTable(
     (table) => [
         index('push_notifications_log_user_id_fkey').on(table.userId),
         index('push_notifications_log_subscription_id_fkey').on(table.subscriptionId),
+    ],
+)
+
+// feat-236 (Р1): the notifications of a user, stored before any push. The text is built by the
+// client from `kind` and `params`; `link` is a relative path of the application (Р7).
+export const notifications = pgTable(
+    'notifications',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        category: varchar('category', { length: 32 }).notNull(),
+        kind: varchar('kind', { length: 64 }).notNull(),
+        params: jsonb('params').$type<Record<string, unknown>>().notNull().default({}),
+        link: varchar('link', { length: 512 }),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+        readAt: timestamp('read_at'),
+    },
+    (table) => [
+        index('notifications_user_id_id_idx').on(table.userId, table.id.desc()),
+        index('notifications_user_unread_idx')
+            .on(table.userId, table.id.desc())
+            .where(sql`${table.readAt} IS NULL`),
+        index('notifications_created_at_idx').on(table.createdAt),
+        check(
+            'notifications_category_check',
+            sql`${table.category} IN (${sqlStringList(NOTIFICATION_CATEGORIES)})`,
+        ),
+        check(
+            'notifications_kind_check',
+            sql`${table.kind} IN (${sqlStringList(NOTIFICATION_KIND_NAMES)})`,
+        ),
+        check('notifications_link_check', sql`${table.link} IS NULL OR ${table.link} LIKE '/%'`),
+    ],
+)
+
+// feat-236 (Р4): a channel of a category the user changed. No row: the default of the catalog.
+export const notificationPreferences = pgTable(
+    'notification_preferences',
+    {
+        userId: bigint('user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        category: varchar('category', { length: 32 }).notNull(),
+        channel: varchar('channel', { length: 16 }).notNull(),
+        enabled: boolean('enabled').notNull(),
+        updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    },
+    (table) => [
+        primaryKey({ columns: [table.userId, table.category, table.channel] }),
+        check(
+            'notification_preferences_category_check',
+            sql`${table.category} IN (${sqlStringList(NOTIFICATION_CATEGORIES)})`,
+        ),
+        check(
+            'notification_preferences_channel_check',
+            sql`${table.channel} IN (${sqlStringList(NOTIFICATION_CHANNELS)})`,
+        ),
     ],
 )
 

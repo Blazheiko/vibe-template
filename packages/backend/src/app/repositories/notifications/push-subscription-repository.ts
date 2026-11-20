@@ -24,7 +24,6 @@ export type PushSubscriptionUpdate = Partial<
         | 'browserVersion'
         | 'osName'
         | 'osVersion'
-        | 'notificationTypes'
         | 'timezone'
         | 'isActive'
     >

@@ -89,8 +89,7 @@ describe('pushSubscriptionService', () => {
                 endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
                 p256dhKey: 'key',
                 authKey: 'auth',
-                notificationTypes: ['system'],
-            } as any,
+            },
             'token-7',
         )
 

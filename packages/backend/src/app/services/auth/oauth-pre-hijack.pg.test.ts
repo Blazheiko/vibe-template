@@ -541,7 +541,6 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             endpoint: `https://fcm.googleapis.com/fcm/send/${label}-${String(now)}-${String(counter)}`,
             p256dhKey: 'attacker-key',
             authKey: 'attacker-auth',
-            notificationTypes: ['system'],
         })
         const devicesOf = async (userId: bigint) =>
             db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId))
@@ -556,7 +555,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
 
             const result = await pushSubscriptionService.createSubscription(
                 attacker.id,
-                subscription('after-claim') as never,
+                subscription('after-claim'),
                 attacker.sessionToken,
             )
 
@@ -578,7 +577,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 const pending = pushSubscriptionService
                     .createSubscription(
                         attacker.id,
-                        subscription('during-claim') as never,
+                        subscription('during-claim'),
                         attacker.sessionToken,
                     )
                     .finally(() => {
@@ -611,7 +610,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
 
             const result = await pushSubscriptionService.createSubscription(
                 owner.id,
-                subscription('current') as never,
+                subscription('current'),
                 owner.sessionToken,
             )
 

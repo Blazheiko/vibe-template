@@ -178,6 +178,10 @@ The answer is a partial success, as for a password change: `{ status: "success",
 
 The broadcast event `user_sessions_changed` (no data) goes through the user event bus to every connection of the user ([WebSocket → Events to a user on every instance](/en/backend/websocket#events-to-a-user-on-every-instance)) on a sign-in, a logout, a renewal, an ended session, "end all others", and when the first socket of a session opens or its last one closes. The client reads the first page again on it (events close together are read once, 300 ms) and on every `service:connection_ready`, since the bus does not replay. Changes of `lastSeenAt` send no event.
 
+## Notification preferences
+
+The account page shows the category × channel matrix of the notification center (`GET`/`PUT /notifications/preferences`): the security and support push is turned on or off for every device, and the security mail is shown locked. The push toggle next to it subscribes this device only. See [Notification center](/en/backend/notifications#channels-and-preferences).
+
 ### `lastSeenAt` and `online`
 
 `lastSeenAt` is written beside the record, never into it: with the hourly cookie refresh of an HTTP request (a failed write gives the refresh marker back, so the next request tries again), when a WebSocket opens, and after an authenticated WS message (not a heartbeat) at most every 15 minutes per connection, the time moving only after a successful write. While Redis writes succeed it lags the last action by at most an hour; the page shows it to the hour ("less than an hour ago", "3 h ago", "yesterday", a date).

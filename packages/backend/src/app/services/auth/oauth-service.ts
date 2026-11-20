@@ -691,7 +691,7 @@ const announceLink = (
         userId,
         email: linked.account.email,
         name: linked.account.name,
-        providerTitle: providerTitle(provider),
+        provider,
         providerName,
     })
 }

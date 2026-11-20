@@ -19,7 +19,6 @@ const row = {
     browserVersion: null,
     osName: null,
     osVersion: null,
-    notificationTypes: ['mention' as const],
     timezone: null,
 }
 

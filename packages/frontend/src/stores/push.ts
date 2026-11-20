@@ -204,7 +204,6 @@ export const usePushStore = defineStore('push', () => {
                 browserVersion: browserInfo.version,
                 osName: osInfo.name,
                 osVersion: osInfo.version,
-                notificationTypes: ['mention', 'system'] as ('mention' | 'system')[],
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             }
 

@@ -33,6 +33,11 @@ export const BroadcastEventSchemas = {
     // feat-233 (Р12): the user's session list changed (a sign-in, a renewal, an ended session, a
     // socket of a session opened or closed). No data: the client reads the first page again.
     user_sessions_changed: type({}),
+    // feat-236 (Р8): the notifications of the user changed (a new one, one or all read). A signal
+    // with no data: a value could be older than the answer to a read the client already has.
+    notifications_changed: type({}),
+    // feat-236 (Р8): the notification preferences changed; an open matrix reads them again.
+    notification_preferences_changed: type({}),
 } as const
 
 export type BroadcastEventName = keyof typeof BroadcastEventSchemas

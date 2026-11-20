@@ -4,8 +4,6 @@ import { CanonicalErrorResponseSchema } from './error-response.js'
 // Wire shapes of push-subscription-transformer.ts and push-notification-log-transformer.ts:
 // the response schemas are an allow-list (feat-046), so every field the client gets
 // is listed here.
-const NotificationTypesSchema = type("('mention' | 'system')[] | null")
-
 export const SerializedPushSubscriptionSchema = type({
     id: 'string',
     userId: 'string',
@@ -19,7 +17,6 @@ export const SerializedPushSubscriptionSchema = type({
     browserVersion: 'string | null',
     osName: 'string | null',
     osVersion: 'string | null',
-    notificationTypes: NotificationTypesSchema,
     timezone: 'string | null',
     created_at: 'string | null',
     updated_at: 'string | null',

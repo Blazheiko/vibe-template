@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import MenuButton from '@/components/MenuButton.vue'
+import NotificationBell from '@/components/notifications/NotificationBell.vue'
+import { useUserStore } from '@/stores/user'
 import { computed } from 'vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 
@@ -20,6 +22,8 @@ const router = useRouter()
 const route = useRoute()
 
 const activeNav = computed(() => route.path)
+const userStore = useUserStore()
+const signedIn = computed(() => userStore.user !== null)
 
 // WebSocket connection status
 const { statusWebSocket } = useWebSocketConnection()
@@ -92,6 +96,8 @@ const goBack = () => {
                         <span>Support</span>
                     </button>
                 </nav>
+
+                <NotificationBell v-if="signedIn" />
 
                 <!-- WebSocket Status Indicator -->
                 <div

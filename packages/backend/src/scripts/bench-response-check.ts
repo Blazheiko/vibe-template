@@ -22,7 +22,6 @@ const ItemSchema = type({
     isActive: 'boolean',
     lastUsedAt: 'Date | null',
     createdAt: 'Date',
-    notificationTypes: "('mention' | 'system')[] | null",
 })
 const Schema = type.or(
     { status: "'success'", 'message?': 'string', items: ItemSchema.array(), total: 'number' },
@@ -44,7 +43,6 @@ const makePayload = (count: number, withExtraKey: boolean): unknown => ({
         isActive: true,
         lastUsedAt: new Date(),
         createdAt: new Date(),
-        notificationTypes: ['mention'],
         ...(withExtraKey ? { passwordHash: 'x' } : {}),
     })),
 })

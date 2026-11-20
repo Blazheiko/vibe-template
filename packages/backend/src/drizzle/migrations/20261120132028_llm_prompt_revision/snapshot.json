@@ -1,47 +1,37 @@
 {
-  "type": "diff",
-  "version": "9",
-  "dialect": "postgres",
-  "id": "16def64e-c042-404c-946d-a5780570e76a",
-  "prevIds": [
-    "d23b1521-f74a-4c89-b47f-e166e916f5ed"
-  ],
-  "footprints": [
-    {
-      "statementType": "add_column",
-      "statementTarget": [
-        "column",
-        "public",
-        "llm_system_prompts",
-        "revision"
-      ],
-      "writes": [
-        "s|col|public.llm_system_prompts.revision",
-        "n|col|public.llm_system_prompts.revision",
-        "e|col|public.llm_system_prompts.revision"
-      ],
-      "reads": [
-        "n|tbl|public.llm_system_prompts",
-        "n|sch|public"
-      ]
-    }
-  ],
-  "deltas": [
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "llm_system_prompts",
-        "name": "revision",
-        "type": "bigint",
-        "typeSchema": null,
-        "notNull": true,
-        "dimensions": 0,
-        "default": "1",
-        "generated": null,
-        "identity": null,
-        "entityType": "columns"
-      }
-    }
-  ]
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "16def64e-c042-404c-946d-a5780570e76a",
+    "prevIds": ["d23b1521-f74a-4c89-b47f-e166e916f5ed"],
+    "footprints": [
+        {
+            "statementType": "add_column",
+            "statementTarget": ["column", "public", "llm_system_prompts", "revision"],
+            "writes": [
+                "s|col|public.llm_system_prompts.revision",
+                "n|col|public.llm_system_prompts.revision",
+                "e|col|public.llm_system_prompts.revision"
+            ],
+            "reads": ["n|tbl|public.llm_system_prompts", "n|sch|public"]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "llm_system_prompts",
+                "name": "revision",
+                "type": "bigint",
+                "typeSchema": null,
+                "notNull": true,
+                "dimensions": 0,
+                "default": "1",
+                "generated": null,
+                "identity": null,
+                "entityType": "columns"
+            }
+        }
+    ]
 }

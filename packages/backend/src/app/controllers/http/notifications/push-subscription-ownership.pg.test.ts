@@ -664,16 +664,15 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             expect(row.p256dhKey).toBe('p'.repeat(87))
         })
 
-        it('answers 422 for more notification types than there are', async () => {
+        // feat-236 (Р4): the per-device filter is gone; preferences are per category.
+        it('answers 422 for `notificationTypes`, a field the subscription no longer has', async () => {
             const result = await call('POST', '', {
                 user,
-                body: {
-                    ...valid('many-types'),
-                    notificationTypes: Array.from({ length: 11 }, () => 'system'),
-                },
+                body: { ...valid('old-types'), notificationTypes: ['system'] },
             })
 
             expect(result.status).toBe(422)
+            expect(await stored('old-types')).toBeUndefined()
         })
 
         it('does not take the address from the client: `ipAddress` in the body is refused', async () => {
@@ -700,7 +699,6 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
                     osName: 'o'.repeat(100),
                     osVersion: 'w'.repeat(50),
                     timezone: 't'.repeat(50),
-                    notificationTypes: ['mention', 'system'],
                 },
             })
 

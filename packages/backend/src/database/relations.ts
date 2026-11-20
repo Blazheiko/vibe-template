@@ -32,6 +32,11 @@ export const relations = defineRelations(schema, (r) => ({
             from: r.users.id,
             to: r.supportChatHistory.userId,
         }),
+        notifications: r.many.notifications({ from: r.users.id, to: r.notifications.userId }),
+        notificationPreferences: r.many.notificationPreferences({
+            from: r.users.id,
+            to: r.notificationPreferences.userId,
+        }),
         preferences: r.one.userPreferences({
             from: r.users.id,
             to: r.userPreferences.userId,
@@ -42,6 +47,12 @@ export const relations = defineRelations(schema, (r) => ({
     },
     userOnline: {
         user: r.one.users({ from: r.userOnline.userId, to: r.users.id }),
+    },
+    notifications: {
+        user: r.one.users({ from: r.notifications.userId, to: r.users.id }),
+    },
+    notificationPreferences: {
+        user: r.one.users({ from: r.notificationPreferences.userId, to: r.users.id }),
     },
     pushSubscriptions: {
         user: r.one.users({ from: r.pushSubscriptions.userId, to: r.users.id }),

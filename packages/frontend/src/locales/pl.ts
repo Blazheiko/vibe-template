@@ -418,6 +418,73 @@ const pl: typeof en = {
             ai_prompt_updated: 'Zmieniono prompt AI',
         },
     },
+
+    notifications: {
+        title: 'Powiadomienia',
+        bell: 'Powiadomienia',
+        unreadLabel: 'Nieprzeczytane: {count}',
+        all: 'Wszystkie',
+        unread: 'Nieprzeczytane',
+        markAllRead: 'Oznacz wszystkie jako przeczytane',
+        showAll: 'Wszystkie powiadomienia',
+        showMore: 'Pokaż więcej',
+        empty: 'Nie ma jeszcze powiadomień',
+        emptyUnread: 'Brak nieprzeczytanych powiadomień',
+        errorLoad: 'Nie udało się wczytać powiadomień',
+        retry: 'Spróbuj ponownie',
+        opening: 'Otwieranie…',
+        notice: {
+            gone: 'To powiadomienie już nie istnieje',
+            error: 'Nie udało się otworzyć powiadomienia. Spróbuj ponownie.',
+        },
+        preferences: {
+            title: 'Ustawienia powiadomień',
+            hint: 'Powiadomienia zawsze pojawiają się tutaj, w aplikacji. Wybierz, gdzie jeszcze mają docierać.',
+            categories: { security: 'Bezpieczeństwo', support: 'Pomoc' },
+            channels: { push: 'Powiadomienia push', email: 'E-mail' },
+            locked: 'Zawsze włączone ze względów bezpieczeństwa',
+            errorLoad: 'Nie udało się wczytać ustawień',
+            errorSave: 'Nie udało się zapisać ustawienia',
+        },
+        kinds: {
+            security_new_sign_in: {
+                title: 'Nowe logowanie',
+                body: 'Zalogowano z {device}. Jeśli to nie Ty, zakończ tę sesję i zmień hasło.',
+            },
+            security_method_added: {
+                title: 'Nowa metoda logowania',
+                body: 'Do konta połączono {provider}. Jeśli to nie Ty, usuń tę metodę.',
+            },
+            security_method_removed: {
+                title: 'Usunięto metodę logowania',
+                body: 'Z konta usunięto {provider}. Jeśli to nie Ty, zmień hasło.',
+            },
+            security_password_changed: {
+                title: 'Hasło zmienione',
+                body: 'Twoje hasło zostało zmienione. Jeśli to nie Ty, natychmiast je zresetuj.',
+            },
+            security_password_reset: {
+                title: 'Hasło zresetowane',
+                body: 'Twoje hasło zostało zresetowane, a inne sesje zakończone.',
+            },
+            security_logout_all: {
+                title: 'Wylogowano wszędzie',
+                body: 'Wszystkie sesje Twojego konta zostały zakończone.',
+            },
+            security_session_revoked: {
+                title: 'Sesja zakończona',
+                body: 'Jedna z Twoich sesji została zakończona z innego urządzenia. Jeśli to nie Ty, zmień hasło.',
+            },
+            security_account_claimed: {
+                title: 'Konto zabezpieczone',
+                body: 'Twój e-mail został potwierdzony. Wcześniejsze metody logowania i sesje usunięto.',
+            },
+            support_reply: {
+                title: 'Odpowiedź pomocy',
+                body: 'Na czacie pomocy czeka nowa odpowiedź.',
+            },
+        },
+    },
 }
 
 export default pl

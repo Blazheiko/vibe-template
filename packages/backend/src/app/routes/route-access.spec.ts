@@ -85,6 +85,24 @@ describe('route access matrix (code-issues items 48, 67)', () => {
         }
     })
 
+    // feat-236 (Р4, Р6): the notification center is the signed-in user's own.
+    it('every /notifications route declares session, CSRF and auth guards', () => {
+        const notificationRoutes = http.filter((route) => route.url.startsWith('api/notifications'))
+        expect(notificationRoutes.map((route) => `${route.method} ${route.url}`).sort()).toEqual([
+            'get api/notifications',
+            'get api/notifications/preferences',
+            'get api/notifications/unread-count',
+            'post api/notifications/:id/read',
+            'post api/notifications/read-all',
+            'put api/notifications/preferences',
+        ])
+        for (const route of notificationRoutes) {
+            for (const guard of ['session_web', 'csrf_guard', 'auth_guard']) {
+                expect(route.middlewares?.includes(guard), `${route.url} ${guard}`).toBe(true)
+            }
+        }
+    })
+
     // feat-235 (Р7): the audit log is for admins only, like every other /admin route.
     it('every HTTP /admin route declares session, CSRF, auth and admin guards', () => {
         const adminRoutes = http.filter((route) => route.url.startsWith('api/admin/'))

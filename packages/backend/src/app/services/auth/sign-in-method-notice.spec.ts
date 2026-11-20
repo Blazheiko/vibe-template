@@ -20,6 +20,14 @@ const notice = (over: Record<string, unknown> = {}) => ({
     userId: 5n,
     email: 'owner@example.com',
     name: 'Account Owner',
+    provider: 'github',
+    providerName: 'Jane Doe',
+    ...over,
+})
+
+// The mail is rendered with the title of the provider, the notice carries its id (feat-236).
+const mailInput = (over: Record<string, unknown> = {}) => ({
+    name: 'Account Owner',
     providerTitle: 'GitHub',
     providerName: 'Jane Doe',
     ...over,
@@ -37,21 +45,34 @@ describe('notifySignInMethodAdded', () => {
         notifySignInMethodAdded(notice())
         await settle()
 
-        expect(security).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(security).toHaveBeenCalledWith(5n, 'sign_in_method_added', { provider: 'github' })
         expect(send).toHaveBeenCalledTimes(1)
         expect(send).toHaveBeenCalledWith(
             expect.objectContaining({
                 to: 'owner@example.com',
                 subject: 'A new sign-in method was added to your account',
+                text: expect.stringContaining('The GitHub account "Jane Doe" was linked to your'),
             }),
         )
+    })
+
+    it('a provider outside the catalog gets no notification, the mail still goes', async () => {
+        notifySignInMethodAdded(notice({ provider: 'myspace' }))
+        await settle()
+
+        expect(security).not.toHaveBeenCalled()
+        expect(logger.error).toHaveBeenCalledWith(
+            { provider: 'myspace' },
+            'Sign-in method notice: a provider outside the catalog',
+        )
+        expect(send).toHaveBeenCalledTimes(1)
     })
 
     it.each([null, ''])('mails nothing to an account without an address (%j)', async (email) => {
         notifySignInMethodAdded(notice({ email }))
         await settle()
 
-        expect(security).toHaveBeenCalledWith(5n, 'sign_in_method_added')
+        expect(security).toHaveBeenCalledWith(5n, 'sign_in_method_added', { provider: 'github' })
         expect(send).not.toHaveBeenCalled()
     })
 
@@ -84,7 +105,7 @@ describe('notifySignInMethodAdded', () => {
 
 describe('renderSignInMethodAddedEmail', () => {
     it('names the provider and the profile, and says a password change does not remove it', () => {
-        const mail = renderSignInMethodAddedEmail(notice())
+        const mail = renderSignInMethodAddedEmail(mailInput())
 
         expect(mail.subject).toBe('A new sign-in method was added to your account')
         expect(mail.text).toContain('Account Owner')
@@ -105,7 +126,7 @@ describe('renderSignInMethodAddedEmail', () => {
         ['no name at all', null],
         ['a blank name', '   '],
     ])('does not quote a profile name with %s', (_, providerName) => {
-        const mail = renderSignInMethodAddedEmail(notice({ providerName }))
+        const mail = renderSignInMethodAddedEmail(mailInput({ providerName }))
 
         expect(mail.text).toContain('A GitHub account was linked to your')
         expect(mail.text).not.toContain('evil.example')
@@ -115,7 +136,7 @@ describe('renderSignInMethodAddedEmail', () => {
     })
 
     it('escapes what it does quote', () => {
-        const mail = renderSignInMethodAddedEmail(notice({ providerName: '<b>Jane & Co' }))
+        const mail = renderSignInMethodAddedEmail(mailInput({ providerName: '<b>Jane & Co' }))
 
         expect(mail.html).not.toContain('<b>Jane')
         expect(mail.html).toContain('&lt;b&gt;Jane &amp; Co')

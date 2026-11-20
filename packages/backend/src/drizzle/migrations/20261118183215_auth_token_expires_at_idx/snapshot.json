@@ -1,189 +1,187 @@
 {
-  "type": "diff",
-  "version": "9",
-  "dialect": "postgres",
-  "id": "859dedd4-f286-454f-9f1f-012976bc98cf",
-  "prevIds": [
-    "03c08b1f-d07e-43cd-9971-7de1e36dea5e"
-  ],
-  "footprints": [
-    {
-      "statementType": "create_index",
-      "statementTarget": [
-        "index",
-        "public",
-        "email_link_verifications",
-        "email_link_verifications_expires_at_idx"
-      ],
-      "writes": [
-        "s|idx|public.email_link_verifications_expires_at_idx",
-        "n|idx|public.email_link_verifications_expires_at_idx",
-        "e|idx|public.email_link_verifications_expires_at_idx",
-        "n|rel|public.email_link_verifications_expires_at_idx"
-      ],
-      "reads": [
-        "n|tbl|public.email_link_verifications",
-        "n|sch|public",
-        "n|col|public.email_link_verifications.expires_at"
-      ]
-    },
-    {
-      "statementType": "create_index",
-      "statementTarget": [
-        "index",
-        "public",
-        "email_verifications",
-        "email_verifications_expires_at_idx"
-      ],
-      "writes": [
-        "s|idx|public.email_verifications_expires_at_idx",
-        "n|idx|public.email_verifications_expires_at_idx",
-        "e|idx|public.email_verifications_expires_at_idx",
-        "n|rel|public.email_verifications_expires_at_idx"
-      ],
-      "reads": [
-        "n|tbl|public.email_verifications",
-        "n|sch|public",
-        "n|col|public.email_verifications.expires_at"
-      ]
-    },
-    {
-      "statementType": "create_index",
-      "statementTarget": [
-        "index",
-        "public",
-        "oauth_link_verifications",
-        "oauth_link_verifications_expires_at_idx"
-      ],
-      "writes": [
-        "s|idx|public.oauth_link_verifications_expires_at_idx",
-        "n|idx|public.oauth_link_verifications_expires_at_idx",
-        "e|idx|public.oauth_link_verifications_expires_at_idx",
-        "n|rel|public.oauth_link_verifications_expires_at_idx"
-      ],
-      "reads": [
-        "n|tbl|public.oauth_link_verifications",
-        "n|sch|public",
-        "n|col|public.oauth_link_verifications.expires_at"
-      ]
-    },
-    {
-      "statementType": "create_index",
-      "statementTarget": [
-        "index",
-        "public",
-        "password_reset_tokens",
-        "password_reset_tokens_expires_at_idx"
-      ],
-      "writes": [
-        "s|idx|public.password_reset_tokens_expires_at_idx",
-        "n|idx|public.password_reset_tokens_expires_at_idx",
-        "e|idx|public.password_reset_tokens_expires_at_idx",
-        "n|rel|public.password_reset_tokens_expires_at_idx"
-      ],
-      "reads": [
-        "n|tbl|public.password_reset_tokens",
-        "n|sch|public",
-        "n|col|public.password_reset_tokens.expires_at"
-      ]
-    }
-  ],
-  "deltas": [
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "email_link_verifications",
-        "name": "email_link_verifications_expires_at_idx",
-        "nameExplicit": true,
-        "columns": [
-          {
-            "value": "expires_at",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          }
-        ],
-        "isUnique": false,
-        "where": null,
-        "with": "",
-        "method": "btree",
-        "concurrently": false,
-        "entityType": "indexes"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "email_verifications",
-        "name": "email_verifications_expires_at_idx",
-        "nameExplicit": true,
-        "columns": [
-          {
-            "value": "expires_at",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          }
-        ],
-        "isUnique": false,
-        "where": null,
-        "with": "",
-        "method": "btree",
-        "concurrently": false,
-        "entityType": "indexes"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "oauth_link_verifications",
-        "name": "oauth_link_verifications_expires_at_idx",
-        "nameExplicit": true,
-        "columns": [
-          {
-            "value": "expires_at",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          }
-        ],
-        "isUnique": false,
-        "where": null,
-        "with": "",
-        "method": "btree",
-        "concurrently": false,
-        "entityType": "indexes"
-      }
-    },
-    {
-      "op": "create",
-      "row": {
-        "schema": "public",
-        "table": "password_reset_tokens",
-        "name": "password_reset_tokens_expires_at_idx",
-        "nameExplicit": true,
-        "columns": [
-          {
-            "value": "expires_at",
-            "isExpression": false,
-            "asc": true,
-            "nullsFirst": false,
-            "opclass": null
-          }
-        ],
-        "isUnique": false,
-        "where": null,
-        "with": "",
-        "method": "btree",
-        "concurrently": false,
-        "entityType": "indexes"
-      }
-    }
-  ]
+    "type": "diff",
+    "version": "9",
+    "dialect": "postgres",
+    "id": "859dedd4-f286-454f-9f1f-012976bc98cf",
+    "prevIds": ["03c08b1f-d07e-43cd-9971-7de1e36dea5e"],
+    "footprints": [
+        {
+            "statementType": "create_index",
+            "statementTarget": [
+                "index",
+                "public",
+                "email_link_verifications",
+                "email_link_verifications_expires_at_idx"
+            ],
+            "writes": [
+                "s|idx|public.email_link_verifications_expires_at_idx",
+                "n|idx|public.email_link_verifications_expires_at_idx",
+                "e|idx|public.email_link_verifications_expires_at_idx",
+                "n|rel|public.email_link_verifications_expires_at_idx"
+            ],
+            "reads": [
+                "n|tbl|public.email_link_verifications",
+                "n|sch|public",
+                "n|col|public.email_link_verifications.expires_at"
+            ]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": [
+                "index",
+                "public",
+                "email_verifications",
+                "email_verifications_expires_at_idx"
+            ],
+            "writes": [
+                "s|idx|public.email_verifications_expires_at_idx",
+                "n|idx|public.email_verifications_expires_at_idx",
+                "e|idx|public.email_verifications_expires_at_idx",
+                "n|rel|public.email_verifications_expires_at_idx"
+            ],
+            "reads": [
+                "n|tbl|public.email_verifications",
+                "n|sch|public",
+                "n|col|public.email_verifications.expires_at"
+            ]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": [
+                "index",
+                "public",
+                "oauth_link_verifications",
+                "oauth_link_verifications_expires_at_idx"
+            ],
+            "writes": [
+                "s|idx|public.oauth_link_verifications_expires_at_idx",
+                "n|idx|public.oauth_link_verifications_expires_at_idx",
+                "e|idx|public.oauth_link_verifications_expires_at_idx",
+                "n|rel|public.oauth_link_verifications_expires_at_idx"
+            ],
+            "reads": [
+                "n|tbl|public.oauth_link_verifications",
+                "n|sch|public",
+                "n|col|public.oauth_link_verifications.expires_at"
+            ]
+        },
+        {
+            "statementType": "create_index",
+            "statementTarget": [
+                "index",
+                "public",
+                "password_reset_tokens",
+                "password_reset_tokens_expires_at_idx"
+            ],
+            "writes": [
+                "s|idx|public.password_reset_tokens_expires_at_idx",
+                "n|idx|public.password_reset_tokens_expires_at_idx",
+                "e|idx|public.password_reset_tokens_expires_at_idx",
+                "n|rel|public.password_reset_tokens_expires_at_idx"
+            ],
+            "reads": [
+                "n|tbl|public.password_reset_tokens",
+                "n|sch|public",
+                "n|col|public.password_reset_tokens.expires_at"
+            ]
+        }
+    ],
+    "deltas": [
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "email_link_verifications",
+                "name": "email_link_verifications_expires_at_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "expires_at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "concurrently": false,
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "email_verifications",
+                "name": "email_verifications_expires_at_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "expires_at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "concurrently": false,
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "oauth_link_verifications",
+                "name": "oauth_link_verifications_expires_at_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "expires_at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "concurrently": false,
+                "entityType": "indexes"
+            }
+        },
+        {
+            "op": "create",
+            "row": {
+                "schema": "public",
+                "table": "password_reset_tokens",
+                "name": "password_reset_tokens_expires_at_idx",
+                "nameExplicit": true,
+                "columns": [
+                    {
+                        "value": "expires_at",
+                        "isExpression": false,
+                        "asc": true,
+                        "nullsFirst": false,
+                        "opclass": null
+                    }
+                ],
+                "isUnique": false,
+                "where": null,
+                "with": "",
+                "method": "btree",
+                "concurrently": false,
+                "entityType": "indexes"
+            }
+        }
+    ]
 }

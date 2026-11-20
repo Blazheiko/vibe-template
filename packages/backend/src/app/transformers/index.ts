@@ -5,6 +5,7 @@ export { promptTransformer } from './prompt-transformer.js'
 export { profileTransformer } from './profile-transformer.js'
 export { sessionTransformer } from './session-transformer.js'
 export { auditEventTransformer } from './audit-event-transformer.js'
+export { notificationTransformer } from './notification-transformer.js'
 
 export type { SerializedUser } from './user-transformer.js'
 export type {

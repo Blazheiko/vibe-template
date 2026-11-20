@@ -7,7 +7,9 @@ import {
     mailSafeDisplayName,
     renderBrandedEmail,
 } from '#app/services/notifications/email-templates.js'
+import { asNotificationProvider } from '#app/services/notifications/notification-provider.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import logger from '#vendor/utils/logger.js'
 
 // feat-198 (security review 2026-11-12, M-2): linking an identity of another provider to an
@@ -21,15 +23,18 @@ export interface SignInMethodAdded {
     /** The account's address; null for an account without one (nothing is mailed). */
     email: string | null
     name: string
-    /** The provider's name as shown to people: "GitHub". */
-    providerTitle: string
+    /** The provider's id, as stored with the identity: "github" (feat-236: the notification names it). */
+    provider: string
     /** The profile name the provider reported: outside data, quoted only when it is harmless. */
     providerName: string | null
 }
 
-export function renderSignInMethodAddedEmail(
-    notice: Pick<SignInMethodAdded, 'name' | 'providerTitle' | 'providerName'>,
-): ReturnType<typeof renderBrandedEmail> {
+export function renderSignInMethodAddedEmail(notice: {
+    name: string
+    /** The provider's name as shown to people: "GitHub". */
+    providerTitle: string
+    providerName: string | null
+}): ReturnType<typeof renderBrandedEmail> {
     const { providerTitle } = notice
     const profile = notice.providerName === null ? null : mailSafeDisplayName(notice.providerName)
     const who =
@@ -52,7 +57,11 @@ export function renderSignInMethodAddedEmail(
 }
 
 const sendMail = async (notice: SignInMethodAdded, to: string): Promise<void> => {
-    const content = renderSignInMethodAddedEmail(notice)
+    const content = renderSignInMethodAddedEmail({
+        name: notice.name,
+        providerTitle: providerTitle(notice.provider),
+        providerName: notice.providerName,
+    })
     const sent = await emailService.send({
         to,
         subject: content.subject,
@@ -72,7 +81,10 @@ const sendMail = async (notice: SignInMethodAdded, to: string): Promise<void> =>
  * push service that fails or is slow must not change or delay the sign-in that follows.
  */
 export function notifySignInMethodAdded(notice: SignInMethodAdded): void {
-    userNotificationService.security(notice.userId, 'sign_in_method_added')
+    const provider = asNotificationProvider(notice.provider)
+    if (provider !== null) {
+        userNotificationService.security(notice.userId, 'sign_in_method_added', { provider })
+    }
     const { email } = notice
     if (email === null || email === '') return
     sendMail(notice, email).catch((err: unknown) => {
