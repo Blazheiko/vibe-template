@@ -3,7 +3,7 @@
 **Статус: погоджено власником**, редакція 3 (2026-11-20), уточнення T5 для прив'язки телефону. Пункт 3 з
 [`future/template-functionality-recommendations.md`](./future/template-functionality-recommendations.md).
 Пропонований id: `feat-235` (одна фіча, один PR, як `feat-232` і `feat-233`). Рішення Р1–Р14,
-задачі T1–T9.
+задачі T1–T9. Покроковий task list — [`audit-log-tasks.md`](./audit-log-tasks.md).
 
 **Уточнення T5** (за рев'ю редакції 3): прив'язка телефону виконується в `withTransactionResult`,
 бо `withTransaction` комітить і при `Result.err`. Рядок користувача блокується перед
@@ -90,8 +90,8 @@
   (`auth-service.ts:771`), підтвердження прив'язки email (`email-verification-service.ts:249`),
   `completePhonePasswordReset` (`password-reset-service.ts:506`), `sign-in-methods-service.unlink`.
 - **OAuth прив'язується лише під час анонімного входу.** `signInWithIdentity` для наявного акаунта
-  або одразу викликає `linkTrusted`, якщо провайдер підтверджує адресу (`emailTrust ===
-'authoritative'`, `oauth-service.ts:697`), або надсилає лист для `confirmLink`. Обидва шляхи
+  або одразу викликає `linkTrusted`, якщо провайдер підтверджує адресу (`emailTrust` дорівнює
+  `authoritative`, `oauth-service.ts:697`), або надсилає лист для `confirmLink`. Обидва шляхи
   можуть виконати `claimLocked`. Прив'язки OAuth з уже автентифікованої сесії немає.
 - **Прив'язка email** (`email-verification-service.ts:249`) вимагає, щоб посилання відкрила чинна
   сесія того самого акаунта (`EMAIL_LINK_WRONG_SESSION`, перевірка `presentedSessionToken`), і
