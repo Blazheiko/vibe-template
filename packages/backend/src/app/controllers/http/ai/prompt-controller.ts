@@ -3,6 +3,7 @@ import type { HttpContext } from '#vendor/types/types.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { promptContracts } from 'shared/contracts'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import {
     promptService,
@@ -101,7 +102,7 @@ export default {
             return mapControllerError(context, badRequest('Nothing to update'))
         }
 
-        const ok = await promptService.update(type, updateData)
+        const ok = await promptService.update(type, updateData, auditActorFrom(context))
         if (!ok) {
             return mapControllerError(
                 context,

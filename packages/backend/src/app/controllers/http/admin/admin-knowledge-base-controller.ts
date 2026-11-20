@@ -21,6 +21,7 @@ import { mapControllerError, respond } from '#app/controllers/shared/controller-
 import { badRequest, conflict } from '#app/services/shared/errors.js'
 import { knowledgeBaseInitService } from '#app/services/support/knowledge-base-init-service.js'
 import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 
 // Each method reads the `:id` of its own contract (feat-186): renamed in one, it stops the build.
 const parseId = (context: { httpData: { params: { readonly id: string } } }): bigint | null =>
@@ -60,12 +61,15 @@ export default {
         context: HttpContext<SupportKnowledgeBaseCreateInput>,
     ): Promise<SupportKnowledgeBaseItemResponse> {
         const payload = getTypedPayload(context)
-        const result = await knowledgeBaseService.create({
-            title: payload.title,
-            content: payload.content,
-            category: payload.category ?? null,
-            isActive: payload.isActive ?? true,
-        })
+        const result = await knowledgeBaseService.create(
+            {
+                title: payload.title,
+                content: payload.content,
+                category: payload.category ?? null,
+                isActive: payload.isActive ?? true,
+            },
+            auditActorFrom(context),
+        )
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
         }
@@ -80,12 +84,16 @@ export default {
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
         const payload = getTypedPayload(context)
-        const result = await knowledgeBaseService.update(id, {
-            ...(payload.title !== undefined ? { title: payload.title } : {}),
-            ...(payload.content !== undefined ? { content: payload.content } : {}),
-            ...(payload.category !== undefined ? { category: payload.category } : {}),
-            ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
-        })
+        const result = await knowledgeBaseService.update(
+            id,
+            {
+                ...(payload.title !== undefined ? { title: payload.title } : {}),
+                ...(payload.content !== undefined ? { content: payload.content } : {}),
+                ...(payload.category !== undefined ? { category: payload.category } : {}),
+                ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+            },
+            auditActorFrom(context),
+        )
         return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
@@ -95,7 +103,7 @@ export default {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
-        const result = await knowledgeBaseService.delete(id)
+        const result = await knowledgeBaseService.delete(id, auditActorFrom(context))
         return respond(context, result, () => ({ status: 'ok' }))
     },
 
@@ -106,7 +114,11 @@ export default {
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
         const file = context.httpData.files?.get('screenshot')
-        const result = await knowledgeBaseService.uploadScreenshot(id, file)
+        const result = await knowledgeBaseService.uploadScreenshot(
+            id,
+            file,
+            auditActorFrom(context),
+        )
         return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 
@@ -116,7 +128,7 @@ export default {
         const id = parseId(context)
         if (id === null) return mapControllerError(context, badRequest('Invalid ID'))
 
-        const result = await knowledgeBaseService.deleteScreenshot(id)
+        const result = await knowledgeBaseService.deleteScreenshot(id, auditActorFrom(context))
         return respond(context, result, (value) => ({ status: 'ok', data: value.item }))
     },
 

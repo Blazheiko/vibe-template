@@ -1,7 +1,10 @@
-import { promptRepository } from '#app/repositories/index.js'
+import { promptRepository, withTransaction } from '#app/repositories/index.js'
 import type { PromptRow, PromptType, PromptUpdate } from '#app/repositories/index.js'
 import logger from '#logger'
 import aiConfig from '#config/ai.js'
+import type { AuditActor } from '#app/services/audit/audit-actor.js'
+import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import { contentFingerprint } from '#app/services/audit/content-fingerprint.js'
 
 export type { PromptType, PromptUpdate }
 
@@ -28,6 +31,25 @@ function cached(type: PromptType): PromptRow | undefined {
             })
     }
     return cache.get(type)
+}
+
+// `temperature` is a `real`: compared as the float32 it is stored as, so sending back the value
+// that was read is not a change.
+const sameTemperature = (a: number | null, b: number | null): boolean =>
+    a === null || b === null ? a === b : Math.fround(a) === Math.fround(b)
+
+/** The fields of `data` whose value differs from the locked row (feat-235, Р5). */
+function changedFields(row: PromptRow, data: PromptUpdate): PromptUpdate {
+    const changed: PromptUpdate = {}
+    if (data.content !== undefined && data.content !== row.content) changed.content = data.content
+    if (data.model !== undefined && data.model !== row.model) changed.model = data.model
+    if (data.temperature !== undefined && !sameTemperature(data.temperature, row.temperature)) {
+        changed.temperature = data.temperature
+    }
+    if (data.maxTokens !== undefined && data.maxTokens !== row.maxTokens) {
+        changed.maxTokens = data.maxTokens
+    }
+    return changed
 }
 
 export const promptService = {
@@ -70,17 +92,43 @@ export const promptService = {
         return cached(type)?.maxTokens ?? null
     },
 
-    async update(type: PromptType, data: PromptUpdate): Promise<boolean> {
-        const ok = await promptRepository.update(type, data)
-        if (ok) {
-            const updated = await promptRepository.findByType(type)
-            if (updated !== undefined) {
-                cache.set(type, updated)
-                writeSeq++
-                writtenAt.set(type, writeSeq)
-            }
-        }
-        return ok
+    /**
+     * Applies the fields that differ from the stored prompt and records `ai.prompt.updated` in the
+     * same transaction (feat-235): the row is locked first, so of two edits the second sees the
+     * first as its "before". Nothing changed: no UPDATE and no event. False when there is no
+     * such prompt.
+     */
+    async update(type: PromptType, data: PromptUpdate, actor: AuditActor): Promise<boolean> {
+        const outcome = await withTransaction(
+            async (tx): Promise<{ row: PromptRow; events: RecordedAuditEvent[] } | undefined> => {
+                const locked = await promptRepository.lockByType(type, tx)
+                if (locked === undefined) return undefined
+                const changed = changedFields(locked, data)
+                if (Object.keys(changed).length === 0) return { row: locked, events: [] }
+                const stamp = await auditService.stamp(tx)
+                const updated = await promptRepository.update(type, changed, tx)
+                if (updated === undefined) throw new Error('Locked prompt row was not updated')
+                const events = await auditService.record(tx, stamp, actor, [
+                    {
+                        action: 'ai.prompt.updated',
+                        targetId: type,
+                        input: {
+                            before: locked,
+                            after: updated,
+                            content: contentFingerprint(locked.content, updated.content),
+                        },
+                    },
+                ])
+                return { row: updated, events }
+            },
+        )
+        if (outcome === undefined) return false
+        // The row the UPDATE returned is the cached one: no second read.
+        cache.set(type, outcome.row)
+        writeSeq++
+        writtenAt.set(type, writeSeq)
+        auditService.logCommitted(actor.logger, outcome.events)
+        return true
     },
 
     all(): PromptRow[] {

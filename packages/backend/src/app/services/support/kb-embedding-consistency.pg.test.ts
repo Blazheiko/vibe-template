@@ -1,5 +1,6 @@
 import { eq, inArray, sql } from 'drizzle-orm'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { testAdminActor } from '../../../test-support/audit-actor.js'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 
@@ -54,6 +55,8 @@ const until = async (condition: () => boolean): Promise<void> => {
     }
     if (!condition()) throw new Error('condition not reached')
 }
+
+const actor = testAdminActor()
 
 describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -135,8 +138,8 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
         vi.useFakeTimers({ toFake: ['Date'] })
         vi.setSystemTime(new Date('2026-11-04T12:00:00.000Z'))
 
-        await knowledgeBaseService.update(article.id, { content: 'second text' })
-        await knowledgeBaseService.update(article.id, { content: 'third text' })
+        await knowledgeBaseService.update(article.id, { content: 'second text' }, actor)
+        await knowledgeBaseService.update(article.id, { content: 'third text' }, actor)
         await until(() => embedding.single.length === 2)
 
         const after = await versionOf(article.id)
@@ -183,7 +186,7 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
 
         const all = supportEmbeddingService.reindexAll()
         await until(() => embedding.batches.length === 1)
-        await knowledgeBaseService.update(article.id, { title: 'reindex-all renamed' })
+        await knowledgeBaseService.update(article.id, { title: 'reindex-all renamed' }, actor)
         await until(() => embedding.single.length === 1)
 
         // reindexAll read version 1 and finishes after the update moved to version 2.
@@ -202,7 +205,7 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
         expect(await supportKnowledgeRepository.setEmbedding(article.id, unit(7), 1)).toBe(true)
         watchIndexing()
 
-        const result = await knowledgeBaseService.update(article.id, { content: 'new text' })
+        const result = await knowledgeBaseService.update(article.id, { content: 'new text' }, actor)
         expect(result.isOk() && result.value.item.embeddingIndexed).toBe(false)
         // Not searchable with the old text's vector from the update on.
         expect(await storedVector(article.id)).toBeNull()
@@ -220,7 +223,11 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
         const article = await createArticle('metadata')
         expect(await supportKnowledgeRepository.setEmbedding(article.id, unit(8), 1)).toBe(true)
 
-        await knowledgeBaseService.update(article.id, { category: 'billing', isActive: false })
+        await knowledgeBaseService.update(
+            article.id,
+            { category: 'billing', isActive: false },
+            actor,
+        )
 
         expect((await versionOf(article.id)).version).toBe(1)
         expect(await storedVector(article.id)).toBe(8)

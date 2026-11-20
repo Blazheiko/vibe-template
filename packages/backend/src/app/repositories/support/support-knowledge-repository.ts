@@ -2,6 +2,7 @@ import { db } from '#database/db.js'
 import { supportKnowledgeBase } from '#database/schema.js'
 import { and, asc, count, eq, sql } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
+import type { DbExecutor, DbTransaction } from '#app/repositories/transaction.js'
 
 export type KbRow = InferSelectModel<typeof supportKnowledgeBase>
 export interface KbArticleRow extends Omit<KbRow, 'embedding'> {
@@ -80,13 +81,16 @@ export const supportKnowledgeRepository = {
         return db.select().from(supportKnowledgeBase).where(eq(supportKnowledgeBase.isActive, true))
     },
 
-    async create(data: {
-        title: string
-        content: string
-        category?: string | null
-        isActive?: boolean
-    }): Promise<KbRow> {
-        const [created] = await db
+    async create(
+        data: {
+            title: string
+            content: string
+            category?: string | null
+            isActive?: boolean
+        },
+        executor: DbExecutor = db,
+    ): Promise<KbRow> {
+        const [created] = await executor
             .insert(supportKnowledgeBase)
             .values({
                 title: data.title,
@@ -115,6 +119,20 @@ export const supportKnowledgeRepository = {
             .returning()
     },
 
+    /** The article, locked until the end of `tx` (feat-235): the "before" of an audited change. */
+    async lockById(id: bigint, tx: DbTransaction): Promise<KbArticleRow | undefined> {
+        const rows = await tx
+            .select(kbArticleSelect)
+            .from(supportKnowledgeBase)
+            .where(eq(supportKnowledgeBase.id, id))
+            .for('update')
+        return rows[0]
+    },
+
+    /**
+     * Sets the given fields and returns the row as stored. Pass only the fields that differ from
+     * the row (feat-235): a title or content in `data` is a new text.
+     */
     async update(
         id: bigint,
         data: {
@@ -123,11 +141,12 @@ export const supportKnowledgeRepository = {
             category?: string | null
             isActive?: boolean
         },
+        executor: DbExecutor = db,
     ): Promise<KbRow | undefined> {
         // feat-114 (R11b): a new text is a new version, and the vector of the old text is not
         // searchable from this statement on (not after the re-index, which may never finish).
         const textChanged = data.title !== undefined || data.content !== undefined
-        const [updated] = await db
+        const [updated] = await executor
             .update(supportKnowledgeBase)
             .set({
                 ...data,
@@ -145,14 +164,19 @@ export const supportKnowledgeRepository = {
     },
 
     /**
-     * Deletes the article and returns its screenshot key from the same statement, so a screenshot
-     * set meanwhile is the one deleted from S3 (feat-116). Undefined when there was no article.
+     * Deletes the article and returns it from the same statement, so a screenshot set meanwhile
+     * is the one deleted from S3 (feat-116), and the audit log gets what was deleted (feat-235).
+     * Undefined when there was no article.
      */
-    async delete(id: bigint): Promise<{ screenshotKey: string | null } | undefined> {
-        const [deleted] = await db
+    async delete(
+        id: bigint,
+        executor: DbExecutor = db,
+    ): Promise<Omit<KbRow, 'embedding'> | undefined> {
+        const { embeddingIndexed: _embeddingIndexed, ...columns } = kbArticleSelect
+        const [deleted] = await executor
             .delete(supportKnowledgeBase)
             .where(eq(supportKnowledgeBase.id, id))
-            .returning({ screenshotKey: supportKnowledgeBase.screenshotKey })
+            .returning(columns)
         return deleted
     },
 
@@ -161,14 +185,27 @@ export const supportKnowledgeRepository = {
      * row locked in the same transaction (feat-116): of two concurrent changes each gets the key
      * the other set, so every replaced object is deleted exactly once. Undefined when the article
      * is gone. The content version stays: a screenshot is not part of the indexed text.
+     *
+     * `inTransaction` runs in that transaction after the swap (feat-235: the audit event), so it
+     * commits or rolls back with it.
      */
-    async replaceScreenshot(
+    async replaceScreenshot<T = undefined>(
         id: bigint,
         screenshot: { key: string; mime: string } | null,
-    ): Promise<{ previousKey: string | null } | undefined> {
+        inTransaction?: (
+            tx: DbTransaction,
+            previous: { previousKey: string | null; previousMime: string | null },
+        ) => Promise<T>,
+    ): Promise<
+        | { previousKey: string | null; previousMime: string | null; extra: T | undefined }
+        | undefined
+    > {
         return db.transaction(async (tx) => {
             const [current] = await tx
-                .select({ screenshotKey: supportKnowledgeBase.screenshotKey })
+                .select({
+                    screenshotKey: supportKnowledgeBase.screenshotKey,
+                    screenshotMime: supportKnowledgeBase.screenshotMime,
+                })
                 .from(supportKnowledgeBase)
                 .where(eq(supportKnowledgeBase.id, id))
                 .for('update')
@@ -181,7 +218,13 @@ export const supportKnowledgeRepository = {
                     updatedAt: new Date(),
                 })
                 .where(eq(supportKnowledgeBase.id, id))
-            return { previousKey: current.screenshotKey }
+            const previous = {
+                previousKey: current.screenshotKey,
+                previousMime: current.screenshotMime,
+            }
+            const extra =
+                inTransaction === undefined ? undefined : await inTransaction(tx, previous)
+            return { ...previous, extra }
         })
     },
 

@@ -1,5 +1,6 @@
 import { eq, inArray } from 'drizzle-orm'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
+import { testAdminActor } from '../../test-support/audit-actor.js'
 
 import { hasPg } from '../../test-support/pg-test-db.js'
 import { PNG_BYTES } from '../../test-support/image-fixtures.js'
@@ -61,6 +62,8 @@ const pgRejection = (): Error =>
         severity: 'ERROR',
     })
 
+const actor = testAdminActor()
+
 describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
     const { db, pool } = await import('#database/db.js')
     const { sessionCheckPool } = await import('#database/session-check-db.js')
@@ -117,13 +120,13 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
     describe('KB screenshot', () => {
         it('two parallel uploads leave one object, the one the row points at', async () => {
             const id = await newArticle()
-            expect((await knowledgeBaseService.uploadScreenshot(id, png)).isOk()).toBe(true)
+            expect((await knowledgeBaseService.uploadScreenshot(id, png, actor)).isOk()).toBe(true)
 
             // Both upload before either swaps the key.
             s3.holdUploads = 2
             const both = Promise.all([
-                knowledgeBaseService.uploadScreenshot(id, png),
-                knowledgeBaseService.uploadScreenshot(id, png),
+                knowledgeBaseService.uploadScreenshot(id, png, actor),
+                knowledgeBaseService.uploadScreenshot(id, png, actor),
             ])
             await until(() => s3.held.length === 2)
             for (const release of s3.held.splice(0)) release()
@@ -136,11 +139,11 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
         it('a failed upload leaves the old object and the row as they were', async () => {
             const id = await newArticle()
-            await knowledgeBaseService.uploadScreenshot(id, png)
+            await knowledgeBaseService.uploadScreenshot(id, png, actor)
             const before = await screenshotKey(id)
 
             s3.failUpload = true
-            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+            await expect(knowledgeBaseService.uploadScreenshot(id, png, actor)).rejects.toThrow(
                 'S3 upload failed',
             )
 
@@ -151,13 +154,13 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
         // feat-130: PostgreSQL answered with an error (a SQLSTATE): the transaction rolled back.
         it('a database rejection after the upload takes the new object back, the old stays', async () => {
             const id = await newArticle()
-            await knowledgeBaseService.uploadScreenshot(id, png)
+            await knowledgeBaseService.uploadScreenshot(id, png, actor)
             const before = await screenshotKey(id)
             vi.spyOn(supportKnowledgeRepository, 'replaceScreenshot').mockRejectedValueOnce(
                 pgRejection(),
             )
 
-            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+            await expect(knowledgeBaseService.uploadScreenshot(id, png, actor)).rejects.toThrow(
                 'could not serialize access',
             )
 
@@ -168,7 +171,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
         // feat-125: the COMMIT went through but its answer was lost.
         it('a swap that committed but answered with an error keeps the new object', async () => {
             const id = await newArticle()
-            await knowledgeBaseService.uploadScreenshot(id, png)
+            await knowledgeBaseService.uploadScreenshot(id, png, actor)
             const swap = supportKnowledgeRepository.replaceScreenshot.bind(
                 supportKnowledgeRepository,
             )
@@ -179,7 +182,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
                 },
             )
 
-            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+            await expect(knowledgeBaseService.uploadScreenshot(id, png, actor)).rejects.toThrow(
                 'connection lost on COMMIT',
             )
 
@@ -194,7 +197,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
         // object was deleted, and the COMMIT then landed on a row pointing at nothing.
         it('a swap that failed without an answer from PostgreSQL keeps the new object', async () => {
             const id = await newArticle()
-            await knowledgeBaseService.uploadScreenshot(id, png)
+            await knowledgeBaseService.uploadScreenshot(id, png, actor)
             const swap = supportKnowledgeRepository.replaceScreenshot.bind(
                 supportKnowledgeRepository,
             )
@@ -206,7 +209,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
                 },
             )
 
-            await expect(knowledgeBaseService.uploadScreenshot(id, png)).rejects.toThrow(
+            await expect(knowledgeBaseService.uploadScreenshot(id, png, actor)).rejects.toThrow(
                 'Query read timeout',
             )
             await lateCommit()
@@ -217,7 +220,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
         it('a removal that read the old key before an upload finished leaves no orphan', async () => {
             const id = await newArticle()
-            await knowledgeBaseService.uploadScreenshot(id, png)
+            await knowledgeBaseService.uploadScreenshot(id, png, actor)
 
             // The removal reads the article, then waits until a whole upload has gone through.
             let resume: () => void = () => undefined
@@ -232,9 +235,9 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
                     return row
                 },
             )
-            const removal = knowledgeBaseService.deleteScreenshot(id)
+            const removal = knowledgeBaseService.deleteScreenshot(id, actor)
             await sleep(20)
-            expect((await knowledgeBaseService.uploadScreenshot(id, png)).isOk()).toBe(true)
+            expect((await knowledgeBaseService.uploadScreenshot(id, png, actor)).isOk()).toBe(true)
             resume()
             expect((await removal).isOk()).toBe(true)
 
@@ -244,12 +247,12 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
         it('deleting the article during an upload leaves no orphan', async () => {
             const id = await newArticle()
-            await knowledgeBaseService.uploadScreenshot(id, png)
+            await knowledgeBaseService.uploadScreenshot(id, png, actor)
 
             s3.holdUploads = 1
-            const upload = knowledgeBaseService.uploadScreenshot(id, png)
+            const upload = knowledgeBaseService.uploadScreenshot(id, png, actor)
             await until(() => s3.held.length === 1)
-            expect((await knowledgeBaseService.delete(id)).isOk()).toBe(true)
+            expect((await knowledgeBaseService.delete(id, actor)).isOk()).toBe(true)
             for (const release of s3.held.splice(0)) release()
 
             const result = await upload

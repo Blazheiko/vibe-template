@@ -6,9 +6,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const findAll = vi.fn()
 const findByType = vi.fn()
 const update = vi.fn()
+const lockByType = vi.fn()
 vi.mock('#app/repositories/index.js', () => ({
-    promptRepository: { findAll, findByType, update },
+    promptRepository: { findAll, findByType, update, lockByType },
+    withTransaction: (work: (tx: unknown) => Promise<unknown>) => work({}),
 }))
+// feat-235: the audit write itself is covered by prompt-audit.pg.test.ts.
+vi.mock('#app/services/audit/audit-service.js', () => ({
+    auditService: {
+        stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
+        record: vi.fn(() => Promise.resolve([])),
+        logCommitted: vi.fn(),
+    },
+}))
+const actor = { kind: 'user', userId: 1n, logger: { info: vi.fn() } } as never
 vi.mock('#config/ai.js', () => ({ default: { promptCacheTtlMs: 60_000 } }))
 const warn = vi.fn()
 vi.mock('#logger', () => ({ default: { info: vi.fn(), warn, error: vi.fn() } }))
@@ -79,10 +90,13 @@ describe('promptService cache TTL', () => {
 
     it('update() is visible at once on this instance', async () => {
         const promptService = await load()
-        update.mockResolvedValue(true)
-        findByType.mockResolvedValue(row('edited'))
+        lockByType.mockResolvedValue(row('v1'))
+        update.mockResolvedValue(row('edited'))
 
-        await promptService.update('SUPPORT_SYSTEM', { content: 'edited' })
+        await promptService.update('SUPPORT_SYSTEM', { content: 'edited' }, actor)
+
+        // The cached row is the one the UPDATE returned, not a second read.
+        expect(findByType).not.toHaveBeenCalled()
 
         expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('edited')
     })
@@ -98,12 +112,35 @@ describe('promptService cache TTL', () => {
         vi.advanceTimersByTime(60_000)
         promptService.getContent('SUPPORT_SYSTEM') // starts the refresh, which reads 'v1'
 
-        update.mockResolvedValue(true)
-        findByType.mockResolvedValue(row('edited'))
-        await promptService.update('SUPPORT_SYSTEM', { content: 'edited' })
+        lockByType.mockResolvedValue(row('v1'))
+        update.mockResolvedValue(row('edited'))
+        await promptService.update('SUPPORT_SYSTEM', { content: 'edited' }, actor)
         finishRefresh([row('v1')])
         await vi.runAllTimersAsync()
 
         expect(promptService.getContent('SUPPORT_SYSTEM')).toBe('edited')
+    })
+
+    it('an update to the stored values runs no UPDATE', async () => {
+        const promptService = await load()
+        lockByType.mockResolvedValue({ ...row('v1'), temperature: 0.699999988079071 })
+
+        expect(
+            await promptService.update(
+                'SUPPORT_SYSTEM',
+                { content: 'v1', temperature: 0.7 },
+                actor,
+            ),
+        ).toBe(true)
+
+        expect(update).not.toHaveBeenCalled()
+    })
+
+    it('a prompt that does not exist is not updated', async () => {
+        const promptService = await load()
+        lockByType.mockResolvedValue(undefined)
+
+        expect(await promptService.update('SUPPORT_SYSTEM', { content: 'x' }, actor)).toBe(false)
+        expect(update).not.toHaveBeenCalled()
     })
 })

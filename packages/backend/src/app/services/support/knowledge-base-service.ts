@@ -2,8 +2,11 @@ import { isServerRejection } from '#app/repositories/db-errors.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
 import appConfig from '#config/app.js'
-import { supportKnowledgeRepository } from '#app/repositories/index.js'
+import { supportKnowledgeRepository, withTransaction } from '#app/repositories/index.js'
 import type { KbArticleRow, KbRow } from '#app/repositories/index.js'
+import type { AuditActor } from '#app/services/audit/audit-actor.js'
+import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import { contentFingerprint } from '#app/services/audit/content-fingerprint.js'
 import { supportEmbeddingService } from '#app/services/support/support-embedding-service.js'
 import { buildObjectKey, deleteFromS3, uploadToS3 } from '#vendor/utils/storage/s3.js'
 import {
@@ -13,12 +16,7 @@ import {
 } from '#vendor/utils/storage/detect-image-type.js'
 import logger from '#logger'
 import { Result } from 'better-result'
-import {
-    badRequest,
-    notFound,
-    type AppResult,
-    internalMessage,
-} from '#app/services/shared/errors.js'
+import { badRequest, notFound, type AppResult } from '#app/services/shared/errors.js'
 import { KB_SCREENSHOT_MAX_FILE_BYTES } from '#app/services/shared/upload-limits.js'
 
 const ALLOWED_SCREENSHOT_TYPES: ReadonlySet<DetectedImageType> = new Set([
@@ -55,6 +53,46 @@ async function deleteScreenshotQuietly(key: string, message: string): Promise<vo
         await deleteFromS3(key)
     } catch (err: unknown) {
         logger.warn({ err, key }, message)
+    }
+}
+
+interface ArticleChange {
+    title?: string
+    content?: string
+    category?: string | null
+    isActive?: boolean
+}
+
+/** The fields of `data` whose value differs from the locked row (feat-235, Р5). */
+function changedFields(row: KbArticleRow, data: ArticleChange): ArticleChange {
+    const changed: ArticleChange = {}
+    if (data.title !== undefined && data.title !== row.title) changed.title = data.title
+    if (data.content !== undefined && data.content !== row.content) changed.content = data.content
+    if (data.category !== undefined && data.category !== row.category) {
+        changed.category = data.category
+    }
+    if (data.isActive !== undefined && data.isActive !== row.isActive) {
+        changed.isActive = data.isActive
+    }
+    return changed
+}
+
+/**
+ * Thrown by work inside a transaction before its COMMIT was sent (feat-235): the transaction is
+ * known to have rolled back, unlike an error with no answer from the database.
+ */
+class RolledBackBeforeCommit extends Error {
+    constructor(override readonly cause: unknown) {
+        super('Rolled back before COMMIT')
+        this.name = 'RolledBackBeforeCommit'
+    }
+}
+
+const beforeCommit = async <T>(work: () => Promise<T>): Promise<T> => {
+    try {
+        return await work()
+    } catch (err: unknown) {
+        throw new RolledBackBeforeCommit(err)
     }
 }
 
@@ -115,13 +153,28 @@ export const knowledgeBaseService = {
         return Result.ok({ item: rowToData(result.value) })
     },
 
-    async create(data: {
-        title: string
-        content: string
-        category?: string | null
-        isActive?: boolean
-    }): Promise<AppResult<{ item: KbItemData }>> {
-        const created = await supportKnowledgeRepository.create(data)
+    async create(
+        data: {
+            title: string
+            content: string
+            category?: string | null
+            isActive?: boolean
+        },
+        actor: AuditActor,
+    ): Promise<AppResult<{ item: KbItemData }>> {
+        const { created, events } = await withTransaction(async (tx) => {
+            const stamp = await auditService.stamp(tx)
+            const row = await supportKnowledgeRepository.create(data, tx)
+            const recorded = await auditService.record(tx, stamp, actor, [
+                {
+                    action: 'kb.article.created',
+                    targetId: String(row.id),
+                    input: { after: row, content: contentFingerprint(null, row.content) },
+                },
+            ])
+            return { created: row, events: recorded }
+        })
+        auditService.logCommitted(actor.logger, events)
 
         void supportEmbeddingService.indexArticle(created).catch((err: unknown) => {
             logger.error({ err, articleId: String(created.id) }, 'Failed to index new KB article')
@@ -134,49 +187,98 @@ export const knowledgeBaseService = {
         })
     },
 
+    /**
+     * Applies the fields that differ from the stored article and records `kb.article.updated` in
+     * the same transaction (feat-235): the row is locked first and is the "before". Nothing
+     * changed: no UPDATE, no event, no new content version.
+     */
     async update(
         id: bigint,
-        data: {
-            title?: string
-            content?: string
-            category?: string | null
-            isActive?: boolean
-        },
+        data: ArticleChange,
+        actor: AuditActor,
     ): Promise<AppResult<{ item: KbItemData }>> {
+        // A quick 404 only: the "before" is the row locked below.
         const existingResult = await requireArticle(id)
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
         }
 
-        const updated = await supportKnowledgeRepository.update(id, data)
-
-        if (updated === undefined) {
-            return Result.err(internalMessage('Failed to update article'))
+        const outcome = await withTransaction(
+            async (
+                tx,
+            ): Promise<
+                { item: KbItemData; events: RecordedAuditEvent[]; indexed?: KbRow } | undefined
+            > => {
+                const locked = await supportKnowledgeRepository.lockById(id, tx)
+                if (locked === undefined) return undefined
+                const changed = changedFields(locked, data)
+                if (Object.keys(changed).length === 0) {
+                    return { item: rowToData(locked), events: [] }
+                }
+                const stamp = await auditService.stamp(tx)
+                const updated = await supportKnowledgeRepository.update(id, changed, tx)
+                if (updated === undefined) throw new Error('Locked article row was not updated')
+                const events = await auditService.record(tx, stamp, actor, [
+                    {
+                        action: 'kb.article.updated',
+                        targetId: String(id),
+                        input: {
+                            before: locked,
+                            after: updated,
+                            content: contentFingerprint(locked.content, updated.content),
+                        },
+                    },
+                ])
+                const textChanged = changed.title !== undefined || changed.content !== undefined
+                return {
+                    item: rowToData({
+                        ...updated,
+                        // A text change cleared the vector in the same UPDATE (feat-114).
+                        embeddingIndexed: updated.embedding !== null,
+                    }),
+                    events,
+                    ...(textChanged ? { indexed: updated } : {}),
+                }
+            },
+        )
+        if (outcome === undefined) {
+            return Result.err(notFound('Article', 'Article not found'))
         }
+        auditService.logCommitted(actor.logger, outcome.events)
 
-        if (data.title !== undefined || data.content !== undefined) {
-            void supportEmbeddingService.indexArticle(updated).catch((err: unknown) => {
+        const reindex = outcome.indexed
+        if (reindex !== undefined) {
+            void supportEmbeddingService.indexArticle(reindex).catch((err: unknown) => {
                 logger.error({ err, articleId: String(id) }, 'Failed to re-index KB article')
             })
         }
-        return Result.ok({
-            item: rowToData({
-                ...updated,
-                // A text change cleared the vector in the same UPDATE (feat-114).
-                embeddingIndexed: updated.embedding !== null,
-            }),
-        })
+        return Result.ok({ item: outcome.item })
     },
 
-    async delete(id: bigint): Promise<AppResult<void>> {
-        // The key comes from the DELETE itself: a screenshot set meanwhile is the one removed.
-        const deleted = await supportKnowledgeRepository.delete(id)
-        if (deleted === undefined) {
+    async delete(id: bigint, actor: AuditActor): Promise<AppResult<void>> {
+        const outcome = await withTransaction(async (tx) => {
+            const locked = await supportKnowledgeRepository.lockById(id, tx)
+            if (locked === undefined) return undefined
+            const stamp = await auditService.stamp(tx)
+            // The key comes from the DELETE itself: a screenshot set meanwhile is the one removed.
+            const deleted = await supportKnowledgeRepository.delete(id, tx)
+            if (deleted === undefined) throw new Error('Locked article row was not deleted')
+            const events = await auditService.record(tx, stamp, actor, [
+                {
+                    action: 'kb.article.deleted',
+                    targetId: String(id),
+                    input: { before: deleted, content: contentFingerprint(deleted.content, null) },
+                },
+            ])
+            return { screenshotKey: deleted.screenshotKey, events }
+        })
+        if (outcome === undefined) {
             return Result.err(notFound('Article', 'Article not found'))
         }
-        if (deleted.screenshotKey !== null) {
+        auditService.logCommitted(actor.logger, outcome.events)
+        if (outcome.screenshotKey !== null) {
             await deleteScreenshotQuietly(
-                deleted.screenshotKey,
+                outcome.screenshotKey,
                 'Failed to delete KB screenshot from S3',
             )
         }
@@ -187,6 +289,7 @@ export const knowledgeBaseService = {
     async uploadScreenshot(
         id: bigint,
         file: UploadedFile | undefined,
+        actor: AuditActor,
     ): Promise<AppResult<{ item: KbItemData }>> {
         if (file === undefined) {
             return Result.err(badRequest('No file uploaded'))
@@ -213,18 +316,36 @@ export const knowledgeBaseService = {
         // only media origin allowed by the CSP img-src.
         await uploadToS3(s3Key, Buffer.from(file.data), imageType, { publicRead: true })
 
-        let replaced: { previousKey: string | null } | undefined
+        let replaced:
+            { previousKey: string | null; extra: RecordedAuditEvent[] | undefined } | undefined
         try {
-            replaced = await supportKnowledgeRepository.replaceScreenshot(id, {
-                key: s3Key,
-                mime: imageType,
-            })
+            replaced = await supportKnowledgeRepository.replaceScreenshot(
+                id,
+                { key: s3Key, mime: imageType },
+                (tx, previous) =>
+                    // feat-235: the event commits with the swap. A throw here (the audit insert,
+                    // the payload check) is before the COMMIT: a known rollback.
+                    beforeCommit(async () => {
+                        const stamp = await auditService.stamp(tx)
+                        return auditService.record(tx, stamp, actor, [
+                            {
+                                action: 'kb.screenshot.uploaded',
+                                targetId: String(id),
+                                input: {
+                                    hadScreenshot: previous.previousKey !== null,
+                                    mime: imageType,
+                                },
+                            },
+                        ])
+                    }),
+            )
         } catch (err: unknown) {
-            // feat-130: the new object goes only when PostgreSQL answered with an error, i.e. the
-            // transaction rolled back. Without an answer (a timeout, a dropped connection) the
-            // COMMIT may have gone through and may not be visible to a re-read yet: the object
-            // stays (an orphan beats a broken image).
-            if (isServerRejection(err)) {
+            // feat-130: the new object goes when the transaction is known to have rolled back:
+            // PostgreSQL answered with an error, or our own work threw before the COMMIT was sent
+            // (feat-235). Without an answer (a timeout, a dropped connection) the COMMIT may have
+            // gone through and may not be visible to a re-read yet: the object stays (an orphan
+            // beats a broken image).
+            if (err instanceof RolledBackBeforeCommit || isServerRejection(err)) {
                 await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
             } else {
                 logger.warn(
@@ -232,12 +353,13 @@ export const knowledgeBaseService = {
                     'KB screenshot swap failed without an answer from the database; new object kept',
                 )
             }
-            throw err
+            throw err instanceof RolledBackBeforeCommit ? err.cause : err
         }
         if (replaced === undefined) {
             await deleteScreenshotQuietly(s3Key, 'Failed to delete unused KB screenshot')
             return Result.err(notFound('Article', 'Article not found'))
         }
+        auditService.logCommitted(actor.logger, replaced.extra ?? [])
         if (replaced.previousKey !== null) {
             await deleteScreenshotQuietly(
                 replaced.previousKey,
@@ -256,7 +378,10 @@ export const knowledgeBaseService = {
         })
     },
 
-    async deleteScreenshot(id: bigint): Promise<AppResult<{ item: KbItemData }>> {
+    async deleteScreenshot(
+        id: bigint,
+        actor: AuditActor,
+    ): Promise<AppResult<{ item: KbItemData }>> {
         const existingResult = await requireArticle(id)
         if (Result.isError(existingResult)) {
             return Result.err(existingResult.error)
@@ -265,10 +390,26 @@ export const knowledgeBaseService = {
 
         // The key to delete is the one the row held when it was cleared (feat-116), not the one
         // read above: an upload in between would otherwise leave its object behind.
-        const replaced = await supportKnowledgeRepository.replaceScreenshot(id, null)
+        const replaced = await supportKnowledgeRepository.replaceScreenshot(
+            id,
+            null,
+            async (tx, previous) => {
+                // Nothing was removed: no event (feat-235).
+                if (previous.previousKey === null) return []
+                const stamp = await auditService.stamp(tx)
+                return auditService.record(tx, stamp, actor, [
+                    {
+                        action: 'kb.screenshot.removed',
+                        targetId: String(id),
+                        input: { hadScreenshot: true, mime: previous.previousMime },
+                    },
+                ])
+            },
+        )
         if (replaced === undefined) {
             return Result.err(notFound('Article', 'Article not found'))
         }
+        auditService.logCommitted(actor.logger, replaced.extra ?? [])
         if (replaced.previousKey !== null) {
             await deleteScreenshotQuietly(
                 replaced.previousKey,
