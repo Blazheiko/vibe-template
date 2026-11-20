@@ -2331,8 +2331,8 @@
             "owner": "Blazheiko",
             "branch": "fix/active-sessions-review",
             "dependencies": ["feat-233"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #719 (merge 8f4fde4), registry #718. Review of feat-233: (1) base-api.ts: the CSRF recovery of an ordinary request with 403 token_mismatch waits for a renewal in flight before main/init (it saw the anonymous session and signed the user out); tests for a successful and a failed renewal, the success one failed before the fix. (2) isFamiliarDevice follows the list cursor to a match or the end; tests for a match on a later page and no match, both failed before. (3) CI baseline: redis-main.redis.test.ts had a fixed createdAt 2026-10-21 that became SESSION_MAX_AGE_DAYS old on 2026-11-20; it now uses the current time. Local: make check (backend 3237, frontend 732), make test-redis 174 passed, test:e2e 102, test:e2e:live 25, docs:build + docs:verify. CI on 827afca: quality, build, e2e, e2e-live, test-pg, test-redis, docs green. Status went in_progress -> done without a separate review PR (follow-up of feat-233; owner: merge after green checks)."
         }
     ]
 }
