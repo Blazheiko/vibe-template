@@ -16,13 +16,15 @@ import { userNotificationService } from '#app/services/notifications/user-notifi
 import type { SessionDevice } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { listSessions } from '#vendor/utils/session/redis-session-storage.js'
+import type { IndexPosition } from '#vendor/utils/session/session-page-cursor.js'
 
 // feat-233 (Р11): a new sign-in is announced by a push that names the device and, under the
 // rules below, by a mail with the details and a link to the session list. The caller of
 // auth.login decides whether to announce it (a registration, a renewal and a link are not).
 //
 // The mail goes only (1) to a confirmed address: an unconfirmed one may be somebody else's;
-// (2) when the device is not "familiar": another live session of the user has the same browser,
+// (2) when the device is not "familiar": another live session of the user (any page of the
+// list) has the same browser,
 // operating system and IP. That is a heuristic to send fewer mails, not proof of identity: a
 // device of the same kind behind the same NAT passes too, and an unknown browser or system is
 // never familiar; (3) within newSignInMailUser (5 an hour per user by default). The push always
@@ -98,8 +100,9 @@ export function renderNewSignInEmail(notice: NewSignInMail): ReturnType<typeof r
 }
 
 /**
- * Whether another live session of the user has the same browser, system and IP (rule 2). Reads
- * one page of the list; an unknown browser or system is never familiar.
+ * Whether another live session of the user has the same browser, system and IP (rule 2). Follows
+ * the pages of the list until a match or its end (feat-234: the first page alone missed a familiar
+ * device further down). An unknown browser or system is never familiar.
  */
 export const isFamiliarDevice = async (
     userToken: string,
@@ -107,13 +110,19 @@ export const isFamiliarDevice = async (
 ): Promise<boolean> => {
     const parsed = parseUserAgent(device.userAgent)
     if (parsed.browser === 'unknown' || parsed.os === 'unknown' || device.ip === '') return false
-    const page = await listSessions(userToken, { after: null, excludePublicId: device.publicId })
-    return page.sessions.some((other) => {
-        const otherDevice = other.info.data.device
-        if (otherDevice?.ip !== device.ip) return false
-        const seen = parseUserAgent(otherDevice.userAgent)
-        return seen.browser === parsed.browser && seen.os === parsed.os
-    })
+    let after: IndexPosition | null = null
+    for (;;) {
+        const page = await listSessions(userToken, { after, excludePublicId: device.publicId })
+        const match = page.sessions.some((other) => {
+            const otherDevice = other.info.data.device
+            if (otherDevice?.ip !== device.ip) return false
+            const seen = parseUserAgent(otherDevice.userAgent)
+            return seen.browser === parsed.browser && seen.os === parsed.os
+        })
+        if (match) return true
+        if (page.next === null) return false
+        after = page.next
+    }
 }
 
 /** The mail part: whether it went out, and if not, why (for tests and logs). */
