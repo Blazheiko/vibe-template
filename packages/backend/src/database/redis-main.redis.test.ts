@@ -69,7 +69,9 @@ const sessionKey = (id: string): string => `session:${USER_TOKEN}:${id}`
 const session = (id: string, value: string) => ({
     id,
     data: { userToken: USER_TOKEN, value },
-    createdAt: '2026-10-21T00:00:00.000Z',
+    // Now, not a fixed date: a record older than SESSION_MAX_AGE_DAYS is refused by getSession
+    // (feat-119), so a fixed date made these tests fail 30 days after it.
+    createdAt: new Date().toISOString(),
 })
 
 const waitFor = async (

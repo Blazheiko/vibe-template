@@ -22,10 +22,16 @@ Both findings of the feat-233 review fixed, with tests that fail on the old code
 Docs (both locales): `backend/security.md` (every page of the list), `backend/account.md` (the
 403 recovery waits for the renewal).
 
+3. **CI baseline, `packages/backend/src/database/redis-main.redis.test.ts`**: the session fixture had
+   a fixed `createdAt: '2026-10-21'`; from 2026-11-20 it is `SESSION_MAX_AGE_DAYS` (30) old and
+   `getSession` refuses it, so "a stale SETEX snapshot does not overwrite the session" failed in
+   `test-redis` on #719 (not caused by this change). The fixture now uses the current time.
+
 ## Evidence of Completion
 
 - `make check`: green — backend 3237, frontend 732 tests.
 - `pnpm --filter frontend test:e2e`: 102 passed; `test:e2e:live`: 25 passed.
 - `pnpm docs:build && pnpm docs:verify`: all checks passed.
-- No PG/Redis code changed (the familiar-device loop calls the existing `listSessions`).
+- `make test-redis`: 174 passed, 0 skipped (after the fixture fix). No PG/Redis production code
+  changed (the familiar-device loop calls the existing `listSessions`).
 - Manual golden path: covered by `e2e-live/active-sessions.spec.ts`; no click-through by a person.
