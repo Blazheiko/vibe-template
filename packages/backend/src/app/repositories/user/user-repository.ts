@@ -115,6 +115,8 @@ export interface IUserRepository {
      * passed, and the statement is cancelled on the server.
      */
     findRolesByIds(ids: bigint[]): Promise<Map<string, UserRow['role']>>
+    /** The names of these users by id (feat-235: the audit log); a deleted user is absent. */
+    findNamesByIds(ids: readonly bigint[]): Promise<Map<string, string>>
     /** The current sessionToken, or undefined when the user does not exist (ADR 0002). */
     findSessionToken(id: bigint): Promise<string | undefined>
     /**
@@ -354,6 +356,15 @@ export const userRepository: IUserRepository = {
             .from(users)
             .where(inArray(users.id, ids))
         return new Map(rows.map((row) => [String(row.id), row.role]))
+    },
+
+    async findNamesByIds(ids) {
+        if (ids.length === 0) return new Map()
+        const rows = await db
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(inArray(users.id, [...ids]))
+        return new Map(rows.map((row) => [String(row.id), row.name]))
     },
 
     // On the session-check pool, which cancels a stuck query (ADR 0002).

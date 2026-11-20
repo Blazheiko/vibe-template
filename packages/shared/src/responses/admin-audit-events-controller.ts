@@ -32,6 +32,44 @@ export const AuditEventTargetUserSchema = type({
 })
 export type AuditEventTargetUser = typeof AuditEventTargetUserSchema.infer
 
+const AuditValueSchema = type('string | number | boolean | null')
+const AuditFromToSchema = type({ from: AuditValueSchema, to: AuditValueSchema })
+
+/** Every key `changes` may have in the catalog (shared/audit), each `{ from, to }`. */
+export const AuditChangesSchema = type({
+    'role?': AuditFromToSchema,
+    'title?': AuditFromToSchema,
+    'category?': AuditFromToSchema,
+    'isActive?': AuditFromToSchema,
+    'model?': AuditFromToSchema,
+    'temperature?': AuditFromToSchema,
+    'maxTokens?': AuditFromToSchema,
+    'topic?': AuditFromToSchema,
+    'screenshot?': AuditFromToSchema,
+    'content?': {
+        changed: 'boolean',
+        sha256Before: 'string | null',
+        sha256After: 'string | null',
+        charsBefore: 'number | null',
+        charsAfter: 'number | null',
+    },
+})
+
+/** Every key `metadata` may have in the catalog (shared/audit). */
+export const AuditMetadataSchema = type({
+    'source?': 'string',
+    'proof?': 'string',
+    'sessionsRevoked?': 'string',
+    'claimed?': 'boolean',
+    'passwordCleared?': 'boolean',
+    'phoneRemoved?': 'boolean',
+    'oauthRemoved?': 'string[]',
+    'pushSubscriptionsRemoved?': 'number',
+    'method?': 'string',
+    'provider?': 'string',
+    'mime?': 'string | null',
+})
+
 /**
  * One entry of the audit log. `changes` holds `{ from, to }` of the allowed fields (a text as its
  * hash and length), `metadata` the context of the action; both follow the catalog of the action.
@@ -46,8 +84,8 @@ export const AuditEventSchema = type({
     target: { type: type.enumerated(...AUDIT_TARGET_TYPES), id: 'string' },
     targetUser: AuditEventTargetUserSchema.or('null'),
     requestId: 'string | null',
-    changes: 'Record<string, unknown> | null',
-    metadata: 'Record<string, unknown> | null',
+    changes: AuditChangesSchema.or('null'),
+    metadata: AuditMetadataSchema.or('null'),
 })
 export type AuditEvent = typeof AuditEventSchema.infer
 

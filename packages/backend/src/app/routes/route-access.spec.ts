@@ -85,6 +85,24 @@ describe('route access matrix (code-issues items 48, 67)', () => {
         }
     })
 
+    // feat-235 (Р7): the audit log is for admins only, like every other /admin route.
+    it('every HTTP /admin route declares session, CSRF, auth and admin guards', () => {
+        const adminRoutes = http.filter((route) => route.url.startsWith('api/admin/'))
+        expect(adminRoutes.map((route) => route.url)).toContain('api/admin/audit-events')
+        for (const route of adminRoutes) {
+            expect(route.middlewares, route.url).toEqual([
+                'session_web',
+                'csrf_guard',
+                'auth_guard',
+                'admin_guard',
+            ])
+        }
+        const audit = http.find((route) => route.url === 'api/admin/audit-events')
+        expect(audit?.method).toBe('get')
+        // `?action=a&action=b`: the one key that may repeat.
+        expect(audit?.queryArrays).toEqual(['action'])
+    })
+
     // feat-232: the profile of the signed-in user, read and changed with a session and CSRF.
     it('the account routes need a session, CSRF and a signed-in user', async () => {
         const accountRoutes = http.filter((route) => route.url.includes('/account/'))

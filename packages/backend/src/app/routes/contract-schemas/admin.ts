@@ -1,4 +1,5 @@
 import {
+    AdminAuditEventsQuerySchema,
     AdminOnlineHistoryListQuerySchema,
     AdminUserListQuerySchema,
     LlmTextUsageQuerySchema,
@@ -23,4 +24,8 @@ export const adminSchemas = contractSchemas(adminContracts, {
         response: ResponseSchemas.GetTextUsageResponseSchema,
     },
     usageStats: { response: ResponseSchemas.GetUsageStatsResponseSchema },
+    auditEvents: {
+        query: AdminAuditEventsQuerySchema,
+        response: ResponseSchemas.AdminAuditEventsResponseSchema,
+    },
 })

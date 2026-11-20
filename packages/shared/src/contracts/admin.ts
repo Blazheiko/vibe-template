@@ -3,6 +3,8 @@ import type {
     AdminUserListQueryInput,
 } from '../schemas/query/admin.js'
 import type { LlmTextUsageQueryInput } from '../schemas/query/usage.js'
+import type { AdminAuditEventsQueryInput } from '../schemas/query/admin-audit-events.js'
+import type { AdminAuditEventsResponse } from '../responses/admin-audit-events-controller.js'
 import type { AdminUserListResponse } from '../responses/admin-user-controller.js'
 import type {
     AdminOnlineUserDetailResponse,
@@ -42,5 +44,10 @@ export const adminContracts = {
     usageStats: contract<undefined, undefined, GetUsageStatsResponse>()(
         'get',
         '/admin/usage/stats',
+    ),
+    /** feat-235 (Р7): the audit log, newest first, by the filters of the query. */
+    auditEvents: contract<undefined, AdminAuditEventsQueryInput, AdminAuditEventsResponse>()(
+        'get',
+        '/admin/audit-events',
     ),
 } as const
