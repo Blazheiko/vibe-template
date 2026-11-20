@@ -2343,6 +2343,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #727 (merge 447ee3b), registry #726 (in_progress) and #728 (review). audit_events (append-only, trigger audit_events_no_update), 16 actions in shared/audit with projections, key and 8192-byte size checks and allowed proofs per action; events written in the transaction of each change, stamped with clock_timestamp() after the row lock; confirmPhoneLink confirms the SMS code in a withTransactionResult under the user row lock (feat-100 race test updated: the loser's challenge stays unconfirmed); GET /admin/audit-events (filters, keyset cursor), /admin/audit-log page, audit-events-retention job (AUDIT_EVENTS_RETENTION_DAYS 365). Two review rounds fixed: stale page answers, repeated action in the UI, 400 for out-of-range ids and impossible cursor dates, required actor/request with request id and catalog proofs, prompt cache by llm_system_prompts.revision (migration llm_prompt_revision). Local on the final code: make check (backend 3330, frontend 739, shared 99), make test-pg 452 executed / 0 skipped, make test-redis 174, test:e2e 103, test:e2e:live 27, docs:build + docs:verify, job:run audit-events-retention --dry-run matched 2500 then real changed 2500; mutations of Р13 each fail a named test. CI on cf50456: quality, build, e2e, e2e-live, test-pg, test-redis green. Not checked by hand: unlinking a sign-in method in the UI and finding an event by request ID in the server log (covered by PG/unit tests)."
+        },
+        {
+            "id": "feat-236",
+            "name": "Notification Center",
+            "description": "docs/plan/notification-center-plan.md rev. 3.1 (decisions R1-R13), task list docs/plan/notification-center-tasks.md rev. 2 (T0a-T10): a PostgreSQL table notifications (kind and category from a closed catalog in shared/notifications, allow-listed params up to 1024 bytes, link checked by isNotificationLink, read_at) written by notificationService.notify after the business commit (best effort, never throws; validate, insert, bus signal, push); security mails stay an independent flow in their modules. notification_preferences per category x channel (security push and support push configurable, security email locked; a failed read skips push); push_subscriptions.notification_types removed. API under /notifications (session_web + csrf_guard, auth_guard): keyset list (limit 1-50, default 20, bigint bounds), unread count (LIMIT 100 before COUNT), idempotent POST :id/read returning link, read-all up to an id, preferences GET/PUT (422 for locked). WS signals notifications_changed and notification_preferences_changed without values; the client re-reads with seq, dirty re-read, recovery on ws_ready/visibility/open list. Frontend: bell with badge, /notifications page, /notifications/:id/open, preferences on the account page, uk/en/pl texts. Daily notifications-retention job (NOTIFICATIONS_RETENTION_DAYS, default 90). Docs both locales.",
+            "owner": "Blazheiko",
+            "branch": "feat/notification-center",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
