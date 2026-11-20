@@ -2341,8 +2341,8 @@
             "owner": "Blazheiko",
             "branch": "feat/audit-log",
             "dependencies": [],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #727 (merge 447ee3b), registry #726 (in_progress) and #728 (review). audit_events (append-only, trigger audit_events_no_update), 16 actions in shared/audit with projections, key and 8192-byte size checks and allowed proofs per action; events written in the transaction of each change, stamped with clock_timestamp() after the row lock; confirmPhoneLink confirms the SMS code in a withTransactionResult under the user row lock (feat-100 race test updated: the loser's challenge stays unconfirmed); GET /admin/audit-events (filters, keyset cursor), /admin/audit-log page, audit-events-retention job (AUDIT_EVENTS_RETENTION_DAYS 365). Two review rounds fixed: stale page answers, repeated action in the UI, 400 for out-of-range ids and impossible cursor dates, required actor/request with request id and catalog proofs, prompt cache by llm_system_prompts.revision (migration llm_prompt_revision). Local on the final code: make check (backend 3330, frontend 739, shared 99), make test-pg 452 executed / 0 skipped, make test-redis 174, test:e2e 103, test:e2e:live 27, docs:build + docs:verify, job:run audit-events-retention --dry-run matched 2500 then real changed 2500; mutations of Р13 each fail a named test. CI on cf50456: quality, build, e2e, e2e-live, test-pg, test-redis green. Not checked by hand: unlinking a sign-in method in the UI and finding an event by request ID in the server log (covered by PG/unit tests)."
         }
     ]
 }
