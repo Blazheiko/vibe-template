@@ -42,7 +42,7 @@ Indexes: `(occurred_at, id)` for the feed, the cursor and the retention job; the
 | kb       | `kb.screenshot.uploaded/removed`     | `user`                   | `kb_article` | `{ screenshot: { from, to } }` (presence only), `mime`                                          |
 | ai       | `ai.prompt.updated`                  | `user`                   | `llm_prompt` | `model`, `temperature`, `maxTokens`, `topic`; the text as a fingerprint                         |
 
-`auth.account.claimed` is written next to the event that caused the claim (a reset by link, an OAuth link), with the same `request_id` and `occurred_at`. `user.role.changed` is written by [`role-assignment-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/role-assignment-service.ts) in the transaction of the role change; for now only the `user:set-role` CLI calls it (actor `system`, source `cli`, see [Scripts](/en/reference/scripts)). Not yet recorded: registration, the revocation of one session, failed attempts.
+`auth.account.claimed` is written next to the event that caused the claim (a reset by link, an OAuth link), with the same `request_id` and `occurred_at`. `user.role.changed` is written by [`role-assignment-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/role-assignment-service.ts) in the transaction of the role change; `PATCH /admin/users/:id/role` (actor `user`) and the `user:set-role` CLI (actor `system`, source `cli`, see [Scripts](/en/reference/scripts)) call it. Not yet recorded: registration, the revocation of one session, failed attempts.
 
 ## Actors and proofs
 
@@ -50,9 +50,7 @@ Indexes: `(occurred_at, id)` for the feed, the cursor and the retention job; the
 - `proof_holder`: no session of the account, only a proof. `actor_user_id` is `NULL`, the proof is required: `email_link` (password reset by link), `sms_code` (password reset by SMS), `oauth_email_link` (an OAuth link confirmed by mail in the browser of the sign-in), `oauth_provider_email` (the provider proved the address).
 - `system`: the seed or a CLI; `request_id` is `NULL`, `metadata.source` names it: `seed` or `cli` (`AUDIT_SYSTEM_SOURCES`).
 
-::: warning Plan
-A role change by a `user` actor (an admin over HTTP) is feat-241: there is no endpoint yet; the catalog and the service already accept it.
-:::
+A role change through `PATCH /admin/users/:id/role` is recorded with the `user` actor (its role read under the role-change lock) and the request's `request_id`; through the CLI, with the `system` actor and `metadata.source = cli`.
 
 The catalog also lists the proofs each action accepts, and `record` refuses anything else: a proof holder needs one of them, `auth.phone.linked` needs `sms_code`, `auth.email.linked` needs `email_link`, and an action without proofs refuses one. A `user` or `proof_holder` actor always carries the request ID: the services take the actor (or the request) as a required parameter.
 
