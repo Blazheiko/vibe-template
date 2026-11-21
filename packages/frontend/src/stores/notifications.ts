@@ -213,7 +213,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const loadMore = async (): Promise<void> => {
         const cursor = next.value
         if (cursor === null || loadingMore.value) return
-        const started = generation
+        const mine = ticket()
         loadingMore.value = true
         try {
             const { data, error } = await notificationsApi.list({
@@ -221,8 +221,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
                 before: cursor,
                 limit: NOTIFICATIONS_FIRST_PAGE,
             })
-            // The list was read again meanwhile: this page continues an older one.
-            if (started !== generation || next.value !== cursor) return
+            // The list was read again meanwhile: this page continues an older one. A mark-read or
+            // read-all that ended after this page was asked for may leave the cursor as it was, so
+            // the cursor alone does not tell; pageSeq does (feat-239).
+            if (mine.generation !== generation || mine.seq <= pageSeq || next.value !== cursor) {
+                return
+            }
             if (error !== null || data?.status !== 'success') {
                 loadFailed.value = true
                 return
