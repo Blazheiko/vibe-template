@@ -2383,6 +2383,26 @@
             "dependencies": ["feat-238"],
             "status": "done",
             "evidence": "PR #742 (merge 4124b74), registry #741. loadMore() takes a ticket and drops its answer once pageSeq has passed it (a successful mark-read or read-all, or a newer first-page read), next to the account and cursor checks, so a late \"load more\" page can no longer append unread rows after read-all when the cursor stays the same. Store test (delayed second page, read-all, first-page refresh with the same cursor, then the old answer) fails without the fix. Local: make check (frontend 833, backend 3374), mocked e2e notifications + account-profile 11/11. CI run 44893788743: quality, e2e, e2e-live green. Status went in_progress -> done without a separate review PR (follow-up of feat-238)."
+        },
+        {
+            "id": "feat-240",
+            "name": "Roles And Permissions Core",
+            "description": "Item 6 of docs/plan/future/template-functionality-recommendations.md, plan docs/plan/roles-permissions-plan.md (revision 5.1, D1-D9 accepted) and tasks docs/plan/roles-permissions-tasks.md (T0-T9). Fixed role catalog in shared (user, support_operator, kb_editor, user_admin, admin) with per-route permissions checked on the backend (can:<permission> / ws_can:<permission> replace admin_guard / ws_admin_guard), explicit delegation policy, independent HTTP and WS access matrices; user_role enum values and a CHECK that a staff role needs a verified email; audit.read.account limits the audit log to sign-in and sessions; roleAssignmentService under one advisory lock (last_admin, identity_unverified, user.role.changed audit event) and the user:set-role CLI; wsRoleSync applies the database role to open sockets on a server bus signal and a periodic pass, sends access_changed after applying, pauses the admin channel on a failed read; GET /account/access, can()/accessEpoch and useAdminChannel in the frontend.",
+            "owner": "Blazheiko",
+            "branch": "feat/roles-permissions-core",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-241",
+            "name": "Role Assignment",
+            "description": "Second part of docs/plan/roles-permissions-plan.md (tasks U0-U5 in docs/plan/roles-permissions-tasks.md): PATCH /admin/users/:id/role over roleAssignmentService (can:users.roles.assign, 403/404/409 with reason), role column and filter in GET /admin/users, the change-role dialog in AdminUsersView limited to assignableRoles, e2e-live of assigning kb_editor and support_operator and demoting an open tab, admin API documentation.",
+            "owner": "Blazheiko",
+            "branch": "feat/role-assignment",
+            "dependencies": ["feat-240"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
