@@ -23,7 +23,7 @@ ENV_FILE := packages/backend/.env
 	check verify-makefile verify-compose check-bundle-graph typecheck lint lint-fix format format-check \
 	test test-e2e test-e2e-landing test-pg test-redis coverage \
 	services-up services-down \
-	db-create db-migrate db-generate db-seed db-studio \
+	db-create db-migrate db-generate db-seed db-studio user-role \
 	app-build app-up app-down app-seed app-logs \
 	docs-dev docs-build docs-preview docs-verify \
 	build build-landing preview-landing clean
@@ -155,6 +155,9 @@ db-seed: ## Seed reference data (ARGS=--demo for demo accounts)
 
 db-studio: ## Open Drizzle Studio
 	$(PNPM) --filter backend db:studio
+
+user-role: ## Give a user a role (ARGS="--email <email> --role <role>")
+	$(PNPM) --filter backend user:set-role $(ARGS)
 
 ##@ App in Docker
 

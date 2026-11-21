@@ -395,6 +395,7 @@ export default {
         },
         actions: {
             user_admin_created: 'Administrator created',
+            user_role_changed: 'Role changed',
             auth_password_changed: 'Password changed',
             auth_password_reset: 'Password reset',
             auth_account_claimed: 'Account claimed by the mailbox owner',
