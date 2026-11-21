@@ -50,12 +50,20 @@ function openDetail(id: string) {
     if (canOpenDetail.value) void openUserModal(id)
 }
 
+// feat-242 (review 2026-11-21): the list shown is the selection of the role filter; a row whose new
+// role no longer matches it leaves the list (the cursor is the id of the last row, so the next
+// page is unaffected).
 function onRoleChanged(role: Role) {
     const target = roleTarget.value
-    if (target !== null) {
-        users.value = users.value.map((user) => (user.id === target.id ? { ...user, role } : user))
-    }
     roleTarget.value = null
+    if (target === null) return
+    if (roleFilter.value !== '' && roleFilter.value !== role) {
+        const before = users.value.length
+        users.value = users.value.filter((user) => user.id !== target.id)
+        if (users.value.length < before) total.value = Math.max(0, total.value - 1)
+        return
+    }
+    users.value = users.value.map((user) => (user.id === target.id ? { ...user, role } : user))
 }
 
 const filters = ref<UserFilters>({
@@ -64,13 +72,21 @@ const filters = ref<UserFilters>({
     dateTo: '',
 })
 
+// feat-242 (review 2026-11-21): every first page starts a new generation; the answer of an older
+// one (a page of the filters before the change) is dropped instead of replacing the list, the
+// total and the cursor.
+let generation = 0
+
 /** The first page (`reset`), or the next one after what is shown. */
 async function loadUsers(reset = true) {
     if (reset) {
+        generation += 1
         loading.value = true
+        loadingMore.value = false
     } else {
         loadingMore.value = true
     }
+    const mine = generation
     error.value = null
 
     const cursor = reset ? undefined : (nextCursor.value ?? undefined)
@@ -82,6 +98,7 @@ async function loadUsers(reset = true) {
         dateTo: filters.value.dateTo,
         ...(roleFilter.value !== '' ? { role: roleFilter.value } : {}),
     })
+    if (mine !== generation) return
 
     loading.value = false
     loadingMore.value = false

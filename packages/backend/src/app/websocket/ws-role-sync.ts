@@ -14,8 +14,13 @@ import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 // for both paths: the server bus event user_role_changed (a role was changed somewhere) and a
 // periodic pass over every connection of this instance (a signal may be lost).
 //
-// - Every read gets a number when it starts; per user the number of the last applied read is
-//   kept, and the result of an older read that finished later is dropped.
+// - Every read gets a number when it starts; per user the number of the last settled read (applied
+//   or failed) is kept, and the outcome of an older read that settled later is dropped: an old
+//   result neither overwrites a newer one nor lifts the pause of a newer failure (review
+//   2026-11-21).
+// - A read applies only to the connections that were registered when it started. A connection
+//   registered meanwhile read its role at connect, possibly after this read did: the older
+//   result must not overwrite it (review 2026-11-21).
 // - A changed role is applied to the connection first, then the connection is told
 //   (`access_changed`), so a request the client sends after it is checked against the new role.
 // - A failed read pauses the admin channel of the connections of those users that may use it:
@@ -37,7 +42,35 @@ export interface RoleSyncReport {
 }
 
 let readCounter = 0
-const lastApplied = new Map<string, number>()
+const lastSettled = new Map<string, number>()
+
+/** The connections of these users registered here now, by user: what a read starting now covers. */
+const snapshotOf = (userIds: readonly string[]): Map<string, ReadonlySet<string>> =>
+    new Map(
+        userIds.map((userId) => [
+            userId,
+            new Set(wsConnectionRegistry.listUserConnections(userId).map(({ uuid }) => uuid)),
+        ]),
+    )
+
+/** The connections of `userId` still registered that were in the snapshot of the read. */
+const coveredConnections = (
+    userId: string,
+    covered: ReadonlySet<string> | undefined,
+): ReturnType<typeof wsConnectionRegistry.listUserConnections> =>
+    covered === undefined || covered.size === 0
+        ? []
+        : wsConnectionRegistry.listUserConnections(userId).filter(({ uuid }) => covered.has(uuid))
+
+/**
+ * Whether the outcome of read `read` for `userId` is the newest settled one; if so it is recorded.
+ * A success and a failure take part alike.
+ */
+const settle = (userId: string, read: number): boolean => {
+    if ((lastSettled.get(userId) ?? 0) > read) return false
+    lastSettled.set(userId, read)
+    return true
+}
 
 const userDataOf = (ws: MyWebSocket): UserConnection | null => {
     try {
@@ -49,9 +82,9 @@ const userDataOf = (ws: MyWebSocket): UserConnection | null => {
 }
 
 /** Applies the role read for `userId` to each of its connections here; returns how many changed. */
-const apply = (userId: string, role: Role): number => {
+const apply = (userId: string, role: Role, covered: ReadonlySet<string> | undefined): number => {
     let changed = 0
-    for (const { uuid, ws } of wsConnectionRegistry.listUserConnections(userId)) {
+    for (const { uuid, ws } of coveredConnections(userId, covered)) {
         try {
             const userData = userDataOf(ws)
             if (userData === null) continue
@@ -84,9 +117,9 @@ const apply = (userId: string, role: Role): number => {
 }
 
 /** A failed read: the connections that may use the admin channel leave it until a read succeeds. */
-const pause = (userId: string): number => {
+const pause = (userId: string, covered: ReadonlySet<string> | undefined): number => {
     let paused = 0
-    for (const { uuid, ws } of wsConnectionRegistry.listUserConnections(userId)) {
+    for (const { uuid, ws } of coveredConnections(userId, covered)) {
         try {
             const userData = userDataOf(ws)
             if (userData === null || !roleHasPermission(userData.role, 'users.read')) continue
@@ -115,22 +148,26 @@ export const wsRoleSync = {
         if (ids.length === 0) return report
         readCounter += 1
         const read = readCounter
+        const snapshot = snapshotOf(ids)
 
         let roles: Map<string, Role>
         try {
             roles = await userRoleService.findRoles(ids.map((id) => BigInt(id)))
         } catch (err) {
             logger.error({ err, users: ids.length }, 'WS role read failed: admin channel paused')
-            for (const userId of ids) report.paused += pause(userId)
+            for (const userId of ids) {
+                // A newer read settled meanwhile: its outcome stands.
+                if (!settle(userId, read)) continue
+                report.paused += pause(userId, snapshot.get(userId))
+            }
             report.failed = ids.length
             return report
         }
 
         for (const userId of ids) {
-            // A newer read was applied meanwhile: this one is older news.
-            if ((lastApplied.get(userId) ?? 0) > read) continue
-            lastApplied.set(userId, read)
-            report.changed += apply(userId, roles.get(userId) ?? 'user')
+            // A newer read settled meanwhile: this one is older news.
+            if (!settle(userId, read)) continue
+            report.changed += apply(userId, roles.get(userId) ?? 'user', snapshot.get(userId))
         }
         return report
     },
@@ -140,8 +177,8 @@ export const wsRoleSync = {
         const userIds = [...new Set(wsConnectionRegistry.listConnections().map((c) => c.userId))]
         // Forget the users that have no connection here any more.
         const present = new Set(userIds)
-        for (const userId of lastApplied.keys()) {
-            if (!present.has(userId)) lastApplied.delete(userId)
+        for (const userId of lastSettled.keys()) {
+            if (!present.has(userId)) lastSettled.delete(userId)
         }
         const total: RoleSyncReport = { users: 0, changed: 0, paused: 0, failed: 0 }
         for (let start = 0; start < userIds.length; start += ROLE_SYNC_BATCH) {
@@ -183,6 +220,6 @@ export const wsRoleSync = {
     /** For tests: forget the read numbers. */
     reset(): void {
         readCounter = 0
-        lastApplied.clear()
+        lastSettled.clear()
     },
 }
