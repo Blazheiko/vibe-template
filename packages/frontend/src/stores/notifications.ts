@@ -116,24 +116,45 @@ export const useNotificationsStore = defineStore('notifications', () => {
         panelFailed.value = false
     }
 
-    /** The count, and the first page of every list open now (Р11). */
-    const readOnce = async (): Promise<void> => {
-        if (pageOpen.value === 0 && panelOpen.value === 0) {
+    /**
+     * What a read covers (feat-238): the count always; the first page of the history and the
+     * panel only when asked for and open. Opening the panel reads the panel alone, so the pages
+     * the history has loaded and its cursor stay.
+     */
+    interface ReadScope {
+        page: boolean
+        panel: boolean
+    }
+    const ALL: ReadScope = { page: true, panel: true }
+    let pending: ReadScope = { page: false, panel: false }
+    const ask = (scope: Partial<ReadScope>): void => {
+        pending = {
+            page: pending.page || scope.page === true,
+            panel: pending.panel || scope.panel === true,
+        }
+    }
+
+    /** The count, and the first page of each list asked for and open now (Р11). */
+    const readOnce = async (scope: ReadScope): Promise<void> => {
+        const page = scope.page && pageOpen.value > 0
+        const panel = scope.panel && panelOpen.value > 0
+        if (!page && !panel) {
             const mine = ticket()
             const { data, error } = await notificationsApi.unreadCount()
             if (error !== null || data?.status !== 'success') return
             applyCount(mine, data.unreadCount)
             return
         }
-        if (pageOpen.value > 0) await readPage()
-        if (panelOpen.value > 0) await readPanel()
+        if (page) await readPage()
+        if (panel) await readPanel()
     }
 
     // Read through a function: `dirty` changes while a read is awaited.
     const askedAgain = (): boolean => dirty
 
     /** Reads now; asked again while a read is in flight, reads once more after it. */
-    const readNow = async (): Promise<void> => {
+    const readNow = async (scope: Partial<ReadScope> = ALL): Promise<void> => {
+        ask(scope)
         if (!userStore.hasUser()) return
         if (inFlight) {
             dirty = true
@@ -145,26 +166,34 @@ export const useNotificationsStore = defineStore('notifications', () => {
             // of the previous account was in flight runs here, for the account of now (feat-237).
             do {
                 dirty = false
-                await readOnce()
+                const taken = pending
+                pending = { page: false, panel: false }
+                await readOnce(taken)
             } while (askedAgain() && userStore.hasUser())
         } finally {
             inFlight = false
         }
     }
 
-    const refreshSoon = (): void => {
+    /** Joins the reads asked for within the window into one, covering all their scopes. */
+    const refreshSoon = (scope: Partial<ReadScope> = ALL): void => {
+        ask(scope)
         if (timer !== undefined) clearTimeout(timer)
         timer = setTimeout(() => {
             timer = undefined
-            void readNow()
+            void readNow({})
         }, NOTIFICATIONS_REFRESH_COALESCE_MS)
+    }
+    // A handler of the bus gets the event's payload: never take it for a scope.
+    const refreshAll = (): void => {
+        refreshSoon(ALL)
     }
 
     /** A page or panel that shows its list mounts (Р11); every open has exactly one close. */
     const openList = (view: NotificationListView): void => {
         if (view === 'page') pageOpen.value += 1
         else panelOpen.value += 1
-        refreshSoon()
+        refreshSoon({ [view]: true })
     }
     const closeList = (view: NotificationListView): void => {
         if (view === 'page') pageOpen.value = Math.max(0, pageOpen.value - 1)
@@ -178,7 +207,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         next.value = null
         loaded.value = false
         pageSeq = seq
-        void readNow()
+        void readNow({ page: true })
     }
 
     const loadMore = async (): Promise<void> => {
@@ -206,7 +235,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
         }
     }
 
+    /**
+     * After a successful mark-read: every read that started before it may carry the old `readAt`,
+     * so their list answers are dropped (feat-238); the read after the mutation brings the rest.
+     */
     const markLocallyRead = (ids: (id: string) => boolean): void => {
+        pageSeq = Math.max(pageSeq, seq)
+        panelSeq = Math.max(panelSeq, seq)
         const now = new Date().toISOString()
         const mark = (list: NotificationItem[]): NotificationItem[] =>
             list.map((item) =>
@@ -257,6 +292,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         if (timer !== undefined) clearTimeout(timer)
         timer = undefined
         dirty = false
+        pending = { page: false, panel: false }
         unreadCount.value = 0
         items.value = []
         next.value = null
@@ -271,14 +307,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
     // Recovery points (Р8): the bus does not replay, and the retention job sends no signal.
     const onVisible = (): void => {
-        if (document.visibilityState === 'visible') refreshSoon()
+        if (document.visibilityState === 'visible') refreshAll()
     }
-    eventBus.on('notifications_changed', refreshSoon)
-    eventBus.on('ws_ready', refreshSoon)
+    eventBus.on('notifications_changed', refreshAll)
+    eventBus.on('ws_ready', refreshAll)
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible)
     onScopeDispose(() => {
-        eventBus.off('notifications_changed', refreshSoon)
-        eventBus.off('ws_ready', refreshSoon)
+        eventBus.off('notifications_changed', refreshAll)
+        eventBus.off('ws_ready', refreshAll)
         if (typeof document !== 'undefined') {
             document.removeEventListener('visibilitychange', onVisible)
         }

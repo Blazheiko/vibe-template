@@ -319,14 +319,79 @@ describe('notifications store', () => {
         await tick()
 
         expect(store.unreadOnly).toBe(true)
-        expect(api.list).toHaveBeenCalledWith({ unread: true, limit: 20 })
-        expect(api.list).toHaveBeenCalledWith({ limit: 10 })
+        // feat-238: opening the panel reads the panel alone, not the history page.
+        expect(api.list).toHaveBeenCalledExactlyOnceWith({ limit: 10 })
         expect(store.items.map((n) => n.id)).toEqual(['5'])
         expect(store.panelItems.map((n) => n.id)).toEqual(['9', '5'])
 
         api.readAll.mockResolvedValue(ok({ unreadCount: 0 }))
         await store.markAllRead('panel')
         expect(api.readAll).toHaveBeenCalledWith('9')
+    })
+
+    // feat-238 (re-review of #736, 1): the bell must not throw away the pages the history loaded.
+    it('opening the panel keeps the second page of the history and its cursor', async () => {
+        const store = useNotificationsStore()
+        store.openList('page')
+        api.list.mockResolvedValueOnce(
+            ok({ items: [item('30'), item('29')], next: '29', unreadCount: 4 }),
+        )
+        await tick()
+        api.list.mockResolvedValueOnce(
+            ok({ items: [item('28'), item('27')], next: '27', unreadCount: 4 }),
+        )
+        await store.loadMore()
+        expect(store.items.map((n) => n.id)).toEqual(['30', '29', '28', '27'])
+        expect(store.next).toBe('27')
+
+        api.list.mockClear()
+        api.list.mockResolvedValue(ok({ items: [item('30')], next: null, unreadCount: 4 }))
+        store.openList('panel')
+        await tick()
+
+        expect(api.list).toHaveBeenCalledExactlyOnceWith({ limit: 10 })
+        expect(store.items.map((n) => n.id)).toEqual(['30', '29', '28', '27'])
+        expect(store.next).toBe('27')
+    })
+
+    // feat-238 (re-review of #736, 2): a read that started before a successful mark-read must
+    // not put the old readAt back into either list.
+    it.each([
+        ['mark read', (store: ReturnType<typeof useNotificationsStore>) => store.markRead('5')],
+        [
+            'mark all read',
+            (store: ReturnType<typeof useNotificationsStore>) => store.markAllRead('page'),
+        ],
+    ])('a GET answering after a successful %s does not undo it', async (_label, mutate) => {
+        const store = useNotificationsStore()
+        store.openList('page')
+        store.openList('panel')
+        api.list.mockResolvedValue(ok({ items: [item('5')], next: null, unreadCount: 1 }))
+        await tick()
+        expect(store.items[0]?.readAt).toBeNull()
+
+        // A read starts before the mutation and answers after it, with the old state.
+        const late = deferred<ReturnType<typeof ok>>()
+        const lateAnswer = ok({ items: [item('5')], next: null, unreadCount: 1 })
+        api.list.mockReturnValueOnce(late.promise)
+        void store.readNow()
+        await flush()
+        api.markRead.mockResolvedValue(ok({ link: '/account', unreadCount: 0 }))
+        api.readAll.mockResolvedValue(ok({ unreadCount: 0 }))
+        await mutate(store)
+        // From now on the server has it read; only the late answer is old.
+        api.list.mockResolvedValue(
+            ok({ items: [item('5', '2026-11-21T10:00:00.000Z')], next: null, unreadCount: 0 }),
+        )
+        expect(store.items[0]?.readAt).not.toBeNull()
+        expect(store.panelItems[0]?.readAt).not.toBeNull()
+
+        late.resolve(lateAnswer)
+        await flush()
+
+        expect(store.items[0]?.readAt).not.toBeNull()
+        expect(store.panelItems[0]?.readAt).not.toBeNull()
+        expect(store.unreadCount).toBe(0)
     })
 
     it('caps the badge at 99+', async () => {
