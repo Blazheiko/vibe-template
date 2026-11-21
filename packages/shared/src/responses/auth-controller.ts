@@ -1,5 +1,6 @@
 import { type } from '@arktype/type'
 import type { ErrorCode as AppErrorCode } from '../errors/error-codes.js'
+import { RoleSchema } from '../access/index.js'
 import { CanonicalErrorResponseSchema, type CanonicalErrorResponse } from './error-response.js'
 
 const AuthUserSchema = type({
@@ -9,7 +10,7 @@ const AuthUserSchema = type({
     'phone?': 'string | null',
     emailVerified: 'boolean',
     'emailVerifiedAt?': 'string | null',
-    'role?': "'user' | 'admin'",
+    'role?': RoleSchema,
     // The rest of userTransformer.serialize: the client keeps `avatar` from the login answer.
     'avatar?': 'string | null',
     'created_at?': 'string | null',

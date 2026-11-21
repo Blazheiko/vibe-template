@@ -1,0 +1,43 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "7a24c28b-19a2-4966-a887-755e70a164a4",
+  "prevIds": [
+    "d5356887-b69a-4b75-8c27-469b26413cb0"
+  ],
+  "footprints": [
+    {
+      "statementType": "add_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "users"
+      ],
+      "writes": [
+        "s|ck|public.users.users_staff_role_verified_email",
+        "n|ck|public.users.users_staff_role_verified_email",
+        "e|ck|public.users.users_staff_role_verified_email",
+        "n|con|public.users.users_staff_role_verified_email"
+      ],
+      "reads": [
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.users.role",
+        "n|col|public.users.email_verified_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "users",
+        "name": "users_staff_role_verified_email",
+        "value": "\"role\" = 'user' OR \"email_verified_at\" IS NOT NULL",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

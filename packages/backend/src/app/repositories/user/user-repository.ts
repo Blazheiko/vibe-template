@@ -5,6 +5,7 @@ import { users } from '#database/schema.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
+import type { Role } from 'shared/access'
 
 export type UserRow = InferSelectModel<typeof users>
 export type UserInsert = InferInsertModel<typeof users>
@@ -43,7 +44,7 @@ export interface AdminUserDetailRow {
     name: string
     email: string | null
     phone: string | null
-    role: 'user' | 'admin'
+    role: Role
     createdAt: Date
 }
 

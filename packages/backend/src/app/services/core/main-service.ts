@@ -8,7 +8,7 @@ import { Result } from 'better-result'
 import { notFound, unauthorized, type AppResult } from '#app/services/shared/errors.js'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { accountService } from '#app/services/user/account-service.js'
-import type { ProfilePreferences } from 'shared'
+import type { ProfilePreferences, Role } from 'shared'
 
 interface StorageConfigPayload {
     cdnUrl: string
@@ -25,7 +25,7 @@ interface InitUserPayload {
     emailVerified: boolean
     emailVerifiedAt: string | null
     avatar: string | null
-    role: 'user' | 'admin'
+    role: Role
     createdAt: string
     updatedAt: string
     preferences: ProfilePreferences

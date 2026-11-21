@@ -76,6 +76,11 @@
             "types": "./dist/dev-backend/index.d.ts",
             "import": "./dist/dev-backend/index.js"
         },
+        "./access": {
+            "shared-source": "./src/access/index.ts",
+            "types": "./dist/access/index.d.ts",
+            "import": "./dist/access/index.js"
+        },
         "./audit": {
             "shared-source": "./src/audit/index.ts",
             "types": "./dist/audit/index.d.ts",

@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { InitResponse, Profile } from 'shared'
+import type { InitResponse, Profile, Role } from 'shared'
 import { sentryService as sentry } from '@/utils/sentry-service'
 
 // Tracks the currently active initializeApp() cycle.
@@ -25,7 +25,7 @@ export interface User {
     emailVerified?: boolean
     emailVerifiedAt?: string | null
     avatar?: string | null
-    role?: 'user' | 'admin'
+    role?: Role
     [key: string]: string | number | boolean | null | undefined
 }
 

@@ -1,5 +1,6 @@
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import type { RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import type { Role } from 'shared/access'
 import { SEED_PROMPTS } from './prompts.js'
 import type { PromptType, SeedPrompt } from './prompts.js'
 
@@ -14,7 +15,7 @@ export interface SeedUser {
 
 export interface ExistingUser {
     id: bigint
-    role: SeedRole
+    role: Role
 }
 
 // Writes run inside one transaction; the Drizzle implementation lives in drizzle-seed-store.ts.

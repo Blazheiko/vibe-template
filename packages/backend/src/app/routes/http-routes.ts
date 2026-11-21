@@ -429,6 +429,20 @@ export default [
                 description: 'Get a knowledge base article by id',
             }),
             defineRoute({
+                contract: knowledgeBaseContracts.initStatus,
+                handler: AdminKnowledgeBaseController.getInitStatus.bind(
+                    AdminKnowledgeBaseController,
+                ),
+                description: 'Get knowledge base initialization status',
+            }),
+        ],
+        description: 'Admin Knowledge Base: read (feat-240)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:kb.read'],
+        prefix: 'admin',
+    },
+    {
+        group: [
+            defineRoute({
                 contract: knowledgeBaseContracts.create,
                 handler: AdminKnowledgeBaseController.create.bind(AdminKnowledgeBaseController),
                 maxBodySize: KB_ARTICLE_MAX_BODY_BYTES,
@@ -452,7 +466,7 @@ export default [
                 ),
                 maxBodySize: multipartBodyLimit(KB_SCREENSHOT_MAX_FILE_BYTES),
                 // feat-202: this group had no rate limit, and the body is read before the
-                // session and admin checks.
+                // session and permission checks.
                 signedInBeforeBody: true,
                 rateLimit: { windowMs: 60_000, maxRequests: 10 },
                 description: 'Upload screenshot for a knowledge base article',
@@ -469,6 +483,13 @@ export default [
                 handler: AdminKnowledgeBaseController.reindex.bind(AdminKnowledgeBaseController),
                 description: 'Reindex a knowledge base article',
             }),
+        ],
+        description: 'Admin Knowledge Base: edit articles (feat-240)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:kb.write'],
+        prefix: 'admin',
+    },
+    {
+        group: [
             defineRoute({
                 contract: knowledgeBaseContracts.reindexAll,
                 handler: AdminKnowledgeBaseController.reindexAll.bind(AdminKnowledgeBaseController),
@@ -479,16 +500,9 @@ export default [
                 handler: AdminKnowledgeBaseController.startInit.bind(AdminKnowledgeBaseController),
                 description: 'Initialize knowledge base from docs/support-knowledge-base',
             }),
-            defineRoute({
-                contract: knowledgeBaseContracts.initStatus,
-                handler: AdminKnowledgeBaseController.getInitStatus.bind(
-                    AdminKnowledgeBaseController,
-                ),
-                description: 'Get knowledge base initialization status',
-            }),
         ],
-        description: 'Admin Knowledge Base routes',
-        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
+        description: 'Admin Knowledge Base: bulk provider calls (feat-240)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:kb.manage'],
         prefix: 'admin',
     },
     {
@@ -516,7 +530,7 @@ export default [
             }),
         ],
         description: 'Support AI prompt management routes',
-        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:prompts.manage'],
         prefix: 'prompts',
     },
     {
@@ -533,7 +547,7 @@ export default [
             }),
         ],
         description: 'Admin retained LLM usage',
-        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:ai_usage.read'],
         prefix: 'admin',
     },
     {
@@ -544,6 +558,18 @@ export default [
                 description: 'List online users (admin)',
             }),
             defineRoute({
+                contract: adminContracts.users,
+                handler: AdminUserController.list.bind(AdminUserController),
+                description: 'List users with filters (admin)',
+            }),
+        ],
+        description: 'Admin users and online users (feat-240)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:users.read'],
+        prefix: 'admin',
+    },
+    {
+        group: [
+            defineRoute({
                 contract: adminContracts.onlineHistory,
                 handler: AdminOnlineHistoryController.list.bind(AdminOnlineHistoryController),
                 description: 'List online history records (admin)',
@@ -553,14 +579,9 @@ export default [
                 handler: AdminOnlineUserController.getById.bind(AdminOnlineUserController),
                 description: 'Get online user detail (admin)',
             }),
-            defineRoute({
-                contract: adminContracts.users,
-                handler: AdminUserController.list.bind(AdminUserController),
-                description: 'List users with filters (admin)',
-            }),
         ],
-        description: 'Admin user and online routes',
-        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
+        description: 'Admin online user detail and history: phone, IP, user agent (feat-240)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:users.sensitive.read'],
         prefix: 'admin',
     },
     {
@@ -569,11 +590,12 @@ export default [
                 contract: adminContracts.auditEvents,
                 handler: AdminAuditEventsController.list.bind(AdminAuditEventsController),
                 queryArrays: AUDIT_EVENTS_QUERY_ARRAYS,
-                description: 'List the audit log, newest first, by filters (admin)',
+                description: 'List the audit log, newest first, by filters',
             }),
         ],
-        description: 'Admin audit log (feat-235)',
-        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'admin_guard'],
+        description:
+            'Admin audit log (feat-235); without audit.read only sign-in and sessions (feat-240)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:audit.read.account'],
         prefix: 'admin',
     },
 ] satisfies routeList

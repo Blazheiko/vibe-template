@@ -126,6 +126,8 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
             .values({
                 name: `ws-admin-${String(counter)}`,
                 email: `ws-admin-${String(counter)}-${String(now)}@example.test`,
+                // feat-240: a staff role needs a verified email (users_staff_role_verified_email).
+                emailVerifiedAt: new Date(),
                 role,
             })
             .returning()

@@ -13,15 +13,24 @@ export default [
                 handler: AdminWsController.subscribeOnlineUsers.bind(AdminWsController),
                 description: 'Subscribe current admin websocket to admin online updates',
             }),
-            defineWsRoute({
-                contract: adminWsContracts.unsubscribeOnlineUsers,
-                handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
-                description: 'Unsubscribe current admin websocket from admin online updates',
-            }),
         ],
         prefix: 'admin',
         description: 'Admin websocket routes',
-        middlewares: ['ws_admin_guard'],
+        middlewares: ['ws_can:users.read'],
+        rateLimit: { windowMs: 60_000, maxRequests: 120 },
+    },
+    {
+        // feat-240 (Р8): leaving the admin channel opens nothing, so any socket may do it, also
+        // one whose role was lowered or whose channel is paused; it is idempotent.
+        group: [
+            defineWsRoute({
+                contract: adminWsContracts.unsubscribeOnlineUsers,
+                handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
+                description: 'Unsubscribe current websocket from admin online updates',
+            }),
+        ],
+        prefix: 'admin',
+        description: 'Leave the admin channel (no permission needed)',
         rateLimit: { windowMs: 60_000, maxRequests: 120 },
     },
     {

@@ -1,3 +1,4 @@
+import type { Role } from 'shared/access'
 import { userRepository } from '#app/repositories/index.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 
@@ -15,7 +16,7 @@ export interface AdminOnlineUserDetail {
     name: string
     email: string
     phone: string | null
-    role: string
+    role: Role
     createdAt: string
     isOnline: boolean
     appType: 'web' | 'pwa' | null
