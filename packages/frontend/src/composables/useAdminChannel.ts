@@ -23,6 +23,10 @@ import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 // flight is not lost: it asks for one more subscribe, sent after the current answer if that left
 // the channel unconfirmed. `admin_channel_ready` also makes the answer in flight stale (it may
 // precede the pause), so that answer confirms nothing and the retry decides.
+//
+// feat-243 (second review): leaving makes the answer in flight stale too (the unsubscribe may have
+// reached the server after the subscribe it answers), and a subscribe waits for the unsubscribe
+// still running, so the server never ends up unsubscribed behind a confirmed subscription.
 
 export interface AdminChannelDeps {
     subscribe(): Promise<boolean>
@@ -39,8 +43,13 @@ export function createAdminChannel(deps: AdminChannelDeps) {
     let resumePending = false
     /** An event asked for a subscribe while one was in flight. */
     let retryRequested = false
-    /** Bumped by `admin_channel_ready`: an answer sent before it confirms nothing. */
-    let pauseEpoch = 0
+    /**
+     * Bumped by `admin_channel_ready` and by leaving: an answer to a subscribe sent before confirms
+     * nothing (the server may have left the channel after answering it). feat-243.
+     */
+    let staleEpoch = 0
+    /** The unsubscribe still running; the next subscribe is sent after it (feat-243). */
+    let leaving: Promise<void> | null = null
     /** Reads and clears the retry asked for; a call, so the flag is read after the await. */
     const takeRetry = (): boolean => {
         const asked = retryRequested
@@ -58,16 +67,20 @@ export function createAdminChannel(deps: AdminChannelDeps) {
         }
         inFlightFor = generation
         retryRequested = false
-        const sentInEpoch = pauseEpoch
+        let sentInEpoch = staleEpoch
         let ok = false
         try {
+            // A subscribe that overtook the unsubscribe would be undone by it on the server.
+            while (leaving !== null) await leaving
+            if (!deps.wanted()) return
+            sentInEpoch = staleEpoch
             ok = await deps.subscribe()
         } finally {
             if (inFlightFor === generation) inFlightFor = null
         }
         // An answer for a socket that is gone says nothing about the current one.
         if (deps.generation() !== generation) return
-        if (ok && deps.wanted() && sentInEpoch === pauseEpoch) {
+        if (ok && deps.wanted() && sentInEpoch === staleEpoch) {
             confirmedFor = generation
             if (resumePending) {
                 resumePending = false
@@ -81,8 +94,15 @@ export function createAdminChannel(deps: AdminChannelDeps) {
         confirmedFor = null
         resumePending = false
         retryRequested = false
+        staleEpoch += 1
         // Idempotent on the server, and allowed whatever the role: always sent.
-        await deps.unsubscribe()
+        const unsubscribing = deps.unsubscribe().catch(() => undefined)
+        leaving = unsubscribing
+        try {
+            await unsubscribing
+        } finally {
+            if (leaving === unsubscribing) leaving = null
+        }
     }
 
     return {
@@ -94,7 +114,7 @@ export function createAdminChannel(deps: AdminChannelDeps) {
             // same, the subscription is not.
             confirmedFor = null
             resumePending = true
-            pauseEpoch += 1
+            staleEpoch += 1
             return ensure()
         },
         /** `access_changed`: the role of the socket was just changed on the server. */

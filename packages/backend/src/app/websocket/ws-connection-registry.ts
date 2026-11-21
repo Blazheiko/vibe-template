@@ -56,6 +56,9 @@ interface ConnectingEntry {
     userId: string
     sessionId: string
     revoked: boolean
+    // feat-243 (review 2026-11-21): a role change was signalled while the connection was being
+    // opened; the role it read may predate it, so it reads the role again before registering.
+    roleStale: boolean
 }
 const connecting = new Map<string, ConnectingEntry>()
 
@@ -64,7 +67,7 @@ const connecting = new Map<string, ConnectingEntry>()
  * whether the session was revoked meanwhile; it must be called exactly once.
  */
 const beginConnecting = (userId: string, uuid: string, sessionId: string): (() => boolean) => {
-    const entry: ConnectingEntry = { userId, sessionId, revoked: false }
+    const entry: ConnectingEntry = { userId, sessionId, revoked: false, roleStale: false }
     connecting.set(uuid, entry)
     return () => {
         connecting.delete(uuid)
@@ -88,6 +91,28 @@ const revokeConnecting = (
         marked += 1
     }
     return marked
+}
+
+/** Marks the user's connections being opened: their role must be read again (feat-243). */
+const markConnectingRoleStale = (userId: string): number => {
+    let marked = 0
+    for (const entry of connecting.values()) {
+        if (entry.userId !== userId) continue
+        entry.roleStale = true
+        marked += 1
+    }
+    return marked
+}
+
+/**
+ * Answers whether a role change was signalled for this connection being opened since the last
+ * call, and clears the mark.
+ */
+const takeConnectingRoleStale = (uuid: string): boolean => {
+    const entry = connecting.get(uuid)
+    if (entry?.roleStale !== true) return false
+    entry.roleStale = false
+    return true
 }
 
 /**
@@ -254,6 +279,8 @@ export const wsConnectionRegistry = {
     registerConnection,
     beginConnecting,
     revokeConnecting,
+    markConnectingRoleStale,
+    takeConnectingRoleStale,
     unregisterConnection,
     isUserOnline,
     hasSessionConnection,

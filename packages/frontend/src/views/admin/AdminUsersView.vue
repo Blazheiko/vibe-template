@@ -51,8 +51,9 @@ function openDetail(id: string) {
 }
 
 // feat-242 (review 2026-11-21): the list shown is the selection of the role filter; a row whose new
-// role no longer matches it leaves the list (the cursor is the id of the last row, so the next
-// page is unaffected).
+// role no longer matches it leaves the list at once. feat-243 (second review): a page asked for
+// before the change would bring the old row or total back, so the change starts a new generation
+// and reads the current selection again, without hiding the table meanwhile.
 function onRoleChanged(role: Role) {
     const target = roleTarget.value
     roleTarget.value = null
@@ -61,9 +62,10 @@ function onRoleChanged(role: Role) {
         const before = users.value.length
         users.value = users.value.filter((user) => user.id !== target.id)
         if (users.value.length < before) total.value = Math.max(0, total.value - 1)
-        return
+    } else {
+        users.value = users.value.map((user) => (user.id === target.id ? { ...user, role } : user))
     }
-    users.value = users.value.map((user) => (user.id === target.id ? { ...user, role } : user))
+    void loadUsers(true, { quiet: true })
 }
 
 const filters = ref<UserFilters>({
@@ -77,11 +79,14 @@ const filters = ref<UserFilters>({
 // total and the cursor.
 let generation = 0
 
-/** The first page (`reset`), or the next one after what is shown. */
-async function loadUsers(reset = true) {
+/**
+ * The first page (`reset`), or the next one after what is shown. `quiet` re-reads the first page
+ * keeping the list on screen until the answer, and on a failure.
+ */
+async function loadUsers(reset = true, { quiet = false }: { quiet?: boolean } = {}) {
     if (reset) {
         generation += 1
-        loading.value = true
+        loading.value = !quiet
         loadingMore.value = false
     } else {
         loadingMore.value = true
@@ -111,8 +116,8 @@ async function loadUsers(reset = true) {
         return
     }
 
-    // A failed next page keeps what is shown; a failed first page shows nothing.
-    if (reset) {
+    // A failed next page or quiet re-read keeps what is shown; a failed first page shows nothing.
+    if (reset && !quiet) {
         users.value = []
         total.value = 0
         nextCursor.value = null
