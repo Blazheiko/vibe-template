@@ -2431,7 +2431,7 @@
             "owner": "Blazheiko",
             "branch": "fix/admin-channel-leave",
             "dependencies": ["feat-243"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
