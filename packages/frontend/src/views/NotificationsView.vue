@@ -17,97 +17,108 @@ const notice = computed(() => {
 })
 
 onMounted(() => {
-    store.openList()
+    store.openList('page')
 })
 onBeforeUnmount(() => {
-    store.closeList()
+    store.closeList('page')
 })
 </script>
 
 <template>
-    <div class="notifications-page">
-        <header class="page-head">
-            <h1>{{ t('notifications.title') }}</h1>
-            <button
-                type="button"
-                class="secondary-button"
-                :disabled="store.unreadCount === 0 || store.items.length === 0"
-                data-testid="notifications-page-mark-all"
-                @click="store.markAllRead()"
-            >
-                {{ t('notifications.markAllRead') }}
-            </button>
-        </header>
+    <!-- feat-237: the app container does not scroll (overflow: hidden); this page scrolls itself,
+         under the header, like the support chat. -->
+    <div class="notifications-scroll" data-testid="notifications-scroll">
+        <div class="notifications-page">
+            <header class="page-head">
+                <h1>{{ t('notifications.title') }}</h1>
+                <button
+                    type="button"
+                    class="secondary-button"
+                    :disabled="store.unreadCount === 0 || store.items.length === 0"
+                    data-testid="notifications-page-mark-all"
+                    @click="store.markAllRead('page')"
+                >
+                    {{ t('notifications.markAllRead') }}
+                </button>
+            </header>
 
-        <p
-            v-if="notice !== null"
-            class="form-message status-warning"
-            role="status"
-            data-testid="notifications-notice"
-        >
-            {{ t(`notifications.notice.${notice}`) }}
-        </p>
+            <p
+                v-if="notice !== null"
+                class="form-message status-warning"
+                role="status"
+                data-testid="notifications-notice"
+            >
+                {{ t(`notifications.notice.${notice}`) }}
+            </p>
 
-        <div class="tabs" role="tablist">
-            <button
-                type="button"
-                role="tab"
-                :aria-selected="!store.unreadOnly"
-                :class="{ active: !store.unreadOnly }"
-                data-testid="notifications-tab-all"
-                @click="store.setUnreadOnly(false)"
+            <div class="tabs" role="tablist">
+                <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="!store.unreadOnly"
+                    :class="{ active: !store.unreadOnly }"
+                    data-testid="notifications-tab-all"
+                    @click="store.setUnreadOnly(false)"
+                >
+                    {{ t('notifications.all') }}
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    :aria-selected="store.unreadOnly"
+                    :class="{ active: store.unreadOnly }"
+                    data-testid="notifications-tab-unread"
+                    @click="store.setUnreadOnly(true)"
+                >
+                    {{ t('notifications.unread') }}
+                    <span v-if="store.unreadCount > 0" class="count">{{ store.badge }}</span>
+                </button>
+            </div>
+
+            <div
+                v-if="store.loadFailed && !store.loaded"
+                class="form-message status-warning"
+                role="alert"
+                data-testid="notifications-error"
             >
-                {{ t('notifications.all') }}
-            </button>
-            <button
-                type="button"
-                role="tab"
-                :aria-selected="store.unreadOnly"
-                :class="{ active: store.unreadOnly }"
-                data-testid="notifications-tab-unread"
-                @click="store.setUnreadOnly(true)"
+                {{ t('notifications.errorLoad') }}
+                <button type="button" class="secondary-button" @click="store.readNow()">
+                    {{ t('notifications.retry') }}
+                </button>
+            </div>
+            <p
+                v-else-if="store.loaded && store.items.length === 0"
+                class="empty"
+                data-testid="notifications-empty"
             >
-                {{ t('notifications.unread') }}
-                <span v-if="store.unreadCount > 0" class="count">{{ store.badge }}</span>
+                {{ store.unreadOnly ? t('notifications.emptyUnread') : t('notifications.empty') }}
+            </p>
+            <div v-else class="list" data-testid="notifications-list">
+                <NotificationItem v-for="item in store.items" :key="item.id" :item="item" />
+            </div>
+
+            <button
+                v-if="store.next !== null"
+                type="button"
+                class="secondary-button more"
+                :disabled="store.loadingMore"
+                data-testid="notifications-more"
+                @click="store.loadMore()"
+            >
+                {{ t('notifications.showMore') }}
             </button>
         </div>
-
-        <div
-            v-if="store.loadFailed && !store.loaded"
-            class="form-message status-warning"
-            role="alert"
-            data-testid="notifications-error"
-        >
-            {{ t('notifications.errorLoad') }}
-            <button type="button" class="secondary-button" @click="store.readNow()">
-                {{ t('notifications.retry') }}
-            </button>
-        </div>
-        <p
-            v-else-if="store.loaded && store.items.length === 0"
-            class="empty"
-            data-testid="notifications-empty"
-        >
-            {{ store.unreadOnly ? t('notifications.emptyUnread') : t('notifications.empty') }}
-        </p>
-        <div v-else class="list" data-testid="notifications-list">
-            <NotificationItem v-for="item in store.items" :key="item.id" :item="item" />
-        </div>
-
-        <button
-            v-if="store.next !== null"
-            type="button"
-            class="secondary-button more"
-            :disabled="store.loadingMore"
-            data-testid="notifications-more"
-            @click="store.loadMore()"
-        >
-            {{ t('notifications.showMore') }}
-        </button>
     </div>
 </template>
 
 <style scoped>
+.notifications-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
 .notifications-page {
     max-width: 720px;
     margin: 0 auto;

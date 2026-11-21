@@ -8,6 +8,10 @@ Sources: the catalog [`shared/src/notifications/catalog.ts`](https://github.com/
 
 The row, the signal and the push are written in the background after the business change has committed, like the push before. If the process stops before the insert, the event reaches neither the history nor push. If the insert fails, the push still goes (to the plain link of the kind) and the history has no entry. A complete history needs the event written in the transaction of the change (durable delivery, not part of this feature). Security mails are a separate flow at their call sites: a notification never starts or stops them.
 
+::: warning Deployment
+The migration of this feature drops a column the previous version of the server still reads, and old tabs get a `422` for the `notificationTypes` field. The rollout order is in [Deployment → Database in production](/en/backend/deployment#database-in-production).
+:::
+
 ## Tables
 
 `notifications` (migration [`20261120170831_notification_center`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations/20261120170831_notification_center/migration.sql)):

@@ -201,6 +201,14 @@ done
 - `pnpm db:migrate` (`drizzle-kit migrate`) works in the image because it contains `drizzle-kit`, `drizzle.config.ts`, `src/config/database.ts` and `src/drizzle/migrations`. The application, `db:create:prod` and `db:migrate` take `PGSQL_*` with the same defaults; in production still set them explicitly.
 - Migrations are a separate one-shot run of the image before rollout (see [Commands](#commands)); application replicas do not run them, so there is no race between replicas.
 
+::: warning Migrations are not backward compatible
+The template has no deployments of its own and keeps no compatibility layers: a migration may drop what the previous version of the server still reads, and the API may refuse what a tab of the previous frontend still sends. Running migrations before the old instances are stopped is safe only when the release says so. A release that is not:
+
+- **feat-236** (`20261120170831_notification_center`) drops `push_subscriptions.notification_types`. An old instance still selects that column, so its push subscription routes and its push sends fail until it is replaced. A tab of the old frontend still sends `notificationTypes` when it subscribes to push and gets a `422` from the new server until it is reloaded (the service worker update banner offers it).
+
+If you run the template with traffic, stop the old instances (or put them out of the load balancer) before the migration of such a release, or split it into two releases of your own: the code that no longer reads the column first, the migration after.
+:::
+
 ## Background jobs
 
 The [scheduler](/en/backend/scheduler) runs inside the `app` process; it has no container of its own.

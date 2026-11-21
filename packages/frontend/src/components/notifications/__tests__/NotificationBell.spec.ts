@@ -18,7 +18,9 @@ vi.mock('@/stores/state', () => ({ useStateStore: () => ({ timeZone: 'UTC' }) })
 const store = reactive({
     unreadCount: 0,
     badge: '0',
-    items: [] as unknown[],
+    panelItems: [] as unknown[],
+    panelLoaded: true,
+    panelFailed: false,
     loaded: true,
     loadFailed: false,
     unreadOnly: false,
@@ -46,7 +48,7 @@ afterEach(() => {
     for (const wrapper of mounted.value) wrapper.unmount()
     mounted.value = []
     vi.clearAllMocks()
-    Object.assign(store, { unreadCount: 0, badge: '0', items: [] })
+    Object.assign(store, { unreadCount: 0, badge: '0', panelItems: [] })
 })
 
 describe('NotificationBell', () => {
@@ -96,7 +98,7 @@ describe('NotificationBell', () => {
     ])('closing by %s calls closeList once', async (_label, close) => {
         const wrapper = render()
         await wrapper.get('[data-testid="notification-bell"]').trigger('click')
-        expect(store.openList).toHaveBeenCalledOnce()
+        expect(store.openList).toHaveBeenCalledExactlyOnceWith('panel')
         expect(wrapper.find('[data-testid="notification-panel"]').exists()).toBe(true)
 
         await close(wrapper)
@@ -108,9 +110,18 @@ describe('NotificationBell', () => {
         expect(store.closeList).toHaveBeenCalledOnce()
     })
 
+    // feat-237 (review of #732, 4): the panel has its own list; the page filter stays.
+    it('opening the panel leaves the history filter alone', async () => {
+        store.unreadOnly = true
+        const wrapper = render()
+        await wrapper.get('[data-testid="notification-bell"]').trigger('click')
+        expect(store.setUnreadOnly).not.toHaveBeenCalled()
+        store.unreadOnly = false
+    })
+
     it('"mark all read" asks the store', async () => {
-        Object.assign(store, { unreadCount: 2, badge: '2', items: [] })
-        store.items = [
+        Object.assign(store, { unreadCount: 2, badge: '2', panelItems: [] })
+        store.panelItems = [
             {
                 id: '5',
                 kind: 'support.reply',
@@ -124,7 +135,7 @@ describe('NotificationBell', () => {
         const wrapper = render()
         await wrapper.get('[data-testid="notification-bell"]').trigger('click')
         await wrapper.get('[data-testid="notifications-mark-all"]').trigger('click')
-        expect(store.markAllRead).toHaveBeenCalledOnce()
+        expect(store.markAllRead).toHaveBeenCalledExactlyOnceWith('panel')
         expect(wrapper.text()).toContain('Support replied')
     })
 })
