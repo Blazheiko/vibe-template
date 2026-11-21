@@ -20,6 +20,11 @@ export function rememberActorRole(context: object, role: AuditActorRole): void {
     guardedRoles.set(context, role)
 }
 
+/** The role the permission guard read for this request, or null outside a guarded route. */
+export function guardedRoleOf(context: object): AuditActorRole | null {
+    return guardedRoles.get(context) ?? null
+}
+
 type ActorContext = Pick<HttpContext, 'auth' | 'requestId' | 'logger'>
 
 /**

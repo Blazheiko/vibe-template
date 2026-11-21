@@ -12,6 +12,7 @@ import {
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
 import { testAdminActor } from '../../../test-support/audit-actor.js'
+import type { Role } from 'shared/access'
 
 // feat-235 T6 and T6a: GET /admin/audit-events over HTTP with the real route table, session_web,
 // csrf_guard, auth_guard and admin_guard, against a real PostgreSQL and Redis: who may read the
@@ -134,7 +135,7 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
     let insertedPrompt = false
     let inserted = 0
 
-    const insertUser = async (role: 'user' | 'admin', name = 'audit-reader') => {
+    const insertUser = async (role: Role, name = 'audit-reader') => {
         inserted += 1
         const [row] = await db
             .insert(users)
@@ -210,7 +211,7 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
     }
     const itemsOf = (reply: Reply): Item[] => reply.body['items'] as Item[]
 
-    const signedIn = async (role: 'user' | 'admin', name?: string) => {
+    const signedIn = async (role: Role, name?: string) => {
         const user = await insertUser(role, name)
         const browser = new Browser()
         await browser.signIn(user.email ?? '')
@@ -271,7 +272,9 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
         await stopServer?.('test')
         await db
             .delete(auditEvents)
-            .where(inArray(auditEvents.targetId, [`${run}-target`, `${run}-filters`]))
+            .where(
+                inArray(auditEvents.targetId, [`${run}-target`, `${run}-filters`, `${run}-scope`]),
+            )
         for (const id of createdUserIds) {
             await db.delete(auditEvents).where(eq(auditEvents.targetUserId, id))
             await db.delete(auditEvents).where(eq(auditEvents.actorUserId, id))
@@ -540,6 +543,79 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
                 { title: { from: 'second', to: 'first' } },
                 { title: { from: 'start', to: 'second' } },
             ])
+        })
+    })
+
+    // feat-240 (Р5): a reader with audit.read.account only (support_operator) sees the sign-in and
+    // session events of user accounts; every explicit filter outside them is a 403.
+    describe('the account scope (feat-240)', () => {
+        it.each([
+            ['a group outside it', 'group=kb'],
+            [
+                'a forbidden action next to an allowed group',
+                'group=sign-in&action=kb.article.updated',
+            ],
+            [
+                'one forbidden action among allowed ones',
+                'action=auth.password.changed&action=ai.prompt.updated',
+            ],
+            ['a target type other than user', 'targetType=kb_article'],
+        ])('answers 403 to an operator for %s', async (_name, query) => {
+            const { browser } = await signedIn('support_operator', 'operator')
+            const reply = await browser.list(query)
+            expect(reply.status).toBe(403)
+            expect(reply.body).toMatchObject({ status: 'error', code: 'forbidden' })
+        })
+
+        it('gives an operator full pages of account events only, over mixed groups', async () => {
+            const scope = `${run}-scope`
+            // 60 session events and 60 knowledge-base events, interleaved in time.
+            await insertEvents(
+                Array.from({ length: 120 }, (_, index) => {
+                    const second = String(index).padStart(3, '0')
+                    const at = `2026-09-01 00:00:00.000${second}`
+                    return index % 2 === 0
+                        ? { occurredAt: at, targetId: scope }
+                        : {
+                              occurredAt: at,
+                              targetId: scope,
+                              action: 'kb.article.updated',
+                              targetType: 'kb_article',
+                          }
+                }),
+            )
+            const { browser } = await signedIn('support_operator', 'operator')
+
+            const first = await browser.list(`targetId=${scope}`)
+            expect(first.status).toBe(200)
+            expect(itemsOf(first)).toHaveLength(50)
+            const cursor = first.body['nextCursor']
+            expect(typeof cursor).toBe('string')
+            const second = await browser.list(`targetId=${scope}&cursor=${String(cursor)}`)
+            expect(itemsOf(second)).toHaveLength(10)
+            expect(second.body['nextCursor']).toBeNull()
+            for (const item of [...itemsOf(first), ...itemsOf(second)]) {
+                expect(item.action).toBe('auth.sessions.revoked_all')
+            }
+
+            // Without any filter: every row is a sign-in or session event.
+            const all = await browser.list('')
+            expect(all.status).toBe(200)
+            for (const item of itemsOf(all)) {
+                expect(item.action).toMatch(/^auth\./)
+            }
+
+            // An admin, with audit.read, sees both groups.
+            const { browser: admin } = await signedIn('admin', 'admin-reader')
+            const mixed = await admin.list(`targetId=${scope}`)
+            expect(new Set(itemsOf(mixed).map((item) => item.action))).toEqual(
+                new Set(['auth.sessions.revoked_all', 'kb.article.updated']),
+            )
+        })
+
+        it('lets a kb_editor not read the log at all', async () => {
+            const { browser } = await signedIn('kb_editor', 'editor')
+            expect((await browser.list('')).status).toBe(403)
         })
     })
 })

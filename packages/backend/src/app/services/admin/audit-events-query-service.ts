@@ -14,7 +14,7 @@ import {
     type AuditEventCursor,
     type AuditEventFilters,
 } from '#app/repositories/index.js'
-import { badRequest, type AppResult } from '#app/services/shared/errors.js'
+import { badRequest, forbidden, type AppResult } from '#app/services/shared/errors.js'
 import { auditEventTransformer } from '#app/transformers/index.js'
 
 /** One page of the audit log (Р7). */
@@ -85,10 +85,37 @@ function actionsOf(query: AuditEventsQuery): readonly string[] | undefined {
     return query.actions.filter((action) => AUDIT_ACTIONS[action].group === query.group)
 }
 
+/**
+ * What the reader may see (feat-240, Р5): `all` with `audit.read`; `account` with only
+ * `audit.read.account` — the sign-in and session events of user accounts.
+ */
+export type AuditReadScope = 'all' | 'account'
+
+export const ACCOUNT_AUDIT_GROUPS: readonly AuditGroup[] = ['sign-in', 'sessions']
+const ACCOUNT_AUDIT_ACTIONS: ReadonlySet<string> = new Set(
+    ACCOUNT_AUDIT_GROUPS.flatMap((group) => auditActionsOfGroup(group)),
+)
+
+/**
+ * The account scope checks every explicit filter before anything else: a group, any one action
+ * or a target type outside it is a 403, so a forbidden action never just drops out after the
+ * intersection with the group.
+ */
+function accountScopeAllows(query: AuditEventsQuery): boolean {
+    if (query.group !== undefined && !ACCOUNT_AUDIT_GROUPS.includes(query.group)) return false
+    if (query.actions?.some((action) => !ACCOUNT_AUDIT_ACTIONS.has(action)) === true) return false
+    if (query.targetType !== undefined && query.targetType !== 'user') return false
+    return true
+}
+
 export const auditEventsQueryService = {
     async list(
         query: AuditEventsQuery,
+        scope: AuditReadScope = 'all',
     ): Promise<AppResult<{ items: AuditEvent[]; nextCursor: string | null }>> {
+        if (scope === 'account' && !accountScopeAllows(query)) {
+            return Result.err(forbidden('Access denied'))
+        }
         let cursor: AuditEventCursor | null = null
         if (query.cursor !== undefined) {
             cursor = decodeAuditCursor(query.cursor)
@@ -97,7 +124,15 @@ export const auditEventsQueryService = {
         if (query.from !== undefined && query.to !== undefined && query.from >= query.to) {
             return Result.err(badRequest('`from` must be before `to`', 'invalid_range'))
         }
-        const actions = actionsOf(query)
+        // The account scope narrows the query itself, before the cursor and the limit, so a page
+        // never holds a row it may not see and is never cut short by a filter after the read.
+        const asked = actionsOf(query)
+        const actions =
+            scope === 'account'
+                ? (asked ?? [...ACCOUNT_AUDIT_ACTIONS]).filter((action) =>
+                      ACCOUNT_AUDIT_ACTIONS.has(action),
+                  )
+                : asked
         // A group and actions of other groups: nothing can match.
         if (actions?.length === 0) {
             return Result.ok({ items: [], nextCursor: null })
@@ -106,7 +141,9 @@ export const auditEventsQueryService = {
             ...(actions !== undefined && { actions }),
             ...(query.actorUserId !== undefined && { actorUserId: query.actorUserId }),
             ...(query.targetUserId !== undefined && { targetUserId: query.targetUserId }),
-            ...(query.targetType !== undefined && { targetType: query.targetType }),
+            ...(scope === 'account'
+                ? { targetType: 'user' }
+                : query.targetType !== undefined && { targetType: query.targetType }),
             ...(query.targetId !== undefined && { targetId: query.targetId }),
             ...(query.requestId !== undefined && { requestId: query.requestId }),
             ...(query.from !== undefined && { from: query.from }),
