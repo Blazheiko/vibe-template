@@ -8,7 +8,7 @@ const logger = vi.hoisted(() => ({ debug: vi.fn(), error: vi.fn(), warn: vi.fn()
 vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#database/redis-rate-limit.js', () => ({ default: { eval: vi.fn() } }))
 vi.mock('#config/websocket.js', () => ({
-    default: { adminRecheckIntervalMs: 30_000, messagesPerMinute: 20, maxConcurrentHandlers: 3 },
+    default: { roleRecheckIntervalMs: 30_000, messagesPerMinute: 20, maxConcurrentHandlers: 3 },
 }))
 const wsApiHandler = vi.hoisted(() => vi.fn())
 vi.mock('../routing/ws-api-dispatcher.js', () => ({ default: wsApiHandler }))

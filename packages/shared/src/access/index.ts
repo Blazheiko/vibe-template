@@ -1,16 +1,13 @@
-import { type } from '@arktype/type'
-
 // feat-240 (docs/plan/roles-permissions-plan.md, Р1, Р2): the closed catalog of roles and
 // permissions. A user has one role, stored by name in users.role; what it may do is computed
 // from this catalog, never read from the database. The backend checks a permission per route
 // (`can:<permission>`, `ws_can:<permission>`); the frontend uses the same catalog only to hide
-// what a role cannot use.
+// what a role cannot use. No ArkType here: the frontend bundle imports this module at runtime
+// (the role schema is in role-schema.ts).
 
 /** Every role, in the order of the `user_role` enum. */
 export const ROLES = ['user', 'support_operator', 'kb_editor', 'user_admin', 'admin'] as const
 export type Role = (typeof ROLES)[number]
-
-export const RoleSchema = type.enumerated(...ROLES)
 
 /** Every permission; each one guards a group of routes (Р2). */
 export const PERMISSIONS = [

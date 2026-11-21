@@ -1,5 +1,5 @@
 import { type } from '@arktype/type'
-import { RoleSchema } from '../access/index.js'
+import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 import { ProfilePreferencesSchema, ProfileRevisionSchema } from './account-controller.js'
 

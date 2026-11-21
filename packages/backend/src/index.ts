@@ -14,7 +14,7 @@ import '#app/start/index.js'
 import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
-import { adminWsAccessService } from '#app/services/admin/admin-ws-access-service.js'
+import { wsRoleSync } from '#app/websocket/ws-role-sync.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import { userEventBus } from '#app/services/communication/user-event-bus.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
@@ -67,8 +67,13 @@ const start = async (): Promise<void> => {
             sourceWsRoutes: wsRoutes,
         })
 
-        adminWsAccessService.start()
+        wsRoleSync.start()
         wsSessionRevocation.start()
+        // feat-240 (Р8): a role changed anywhere makes this instance re-read the role of the
+        // user's open connections here.
+        userEventBus.handleServerEvents((_event, userId) => {
+            void wsRoleSync.refreshUsers([userId])
+        })
         // feat-232: events to a user's connections on every instance. Not awaited: SUBSCRIBE
         // waits for Redis, and until it answers events still reach this process's connections.
         void userEventBus.start().catch((err: unknown) => {
@@ -105,7 +110,8 @@ const removeListeners = (): void => {
 }
 
 const stopHandler = async (type: string): Promise<void> => {
-    adminWsAccessService.stop()
+    wsRoleSync.stop()
+    userEventBus.handleServerEvents(null)
     wsSessionRevocation.stop()
     await userEventBus.stop()
     // Р10: aborts the job in flight and waits for it up to the drain; never throws.

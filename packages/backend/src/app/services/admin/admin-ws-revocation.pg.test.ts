@@ -5,6 +5,7 @@ import pg from 'pg'
 import type { Redis } from 'ioredis'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import type { Role } from 'shared/access'
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import {
     cleanupTestRedis,
@@ -102,7 +103,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
             default: Redis
             redisHealth: { stop(): void }
         }
-    const { adminWsAccessService } = await import('#app/services/admin/admin-ws-access-service.js')
+    const { wsRoleSync } = await import('#app/websocket/ws-role-sync.js')
     const { broadcastService } = await import('#app/services/communication/broadcast-service.js')
     const { generateWsToken } = await import('#app/services/auth/generate-ws-token-service.js')
     const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
@@ -119,7 +120,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
     let stopServer: ((type?: string) => Promise<void>) | undefined
     let counter = 0
 
-    const insertUser = async (role: 'user' | 'admin') => {
+    const insertUser = async (role: Role) => {
         counter += 1
         const [row] = await db
             .insert(users)
@@ -136,7 +137,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         return row
     }
 
-    const setRole = async (id: bigint, role: 'user' | 'admin'): Promise<void> => {
+    const setRole = async (id: bigint, role: Role): Promise<void> => {
         await db.update(users).set({ role }).where(eq(users.id, id))
     }
 
@@ -167,6 +168,8 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
     }
 
     const BROADCAST = 'broadcast:admin_user_online_remove'
+    const ACCESS_CHANGED = 'broadcast:access_changed'
+    const CHANNEL_READY = 'broadcast:admin_channel_ready'
     const publish = (): boolean =>
         broadcastService.broadcastMessageToChannel('admin', 'admin_user_online_remove', {
             id: '1',
@@ -206,11 +209,12 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
     })
 
     afterEach(() => {
-        adminWsAccessService.stop()
+        wsRoleSync.stop()
+        wsRoleSync.reset()
     })
 
     afterAll(async () => {
-        adminWsAccessService.stop()
+        wsRoleSync.stop()
         for (const ws of clients) ws.close()
         await sleep(100)
         await stopServer?.('test')
@@ -242,7 +246,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         expect(await deliveredTo(demotedClient)).toBe(true)
 
         await setRole(demoted.id, 'user') // out of band, as an operator would
-        adminWsAccessService.start(200)
+        wsRoleSync.start(200)
 
         // Not an instant cut: the delay is bounded by the interval.
         const delayMs = await untilNotDelivered(demotedClient)
@@ -261,7 +265,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         expect(String((await demotedClient.subscribe()).status)).toBe('200')
 
         await setRole(demoted.id, 'user')
-        adminWsAccessService.start(200)
+        wsRoleSync.start(200)
         await untilNotDelivered(demotedClient)
 
         const refused = await demotedClient.subscribe()
@@ -274,7 +278,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         const client = await Client.connect(await wsTokenFor(demoted))
         await client.subscribe()
         await setRole(demoted.id, 'user')
-        adminWsAccessService.start(200)
+        wsRoleSync.start(200)
         await untilNotDelivered(client)
 
         await client.subscribe() // refused: the connection no longer holds the admin role
@@ -292,20 +296,47 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         expect(await deliveredTo(client)).toBe(false)
     })
 
-    it('does not raise a role on an open connection: a promotion needs a reconnect', async () => {
+    // feat-240 (Р8): a raise reaches the open connection; it is told after the role was applied,
+    // so the subscription it sends next passes.
+    it('raises the role on the same open connection and tells it before it subscribes', async () => {
         const promoted = await insertUser('user')
         const client = await Client.connect(await wsTokenFor(promoted))
         expect(String((await client.subscribe()).status)).toBe('403')
 
-        await setRole(promoted.id, 'admin')
-        adminWsAccessService.start(200)
-        await sleep(600)
-        expect(String((await client.subscribe()).status)).toBe('403')
+        await setRole(promoted.id, 'support_operator')
+        wsRoleSync.start(200)
+        const told = await client.waitFor((frame) => frame.event === ACCESS_CHANGED)
+        expect(told.payload).toEqual({ role: 'support_operator' })
 
-        // After a reconnect the connection is opened with the role read from the database.
-        const reconnected = await Client.connect(await wsTokenFor(promoted))
-        expect(String((await reconnected.subscribe()).status)).toBe('200')
-        expect(await deliveredTo(reconnected)).toBe(true)
+        expect(String((await client.subscribe()).status)).toBe('200')
+        expect(await deliveredTo(client)).toBe(true)
+        expect(client.closed).toBe(false)
+    })
+
+    it('tells a lowered connection its new role, with no channel to rejoin', async () => {
+        const demoted = await insertUser('admin')
+        const client = await Client.connect(await wsTokenFor(demoted))
+        await client.subscribe()
+
+        await setRole(demoted.id, 'kb_editor')
+        wsRoleSync.start(200)
+        const told = await client.waitFor((frame) => frame.event === ACCESS_CHANGED)
+
+        expect(told.payload).toEqual({ role: 'kb_editor' })
+        expect(await deliveredTo(client)).toBe(false)
+        expect(client.received(CHANNEL_READY)).toBe(0)
+    })
+
+    it('a reconnect with the same role subscribes again and gets the events', async () => {
+        const user = await insertUser('admin')
+        const first = await Client.connect(await wsTokenFor(user))
+        await first.subscribe()
+        first.ws.close()
+        await sleep(100)
+
+        const second = await Client.connect(await wsTokenFor(user))
+        expect(String((await second.subscribe()).status)).toBe('200')
+        expect(await deliveredTo(second)).toBe(true)
     })
 
     it('revokes every connection of a demoted user', async () => {
@@ -316,7 +347,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         await second.subscribe()
 
         await setRole(demoted.id, 'user')
-        adminWsAccessService.start(200)
+        wsRoleSync.start(200)
 
         expect(await untilNotDelivered(first)).toBeGreaterThanOrEqual(0)
         expect(await untilNotDelivered(second)).toBeGreaterThanOrEqual(0)
@@ -329,7 +360,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         expect(await deliveredTo(client)).toBe(true)
 
         await db.delete(users).where(eq(users.id, gone.id))
-        adminWsAccessService.start(200)
+        wsRoleSync.start(200)
 
         expect(await untilNotDelivered(client)).toBeGreaterThanOrEqual(0)
     })
@@ -337,7 +368,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
     // A table lock makes the role query hang the way a stuck database does. One pass that
     // waits forever would block every later pass (a pass runs one at a time), and with it
     // the revocation, for as long as the query hangs.
-    it('cancels a pass whose query hangs, runs the next pass, and revokes once the database answers', async () => {
+    it('cancels a pass whose query hangs, pauses the channel, and applies the role once the database answers', async () => {
         const demoted = await insertUser('admin')
         const client = await Client.connect(await wsTokenFor(demoted))
         await client.subscribe()
@@ -354,36 +385,63 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
         await holder.query('begin')
         await holder.query('lock table users in access exclusive mode')
         try {
-            adminWsAccessService.start(200)
+            wsRoleSync.start(200)
             // Each hung query is cancelled after the 400 ms deadline, so passes keep coming.
             await sleep(1700)
             expect(passes.mock.calls.length).toBeGreaterThanOrEqual(2)
-            // Nothing could be verified meanwhile, so nothing was changed.
-            expect(await deliveredTo(client)).toBe(true)
+            // The role could not be read: the admin channel is paused, not kept.
+            expect(await deliveredTo(client)).toBe(false)
         } finally {
             await holder.query('rollback')
             await holder.end()
         }
 
-        expect(await untilNotDelivered(client)).toBeGreaterThanOrEqual(0)
+        await client.waitFor((frame) => frame.event === ACCESS_CHANGED)
+        expect(client.received(CHANNEL_READY)).toBe(0)
+        expect(String((await client.subscribe()).status)).toBe('403')
     })
 
-    it('keeps the subscriptions while the database cannot answer, and revokes once it can', async () => {
-        const demoted = await insertUser('admin')
-        const client = await Client.connect(await wsTokenFor(demoted))
-        await client.subscribe()
-        await setRole(demoted.id, 'user')
+    // feat-240 (Р8): a failed read pauses the channel; the server never joins it again itself.
+    it('pauses the admin channel while the database cannot answer; the client rejoins after admin_channel_ready', async () => {
+        const staying = await insertUser('admin')
+        const client = await Client.connect(await wsTokenFor(staying))
+        expect(String((await client.subscribe()).status)).toBe('200')
         const failing = vi
             .spyOn(userRepository, 'findRolesByIds')
             .mockRejectedValue(new Error('connection terminated'))
 
-        adminWsAccessService.start(200)
+        wsRoleSync.start(200)
         await sleep(700)
-        // Nothing could be verified, so nothing changed (and nothing crashed).
         expect(failing).toHaveBeenCalled()
-        expect(await deliveredTo(client)).toBe(true)
+        expect(await deliveredTo(client)).toBe(false)
+        expect(String((await client.subscribe()).status)).toBe('403')
 
         failing.mockRestore()
-        expect(await untilNotDelivered(client)).toBeGreaterThanOrEqual(0)
+        await client.waitFor((frame) => frame.event === CHANNEL_READY)
+        // Ready, but not joined: that is the client's call.
+        expect(await deliveredTo(client)).toBe(false)
+        expect(String((await client.subscribe()).status)).toBe('200')
+        expect(await deliveredTo(client)).toBe(true)
+    })
+
+    it('a pause, then leaving the admin area, then a working database: no events come back', async () => {
+        const staying = await insertUser('admin')
+        const client = await Client.connect(await wsTokenFor(staying))
+        await client.subscribe()
+        const failing = vi
+            .spyOn(userRepository, 'findRolesByIds')
+            .mockRejectedValue(new Error('connection terminated'))
+        wsRoleSync.start(200)
+        await sleep(500)
+
+        // Leaving needs no permission, also while the channel is paused.
+        expect(String((await client.request('api/admin/unsubscribe_online_users')).status)).toBe(
+            '200',
+        )
+
+        failing.mockRestore()
+        await client.waitFor((frame) => frame.event === CHANNEL_READY)
+        await sleep(400)
+        expect(await deliveredTo(client)).toBe(false)
     })
 })

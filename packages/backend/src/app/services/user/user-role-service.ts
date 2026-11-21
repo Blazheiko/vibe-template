@@ -8,6 +8,11 @@ export const userRoleService = {
         return user?.role
     },
 
+    /** The current roles of these users by id, one query; a user that no longer exists is absent. */
+    findRoles(userIds: bigint[]): Promise<Map<string, UserRow['role']>> {
+        return userRepository.findRolesByIds(userIds)
+    },
+
     /**
      * The role together with the current users.session_token, from one read; `undefined` when
      * the user no longer exists. For a WebSocket connection being opened: its session may have

@@ -1,6 +1,6 @@
 import { type } from '@arktype/type'
 import type { ErrorCode as AppErrorCode } from '../errors/error-codes.js'
-import { RoleSchema } from '../access/index.js'
+import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type CanonicalErrorResponse } from './error-response.js'
 
 const AuthUserSchema = type({

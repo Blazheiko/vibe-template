@@ -41,7 +41,11 @@ const instance = (channel: string) => {
             return 1
         },
     })
-    return { bus, delivered }
+    const handled: [string, string][] = []
+    bus.handleServerEvents((event, userId) => {
+        handled.push([event, userId])
+    })
+    return { bus, delivered, handled }
 }
 
 afterAll(async () => {
@@ -101,5 +105,42 @@ describe.skipIf(!hasRedis)('user event bus across instances', () => {
         expect(other.delivered).toEqual([])
         await a.bus.stop()
         await other.bus.stop()
+    })
+
+    // feat-240 (Р8): a role change is an event for the instances, never for a client.
+    it('user_role_changed of instance A runs the handler of A and of B and reaches no client', async () => {
+        const channel = `test:${randomUUID()}:user-events`
+        const a = instance(channel)
+        const b = instance(channel)
+        await a.bus.start()
+        await b.bus.start()
+
+        await a.bus.notifyServer('7', 'user_role_changed')
+
+        await vi.waitFor(() => {
+            expect(a.handled).toEqual([['user_role_changed', '7']])
+            expect(b.handled).toEqual([['user_role_changed', '7']])
+        })
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        expect(a.handled).toHaveLength(1)
+        expect(a.delivered).toEqual([])
+        expect(b.delivered).toEqual([])
+        await a.bus.stop()
+        await b.bus.stop()
+    })
+
+    it('publishRemote reaches a started instance from a process that never started its bus', async () => {
+        const channel = `test:${randomUUID()}:user-events`
+        const cli = instance(channel)
+        const server = instance(channel)
+        await server.bus.start()
+
+        await cli.bus.publishRemote('8', 'user_role_changed')
+
+        await vi.waitFor(() => {
+            expect(server.handled).toEqual([['user_role_changed', '8']])
+        })
+        expect(cli.handled).toEqual([])
+        await server.bus.stop()
     })
 })

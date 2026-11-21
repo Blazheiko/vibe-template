@@ -7,7 +7,7 @@ import {
     AUDIT_SYSTEM_SOURCES,
     AUDIT_TARGET_TYPES,
 } from '../audit/audit-actions.js'
-import { RoleSchema } from '../access/index.js'
+import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 /**
