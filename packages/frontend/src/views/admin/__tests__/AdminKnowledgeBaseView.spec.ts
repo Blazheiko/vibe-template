@@ -1,5 +1,9 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import type { Role } from 'shared/access'
+
+import { useUserStore } from '@/stores/user'
 
 // feat-162 (review 2026-11-10): a failed list request came back as an empty list, so the view
 // said "No articles yet" and offered to initialise a knowledge base that was already there;
@@ -42,9 +46,15 @@ const button = (wrapper: Awaited<ReturnType<typeof mountView>>, label: string) =
     return found
 }
 
+const signIn = (role: Role) => {
+    setActivePinia(createPinia())
+    useUserStore().setUser({ id: '1', role })
+}
+
 describe('AdminKnowledgeBaseView', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        signIn('admin')
         api.getInitStatus.mockResolvedValue(null)
         api.getAll.mockResolvedValue({ items: [article], total: 1 })
         vi.stubGlobal(
@@ -133,5 +143,36 @@ describe('AdminKnowledgeBaseView', () => {
         expect(wrapper.find('[role="alert"]').text()).toBe(
             'The article was saved, but its screenshot was not uploaded',
         )
+    })
+
+    // feat-240 (Р10): what each role may do decides what the page offers.
+    describe('by role (feat-240)', () => {
+        const labels = (wrapper: Awaited<ReturnType<typeof mountView>>) =>
+            wrapper.findAll('button').map((item) => item.text())
+
+        it('a support_operator only reads: no edit, delete, reindex or bulk action', async () => {
+            signIn('support_operator')
+            const wrapper = await mountView()
+
+            expect(wrapper.text()).toContain('Billing')
+            const shown = labels(wrapper)
+            for (const label of ['Edit', 'Reindex', 'Delete', 'Del Screenshot', 'Reindex All']) {
+                expect(shown).not.toContain(label)
+            }
+            expect(shown.some((label) => label.includes('New Article'))).toBe(false)
+            // The history needs audit.read.
+            expect(wrapper.text()).not.toContain('History')
+        })
+
+        it('a kb_editor edits articles but runs no bulk provider call', async () => {
+            signIn('kb_editor')
+            api.getAll.mockResolvedValue({ items: [], total: 0 })
+            const wrapper = await mountView()
+
+            const shown = labels(wrapper)
+            expect(shown.some((label) => label.includes('New Article'))).toBe(true)
+            expect(shown).not.toContain('Reindex All')
+            expect(shown).not.toContain('Init')
+        })
     })
 })

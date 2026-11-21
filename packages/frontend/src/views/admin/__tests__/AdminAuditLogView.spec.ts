@@ -2,6 +2,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+
+import { useUserStore } from '@/stores/user'
 import type { AuditEvent } from 'shared/responses'
 
 import en from '@/locales/en'
@@ -65,6 +68,8 @@ const mountAt = async (url: string) => {
 
 describe('AdminAuditLogView', () => {
     beforeEach(() => {
+        setActivePinia(createPinia())
+        useUserStore().setUser({ id: '1', role: 'admin' })
         api.list.mockReset()
         api.list.mockResolvedValue(page([event('1')]))
     })
@@ -221,5 +226,24 @@ describe('AdminAuditLogView', () => {
         expect(rows).toHaveLength(1)
         expect(rows[0]?.text()).toContain('Password changed')
         expect(wrapper.find('[data-testid="audit-load-more"]').exists()).toBe(false)
+    })
+
+    // feat-240 (Р5, Р10): without audit.read the filters offer the account events only.
+    it('offers a support_operator only the sign-in and session groups, actions and user targets', async () => {
+        useUserStore().setUser({ id: '1', role: 'support_operator' })
+        const { wrapper } = await mountAt('/admin/audit-log')
+
+        const groups = wrapper
+            .findAll('select[name="group"] option')
+            .map((option) => option.attributes('value'))
+        expect(groups).toEqual(['', 'sign-in', 'sessions'])
+        const types = wrapper
+            .findAll('select[name="targetType"] option')
+            .map((option) => option.attributes('value'))
+        expect(types).toEqual(['', 'user'])
+        const actions = wrapper.findAll('option').map((option) => option.attributes('value'))
+        expect(actions).not.toContain('kb.article.updated')
+        expect(actions).not.toContain('user.role.changed')
+        expect(actions).toContain('auth.password.changed')
     })
 })

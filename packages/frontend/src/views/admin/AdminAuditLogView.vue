@@ -6,6 +6,7 @@ import {
     AUDIT_ACTION_NAMES,
     AUDIT_GROUPS,
     AUDIT_TARGET_TYPES,
+    auditActionsOfGroup,
     type AuditAction,
     type AuditGroup,
     type AuditTargetType,
@@ -15,6 +16,24 @@ import type { AuditEvent } from 'shared/responses'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { adminAuditEventsApi } from '@/utils/api'
 import { getResponseMessage } from '@/utils/response-normalizer'
+import { useUserStore } from '@/stores/user'
+
+// feat-240 (Р5, Р10): without audit.read only the sign-in and session events of user accounts can
+// be read; the filters offer only those (the backend answers 403 to anything else).
+const ACCOUNT_GROUPS: readonly AuditGroup[] = ['sign-in', 'sessions']
+const userStore = useUserStore()
+const canReadAll = computed(() => userStore.can('audit.read'))
+const visibleGroups = computed<readonly AuditGroup[]>(() =>
+    canReadAll.value ? AUDIT_GROUPS : ACCOUNT_GROUPS,
+)
+const visibleActions = computed<readonly AuditAction[]>(() =>
+    canReadAll.value
+        ? AUDIT_ACTION_NAMES
+        : ACCOUNT_GROUPS.flatMap((group) => auditActionsOfGroup(group)),
+)
+const visibleTargetTypes = computed<readonly AuditTargetType[]>(() =>
+    canReadAll.value ? AUDIT_TARGET_TYPES : ['user'],
+)
 
 // feat-235 (Р10): the audit log for admins. The filters live in the query string of the page, so
 // a reload, a link from the users or the knowledge base and the back button keep them.
@@ -174,7 +193,7 @@ const groupLabel = (group: string): string => t(`auditLog.groups.${group.replace
 const targetTypeLabel = (type: string): string => t(`auditLog.targetTypes.${type}`)
 
 const actionOptions = computed(() =>
-    AUDIT_ACTION_NAMES.map((action) => ({ value: action, label: actionLabel(action) })),
+    visibleActions.value.map((action) => ({ value: action, label: actionLabel(action) })),
 )
 
 function actorLabel(event: AuditEvent): string {
@@ -282,7 +301,7 @@ async function copyRequestId(requestId: string): Promise<void> {
                 <span>{{ t('auditLog.filters.group') }}</span>
                 <select v-model="form.group" name="group">
                     <option value="">{{ t('auditLog.filters.anyGroup') }}</option>
-                    <option v-for="group in AUDIT_GROUPS" :key="group" :value="group">
+                    <option v-for="group in visibleGroups" :key="group" :value="group">
                         {{ groupLabel(group) }}
                     </option>
                 </select>
@@ -291,7 +310,7 @@ async function copyRequestId(requestId: string): Promise<void> {
                 <span>{{ t('auditLog.filters.targetType') }}</span>
                 <select v-model="form.targetType" name="targetType">
                     <option value="">{{ t('auditLog.filters.anyTargetType') }}</option>
-                    <option v-for="type in AUDIT_TARGET_TYPES" :key="type" :value="type">
+                    <option v-for="type in visibleTargetTypes" :key="type" :value="type">
                         {{ targetTypeLabel(type) }}
                     </option>
                 </select>

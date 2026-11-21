@@ -177,6 +177,8 @@ export const authApi = {
 // feat-232: the profile of the signed-in user. Absent field unchanged, `null` resets.
 export const accountApi = {
     getProfile: () => callApi(accountContracts.getProfile),
+    // feat-240 (Р8): the current role, read again on reconnect and when the tab is shown.
+    getAccess: () => callApi(accountContracts.getAccess),
     updateProfile: (body: UpdateProfileInput) => callApi(accountContracts.updateProfile, { body }),
     // feat-233: the active sessions of the account.
     listSessions: (cursor?: string) =>

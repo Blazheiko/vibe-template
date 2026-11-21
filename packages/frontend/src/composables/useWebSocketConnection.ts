@@ -55,6 +55,11 @@ const eventBus = useEventBus()
 // WebSocket state (created once)
 const wsUrl = ref<string>('')
 const isInitialized = ref(false)
+/**
+ * feat-240 (Р8): grows with every socket that opens. What the server holds for one socket (the
+ * admin channel subscription) is gone with it, so a confirmation is kept per generation.
+ */
+const socketGeneration = ref(0)
 // Mutable array passed to vueuse by reference — mutate before reconnecting so
 // the next WebSocket is constructed with the updated Sec-WebSocket-Protocol value.
 const wsProtocols: string[] = ['', 'app-web']
@@ -326,6 +331,7 @@ const { status, send, close, open, ws } = useWebSocket(wsUrl, {
     heartbeat: createHeartbeatOptions(),
     onConnected() {
         console.log('WebSocket connected')
+        socketGeneration.value += 1
         connectionOpened = true
         handshakeFailuresInARow = 0
         isInitialized.value = true
@@ -523,6 +529,7 @@ export const useWebSocketConnection = () => {
         isConnecting,
         isDisconnected,
         isInitialized,
+        socketGeneration,
 
         // Methods
         sendMessage,

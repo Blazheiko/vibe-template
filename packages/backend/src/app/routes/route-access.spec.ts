@@ -116,6 +116,7 @@ describe('route access matrix (code-issues items 48, 67)', () => {
         const accountRoutes = http.filter((route) => route.url.includes('/account/'))
         expect(accountRoutes.map((route) => `${route.method} ${route.url}`).sort()).toEqual([
             'del api/account/sessions/:id',
+            'get api/account/access',
             'get api/account/profile',
             'get api/account/sessions',
             'patch api/account/profile',

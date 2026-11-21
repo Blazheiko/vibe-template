@@ -14,6 +14,11 @@ export interface Events extends Record<EventType, unknown>, BroadcastContracts {
      * from now on, and state they keep up to date is read again (feat-232).
      */
     ws_ready: undefined
+    /**
+     * feat-240 (Р8): the admin channel was joined again after a pause; the online list missed the
+     * events meanwhile and is read again.
+     */
+    admin_online_reload: undefined
 }
 
 const emitter = mitt<Events>()

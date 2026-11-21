@@ -329,6 +329,11 @@ export default [
                 description: 'Profile of the current user: name, preferences and revision',
             }),
             defineRoute({
+                contract: accountContracts.getAccess,
+                handler: AccountController.getAccess.bind(AccountController),
+                description: 'Role of the current user (feat-240), read again by a tab',
+            }),
+            defineRoute({
                 contract: accountContracts.updateProfile,
                 handler: AccountController.updateProfile.bind(AccountController),
                 description:

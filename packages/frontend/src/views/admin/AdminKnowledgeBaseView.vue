@@ -2,6 +2,14 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { adminKnowledgeBaseApi } from '@/utils/api'
 import type { KnowledgeBaseArticle, KnowledgeBaseInitStatus } from '@/utils/api'
+import { useUserStore } from '@/stores/user'
+
+// feat-240 (Р10): kb.read sees the list; kb.write edits articles; kb.manage runs the bulk
+// provider calls (reindex all, init). The backend refuses the rest anyway.
+const userStore = useUserStore()
+const canWrite = computed(() => userStore.can('kb.write'))
+const canManage = computed(() => userStore.can('kb.manage'))
+const canReadAudit = computed(() => userStore.can('audit.read'))
 
 const articles = ref<KnowledgeBaseArticle[]>([])
 const total = ref(0)
@@ -244,18 +252,25 @@ onUnmounted(() => {
         <div class="kb-header">
             <h2 class="kb-heading">Knowledge Base</h2>
             <div class="kb-header-actions">
-                <button class="btn btn-secondary" :disabled="isReindexingAll" @click="reindexAll">
+                <button
+                    v-if="canManage"
+                    class="btn btn-secondary"
+                    :disabled="isReindexingAll"
+                    @click="reindexAll"
+                >
                     {{ isReindexingAll ? 'Reindexing...' : 'Reindex All' }}
                 </button>
                 <button
-                    v-if="showInitButton"
+                    v-if="showInitButton && canManage"
                     class="btn btn-secondary"
                     :disabled="isInitStarting"
                     @click="startInit"
                 >
                     {{ isInitStarting ? 'Starting...' : 'Init' }}
                 </button>
-                <button class="btn btn-primary" @click="openCreate">+ New Article</button>
+                <button v-if="canWrite" class="btn btn-primary" @click="openCreate">
+                    + New Article
+                </button>
             </div>
         </div>
 
@@ -324,24 +339,37 @@ onUnmounted(() => {
                         <td>{{ article.embeddingIndexed ? 'Yes' : 'No' }}</td>
                         <td>{{ article.hasScreenshot ? 'Yes' : 'No' }}</td>
                         <td class="kb-actions-cell">
-                            <button class="btn-xs btn-secondary" @click="openEdit(article)">
+                            <button
+                                v-if="canWrite"
+                                class="btn-xs btn-secondary"
+                                @click="openEdit(article)"
+                            >
                                 Edit
                             </button>
-                            <button class="btn-xs btn-secondary" @click="reindexArticle(article)">
+                            <button
+                                v-if="canWrite"
+                                class="btn-xs btn-secondary"
+                                @click="reindexArticle(article)"
+                            >
                                 Reindex
                             </button>
                             <button
-                                v-if="article.hasScreenshot"
+                                v-if="canWrite && article.hasScreenshot"
                                 class="btn-xs btn-danger"
                                 @click="deleteScreenshot(article)"
                             >
                                 Del Screenshot
                             </button>
-                            <button class="btn-xs btn-danger" @click="deleteArticle(article)">
+                            <button
+                                v-if="canWrite"
+                                class="btn-xs btn-danger"
+                                @click="deleteArticle(article)"
+                            >
                                 Delete
                             </button>
                             <!-- feat-235: the change history of this article in the audit log. -->
                             <router-link
+                                v-if="canReadAudit"
                                 class="btn-xs btn-secondary"
                                 :to="{
                                     path: '/admin/audit-log',
