@@ -2371,8 +2371,8 @@
             "owner": "Blazheiko",
             "branch": "fix/notification-center-review-2",
             "dependencies": ["feat-237"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #739 (merge 2702c10), registry #738. (1) A read carries a scope (history page, panel): opening the bell reads the panel alone, the history keeps its second page and cursor; bus handlers no longer pass the event payload to the refresh. (2) A successful mark-read or read-all drops the list answers of every read that started before it ended, so a late GET cannot put readAt: null back into either list. Store tests (second page and cursor kept; a GET answering after mark-read and after read-all) and a mocked e2e (load more, open the bell, the second page stays) each fail when their fix is removed. Local: make check (frontend 832, backend 3374), test:e2e 111, test:e2e:live notifications 3. CI on 44c9973: quality, e2e, e2e-live green. Status went in_progress -> done without a separate review PR (follow-up of feat-237)."
         }
     ]
 }
