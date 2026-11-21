@@ -195,6 +195,72 @@ describe('wsRoleSync.refreshUsers', () => {
         expect(admin.userData.adminChannelPaused).toBe(false)
         expect(sent.map((message) => message.event)).toEqual(['access_changed'])
     })
+
+    // Review 2026-11-21: a read covers the connections registered when it started.
+    it('leaves a connection registered during the read with the role it read at connect', async () => {
+        connect('1', 'a', 'user')
+        let answer: (roles: Map<string, Role>) => void = () => undefined
+        findRolesByIds.mockImplementationOnce(
+            () =>
+                new Promise((resolve) => {
+                    answer = resolve
+                }),
+        )
+
+        const pending = wsRoleSync.refreshUsers(['1'])
+        // Registered meanwhile; its own read at connect already saw the new role.
+        connect('1', 'b', 'kb_editor')
+        answer(new Map([['1', 'user']]))
+        await pending
+
+        expect(byUuid.get('a')?.role).toBe('user')
+        expect(byUuid.get('b')?.role).toBe('kb_editor')
+        expect(sent).toEqual([])
+    })
+
+    it('an older read that succeeds after a newer failure does not lift its pause', async () => {
+        const admin = connect('1', 'a', 'admin', true)
+        let answerOld: (roles: Map<string, Role>) => void = () => undefined
+        findRolesByIds
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        answerOld = resolve
+                    }),
+            )
+            .mockRejectedValueOnce(new Error('database down'))
+
+        const older = wsRoleSync.refreshUsers(['1'])
+        await wsRoleSync.refreshUsers(['1'])
+        expect(admin.userData.adminChannelPaused).toBe(true)
+
+        answerOld(new Map([['1', 'admin']]))
+        expect((await older).changed).toBe(0)
+
+        expect(admin.userData.adminChannelPaused).toBe(true)
+        expect(sent).toEqual([])
+    })
+
+    it('an older read that fails after a newer success pauses nothing', async () => {
+        const admin = connect('1', 'a', 'admin', true)
+        let failOld: (error: Error) => void = () => undefined
+        findRolesByIds
+            .mockImplementationOnce(
+                () =>
+                    new Promise((_resolve, reject) => {
+                        failOld = reject
+                    }),
+            )
+            .mockResolvedValueOnce(new Map([['1', 'admin']]))
+
+        const older = wsRoleSync.refreshUsers(['1'])
+        await wsRoleSync.refreshUsers(['1'])
+        failOld(new Error('database down'))
+        expect((await older).paused).toBe(0)
+
+        expect(admin.unsubscribe).not.toHaveBeenCalled()
+        expect(admin.userData.adminChannelPaused).toBe(false)
+    })
 })
 
 describe('wsRoleSync.refreshAll', () => {

@@ -246,4 +246,54 @@ describe('AdminAuditLogView', () => {
         expect(actions).not.toContain('user.role.changed')
         expect(actions).toContain('auth.password.changed')
     })
+
+    // feat-242 (review 2026-11-21): losing audit.read drops the events of the full log at once and
+    // reads the first page again with the filters the account scope allows.
+    it('after losing audit.read drops the full log and reloads with the allowed filters', async () => {
+        api.list.mockResolvedValueOnce(page([event('1')], 'cursor-1'))
+        const { wrapper, router } = await mountAt(
+            '/admin/audit-log?group=kb&targetType=kb_article&targetUserId=7',
+        )
+        expect(wrapper.findAll('[data-testid="audit-row"]')).toHaveLength(1)
+
+        let answer: (value: unknown) => void = () => undefined
+        api.list.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answer = resolve
+            }),
+        )
+        useUserStore().applyAccessChanged('support_operator')
+        await flushPromises()
+
+        expect(wrapper.findAll('[data-testid="audit-row"]')).toHaveLength(0)
+        expect(router.currentRoute.value.query).toEqual({ targetUserId: '7' })
+        expect(api.list).toHaveBeenLastCalledWith({ targetUserId: '7' })
+
+        answer(page([event('5', { action: 'auth.password.changed', group: 'sign-in' })]))
+        await flushPromises()
+        const rows = wrapper.findAll('[data-testid="audit-row"]')
+        expect(rows).toHaveLength(1)
+        expect(rows[0]?.text()).toContain('Password changed')
+    })
+
+    it('drops a page of the full log that answers after audit.read was lost', async () => {
+        api.list.mockResolvedValueOnce(page([event('2')], 'cursor-1'))
+        const { wrapper } = await mountAt('/admin/audit-log?targetUserId=7')
+        let answerOld: (value: unknown) => void = () => undefined
+        api.list.mockReturnValueOnce(
+            new Promise((resolve) => {
+                answerOld = resolve
+            }),
+        )
+        await wrapper.find('[data-testid="audit-load-more"]').trigger('click')
+        api.list.mockResolvedValueOnce(page([]))
+        useUserStore().applyAccessChanged('support_operator')
+        await flushPromises()
+
+        answerOld(page([event('1')]))
+        await flushPromises()
+
+        expect(wrapper.findAll('[data-testid="audit-row"]')).toHaveLength(0)
+        expect(wrapper.find('[data-testid="audit-empty"]').exists()).toBe(true)
+    })
 })

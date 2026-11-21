@@ -109,4 +109,70 @@ describe('admin channel', () => {
         expect(unsubscribe).toHaveBeenCalledTimes(1)
         expect(channel.isConfirmed()).toBe(false)
     })
+
+    // Review 2026-11-21: an event during a subscribe in flight is not lost.
+    const deferred = () => {
+        const state = { generation: 1, wanted: true }
+        const answers: ((ok: boolean) => void)[] = []
+        const subscribe = vi.fn(
+            () =>
+                new Promise<boolean>((resolve) => {
+                    answers.push(resolve)
+                }),
+        )
+        const onResumed = vi.fn()
+        const channel = createAdminChannel({
+            subscribe,
+            unsubscribe: vi.fn(() => Promise.resolve()),
+            generation: () => state.generation,
+            wanted: () => state.wanted,
+            onResumed,
+        })
+        return { state, answers, subscribe, onResumed, channel }
+    }
+
+    it('access_changed during a subscribe that then answers 403 subscribes once more', async () => {
+        const { answers, subscribe, channel } = deferred()
+        const first = channel.ensure()
+        const second = channel.onAccessChanged()
+        await second
+        expect(subscribe).toHaveBeenCalledTimes(1)
+
+        answers[0]?.(false)
+        await vi.waitFor(() => {
+            expect(subscribe).toHaveBeenCalledTimes(2)
+        })
+        answers[1]?.(true)
+        await first
+
+        expect(channel.isConfirmed()).toBe(true)
+    })
+
+    it('admin_channel_ready during a subscribe: its answer confirms nothing, the retry does', async () => {
+        const { answers, subscribe, onResumed, channel } = deferred()
+        const first = channel.ensure()
+        void channel.onChannelReady()
+
+        answers[0]?.(true)
+        await vi.waitFor(() => {
+            expect(subscribe).toHaveBeenCalledTimes(2)
+        })
+        expect(channel.isConfirmed()).toBe(false)
+        expect(onResumed).not.toHaveBeenCalled()
+
+        answers[1]?.(true)
+        await first
+        expect(channel.isConfirmed()).toBe(true)
+        expect(onResumed).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not retry when the subscribe in flight confirms the channel', async () => {
+        const { answers, subscribe, channel } = deferred()
+        const first = channel.ensure()
+        void channel.onAccessChanged()
+        answers[0]?.(true)
+        await first
+        expect(subscribe).toHaveBeenCalledTimes(1)
+        expect(channel.isConfirmed()).toBe(true)
+    })
 })

@@ -187,6 +187,40 @@ watch(
     { immediate: true },
 )
 
+/** The query without the filters the account scope refuses (a group, action or target type). */
+function accountScopeQuery(query: LocationQuery): LocationQuery {
+    const allowedActions: ReadonlySet<string> = new Set(visibleActions.value)
+    const next: LocationQuery = { ...query }
+    const actions = allOf(query.action).filter((action) => allowedActions.has(action))
+    if (actions.length > 0) next.action = actions
+    else delete next.action
+    if (!ACCOUNT_GROUPS.includes(firstOf(query.group) as AuditGroup)) delete next.group
+    if (firstOf(query.targetType) !== 'user') delete next.targetType
+    return next
+}
+
+// feat-242 (review 2026-11-21): a change of audit.read changes what the page may show. The events
+// read under the old rights go at once, an answer still in flight is dropped (a new generation),
+// and the first page is read again; after losing audit.read, with the filters the account scope
+// allows (the backend would refuse the others).
+watch(canReadAll, (all) => {
+    generation += 1
+    items.value = []
+    nextCursor.value = null
+    loading.value = false
+    loadingMore.value = false
+    expanded.value = null
+    if (!all) {
+        const query = accountScopeQuery(route.query)
+        if (JSON.stringify(query) !== JSON.stringify(route.query)) {
+            // The route watcher reads the first page.
+            void router.replace({ query })
+            return
+        }
+    }
+    void load(true)
+})
+
 const actionKey = (action: string): string => action.replace(/\./g, '_')
 const actionLabel = (action: string): string => t(`auditLog.actions.${actionKey(action)}`)
 const groupLabel = (group: string): string => t(`auditLog.groups.${group.replace(/-/g, '_')}`)
