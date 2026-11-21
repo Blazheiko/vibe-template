@@ -2411,8 +2411,8 @@
             "owner": "Blazheiko",
             "branch": "fix/roles-review",
             "dependencies": ["feat-241"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #754 (merge 98580ef), registry #753 (in_progress), #755 (review). Fixes of the review of feat-240/241 (2026-11-21): wsRoleSync applies a read only to the connections registered when it started and orders failed reads with successful ones (lastSettled); useAdminUserDetailModal closes the detail and drops the answer in flight on losing users.sensitive.read; AdminAuditLogView empties the log, drops answers in flight and reloads with the account-scope filters on losing audit.read; useAdminChannel keeps one retry asked for during a subscribe in flight, admin_channel_ready makes that answer stale; AdminUsersView drops answers of older filters and removes a row that no longer matches the role filter after a role change; docs backend/websocket.md (both locales). Every new test fails on the previous code (backend 3, frontend 9). Local: make check (backend 3410, frontend 900), test:e2e 120, docs:build + docs:verify. CI on 2e8187b: quality, build, e2e, e2e-live, test-pg, test-redis green (CI 44930054094, PG tests 44930054125, Redis tests 44930054112, Docs 44930054087)."
         }
     ]
 }
