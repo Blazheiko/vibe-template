@@ -186,4 +186,36 @@ test.describe('notification center', () => {
             'true',
         )
     })
+
+    // feat-238 (re-review of #736, 1): opening the bell keeps the pages the history loaded.
+    test('opening the bell keeps the second page of the history', async ({ page }) => {
+        await page.route('**/api/notifications?**', async (route) => {
+            const url = new URL(route.request().url())
+            const before = url.searchParams.get('before')
+            const limit = url.searchParams.get('limit')
+            const body =
+                limit === '10'
+                    ? { items: [item('12')], next: null }
+                    : before === '12'
+                      ? { items: [item('3', { params: { device: 'Safari on iOS' } })], next: null }
+                      : { items: [item('12')], next: '12' }
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ status: 'success', unreadCount: 2, ...body }),
+            })
+        })
+
+        await page.goto('/notifications')
+        await page.getByTestId('notifications-more').click()
+        const list = page.getByTestId('notifications-list')
+        await expect(list.getByTestId('notification-3')).toBeVisible()
+
+        await page.getByTestId('notification-bell').click()
+        await expect(page.getByTestId('notification-panel')).toBeVisible()
+        await page.waitForTimeout(600)
+
+        await expect(list.getByTestId('notification-3')).toBeVisible()
+        await expect(page.getByTestId('notifications-more')).toHaveCount(0)
+    })
 })
