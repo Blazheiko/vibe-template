@@ -2361,8 +2361,8 @@
             "owner": "Blazheiko",
             "branch": "fix/notification-center-review",
             "dependencies": ["feat-236"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #736 (merge 1c320d9), registry #735. (1) /notifications scrolls in its own container under the header; mocked e2e on a 390x700 phone scrolls with the wheel to \"show more\" and fails without the container. (2) No compat layer (template without deployments, owner's rule): a deployment warning in both locales names the feat-236 migration and the 422 for old tabs, and how to roll it out with traffic; the notifications page links to it. (3) The read queue no longer stops on an account switch; store test switches mid-read and loads the new account (fails with the old loop). (4) The bell panel has its own latest-10 list; the history keeps its filter and pages; mark-all per view; store test and mocked e2e. Local: make check (frontend 829, backend 3374), test:e2e 110, test:e2e:live notifications 3, docs:build + docs:verify. CI on bd197b1 (run 44876276046): quality, build, e2e, e2e-live green. Status went in_progress -> done without a separate review PR (follow-up of feat-236, as feat-234)."
         }
     ]
 }
