@@ -2421,7 +2421,7 @@
             "owner": "Blazheiko",
             "branch": "fix/roles-review-2",
             "dependencies": ["feat-242"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
