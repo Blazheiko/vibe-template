@@ -1,10 +1,11 @@
 import { db } from '#database/db.js'
 import { sessionCheckDb } from '#database/session-check-db.js'
-import type { DbExecutor } from '../transaction.js'
+import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { users } from '#database/schema.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
+import type { Role } from 'shared/access'
 
 export type UserRow = InferSelectModel<typeof users>
 export type UserInsert = InferInsertModel<typeof users>
@@ -43,7 +44,7 @@ export interface AdminUserDetailRow {
     name: string
     email: string | null
     phone: string | null
-    role: 'user' | 'admin'
+    role: Role
     createdAt: Date
 }
 
@@ -67,6 +68,18 @@ export interface IUserRepository {
      * first, so they run one at a time per user (feat-096).
      */
     lockById(id: bigint, tx: DbExecutor): Promise<UserRow | undefined>
+    /**
+     * feat-240 (Р6): serializes every role change on one transaction-scoped advisory lock, taken
+     * first in the transaction; released at commit or rollback.
+     */
+    lockRoleChanges(tx: DbTransaction): Promise<void>
+    /** The role and the email verification of a user, read in the role-change transaction. */
+    findRoleSubject(
+        id: bigint,
+        tx: DbExecutor,
+    ): Promise<{ id: bigint; role: Role; emailVerifiedAt: Date | null } | undefined>
+    countByRole(role: Role, tx: DbExecutor): Promise<number>
+    updateRole(id: bigint, role: Role, tx: DbExecutor): Promise<Role | undefined>
     /**
      * Updates the user only while users.session_token is still `expectedSessionToken`, the
      * token the request presented (`Auth.getPresentedUserToken`). Undefined when the user is
@@ -290,6 +303,33 @@ export const userRepository: IUserRepository = {
             .where(eq(users.id, id))
             .returning()
         return row
+    },
+
+    async lockRoleChanges(tx) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('user_role_change', 0))`)
+    },
+
+    async findRoleSubject(id, tx) {
+        return await tx
+            .select({ id: users.id, role: users.role, emailVerifiedAt: users.emailVerifiedAt })
+            .from(users)
+            .where(eq(users.id, id))
+            .limit(1)
+            .then((rows) => rows.at(0))
+    },
+
+    async countByRole(role, tx) {
+        const [row] = await tx.select({ total: count() }).from(users).where(eq(users.role, role))
+        return row?.total ?? 0
+    },
+
+    async updateRole(id, role, tx) {
+        const [row] = await tx
+            .update(users)
+            .set({ role, updatedAt: new Date() })
+            .where(eq(users.id, id))
+            .returning({ role: users.role })
+        return row?.role
     },
 
     async lockById(id, tx) {

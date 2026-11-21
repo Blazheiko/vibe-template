@@ -11,6 +11,8 @@ const { getProfile, updateProfile } = vi.hoisted(() => ({
 vi.mock('#app/services/user/account-service.js', () => ({
     accountService: { getProfile, updateProfile },
 }))
+const findRole = vi.hoisted(() => vi.fn())
+vi.mock('#app/services/user/user-role-service.js', () => ({ userRoleService: { findRole } }))
 
 const { default: AccountController } = await import('./account-controller.js')
 
@@ -86,5 +88,28 @@ describe('AccountController', () => {
 
         expect(reply).toMatchObject({ status: 'error', code: 'rate_limited' })
         expect((context as { responseData: { status: number } }).responseData.status).toBe(429)
+    })
+
+    // feat-240 (Р8): the role a tab reads again on reconnect and when it is shown.
+    it('getAccess answers the role of the signed-in user from the database', async () => {
+        findRole.mockResolvedValue('kb_editor')
+        const { context } = createContext(true)
+
+        await expect(AccountController.getAccess(context)).resolves.toEqual({
+            status: 'success',
+            role: 'kb_editor',
+        })
+        expect(findRole).toHaveBeenCalledWith(7n)
+    })
+
+    it('getAccess answers 401 without a user and 404 for a user that is gone', async () => {
+        const anonymous = createContext(true, false).context as { responseData: { status: number } }
+        await AccountController.getAccess(anonymous as never)
+        expect(anonymous.responseData.status).toBe(401)
+
+        findRole.mockResolvedValue(undefined)
+        const gone = createContext(true).context as { responseData: { status: number } }
+        await AccountController.getAccess(gone as never)
+        expect(gone.responseData.status).toBe(404)
     })
 })

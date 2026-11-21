@@ -13,7 +13,10 @@ declare module 'vue-router' {
         title?: string
         hideHeader?: boolean
         authModal?: 'login' | 'register'
-        requiresAdmin?: boolean
+        /** feat-240: the admin area, for a role with at least one admin permission. */
+        requiresStaff?: boolean
+        /** feat-240: the permission an admin page needs (views/admin/admin-pages.ts). */
+        permission?: import('shared/access').Permission
         showBack?: boolean
     }
 }

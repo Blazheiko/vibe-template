@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
-import type { InitResponse, Profile } from 'shared'
+import type { InitResponse, Profile, Role } from 'shared'
+import { isStaffRole, roleHasPermission, type Permission } from 'shared/access'
 import { sentryService as sentry } from '@/utils/sentry-service'
 
 // Tracks the currently active initializeApp() cycle.
@@ -25,7 +26,7 @@ export interface User {
     emailVerified?: boolean
     emailVerifiedAt?: string | null
     avatar?: string | null
-    role?: 'user' | 'admin'
+    role?: Role
     [key: string]: string | number | boolean | null | undefined
 }
 
@@ -53,10 +54,20 @@ export const useUserStore = defineStore('user', () => {
      * False while the session is not checked yet, when `user` is null only for lack of an answer.
      */
     const anonymousConfirmed = ref(false)
+    /**
+     * feat-240 (Р8): grows with every `access_changed` of this tab's socket and with every change
+     * of account. A role read over HTTP is applied only when it has not grown since the read
+     * started, so an answer that left before a change never brings the old role back.
+     */
+    let accessEpoch = 0
+    let accessReads = 0
 
     function setUser(userData: User) {
         // Another account: the profile of the previous one never stays (Р10).
-        if (user.value?.id !== userData.id) profile.value = null
+        if (user.value?.id !== userData.id) {
+            profile.value = null
+            accessEpoch += 1
+        }
         user.value = userData
         anonymousConfirmed.value = false
         sentry.setUser({ id: userData.id })
@@ -86,6 +97,7 @@ export const useUserStore = defineStore('user', () => {
     }
 
     function clearUser() {
+        accessEpoch += 1
         user.value = null
         profile.value = null
         anonymousConfirmed.value = true
@@ -101,8 +113,42 @@ export const useUserStore = defineStore('user', () => {
         return user.value !== null
     }
 
-    function isAdmin() {
-        return user.value?.role === 'admin'
+    /** Whether the role may use `permission` (the backend checks every request anyway). */
+    function can(permission: Permission): boolean {
+        return roleHasPermission(user.value?.role, permission)
+    }
+
+    /** A role with at least one admin permission. */
+    function isStaff(): boolean {
+        return isStaffRole(user.value?.role)
+    }
+
+    /** `access_changed` of this tab's socket: the role already applied to it on the server. */
+    function applyAccessChanged(role: Role): void {
+        accessEpoch += 1
+        if (user.value !== null && user.value.role !== role) user.value = { ...user.value, role }
+    }
+
+    /** Starts a role read over HTTP; hand the ticket back with its answer. */
+    function beginAccessRead(): { epoch: number; read: number; userId: string | null } {
+        accessReads += 1
+        return { epoch: accessEpoch, read: accessReads, userId: user.value?.id ?? null }
+    }
+
+    /**
+     * Applies the role a read answered, unless a newer read started, an `access_changed` came or
+     * the account changed meanwhile. Returns whether it was applied.
+     */
+    function applyAccessRead(
+        ticket: { epoch: number; read: number; userId: string | null },
+        role: Role,
+    ): boolean {
+        if (ticket.read !== accessReads || ticket.epoch !== accessEpoch) return false
+        const current = user.value
+        if (current === null) return false
+        if (current.id !== ticket.userId) return false
+        if (current.role !== role) user.value = { ...current, role }
+        return true
     }
 
     function resetReady() {
@@ -124,7 +170,11 @@ export const useUserStore = defineStore('user', () => {
         applyProfile,
         clearUser,
         hasUser,
-        isAdmin,
+        can,
+        isStaff,
+        applyAccessChanged,
+        beginAccessRead,
+        applyAccessRead,
         resetReady,
         markReady,
     }

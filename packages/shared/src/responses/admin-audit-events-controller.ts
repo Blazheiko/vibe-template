@@ -7,6 +7,7 @@ import {
     AUDIT_SYSTEM_SOURCES,
     AUDIT_TARGET_TYPES,
 } from '../audit/audit-actions.js'
+import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 /**
@@ -19,7 +20,7 @@ export const AuditEventActorSchema = type({
     userId: 'string | null',
     name: 'string | null',
     deleted: 'boolean',
-    role: "'user' | 'admin' | null",
+    role: RoleSchema.or('null'),
     proof: type.enumerated(...AUDIT_PROOFS).or('null'),
     source: type.enumerated(...AUDIT_SYSTEM_SOURCES).or('null'),
 })

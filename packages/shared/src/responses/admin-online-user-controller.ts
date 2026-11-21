@@ -1,4 +1,5 @@
 import { type } from '@arktype/type'
+import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 export const AdminOnlineUserListItemSchema = type({
@@ -24,7 +25,7 @@ export const AdminOnlineUserDetailSchema = type({
     name: 'string',
     email: 'string',
     phone: 'string | null',
-    role: 'string',
+    role: RoleSchema,
     createdAt: 'string',
     isOnline: 'boolean',
     appType: "'web' | 'pwa' | null",

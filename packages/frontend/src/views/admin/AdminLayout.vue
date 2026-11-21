@@ -1,56 +1,27 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { adminWsContracts } from 'shared/contracts'
-import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
-import { callWs } from '@/utils/ws-client'
+import { useAdminChannel } from '@/composables/useAdminChannel'
+import { useUserStore } from '@/stores/user'
+import { useEventBus } from '@/utils/event-bus'
+import { adminPagesFor } from '@/views/admin/admin-pages'
 
 const router = useRouter()
 const route = useRoute()
-const { statusWebSocket } = useWebSocketConnection()
+const userStore = useUserStore()
+const eventBus = useEventBus()
 
-const navItems = [
-    { label: 'Knowledge Base', path: '/admin/knowledge-base', icon: 'kb' },
-    { label: 'Users', path: '/admin/users', icon: 'users' },
-    { label: 'User Online', path: '/admin/user-online', icon: 'online-users' },
-    { label: 'History Online', path: '/admin/history-online', icon: 'history-online' },
-    { label: 'Audit Log', path: '/admin/audit-log', icon: 'audit-log' },
-]
+// feat-240 (Р10): only the pages the role may see.
+const navItems = computed(() => adminPagesFor(userStore.user?.role))
 
 function goBack() {
     void router.push('/account')
 }
 
-async function subscribeAdminChannel() {
-    if (statusWebSocket.value !== 'OPEN') return
-    try {
-        await callWs(adminWsContracts.subscribeOnlineUsers)
-    } catch (error) {
-        console.error('Failed to subscribe admin channel:', error)
-    }
-}
-
-async function unsubscribeAdminChannel() {
-    if (statusWebSocket.value !== 'OPEN') return
-    try {
-        await callWs(adminWsContracts.unsubscribeOnlineUsers)
-    } catch (error) {
-        console.error('Failed to unsubscribe admin channel:', error)
-    }
-}
-
-watch(statusWebSocket, (status) => {
-    if (status === 'OPEN') {
-        void subscribeAdminChannel()
-    }
-})
-
-onMounted(() => {
-    void subscribeAdminChannel()
-})
-
-onUnmounted(() => {
-    void unsubscribeAdminChannel()
+// feat-240 (Р8): the online updates follow users.read and the socket; after a paused channel is
+// joined again the online list is read again.
+useAdminChannel(() => {
+    eventBus.emit('admin_online_reload')
 })
 </script>
 

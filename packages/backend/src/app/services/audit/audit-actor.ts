@@ -51,9 +51,13 @@ export type AuditActor =
 
 export type UserAuditActor = Extract<AuditActor, { kind: 'user' }>
 export type ProofHolderAuditActor = Extract<AuditActor, { kind: 'proof_holder' }>
+export type SystemAuditActor = Extract<AuditActor, { kind: 'system' }>
 
 /** A change made by the system itself: no request, no user. */
-export function systemActor(source: AuditSystemSource, log: AuditLogger = logger): AuditActor {
+export function systemActor(
+    source: AuditSystemSource,
+    log: AuditLogger = logger,
+): SystemAuditActor {
     return {
         kind: 'system',
         userId: null,

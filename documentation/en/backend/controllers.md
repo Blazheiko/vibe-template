@@ -237,16 +237,17 @@ The dispatcher will catch an unhandled exception from a controller and respond w
 
 Connection data collected during the upgrade ([types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts)):
 
-| Field                      | Description                                                             |
-| -------------------------- | ----------------------------------------------------------------------- |
-| `userId`                   | `string \| undefined` — the user id; for services use `BigInt(userId)`. |
-| `sessionId`, `userToken`   | The session the connection was opened with.                             |
-| `uuid`                     | Unique connection id (one user can have several tabs).                  |
-| `role`                     | `'user' \| 'admin'`.                                                    |
-| `appType`                  | `'web' \| 'pwa'`.                                                       |
-| `ip`, `ip2`, `userAgent`   | Client data.                                                            |
-| `isAdminChannelSubscribed` | Whether the connection is subscribed to the admin channel.              |
-| `timeStart`                | Connection time (ms).                                                   |
+| Field                      | Description                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `userId`                   | `string \| undefined` — the user id; for services use `BigInt(userId)`.                                                                                                   |
+| `sessionId`, `userToken`   | The session the connection was opened with.                                                                                                                               |
+| `uuid`                     | Unique connection id (one user can have several tabs).                                                                                                                    |
+| `role`                     | A role of the `shared/access` catalog (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); [role sync](/en/backend/websocket#role-sync) keeps it up to date. |
+| `appType`                  | `'web' \| 'pwa'`.                                                                                                                                                         |
+| `ip`, `ip2`, `userAgent`   | Client data.                                                                                                                                                              |
+| `isAdminChannelSubscribed` | Whether the connection is subscribed to the admin channel.                                                                                                                |
+| `adminChannelPaused`       | The admin channel is paused after a failed role read; `ws_can:` refuses until the next read succeeds.                                                                     |
+| `timeStart`                | Connection time (ms).                                                                                                                                                     |
 
 The type allows `null` and `userId: undefined`, so check before use:
 

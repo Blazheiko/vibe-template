@@ -202,11 +202,13 @@ src/app/routes/http-routes.ts(290,17): error TS2322: Type '(context: HttpContext
 ```ts
 {
   group: [ /* defineRoute({ contract: ..., handler: ... }) */ ],
-  description: "Admin user and online routes",
-  middlewares: ["session_web", "csrf_guard", "auth_guard", "admin_guard"],
+  description: "Admin users and online users (feat-240)",
+  middlewares: ["session_web", "csrf_guard", "auth_guard", "can:users.read"],
   prefix: "admin",
 },
 ```
+
+Адмінські маршрути з різними дозволами — окремі групи з тим самим `prefix`: `can:<дозвіл>` стоїть на групі ([Ролі та можливості](/reference/roles-capabilities#як-додати-роль-або-дозвіл)).
 
 Правила злиття (див. `router.ts`):
 

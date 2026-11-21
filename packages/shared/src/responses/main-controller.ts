@@ -1,4 +1,5 @@
 import { type } from '@arktype/type'
+import { RoleSchema } from '../access/role-schema.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 import { ProfilePreferencesSchema, ProfileRevisionSchema } from './account-controller.js'
 
@@ -30,7 +31,7 @@ export const InitResponseSchema = type.or(
             emailVerified: 'boolean',
             'emailVerifiedAt?': 'string | null',
             'avatar?': 'string | null',
-            'role?': "'user' | 'admin'",
+            'role?': RoleSchema,
             createdAt: 'string',
             updatedAt: 'string',
             // The profile preferences and their revision (feat-232, Р6): the same values as

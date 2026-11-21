@@ -25,13 +25,15 @@ import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
 import { AUDIT_ACTOR_KINDS } from 'shared/audit'
+import { ROLES } from 'shared/access'
 import {
     NOTIFICATION_CATEGORIES,
     NOTIFICATION_CHANNELS,
     NOTIFICATION_KIND_NAMES,
 } from 'shared/notifications'
 
-export const userRoleEnum = pgEnum('user_role', ['user', 'admin'])
+// feat-240 (Р3): the roles of the catalog in shared/access, in its order.
+export const userRoleEnum = pgEnum('user_role', ROLES)
 export const pushNotificationStatusEnum = pgEnum('push_notification_status', [
     'SENT',
     'FAILED',
@@ -94,6 +96,13 @@ export const users = pgTable(
         uniqueIndex('users_email_unique_non_null_idx')
             .on(sql`LOWER(${table.email})`)
             .where(sql`${table.email} IS NOT NULL`),
+        // feat-240 (Р3, Р6 rule 3): a staff role only on an account with a verified email. An
+        // unverified account can be claimed by the owner of its address (claimLocked keeps the
+        // role), so a role given before the verification would move with the account.
+        check(
+            'users_staff_role_verified_email',
+            sql`${table.role} = 'user' OR ${table.emailVerifiedAt} IS NOT NULL`,
+        ),
     ],
 )
 

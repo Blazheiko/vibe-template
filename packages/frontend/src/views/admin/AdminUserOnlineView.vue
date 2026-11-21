@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AdminUserDetailModal from '@/components/admin/AdminUserDetailModal.vue'
 import { useAdminUserDetailModal } from '@/composables/useAdminUserDetailModal'
 import { adminOnlineUsersApi } from '@/utils/api'
 import { useEventBus } from '@/utils/event-bus'
+import { useUserStore } from '@/stores/user'
 import type { AdminOnlineUserListItem } from 'shared/responses'
 
 const eventBus = useEventBus()
+const userStore = useUserStore()
+// feat-240: the detail (phone, IP of the connections) needs users.sensitive.read.
+const canOpenDetail = computed(() => userStore.can('users.sensitive.read'))
+
+function openDetail(id: string) {
+    if (canOpenDetail.value) void openUserModal(id)
+}
+
+const reload = () => {
+    void loadUsers()
+}
 
 const users = ref<AdminOnlineUserListItem[]>([])
 const loading = ref(false)
@@ -79,12 +91,14 @@ const handleRemove = ({ id }: { id: string }) => {
 onMounted(() => {
     eventBus.on('admin_user_online_upsert', handleUpsert)
     eventBus.on('admin_user_online_remove', handleRemove)
+    eventBus.on('admin_online_reload', reload)
     void loadUsers()
 })
 
 onUnmounted(() => {
     eventBus.off('admin_user_online_upsert', handleUpsert)
     eventBus.off('admin_user_online_remove', handleRemove)
+    eventBus.off('admin_online_reload', reload)
 })
 </script>
 
@@ -118,7 +132,8 @@ onUnmounted(() => {
                         v-for="user in users"
                         :key="user.id"
                         class="online-table__row"
-                        @click="openUserModal(user.id)"
+                        :class="{ 'online-table__row--static': !canOpenDetail }"
+                        @click="openDetail(user.id)"
                     >
                         <td class="cell-id">{{ user.id }}</td>
                         <td>{{ user.name }}</td>
@@ -200,6 +215,10 @@ onUnmounted(() => {
 
 .online-table__row:hover {
     background: color-mix(in srgb, var(--accent-color) 6%, transparent);
+}
+
+.online-table__row--static {
+    cursor: default;
 }
 
 @media (max-width: 900px) {

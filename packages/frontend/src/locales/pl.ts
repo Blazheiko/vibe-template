@@ -401,6 +401,7 @@ const pl: typeof en = {
         },
         actions: {
             user_admin_created: 'Utworzono administratora',
+            user_role_changed: 'Zmieniono rolę',
             auth_password_changed: 'Zmieniono hasło',
             auth_password_reset: 'Zresetowano hasło',
             auth_account_claimed: 'Konto przejęte przez właściciela skrzynki',

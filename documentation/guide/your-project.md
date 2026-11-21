@@ -21,7 +21,7 @@
 
 ![Сторінка акаунта](/screenshots/account.jpg)
 
-**Адмінка: користувачі.** Список з фільтром за id і датою реєстрації (`GET /api/admin/users`), доступний лише ролі `admin`. Список посторінковий: відповідь містить `total`, `hasMore` і `nextCursor` (id останнього користувача сторінки), а наступну сторінку дає той самий запит з `cursor=<nextCursor>`. Сторінка — до 200 рядків (`limit`, типово 50; адмінка просить 100), найновіші реєстрації першими. Так само влаштована історія підключень (`GET /api/admin/history-online`).
+**Адмінка: користувачі.** Список з фільтром за id і датою реєстрації (`GET /api/admin/users`), доступний ролям із дозволом `users.read` (`support_operator`, `user_admin`, `admin`). Список посторінковий: відповідь містить `total`, `hasMore` і `nextCursor` (id останнього користувача сторінки), а наступну сторінку дає той самий запит з `cursor=<nextCursor>`. Сторінка — до 200 рядків (`limit`, типово 50; адмінка просить 100), найновіші реєстрації першими. Так само влаштована історія підключень (`GET /api/admin/history-online`).
 
 ![Адмінка: користувачі](/screenshots/admin-users.jpg)
 
@@ -82,13 +82,13 @@
 
 ## 2. Змінити інтерфейс
 
-| Що змінити                  | Де                                                                                                             |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Кольори, базові стилі       | `packages/frontend/src/assets/base.css`, `main.css` (CSS-змінні `--color-*`)                                   |
-| Сторінки                    | `packages/frontend/src/views/`                                                                                 |
-| Маршрути фронтенду і доступ | `packages/frontend/src/router/index.ts` (guard для залогінених і адмінів)                                      |
-| Шапка, меню, модалки входу  | `packages/frontend/src/components/` (`AppHeader`, `MenuButton`, `AuthModals`)                                  |
-| Тексти й мови               | `packages/frontend/src/locales/` (`en`, `uk`, `pl`; нову мову додають файлом і кодом у `SHIPPED_LOCALE_CODES`) |
+| Що змінити                  | Де                                                                                                                                                                     |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Кольори, базові стилі       | `packages/frontend/src/assets/base.css`, `main.css` (CSS-змінні `--color-*`)                                                                                           |
+| Сторінки                    | `packages/frontend/src/views/`                                                                                                                                         |
+| Маршрути фронтенду і доступ | `packages/frontend/src/router/index.ts` (guard для залогінених і службових ролей), `packages/frontend/src/views/admin/admin-pages.ts` (сторінки адмінки та їх дозволи) |
+| Шапка, меню, модалки входу  | `packages/frontend/src/components/` (`AppHeader`, `MenuButton`, `AuthModals`)                                                                                          |
+| Тексти й мови               | `packages/frontend/src/locales/` (`en`, `uk`, `pl`; нову мову додають файлом і кодом у `SHIPPED_LOCALE_CODES`)                                                         |
 
 Деталі — на сторінці [Фронтенд](/frontend/).
 

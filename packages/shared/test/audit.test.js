@@ -41,6 +41,7 @@ const prompt = (model) => ({ model, temperature: 0.2, maxTokens: 100, topic: nul
 // One valid input per action; each test below adds the secrets on every level it can reach.
 const INPUTS = {
     'user.admin.created': {},
+    'user.role.changed': { from: 'user', to: 'kb_editor' },
     'auth.password.changed': {},
     'auth.password.reset': { claimed: true },
     'auth.account.claimed': {
@@ -76,8 +77,9 @@ const withSecrets = (value) => {
     return out
 }
 
-test('the catalog has the 16 actions of the first release', () => {
-    assert.equal(AUDIT_ACTION_NAMES.length, 16)
+test('the catalog has the 16 actions of the first release and user.role.changed (feat-240)', () => {
+    assert.equal(AUDIT_ACTION_NAMES.length, 17)
+    assert.ok(AUDIT_ACTION_NAMES.includes('user.role.changed'))
     assert.deepEqual(Object.keys(INPUTS).sort(), [...AUDIT_ACTION_NAMES].sort())
 })
 
@@ -293,4 +295,20 @@ test('every action lists the proofs its actor may carry', () => {
     }
     assert.deepEqual(AUDIT_ACTIONS['auth.phone.linked'].proofs, ['sms_code'])
     assert.deepEqual(AUDIT_ACTIONS['auth.sessions.revoked_all'].proofs, [])
+})
+
+// feat-240 (Р7): a role change carries the roles only, and the source when the CLI made it.
+test('user.role.changed projects the roles and adds the CLI source', () => {
+    assert.deepEqual(
+        buildAuditPayload(
+            'user.role.changed',
+            { from: 'user', to: 'kb_editor', email: 'x@y.z' },
+            {},
+        ),
+        { changes: { role: { from: 'user', to: 'kb_editor' } }, metadata: null },
+    )
+    assert.deepEqual(
+        buildAuditPayload('user.role.changed', { from: 'admin', to: 'user' }, { source: 'cli' }),
+        { changes: { role: { from: 'admin', to: 'user' } }, metadata: { source: 'cli' } },
+    )
 })

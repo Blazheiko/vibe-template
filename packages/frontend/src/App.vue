@@ -18,6 +18,7 @@ import AiDisclosureBanner from '@/components/AiDisclosureBanner.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
 import { useProfileSync } from '@/composables/useProfileSave'
+import { useAccessSync } from '@/composables/useAccessSync'
 import { applyLocalePreference } from '@/composables/useLocale'
 import { hasResponseError, isUnauthorizedError } from '@/utils/response-normalizer'
 
@@ -38,6 +39,8 @@ const { redirectToLogin } = useSessionLifecycle()
 // feat-232: the preferences of whoever is signed in (the device's own otherwise), and the
 // interface language they choose: profile, then browser, then English (Р7).
 useProfileSync()
+// feat-240 (Р8): the role in this tab follows the server; a page it may no longer see is left.
+useAccessSync(router)
 watch(
     () => stateStore.locale,
     (locale) => {

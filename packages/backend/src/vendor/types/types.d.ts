@@ -6,6 +6,7 @@ import type { BodyKind } from '../utils/network/http-request-handlers.js'
 import type { ResponseCheck } from '../utils/validation/validate-response.js'
 import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
 import type { WsErrorBody, WsReplyEnvelope, WsRequestEnvelope } from 'shared/ws-client'
+import type { Role } from 'shared/access'
 
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
@@ -18,9 +19,14 @@ export interface UserConnection extends Record<string, unknown> {
     userAgent: string
     ip2: string
     user: unknown
-    role?: 'user' | 'admin'
+    role?: Role
     appType: 'web' | 'pwa'
     isAdminChannelSubscribed?: boolean
+    /**
+     * feat-240 (Р8): set when the role read of this connection failed; the admin channel is left
+     * and `ws_can:` refuses until the next successful read clears it.
+     */
+    adminChannelPaused?: boolean
     uuid: string
     sessionId: string | undefined
     userId: string | undefined

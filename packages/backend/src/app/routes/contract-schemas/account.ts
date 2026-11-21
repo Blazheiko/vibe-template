@@ -9,6 +9,7 @@ import { contractSchemas } from '#app/routing/contract-registry.js'
 
 export const accountSchemas = contractSchemas(accountContracts, {
     getProfile: { response: ResponseSchemas.GetProfileResponseSchema },
+    getAccess: { response: ResponseSchemas.GetAccessResponseSchema },
     updateProfile: {
         body: UpdateProfileInputSchema,
         response: ResponseSchemas.UpdateProfileResponseSchema,

@@ -2,6 +2,7 @@ import { type } from '@arktype/type'
 import { EntityIdSchema } from '../../brands/index.js'
 import { WSAdminUserOnlineUpsertPayloadSchema } from './ws-admin-user-online-upsert.js'
 import { ProfileSchema } from '../../responses/account-controller.js'
+import { RoleSchema } from '../../access/role-schema.js'
 
 // Payloads of the events the backend pushes without a request (`broadcast:<event>`),
 // docs/plan/archive/ws-async-message-validation-plan.md §4.1. The backend checks every event
@@ -38,6 +39,12 @@ export const BroadcastEventSchemas = {
     notifications_changed: type({}),
     // feat-236 (Р8): the notification preferences changed; an open matrix reads them again.
     notification_preferences_changed: type({}),
+    // feat-240 (Р8): the role of this connection changed; sent to the socket after the role was
+    // applied to it, so a request the client sends next is checked against this role.
+    access_changed: type({ role: RoleSchema }),
+    // feat-240 (Р8): the admin channel of this connection, paused after a failed role read, may
+    // be joined again; the client decides, it knows whether the admin area is still open.
+    admin_channel_ready: type({}),
 } as const
 
 export type BroadcastEventName = keyof typeof BroadcastEventSchemas

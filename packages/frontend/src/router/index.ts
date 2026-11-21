@@ -11,6 +11,7 @@ import AdminKnowledgeBaseView from '@/views/admin/AdminKnowledgeBaseView.vue'
 import AdminUsersView from '@/views/admin/AdminUsersView.vue'
 import AdminUserOnlineView from '@/views/admin/AdminUserOnlineView.vue'
 import AdminHistoryOnlineView from '@/views/admin/AdminHistoryOnlineView.vue'
+import { adminRedirect } from '@/views/admin/admin-pages'
 import VerifyEmailView from '@/views/VerifyEmailView.vue'
 import ResetPasswordView from '@/views/ResetPasswordView.vue'
 import OAuthLinkConfirmView from '@/views/OAuthLinkConfirmView.vue'
@@ -120,34 +121,39 @@ const routes: RouteRecordRaw[] = [
     {
         path: '/admin',
         component: AdminLayout,
-        meta: { requiresAuth: true, requiresAdmin: true, hideHeader: true },
-        redirect: '/admin/knowledge-base',
+        // feat-240: `/admin` itself goes to the first page the role may see (the guard below).
+        meta: { requiresAuth: true, requiresStaff: true, hideHeader: true },
         children: [
             {
                 path: 'knowledge-base',
                 name: 'AdminKnowledgeBase',
                 component: AdminKnowledgeBaseView,
+                meta: { permission: 'kb.read' },
             },
             {
                 path: 'users',
                 name: 'AdminUsers',
                 component: AdminUsersView,
+                meta: { permission: 'users.read' },
             },
             {
                 path: 'user-online',
                 name: 'AdminUserOnline',
                 component: AdminUserOnlineView,
+                meta: { permission: 'users.read' },
             },
             {
                 path: 'history-online',
                 name: 'AdminHistoryOnline',
                 component: AdminHistoryOnlineView,
+                meta: { permission: 'users.sensitive.read' },
             },
             {
                 // feat-235: a lazy chunk of the admin area.
                 path: 'audit-log',
                 name: 'AdminAuditLog',
                 component: () => import('@/views/admin/AdminAuditLogView.vue'),
+                meta: { permission: 'audit.read.account' },
             },
         ],
     },
@@ -172,8 +178,8 @@ router.beforeEach((to) => redirectWithoutUrlToken(to) as never)
 // страницы не зависали до инициализации auth.
 router.beforeEach(async (to, _from, next) => {
     const requiresAuth = to.matched.some((record) => record.meta.requiresAuth)
-    const requiresAdmin = to.matched.some((record) => record.meta.requiresAdmin)
-    const requiresAppReady = requiresAuth || requiresAdmin
+    const requiresStaff = to.matched.some((record) => record.meta.requiresStaff)
+    const requiresAppReady = requiresAuth || requiresStaff
 
     if (requiresAppReady) {
         await waitForApp()
@@ -185,8 +191,11 @@ router.beforeEach(async (to, _from, next) => {
     if (requiresAuth && !isAuthenticated) {
         const redirect = to.fullPath !== '/' ? to.fullPath : undefined
         next(redirect !== undefined ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login')
-    } else if (requiresAdmin && (!isAuthenticated || !userStore.isAdmin())) {
-        next('/account')
+    } else if (requiresStaff) {
+        // feat-240 (Р10): a page the role may not see goes to the first one it may.
+        const redirect = adminRedirect(to.path, to.meta.permission, userStore.user?.role)
+        if (redirect !== null) next(redirect)
+        else next()
     } else {
         next()
     }

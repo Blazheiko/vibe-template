@@ -1,7 +1,11 @@
 import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
 import type { UpdateProfileInputSchema } from '../schemas/account/update-profile.js'
 import type { ListSessionsQueryInput } from '../schemas/query/account-sessions.js'
-import type { GetProfileResponse, UpdateProfileResponse } from '../responses/account-controller.js'
+import type {
+    GetAccessResponse,
+    GetProfileResponse,
+    UpdateProfileResponse,
+} from '../responses/account-controller.js'
 import type {
     ListSessionsResponse,
     RevokeOtherSessionsResponse,
@@ -11,6 +15,8 @@ import { contract } from './core.js'
 
 export const accountContracts = {
     getProfile: contract<undefined, undefined, GetProfileResponse>()('get', '/account/profile'),
+    // feat-240 (Р8): the current role, read again on reconnect and when the tab is shown.
+    getAccess: contract<undefined, undefined, GetAccessResponse>()('get', '/account/access'),
     // Partial body: an absent field is unchanged, `null` resets a preference (feat-232, Р2).
     updateProfile: contract<
         typeof UpdateProfileInputSchema.inferIn,

@@ -41,6 +41,8 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     user_sessions_changed: {},
     notifications_changed: {},
     notification_preferences_changed: {},
+    access_changed: { role: 'kb_editor' },
+    admin_channel_ready: {},
 }
 
 const broadcast = (event: string, payload: unknown): WsBroadcastEnvelope => ({

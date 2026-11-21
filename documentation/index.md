@@ -229,17 +229,17 @@ expect(Result.isOk(result)).toBe(true)
 
 ### Автентифікація та акаунт
 
-| Можливість                    | Як це працює                                                                       | Детальніше                                          |
-| ----------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Реєстрація по email           | `POST /auth/register/email`, лист з посиланням для підтвердження                   | [Автентифікація](/backend/auth#способи-входу)       |
-| Підтвердження email           | `POST /auth/verify-email`, повторна відправка `resend-verification-email`          | [Пошта](/backend/mail)                              |
-| Реєстрація і вхід по телефону | SMS-код: `register/phone/start` → `confirm` → `complete-profile`                   | [Автентифікація](/backend/auth#способи-входу)       |
-| Вхід через соцмережі (OAuth)  | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` і `/callback`    | [Автентифікація](/backend/auth#способи-входу)       |
-| Логін / логаут                | `POST /auth/login`, `/logout`, `/logout-all` (вийти на всіх пристроях)             | [Автентифікація](/backend/auth)                     |
-| Зміна і скидання пароля       | `change-password`, `forgot-password` → лист → `reset-password`; скидання через SMS | [Автентифікація](/backend/auth)                     |
-| Прив'язка телефону / email    | `link-phone/start`, `link-phone/confirm`, `link-email/start`                       | [Автентифікація](/backend/auth)                     |
-| Аватар користувача            | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                 | [Сховище файлів](/backend/storage)                  |
-| Ролі                          | Звичайний користувач і адміністратор, guard-и `auth_guard` і `admin_guard`         | [Ролі та можливості](/reference/roles-capabilities) |
+| Можливість                    | Як це працює                                                                         | Детальніше                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| Реєстрація по email           | `POST /auth/register/email`, лист з посиланням для підтвердження                     | [Автентифікація](/backend/auth#способи-входу)       |
+| Підтвердження email           | `POST /auth/verify-email`, повторна відправка `resend-verification-email`            | [Пошта](/backend/mail)                              |
+| Реєстрація і вхід по телефону | SMS-код: `register/phone/start` → `confirm` → `complete-profile`                     | [Автентифікація](/backend/auth#способи-входу)       |
+| Вхід через соцмережі (OAuth)  | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` і `/callback`      | [Автентифікація](/backend/auth#способи-входу)       |
+| Логін / логаут                | `POST /auth/login`, `/logout`, `/logout-all` (вийти на всіх пристроях)               | [Автентифікація](/backend/auth)                     |
+| Зміна і скидання пароля       | `change-password`, `forgot-password` → лист → `reset-password`; скидання через SMS   | [Автентифікація](/backend/auth)                     |
+| Прив'язка телефону / email    | `link-phone/start`, `link-phone/confirm`, `link-email/start`                         | [Автентифікація](/backend/auth)                     |
+| Аватар користувача            | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                   | [Сховище файлів](/backend/storage)                  |
+| Ролі                          | Користувач і чотири службові ролі з дозволами, guard-и `auth_guard` і `can:<дозвіл>` | [Ролі та можливості](/reference/roles-capabilities) |
 
 ### Безпека
 

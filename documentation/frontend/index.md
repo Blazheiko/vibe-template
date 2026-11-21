@@ -78,7 +78,7 @@ build, щоб їх підхопили pnpm -r typecheck і pnpm -r test.
 
 ### Роутер і guard
 
-У маршрутах є `meta` (`requiresAuth`, `requiresAdmin`, `hideHeader`, `authModal` тощо, типи розширено в `src/env.d.ts`). `router.beforeEach` для захищених маршрутів чекає `waitForApp()` зі стору `user`, тобто завершення `initializeApp`. Публічні сторінки (вхід, верифікація email, скидання пароля) не чекають ініціалізації. Без користувача guard перенаправляє на `/login?redirect=<шлях>`. Після входу `redirect` береться лише якщо це шлях усередині застосунку (`/…`, без `//`, зворотних слешів і керувальних символів, [`safe-redirect.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/safe-redirect.ts)); інакше користувач потрапляє на `/account`. Маршрут `requiresAdmin` для не-адміна перенаправляє на `/account`.
+У маршрутах є `meta` (`requiresAuth`, `requiresStaff`, `permission`, `hideHeader`, `authModal` тощо, типи розширено в `src/env.d.ts`). `router.beforeEach` для захищених маршрутів чекає `waitForApp()` зі стору `user`, тобто завершення `initializeApp`. Публічні сторінки (вхід, верифікація email, скидання пароля) не чекають ініціалізації. Без користувача guard перенаправляє на `/login?redirect=<шлях>`. Після входу `redirect` береться лише якщо це шлях усередині застосунку (`/…`, без `//`, зворотних слешів і керувальних символів, [`safe-redirect.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/safe-redirect.ts)); інакше користувач потрапляє на `/account`. Адмінка (`requiresStaff`) відкрита ролі з хоча б одним дозволом; її сторінки мають `meta.permission`. [`adminRedirect`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/views/admin/admin-pages.ts) перенаправляє роль без дозволів на `/account`, а `/admin` і недоступну сторінку — на першу доступну; меню будується з того самого списку `ADMIN_PAGES`. Стор `user` дає `can(permission)` і `isStaff()`. Роль у вкладці стежить за сервером через [`useAccessSync`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAccessSync.ts): подія `access_changed` з WebSocket і повторне читання `GET /account/access` на `ws_ready` і при поверненні на вкладку; після зміни ролі поточний маршрут перевіряється знову. Підпискою на адмін-канал керує [`useAdminChannel`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAdminChannel.ts), див. [Ролі та можливості](/reference/roles-capabilities).
 
 ### i18n
 
@@ -143,6 +143,6 @@ flowchart TD
     F -- ні / 401 --> I[redirect на /login для непублічних шляхів]
     G --> J[userStore.markReady]
     I --> J
-    J --> K[router.beforeEach: waitForApp, перевірка requiresAuth/requiresAdmin]
+    J --> K[router.beforeEach: waitForApp, перевірка requiresAuth/requiresStaff/permission]
     K --> L[views]
 ```

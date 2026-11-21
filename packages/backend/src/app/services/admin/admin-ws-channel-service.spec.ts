@@ -1,13 +1,16 @@
 import { Result } from 'better-result'
 import type { MyWebSocket } from '#vendor/types/types.js'
 import { describe, expect, it, vi } from 'vitest'
+import type { Role } from 'shared/access'
 import { adminWsChannelService } from './admin-ws-channel-service.js'
 
-function createWs(role: 'admin' | 'user') {
-    const userData = {
-        role,
-        isAdminChannelSubscribed: false,
-    }
+function createWs(role: Role, adminChannelPaused = false) {
+    const userData: { role: Role; isAdminChannelSubscribed: boolean; adminChannelPaused: boolean } =
+        {
+            role,
+            isAdminChannelSubscribed: false,
+            adminChannelPaused,
+        }
     const subscribe = vi.fn()
     const unsubscribe = vi.fn()
     const ws = {
@@ -42,38 +45,40 @@ describe('adminWsChannelService', () => {
         expect(Result.isOk(result)).toBe(true)
         expect(subscribe).toHaveBeenCalledWith('admin')
     })
-    describe('revokeAdminAccess', () => {
-        // The subscriber count is module state: a fresh module for each test.
-        const freshService = async (): Promise<typeof adminWsChannelService> => {
-            vi.resetModules()
-            return (await import('./admin-ws-channel-service.js')).adminWsChannelService
-        }
+    // feat-240: the channel follows users.read, and a paused channel refuses until a read succeeds.
+    it.each<[Role]>([['support_operator'], ['user_admin']])(
+        'subscribes %s, which has users.read',
+        (role) => {
+            const { ws, subscribe } = createWs(role)
+            expect(Result.isOk(adminWsChannelService.subscribeCurrentAdminConnection(ws))).toBe(
+                true,
+            )
+            expect(subscribe).toHaveBeenCalledWith('admin')
+        },
+    )
 
-        it('takes the channel and the role from a subscribed admin connection', async () => {
-            const service = await freshService()
-            const { ws, unsubscribe } = createWs('admin')
-            service.subscribeCurrentAdminConnection(ws)
-            expect(service.hasSubscribers()).toBe(true)
+    it('refuses kb_editor and a paused channel', () => {
+        const editor = createWs('kb_editor')
+        expect(
+            Result.isError(adminWsChannelService.subscribeCurrentAdminConnection(editor.ws)),
+        ).toBe(true)
+        const paused = createWs('admin', true)
+        expect(
+            Result.isError(adminWsChannelService.subscribeCurrentAdminConnection(paused.ws)),
+        ).toBe(true)
+        expect(paused.subscribe).not.toHaveBeenCalled()
+    })
 
-            service.revokeAdminAccess(ws)
+    it('leaves the channel idempotently, whatever the role', async () => {
+        vi.resetModules()
+        const service = (await import('./admin-ws-channel-service.js')).adminWsChannelService
+        const { ws, unsubscribe } = createWs('admin')
+        service.subscribeCurrentAdminConnection(ws)
+        ws.getUserData().role = 'user'
 
-            expect(unsubscribe).toHaveBeenCalledWith('admin')
-            expect(ws.getUserData().role).toBe('user')
-            expect(ws.getUserData().isAdminChannelSubscribed).toBe(false)
-            expect(service.hasSubscribers()).toBe(false)
-            // And it cannot subscribe again on this connection.
-            expect(Result.isError(service.subscribeCurrentAdminConnection(ws))).toBe(true)
-        })
-
-        it('only drops the role of an admin connection that never subscribed', async () => {
-            const service = await freshService()
-            const { ws, unsubscribe } = createWs('admin')
-
-            service.revokeAdminAccess(ws)
-
-            expect(unsubscribe).not.toHaveBeenCalled()
-            expect(ws.getUserData().role).toBe('user')
-            expect(service.hasSubscribers()).toBe(false)
-        })
+        expect(service.unsubscribeCurrentAdminConnection(ws)).toEqual({ ok: true })
+        expect(service.unsubscribeCurrentAdminConnection(ws)).toEqual({ ok: true })
+        expect(unsubscribe).toHaveBeenCalledTimes(1)
+        expect(service.hasSubscribers()).toBe(false)
     })
 })

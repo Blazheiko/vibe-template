@@ -103,21 +103,11 @@ describe('route access matrix (code-issues items 48, 67)', () => {
         }
     })
 
-    // feat-235 (Р7): the audit log is for admins only, like every other /admin route.
-    it('every HTTP /admin route declares session, CSRF, auth and admin guards', () => {
-        const adminRoutes = http.filter((route) => route.url.startsWith('api/admin/'))
-        expect(adminRoutes.map((route) => route.url)).toContain('api/admin/audit-events')
-        for (const route of adminRoutes) {
-            expect(route.middlewares, route.url).toEqual([
-                'session_web',
-                'csrf_guard',
-                'auth_guard',
-                'admin_guard',
-            ])
-        }
+    // feat-235 (Р7): `?action=a&action=b` is the one key of the audit log that may repeat. Who
+    // may reach each /admin route is checked by route-permissions.spec.ts (feat-240).
+    it('the audit log route is a GET whose action filter may repeat', () => {
         const audit = http.find((route) => route.url === 'api/admin/audit-events')
         expect(audit?.method).toBe('get')
-        // `?action=a&action=b`: the one key that may repeat.
         expect(audit?.queryArrays).toEqual(['action'])
     })
 
@@ -126,6 +116,7 @@ describe('route access matrix (code-issues items 48, 67)', () => {
         const accountRoutes = http.filter((route) => route.url.includes('/account/'))
         expect(accountRoutes.map((route) => `${route.method} ${route.url}`).sort()).toEqual([
             'del api/account/sessions/:id',
+            'get api/account/access',
             'get api/account/profile',
             'get api/account/sessions',
             'patch api/account/profile',
@@ -141,17 +132,6 @@ describe('route access matrix (code-issues items 48, 67)', () => {
             const passed = await executeMiddlewares(['auth_guard'], context)
             expect(passed, route.url).toBe(false)
             expect(context.responseData.status, route.url).toBe(401)
-        }
-    })
-
-    it('every admin WS route declares ws_admin_guard', () => {
-        const adminWs = ws.filter((route) => route.url.includes('/admin/'))
-        expect(adminWs.map((route) => route.url).sort()).toEqual([
-            'api/admin/subscribe_online_users',
-            'api/admin/unsubscribe_online_users',
-        ])
-        for (const route of adminWs) {
-            expect(route.middlewares, route.url).toContain('ws_admin_guard')
         }
     })
 })

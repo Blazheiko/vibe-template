@@ -1,6 +1,7 @@
 import type { BroadcastContracts, BroadcastEventName } from 'shared/contracts'
 import type { BroadcastPayload } from 'shared/schemas'
 import { ENTITY_ID_PATTERN } from 'shared/patterns'
+import { isRole } from 'shared/access'
 import {
     COLOR_THEMES,
     FONT_SIZE_MAX,
@@ -132,6 +133,20 @@ export const isNotificationPreferencesChangedPayload = (
 ): value is BroadcastPayload<'notification_preferences_changed'> =>
     isObject(value) && Object.keys(value).length === 0
 
+const ACCESS_CHANGED_KEYS = new Set(['role'])
+
+/** feat-240 (Р8): the role of this connection, already applied to it on the server. */
+export const isAccessChangedPayload = (
+    value: unknown,
+): value is BroadcastPayload<'access_changed'> =>
+    isObject(value) && hasOnlyKeys(value, ACCESS_CHANGED_KEYS) && isRole(value.role)
+
+/** feat-240 (Р8): the paused admin channel may be joined again. */
+export const isAdminChannelReadyPayload = (
+    value: unknown,
+): value is BroadcastPayload<'admin_channel_ready'> =>
+    isObject(value) && Object.keys(value).length === 0
+
 /** A guard of each broadcast event, by event (ADR 0006, decision 3, feat-182). */
 export type BroadcastGuards = {
     readonly [E in BroadcastEventName]: (value: unknown) => value is BroadcastContracts[E]
@@ -151,4 +166,6 @@ export const broadcastGuards = {
     user_sessions_changed: isUserSessionsChangedPayload,
     notifications_changed: isNotificationsChangedPayload,
     notification_preferences_changed: isNotificationPreferencesChangedPayload,
+    access_changed: isAccessChangedPayload,
+    admin_channel_ready: isAdminChannelReadyPayload,
 } as const satisfies BroadcastGuards

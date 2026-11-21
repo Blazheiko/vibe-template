@@ -2,6 +2,7 @@ import { Result } from 'better-result'
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { forbidden, type AppResult } from '#app/services/shared/errors.js'
 import type { WsChannel } from 'shared/guards'
+import { roleHasPermission } from 'shared/access'
 
 const ADMIN_CHANNEL: WsChannel = 'admin'
 let adminSubscriberCount = 0
@@ -13,7 +14,10 @@ function getUserData(ws: MyWebSocket): UserConnection {
 export const adminWsChannelService = {
     subscribeCurrentAdminConnection(ws: MyWebSocket): AppResult<void> {
         const userData = getUserData(ws)
-        if (userData.role !== 'admin') {
+        if (
+            userData.adminChannelPaused === true ||
+            !roleHasPermission(userData.role, 'users.read')
+        ) {
             return Result.err(forbidden('Access denied'))
         }
 
@@ -35,17 +39,6 @@ export const adminWsChannelService = {
             adminSubscriberCount = Math.max(0, adminSubscriberCount - 1)
         }
         return { ok: true }
-    },
-
-    /**
-     * The connection stays open but stops being an admin one: it leaves the admin
-     * channel and its cached role drops, so `ws_admin_guard` refuses its admin routes.
-     * Promotion is deliberately not mirrored: a role is only raised when the connection
-     * is opened.
-     */
-    revokeAdminAccess(ws: MyWebSocket): void {
-        adminWsChannelService.unsubscribeCurrentAdminConnection(ws)
-        getUserData(ws).role = 'user'
     },
 
     handleConnectionClosed(ws: MyWebSocket): void {

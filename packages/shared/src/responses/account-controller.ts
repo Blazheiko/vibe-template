@@ -2,6 +2,7 @@ import { type } from '@arktype/type'
 import { SHIPPED_LOCALE_CODES } from '../enums/languages.js'
 import { COLOR_THEMES, THEMES } from '../enums/preferences.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
+import { RoleSchema } from '../access/role-schema.js'
 
 /**
  * A preference is the user's explicit choice or `null` (no choice: the client shows its default,
@@ -34,6 +35,16 @@ export const GetProfileResponseSchema = type.or(
     CanonicalErrorResponseSchema,
 )
 export type GetProfileResponse = WithCanonicalError<typeof GetProfileResponseSchema.infer>
+
+/**
+ * feat-240 (Р8): the role of the signed-in user, read again by a tab on reconnect and when it is
+ * shown again (a role change signal may have been lost meanwhile).
+ */
+export const GetAccessResponseSchema = type.or(
+    { status: "'success'", role: RoleSchema },
+    CanonicalErrorResponseSchema,
+)
+export type GetAccessResponse = WithCanonicalError<typeof GetAccessResponseSchema.infer>
 
 export const UpdateProfileResponseSchema = type.or(
     { status: "'success'", profile: ProfileSchema },

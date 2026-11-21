@@ -229,17 +229,17 @@ Below is the functionality you can use right away. The API prefix by default is 
 
 ### Authentication and account
 
-| Capability                        | How it works                                                                      | More details                                               |
-| --------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Registration by email             | `POST /auth/register/email`, an email with a confirmation link                    | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Email confirmation                | `POST /auth/verify-email`, resend via `resend-verification-email`                 | [Mail](/en/backend/mail)                                   |
-| Registration and sign-in by phone | SMS code: `register/phone/start` → `confirm` → `complete-profile`                 | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Social login (OAuth)              | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` and `/callback` | [Authentication](/en/backend/auth#sign-in-methods)         |
-| Login / logout                    | `POST /auth/login`, `/logout`, `/logout-all` (sign out on all devices)            | [Authentication](/en/backend/auth)                         |
-| Password change and reset         | `change-password`, `forgot-password` → email → `reset-password`; reset via SMS    | [Authentication](/en/backend/auth)                         |
-| Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                      | [Authentication](/en/backend/auth)                         |
-| User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                | [File storage](/en/backend/storage)                        |
-| Roles                             | A regular user and an administrator, the `auth_guard` and `admin_guard` guards    | [Roles and capabilities](/en/reference/roles-capabilities) |
+| Capability                        | How it works                                                                                 | More details                                               |
+| --------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Registration by email             | `POST /auth/register/email`, an email with a confirmation link                               | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Email confirmation                | `POST /auth/verify-email`, resend via `resend-verification-email`                            | [Mail](/en/backend/mail)                                   |
+| Registration and sign-in by phone | SMS code: `register/phone/start` → `confirm` → `complete-profile`                            | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Social login (OAuth)              | Google, GitHub, GitLab, Facebook: `auth/oauth/:provider/redirect` and `/callback`            | [Authentication](/en/backend/auth#sign-in-methods)         |
+| Login / logout                    | `POST /auth/login`, `/logout`, `/logout-all` (sign out on all devices)                       | [Authentication](/en/backend/auth)                         |
+| Password change and reset         | `change-password`, `forgot-password` → email → `reset-password`; reset via SMS               | [Authentication](/en/backend/auth)                         |
+| Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                                 | [Authentication](/en/backend/auth)                         |
+| User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                           | [File storage](/en/backend/storage)                        |
+| Roles                             | A user and four staff roles with permissions, the `auth_guard` and `can:<permission>` guards | [Roles and capabilities](/en/reference/roles-capabilities) |
 
 ### Security
 

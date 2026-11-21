@@ -6,12 +6,13 @@
 
 ## Маршрути
 
-| Маршрут                      | Middleware                                | Що робить                                              |
-| ---------------------------- | ----------------------------------------- | ------------------------------------------------------ |
-| `GET /api/account/profile`   | `session_web`, `csrf_guard`, `auth_guard` | профіль користувача, що увійшов                        |
-| `PATCH /api/account/profile` | `session_web`, `csrf_guard`, `auth_guard` | змінює передані поля й відповідає профілем після зміни |
+| Маршрут                      | Middleware                                | Що робить                                                           |
+| ---------------------------- | ----------------------------------------- | ------------------------------------------------------------------- |
+| `GET /api/account/profile`   | `session_web`, `csrf_guard`, `auth_guard` | профіль користувача, що увійшов                                     |
+| `PATCH /api/account/profile` | `session_web`, `csrf_guard`, `auth_guard` | змінює передані поля й відповідає профілем після зміни              |
+| `GET /api/account/access`    | `session_web`, `csrf_guard`, `auth_guard` | роль користувача, що увійшов ([нижче](#роль-поточного-користувача)) |
 
-Обидва відповідають `{ "status": "success", "profile": Profile }`:
+Обидва маршрути профілю відповідають `{ "status": "success", "profile": Profile }`:
 
 ```json
 {
@@ -31,6 +32,10 @@
 ```
 
 Ті самі `preferences` і `revision` є в `user` відповіді `GET /api/main/init`.
+
+## Роль поточного користувача
+
+`GET /api/account/access` відповідає `{ "status": "success", "role": Role }` (feat-240), роль читається з `users.role` на кожен запит; видалений користувач — `404`. Вкладка ([`useAccessSync.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAccessSync.ts)) перечитує роль на кожен `ws_ready` і коли вкладка знову стає видимою; відповідь застосовується, лише якщо відтоді не прийшло `access_changed` і обліківка не змінилася. Ролі й дозволи — [Ролі та можливості](/reference/roles-capabilities).
 
 ## Тіло PATCH: відсутнє поле, `null` і значення
 

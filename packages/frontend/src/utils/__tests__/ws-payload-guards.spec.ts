@@ -43,6 +43,8 @@ const valid: Record<BroadcastEventName, Record<string, unknown>> = {
     user_sessions_changed: {},
     notifications_changed: {},
     notification_preferences_changed: {},
+    access_changed: { role: 'kb_editor' },
+    admin_channel_ready: {},
 }
 
 // Event-specific edge cases on top of the generic ones below.
@@ -110,6 +112,12 @@ const specific: Record<BroadcastEventName, [string, unknown][]> = {
     user_sessions_changed: [['any data', { sessions: [] }]],
     notifications_changed: [['a count', { unreadCount: 3 }]],
     notification_preferences_changed: [['any data', { push: true }]],
+    access_changed: [
+        ['an unknown role', { role: 'root' }],
+        ['no role', {}],
+        ['an extra key', { role: 'admin', permissions: [] }],
+    ],
+    admin_channel_ready: [['any data', { ready: true }]],
 }
 
 const cases = BROADCAST_EVENT_NAMES.flatMap((event) => {

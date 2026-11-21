@@ -157,3 +157,4 @@ export {
     PROFILE_TIME_ZONE_MAX_LENGTH,
     type UpdateProfileInput,
 } from './account/update-profile.js'
+export { RoleSchema } from '../access/role-schema.js'

@@ -1,3 +1,5 @@
+import type { Role } from '../access/index.js'
+
 // feat-235 (Р4, Р5, Р6): the closed catalog of the actions the audit log records, what each one
 // may carry and how its payload is built. A payload is never a copy of a row: every projection
 // below names the fields it takes, so a field added to a table later stays out of the log until
@@ -20,7 +22,7 @@ export const AUDIT_PROOFS = [
 export type AuditProof = (typeof AUDIT_PROOFS)[number]
 
 /** Where a `system` change came from. */
-export const AUDIT_SYSTEM_SOURCES = ['seed'] as const
+export const AUDIT_SYSTEM_SOURCES = ['seed', 'cli'] as const
 export type AuditSystemSource = (typeof AUDIT_SYSTEM_SOURCES)[number]
 
 export const AUDIT_GROUPS = ['rights', 'sign-in', 'sessions', 'kb', 'ai'] as const
@@ -82,6 +84,15 @@ export const AUDIT_ACTIONS = {
         group: 'rights',
         targetType: 'user',
         actorKinds: ['system'],
+        proofs: [],
+        changes: { role: fromTo },
+        metadata: { source: true },
+    },
+    // feat-240 (Р7): a role changed by an admin (HTTP) or by the user:set-role CLI.
+    'user.role.changed': {
+        group: 'rights',
+        targetType: 'user',
+        actorKinds: ['user', 'system'],
         proofs: [],
         changes: { role: fromTo },
         metadata: { source: true },
@@ -280,6 +291,7 @@ export interface AuditPromptChanges {
 /** What the caller of each action hands over; the projection takes only the named fields. */
 export interface AuditInputs {
     'user.admin.created': Record<string, never>
+    'user.role.changed': { from: Role; to: Role }
     'auth.password.changed': Record<string, never>
     'auth.password.reset': { claimed: boolean }
     'auth.account.claimed': {
@@ -394,6 +406,10 @@ type Projections = { [A in AuditAction]: (input: AuditInputs[A]) => AuditPayload
 const PROJECTIONS: Projections = {
     'user.admin.created': () => ({
         changes: { role: { from: null, to: 'admin' } },
+        metadata: null,
+    }),
+    'user.role.changed': (input) => ({
+        changes: { role: { from: input.from, to: input.to } },
         metadata: null,
     }),
     'auth.password.changed': () => ({ changes: null, metadata: { sessionsRevoked: 'others' } }),

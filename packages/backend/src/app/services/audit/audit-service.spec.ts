@@ -81,6 +81,8 @@ function worstInputs(str: (n: number) => string): { [A in AuditAction]: AuditInp
     const articleAfter = { title: other(TITLE_MAX), category: other(CATEGORY_MAX), isActive: false }
     return {
         'user.admin.created': {},
+        // The longest role names.
+        'user.role.changed': { from: 'support_operator', to: 'support_operator' },
         'auth.password.changed': {},
         'auth.password.reset': { claimed: true },
         'auth.account.claimed': {

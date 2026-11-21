@@ -396,6 +396,7 @@ const uk: typeof en = {
         },
         actions: {
             user_admin_created: 'Створено адміністратора',
+            user_role_changed: 'Роль змінено',
             auth_password_changed: 'Пароль змінено',
             auth_password_reset: 'Пароль відновлено',
             auth_account_claimed: 'Акаунт підтверджено власником пошти',

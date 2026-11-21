@@ -10,19 +10,25 @@ import {
 
 export { systemActor }
 
-// The role admin_guard read for this request (feat-235, Р6): the actor of an admin route takes it
+// The role the permission guard (can:<permission>, feat-240) read for this request (feat-235, Р6):
+// the actor of an admin route and the service checks (feat-240, Р5) take it
 // from there, without a second query. Keyed by the context, so it lives as long as the request.
 const guardedRoles = new WeakMap<object, AuditActorRole>()
 
-/** Called by admin_guard once it has read the role. */
+/** Called by the permission guard once it has read the role. */
 export function rememberActorRole(context: object, role: AuditActorRole): void {
     guardedRoles.set(context, role)
+}
+
+/** The role the permission guard read for this request, or null outside a guarded route. */
+export function guardedRoleOf(context: object): AuditActorRole | null {
+    return guardedRoles.get(context) ?? null
 }
 
 type ActorContext = Pick<HttpContext, 'auth' | 'requestId' | 'logger'>
 
 /**
- * The signed-in user of the request. `role` is what admin_guard read on an admin route, else the
+ * The signed-in user of the request. `role` is what the permission guard read on an admin route, else the
  * `role` passed in (from a row the service reads anyway), else null. Throws without a signed-in
  * user: call it after auth_guard.
  */
