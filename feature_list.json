@@ -2401,7 +2401,7 @@
             "owner": "Blazheiko",
             "branch": "feat/role-assignment",
             "dependencies": ["feat-240"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
