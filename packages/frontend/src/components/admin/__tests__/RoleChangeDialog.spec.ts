@@ -26,7 +26,9 @@ describe('RoleChangeDialog', () => {
             error: null,
         })
         const wrapper = mountDialog()
-        const values = wrapper.findAll('input[type="radio"]').map((input) => input.element.value)
+        const values = wrapper
+            .findAll('input[type="radio"]')
+            .map((input) => (input.element as HTMLInputElement).value)
         expect(values).toEqual(['support_operator', 'kb_editor'])
 
         await wrapper.find('input[value="kb_editor"]').setValue(true)
