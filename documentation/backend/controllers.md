@@ -237,16 +237,17 @@ subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
 
 Дані з'єднання, зібрані під час upgrade ([types.d.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/types/types.d.ts)):
 
-| Поле                       | Опис                                                                   |
-| -------------------------- | ---------------------------------------------------------------------- |
-| `userId`                   | `string \| undefined` — id користувача; для сервісів `BigInt(userId)`. |
-| `sessionId`, `userToken`   | Сесія, з якою відкрито з'єднання.                                      |
-| `uuid`                     | Унікальний id з'єднання (один користувач може мати кілька вкладок).    |
-| `role`                     | `'user' \| 'admin'`.                                                   |
-| `appType`                  | `'web' \| 'pwa'`.                                                      |
-| `ip`, `ip2`, `userAgent`   | Дані клієнта.                                                          |
-| `isAdminChannelSubscribed` | Чи підписане з'єднання на адмін-канал.                                 |
-| `timeStart`                | Час підключення (ms).                                                  |
+| Поле                       | Опис                                                                                                                                                                       |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `userId`                   | `string \| undefined` — id користувача; для сервісів `BigInt(userId)`.                                                                                                     |
+| `sessionId`, `userToken`   | Сесія, з якою відкрито з'єднання.                                                                                                                                          |
+| `uuid`                     | Унікальний id з'єднання (один користувач може мати кілька вкладок).                                                                                                        |
+| `role`                     | Роль із каталогу `shared/access` (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); її оновлює [синхронізація ролі](/backend/websocket#синхронізація-ролі). |
+| `appType`                  | `'web' \| 'pwa'`.                                                                                                                                                          |
+| `ip`, `ip2`, `userAgent`   | Дані клієнта.                                                                                                                                                              |
+| `isAdminChannelSubscribed` | Чи підписане з'єднання на адмін-канал.                                                                                                                                     |
+| `adminChannelPaused`       | Адмін-канал призупинено після невдалого читання ролі; `ws_can:` відмовляє, доки наступне читання не вдасться.                                                              |
+| `timeStart`                | Час підключення (ms).                                                                                                                                                      |
 
 Тип допускає `null` і `userId: undefined`, тому перевіряйте перед використанням:
 

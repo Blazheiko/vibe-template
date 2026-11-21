@@ -78,7 +78,7 @@ The overall structure of the monorepo: [/en/guide/project-structure](/en/guide/p
 
 ### Router and guard
 
-Routes have `meta` (`requiresAuth`, `requiresAdmin`, `hideHeader`, `authModal` and so on, the types are extended in `src/env.d.ts`). For protected routes `router.beforeEach` waits for `waitForApp()` from the `user` store, i.e. for `initializeApp` to finish. Public pages (sign-in, email verification, password reset) do not wait for initialization. Without a user the guard redirects to `/login?redirect=<path>`. After sign-in `redirect` is used only if it is a path inside the app (`/…`, without `//`, backslashes and control characters, [`safe-redirect.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/safe-redirect.ts)); otherwise the user lands on `/account`. A `requiresAdmin` route redirects a non-admin to `/account`.
+Routes have `meta` (`requiresAuth`, `requiresStaff`, `permission`, `hideHeader`, `authModal` and so on, the types are extended in `src/env.d.ts`). For protected routes `router.beforeEach` waits for `waitForApp()` from the `user` store, i.e. for `initializeApp` to finish. Public pages (sign-in, email verification, password reset) do not wait for initialization. Without a user the guard redirects to `/login?redirect=<path>`. After sign-in `redirect` is used only if it is a path inside the app (`/…`, without `//`, backslashes and control characters, [`safe-redirect.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/utils/safe-redirect.ts)); otherwise the user lands on `/account`. The admin area (`requiresStaff`) is open to a role with at least one permission; its pages have `meta.permission`. [`adminRedirect`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/views/admin/admin-pages.ts) redirects a role without permissions to `/account`, and `/admin` itself and a page the role may not see to the first page it may see; the menu is built from the same `ADMIN_PAGES` list. The `user` store provides `can(permission)` and `isStaff()`. The role in a tab follows the server through [`useAccessSync`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAccessSync.ts): the `access_changed` event from the WebSocket and a re-read of `GET /account/access` on `ws_ready` and when the tab is shown again; after a role change the current route is checked again. The subscription to the admin channel is managed by [`useAdminChannel`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAdminChannel.ts), see [Roles and capabilities](/en/reference/roles-capabilities).
 
 ### i18n
 
@@ -143,6 +143,6 @@ flowchart TD
     F -- no / 401 --> I[redirect to /login for non-public paths]
     G --> J[userStore.markReady]
     I --> J
-    J --> K[router.beforeEach: waitForApp, check requiresAuth/requiresAdmin]
+    J --> K[router.beforeEach: waitForApp, check requiresAuth/requiresStaff/permission]
     K --> L[views]
 ```

@@ -55,7 +55,7 @@ flowchart LR
 
 Правила імпорту між шарами перевіряє [`layering.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/layering.spec.ts) (статичний аналіз імпортів, без завантаження модулів):
 
-- контролери, middleware (зокрема `admin_guard`) і `app/websocket` не імпортують репозиторії, навіть як типи: дані — через сервіси (`adminUserService`, `userRoleService` тощо), типи — з сервісу або `shared`;
+- контролери, middleware (зокрема `can:<дозвіл>`) і `app/websocket` не імпортують репозиторії, навіть як типи: дані — через сервіси (`adminUserService`, `userRoleService` тощо), типи — з сервісу або `shared`;
 - поза `app/repositories` репозиторії імпортуються лише через barrel `#app/repositories/index.js`, і barrel експортує кожен модуль `*-repository.ts`;
 - репозиторії не логують: рішення «це варто залогувати» приймає сервіс;
 - сервіси не імпортують `#database/db.js` і `#database/schema.js` — лише репозиторії.

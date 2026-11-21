@@ -365,7 +365,7 @@ End-to-end pipeline of a single HTTP request, with the module that owns each ste
 ┌──────────────────────────────────────────────────────────────────┐
 │  Middleware chain  —  src/app/middlewares/kernel.ts              │
 │  group middlewares + route middlewares, executed in order        │
-│  e.g.  session_web  →  csrf_guard  →  auth_guard  →  admin_guard │
+│  e.g.  session_web → csrf_guard → auth_guard → can:users.read    │
 │  any middleware that does NOT call next() short-circuits         │
 └────────────┬─────────────────────────────────────────────────────┘
              ▼
@@ -669,15 +669,23 @@ export default [
                 handler: AdminWsController.subscribeOnlineUsers.bind(AdminWsController),
                 description: 'Subscribe current admin websocket to admin online updates',
             }),
-            defineWsRoute({
-                contract: adminWsContracts.unsubscribeOnlineUsers,
-                handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
-                description: 'Unsubscribe current admin websocket from admin online updates',
-            }),
         ],
         prefix: 'admin',
         description: 'Admin websocket routes',
-        middlewares: ['ws_admin_guard'],
+        middlewares: ['ws_can:users.read'],
+        rateLimit: { windowMs: 60_000, maxRequests: 120 },
+    },
+    {
+        // Leaving the admin channel opens nothing: no permission needed.
+        group: [
+            defineWsRoute({
+                contract: adminWsContracts.unsubscribeOnlineUsers,
+                handler: AdminWsController.unsubscribeOnlineUsers.bind(AdminWsController),
+                description: 'Unsubscribe current websocket from admin online updates',
+            }),
+        ],
+        prefix: 'admin',
+        description: 'Leave the admin channel (no permission needed)',
         rateLimit: { windowMs: 60_000, maxRequests: 120 },
     },
     {
@@ -710,12 +718,24 @@ Middleware lives in `src/app/middlewares/` and is registered by string key in `s
 
 ```ts
 // src/app/middlewares/kernel.ts
+import { PERMISSIONS, type Permission } from 'shared/access'
+
 import sessionWeb from '#vendor/utils/middlewares/ws/session-web.js'
 import authGuard from '#vendor/utils/middlewares/core/auth-guard.js'
-import adminGuard from '#app/middlewares/admin-guard.js'
 import csrfGuard from '#app/middlewares/csrf-guard.js'
-import wsAdminGuard from '#app/middlewares/ws-admin-guard.js'
+import { permissionGuard } from '#app/middlewares/permission-guard.js'
+import { wsPermissionGuard } from '#app/middlewares/ws-permission-guard.js'
 import type { Middleware, WsContext } from '#vendor/types/types.js'
+
+// One `can:<permission>` (HTTP) and one `ws_can:<permission>` (WS) per permission
+// of the catalog in shared/access; a route names the permission it needs.
+const byPermission = <TContext>(
+    prefix: string,
+    guard: (permission: Permission) => Middleware<TContext>,
+): Record<string, Middleware<TContext>> =>
+    Object.fromEntries(
+        PERMISSIONS.map((permission) => [`${prefix}${permission}`, guard(permission)]),
+    )
 
 // Two maps, one per transport: a middleware gets the context type it was written for.
 // A route naming a middleware of the other transport fails like an unknown name.
@@ -723,11 +743,11 @@ export const httpMiddlewares: Readonly<Record<string, Middleware>> = {
     session_web: sessionWeb,
     csrf_guard: csrfGuard,
     auth_guard: authGuard,
-    admin_guard: adminGuard,
+    ...byPermission('can:', permissionGuard),
 }
 
 export const wsMiddlewares: Readonly<Record<string, Middleware<WsContext>>> = {
-    ws_admin_guard: wsAdminGuard,
+    ...byPermission('ws_can:', wsPermissionGuard),
 }
 ```
 
@@ -736,49 +756,50 @@ export const wsMiddlewares: Readonly<Record<string, Middleware<WsContext>>> = {
 A middleware receives `(context, next)`. Call `next()` to continue. **Do not call `next()`** to abort the chain and short-circuit the response.
 
 ```ts
-// src/app/middlewares/admin-guard.ts
+// src/app/middlewares/permission-guard.ts
+import { roleHasPermission, type Permission } from 'shared/access'
+
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
-import { userRepository } from '#app/repositories/index.js'
+import { userRoleService } from '#app/services/user/user-role-service.js'
+import { forbidden } from '#app/services/shared/errors.js'
+import { appErrorToPayload } from '#app/services/shared/app-error-payload.js'
+import { applyAppErrorStatus } from '#app/services/shared/apply-service-status.js'
+import { rememberActorRole } from '#app/controllers/shared/audit-actor.js'
 
-const adminGuard: Middleware = async (
-    context: HttpContext,
-    next: () => Promise<void>,
-): Promise<void> => {
-    const userId = context.auth.getUserId()
-    if (userId === null) {
-        context.responseData.status = 403
-        context.responseData.payload = {
-            status: 'forbidden',
-            message: 'Admin access required',
-        }
-        return // ← abort, handler is never called
-    }
-
-    const user = await userRepository.findById(BigInt(userId))
-    if (user?.role !== 'admin') {
-        context.responseData.status = 403
-        context.responseData.payload = {
-            status: 'forbidden',
-            message: 'Admin access required',
-        }
-        return
-    }
-
-    await next() // ← continue to the next middleware / handler
+// The canonical 403 body, the same for every permission.
+function deny(context: HttpContext): void {
+    const error = forbidden('Access denied')
+    applyAppErrorStatus(context.responseData, error)
+    context.responseData.payload = appErrorToPayload(error) // { status: 'error', code: 'forbidden', message: 'Access denied' }
 }
 
-export default adminGuard
+export function permissionGuard(permission: Permission): Middleware {
+    return async (context: HttpContext, next: () => Promise<void>): Promise<void> => {
+        const userId = context.auth.getUserId()
+        if (userId === null) {
+            deny(context)
+            return // ← abort, handler is never called
+        }
+        const role = await userRoleService.findRole(BigInt(userId)) // read on every request
+        if (role === undefined || !roleHasPermission(role, permission)) {
+            deny(context)
+            return
+        }
+        rememberActorRole(context, role)
+        await next() // ← continue to the next middleware / handler
+    }
+}
 ```
 
 ### Built-in middleware
 
-| Key              | Description                                                                                                                 |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `session_web`    | Loads/creates a Redis session from cookie                                                                                   |
-| `csrf_guard`     | Validates `X-CSRF-Token` on unsafe methods for cookie-backed routes; registered after `session_web` and before `auth_guard` |
-| `auth_guard`     | Aborts with 401 if `context.auth.check()` is false                                                                          |
-| `admin_guard`    | Aborts with 403 if user's `role` is not `admin`                                                                             |
-| `ws_admin_guard` | WebSocket routes: answers `403` without calling the handler if `userData.role` is not `admin`                               |
+| Key                   | Description                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session_web`         | Loads/creates a Redis session from cookie                                                                                                            |
+| `csrf_guard`          | Validates `X-CSRF-Token` on unsafe methods for cookie-backed routes; registered after `session_web` and before `auth_guard`                          |
+| `auth_guard`          | Aborts with 401 if `context.auth.check()` is false                                                                                                   |
+| `can:<permission>`    | Reads the role from the DB; aborts with 403 `Access denied` if the role lacks the permission (`shared/src/access`)                                   |
+| `ws_can:<permission>` | WebSocket routes: answers `403` without calling the handler if `userData.role` lacks the permission or the admin channel of the connection is paused |
 
 ---
 

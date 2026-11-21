@@ -1,6 +1,6 @@
 # Audit log
 
-An admin (and, through them, support) can answer who changed what and when in the sign-in methods of an account, in its sessions (mass revocation), in the knowledge base and in the AI prompts. Each entry has an actor, an action, an object, a time, the request ID and a runtime-checked set of "before/after" values. The log is filtered, readable by admins only, holds no secrets, IP addresses or contact data, and old entries are deleted after a configurable time (feat-235).
+An admin (and, through them, support) can answer who changed what and when in the sign-in methods of an account, in its sessions (mass revocation), in the knowledge base and in the AI prompts. Each entry has an actor, an action, an object, a time, the request ID and a runtime-checked set of "before/after" values. The log is filtered, readable by roles with the `audit.read.account` permission (in full with `audit.read`, see [Roles and capabilities](/en/reference/roles-capabilities)), holds no secrets, IP addresses or contact data, and old entries are deleted after a configurable time (feat-235).
 
 Sources: the catalog [`shared/src/audit/audit-actions.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/audit/audit-actions.ts), the service [`audit-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/audit/audit-service.ts), the repository [`audit-events-repository.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/audit/audit-events-repository.ts), the page [`AdminAuditLogView.vue`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/views/admin/AdminAuditLogView.vue).
 
@@ -25,29 +25,34 @@ Indexes: `(occurred_at, id)` for the feed, the cursor and the retention job; the
 
 ## Catalog of actions
 
-| Group    | Action                               | Actor             | Object       | Content                                                                                         |
-| -------- | ------------------------------------ | ----------------- | ------------ | ----------------------------------------------------------------------------------------------- |
-| rights   | `user.admin.created`                 | `system` (`seed`) | `user`       | `changes.role: { from: null, to: 'admin' }`                                                     |
-| sign-in  | `auth.password.changed`              | `user`            | `user`       | `{ sessionsRevoked: 'others' }`                                                                 |
-| sign-in  | `auth.password.reset`                | `proof_holder`    | `user`       | `{ proof: 'email_link' \| 'sms_code', claimed }`                                                |
-| sign-in  | `auth.account.claimed`               | `proof_holder`    | `user`       | `{ proof, passwordCleared, phoneRemoved, oauthRemoved: [providers], pushSubscriptionsRemoved }` |
-| sign-in  | `auth.phone.linked`                  | `user`            | `user`       | `{ method: 'phone', proof: 'sms_code' }`                                                        |
-| sign-in  | `auth.email.linked`                  | `user`            | `user`       | `{ method: 'email', proof: 'email_link' }`                                                      |
-| sign-in  | `auth.oauth.linked`                  | `proof_holder`    | `user`       | `{ method: 'oauth', provider, proof: 'oauth_email_link' \| 'oauth_provider_email' }`            |
-| sign-in  | `auth.sign_in_method.unlinked`       | `user`            | `user`       | `{ method, provider }`                                                                          |
-| sessions | `auth.sessions.revoked_all`          | `user`            | `user`       | none                                                                                            |
-| sessions | `auth.sessions.revoked_others`       | `user`            | `user`       | none                                                                                            |
-| kb       | `kb.article.created/updated/deleted` | `user`            | `kb_article` | `title`, `category`, `isActive`; the text as a fingerprint                                      |
-| kb       | `kb.screenshot.uploaded/removed`     | `user`            | `kb_article` | `{ screenshot: { from, to } }` (presence only), `mime`                                          |
-| ai       | `ai.prompt.updated`                  | `user`            | `llm_prompt` | `model`, `temperature`, `maxTokens`, `topic`; the text as a fingerprint                         |
+| Group    | Action                               | Actor                    | Object       | Content                                                                                         |
+| -------- | ------------------------------------ | ------------------------ | ------------ | ----------------------------------------------------------------------------------------------- |
+| rights   | `user.admin.created`                 | `system` (`seed`)        | `user`       | `changes.role: { from: null, to: 'admin' }`                                                     |
+| rights   | `user.role.changed`                  | `user`, `system` (`cli`) | `user`       | `changes.role: { from, to }`; for `system`, `metadata.source`                                   |
+| sign-in  | `auth.password.changed`              | `user`                   | `user`       | `{ sessionsRevoked: 'others' }`                                                                 |
+| sign-in  | `auth.password.reset`                | `proof_holder`           | `user`       | `{ proof: 'email_link' \| 'sms_code', claimed }`                                                |
+| sign-in  | `auth.account.claimed`               | `proof_holder`           | `user`       | `{ proof, passwordCleared, phoneRemoved, oauthRemoved: [providers], pushSubscriptionsRemoved }` |
+| sign-in  | `auth.phone.linked`                  | `user`                   | `user`       | `{ method: 'phone', proof: 'sms_code' }`                                                        |
+| sign-in  | `auth.email.linked`                  | `user`                   | `user`       | `{ method: 'email', proof: 'email_link' }`                                                      |
+| sign-in  | `auth.oauth.linked`                  | `proof_holder`           | `user`       | `{ method: 'oauth', provider, proof: 'oauth_email_link' \| 'oauth_provider_email' }`            |
+| sign-in  | `auth.sign_in_method.unlinked`       | `user`                   | `user`       | `{ method, provider }`                                                                          |
+| sessions | `auth.sessions.revoked_all`          | `user`                   | `user`       | none                                                                                            |
+| sessions | `auth.sessions.revoked_others`       | `user`                   | `user`       | none                                                                                            |
+| kb       | `kb.article.created/updated/deleted` | `user`                   | `kb_article` | `title`, `category`, `isActive`; the text as a fingerprint                                      |
+| kb       | `kb.screenshot.uploaded/removed`     | `user`                   | `kb_article` | `{ screenshot: { from, to } }` (presence only), `mime`                                          |
+| ai       | `ai.prompt.updated`                  | `user`                   | `llm_prompt` | `model`, `temperature`, `maxTokens`, `topic`; the text as a fingerprint                         |
 
-`auth.account.claimed` is written next to the event that caused the claim (a reset by link, an OAuth link), with the same `request_id` and `occurred_at`. Not yet recorded: role changes (there is no endpoint), registration, the revocation of one session, failed attempts.
+`auth.account.claimed` is written next to the event that caused the claim (a reset by link, an OAuth link), with the same `request_id` and `occurred_at`. `user.role.changed` is written by [`role-assignment-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/role-assignment-service.ts) in the transaction of the role change; for now only the `user:set-role` CLI calls it (actor `system`, source `cli`, see [Scripts](/en/reference/scripts)). Not yet recorded: registration, the revocation of one session, failed attempts.
 
 ## Actors and proofs
 
 - `user`: a request with a signed-in session; `actor_user_id` is the session's user. An action that also needs a one-time proof records it in `metadata.proof` (an e-mail link opened from a session of the account, an SMS code of a challenge bound to the session).
 - `proof_holder`: no session of the account, only a proof. `actor_user_id` is `NULL`, the proof is required: `email_link` (password reset by link), `sms_code` (password reset by SMS), `oauth_email_link` (an OAuth link confirmed by mail in the browser of the sign-in), `oauth_provider_email` (the provider proved the address).
-- `system`: the seed or a CLI; `request_id` is `NULL`, `metadata.source` names it.
+- `system`: the seed or a CLI; `request_id` is `NULL`, `metadata.source` names it: `seed` or `cli` (`AUDIT_SYSTEM_SOURCES`).
+
+::: warning Plan
+A role change by a `user` actor (an admin over HTTP) is feat-241: there is no endpoint yet; the catalog and the service already accept it.
+:::
 
 The catalog also lists the proofs each action accepts, and `record` refuses anything else: a proof holder needs one of them, `auth.phone.linked` needs `sms_code`, `auth.email.linked` needs `email_link`, and an action without proofs refuses one. A `user` or `proof_holder` actor always carries the request ID: the services take the actor (or the request) as a required parameter.
 
@@ -67,7 +72,9 @@ After the commit each event is logged at `info` as `audit event` with `action`, 
 
 ## API
 
-`GET /api/admin/audit-events` (`session_web`, `csrf_guard`, `auth_guard`, `admin_guard`), contract `adminContracts.auditEvents`.
+`GET /api/admin/audit-events` (`session_web`, `csrf_guard`, `auth_guard`, `can:audit.read.account`), contract `adminContracts.auditEvents`.
+
+The scope depends on the role ([`audit-events-query-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/admin/audit-events-query-service.ts)): with the `audit.read` permission (`user_admin`, `admin`) the whole log is visible. Without it (`support_operator`) only the actions of the `sign-in` and `sessions` groups with `targetType = user` are visible; the query is narrowed before the cursor and the limit, so a page holds no other rows. An explicit filter outside this scope (`group`, any one `action`, `targetType`) is `403 forbidden` `Access denied`.
 
 | Query                    | Meaning                                                                    |
 | ------------------------ | -------------------------------------------------------------------------- |
@@ -92,4 +99,4 @@ pnpm --filter backend job:run audit-events-retention --dry-run
 
 ## The admin page
 
-`/admin/audit-log`: the table (time, actor, action, object, request ID), the filters in the address of the page (several actions at once), "Load more". An answer to a page asked for before the filters changed is dropped. A row opens its changes as field / was / became and the copy button of the request ID; a proof holder shows as "without sign-in" with its proof. The user list links to the log of an account, the knowledge base to the history of an article.
+`/admin/audit-log` (permission `audit.read.account`): the table (time, actor, action, object, request ID), the filters in the address of the page (several actions at once), "Load more". Without `audit.read` the filters offer only the `sign-in` and `sessions` groups and the `user` object type. An answer to a page asked for before the filters changed is dropped. A row opens its changes as field / was / became and the copy button of the request ID; a proof holder shows as "without sign-in" with its proof. The user list links to the log of an account, the knowledge base to the history of an article (only with `audit.read`).

@@ -23,7 +23,7 @@
 | `ARGS` | додаткові аргументи, які передаються скрипту без змін | `make db-seed ARGS=--demo`        |
 | `PNPM` | інша команда замість `pnpm`, якщо потрібно            | `make check PNPM="corepack pnpm"` |
 
-`ARGS` підтримують цілі, яким це має сенс: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `services-up`, `db-generate`, `db-seed`, `app-build`. Наприклад, `make test-e2e ARGS="--project=chromium"` або `make app-build ARGS=--no-cache`.
+`ARGS` підтримують цілі, яким це має сенс: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `services-up`, `db-generate`, `db-seed`, `user-role`, `app-build`. Наприклад, `make test-e2e ARGS="--project=chromium"` або `make app-build ARGS=--no-cache`.
 
 ## Старт
 
@@ -77,20 +77,21 @@
 
 ## Сервіси, база даних і Docker
 
-| Ціль            | pnpm-скрипт           | Що робить                                                                                                          |
-| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `services-up`   | `services:up`         | PostgreSQL, Redis, S3 і Mailpit з `docker-compose.yml`, чекає на healthy; `ARGS="redis s3 mailpit"` — лише вказані |
-| `services-down` | `services:down`       | зупиняє сервіси й застосунок, дані лишаються у volumes                                                             |
-| `db-create`     | `backend db:create`   | створює БД і розширення `vector`                                                                                   |
-| `db-migrate`    | `backend db:migrate`  | застосовує міграції Drizzle                                                                                        |
-| `db-generate`   | `backend db:generate` | генерує міграцію зі схеми                                                                                          |
-| `db-seed`       | `backend db:seed`     | початкові дані; `ARGS=--demo` додає demo-акаунти                                                                   |
-| `db-studio`     | `backend db:studio`   | Drizzle Studio                                                                                                     |
-| `app-build`     | `app:build`           | збирає образи `vibe-template:local` і `vibe-template-landing:local`                                                |
-| `app-up`        | `app:up`              | сервіси, міграції й застосунок у compose                                                                           |
-| `app-down`      | `app:down`            | зупиняє й видаляє лише контейнери `app`, `migrate` і `landing`, сервіси працюють далі                              |
-| `app-seed`      | `app:seed`            | seed з demo-акаунтами в compose                                                                                    |
-| `app-logs`      | `app:logs`            | логи застосунку й лендінгу                                                                                         |
+| Ціль            | pnpm-скрипт             | Що робить                                                                                                          |
+| --------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `services-up`   | `services:up`           | PostgreSQL, Redis, S3 і Mailpit з `docker-compose.yml`, чекає на healthy; `ARGS="redis s3 mailpit"` — лише вказані |
+| `services-down` | `services:down`         | зупиняє сервіси й застосунок, дані лишаються у volumes                                                             |
+| `db-create`     | `backend db:create`     | створює БД і розширення `vector`                                                                                   |
+| `db-migrate`    | `backend db:migrate`    | застосовує міграції Drizzle                                                                                        |
+| `db-generate`   | `backend db:generate`   | генерує міграцію зі схеми                                                                                          |
+| `db-seed`       | `backend db:seed`       | початкові дані; `ARGS=--demo` додає demo-акаунти                                                                   |
+| `db-studio`     | `backend db:studio`     | Drizzle Studio                                                                                                     |
+| `user-role`     | `backend user:set-role` | дає користувачу роль: `ARGS="--email <email> --role <role>"` ([Скрипти](/reference/scripts#backend))               |
+| `app-build`     | `app:build`             | збирає образи `vibe-template:local` і `vibe-template-landing:local`                                                |
+| `app-up`        | `app:up`                | сервіси, міграції й застосунок у compose                                                                           |
+| `app-down`      | `app:down`              | зупиняє й видаляє лише контейнери `app`, `migrate` і `landing`, сервіси працюють далі                              |
+| `app-seed`      | `app:seed`              | seed з demo-акаунтами в compose                                                                                    |
+| `app-logs`      | `app:logs`              | логи застосунку й лендінгу                                                                                         |
 
 Ланцюжок для чистої машини: `make setup`, правка `.env`, `make services-up db-create db-migrate`, `make dev`. Цілі в одному виклику `make` виконуються по черзі зліва направо. Те саме через pnpm: `pnpm install`, `pnpm build:shared`, `pnpm services:up`, `pnpm --filter backend db:create`, `pnpm --filter backend db:migrate`, `pnpm dev`.
 

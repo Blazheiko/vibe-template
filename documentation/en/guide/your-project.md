@@ -21,7 +21,7 @@ Before deleting or rewriting anything, look at what you get right away. All scre
 
 ![Account page](/screenshots/account.jpg)
 
-**Admin: users.** A list with a filter by id and registration date (`GET /api/admin/users`), available only to the `admin` role. The list is paged: the response carries `total`, `hasMore` and `nextCursor` (the id of the last user of the page), and the next page is the same request with `cursor=<nextCursor>`. A page holds up to 200 rows (`limit`, 50 by default; the admin UI asks for 100), newest registrations first. The connection history (`GET /api/admin/history-online`) works the same way.
+**Admin: users.** A list with a filter by id and registration date (`GET /api/admin/users`), available to roles with the `users.read` permission (`support_operator`, `user_admin`, `admin`). The list is paged: the response carries `total`, `hasMore` and `nextCursor` (the id of the last user of the page), and the next page is the same request with `cursor=<nextCursor>`. A page holds up to 200 rows (`limit`, 50 by default; the admin UI asks for 100), newest registrations first. The connection history (`GET /api/admin/history-online`) works the same way.
 
 ![Admin: users](/screenshots/admin-users.jpg)
 
@@ -82,13 +82,13 @@ AI prompts are cached in the database: if you have already run `db:seed`, change
 
 ## 2. Change the interface
 
-| What to change               | Where                                                                                                                       |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Colors, base styles          | `packages/frontend/src/assets/base.css`, `main.css` (CSS variables `--color-*`)                                             |
-| Pages                        | `packages/frontend/src/views/`                                                                                              |
-| Frontend routes and access   | `packages/frontend/src/router/index.ts` (guard for signed-in users and admins)                                              |
-| Header, menu, sign-in modals | `packages/frontend/src/components/` (`AppHeader`, `MenuButton`, `AuthModals`)                                               |
-| Texts and languages          | `packages/frontend/src/locales/` (`en`, `uk`, `pl`; a new language is added with a file and code in `SHIPPED_LOCALE_CODES`) |
+| What to change               | Where                                                                                                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Colors, base styles          | `packages/frontend/src/assets/base.css`, `main.css` (CSS variables `--color-*`)                                                                                             |
+| Pages                        | `packages/frontend/src/views/`                                                                                                                                              |
+| Frontend routes and access   | `packages/frontend/src/router/index.ts` (guard for signed-in users and staff roles), `packages/frontend/src/views/admin/admin-pages.ts` (admin pages and their permissions) |
+| Header, menu, sign-in modals | `packages/frontend/src/components/` (`AppHeader`, `MenuButton`, `AuthModals`)                                                                                               |
+| Texts and languages          | `packages/frontend/src/locales/` (`en`, `uk`, `pl`; a new language is added with a file and code in `SHIPPED_LOCALE_CODES`)                                                 |
 
 Details are on the [Frontend](/en/frontend/) page.
 

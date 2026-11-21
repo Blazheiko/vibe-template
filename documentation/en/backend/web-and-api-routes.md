@@ -47,7 +47,7 @@ What these middleware cost per request:
 
 ### How to declare
 
-A route goes into a group where `session_web` comes first and `csrf_guard` second. Role checks (`auth_guard`, `admin_guard`) are added after them, on the group or on an individual route:
+A route goes into a group where `session_web` comes first and `csrf_guard` second. Sign-in and permission checks (`auth_guard`, `can:<permission>`) are added after them, on the group or on an individual route:
 
 ```ts
 {
@@ -125,7 +125,7 @@ So in an API route handler you cannot rely on `context.auth` or `requireUserId`:
 
 ### API client authentication
 
-`auth_guard` and `admin_guard` check the **cookie session**. In a group without `session_web`, `auth_guard` always answers `401 unauthorized`, even if the client sent the correct key in `Authorization`. For an API you need a separate middleware that checks credentials from the header.
+`auth_guard` and `can:<permission>` check the **cookie session**. In a group without `session_web`, `auth_guard` always answers `401 unauthorized`, even if the client sent the correct key in `Authorization`. For an API you need a separate middleware that checks credentials from the header.
 
 ::: warning Plan
 The template does not have API key authentication yet: there is no keys table, middleware or environment variables for them. Below is a skeleton you can start from. It is not part of the repository.
@@ -211,7 +211,7 @@ flowchart TD
   A[New HTTP route] --> B{Who calls it?}
   B -->|our frontend in the browser| C[web group: session_web, csrf_guard]
   C --> D{Is a signed-in user needed?}
-  D -->|yes| E[+ auth_guard, for the admin panel + admin_guard]
+  D -->|yes| E[+ auth_guard, for the admin panel + can:permission]
   D -->|no, like login or password reset| F[no auth_guard; on the frontend csrfRecovery: 'public']
   B -->|another server, app, someone else's site| G[API group: no session_web and csrf_guard]
   G --> H{Does the client need to be identified?}

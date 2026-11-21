@@ -23,7 +23,7 @@ The [`Makefile`](https://github.com/Blazheiko/vibe-template/blob/main/Makefile) 
 | `ARGS`   | extra arguments passed to the script unchanged           | `make db-seed ARGS=--demo`        |
 | `PNPM`   | a different command instead of `pnpm`, if needed         | `make check PNPM="corepack pnpm"` |
 
-`ARGS` is supported by the targets where it makes sense: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `services-up`, `db-generate`, `db-seed`, `app-build`. For example, `make test-e2e ARGS="--project=chromium"` or `make app-build ARGS=--no-cache`.
+`ARGS` is supported by the targets where it makes sense: `install`, `prod-local`, `test`, `test-e2e`, `test-pg`, `test-redis`, `services-up`, `db-generate`, `db-seed`, `user-role`, `app-build`. For example, `make test-e2e ARGS="--project=chromium"` or `make app-build ARGS=--no-cache`.
 
 ## Getting started
 
@@ -77,20 +77,21 @@ After `make env`, open `packages/backend/.env` and check the values: what is nee
 
 ## Services, database and Docker
 
-| Target          | pnpm script           | What it does                                                                                                                     |
-| --------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `services-up`   | `services:up`         | PostgreSQL, Redis, S3 and Mailpit from `docker-compose.yml`, waits for healthy; `ARGS="redis s3 mailpit"` — only the listed ones |
-| `services-down` | `services:down`       | stops the services and the app, data stays in volumes                                                                            |
-| `db-create`     | `backend db:create`   | creates the DB and the `vector` extension                                                                                        |
-| `db-migrate`    | `backend db:migrate`  | applies Drizzle migrations                                                                                                       |
-| `db-generate`   | `backend db:generate` | generates a migration from the schema                                                                                            |
-| `db-seed`       | `backend db:seed`     | initial data; `ARGS=--demo` adds demo accounts                                                                                   |
-| `db-studio`     | `backend db:studio`   | Drizzle Studio                                                                                                                   |
-| `app-build`     | `app:build`           | builds the `vibe-template:local` and `vibe-template-landing:local` images                                                        |
-| `app-up`        | `app:up`              | services, migrations and the app in compose                                                                                      |
-| `app-down`      | `app:down`            | stops and removes only the `app`, `migrate` and `landing` containers, services keep running                                      |
-| `app-seed`      | `app:seed`            | seed with demo accounts in compose                                                                                               |
-| `app-logs`      | `app:logs`            | app and landing logs                                                                                                             |
+| Target          | pnpm script             | What it does                                                                                                                     |
+| --------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `services-up`   | `services:up`           | PostgreSQL, Redis, S3 and Mailpit from `docker-compose.yml`, waits for healthy; `ARGS="redis s3 mailpit"` — only the listed ones |
+| `services-down` | `services:down`         | stops the services and the app, data stays in volumes                                                                            |
+| `db-create`     | `backend db:create`     | creates the DB and the `vector` extension                                                                                        |
+| `db-migrate`    | `backend db:migrate`    | applies Drizzle migrations                                                                                                       |
+| `db-generate`   | `backend db:generate`   | generates a migration from the schema                                                                                            |
+| `db-seed`       | `backend db:seed`       | initial data; `ARGS=--demo` adds demo accounts                                                                                   |
+| `db-studio`     | `backend db:studio`     | Drizzle Studio                                                                                                                   |
+| `user-role`     | `backend user:set-role` | gives a user a role: `ARGS="--email <email> --role <role>"` ([Scripts](/en/reference/scripts#backend))                           |
+| `app-build`     | `app:build`             | builds the `vibe-template:local` and `vibe-template-landing:local` images                                                        |
+| `app-up`        | `app:up`                | services, migrations and the app in compose                                                                                      |
+| `app-down`      | `app:down`              | stops and removes only the `app`, `migrate` and `landing` containers, services keep running                                      |
+| `app-seed`      | `app:seed`              | seed with demo accounts in compose                                                                                               |
+| `app-logs`      | `app:logs`              | app and landing logs                                                                                                             |
 
 A sequence for a clean machine: `make setup`, edit `.env`, `make services-up db-create db-migrate`, `make dev`. Targets in a single `make` call run in order from left to right. The same through pnpm: `pnpm install`, `pnpm build:shared`, `pnpm services:up`, `pnpm --filter backend db:create`, `pnpm --filter backend db:migrate`, `pnpm dev`.
 

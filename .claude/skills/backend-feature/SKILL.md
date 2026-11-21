@@ -39,7 +39,7 @@ Ask only what the request does not already answer:
 2. **Transport** — HTTP, WebSocket, or both.
 3. **Operations** — list, get one, create, update (partial → `patch`), delete.
 4. **Access** — signed-in user (`session_web` + `csrf_guard` + `auth_guard`, default), admin
-   (`admin_guard`), or public.
+   (`auth_guard` + `can:<permission>` from `shared/src/access`; WS `ws_can:<permission>`), or public.
 5. **DB table** — exists in `src/database/schema.ts` or new?
 6. **Can an account claim undo it?** Writes to user-owned rows that a claim must be able to remove
    go through `withCurrentSession` (feat-098), see Step 6.
@@ -437,6 +437,11 @@ The contract path must start with the group `prefix`.
 Per-route options: `middlewares`, `rateLimit`, `maxBodySize` (`multipartBodyLimit(...)` from
 `#app/services/shared/upload-limits.js`), `signedInBeforeBody: true` for uploads.
 `session_web` / `csrf_guard` stay explicit per group — don't propose global wiring.
+An admin route puts `can:<permission>` after `auth_guard` (one permission per group; routes with
+different permissions are separate groups with the same `prefix`), and gets a row in the independent
+`HTTP_ROUTE_PERMISSION` / `WS_ROUTE_PERMISSION` table of
+`backend/src/app/routes/route-permissions.spec.ts`. A new permission goes into `PERMISSIONS` /
+`ROLE_DEFINITIONS` of `shared/src/access/index.ts` (see `documentation/en/reference/roles-capabilities.md`).
 Never use `defineRawRoute` in app code (ESLint forbids it outside tests).
 
 **Frontend** — `packages/frontend/src/utils/api.ts`: `callApi(noteContracts.create, { body })`,
@@ -490,7 +495,7 @@ Same chain (ADR 0006, `docs/adr/0006-websocket-contracts.md`): contract → regi
     ```
 
 4. **Route** in `backend/src/app/routes/ws-routes.ts` with `defineWsRoute({ contract, handler, description })`
-   inside a group with matching `prefix` and a `rateLimit` (admin groups add `middlewares: ['ws_admin_guard']`).
+   inside a group with matching `prefix` and a `rateLimit` (admin groups add `middlewares: ['ws_can:<permission>']`).
    Never `defineRawWsRoute` in app code.
 5. **Frontend**: `await callWs(noteWsContracts.update, payload)` from `@/utils/ws-client`.
 

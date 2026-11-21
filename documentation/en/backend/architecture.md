@@ -55,7 +55,7 @@ flowchart LR
 
 Import rules between layers are checked by [`layering.spec.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/layering.spec.ts) (static import analysis, without loading modules):
 
-- controllers, middleware (including `admin_guard`) and `app/websocket` do not import repositories, even as types: data goes through services (`adminUserService`, `userRoleService`, etc.), types come from the service or `shared`;
+- controllers, middleware (including `can:<permission>`) and `app/websocket` do not import repositories, even as types: data goes through services (`adminUserService`, `userRoleService`, etc.), types come from the service or `shared`;
 - outside `app/repositories`, repositories are imported only through the `#app/repositories/index.js` barrel, and the barrel exports every `*-repository.ts` module;
 - repositories do not log: the decision "this is worth logging" is made by the service;
 - services do not import `#database/db.js` and `#database/schema.js`; only repositories do.

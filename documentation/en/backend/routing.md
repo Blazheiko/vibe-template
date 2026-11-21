@@ -202,11 +202,13 @@ A list item can be a group: `{ group: [...], prefix, middlewares, rateLimit, des
 ```ts
 {
   group: [ /* defineRoute({ contract: ..., handler: ... }) */ ],
-  description: "Admin user and online routes",
-  middlewares: ["session_web", "csrf_guard", "auth_guard", "admin_guard"],
+  description: "Admin users and online users (feat-240)",
+  middlewares: ["session_web", "csrf_guard", "auth_guard", "can:users.read"],
   prefix: "admin",
 },
 ```
+
+Admin routes with different permissions are separate groups with the same `prefix`: `can:<permission>` sits on the group ([Roles and capabilities](/en/reference/roles-capabilities#how-to-add-a-role-or-a-permission)).
 
 Merge rules (see `router.ts`):
 

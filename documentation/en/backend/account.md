@@ -10,8 +10,9 @@ Sources: the contract [`contracts/account.ts`](https://github.com/Blazheiko/vibe
 | ---------------------------- | ----------------------------------------- | --------------------------------------------------------------------------- |
 | `GET /api/account/profile`   | `session_web`, `csrf_guard`, `auth_guard` | the profile of the signed-in user                                           |
 | `PATCH /api/account/profile` | `session_web`, `csrf_guard`, `auth_guard` | changes the passed fields and answers the profile as it is after the change |
+| `GET /api/account/access`    | `session_web`, `csrf_guard`, `auth_guard` | the role of the signed-in user ([below](#role-of-the-current-user))         |
 
-Both answer `{ "status": "success", "profile": Profile }`:
+Both profile routes answer `{ "status": "success", "profile": Profile }`:
 
 ```json
 {
@@ -31,6 +32,10 @@ Both answer `{ "status": "success", "profile": Profile }`:
 ```
 
 The same `preferences` and `revision` are in `user` of `GET /api/main/init`.
+
+## Role of the current user
+
+`GET /api/account/access` answers `{ "status": "success", "role": Role }` (feat-240); the role is read from `users.role` on every request, a deleted user gets `404`. A tab ([`useAccessSync.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAccessSync.ts)) reads it again on every `ws_ready` and when the tab is shown again; the answer is applied only when no `access_changed` came and the account did not change since. Roles and permissions: [Roles and capabilities](/en/reference/roles-capabilities).
 
 ## Body of PATCH: absent, `null` and a value
 
