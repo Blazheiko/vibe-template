@@ -2431,8 +2431,8 @@
             "owner": "Blazheiko",
             "branch": "fix/admin-channel-leave",
             "dependencies": ["feat-243"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #762 (merge 7f57c37), registry #761 (in_progress), #763 (review). Review of feat-243 (2026-11-21): useAdminChannel.leave() joins the unsubscribe still running for the same socket (access_changed and the permission watcher both leave on losing users.read; two unsubscribes could finish out of order and undo a later subscribe); a leave on a new socket sends its own. New test fails on the previous code (two unsubscribes sent). Local: make check (backend 3414, frontend 906). CI on e3e80dd: quality, e2e, e2e-live green (CI 44942459705); frontend-only change, no PG/Redis/docs jobs triggered."
         }
     ]
 }
