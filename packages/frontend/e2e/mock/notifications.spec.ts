@@ -142,4 +142,48 @@ test.describe('notification center', () => {
             api.callsTo('notifications/preferences').find((call) => call.method === 'PUT'),
         ).toMatchObject({ body: { category: 'support', channel: 'push', enabled: false } })
     })
+
+    // feat-237 (review of #732, 1): the history scrolls in its own container under the header.
+    test.describe('on a phone', () => {
+        test.use({ viewport: { width: 390, height: 700 }, isMobile: true, hasTouch: true })
+
+        test('a long history scrolls down to "show more"', async ({ page, api }) => {
+            const many = Array.from({ length: 20 }, (_, index) => item(String(100 - index)))
+            await api.answer('notifications**', 200, {
+                status: 'success',
+                items: many,
+                next: '81',
+                unreadCount: 20,
+            })
+
+            await page.goto('/notifications')
+            const more = page.getByTestId('notifications-more')
+            await expect(more).toBeAttached()
+            const scroller = page.getByTestId('notifications-scroll')
+            expect(await scroller.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true)
+
+            await page.getByTestId('notifications-list').hover()
+            await page.mouse.wheel(0, 5000)
+            await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBeGreaterThan(0)
+            await expect(more).toBeInViewport()
+        })
+    })
+
+    // feat-237 (review of #732, 4): the bell panel has its own list.
+    test('opening the bell keeps the "Unread" tab of the history', async ({ page }) => {
+        await page.goto('/notifications')
+        await page.getByTestId('notifications-tab-unread').click()
+        await expect(page.getByTestId('notifications-tab-unread')).toHaveAttribute(
+            'aria-selected',
+            'true',
+        )
+
+        await page.getByTestId('notification-bell').click()
+        await expect(page.getByTestId('notification-panel')).toBeVisible()
+
+        await expect(page.getByTestId('notifications-tab-unread')).toHaveAttribute(
+            'aria-selected',
+            'true',
+        )
+    })
 })

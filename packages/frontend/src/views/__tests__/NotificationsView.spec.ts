@@ -54,9 +54,9 @@ afterEach(() => {
 describe('NotificationsView', () => {
     it('opens the list on mount and closes it on unmount, once each', () => {
         const wrapper = render()
-        expect(store.openList).toHaveBeenCalledOnce()
+        expect(store.openList).toHaveBeenCalledExactlyOnceWith('page')
         wrapper.unmount()
-        expect(store.closeList).toHaveBeenCalledOnce()
+        expect(store.closeList).toHaveBeenCalledExactlyOnceWith('page')
     })
 
     it('renders the text of the kind with its params', () => {

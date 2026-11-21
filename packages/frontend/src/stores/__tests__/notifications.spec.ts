@@ -162,7 +162,7 @@ describe('notifications store', () => {
 
     it('a lost answer of "mark read" changes nothing locally and reads again', async () => {
         const store = useNotificationsStore()
-        store.openList()
+        store.openList('page')
         api.list.mockResolvedValue(ok({ items: [item('5')], next: null, unreadCount: 1 }))
         await tick()
         api.list.mockClear()
@@ -198,7 +198,7 @@ describe('notifications store', () => {
         expect(api.list).not.toHaveBeenCalled()
         expect(api.unreadCount).toHaveBeenCalledOnce()
 
-        store.openList()
+        store.openList('page')
         api.list.mockResolvedValue(ok({ items: [item('3')], next: null, unreadCount: 1 }))
         await tick()
         expect(store.items.map((n) => n.id)).toEqual(['3'])
@@ -222,28 +222,31 @@ describe('notifications store', () => {
 
     it('openList and closeList pair; an extra close does not go below zero', () => {
         const store = useNotificationsStore()
-        store.openList()
-        store.openList()
-        store.closeList()
-        expect(store.listOpen).toBe(1)
-        store.closeList()
-        store.closeList()
-        expect(store.listOpen).toBe(0)
-        store.openList()
+        store.openList('page')
+        store.openList('page')
+        store.closeList('page')
+        expect(store.pageOpen).toBe(1)
+        store.closeList('page')
+        store.closeList('page')
+        expect(store.pageOpen).toBe(0)
+        store.openList('panel')
+        expect(store.panelOpen).toBe(1)
+        expect(store.pageOpen).toBe(0)
+        // A reset (another account) keeps the lists that are mounted: they close themselves.
         store.reset()
-        expect(store.listOpen).toBe(0)
+        expect(store.panelOpen).toBe(1)
     })
 
     it('"mark all read" sends the newest id shown and marks those shown read', async () => {
         const store = useNotificationsStore()
-        store.openList()
+        store.openList('page')
         api.list.mockResolvedValue(
             ok({ items: [item('12'), item('9'), item('100')], next: null, unreadCount: 3 }),
         )
         await tick()
         api.readAll.mockResolvedValue(ok({ unreadCount: 0 }))
 
-        await store.markAllRead()
+        await store.markAllRead('page')
 
         expect(api.readAll).toHaveBeenCalledWith('100')
         expect(store.items.every((n) => n.readAt !== null)).toBe(true)
@@ -264,6 +267,66 @@ describe('notifications store', () => {
         await flush()
 
         expect(store.unreadCount).toBe(0)
+    })
+
+    // feat-237 (review of #732, 3): the read asked for the new account while one of the previous
+    // account was in flight must still run once that one ends.
+    it('after a switch during a read of the previous account, the new account is read', async () => {
+        const store = useNotificationsStore()
+        await tick()
+        api.unreadCount.mockClear()
+        const late = deferred<ReturnType<typeof ok>>()
+        api.unreadCount
+            .mockReturnValueOnce(late.promise)
+            .mockResolvedValueOnce(ok({ unreadCount: 7 }))
+
+        void store.readNow()
+        await flush()
+        user.value = { id: '8' }
+        // The switch asks for a read; it fires while the read of account 7 is still in flight.
+        await vi.advanceTimersByTimeAsync(NOTIFICATIONS_REFRESH_COALESCE_MS)
+        expect(api.unreadCount).toHaveBeenCalledOnce()
+
+        late.resolve(ok({ unreadCount: 42 }))
+        await flush()
+
+        expect(api.unreadCount).toHaveBeenCalledTimes(2)
+        expect(store.unreadCount).toBe(7)
+    })
+
+    // feat-237 (review of #732, 4): the bell panel has its own list; the page keeps its filter.
+    it('the panel reads the latest 10 unfiltered and leaves the page filter and items alone', async () => {
+        const store = useNotificationsStore()
+        store.openList('page')
+        api.list.mockResolvedValue(ok({ items: [item('5')], next: '5', unreadCount: 1 }))
+        await tick()
+        store.setUnreadOnly(true)
+        await flush()
+        api.list.mockClear()
+        api.list.mockImplementation((query: { unread?: boolean; limit?: number }) =>
+            Promise.resolve(
+                query.limit === 10
+                    ? ok({
+                          items: [item('9', '2026-11-20T10:01:00.000Z'), item('5')],
+                          next: null,
+                          unreadCount: 1,
+                      })
+                    : ok({ items: [item('5')], next: null, unreadCount: 1 }),
+            ),
+        )
+
+        store.openList('panel')
+        await tick()
+
+        expect(store.unreadOnly).toBe(true)
+        expect(api.list).toHaveBeenCalledWith({ unread: true, limit: 20 })
+        expect(api.list).toHaveBeenCalledWith({ limit: 10 })
+        expect(store.items.map((n) => n.id)).toEqual(['5'])
+        expect(store.panelItems.map((n) => n.id)).toEqual(['9', '5'])
+
+        api.readAll.mockResolvedValue(ok({ unreadCount: 0 }))
+        await store.markAllRead('panel')
+        expect(api.readAll).toHaveBeenCalledWith('9')
     })
 
     it('caps the badge at 99+', async () => {

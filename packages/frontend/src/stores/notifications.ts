@@ -17,8 +17,13 @@ import { useUserStore } from '@/stores/user'
  */
 
 export const NOTIFICATIONS_REFRESH_COALESCE_MS = 300
-/** The first page of the panel and of the history page. */
+/** The first page of the history page. */
 export const NOTIFICATIONS_FIRST_PAGE = 20
+/** The latest notifications the bell panel shows. */
+export const NOTIFICATIONS_PANEL_SIZE = 10
+
+/** Where a list is shown: the history page (with its filter and pages) or the bell panel. */
+export type NotificationListView = 'page' | 'panel'
 
 export type MarkReadOutcome =
     { kind: 'read'; link: string | null } | { kind: 'gone' } | { kind: 'error' }
@@ -42,8 +47,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const loaded = ref(false)
     const loadFailed = ref(false)
     const loadingMore = ref(false)
-    /** How many panels and pages show the list now; the first page is read while above 0. */
-    const listOpen = ref(0)
+    /** The bell panel: always the latest notifications, never filtered (feat-237). */
+    const panelItems = ref<NotificationItem[]>([])
+    const panelLoaded = ref(false)
+    const panelFailed = ref(false)
+    /** How many pages and panels show their list now; each is read while above 0. */
+    const pageOpen = ref(0)
+    const panelOpen = ref(0)
     const unreadOnly = ref(false)
 
     const badge = computed(() =>
@@ -53,6 +63,8 @@ export const useNotificationsStore = defineStore('notifications', () => {
     let generation = 0
     let seq = 0
     let appliedSeq = 0
+    let pageSeq = 0
+    let panelSeq = 0
     let inFlight = false
     let dirty = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -64,30 +76,57 @@ export const useNotificationsStore = defineStore('notifications', () => {
         return true
     }
     const ticket = () => ({ generation, seq: ++seq })
+    const applyCount = (mine: { generation: number; seq: number }, value: number): void => {
+        if (fresh(mine)) unreadCount.value = value
+    }
 
-    const readOnce = async (): Promise<void> => {
+    const readPage = async (): Promise<void> => {
         const mine = ticket()
-        if (listOpen.value > 0) {
-            const { data, error } = await notificationsApi.list({
-                unread: unreadOnly.value,
-                limit: NOTIFICATIONS_FIRST_PAGE,
-            })
-            if (error !== null || data?.status !== 'success') {
-                if (mine.generation === generation) loadFailed.value = true
-                return
-            }
-            if (!fresh(mine)) return
-            items.value = data.items
-            next.value = data.next
-            unreadCount.value = data.unreadCount
-            loaded.value = true
-            loadFailed.value = false
+        const { data, error } = await notificationsApi.list({
+            unread: unreadOnly.value,
+            limit: NOTIFICATIONS_FIRST_PAGE,
+        })
+        if (mine.generation !== generation) return
+        if (error !== null || data?.status !== 'success') {
+            loadFailed.value = true
             return
         }
-        const { data, error } = await notificationsApi.unreadCount()
-        if (error !== null || data?.status !== 'success') return
-        if (!fresh(mine)) return
-        unreadCount.value = data.unreadCount
+        applyCount(mine, data.unreadCount)
+        if (mine.seq <= pageSeq) return
+        pageSeq = mine.seq
+        items.value = data.items
+        next.value = data.next
+        loaded.value = true
+        loadFailed.value = false
+    }
+
+    const readPanel = async (): Promise<void> => {
+        const mine = ticket()
+        const { data, error } = await notificationsApi.list({ limit: NOTIFICATIONS_PANEL_SIZE })
+        if (mine.generation !== generation) return
+        if (error !== null || data?.status !== 'success') {
+            panelFailed.value = true
+            return
+        }
+        applyCount(mine, data.unreadCount)
+        if (mine.seq <= panelSeq) return
+        panelSeq = mine.seq
+        panelItems.value = data.items
+        panelLoaded.value = true
+        panelFailed.value = false
+    }
+
+    /** The count, and the first page of every list open now (Р11). */
+    const readOnce = async (): Promise<void> => {
+        if (pageOpen.value === 0 && panelOpen.value === 0) {
+            const mine = ticket()
+            const { data, error } = await notificationsApi.unreadCount()
+            if (error !== null || data?.status !== 'success') return
+            applyCount(mine, data.unreadCount)
+            return
+        }
+        if (pageOpen.value > 0) await readPage()
+        if (panelOpen.value > 0) await readPanel()
     }
 
     // Read through a function: `dirty` changes while a read is awaited.
@@ -101,12 +140,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
             return
         }
         inFlight = true
-        const started = generation
         try {
+            // Not bound to the account it started for: a read asked for the next account while one
+            // of the previous account was in flight runs here, for the account of now (feat-237).
             do {
                 dirty = false
                 await readOnce()
-            } while (askedAgain() && started === generation && userStore.hasUser())
+            } while (askedAgain() && userStore.hasUser())
         } finally {
             inFlight = false
         }
@@ -120,13 +160,15 @@ export const useNotificationsStore = defineStore('notifications', () => {
         }, NOTIFICATIONS_REFRESH_COALESCE_MS)
     }
 
-    /** A panel or page that shows the list mounts (Р11); every open has exactly one close. */
-    const openList = (): void => {
-        listOpen.value += 1
+    /** A page or panel that shows its list mounts (Р11); every open has exactly one close. */
+    const openList = (view: NotificationListView): void => {
+        if (view === 'page') pageOpen.value += 1
+        else panelOpen.value += 1
         refreshSoon()
     }
-    const closeList = (): void => {
-        listOpen.value = Math.max(0, listOpen.value - 1)
+    const closeList = (view: NotificationListView): void => {
+        if (view === 'page') pageOpen.value = Math.max(0, pageOpen.value - 1)
+        else panelOpen.value = Math.max(0, panelOpen.value - 1)
     }
 
     const setUnreadOnly = (value: boolean): void => {
@@ -135,6 +177,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
         items.value = []
         next.value = null
         loaded.value = false
+        pageSeq = seq
         void readNow()
     }
 
@@ -165,9 +208,12 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
     const markLocallyRead = (ids: (id: string) => boolean): void => {
         const now = new Date().toISOString()
-        items.value = items.value.map((item) =>
-            item.readAt === null && ids(item.id) ? { ...item, readAt: now } : item,
-        )
+        const mark = (list: NotificationItem[]): NotificationItem[] =>
+            list.map((item) =>
+                item.readAt === null && ids(item.id) ? { ...item, readAt: now } : item,
+            )
+        items.value = mark(items.value)
+        panelItems.value = mark(panelItems.value)
     }
 
     /**
@@ -181,16 +227,16 @@ export const useNotificationsStore = defineStore('notifications', () => {
             if (error?.transportCode === 404) return { kind: 'gone' }
             if (error !== null || data?.status !== 'success') return { kind: 'error' }
             if (mine.generation === generation) markLocallyRead((itemId) => itemId === id)
-            if (fresh(mine)) unreadCount.value = data.unreadCount
+            applyCount(mine, data.unreadCount)
             return { kind: 'read', link: data.link }
         } finally {
             refreshSoon()
         }
     }
 
-    /** "Mark all read": every notification up to the newest this client has shown (Р6). */
-    const markAllRead = async (): Promise<boolean> => {
-        const upTo = maxId(items.value)
+    /** "Mark all read": every notification up to the newest this view has shown (Р6). */
+    const markAllRead = async (view: NotificationListView): Promise<boolean> => {
+        const upTo = maxId(view === 'page' ? items.value : panelItems.value)
         if (upTo === null) return false
         const bound = BigInt(upTo)
         const mine = ticket()
@@ -198,7 +244,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
             const { data, error } = await notificationsApi.readAll(upTo)
             if (error !== null || data?.status !== 'success') return false
             if (mine.generation === generation) markLocallyRead((id) => BigInt(id) <= bound)
-            if (fresh(mine)) unreadCount.value = data.unreadCount
+            applyCount(mine, data.unreadCount)
             return true
         } finally {
             refreshSoon()
@@ -216,8 +262,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
         next.value = null
         loaded.value = false
         loadFailed.value = false
-        listOpen.value = 0
+        panelItems.value = []
+        panelLoaded.value = false
+        panelFailed.value = false
         unreadOnly.value = false
+        // pageOpen and panelOpen stay: they count the lists mounted now, which close themselves.
     }
 
     // Recovery points (Р8): the bus does not replay, and the retention job sends no signal.
@@ -253,7 +302,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
         loaded,
         loadFailed,
         loadingMore,
-        listOpen,
+        panelItems,
+        panelLoaded,
+        panelFailed,
+        pageOpen,
+        panelOpen,
         unreadOnly,
         refreshSoon,
         readNow,

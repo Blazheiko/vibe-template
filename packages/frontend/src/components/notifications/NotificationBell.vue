@@ -7,8 +7,6 @@ import { useNotificationsStore } from '@/stores/notifications'
 
 // feat-236 (Р11): the bell of the header with the unread count, and a panel with the latest
 // notifications. An open panel counts in `listOpen`; every way it closes calls closeList once.
-const PANEL_SIZE = 10
-
 const { t } = useI18n()
 const route = useRoute()
 const store = useNotificationsStore()
@@ -16,7 +14,7 @@ const store = useNotificationsStore()
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 
-const latest = computed(() => store.items.slice(0, PANEL_SIZE))
+const latest = computed(() => store.panelItems)
 
 const onDocumentClick = (event: MouseEvent): void => {
     if (root.value !== null && !root.value.contains(event.target as Node)) close()
@@ -28,8 +26,8 @@ const onKeydown = (event: KeyboardEvent): void => {
 function show(): void {
     if (open.value) return
     open.value = true
-    if (store.unreadOnly) store.setUnreadOnly(false)
-    store.openList()
+    // Its own list of the latest notifications: the history page keeps its filter and pages.
+    store.openList('panel')
     document.addEventListener('click', onDocumentClick, true)
     document.addEventListener('keydown', onKeydown)
 }
@@ -37,7 +35,7 @@ function show(): void {
 function close(): void {
     if (!open.value) return
     open.value = false
-    store.closeList()
+    store.closeList('panel')
     document.removeEventListener('click', onDocumentClick, true)
     document.removeEventListener('keydown', onKeydown)
 }
@@ -89,17 +87,17 @@ defineExpose({ show, close })
                 <button
                     type="button"
                     class="link-button"
-                    :disabled="store.unreadCount === 0 || store.items.length === 0"
+                    :disabled="store.unreadCount === 0 || latest.length === 0"
                     data-testid="notifications-mark-all"
-                    @click="store.markAllRead()"
+                    @click="store.markAllRead('panel')"
                 >
                     {{ t('notifications.markAllRead') }}
                 </button>
             </div>
-            <p v-if="store.loadFailed && !store.loaded" class="panel-state" role="alert">
+            <p v-if="store.panelFailed && !store.panelLoaded" class="panel-state" role="alert">
                 {{ t('notifications.errorLoad') }}
             </p>
-            <p v-else-if="store.loaded && latest.length === 0" class="panel-state">
+            <p v-else-if="store.panelLoaded && latest.length === 0" class="panel-state">
                 {{ t('notifications.empty') }}
             </p>
             <div v-else class="panel-list">
