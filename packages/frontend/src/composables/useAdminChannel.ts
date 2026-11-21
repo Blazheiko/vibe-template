@@ -50,6 +50,8 @@ export function createAdminChannel(deps: AdminChannelDeps) {
     let staleEpoch = 0
     /** The unsubscribe still running; the next subscribe is sent after it (feat-243). */
     let leaving: Promise<void> | null = null
+    /** The socket (generation) the running unsubscribe was sent through. */
+    let leavingFor: number | null = null
     /** Reads and clears the retry asked for; a call, so the flag is read after the await. */
     const takeRetry = (): boolean => {
         const asked = retryRequested
@@ -95,13 +97,27 @@ export function createAdminChannel(deps: AdminChannelDeps) {
         resumePending = false
         retryRequested = false
         staleEpoch += 1
+        // feat-244 (review 2026-11-21): losing users.read leaves twice (access_changed and the
+        // permission watcher). A second unsubscribe of the same socket joins the one running:
+        // two of them could finish out of order, a subscribe sent after the first to finish would
+        // be undone on the server by the other. No subscribe is sent while one runs, so joining it
+        // leaves the socket just as unsubscribed.
+        const generation = deps.generation()
+        if (leaving !== null && leavingFor === generation) {
+            await leaving
+            return
+        }
         // Idempotent on the server, and allowed whatever the role: always sent.
         const unsubscribing = deps.unsubscribe().catch(() => undefined)
         leaving = unsubscribing
+        leavingFor = generation
         try {
             await unsubscribing
         } finally {
-            if (leaving === unsubscribing) leaving = null
+            if (leaving === unsubscribing) {
+                leaving = null
+                leavingFor = null
+            }
         }
     }
 

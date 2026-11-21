@@ -258,4 +258,67 @@ describe('admin channel', () => {
         expect(order).toEqual(['unsubscribe', 'subscribe'])
         expect(channel.isConfirmed()).toBe(true)
     })
+
+    // feat-244 (review 2026-11-21): access_changed and the permission watcher both leave; the
+    // second unsubscribe would finish first and the subscribe sent after it be undone by the other.
+    it('a second leave of the same socket joins the unsubscribe still running', async () => {
+        const state = { generation: 1, wanted: false }
+        const unsubscribes: (() => void)[] = []
+        const order: string[] = []
+        const channel = createAdminChannel({
+            subscribe: vi.fn(() => {
+                order.push('subscribe')
+                return Promise.resolve(true)
+            }),
+            unsubscribe: vi.fn(
+                () =>
+                    new Promise<void>((resolve) => {
+                        order.push('unsubscribe')
+                        unsubscribes.push(resolve)
+                    }),
+            ),
+            generation: () => state.generation,
+            wanted: () => state.wanted,
+            onResumed: vi.fn(),
+        })
+
+        const first = channel.leave()
+        const second = channel.leave()
+        expect(order).toEqual(['unsubscribe'])
+
+        state.wanted = true
+        const subscribed = channel.ensure()
+        await Promise.resolve()
+        expect(order).toEqual(['unsubscribe'])
+
+        unsubscribes[0]?.()
+        await Promise.all([first, second, subscribed])
+        expect(order).toEqual(['unsubscribe', 'subscribe'])
+        expect(channel.isConfirmed()).toBe(true)
+    })
+
+    it('a leave on a new socket sends its own unsubscribe', async () => {
+        const state = { generation: 1, wanted: false }
+        const unsubscribes: (() => void)[] = []
+        const unsubscribe = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    unsubscribes.push(resolve)
+                }),
+        )
+        const channel = createAdminChannel({
+            subscribe: vi.fn(() => Promise.resolve(true)),
+            unsubscribe,
+            generation: () => state.generation,
+            wanted: () => state.wanted,
+            onResumed: vi.fn(),
+        })
+
+        const first = channel.leave()
+        state.generation = 2
+        const second = channel.leave()
+        expect(unsubscribe).toHaveBeenCalledTimes(2)
+        for (const resolve of unsubscribes) resolve()
+        await Promise.all([first, second])
+    })
 })
