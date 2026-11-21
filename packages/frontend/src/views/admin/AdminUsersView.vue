@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { useDateFormat } from '@/composables/useDateFormat'
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { ROLES, type Role } from 'shared/access'
+import RoleChangeDialog from '@/components/admin/RoleChangeDialog.vue'
+import { useUserStore } from '@/stores/user'
+import { ROLE_LABELS, canChangeRoleOf } from '@/views/admin/role-options'
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue'
 import AdminUserDetailModal from '@/components/admin/AdminUserDetailModal.vue'
 import { useAdminUserDetailModal } from '@/composables/useAdminUserDetailModal'
@@ -27,6 +31,33 @@ const error = ref<string | null>(null)
 const { isModalOpen, selectedUser, detailLoading, detailError, openUserModal, closeModal } =
     useAdminUserDetailModal()
 
+// feat-241 (Р10): the role column and filter; the change-role action needs users.roles.assign and
+// a target the delegation policy allows. The detail needs users.sensitive.read (feat-240), the
+// history audit.read.account.
+const userStore = useUserStore()
+const roleFilter = ref<Role | ''>('')
+const canOpenDetail = computed(() => userStore.can('users.sensitive.read'))
+const canReadLog = computed(() => userStore.can('audit.read.account'))
+const roleTarget = ref<AdminUserListItem | null>(null)
+
+function mayChangeRole(user: AdminUserListItem): boolean {
+    const me = userStore.user
+    if (me === null || !userStore.can('users.roles.assign')) return false
+    return canChangeRoleOf({ id: me.id, role: me.role }, user)
+}
+
+function openDetail(id: string) {
+    if (canOpenDetail.value) void openUserModal(id)
+}
+
+function onRoleChanged(role: Role) {
+    const target = roleTarget.value
+    if (target !== null) {
+        users.value = users.value.map((user) => (user.id === target.id ? { ...user, role } : user))
+    }
+    roleTarget.value = null
+}
+
 const filters = ref<UserFilters>({
     userId: '',
     dateFrom: '',
@@ -49,6 +80,7 @@ async function loadUsers(reset = true) {
         userId: filters.value.userId,
         dateFrom: filters.value.dateFrom,
         dateTo: filters.value.dateTo,
+        ...(roleFilter.value !== '' ? { role: roleFilter.value } : {}),
     })
 
     loading.value = false
@@ -78,6 +110,7 @@ function resetFilters() {
         dateFrom: '',
         dateTo: '',
     }
+    roleFilter.value = ''
     void loadUsers()
 }
 
@@ -108,6 +141,16 @@ onMounted(() => {
             @reset="resetFilters"
         />
 
+        <label class="admin-users__role-filter">
+            <span>Role</span>
+            <select v-model="roleFilter" name="role" @change="loadUsers()">
+                <option value="">Any role</option>
+                <option v-for="role in ROLES" :key="role" :value="role">
+                    {{ ROLE_LABELS[role] }}
+                </option>
+            </select>
+        </label>
+
         <div v-if="loading" class="admin-users__loading">Loading users...</div>
         <div v-else-if="error !== null && users.length === 0" class="admin-users__error">
             {{ error }}
@@ -121,6 +164,7 @@ onMounted(() => {
                         <th>Name</th>
                         <th>Email</th>
                         <th>Registered At</th>
+                        <th>Role</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -129,15 +173,26 @@ onMounted(() => {
                         v-for="user in users"
                         :key="user.id"
                         class="users-table__row"
-                        @click="openUserModal(user.id)"
+                        :class="{ 'users-table__row--static': !canOpenDetail }"
+                        @click="openDetail(user.id)"
                     >
                         <td class="cell-id">{{ user.id }}</td>
                         <td>{{ user.name }}</td>
                         <td class="cell-email">{{ user.email }}</td>
                         <td>{{ formatDate(user.registeredAt) }}</td>
-                        <td>
+                        <td class="cell-role">{{ ROLE_LABELS[user.role] }}</td>
+                        <td class="cell-actions">
+                            <button
+                                v-if="mayChangeRole(user)"
+                                type="button"
+                                class="role-btn"
+                                @click.stop="roleTarget = user"
+                            >
+                                Change role
+                            </button>
                             <!-- feat-235: what was done to this account, in the audit log. -->
                             <router-link
+                                v-if="canReadLog"
                                 class="audit-link"
                                 :to="{ path: '/admin/audit-log', query: { targetUserId: user.id } }"
                                 @click.stop
@@ -147,7 +202,7 @@ onMounted(() => {
                         </td>
                     </tr>
                     <tr v-if="users.length === 0">
-                        <td colspan="5" class="empty-row">No users found</td>
+                        <td colspan="6" class="empty-row">No users found</td>
                     </tr>
                 </tbody>
             </table>
@@ -173,10 +228,46 @@ onMounted(() => {
             :user="selectedUser"
             @close="closeModal"
         />
+        <RoleChangeDialog
+            v-if="userStore.user?.role !== undefined"
+            :open="roleTarget !== null"
+            :actor-role="userStore.user.role"
+            :target="roleTarget"
+            @close="roleTarget = null"
+            @changed="onRoleChanged"
+        />
     </div>
 </template>
 
 <style scoped>
+.admin-users__role-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px;
+    font-size: 0.875rem;
+}
+
+.users-table__row--static {
+    cursor: default;
+}
+
+.cell-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.role-btn {
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
 .admin-users {
     padding: 24px;
     color: var(--text-primary);

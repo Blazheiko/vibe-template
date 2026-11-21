@@ -1,4 +1,5 @@
 import type { ApiResponse } from './api-error'
+import type { Role } from 'shared/access'
 import { callApi } from './api-client'
 import type {
     OAuthProvidersResponse,
@@ -390,6 +391,9 @@ export const adminUsersApi = {
         callApi(adminContracts.users, {
             query: { ...params, userId: params?.userId?.trim() },
         }),
+    // feat-241: changes the role of a user; the server applies the delegation policy.
+    setRole: (id: string, role: Role) =>
+        callApi(adminContracts.setUserRole, { params: { id }, body: { role } }),
 }
 
 export const adminOnlineUsersApi = {
