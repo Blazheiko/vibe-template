@@ -351,6 +351,7 @@ A role that was read is applied like this:
 
 - Every read gets a number when it starts; per user the number of the last settled read (successful or failed) is kept, and the outcome of an older read that settled later is dropped: an old success neither overwrites a newer role nor lifts the pause of a newer failure, and an old failure pauses nothing after a newer success.
 - A read applies only to the connections registered when it started. A connection opened during the read already read its role at connect, and the older result does not overwrite it.
+- The `user_role_changed` signal marks the user's connections still being opened. A marked connection reads its role again before it is registered, so it never registers with a role read before the change.
 - A user that no longer exists gets the role `user`.
 - A changed role is written to the connection first, then the connection is sent `access_changed { role }`: a request the client sends after the event is checked against the new role. The frontend applies it to the store and re-checks the current route ([`useAccessSync.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/frontend/src/composables/useAccessSync.ts)).
 - A connection whose role lacks `users.read` leaves the `admin` channel. The connection itself is not closed.

@@ -72,6 +72,16 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
                 ? Promise.resolve(false)
                 : wsSessionRevocation.isSessionStored(sessionId, userData.userToken),
         ])
+        // feat-243 (review 2026-11-21): a role change signalled while the role was read is not
+        // seen by wsRoleSync (this connection is not registered yet); it marked the connection,
+        // which reads its role again. Still in the connecting list, so a revocation meanwhile
+        // marks it too; from the last read to the registration nothing is awaited.
+        while (
+            access !== undefined &&
+            wsConnectionRegistry.takeConnectingRoleStale(userData.uuid)
+        ) {
+            access = await userRoleService.findAccess(BigInt(userId))
+        }
     } finally {
         revokedMeanwhile = settle()
     }

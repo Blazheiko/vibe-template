@@ -72,7 +72,7 @@ const start = async (): Promise<void> => {
         // feat-240 (Р8): a role changed anywhere makes this instance re-read the role of the
         // user's open connections here.
         userEventBus.handleServerEvents((_event, userId) => {
-            void wsRoleSync.refreshUsers([userId])
+            void wsRoleSync.onRoleChanged(userId)
         })
         // feat-232: events to a user's connections on every instance. Not awaited: SUBSCRIBE
         // waits for Redis, and until it answers events still reach this process's connections.

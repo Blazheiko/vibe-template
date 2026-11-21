@@ -62,8 +62,17 @@ vi.mock('#app/services/communication/session-list-announcer.js', () => ({
 const touchSessionFromWs = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 vi.mock('#vendor/utils/session/ws-session-touch.js', () => ({ touchSessionFromWs }))
 
+// feat-243: wsRoleSync.onRoleChanged, whose refresh of registered connections tells them nothing here.
+vi.mock('#app/services/communication/broadcast-service.js', () => ({
+    broadcastService: { broadcastMessageToUserConnection: vi.fn() },
+}))
+
 const { websocketCoordinator } = await import('./ws-coordinator.js')
 const { wsConnectionRegistry } = await import('./ws-connection-registry.js')
+const { userRoleService } = await import('#app/services/user/user-role-service.js')
+/** How many times handleConnected read the role. */
+const accessReads = (): number => vi.mocked(userRoleService).findAccess.mock.calls.length
+const { wsRoleSync } = await import('./ws-role-sync.js')
 
 let counter = 0
 const connection = (userId: string, appType: 'web' | 'pwa' = 'web') => {
@@ -287,6 +296,70 @@ describe('a session revoked while the connection is being opened (feat-209)', ()
         expect(wsConnectionRegistry.listUserConnections('9109').map((c) => c.uuid)).toEqual([
             conn.userData.uuid,
         ])
+        await conn.close()
+    })
+})
+
+// feat-243 (review 2026-11-21): a role change signalled while the role was read; wsRoleSync does
+// not see the connection yet, so the signal marks it and it reads its role again.
+describe('a role change while the connection is being opened (feat-243)', () => {
+    it('registers with the role read after the signal, not the one read before', async () => {
+        const conn = connection('9150')
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+
+        // The read answered with the old role; the signal is handled before the registration.
+        wsConnectionRegistry.markConnectingRoleStale('9150')
+        resolveAccess({ role: 'admin', sessionToken: 'u1' })
+        await vi.waitFor(() => {
+            expect(accessReads()).toBe(2)
+        })
+        expect(wsConnectionRegistry.isUserOnline('9150')).toBe(false)
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(conn.userData.role).toBe('user')
+        expect(wsConnectionRegistry.getConnection('9150', conn.userData.uuid)).toBe(conn.ws)
+        await conn.close()
+    })
+
+    it('the server bus event marks the connections being opened', async () => {
+        const conn = connection('9151')
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+
+        void wsRoleSync.onRoleChanged('9151')
+        resolveAccess({ role: 'admin', sessionToken: 'u1' })
+        await vi.waitFor(() => {
+            expect(accessReads()).toBe(2)
+        })
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(conn.userData.role).toBe('user')
+        await conn.close()
+    })
+
+    it('a revocation during the second read still closes the connection', async () => {
+        const conn = connection('9152')
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+
+        wsConnectionRegistry.markConnectingRoleStale('9152')
+        resolveAccess({ role: 'admin', sessionToken: 'u1' })
+        await vi.waitFor(() => {
+            expect(accessReads()).toBe(2)
+        })
+        wsConnectionRegistry.revokeConnecting('9152')
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(conn.endedWith).toEqual([4001])
+        expect(wsConnectionRegistry.isUserOnline('9152')).toBe(false)
+    })
+
+    it('reads once without a signal', async () => {
+        const conn = connection('9153')
+        await connect(conn)
+        expect(accessReads()).toBe(1)
+        expect(wsConnectionRegistry.markConnectingRoleStale('9153')).toBe(0)
         await conn.close()
     })
 })

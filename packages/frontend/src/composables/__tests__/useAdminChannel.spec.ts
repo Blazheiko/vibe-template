@@ -175,4 +175,87 @@ describe('admin channel', () => {
         expect(subscribe).toHaveBeenCalledTimes(1)
         expect(channel.isConfirmed()).toBe(true)
     })
+
+    // feat-243 (second review): the permission goes and comes back on the same socket while the
+    // first subscribe is in flight; its answer comes after the unsubscribe.
+    it('an answer to a subscribe sent before leaving confirms nothing; the retry waits for the unsubscribe', async () => {
+        const state = { generation: 1, wanted: true }
+        const subscribes: ((ok: boolean) => void)[] = []
+        const unsubscribes: (() => void)[] = []
+        const order: string[] = []
+        const channel = createAdminChannel({
+            subscribe: vi.fn(
+                () =>
+                    new Promise<boolean>((resolve) => {
+                        order.push('subscribe')
+                        subscribes.push(resolve)
+                    }),
+            ),
+            unsubscribe: vi.fn(
+                () =>
+                    new Promise<void>((resolve) => {
+                        order.push('unsubscribe')
+                        unsubscribes.push(resolve)
+                    }),
+            ),
+            generation: () => state.generation,
+            wanted: () => state.wanted,
+            onResumed: vi.fn(),
+        })
+
+        const first = channel.ensure()
+        state.wanted = false
+        const left = channel.leave()
+        state.wanted = true
+        void channel.ensure()
+
+        // The first answer arrives after the unsubscribe was sent: it is stale.
+        subscribes[0]?.(true)
+        await Promise.resolve()
+        expect(channel.isConfirmed()).toBe(false)
+        // The retry waits for the unsubscribe.
+        expect(order).toEqual(['subscribe', 'unsubscribe'])
+
+        unsubscribes[0]?.()
+        await left
+        await vi.waitFor(() => {
+            expect(order).toEqual(['subscribe', 'unsubscribe', 'subscribe'])
+        })
+        subscribes[1]?.(true)
+        await first
+
+        expect(channel.isConfirmed()).toBe(true)
+    })
+
+    it('a subscribe asked for during an unsubscribe is sent after it', async () => {
+        const order: string[] = []
+        let finishUnsubscribe: () => void = () => undefined
+        const channel = createAdminChannel({
+            subscribe: vi.fn(() => {
+                order.push('subscribe')
+                return Promise.resolve(true)
+            }),
+            unsubscribe: vi.fn(
+                () =>
+                    new Promise<void>((resolve) => {
+                        order.push('unsubscribe')
+                        finishUnsubscribe = resolve
+                    }),
+            ),
+            generation: () => 1,
+            wanted: () => true,
+            onResumed: vi.fn(),
+        })
+
+        const left = channel.leave()
+        const subscribed = channel.ensure()
+        await Promise.resolve()
+        expect(order).toEqual(['unsubscribe'])
+
+        finishUnsubscribe()
+        await left
+        await subscribed
+        expect(order).toEqual(['unsubscribe', 'subscribe'])
+        expect(channel.isConfirmed()).toBe(true)
+    })
 })

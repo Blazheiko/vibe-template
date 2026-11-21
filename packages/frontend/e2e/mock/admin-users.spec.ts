@@ -93,7 +93,20 @@ test('a user_admin changes the role of a user from the list', async ({ page, api
     const dialog = page.getByRole('dialog', { name: 'Change role' })
     await expect(dialog.getByRole('radio')).toHaveCount(2)
     await dialog.getByLabel('Knowledge base editor').check()
+    // feat-243: after the change the list reads the selection again; the server now has the role.
+    await api.answer('admin/users?*', 200, {
+        status: 'success',
+        items: [
+            { ...user(7), role: 'kb_editor' },
+            { ...user(8), emailVerified: false },
+        ],
+        total: 2,
+        nextCursor: null,
+        hasMore: false,
+    })
+    const reread = page.waitForRequest((request) => request.url().includes('/api/admin/users?'))
     await dialog.getByRole('button', { name: 'Change role' }).click()
+    await reread
 
     await expect(dialog).toHaveCount(0)
     await expect(row.getByRole('cell', { name: 'Knowledge base editor' })).toBeVisible()

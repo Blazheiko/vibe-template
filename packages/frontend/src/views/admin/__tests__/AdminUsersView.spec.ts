@@ -24,9 +24,24 @@ const user = (id: string, over: Partial<AdminUserListItem> = {}): AdminUserListI
     emailVerified: true,
     ...over,
 })
-const page = (items: AdminUserListItem[], total = items.length) => ({
-    data: { status: 'success', items, total, nextCursor: null, hasMore: false },
+const page = (
+    items: AdminUserListItem[],
+    total = items.length,
+    nextCursor: string | null = null,
+) => ({
+    data: { status: 'success', items, total, nextCursor, hasMore: nextCursor !== null },
 })
+const held = () => {
+    let answer: (value: unknown) => void = () => undefined
+    api.list.mockReturnValueOnce(
+        new Promise((resolve) => {
+            answer = resolve
+        }),
+    )
+    return (value: unknown) => {
+        answer(value)
+    }
+}
 
 const mountView = async () => {
     const router = createRouter({
@@ -75,7 +90,7 @@ describe('AdminUsersView', () => {
         expect(wrapper.text()).toContain('Loaded: 1 / 1')
     })
 
-    it('a row whose new role no longer matches the role filter leaves the list', async () => {
+    it('a row whose new role no longer matches the role filter leaves the list at once and the selection is read again', async () => {
         api.list.mockResolvedValueOnce(page([user('2')]))
         const wrapper = await mountView()
         api.list.mockResolvedValueOnce(
@@ -84,18 +99,74 @@ describe('AdminUsersView', () => {
         await wrapper.find('select[name="role"]').setValue('kb_editor')
         await flushPromises()
 
+        const reread = held()
         await wrapper.findAll('.role-btn')[0]?.trigger('click')
         wrapper.findComponent({ name: 'RoleChangeDialog' }).vm.$emit('changed', 'support_operator')
         await flushPromises()
 
         expect(ids(wrapper)).toEqual(['4'])
         expect(wrapper.text()).toContain('Loaded: 1 / 1')
+        expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ role: 'kb_editor' }))
+
+        reread(page([user('4', { role: 'kb_editor' }), user('5', { role: 'kb_editor' })], 2))
+        await flushPromises()
+        expect(ids(wrapper)).toEqual(['4', '5'])
+    })
+
+    // feat-243 (second review): a page asked for before the role change answers after it.
+    it('a first page asked for before the role change does not bring the row back', async () => {
+        api.list.mockResolvedValueOnce(page([user('3', { role: 'kb_editor' })], 1))
+        const wrapper = await mountView()
+        api.list.mockResolvedValueOnce(page([user('3', { role: 'kb_editor' })], 1))
+        await wrapper.find('select[name="role"]').setValue('kb_editor')
+        await flushPromises()
+
+        // The dialog is open while the list is read again.
+        await wrapper.find('.role-btn').trigger('click')
+        const old = held()
+        await wrapper.find('form').trigger('submit')
+        const reread = held()
+        wrapper.findComponent({ name: 'RoleChangeDialog' }).vm.$emit('changed', 'user')
+        await flushPromises()
+
+        old(page([user('3', { role: 'kb_editor' })], 1))
+        reread(page([], 0))
+        await flushPromises()
+
+        expect(ids(wrapper)).toEqual([])
+        expect(wrapper.text()).toContain('Loaded: 0 / 0')
+    })
+
+    it('a next page asked for before the role change does not bring an old total back', async () => {
+        api.list.mockResolvedValueOnce(page([user('2')], 1))
+        const wrapper = await mountView()
+        api.list.mockResolvedValueOnce(
+            page([user('4', { role: 'kb_editor' }), user('3', { role: 'kb_editor' })], 3, '3'),
+        )
+        await wrapper.find('select[name="role"]').setValue('kb_editor')
+        await flushPromises()
+
+        const old = held()
+        await wrapper.find('.load-more-btn').trigger('click')
+        const reread = held()
+        await wrapper.findAll('.role-btn')[0]?.trigger('click')
+        wrapper.findComponent({ name: 'RoleChangeDialog' }).vm.$emit('changed', 'user')
+        await flushPromises()
+
+        reread(page([user('3', { role: 'kb_editor' }), user('1', { role: 'kb_editor' })], 2))
+        await flushPromises()
+        old(page([user('1', { role: 'kb_editor' })], 3))
+        await flushPromises()
+
+        expect(ids(wrapper)).toEqual(['3', '1'])
+        expect(wrapper.text()).toContain('Loaded: 2 / 2')
     })
 
     it('without a role filter the row shows its new role', async () => {
         api.list.mockResolvedValueOnce(page([user('2')]))
         const wrapper = await mountView()
 
+        api.list.mockResolvedValueOnce(page([user('2', { role: 'kb_editor' })]))
         await wrapper.find('.role-btn').trigger('click')
         wrapper.findComponent({ name: 'RoleChangeDialog' }).vm.$emit('changed', 'kb_editor')
         await flushPromises()

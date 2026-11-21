@@ -139,6 +139,15 @@ let running = false
 
 export const wsRoleSync = {
     /**
+     * The server bus event user_role_changed: the connections of the user being opened read their
+     * role again before registering (feat-243), the registered ones are refreshed here.
+     */
+    onRoleChanged(userId: string): Promise<RoleSyncReport> {
+        wsConnectionRegistry.markConnectingRoleStale(userId)
+        return wsRoleSync.refreshUsers([userId])
+    },
+
+    /**
      * Reads the roles of these users with one query and applies them to their connections on
      * this instance. A user that no longer exists gets the role `user`. Never throws.
      */
