@@ -2423,6 +2423,16 @@
             "dependencies": ["feat-242"],
             "status": "done",
             "evidence": "PR #758 (merge e5158a4), registry #757 (in_progress), #759 (review). Fixes of the second review of the roles work (feat-242, 2026-11-21): user_role_changed goes through wsRoleSync.onRoleChanged, which marks the user's connections being opened (markConnectingRoleStale); handleConnected reads the role again while marked, inside the connecting window (a revocation meanwhile still closes it); useAdminChannel: leaving makes a subscribe answer in flight stale and the next subscribe waits for the unsubscribe; AdminUsersView: a role change starts a new generation and re-reads the selection quietly; docs backend/websocket.md (both locales); mock e2e of the role change answers the re-read with the new role. Every new test fails on the previous code (backend 3, frontend 5). Local: make check (backend 3414, frontend 904), test:e2e 119 + admin-users.spec.ts re-run after the mock fix (2), docs:build + docs:verify. CI on bd87abe: quality, build, e2e, e2e-live, test-pg, test-redis green (CI 44938643799, PG tests 44938643774, Redis tests 44938643845, Docs 44938643807); an earlier quality run on 2ad\u2026 failed once in frontend typecheck on shared/audit exports, not touched here, and passed on re-run."
+        },
+        {
+            "id": "feat-244",
+            "name": "Admin Channel Leave Coalescing",
+            "description": "Review of feat-243 (2026-11-21): losing users.read can start two unsubscribes of the admin channel (access_changed and the permission watcher); useAdminChannel kept only the last promise, so a subscribe could be sent after the second finished and be undone on the server by the first. Repeated leave() calls of one socket now join the unsubscribe still running.",
+            "owner": "Blazheiko",
+            "branch": "fix/admin-channel-leave",
+            "dependencies": ["feat-243"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
