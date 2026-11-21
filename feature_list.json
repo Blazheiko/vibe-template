@@ -2381,8 +2381,8 @@
             "owner": "Blazheiko",
             "branch": "fix/notification-center-review-3",
             "dependencies": ["feat-238"],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #742 (merge 4124b74), registry #741. loadMore() takes a ticket and drops its answer once pageSeq has passed it (a successful mark-read or read-all, or a newer first-page read), next to the account and cursor checks, so a late \"load more\" page can no longer append unread rows after read-all when the cursor stays the same. Store test (delayed second page, read-all, first-page refresh with the same cursor, then the old answer) fails without the fix. Local: make check (frontend 833, backend 3374), mocked e2e notifications + account-profile 11/11. CI run 44893788743: quality, e2e, e2e-live green. Status went in_progress -> done without a separate review PR (follow-up of feat-238)."
         }
     ]
 }
