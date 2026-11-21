@@ -3,7 +3,12 @@ import { mapControllerError } from '#app/controllers/shared/controller-error.js'
 import { badRequest } from '#app/services/shared/errors.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import type { AdminUserListQuery } from 'shared/schemas'
-import type { AdminUserListResponse } from 'shared/responses'
+import type { AdminUserListResponse, SetUserRoleResponse } from 'shared/responses'
+import type { SetUserRoleInput } from 'shared/schemas'
+import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
+import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
+import { respond } from '#app/controllers/shared/controller-error.js'
+import { roleAssignmentService } from '#app/services/user/role-assignment-service.js'
 import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 export default {
@@ -31,6 +36,7 @@ export default {
         const filters = {
             ...(userId !== undefined && { userId }),
             ...(cursor !== undefined && { cursor }),
+            ...(query.role !== undefined && { role: query.role }),
             ...(query.dateFrom !== undefined && { dateFrom: query.dateFrom }),
             ...(query.dateTo !== undefined && { dateTo: query.dateTo }),
             limit: query.limit,
@@ -45,5 +51,28 @@ export default {
             nextCursor: result.nextCursor,
             hasMore: result.hasMore,
         }
+    },
+
+    /**
+     * PATCH /admin/users/:id/role (feat-241, Р6). The guard checked users.roles.assign; the
+     * service checks the rest under its lock: the delegation policy, the own role, a verified
+     * email for a staff role and the last admin.
+     */
+    async setRole(context: HttpContext<SetUserRoleInput>): Promise<SetUserRoleResponse> {
+        const targetUserId = parseEntityId(context.httpData.params['id'] ?? '')
+        if (targetUserId === null) {
+            return mapControllerError(context, badRequest('Invalid user id', 'invalid_user_id'))
+        }
+        const { role } = getTypedPayload(context)
+        const result = await roleAssignmentService.assign({
+            actor: auditActorFrom(context),
+            targetUserId,
+            role,
+        })
+        return respond(context, result, (value) => ({
+            status: 'success' as const,
+            user: { id: String(value.userId), role: value.role },
+            changed: value.changed,
+        }))
     },
 }

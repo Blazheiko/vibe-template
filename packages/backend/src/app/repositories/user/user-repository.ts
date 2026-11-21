@@ -18,6 +18,8 @@ export type UserUpdate = Partial<
 
 export interface AdminUserListFilters {
     userId?: bigint
+    /** feat-241: only the users with this role. */
+    role?: Role
     dateFrom?: Date
     dateTo?: Date
     /** Only users with an id below this one: the last id of the previous page. */
@@ -31,6 +33,8 @@ export interface AdminUserListRow {
     name: string
     email: string | null
     createdAt: Date
+    role: Role
+    emailVerifiedAt: Date | null
 }
 
 export interface AdminOnlineUserRow {
@@ -205,6 +209,10 @@ export const userRepository: IUserRepository = {
             conditions.push(eq(users.id, filters.userId))
         }
 
+        if (filters.role !== undefined) {
+            conditions.push(eq(users.role, filters.role))
+        }
+
         if (filters.dateFrom !== undefined) {
             conditions.push(gte(users.createdAt, filters.dateFrom))
         }
@@ -229,6 +237,8 @@ export const userRepository: IUserRepository = {
                 name: users.name,
                 email: users.email,
                 createdAt: users.createdAt,
+                role: users.role,
+                emailVerifiedAt: users.emailVerifiedAt,
             })
             .from(users)
             .where(whereClause)

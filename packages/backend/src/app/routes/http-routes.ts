@@ -575,6 +575,19 @@ export default [
     {
         group: [
             defineRoute({
+                contract: adminContracts.setUserRole,
+                handler: AdminUserController.setRole.bind(AdminUserController),
+                description: 'Change the role of a user (feat-241)',
+            }),
+        ],
+        description: 'Admin role assignment (feat-241)',
+        rateLimit: { windowMs: 60_000, maxRequests: 30 },
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:users.roles.assign'],
+        prefix: 'admin',
+    },
+    {
+        group: [
+            defineRoute({
                 contract: adminContracts.onlineHistory,
                 handler: AdminOnlineHistoryController.list.bind(AdminOnlineHistoryController),
                 description: 'List online history records (admin)',

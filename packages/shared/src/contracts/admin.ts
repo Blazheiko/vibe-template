@@ -5,7 +5,11 @@ import type {
 import type { LlmTextUsageQueryInput } from '../schemas/query/usage.js'
 import type { AdminAuditEventsQueryInput } from '../schemas/query/admin-audit-events.js'
 import type { AdminAuditEventsResponse } from '../responses/admin-audit-events-controller.js'
-import type { AdminUserListResponse } from '../responses/admin-user-controller.js'
+import type {
+    AdminUserListResponse,
+    SetUserRoleResponse,
+} from '../responses/admin-user-controller.js'
+import type { SetUserRoleInputSchema } from '../schemas/admin/set-user-role.js'
 import type {
     AdminOnlineUserDetailResponse,
     AdminOnlineUserListResponse,
@@ -44,6 +48,11 @@ export const adminContracts = {
     usageStats: contract<undefined, undefined, GetUsageStatsResponse>()(
         'get',
         '/admin/usage/stats',
+    ),
+    /** feat-241 (Р6): changes the role of a user (can:users.roles.assign, the delegation policy). */
+    setUserRole: contract<typeof SetUserRoleInputSchema.inferIn, undefined, SetUserRoleResponse>()(
+        'patch',
+        '/admin/users/:id/role',
     ),
     /** feat-235 (Р7): the audit log, newest first, by the filters of the query. */
     auditEvents: contract<undefined, AdminAuditEventsQueryInput, AdminAuditEventsResponse>()(

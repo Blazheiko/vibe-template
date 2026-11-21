@@ -10,6 +10,8 @@ const row = (id: number) => ({
     name: `User ${String(id)}`,
     email: `u${String(id)}@example.test`,
     createdAt: new Date(id * 1000),
+    role: 'user' as const,
+    emailVerifiedAt: null,
 })
 
 beforeEach(() => {
@@ -20,15 +22,33 @@ describe('adminUserService.listUsers', () => {
     it('passes the filters through, asking for one row more than the page, and maps rows to the response shape', async () => {
         listAdminUsers.mockResolvedValue({
             items: [
-                { id: 5n, name: 'Ann', email: 'ann@example.test', createdAt: new Date(0) },
-                { id: 6n, name: 'Bob', email: null, createdAt: new Date(1000) },
+                {
+                    id: 5n,
+                    name: 'Ann',
+                    email: 'ann@example.test',
+                    createdAt: new Date(0),
+                    role: 'kb_editor',
+                    emailVerifiedAt: new Date(0),
+                },
+                {
+                    id: 6n,
+                    name: 'Bob',
+                    email: null,
+                    createdAt: new Date(1000),
+                    role: 'user',
+                    emailVerifiedAt: null,
+                },
             ],
             total: 2,
         })
 
-        const result = await adminUserService.listUsers({ userId: 5n, limit: 10 })
+        const result = await adminUserService.listUsers({
+            userId: 5n,
+            role: 'kb_editor',
+            limit: 10,
+        })
 
-        expect(listAdminUsers).toHaveBeenCalledWith({ userId: 5n, limit: 11 })
+        expect(listAdminUsers).toHaveBeenCalledWith({ userId: 5n, role: 'kb_editor', limit: 11 })
         expect(result).toEqual({
             items: [
                 {
@@ -36,8 +56,17 @@ describe('adminUserService.listUsers', () => {
                     name: 'Ann',
                     email: 'ann@example.test',
                     registeredAt: '1970-01-01T00:00:00.000Z',
+                    role: 'kb_editor',
+                    emailVerified: true,
                 },
-                { id: '6', name: 'Bob', email: '', registeredAt: '1970-01-01T00:00:01.000Z' },
+                {
+                    id: '6',
+                    name: 'Bob',
+                    email: '',
+                    registeredAt: '1970-01-01T00:00:01.000Z',
+                    role: 'user',
+                    emailVerified: false,
+                },
             ],
             total: 2,
             nextCursor: null,
