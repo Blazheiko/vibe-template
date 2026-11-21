@@ -2401,8 +2401,8 @@
             "owner": "Blazheiko",
             "branch": "feat/role-assignment",
             "dependencies": ["feat-240"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #750 (merge 7e9fa70), registry #749 (in_progress), #751 (review); depends on feat-240 (#746). PATCH /admin/users/:id/role (can:users.roles.assign, 30/min) over roleAssignmentService (403/404/409 with reason, changed false for the same role, user.role.changed with the user actor and request id); GET /admin/users items carry role and emailVerified, filter role; AdminUsersView role column and filter, 'Change role' only for rows the delegation policy allows (never the own row), RoleChangeDialog (allowed roles, staff roles disabled without a verified email, reason texts); row detail needs users.sensitive.read, log link audit.read.account; docs in both locales, recommendations item 6 marked implemented. Local: make check (backend 3407, frontend 889, shared 120), make test-pg 526 executed / 0 skipped (+5 admin-user-role-http), make test-redis 178 / 0 skipped, test:e2e 120 (+1 dialog), test:e2e:live 34 (+4 roles.spec.ts: give kb_editor from the list, operator read-only, an open admin tab lowered to user goes to /account without a reload, staff roles disabled for an unverified account), docs:build + docs:verify. CI on dfabb46: quality, build, e2e, e2e-live, test-pg, test-redis green (CI 44917627311, PG tests 44917627274, Redis tests 44917627284, Docs 44917627322). 409 last_admin is not reachable by one HTTP request (the actor is an admin and may not change its own role); covered by the service races of feat-240."
         }
     ]
 }
