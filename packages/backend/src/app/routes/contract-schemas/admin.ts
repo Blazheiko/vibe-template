@@ -3,6 +3,7 @@ import {
     AdminOnlineHistoryListQuerySchema,
     AdminUserListQuerySchema,
     LlmTextUsageQuerySchema,
+    SetUserRoleInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
 import { adminContracts } from 'shared/contracts'
@@ -12,6 +13,10 @@ export const adminSchemas = contractSchemas(adminContracts, {
     users: {
         query: AdminUserListQuerySchema,
         response: ResponseSchemas.AdminUserListResponseSchema,
+    },
+    setUserRole: {
+        body: SetUserRoleInputSchema,
+        response: ResponseSchemas.SetUserRoleResponseSchema,
     },
     onlineUsers: { response: ResponseSchemas.AdminOnlineUserListResponseSchema },
     onlineUser: { response: ResponseSchemas.AdminOnlineUserDetailResponseSchema },

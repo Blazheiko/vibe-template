@@ -1,11 +1,14 @@
 import { type } from '@arktype/type'
 import { DateFromString, LimitIntFromString, PaginationFields } from './common.js'
 import type { QueryInputOf } from './types.js'
+import { RoleSchema } from '../../access/role-schema.js'
 
 export const AdminUserListQuerySchema = type({
     'dateFrom?': DateFromString,
     'dateTo?': DateFromString,
     'userId?': 'string',
+    /** feat-241: only the users with this role. */
+    'role?': RoleSchema,
     /** The `nextCursor` of the previous page. */
     'cursor?': 'string',
     limit: LimitIntFromString.default('50'),

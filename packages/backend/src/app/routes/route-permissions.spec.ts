@@ -76,6 +76,7 @@ const HTTP_ROUTE_PERMISSION: Record<string, string> = {
     'get api/admin/usage/text': 'ai_usage.read',
     'get api/admin/usage/stats': 'ai_usage.read',
     'get api/admin/users': 'users.read',
+    'patch api/admin/users/:id/role': 'users.roles.assign',
     'get api/admin/users-online': 'users.read',
     'get api/admin/users-online/:id': 'users.sensitive.read',
     'get api/admin/history-online': 'users.sensitive.read',

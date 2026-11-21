@@ -1,12 +1,15 @@
 import { userRepository } from '#app/repositories/index.js'
 import type { AdminUserListFilters } from '#app/repositories/index.js'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
+import type { Role } from 'shared/access'
 
 export interface AdminUserListItem {
     id: string
     name: string
     email: string
     registeredAt: string
+    role: Role
+    emailVerified: boolean
 }
 
 export interface AdminUserListPage {
@@ -33,6 +36,8 @@ export const adminUserService = {
                 name: user.name,
                 email: user.email ?? '',
                 registeredAt: user.createdAt.toISOString(),
+                role: user.role,
+                emailVerified: user.emailVerifiedAt !== null,
             })),
             total: result.total,
             nextCursor: hasMore && lastRow !== undefined ? String(lastRow.id) : null,

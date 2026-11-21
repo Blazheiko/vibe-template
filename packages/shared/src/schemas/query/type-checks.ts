@@ -14,6 +14,7 @@ import type {
 import type { SupportChatHistoryQuery, SupportChatHistoryQueryInput } from './support.js'
 import type { LlmTextUsageQuery, LlmTextUsageQueryInput } from './usage.js'
 import type { AssertEqual, Expect } from './types.js'
+import type { Role } from '../../access/index.js'
 
 // What each query schema infers is what the callers of the API are told, so it is written out here
 // and compared with the schema at compile time: a change of the schema that changes what a
@@ -24,7 +25,14 @@ export type QueryOutputChecks = [
     Expect<
         AssertEqual<
             AdminUserListQuery,
-            { userId?: string; cursor?: string; limit: number; dateFrom?: Date; dateTo?: Date }
+            {
+                userId?: string
+                role?: Role
+                cursor?: string
+                limit: number
+                dateFrom?: Date
+                dateTo?: Date
+            }
         >
     >,
     Expect<
@@ -67,6 +75,7 @@ export type QueryInputChecks = [
             AdminUserListQueryInput,
             {
                 userId?: string
+                role?: Role
                 cursor?: string
                 limit?: number | string
                 dateFrom?: string
@@ -74,7 +83,7 @@ export type QueryInputChecks = [
             }
         >
     >,
-    Expect<AssertEqual<AdminOnlineHistoryListQueryInput, AdminUserListQueryInput>>,
+    Expect<AssertEqual<AdminOnlineHistoryListQueryInput, Omit<AdminUserListQueryInput, 'role'>>>,
     Expect<
         AssertEqual<
             AdminKnowledgeBaseListQueryInput,

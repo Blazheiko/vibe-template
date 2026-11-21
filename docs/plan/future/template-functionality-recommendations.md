@@ -116,6 +116,11 @@ push-логів, чатів і покинутих файлів не виявле
 backend. MFA/passkeys варто проєктувати разом із відновленням доступу та безпечною
 зміною факторів.
 
+**Стан (ролі й дозволи):** реалізовано фічами `feat-240` і `feat-241` за планом
+[`roles-permissions-plan.md`](../roles-permissions-plan.md): ролі `support_operator`, `kb_editor`,
+`user_admin` поряд з `user` і `admin`, дозволи на кожен маршрут адмінки, призначення ролей в
+адмінці й через CLI, синхронізація ролі відкритих вкладок і з'єднань. MFA/passkeys — окремо.
+
 Джерела: [схема БД](../../../packages/backend/src/database/schema.ts),
 [контракти авторизації](../../../packages/shared/src/contracts/auth.ts).
 Зовнішні підстави: [OWASP Authorization Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html),

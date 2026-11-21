@@ -42,7 +42,7 @@
 | kb       | `kb.screenshot.uploaded/removed`     | `user`                   | `kb_article` | `{ screenshot: { from, to } }` (лише наявність), `mime`                                          |
 | ai       | `ai.prompt.updated`                  | `user`                   | `llm_prompt` | `model`, `temperature`, `maxTokens`, `topic`; текст як відбиток                                  |
 
-`auth.account.claimed` пишеться поряд із подією, що спричинила підтвердження (скидання за посиланням, прив'язка OAuth), з тим самим `request_id` і `occurred_at`. `user.role.changed` пише сервіс [`role-assignment-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/role-assignment-service.ts) у транзакції зміни ролі; зараз її викликає лише CLI `user:set-role` (виконавець `system`, джерело `cli`, див. [Скрипти](/reference/scripts)). Поки не записуються: реєстрація, відкликання однієї сесії, невдалі спроби.
+`auth.account.claimed` пишеться поряд із подією, що спричинила підтвердження (скидання за посиланням, прив'язка OAuth), з тим самим `request_id` і `occurred_at`. `user.role.changed` пише сервіс [`role-assignment-service.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/user/role-assignment-service.ts) у транзакції зміни ролі; його викликають `PATCH /admin/users/:id/role` (виконавець `user`) і CLI `user:set-role` (виконавець `system`, джерело `cli`, див. [Скрипти](/reference/scripts)). Поки не записуються: реєстрація, відкликання однієї сесії, невдалі спроби.
 
 ## Виконавці й докази
 
@@ -50,9 +50,7 @@
 - `proof_holder` — сесії акаунта немає, лише доказ. `actor_user_id` — `NULL`, доказ обов'язковий: `email_link` (відновлення пароля за посиланням), `sms_code` (відновлення через SMS), `oauth_email_link` (прив'язка OAuth, підтверджена листом у браузері входу), `oauth_provider_email` (провайдер підтвердив адресу).
 - `system` — seed або CLI; `request_id` — `NULL`, `metadata.source` називає джерело: `seed` або `cli` (`AUDIT_SYSTEM_SOURCES`).
 
-::: warning План
-Зміна ролі виконавцем `user` (адміністратор через HTTP) — feat-241: ендпоінта ще немає, каталог і сервіс її вже приймають.
-:::
+Зміну ролі через `PATCH /admin/users/:id/role` журнал записує з виконавцем `user` (його роль прочитано під блокуванням зміни ролей) і `request_id` запиту; через CLI — з виконавцем `system` і `metadata.source = cli`.
 
 Каталог також перелічує докази, які приймає кожна дія, і `record` відхиляє будь-які інші: `proof_holder` потребує одного з них, `auth.phone.linked` — `sms_code`, `auth.email.linked` — `email_link`, а дія без доказів доказ відхиляє. Виконавець `user` або `proof_holder` завжди несе request ID: сервіси приймають виконавця (або запит) обов'язковим параметром.
 

@@ -158,3 +158,4 @@ export {
     type UpdateProfileInput,
 } from './account/update-profile.js'
 export { RoleSchema } from '../access/role-schema.js'
+export { SetUserRoleInputSchema, type SetUserRoleInput } from './admin/set-user-role.js'
