@@ -394,6 +394,46 @@ describe('notifications store', () => {
         expect(store.unreadCount).toBe(0)
     })
 
+    // feat-239 (re-review of #739): read-all can leave the cursor as it was, so the cursor alone
+    // does not tell that a "load more" answer is older than the mutation.
+    it('a "load more" answer started before read-all is dropped though the cursor is the same', async () => {
+        const store = useNotificationsStore()
+        store.openList('page')
+        api.list.mockResolvedValueOnce(
+            ok({ items: [item('30'), item('29')], next: '29', unreadCount: 3 }),
+        )
+        await tick()
+
+        const late = deferred<ReturnType<typeof ok>>()
+        api.list.mockReturnValueOnce(late.promise)
+        const more = store.loadMore()
+        await flush()
+
+        api.readAll.mockResolvedValue(ok({ unreadCount: 0 }))
+        expect(await store.markAllRead('page')).toBe(true)
+        // The read after the mutation brings the first page back with the same cursor.
+        api.list.mockResolvedValue(
+            ok({
+                items: [
+                    item('30', '2026-11-21T10:00:00.000Z'),
+                    item('29', '2026-11-21T10:00:00.000Z'),
+                ],
+                next: '29',
+                unreadCount: 0,
+            }),
+        )
+        await tick()
+        expect(store.next).toBe('29')
+
+        late.resolve(ok({ items: [item('28')], next: null, unreadCount: 3 }))
+        await more
+
+        expect(store.items.map((n) => n.id)).toEqual(['30', '29'])
+        expect(store.items.every((n) => n.readAt !== null)).toBe(true)
+        expect(store.next).toBe('29')
+        expect(store.unreadCount).toBe(0)
+    })
+
     it('caps the badge at 99+', async () => {
         const store = useNotificationsStore()
         api.unreadCount.mockResolvedValue(ok({ unreadCount: 100 }))
