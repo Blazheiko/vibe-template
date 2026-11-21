@@ -2391,8 +2391,8 @@
             "owner": "Blazheiko",
             "branch": "feat/roles-permissions-core",
             "dependencies": [],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #746 (merge 2512076), registry #744 (registered), #745 (in_progress), #747 (review). shared/access catalog (5 roles, 10 permissions, explicit delegation policy); user_role enum values and the users_staff_role_verified_email CHECK; can:<permission> / ws_can:<permission> generated in kernel.ts replace admin_guard / ws_admin_guard, admin groups split by permission, route-permissions.spec.ts checks every admin HTTP and WS route against an independent table; audit log limited to sign-in/sessions without audit.read (403 on any explicit filter outside, restriction in the WHERE before pagination); roleAssignmentService under one advisory lock (404/403/no-op/409 identity_unverified/409 last_admin, user.role.changed, cli source) and user:set-role / make user-role; wsRoleSync (server bus event user_role_changed + periodic pass over every connection, WS_ROLE_RECHECK_INTERVAL_MS, numbered reads, access_changed after applying, admin channel paused on a failed read and admin_channel_ready after); GET /account/access; frontend can()/isStaff(), access ticket, admin-pages.ts, useAdminChannel per socket generation; docs in both locales, tutorial and skill. Local: make check (backend 3407, frontend 879, shared 120), make test-pg 521 executed / 0 skipped, make test-redis 178 / 0 skipped, test:e2e 119, test:e2e:live 30, docs:build + docs:verify; T9 mutations each fail a named test; CHECK migration on old data and the real CLI process checked by hand. CI on 8c29de3: quality, build, e2e, e2e-live, test-pg, test-redis green (Redis tests 44913329833, Docs 44913329814, PG tests 44913329799, CI 44913329802). Deviation: the CLI publish test runs runUserSetRole in-process (CI does not build backend dist for a spawned tsx process); the real process was run by hand."
         },
         {
             "id": "feat-241",
