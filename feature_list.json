@@ -2353,6 +2353,16 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #732 (merge bfe8880), registry #730 (not-started), #731 (in_progress), #733 (review). notifications (kind/category from the shared/notifications catalog, params <= 1024 bytes, link, read_at) and notification_preferences; push_subscriptions.notification_types dropped (migration 20261120170831_notification_center). notificationService.notify: checks, row, notifications_changed signal, push under the category preferences, best effort after commit and never throws; security mails stay at their call sites; a failed preferences read skips the push. /notifications API (keyset list, unread count capped at 100, idempotent read returning link, read-all <= upTo, preferences; foreign/missing/out-of-range id one 404, locked channel and out-of-range cursor 400 with a reason). Frontend bell, history page, /notifications/:id/open, preferences, uk/en/pl; store with seq, dirty re-read and recovery points. notifications-retention job (default 90 days). Docs both locales. Local: make check (shared 107, backend 3374, frontend 826), make test-pg 479 passed / 0 skipped, make test-redis 176 / 0 skipped, test:e2e 108, test:e2e:live notification specs 3, docs:build + docs:verify, job:run notifications-retention --dry-run matched 2800 then real changed 2800; 14 mutations each killed by a named test. CI on 195e3c2: quality, build, e2e, e2e-live, test-pg (run 44807455906), test-redis (run 44807456181), docs green. Not clicked by hand in a desktop browser; delivery to a real push service not exercised."
+        },
+        {
+            "id": "feat-237",
+            "name": "Notification Center Review Fixes",
+            "description": "Review of PR #732 (feat-236, 2026-11-21): (1) P1 the /notifications page had no scroll container, a long history could not be scrolled (mobile e2e reaching \"show more\"); (2) P1 the migration drops push_subscriptions.notification_types that a previous server still reads, and the new API refuses the field from old tabs: the template has no deployments and keeps no compat layers, so it becomes a deployment warning in the docs (both locales); (3) P2 an account switch while a read of the previous account was in flight lost the first read of the new one; the read queue no longer stops on the generation change, test that the new account's data is loaded; (4) P2 opening the bell reset the history page filter: the panel gets its own latest-10 list, the page keeps its filter and pages.",
+            "owner": "Blazheiko",
+            "branch": "fix/notification-center-review",
+            "dependencies": ["feat-236"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
