@@ -186,6 +186,9 @@ DOMAIN=127.0.0.1:4000
 | `WEBAUTHN_RP_ID`                                       | RP ID passkeys ([двоетапний вхід](./mfa#passkeys)): хост застосунку; обов'язкова в production-like, після запуску не змінюється                              | хост `FRONTEND_URL`   |
 | `WEBAUTHN_RP_NAME`                                     | Назва застосунку в діалозі passkey                                                                                                                           | `APP_NAME`            |
 | `WEBAUTHN_ORIGINS`                                     | Точні origin церемоній WebAuthn через кому; `https://` у production-like; кожен на RP ID або нижче                                                           | origin `FRONTEND_URL` |
+| `MFA_REQUIRED_FOR_STAFF`                               | Службова роль працює лише з другим фактором ([персонал](./mfa#персонал))                                                                                     | `true`                |
+| `MFA_STAFF_FACTOR`                                     | Фактор персоналу: `any` (TOTP або passkey)                                                                                                                   | `any`                 |
+| `MFA_STAFF_FACTOR_MAX_AGE_HOURS`                       | Скільки годин діє доказ фактора для персоналу                                                                                                                | `12`                  |
 | `AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN`         | Змін профілю (`PATCH /account/profile`) на користувача у фіксованому вікні 10 хв, усі сесії разом ([Акаунт і профіль](/backend/account#ліміт))               | `30`                  |
 | `AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`             | Листів про новий вхід на користувача на годину; push не обмежується ([Безпека → Повідомлення про новий вхід](/backend/security#повідомлення-про-новии-вхід)) | `5`                   |
 | `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_IP_PER_HOUR`    | Запити листа скидання пароля з одного IP                                                                                                                     | `10`                  |
@@ -282,12 +285,13 @@ DOMAIN=127.0.0.1:4000
 
 Читає лише `db:seed --demo` ([run-seed.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db/seed/run-seed.ts)); застосунок ці змінні не використовує. Якщо email або пароль порожні, відповідний акаунт пропускається (`missing_credentials`). Див. [База даних → Seed](/backend/database#seed).
 
-| Змінна                | Призначення                        | Default | Обов'язковість (умова) |
-| --------------------- | ---------------------------------- | ------- | ---------------------- |
-| `SEED_ADMIN_EMAIL`    | Email demo-адміна                  | —       | Ні (лише для `--demo`) |
-| `SEED_ADMIN_PASSWORD` | Пароль demo-адміна                 | —       | Ні (лише для `--demo`) |
-| `SEED_USER_EMAIL`     | Email звичайного demo-користувача  | —       | Ні (опційно)           |
-| `SEED_USER_PASSWORD`  | Пароль звичайного demo-користувача | —       | Ні (опційно)           |
+| Змінна                   | Призначення                                                                             | Default | Обов'язковість (умова) |
+| ------------------------ | --------------------------------------------------------------------------------------- | ------- | ---------------------- |
+| `SEED_ADMIN_EMAIL`       | Email demo-адміна                                                                       | —       | Ні (лише для `--demo`) |
+| `SEED_ADMIN_PASSWORD`    | Пароль demo-адміна                                                                      | —       | Ні (лише для `--demo`) |
+| `SEED_ADMIN_TOTP_SECRET` | Ключ TOTP demo-адміна (base32); поза production-like без нього генерується й друкується | —       | Ні (лише для `--demo`) |
+| `SEED_USER_EMAIL`        | Email звичайного demo-користувача                                                       | —       | Ні (опційно)           |
+| `SEED_USER_PASSWORD`     | Пароль звичайного demo-користувача                                                      | —       | Ні (опційно)           |
 
 ## Redis
 

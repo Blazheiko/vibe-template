@@ -5,7 +5,7 @@
 План і рішення: [`docs/plan/passkeys-mfa-plan.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/passkeys-mfa-plan.md). Джерела: спільна політика [`shared/src/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/mfa), сервіси [`services/auth/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/mfa), контракти [`contracts/mfa.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/mfa.ts), [`contracts/passkeys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/passkeys.ts) і [`contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts).
 
 ::: warning План
-Обов'язкова MFA для персоналу й скидання MFA адміністратором — `feat-247`; режим «лише passkey» для персоналу — `feat-248`.
+Режим «лише passkey» для персоналу — `feat-248`.
 :::
 
 ## Маршрути
@@ -84,6 +84,22 @@ Passkey назавжди прив'язаний до свого RP ID. Зміна
 - Звичайне скидання пароля MFA **не вимикає**. Захоплення акаунта власником непідтвердженої адреси (`claimLocked`) стирає фактори разом з рештою налаштованого до підтвердження.
 - Код відновлення (16 символів, 80 біт, одноразовий) відкриває **сесію відновлення**: рівень 1, абсолютний строк `MFA_RECOVERY_WINDOW_SECONDS` (типово 900 с), без WebSocket. Інші сесії завершуються. Дозволені лише `main/init`, маршрути `/account/mfa/*`, `recovery/finish` і `logout`; решта відповідає `403 recovery_session`. Видалити старий фактор чи створити нові коди можна лише після заміни фактора. Після завершення — звичайний вхід з новим фактором.
 
+## Персонал
+
+Службова роль (будь-яка з дозволами) при `MFA_REQUIRED_FOR_STAFF=true` (типово) працює лише з другим фактором. Одна політика [`staffMfaPolicy`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/mfa/staff-mfa-policy.ts) (режим `MFA_STAFF_FACTOR=any`: TOTP або passkey) відповідає на три питання, і її питають усі споживачі ([`staff-policy.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/mfa/staff-policy.ts)):
+
+- **Видача ролі** (адмінка й CLI `user:set-role`) — лише акаунту з фактором: інакше `409 mfa_not_enrolled`. Перший адміністратор із CLI спершу підключає TOTP як звичайний користувач; demo-адмін `db:seed` отримує TOTP із `SEED_ADMIN_TOTP_SECRET`.
+- **`can:` і `ws_can:`** — сесія рівня 2 зі свіжим (`MFA_STAFF_FACTOR_MAX_AGE_HOURS`, типово 12 год) доказом фактора, не відновлення. Інакше `403 mfa_required` (немає фактора) або `403 mfa_session_required`; фронтенд веде на `/account?section=security` з поясненням.
+- **Підтвердження дій персоналу** (зміна ролі, скидання MFA) — свіжий фактор, для акаунта без MFA — пароль.
+
+Admin-канал WebSocket тримає підписників у порядку їхнього дедлайну й **перед кожною публікацією синхронно відписує прострочених**, тож подія, опублікована в момент `t`, не доходить до сокета з дедлайном `≤ t`, хоч би коли спрацював таймер. Таймер на дедлайн надсилає `access_changed { reason: 'mfa_session_required' }`, і відкрита адмінка йде на вхід. Step-up оновлює `auth` з'єднань цієї сесії на всіх інстансах (подія шини `session_auth_changed`).
+
+**Скидання MFA адміністратором** — `POST /api/admin/users/:id/mfa/reset { reason }` (`can:users.mfa.reset`, лише `admin`) або CLI `pnpm --filter backend user:mfa-reset --email <email> --reason "<чому>"` (`make user-mfa-reset`) — аварійний вихід для останнього адміністратора. Собі — заборонено (`403`: коди відновлення або CLI). Акаунт, що лишився б без способу входу (лише passkey), — `409 last_sign_in_method` без винятків: користувач спершу встановлює пароль через «Забули пароль». Видаляються TOTP, passkeys і коди, `session_token` ротується (сесії й сокети завершуються), подія `auth.mfa.reset` з причиною, сповіщення й лист власнику.
+
+::: warning Перехідний ризик
+Службові акаунти без фактора, що існували до ввімкнення, і адміністратор `db:seed` у production-like (без `SEED_ADMIN_TOTP_SECRET`) отримують `mfa_required` в адмінці, доки не підключать фактор (рядок 1 матриці: свіжий пароль). Поки фактора немає, той, хто знає пароль такого акаунта, може підключити перший фактор сам. Підключіть фактори персоналу одразу після оновлення.
+:::
+
 ## Налаштування
 
 | Змінна                                  | Типово                | Що задає                                                                                   |
@@ -96,6 +112,9 @@ Passkey назавжди прив'язаний до свого RP ID. Зміна
 | `AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER` | `10`                  | коди другого кроку й step-up на користувача за вікно                                       |
 | `AUTH_MFA_VERIFY_WINDOW_SECONDS`        | `900`                 | вікно цього ліміту                                                                         |
 | `OAUTH_FRONTEND_MFA_URL`                | `/login?mfa=required` | куди OAuth веде акаунт з другим фактором                                                   |
+| `MFA_REQUIRED_FOR_STAFF`                | `true`                | службова роль працює лише з другим фактором і свіжим доказом                               |
+| `MFA_STAFF_FACTOR`                      | `any`                 | фактор персоналу: TOTP або passkey (`passkey` — `feat-248`)                                |
+| `MFA_STAFF_FACTOR_MAX_AGE_HOURS`        | `12`                  | скільки діє доказ фактора для персоналу                                                    |
 | `WEBAUTHN_RP_ID`                        | хост `FRONTEND_URL`   | RP ID passkeys; обов'язкова в production-like, не змінюється після запуску                 |
 | `WEBAUTHN_RP_NAME`                      | `APP_NAME`            | назва в діалозі passkey                                                                    |
 | `WEBAUTHN_ORIGINS`                      | origin `FRONTEND_URL` | точні origin церемоній через кому (`https://` у production-like), кожен на RP ID або нижче |
@@ -104,4 +123,4 @@ Passkey назавжди прив'язаний до свого RP ID. Зміна
 
 ## Журнал і сповіщення
 
-Події `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed` пишуться в [журнал дій](./audit-log) з доказом (`metadata.proof`). Кожна зміна факторів надсилає сповіщення безпеки й лист на адресу акаунта.
+Події `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed`, `auth.mfa.reset` пишуться в [журнал дій](./audit-log) з доказом (`metadata.proof`). Кожна зміна факторів надсилає сповіщення безпеки й лист на адресу акаунта.

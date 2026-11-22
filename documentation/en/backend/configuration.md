@@ -186,6 +186,9 @@ Read by the [throttle-policies.ts](https://github.com/Blazheiko/vibe-template/bl
 | `WEBAUTHN_RP_ID`                                       | The RP ID of the passkeys ([two-step sign-in](./mfa#passkeys)): the app's host; required in production-like, never changed after the launch                         | the host of `FRONTEND_URL`   |
 | `WEBAUTHN_RP_NAME`                                     | The app's name in the passkey dialog                                                                                                                                | `APP_NAME`                   |
 | `WEBAUTHN_ORIGINS`                                     | The exact origins of the WebAuthn ceremonies, comma-separated; `https://` in production-like; each on the RP ID or below it                                         | the origin of `FRONTEND_URL` |
+| `MFA_REQUIRED_FOR_STAFF`                               | A staff role works only with a second factor ([staff](./mfa#staff))                                                                                                 | `true`                       |
+| `MFA_STAFF_FACTOR`                                     | The staff factor: `any` (TOTP or a passkey)                                                                                                                         | `any`                        |
+| `MFA_STAFF_FACTOR_MAX_AGE_HOURS`                       | How many hours a factor proof counts for staff                                                                                                                      | `12`                         |
 | `AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN`         | Profile changes (`PATCH /account/profile`) per user in a fixed 10-minute window, all sessions together ([Account and profile](/en/backend/account#rate-limit))      | `30`                         |
 | `AUTH_NEW_SIGN_IN_MAILS_PER_USER_PER_HOUR`             | Mails about a new sign-in per user per hour; the push is not limited ([Security → New sign-in notice](/en/backend/security#new-sign-in-notice))                     | `5`                          |
 | `AUTH_FORGOT_PASSWORD_MAX_REQUESTS_PER_IP_PER_HOUR`    | Password reset email requests from one IP                                                                                                                           | `10`                         |
@@ -282,12 +285,13 @@ An empty value is treated as not set. For more, see the [Database](/en/backend/d
 
 Read only by `db:seed --demo` ([run-seed.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/db/seed/run-seed.ts)); the application does not use these variables. If the email or password is empty, the corresponding account is skipped (`missing_credentials`). See [Database → Seed](/en/backend/database#seed).
 
-| Variable              | Purpose                    | Default | Required (condition)   |
-| --------------------- | -------------------------- | ------- | ---------------------- |
-| `SEED_ADMIN_EMAIL`    | Demo admin email           | —       | No (only for `--demo`) |
-| `SEED_ADMIN_PASSWORD` | Demo admin password        | —       | No (only for `--demo`) |
-| `SEED_USER_EMAIL`     | Regular demo user email    | —       | No (optional)          |
-| `SEED_USER_PASSWORD`  | Regular demo user password | —       | No (optional)          |
+| Variable                 | Purpose                                                                                       | Default | Required (condition)   |
+| ------------------------ | --------------------------------------------------------------------------------------------- | ------- | ---------------------- |
+| `SEED_ADMIN_EMAIL`       | Demo admin email                                                                              | —       | No (only for `--demo`) |
+| `SEED_ADMIN_PASSWORD`    | Demo admin password                                                                           | —       | No (only for `--demo`) |
+| `SEED_ADMIN_TOTP_SECRET` | The demo admin's TOTP key (base32); outside production-like generated and printed when absent | —       | No (only for `--demo`) |
+| `SEED_USER_EMAIL`        | Regular demo user email                                                                       | —       | No (optional)          |
+| `SEED_USER_PASSWORD`     | Regular demo user password                                                                    | —       | No (optional)          |
 
 ## Redis
 
