@@ -1,6 +1,8 @@
 import type { Redis } from 'ioredis'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { MfaTicket as Ticket } from './mfa-ticket.js'
+
 import {
     cleanupTestRedis,
     createTestRedis,
@@ -45,7 +47,6 @@ const { default: client, redisHealth } = (await import('#database/redis.js')) as
     redisHealth: { stop(): void }
 }
 const { mfaTicketStore, MFA_MAX_FAILURES, newTicketId } = await import('./mfa-ticket.js')
-type Ticket = import('./mfa-ticket.js').MfaTicket
 
 const admin = createTestRedis(PREFIX)
 const TTL_MS = 30_000
