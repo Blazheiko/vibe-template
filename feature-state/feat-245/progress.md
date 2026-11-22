@@ -24,6 +24,22 @@ M0–M14). Branch `feat/mfa-core`. Registry: #765 (registered), #766 (in_progres
 - M8a: ticket store (Lua). M8b: `POST /auth/mfa/verify`, password sign-in opens the ticket,
   continuation, recovery sign-in (rotation, recovery session), ticket retired by a session_web
   hook. `mfa-sign-in-http.pg.test.ts` covers the Р4 acceptance list over HTTP.
+- M8c: OAuth sign-in and link confirmation through the second step (`pendingOAuthLink` written in
+  the verify transaction; dropped for a recovery-code sign-in); `claimLocked` removes the factors.
+- M9: recovery session (`allowInRecovery` route flag, absolute expiry, no WS token,
+  `/auth/recovery/finish`).
+- M10: step-up (`/auth/reauth/options`, `/auth/reauth`); `currentPassword` removed from
+  change-password, link-phone/start, link-email/start and unlink (no backward compatibility);
+  pending contact links retired on every MFA change. The test suites moved to the new contract.
+- M11: `announceMfaChange` (notification + mail) for enabled/replaced/disabled/new codes/used code.
+- M12: ReauthDialog + withReauth, MfaChallengeForm, SignInSecurity (QR in the browser), recovery
+  wizard. Fixed in M13: the account page now follows the recovery state reactively (it read it
+  once, before main/init answered).
+- M13: `e2e/mock/mfa.spec.ts` (5), `e2e-live/mfa.spec.ts` (3); audit-log and session-revocation
+  live specs without the current-password field. The mock notifications preferences test raced
+  (the PUT was answered with the old matrix); fixed in the test.
+- M14: `backend/mfa.md` (uk + en), auth/oauth/configuration pages, STL-MFA-001..005.
+- api-playground: no change needed, it lists the routes from `/doc/routes`.
 
 ## Files Modified
 
@@ -31,14 +47,33 @@ See `git log` of the branch.
 
 ## Next Step
 
-M8c (OAuth: finishSignIn, linkTrusted and link/confirm with pendingOAuthLink; architecture test of auth.login callers), then M9.
+PR `feat/mfa-core` → `main`, status `review`, merge after every CI job is green, then
+"Mark feat-245 done". Next feature: feat-246 (passkeys).
 
 ## Notes for Next Session
 
+- The live e2e suite runs against the dev database of `packages/backend/.env`; accounts pile up
+  between runs and `account-profile.spec.ts` › "a name with markup…" then fails locally (the
+  seed user leaves the first 100 rows of the admin list). Unrelated to MFA; CI starts clean.
 - PG/Redis suites run against the local containers `vibe-sched-pg` (127.0.0.1:5440) and
   `vibe-sched-redis` (127.0.0.1:6390):
   `PG_TEST_URL=postgres://postgres:postgres@127.0.0.1:5440/postgres REDIS_TEST_URL=redis://127.0.0.1:6390`.
 
 ## Evidence of Completion
 
-(pending)
+Commit `d3328af` + the notifications test fix, 2026-11-22, local:
+
+- `make check`: exit 0 — backend 3467 passed, frontend 924, shared 138 pass / 0 fail,
+  api-playground 115, landing 103, documentation 26 pass / 0 fail; format, typecheck, lint,
+  bundle graph clean.
+- `pnpm test:pg` (PG_TEST_URL set): 61 files, 557 tests passed, 0 skipped.
+- `pnpm test:redis` (REDIS_TEST_URL set): 20 files, 195 tests passed, 0 skipped.
+- `pnpm --filter frontend test:e2e`: 125 passed.
+- `pnpm --filter frontend test:e2e:live`: mfa (3), audit-log, session-revocation: 9 passed; the
+  full suite 31 passed + the unrelated local-data failure above (CI job `e2e-live` is the proof).
+- `pnpm docs:build && pnpm docs:verify`: all checks passed.
+
+Golden path checked by the live specs: TOTP set up from the account page (QR + key, the code,
+10 recovery codes once), a second browser signs in with password + TOTP (a wrong code refused),
+a password change right after, the recovery path: the last recovery code → recovery wizard only
+→ a new app → new codes → finish → an ordinary sign-in with the new app.
