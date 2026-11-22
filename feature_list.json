@@ -2461,8 +2461,8 @@
             "owner": "Blazheiko",
             "branch": "feat/staff-mfa",
             "dependencies": ["feat-245"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #776 (merge e71a0f2), registry #775 (in_progress), #777 (review). Staff MFA: step-up of a role change and of an MFA reset (rows 9-10); users.mfa.reset, POST /admin/users/:id/mfa/reset and CLI user:mfa-reset (last way in kept, token rotated, audit auth.mfa.reset, notification mfa_reset); staff policy in can:, ws_can:, ws-role-sync and the admin channel (drop expired before publish, deadline timer, session_auth_changed across instances); MFA_REQUIRED_FOR_STAFF on by default, 409 mfa_not_enrolled, seed TOTP for the demo admin, redirect to the security section; docs. CI on the branch head c44f509: ci.yml run 45062275006 (quality, e2e, e2e-live, build), pg-tests.yml run 45062274857 (test-pg 602 passed), redis-tests.yml run 45062275023 (test-redis 198 passed), all success. Local: make check green (backend 3598, frontend 958, shared 143), test:e2e 131, test:e2e:live 42, docs:build + docs:verify. Follow-up: test:e2e:security 'session lost in another tab' fails with and without this feature (not in CI)."
         },
         {
             "id": "feat-248",
