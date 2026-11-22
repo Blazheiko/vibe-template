@@ -91,10 +91,10 @@ test('changing the password on the account page keeps this browser in and signs 
     const { a, b } = await twoBrowsersSignedIn(browser, account)
 
     await a.page.goto('/account')
-    await a.page.locator('input[name="current-password"]').fill(account.password)
     await a.page.locator('input[name="new-password"]').fill(NEW_PASSWORD)
     await a.page.locator('input[name="confirm-password"]').fill(NEW_PASSWORD)
     await a.page.getByRole('button', { name: 'Update password' }).click()
+    // feat-245: the sign-in a moment ago is the fresh password proof; no step-up dialog.
     await expect(a.page.getByText('Password updated')).toBeVisible()
 
     // This browser got a fresh session (a new cookie) and goes on; the other one is out.

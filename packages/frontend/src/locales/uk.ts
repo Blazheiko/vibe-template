@@ -288,7 +288,6 @@ const uk: typeof en = {
         },
         security: {
             title: 'Безпека',
-            currentPassword: 'Поточний пароль',
             newPassword: 'Новий пароль',
             confirmPassword: 'Підтвердіть новий пароль',
             updatePassword: 'Оновити пароль',
@@ -303,7 +302,6 @@ const uk: typeof en = {
             empty: 'Жоден інший сервіс не прив’язано.',
             linkedAt: 'прив’язано {date}',
             unlink: 'Прибрати',
-            currentPassword: 'Поточний пароль',
             noPasswordHint:
                 'Цей акаунт не має пароля: щоб прибрати спосіб входу, потрібен вхід за останні 10 хвилин, а останній спосіб прибрати не можна.',
             unlinked: '{provider} прибрано',

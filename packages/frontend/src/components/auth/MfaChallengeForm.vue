@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SignedInUser } from '@/composables/useCompleteSignIn'
+import { useUserStore } from '@/stores/user'
 import { authApi } from '@/utils/api'
 import { getErrorReason } from '@/utils/response-normalizer'
 
@@ -13,6 +14,7 @@ const props = defineProps<{ methods: ('totp' | 'recovery_code' | 'webauthn')[] }
 const emit = defineEmits<{ 'signed-in': [user: SignedInUser]; restart: [message: string] }>()
 
 const { t } = useI18n()
+const userStore = useUserStore()
 const usable = computed(() =>
     props.methods.filter(
         (m): m is 'totp' | 'recovery_code' => m === 'totp' || m === 'recovery_code',
@@ -37,6 +39,12 @@ async function submit(): Promise<void> {
             const { data } = await authApi.mfaVerify(body)
             if (data?.status === 'success' && data.user !== undefined) {
                 emit('signed-in', data.user)
+                // A recovery code opens a recovery session (Р8). main/init says so too, but it
+                // answers after the account page mounted; until then the page must not ask the
+                // routes a recovery session is refused.
+                if (body.method === 'recovery_code') {
+                    userStore.setRecovery({ expiresAt: '', replaced: false })
+                }
                 return
             }
             const reason = getErrorReason(data) ?? ''

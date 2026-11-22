@@ -293,7 +293,6 @@ const pl: typeof en = {
         },
         security: {
             title: 'Bezpieczeństwo',
-            currentPassword: 'Obecne hasło',
             newPassword: 'Nowe hasło',
             confirmPassword: 'Potwierdź nowe hasło',
             updatePassword: 'Zmień hasło',
@@ -308,7 +307,6 @@ const pl: typeof en = {
             empty: 'Żaden inny serwis nie jest powiązany.',
             linkedAt: 'powiązano {date}',
             unlink: 'Usuń',
-            currentPassword: 'Obecne hasło',
             noPasswordHint:
                 'To konto nie ma hasła: usunięcie metody logowania wymaga zalogowania w ciągu ostatnich 10 minut, a ostatniej metody nie można usunąć.',
             unlinked: 'Usunięto: {provider}',

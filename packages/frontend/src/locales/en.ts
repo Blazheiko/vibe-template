@@ -281,7 +281,6 @@ export default {
         },
         security: {
             title: 'Security',
-            currentPassword: 'Current password',
             newPassword: 'New password',
             confirmPassword: 'Confirm new password',
             updatePassword: 'Update password',
@@ -296,7 +295,6 @@ export default {
             empty: 'No other service is linked.',
             linkedAt: 'linked {date}',
             unlink: 'Remove',
-            currentPassword: 'Current password',
             noPasswordHint:
                 'This account has no password: removing a sign-in method needs a sign-in within the last 10 minutes, and the last method cannot be removed.',
             unlinked: '{provider} was removed',

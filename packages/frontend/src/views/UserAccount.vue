@@ -611,11 +611,17 @@ async function unlinkSignInMethod(method: SignInMethod): Promise<void> {
 
 // feat-245 (Р8): a recovery session may use only the recovery routes.
 // A store without the field (an older test double) counts as no recovery.
-const inRecovery = (userStore.recovery ?? null) !== null
-if (!inRecovery) {
-    void pushStore.ensurePushSubscriptionsLoaded()
-    void loadSignInMethods()
-}
+// The store learns it from main/init, which may answer after this page mounted.
+const inRecovery = computed(() => (userStore.recovery ?? null) !== null)
+watch(
+    inRecovery,
+    (recovering) => {
+        if (recovering) return
+        void pushStore.ensurePushSubscriptionsLoaded()
+        void loadSignInMethods()
+    },
+    { immediate: true },
+)
 
 watch(
     () => pushStore.isSubscribedToPush,
