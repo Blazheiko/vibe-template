@@ -7,6 +7,7 @@ import type { ResponseCheck } from '../utils/validation/validate-response.js'
 import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
 import type { WsErrorBody, WsReplyEnvelope, WsRequestEnvelope } from 'shared/ws-client'
 import type { Role } from 'shared/access'
+import type { SessionAuthState } from 'shared/mfa'
 
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
@@ -121,9 +122,66 @@ export interface Auth {
         userId: string | undefined,
         userToken: string | undefined,
         origin: LoginOrigin,
+        /**
+         * feat-245 (Р2): how the new session was authenticated. Left out: a level-1 sign-in by the
+         * origin's method, proven now; for a renewal (`inherit`) the caller passes the state of
+         * the session it replaces.
+         */
+        auth?: SessionAuthState,
     ) => Promise<SessionDevice | null>
     logout: () => Promise<boolean>
     logoutAll: () => Promise<DestroyAllSessionsResult>
+    /**
+     * feat-245 (Р4): the session id the request's cookie named (verified), even when that session
+     * was replaced since; the session of the request when it came without a cookie.
+     */
+    getCookieSessionId: () => string | undefined
+    /** feat-245 (Р4): the second-step ticket id of the request's cookie. */
+    getMfaTicketCookie: () => string | undefined
+    /** feat-245 (Р4): sets (or with null clears) the second-step ticket cookie. */
+    setMfaTicketCookie: (ticketId: string | null, maxAgeSeconds: number) => void
+    /**
+     * feat-245 (Р4): what a second-step sign-in will create, fixed once so a repeat creates the same
+     * session (same id, device, auth state and recovery expiry). Pure: nothing is written.
+     */
+    planLogin: (
+        userId: string,
+        origin: LoginOrigin,
+        auth: SessionAuthState,
+        expectedUserToken: string,
+    ) => LoginPlan
+    /**
+     * feat-245 (Р4): writes the planned session as pending (not in the index, refused by restore),
+     * before the transaction of the second step commits. Idempotent per completion.
+     */
+    prepareLogin: (
+        plan: LoginPlan,
+        completionId: string,
+        ttlSeconds: number,
+    ) => Promise<'created' | 'exists' | 'conflict'>
+    /**
+     * feat-245 (Р4): after the commit, makes the planned session active in one Redis transition
+     * with the ticket. `activated`: this request did it (it sends the notices); `already`: an
+     * earlier request did, and the cookie of that same session is issued again while its record
+     * exists; `gone`: nothing to activate. The previous anonymous session is replaced only when a
+     * cookie is issued.
+     */
+    activateLogin: (
+        plan: LoginPlan,
+        ticketKey: string,
+        completionId: string,
+    ) => Promise<'activated' | 'already' | 'gone'>
+}
+
+/** feat-245 (Р4): a second-step sign-in planned once, stored in the ticket. */
+export interface LoginPlan {
+    sessionId: string
+    userId: string
+    /** The session_token the sign-in was confirmed under; the session exists only under it. */
+    expectedUserToken: string
+    device: SessionDevice
+    auth: SessionAuthState
+    createdAtMs: number
 }
 
 /** Outcome of deleting all sessions of a user (destroyAllSessions, auth.logoutAll). */
@@ -161,6 +219,17 @@ export interface Session {
      * session has no record: false.
      */
     isStored: () => Promise<boolean>
+    /**
+     * feat-245 (Р2): the one way to change `data.auth`. Applies `apply` to the stored state (a
+     * compare-and-set that reads again on a conflict) and merges: every freshness mark keeps the
+     * later time, the level and the sign-in methods never change, a removed recovery state is not
+     * brought back. Null when the record is gone.
+     */
+    updateSessionAuth: (
+        apply: (current: SessionAuthState) => SessionAuthState,
+        /** Data keys removed in the same write (a consumed TOTP setup, Р7). */
+        options?: { removeKeys?: readonly string[] },
+    ) => Promise<SessionInfo | null>
     /** Deletes the current session's record; it does not issue a new session. */
     destroySession: () => Promise<void>
     /** Run by the server after the handler, right before the response is sent. */
@@ -168,7 +237,7 @@ export interface Session {
 }
 
 /** How a session was signed in (feat-233, Р3); see shared `SIGN_IN_METHODS`. */
-export type SessionSignInMethod = 'password' | 'oauth' | 'register'
+export type SessionSignInMethod = 'password' | 'oauth' | 'register' | 'passkey'
 
 /**
  * The device of a signed-in session (feat-233, Р3), written when it is created. A renewal
@@ -188,7 +257,7 @@ export interface SessionDevice {
 
 /** What `auth.login` records as the device of the new session. */
 export type LoginOrigin =
-    | { method: 'password' | 'register' }
+    | { method: 'password' | 'register' | 'passkey' }
     | { method: 'oauth'; provider: string }
     /** A renewal: the device of the session it replaces, the public id aside. */
     | { inherit: SessionDevice }
@@ -199,6 +268,15 @@ export interface SessionData extends Record<string, unknown> {
     wsToken?: string
     csrfToken?: string
     device?: SessionDevice
+    /** feat-245 (Р4): a planned sign-in written before its commit; restore refuses it. */
+    pending?: boolean
+    /** feat-245 (Р4): the second-step completion that created this session. */
+    completionId?: string
+    /**
+     * feat-245 (Р2): how the session was authenticated. Written at sign-in and by
+     * updateSessionAuth only: updateSessionData and changeSessionData keep the stored one.
+     */
+    auth?: SessionAuthState
 }
 
 export interface SessionInfo {
@@ -218,6 +296,8 @@ export interface UploadedFile {
 
 export interface HttpData<TPayload = unknown, TQuery = null, TParams = Params> {
     method: Method
+    /** feat-245 (Р8): the route lets a recovery session in (RouteConfig.allowInRecovery). */
+    allowInRecovery?: boolean
     ip: string | null | undefined
     params: TParams
     payload: TPayload | null
@@ -365,6 +445,11 @@ export interface RouteConfig<
      * an anonymous client makes the server buffer the whole upload to answer 401.
      */
     signedInBeforeBody?: boolean | undefined
+    /**
+     * feat-245 (Р8): a recovery session may use this route. Every other route behind
+     * `session_web` answers 403 `recovery_session` to such a session.
+     */
+    allowInRecovery?: boolean | undefined
 }
 
 // RouteItem with handler - uses function overload pattern for type erasure

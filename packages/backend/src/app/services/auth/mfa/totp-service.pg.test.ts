@@ -1,0 +1,295 @@
+import { and, eq } from 'drizzle-orm'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { hasPg } from '../../../../test-support/pg-test-db.js'
+import { testUserActor } from '../../../../test-support/audit-actor.js'
+import type { Session, SessionData, SessionInfo } from '#vendor/types/types.js'
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, tasks M5) against a real PostgreSQL: the TOTP
+// confirmation is idempotent by its enrollment id, parallel confirmations leave one version and
+// one audit event, a replacement in a recovery session records R+, and the code that confirmed a
+// setup does not pass again. The session is an in-memory stand-in with the same contract.
+
+vi.hoisted(() => {
+    process.env['MFA_ENCRYPTION_KEYS'] = `k1:${Buffer.alloc(32, 9).toString('base64')}`
+    process.env['AUTH_OTP_HMAC_KEY'] ??= 'o'.repeat(32)
+})
+const silent = vi.hoisted(() => {
+    const logger = {
+        error: () => undefined,
+        warn: () => undefined,
+        info: () => undefined,
+        debug: () => undefined,
+        child: (): unknown => logger,
+    }
+    return logger
+})
+vi.mock('#logger', () => ({ default: silent }))
+vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
+vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
+    consumeAuthThrottle: () => Promise.resolve({ allowed: true, count: 1 }),
+    resetAuthThrottle: () => Promise.resolve(undefined),
+}))
+const security = vi.hoisted(() => vi.fn())
+vi.mock('#app/services/notifications/user-notification-service.js', () => ({
+    userNotificationService: { security, supportReply: vi.fn() },
+}))
+
+describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => {
+    const { db, pool } = await import('#database/db.js')
+    const { users, totpFactors, auditEvents, mfaRecoveryCodes } =
+        await import('#database/schema.js')
+    const { totpService, TOTP_ENROLLMENT_KEY } = await import('./totp-service.js')
+    const { base32Decode, hotp, totpStepAt } = await import('./totp.js')
+    const { mergeSessionAuth, sessionAuthOf } = await import('shared/mfa')
+
+    const created: bigint[] = []
+    afterAll(async () => {
+        for (const id of created) await db.delete(users).where(eq(users.id, id))
+        await pool.end()
+    })
+    beforeEach(() => {
+        security.mockClear()
+    })
+
+    const NOW = Date.now()
+    const iso = (offsetSeconds = 0): string => new Date(NOW + offsetSeconds * 1000).toISOString()
+
+    const newUser = async (): Promise<{ id: bigint; sessionToken: string }> => {
+        const [user] = await db
+            .insert(users)
+            .values({
+                name: 'totp',
+                email: `${crypto.randomUUID()}@example.test`,
+                emailVerifiedAt: new Date(),
+                password: 'hash',
+            })
+            .returning({ id: users.id, sessionToken: users.sessionToken })
+        if (user === undefined) throw new Error('user not inserted')
+        created.push(user.id)
+        return user
+    }
+
+    /** An in-memory session with the store's contract (updateSessionAuth merges, keeps data). */
+    const fakeSession = (data: SessionData): Session & { failNextAuthWrite: () => void } => {
+        let failNext = false
+        const session = {
+            sessionInfo: { id: 's', data, createdAt: iso() } as SessionInfo,
+            failNextAuthWrite: () => {
+                failNext = true
+            },
+            updateSessionData: (newData: SessionData) => {
+                session.sessionInfo = {
+                    ...session.sessionInfo,
+                    data: { ...session.sessionInfo.data, ...newData },
+                }
+                return Promise.resolve(session.sessionInfo)
+            },
+            changeSessionData: () => Promise.resolve(null),
+            consumeSessionData: () => Promise.resolve('gone' as const),
+            isStored: () => Promise.resolve(true),
+            destroySession: () => Promise.resolve(),
+            updateSessionAuth: (
+                apply: Parameters<Session['updateSessionAuth']>[0],
+                options?: { removeKeys?: readonly string[] },
+            ) => {
+                if (failNext) {
+                    failNext = false
+                    return Promise.reject(new Error('Redis down'))
+                }
+                const current = sessionAuthOf(session.sessionInfo.data.auth)
+                const kept = Object.fromEntries(
+                    Object.entries(session.sessionInfo.data).filter(
+                        ([key]) => !(options?.removeKeys ?? []).includes(key),
+                    ),
+                )
+                session.sessionInfo = {
+                    ...session.sessionInfo,
+                    data: { ...kept, auth: mergeSessionAuth(current, apply(current)) },
+                }
+                return Promise.resolve(session.sessionInfo)
+            },
+        }
+        return session
+    }
+
+    const freshPassword = {
+        v: 1 as const,
+        amr: ['pwd' as const],
+        aal: 1 as const,
+        authenticatedAt: iso(-60),
+        verified: { pwd: iso(-10) },
+    }
+
+    const request = (user: { id: bigint; sessionToken: string }, session: Session) => ({
+        userId: user.id,
+        session,
+        presentedSessionToken: user.sessionToken,
+        actor: testUserActor(user.id),
+        now: NOW,
+    })
+
+    const setupAndCode = async (
+        user: { id: bigint; sessionToken: string },
+        session: Session,
+        stepOffset = 0n,
+    ) => {
+        const setup = await totpService.setup(request(user, session))
+        if (setup.status !== 'ok') throw new Error(JSON.stringify(setup.error))
+        const code = hotp(base32Decode(setup.value.secret), totpStepAt(NOW) + stepOffset)
+        return { enrollmentId: setup.value.enrollmentId, code }
+    }
+
+    it('a first factor needs a fresh password, then confirms with ten recovery codes', async () => {
+        const user = await newUser()
+        const stale = fakeSession({ auth: { ...freshPassword, verified: { pwd: iso(-3600) } } })
+        const refused = await totpService.setup(request(user, stale))
+        expect(refused.status).toBe('error')
+
+        const session = fakeSession({ auth: freshPassword })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        const confirmed = await totpService.confirm(request(user, session), { enrollmentId, code })
+        expect(confirmed.status).toBe('ok')
+        if (confirmed.status !== 'ok') return
+        expect(confirmed.value.recoveryCodes).toHaveLength(10)
+        expect(session.sessionInfo?.data[TOTP_ENROLLMENT_KEY]).toBeUndefined()
+        expect(security).toHaveBeenCalledWith(user.id, 'mfa_enabled')
+        const unused = await db
+            .select()
+            .from(mfaRecoveryCodes)
+            .where(eq(mfaRecoveryCodes.userId, user.id))
+        expect(unused).toHaveLength(10)
+    })
+
+    it('the code that confirmed the setup does not pass again as a second factor', async () => {
+        const user = await newUser()
+        const session = fakeSession({ auth: freshPassword })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        await totpService.confirm(request(user, session), { enrollmentId, code })
+        const again = await totpService.verify(user.id, code, { now: NOW })
+        expect(again.status).toBe('error')
+    })
+
+    it('two parallel confirmations of one setup leave one version and one audit event', async () => {
+        const user = await newUser()
+        const session = fakeSession({ auth: freshPassword })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        const results = await Promise.all([
+            totpService.confirm(request(user, session), { enrollmentId, code }),
+            totpService.confirm(request(user, session), { enrollmentId, code }),
+        ])
+        expect(results.every((result) => result.status === 'ok')).toBe(true)
+        const versions = await db.select().from(totpFactors).where(eq(totpFactors.userId, user.id))
+        expect(versions).toHaveLength(1)
+        const events = await db
+            .select()
+            .from(auditEvents)
+            .where(
+                and(
+                    eq(auditEvents.targetUserId, user.id),
+                    eq(auditEvents.action, 'auth.mfa.totp.enabled'),
+                ),
+            )
+        expect(events).toHaveLength(1)
+        expect(events[0]?.metadata).toMatchObject({ proof: 'password' })
+    })
+
+    it('a repeat after a commit whose session write failed records R+ without a second version', async () => {
+        const user = await newUser()
+        // A recovery session: TOTP already on (the lost phone), replaced here.
+        const first = fakeSession({ auth: freshPassword })
+        const initial = await setupAndCode(user, first)
+        await totpService.confirm(request(user, first), initial)
+
+        const recovery = fakeSession({
+            auth: {
+                v: 1,
+                amr: ['pwd', 'recovery'],
+                aal: 1,
+                authenticatedAt: iso(-30),
+                verified: { pwd: iso(-30) },
+                recovery: { startedAt: iso(-30), expiresAt: iso(870) },
+            },
+        })
+        const { enrollmentId, code } = await setupAndCode(user, recovery, 1n)
+        recovery.failNextAuthWrite()
+        await expect(
+            totpService.confirm(request(user, recovery), { enrollmentId, code }),
+        ).rejects.toThrow(/Redis down/)
+        expect(recovery.sessionInfo?.data.auth?.recovery?.replacementFactor).toBeUndefined()
+
+        // Same request again: no code check, the committed version becomes R+.
+        const repeated = await totpService.confirm(request(user, recovery), {
+            enrollmentId,
+            code: '000000',
+        })
+        expect(repeated.status).toBe('ok')
+        const versions = await db.select().from(totpFactors).where(eq(totpFactors.userId, user.id))
+        expect(versions).toHaveLength(1)
+        expect(versions[0]?.enrollmentId).toBe(enrollmentId)
+        expect(recovery.sessionInfo?.data.auth?.recovery?.replacementFactor).toMatchObject({
+            kind: 'totp',
+            id: String(versions[0]?.id),
+        })
+        const replaced = await db
+            .select()
+            .from(auditEvents)
+            .where(
+                and(
+                    eq(auditEvents.targetUserId, user.id),
+                    eq(auditEvents.action, 'auth.mfa.totp.replaced'),
+                ),
+            )
+        expect(replaced).toHaveLength(1)
+        expect(replaced[0]?.metadata).toMatchObject({ proof: 'recovery_code' })
+    })
+
+    it('a confirmation of an old setup after a newer replacement does not remove the new version', async () => {
+        const user = await newUser()
+        const session = fakeSession({ auth: freshPassword })
+        const a = await setupAndCode(user, session)
+        await totpService.confirm(request(user, session), a)
+        // MFA on now: another factor needs a fresh TOTP.
+        const withTotp = fakeSession({ auth: { ...freshPassword, verified: { otp: iso(-5) } } })
+        const b = await setupAndCode(user, withTotp, 1n)
+        await totpService.confirm(request(user, withTotp), b)
+        const before = await db.select().from(totpFactors).where(eq(totpFactors.userId, user.id))
+
+        const repeatA = await totpService.confirm(request(user, session), a)
+        expect(repeatA.status).toBe('error')
+        const after = await db.select().from(totpFactors).where(eq(totpFactors.userId, user.id))
+        expect(after.map((row) => row.id)).toEqual(before.map((row) => row.id))
+    })
+
+    it('without a verified contact the first factor is refused', async () => {
+        const [user] = await db
+            .insert(users)
+            .values({
+                name: 'no contact',
+                email: `${crypto.randomUUID()}@example.test`,
+                password: 'h',
+            })
+            .returning({ id: users.id, sessionToken: users.sessionToken })
+        if (user === undefined) throw new Error('user not inserted')
+        created.push(user.id)
+        const result = await totpService.setup(request(user, fakeSession({ auth: freshPassword })))
+        expect(result.status).toBe('error')
+        if (result.status === 'error') {
+            expect(result.error).toMatchObject({ reason: 'recovery_contact_required' })
+        }
+    })
+
+    it('turning the last factor off removes the recovery codes', async () => {
+        const user = await newUser()
+        const session = fakeSession({ auth: freshPassword })
+        const setup = await setupAndCode(user, session)
+        await totpService.confirm(request(user, session), setup)
+        const withTotp = fakeSession({ auth: { ...freshPassword, verified: { otp: iso(-5) } } })
+        const off = await totpService.disable(request(user, withTotp))
+        expect(off.status).toBe('ok')
+        if (off.status === 'ok') expect(off.value.mfaDisabled).toBe(true)
+        expect(
+            await db.select().from(mfaRecoveryCodes).where(eq(mfaRecoveryCodes.userId, user.id)),
+        ).toEqual([])
+    })
+})

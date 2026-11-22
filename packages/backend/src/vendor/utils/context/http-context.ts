@@ -9,6 +9,7 @@ const getDefaultSession = (): Session => {
         updateSessionData: async () => Promise.resolve(null),
         changeSessionData: async () => Promise.resolve(null),
         consumeSessionData: async () => Promise.resolve('gone' as const),
+        updateSessionAuth: async () => Promise.resolve(null),
         isStored: async () => Promise.resolve(false),
         destroySession: async () => Promise.resolve(),
     }
@@ -18,6 +19,14 @@ const getDefaultAuth = (): Auth => ({
     getPresentedUserToken: () => undefined,
     check: () => false,
     login: () => Promise.resolve(null),
+    getCookieSessionId: () => undefined,
+    getMfaTicketCookie: () => undefined,
+    setMfaTicketCookie: () => undefined,
+    planLogin: (): never => {
+        throw new Error('No session: a sign-in cannot be planned')
+    },
+    prepareLogin: () => Promise.resolve('conflict' as const),
+    activateLogin: () => Promise.resolve('gone' as const),
     logout: () => Promise.resolve(false),
     logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
 })

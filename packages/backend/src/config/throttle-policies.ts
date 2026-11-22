@@ -216,6 +216,14 @@ export const throttlePolicies = {
      * Wrong passwords on a registration link (feat-097): the link confirms the account only
      * with its password, which must not become a way to guess it.
      */
+    // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, Р7): codes of the second sign-in step and of a
+    // step-up, per user, spent before the code is checked.
+    mfaVerifyUser: fixedWindow(
+        'mfa_verify_user',
+        'user',
+        readInt('AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER', 10),
+        readInt('AUTH_MFA_VERIFY_WINDOW_SECONDS', 900) * 1000,
+    ),
     verifyEmailPasswordUser: fixedWindow(
         'verify_email_password_user',
         'user',

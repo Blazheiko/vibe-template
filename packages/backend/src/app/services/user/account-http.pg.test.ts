@@ -352,7 +352,7 @@ describe.skipIf(!hasPg || !hasRedis)('account profile over HTTP', async () => {
 
         const profile = await a.patch({ name: 'After logout all', theme: 'dark' })
         const password = await a.request('POST', '/auth/change-password', {
-            body: { currentPassword: PASSWORD, newPassword: 'another-secret-456' },
+            body: { newPassword: 'another-secret-456' },
         })
 
         // The session record is gone, so csrf_guard refuses first (403), as for a password change.
@@ -373,7 +373,7 @@ describe.skipIf(!hasPg || !hasRedis)('account profile over HTTP', async () => {
 
         const profile = await tab.patch({ fontSize: 20 })
         const password = await tab.request('POST', '/auth/change-password', {
-            body: { currentPassword: PASSWORD, newPassword: 'another-secret-456' },
+            body: { newPassword: 'another-secret-456' },
         })
 
         // The session record is gone, so csrf_guard refuses first (403), as for a password change.

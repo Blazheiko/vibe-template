@@ -232,10 +232,18 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
             return this.keep(await this.request('POST', '/auth/logout-all', {}))
         }
 
+        /** feat-245 (Р3): the step-up change-password asks for. */
+        async reauth(): Promise<void> {
+            const reply = await this.request('POST', '/auth/reauth', {
+                proof: 'password',
+                password: PASSWORD,
+            })
+            expect(reply.status).toBe(200)
+        }
+
         async changePassword(): Promise<Reply> {
             return this.keep(
                 await this.request('POST', '/auth/change-password', {
-                    currentPassword: PASSWORD,
                     newPassword: `${PASSWORD}-new`,
                 }),
             )
@@ -466,6 +474,9 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
                     : what === 'logout-all'
                       ? browser.logoutAll()
                       : browser.changePassword()
+            // The step-up comes before the race; only the actions themselves run in parallel.
+            if (a === 'change-password') await first.reauth()
+            if (b === 'change-password') await second.reauth()
 
             const [one, two] = await Promise.all([run(first, a), run(second, b)])
             const [winner, loser] = one.status === 200 ? [one, two] : [two, one]

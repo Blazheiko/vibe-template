@@ -9,6 +9,8 @@ import { wsMessageValidator } from '#app/validate/ws-message-validator.js'
 import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { wsSessionAuth } from '#app/websocket/ws-session-auth.js'
 import { registerSessionTokenChecker } from '#vendor/utils/session/session-token-check.js'
+import { registerSignInCompletionHook } from '#vendor/utils/session/request-session.js'
+import { retireCompletedTicket } from '#app/services/auth/mfa/mfa-sign-in.js'
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
 
 registerWsMessageValidator(wsMessageValidator)
@@ -23,3 +25,7 @@ registerWsAppHooks({
 // ADR 0002: sessions are revoked by rotating users.sessionToken; the vendor session
 // layer compares it on every authenticated request and WebSocket message.
 registerSessionTokenChecker(checkSessionToken)
+// feat-245 (Р4): the browser came back with the session its second step created.
+registerSignInCompletionHook((context, completionId) =>
+    retireCompletedTicket(context.auth, completionId),
+)

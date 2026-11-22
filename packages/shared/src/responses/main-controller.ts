@@ -41,6 +41,8 @@ export const InitResponseSchema = type.or(
         },
         'wsUrl?': 'string',
         'wsToken?': 'string',
+        /** feat-245 (Р8): a recovery session: the client shows only the recovery wizard. */
+        'recovery?': { expiresAt: 'string', replaced: 'boolean' },
         'storage?': {
             'cdnUrl?': 'string',
             's3Prefix?': 'string',

@@ -62,7 +62,14 @@ export interface RateLimitedErrorDetails {
     retryAfterMs?: number
 }
 
+/** feat-245 (docs/plan/passkeys-mfa-plan.md, Р3): the step-up proofs this account can give. */
+export interface ReauthRequiredErrorDetails {
+    kind: 'reauth_required'
+    proofs: ('password' | 'totp' | 'webauthn')[]
+}
+
 export type ErrorDetails =
+    | ReauthRequiredErrorDetails
     | ValidationErrorDetails
     | ParameterValidationErrorDetails
     | PayloadTooLargeErrorDetails

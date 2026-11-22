@@ -545,6 +545,7 @@ const setHttpHandler = async (
         // Step 5: middleware chain + handler.
         const httpData: HttpData = {
             method: route.method,
+            allowInRecovery: route.allowInRecovery === true,
             ip: meta.ip,
             params: meta.params,
             payload,

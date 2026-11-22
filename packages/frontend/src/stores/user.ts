@@ -55,6 +55,11 @@ export const useUserStore = defineStore('user', () => {
      */
     const anonymousConfirmed = ref(false)
     /**
+     * feat-245 (Р8): set while this session is a recovery session (main/init says so). The app
+     * shows only the recovery wizard then: every other route answers 403 recovery_session.
+     */
+    const recovery = ref<{ expiresAt: string; replaced: boolean } | null>(null)
+    /**
      * feat-240 (Р8): grows with every `access_changed` of this tab's socket and with every change
      * of account. A role read over HTTP is applied only when it has not grown since the read
      * started, so an answer that left before a change never brings the old role back.
@@ -96,10 +101,15 @@ export const useUserStore = defineStore('user', () => {
         return true
     }
 
+    function setRecovery(state: { expiresAt: string; replaced: boolean } | null) {
+        recovery.value = state
+    }
+
     function clearUser() {
         accessEpoch += 1
         user.value = null
         profile.value = null
+        recovery.value = null
         anonymousConfirmed.value = true
         sentry.setUser(null)
     }
@@ -164,6 +174,8 @@ export const useUserStore = defineStore('user', () => {
         user,
         profile,
         anonymousConfirmed,
+        recovery,
+        setRecovery,
         markAnonymous,
         setUser,
         setInitUser,

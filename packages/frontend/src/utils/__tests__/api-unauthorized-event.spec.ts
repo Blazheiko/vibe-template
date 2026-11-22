@@ -68,7 +68,7 @@ describe('the unauthorized event', () => {
         mockFetch(() => unauthorized('session_revoked'))
         const { authApi } = await loadApi('1')
 
-        await authApi.changePassword({ currentPassword: 'old-pass-1', newPassword: 'new-pass-1' })
+        await authApi.changePassword({ newPassword: 'new-pass-1' })
 
         expect(emitMock).toHaveBeenCalledWith('unauthorized')
     })

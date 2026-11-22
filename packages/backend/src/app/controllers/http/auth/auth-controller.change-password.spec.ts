@@ -36,18 +36,27 @@ vi.mock('#app/services/auth/password-reset-service.js', () => ({
 
 const { default: AuthController } = await import('./auth-controller.js')
 
+// feat-245: the session's auth state the step-up of POST /auth/reauth left.
+const sessionAuth = {
+    v: 1,
+    amr: ['pwd'],
+    aal: 1,
+    authenticatedAt: '2026-11-20T00:00:00.000Z',
+    verified: { pwd: '2026-11-20T00:00:00.000Z' },
+}
+
 const createContext = () => {
     const logger = { info: vi.fn(), error: vi.fn(), warn: vi.fn() }
     return {
         logger,
-        httpData: { payload: { currentPassword: 'old-password', newPassword: 'new-password' } },
+        httpData: { payload: { newPassword: 'new-password' } },
         responseData: { status: 200 },
         auth: {
             check: () => true,
             getUserId: () => '7',
             getPresentedUserToken: () => 'presented-token',
         },
-        session: { sessionInfo: { id: 's1', data: { userId: '7' } } },
+        session: { sessionInfo: { id: 's1', data: { userId: '7', auth: sessionAuth } } },
         signal: new AbortController().signal,
     } as never as Parameters<typeof AuthController.changePassword>[0] & {
         logger: typeof logger
@@ -117,7 +126,8 @@ describe('AuthController.changePassword', () => {
     })
 
     // feat-096: the service compares the token the request presented with users.session_token.
-    it('hands the service the presented session token', async () => {
+    // feat-245: and decides by the session's auth state whether the change is allowed.
+    it('hands the service the presented session token and the session auth state', async () => {
         renewSession.mockResolvedValue(
             Result.ok({ csrfToken: 'c'.repeat(43), wsUrl: 'wss://x/ws', wsToken: 'ws-token' }),
         )
@@ -126,12 +136,13 @@ describe('AuthController.changePassword', () => {
 
         expect(changePassword).toHaveBeenCalledWith(
             7n,
-            { currentPassword: 'old-password', newPassword: 'new-password' },
+            { newPassword: 'new-password' },
             'presented-token',
             expect.any(Function),
             's1',
             // feat-235: the signed-in user of the request is the actor of the audit event.
             expect.objectContaining({ kind: 'user', userId: 7n }),
+            sessionAuth,
         )
     })
 

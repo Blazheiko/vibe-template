@@ -36,6 +36,13 @@ import type {
     ResetPhoneCompleteResponse,
     GetSignInMethodsResponse,
     UnlinkSignInMethodResponse,
+    MfaStatusResponse,
+    RecoveryCodesResponse,
+    ReauthOptionsResponse,
+    ReauthResponse,
+    TotpConfirmResponse,
+    TotpDisableResponse,
+    TotpSetupResponse,
 } from 'shared/responses'
 import type {
     CreateSubscriptionInput,
@@ -63,6 +70,9 @@ import type {
     SupportKnowledgeBaseUpdateInput,
     UpdateProfileInput,
     UpdateNotificationPreferenceInput,
+    MfaVerifyInput,
+    ReauthInput,
+    TotpConfirmInput,
 } from 'shared/schemas'
 import {
     accountContracts,
@@ -75,6 +85,7 @@ import {
     oauthContracts,
     pushSubscriptionContracts,
     supportContracts,
+    mfaContracts,
 } from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
@@ -168,11 +179,35 @@ export const authApi = {
     signInMethods: (): Promise<ApiResponse<GetSignInMethodsResponse>> =>
         callApi(authContracts.signInMethods, {}),
 
-    unlinkSignInMethod: (body: {
-        id: string
-        currentPassword?: string
-    }): Promise<ApiResponse<UnlinkSignInMethodResponse>> =>
+    unlinkSignInMethod: (body: { id: string }): Promise<ApiResponse<UnlinkSignInMethodResponse>> =>
         callApi(authContracts.unlinkSignInMethod, { body }),
+
+    // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the second sign-in step. The ticket travels
+    // in an HttpOnly cookie; the session is still anonymous, so `public` recovery.
+    mfaVerify: (body: MfaVerifyInput): Promise<ApiResponse<LoginResponse>> =>
+        callApi(authContracts.mfaVerify, { body }, { csrfRecovery: 'public' }),
+
+    // feat-245 (Р3): the proofs this session can give, and a step-up.
+    reauthOptions: (): Promise<ApiResponse<ReauthOptionsResponse>> =>
+        callApi(authContracts.reauthOptions, { body: {} }),
+    reauth: (body: ReauthInput): Promise<ApiResponse<ReauthResponse>> =>
+        callApi(authContracts.reauth, { body }),
+
+    // feat-245 (Р8): ends a recovery session; an ordinary sign-in follows.
+    recoveryFinish: (): Promise<ApiResponse<LogoutResponse>> =>
+        callApi(authContracts.recoveryFinish, { body: {} }, { sessionAfter: 'anonymous' }),
+}
+
+// feat-245 (Р7, Р8): the second factors of the signed-in account.
+export const mfaApi = {
+    status: (): Promise<ApiResponse<MfaStatusResponse>> => callApi(mfaContracts.status),
+    totpSetup: (): Promise<ApiResponse<TotpSetupResponse>> =>
+        callApi(mfaContracts.totpSetup, { body: {} }),
+    totpConfirm: (body: TotpConfirmInput): Promise<ApiResponse<TotpConfirmResponse>> =>
+        callApi(mfaContracts.totpConfirm, { body }),
+    totpDisable: (): Promise<ApiResponse<TotpDisableResponse>> => callApi(mfaContracts.totpDisable),
+    regenerateRecoveryCodes: (): Promise<ApiResponse<RecoveryCodesResponse>> =>
+        callApi(mfaContracts.regenerateRecoveryCodes, { body: {} }),
 }
 
 // feat-232: the profile of the signed-in user. Absent field unchanged, `null` resets.

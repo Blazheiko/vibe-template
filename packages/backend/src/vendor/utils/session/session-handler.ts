@@ -3,6 +3,7 @@ import sessionConfig from '#config/session.js'
 import {
     getSession,
     updateSessionData,
+    updateSessionAuth,
     changeSessionData,
     consumeSessionData,
     destroySession,
@@ -14,7 +15,11 @@ import { assertSessionTokenCurrent } from '#vendor/utils/session/session-token-c
 import { maskTokenForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { verifyAnonSessionToken, verifySignedToken } from '#vendor/utils/session/token-handler.js'
 import { isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
-import { RequestSession, type IncomingSession } from '#vendor/utils/session/request-session.js'
+import {
+    RequestSession,
+    runSignInCompletionHook,
+    type IncomingSession,
+} from '#vendor/utils/session/request-session.js'
 
 const isValidUserToken = (token: unknown): token is string =>
     typeof token === 'string' && /^[a-zA-Z0-9_-]{10,}$/.test(token)
@@ -63,6 +68,8 @@ export const sessionHandler = async (
 ): Promise<void> => {
     const session = await RequestSession.restore(context, readIncomingSession(context, accessToken))
     session.attach()
+    // feat-245 (Р4): a request with the session a second step created retires its ticket.
+    if (context.auth.check()) await runSignInCompletionHook(context)
 }
 
 export type WsSessionResult =
@@ -114,6 +121,8 @@ export const wsSessionHandler = async (
             isStored: async () => await sessionExists(sessionInfo.id, userToken),
             consumeSessionData: async (expected, keys) =>
                 (await consumeSessionData(sessionInfo.id, userToken, expected, keys)).kind,
+            updateSessionAuth: async (apply, options) =>
+                await updateSessionAuth(sessionInfo.id, userToken, apply, options?.removeKeys),
             destroySession: async (): Promise<void> => {
                 await destroySession(sessionInfo.id, userToken)
             },

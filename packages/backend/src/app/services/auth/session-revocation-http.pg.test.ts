@@ -214,6 +214,14 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             )
             expect(reply.status).toBe(200)
         }
+
+        /** feat-245 (Р3): the step-up a sensitive action of the account asks for. */
+        async reauth(password = OLD_PASSWORD): Promise<void> {
+            const reply = await this.request('POST', '/auth/reauth', {
+                body: { proof: 'password', password },
+            })
+            expect(reply.status).toBe(200)
+        }
     }
 
     const signedIn = async (email: string): Promise<Browser> => {
@@ -276,10 +284,11 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             expect((await b.request('GET', '/main/init')).status).toBe(200)
             const oldCookie = a.cookie
             const oldCsrf = a.csrf
+            await a.reauth()
 
             const reply = a.keep(
                 await a.request('POST', '/auth/change-password', {
-                    body: { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                    body: { newPassword: 'new-secret-456' },
                 }),
             )
 
@@ -318,11 +327,12 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             const a = await signedIn(user.email ?? '')
             const b = await signedIn(user.email ?? '')
             const bSessionId = sessionIdOf(b)
+            await a.reauth()
             cleanup.fail = true
 
             const reply = a.keep(
                 await a.request('POST', '/auth/change-password', {
-                    body: { currentPassword: OLD_PASSWORD, newPassword: 'new-secret-456' },
+                    body: { newPassword: 'new-secret-456' },
                 }),
             )
 
@@ -339,20 +349,21 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
             const user = await insertUser('http-race')
             const a = await signedIn(user.email ?? '')
             const b = await signedIn(user.email ?? '')
+            await a.reauth()
+            await b.reauth()
 
             const [first, second] = await Promise.all([
                 a.request('POST', '/auth/change-password', {
-                    body: { currentPassword: OLD_PASSWORD, newPassword: 'winner-one-111' },
+                    body: { newPassword: 'winner-one-111' },
                 }),
                 b.request('POST', '/auth/change-password', {
-                    body: { currentPassword: OLD_PASSWORD, newPassword: 'winner-two-222' },
+                    body: { newPassword: 'winner-two-222' },
                 }),
             ])
 
             const replies = [first, second]
             expect(replies.filter((reply) => reply.status === 200)).toHaveLength(1)
-            // The loser is a conflict, a wrong current password (the winner was first), or
-            // a session the winner has already revoked.
+            // The loser is a conflict or a session the winner has already revoked.
             const loser = replies.find((reply) => reply.status !== 200)
             expect([400, 401, 403, 409]).toContain(loser?.status)
 

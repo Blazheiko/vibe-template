@@ -1,13 +1,15 @@
 import { Result } from 'better-result'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
+import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 
 // feat-199 (security review 2026-11-12, M-2) against a real PostgreSQL: a link is removed only
-// for its own account, and two removals at once never take the last way in. The throttle
-// (Redis) and the notices are not under test here.
+// for its own account, and two removals at once never take the last way in. The notices are not
+// under test here. feat-245 (row 8 of Р3): the proof is the session's auth state, no password in
+// the request.
 const silent = vi.hoisted(() => ({
     error: vi.fn(),
     warn: vi.fn(),
@@ -16,10 +18,6 @@ const silent = vi.hoisted(() => ({
 }))
 vi.mock('#logger', () => ({ default: silent }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
-vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
-    consumeAuthThrottle: () => Promise.resolve({ allowed: true, count: 1 }),
-    resetAuthThrottle: () => Promise.resolve(undefined),
-}))
 const security = vi.hoisted(() => vi.fn())
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security, supportReply: vi.fn() },
@@ -63,15 +61,24 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
             providerAvatar: null,
         })
 
+    /** The session's auth state with these marks, each proven just now. */
+    const provenNow = (...methods: ('pwd' | 'oauth')[]): SessionAuthState => ({
+        v: 1,
+        amr: methods,
+        aal: 1,
+        authenticatedAt: new Date().toISOString(),
+        verified: Object.fromEntries(methods.map((m) => [m, new Date().toISOString()])),
+    })
+
     const request = (
         user: { sessionToken: string },
         linkId: bigint,
         over: Record<string, unknown> = {},
     ) => ({
         linkId,
-        currentPassword: undefined as string | undefined,
         presentedSessionToken: user.sessionToken,
-        sessionCreatedAt: new Date().toISOString(),
+        // A recent OAuth sign-in: what an account without a password proves itself with.
+        sessionAuth: provenNow('oauth') as SessionAuthState | undefined,
         sessionStored: () => Promise.resolve(true),
         actor: testUserActor(),
         ...over,
@@ -101,7 +108,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         })
     })
 
-    it("does not remove another account's link, even with the right password", async () => {
+    it("does not remove another account's link, even with a fresh password", async () => {
         const attacker = await insertUser(true)
         const victim = await insertUser(true)
         await linkTo(attacker.id, 'github')
@@ -109,7 +116,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
 
         const result = await signInMethodsService.unlink(
             attacker.id,
-            request(attacker, victimsLink.id, { currentPassword: PASSWORD }),
+            request(attacker, victimsLink.id, { sessionAuth: provenNow('pwd') }),
         )
 
         expect(Result.isError(result) && result.error).toMatchObject({ _tag: 'NotFound' })
@@ -124,21 +131,24 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
         expect(await providersOf(victim.id)).toEqual(['google'])
     })
 
-    it('removes the link with the current password; the provider no longer finds the account', async () => {
+    it('removes the link after a fresh password; the provider no longer finds the account', async () => {
         const owner = await insertUser(true)
         const link = await linkTo(owner.id, 'github')
         security.mockClear()
 
         const refused = await signInMethodsService.unlink(
             owner.id,
-            request(owner, link.id, { currentPassword: 'wrong-password-1' }),
+            request(owner, link.id, { sessionAuth: undefined }),
         )
-        expect(Result.isError(refused) && refused.error).toMatchObject({ _tag: 'BadRequest' })
+        expect(Result.isError(refused) && refused.error).toMatchObject({
+            _tag: 'Forbidden',
+            reason: 'reauth_required',
+        })
         expect(await providersOf(owner.id)).toEqual(['github'])
 
         const result = await signInMethodsService.unlink(
             owner.id,
-            request(owner, link.id, { currentPassword: PASSWORD }),
+            request(owner, link.id, { sessionAuth: provenNow('pwd') }),
         )
 
         expect(Result.isOk(result) && result.value).toEqual({ provider: 'github' })

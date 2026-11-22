@@ -1,7 +1,17 @@
 import { Result } from 'better-result'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
+
+// feat-245 (row 7 of Р3): the session proved the password through POST /auth/reauth just now.
+const FRESH_PASSWORD: SessionAuthState = {
+    v: 1,
+    amr: ['pwd'],
+    aal: 1,
+    authenticatedAt: new Date().toISOString(),
+    verified: { pwd: new Date().toISOString() },
+}
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -58,6 +68,11 @@ const resetAuthThrottleMock = vi.fn()
 const issueVerificationCodeMock = vi.fn()
 
 // feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+// feat-245: these accounts have no second factor; the second step has its own tests.
+vi.mock('#app/services/auth/mfa/mfa-sign-in.js', async () => {
+    const { Result: R } = await import('better-result')
+    return { startSecondStepIfRequired: () => Promise.resolve(R.ok(null)) }
+})
 vi.mock('#app/services/audit/audit-service.js', () => ({
     auditService: {
         stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),
@@ -69,6 +84,9 @@ vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
+    // feat-245: these accounts have no second factor.
+    totpFactorRepository: { findByUserId: () => Promise.resolve(undefined) },
+    recoveryCodeRepository: { countUnused: () => Promise.resolve(0) },
 }))
 
 vi.mock('#app/transformers/index.js', () => ({
@@ -601,7 +619,7 @@ describe('authService phone foundation', () => {
         expect(userRepositoryMock.findByPhone).not.toHaveBeenCalled()
     })
 
-    it('starts a phone linking challenge after re-authentication', async () => {
+    it('starts a phone linking challenge after a fresh password proof', async () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 7n,
             email: 'user@example.com',
@@ -664,13 +682,13 @@ describe('authService phone foundation', () => {
             7n,
             {
                 phone: '+1 415 555 0123',
-                currentPassword: 'secret123',
             },
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
+                sessionAuth: FRESH_PASSWORD,
             },
         )
 
@@ -746,13 +764,13 @@ describe('authService phone foundation', () => {
             7n,
             {
                 phone: '+1 415 555 0123',
-                currentPassword: 'secret123',
             },
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
                 sessionStored: () => Promise.resolve(false),
+                sessionAuth: FRESH_PASSWORD,
             },
         )
 
@@ -770,13 +788,13 @@ describe('authService phone foundation', () => {
             7n,
             {
                 phone: '+1 415 555 0123',
-                currentPassword: 'secret123',
             },
             {
                 ipAddress: '127.0.0.1',
                 sessionId: null,
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
+                sessionAuth: FRESH_PASSWORD,
             },
         )
 
@@ -1051,13 +1069,13 @@ describe('authService phone foundation', () => {
             7n,
             {
                 phone: '+1 415 555 0123',
-                currentPassword: 'secret123',
             },
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: 'session-token',
                 sessionStored: sessionStillStored,
+                sessionAuth: FRESH_PASSWORD,
             },
         )
 
@@ -1129,12 +1147,13 @@ describe('phone linking session guard (feat-096)', () => {
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(
             7n,
-            { phone: '+1 415 555 0123', currentPassword: 'secret123' },
+            { phone: '+1 415 555 0123' },
             {
                 ipAddress: '127.0.0.1',
                 sessionId: 'session-id',
                 presentedSessionToken: presented,
                 sessionStored: sessionStillStored,
+                sessionAuth: FRESH_PASSWORD,
             },
         )
 
@@ -1225,12 +1244,13 @@ describe('auth throttle fail-closed (phone flows)', () => {
         await expect(
             authService.startPhoneLink(
                 7n,
-                { phone: '+1 415 555 0123', currentPassword: 'secret123' },
+                { phone: '+1 415 555 0123' },
                 {
                     ipAddress: '127.0.0.1',
                     sessionId: 'session-id',
                     presentedSessionToken: 'session-token',
                     sessionStored: sessionStillStored,
+                    sessionAuth: FRESH_PASSWORD,
                 },
             ),
         ).rejects.toThrow()

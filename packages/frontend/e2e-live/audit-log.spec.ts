@@ -74,9 +74,9 @@ test('an admin finds a password change and a logout everywhere by the account', 
     }
     const userId = init.user.id
 
-    // The password change goes through the account page.
+    // The password change goes through the account page; the sign-in a moment ago is the fresh
+    // password proof it needs (feat-245), so no step-up dialog.
     const newPassword = 'live-e2e-pass-changed'
-    await user.page.locator('input[name="current-password"]').fill(account.password)
     await user.page.locator('input[name="new-password"]').fill(newPassword)
     await user.page.locator('input[name="confirm-password"]').fill(newPassword)
     const changed = user.page.waitForResponse(

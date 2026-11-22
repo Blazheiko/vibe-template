@@ -10,6 +10,8 @@ import { passwordLengthProblem } from '@/utils/validate-password'
 import { useAuthRequest } from '@/composables/useAuthRequest'
 import { useCompleteSignIn } from '@/composables/useCompleteSignIn'
 import SocialAuthButtons from '../SocialAuthButtons.vue'
+import MfaChallengeForm from './MfaChallengeForm.vue'
+import { useRoute } from 'vue-router'
 
 // The sign-in step of the login modal. The typed identifier and password belong to the modal (the
 // forgot-password step starts from the identifier and coming back must not lose either), the rest
@@ -36,6 +38,18 @@ const loginIdentifierError = ref('')
 const loginPasswordError = ref('')
 const loginError = ref(props.notice)
 const isLoginLoading = ref(false)
+
+// feat-245 (Р4): the password (or an OAuth sign-in, back on /login?mfa=required) was right and
+// the account has a second factor: the second step replaces the password form.
+type SecondStepMethod = 'totp' | 'recovery_code' | 'webauthn'
+const route = useRoute()
+const secondStep = ref<SecondStepMethod[] | null>(
+    route.query.mfa === 'required' ? ['totp', 'recovery_code'] : null,
+)
+const restartSignIn = (message: string): void => {
+    secondStep.value = null
+    loginError.value = message
+}
 
 function validateLoginIdentifier(): boolean {
     const value = loginIdentifier.value.trim()
@@ -101,6 +115,12 @@ async function handleLogin(): Promise<void> {
             return
         }
 
+        if (data?.status === 'mfa_required') {
+            loginPassword.value = ''
+            secondStep.value = data.methods
+            return
+        }
+
         if (data?.status === 'success' && data.user) {
             completeSignIn(data.user)
             return
@@ -112,63 +132,71 @@ async function handleLogin(): Promise<void> {
 </script>
 
 <template>
-    <p class="auth-description">
-        {{ phoneAuthEnabled ? t('auth.identifierLoginHelp') : t('auth.emailLoginHelp') }}
-    </p>
-    <div v-if="loginError" class="error-message form-error">{{ loginError }}</div>
-    <div class="form-group">
-        <label for="login-identifier">
-            {{ phoneAuthEnabled ? t('auth.identifier') : t('auth.email') }}
-        </label>
-        <input
-            id="login-identifier"
-            v-model="loginIdentifier"
-            type="text"
-            :placeholder="
-                phoneAuthEnabled ? t('auth.identifierPlaceholder') : t('auth.emailPlaceholder')
-            "
-            autocomplete="username"
-            :class="{ 'has-error': loginIdentifierError }"
-        />
-        <div v-if="loginIdentifierError" class="error-message">
-            {{ loginIdentifierError }}
+    <MfaChallengeForm
+        v-if="secondStep !== null"
+        :methods="secondStep"
+        @signed-in="completeSignIn"
+        @restart="restartSignIn"
+    />
+    <template v-else>
+        <p class="auth-description">
+            {{ phoneAuthEnabled ? t('auth.identifierLoginHelp') : t('auth.emailLoginHelp') }}
+        </p>
+        <div v-if="loginError" class="error-message form-error">{{ loginError }}</div>
+        <div class="form-group">
+            <label for="login-identifier">
+                {{ phoneAuthEnabled ? t('auth.identifier') : t('auth.email') }}
+            </label>
+            <input
+                id="login-identifier"
+                v-model="loginIdentifier"
+                type="text"
+                :placeholder="
+                    phoneAuthEnabled ? t('auth.identifierPlaceholder') : t('auth.emailPlaceholder')
+                "
+                autocomplete="username"
+                :class="{ 'has-error': loginIdentifierError }"
+            />
+            <div v-if="loginIdentifierError" class="error-message">
+                {{ loginIdentifierError }}
+            </div>
         </div>
-    </div>
-    <div class="form-group">
-        <label for="login-password">{{ t('auth.password') }}</label>
-        <input
-            id="login-password"
-            v-model="loginPassword"
-            type="password"
-            :placeholder="t('auth.passwordPlaceholder')"
-            autocomplete="current-password"
-            :class="{ 'has-error': loginPasswordError }"
-        />
-        <div v-if="loginPasswordError" class="error-message">
-            {{ loginPasswordError }}
+        <div class="form-group">
+            <label for="login-password">{{ t('auth.password') }}</label>
+            <input
+                id="login-password"
+                v-model="loginPassword"
+                type="password"
+                :placeholder="t('auth.passwordPlaceholder')"
+                autocomplete="current-password"
+                :class="{ 'has-error': loginPasswordError }"
+            />
+            <div v-if="loginPasswordError" class="error-message">
+                {{ loginPasswordError }}
+            </div>
         </div>
-    </div>
 
-    <div class="form-options">
-        <label class="checkbox-container">
-            <input type="checkbox" checked />
-            <span class="checkmark"></span>
-            {{ t('auth.rememberMe') }}
-        </label>
-        <a href="#" class="forgot-password" @click.prevent="emit('forgot')">
-            {{ t('auth.forgotPassword') }}
-        </a>
-    </div>
+        <div class="form-options">
+            <label class="checkbox-container">
+                <input type="checkbox" checked />
+                <span class="checkmark"></span>
+                {{ t('auth.rememberMe') }}
+            </label>
+            <a href="#" class="forgot-password" @click.prevent="emit('forgot')">
+                {{ t('auth.forgotPassword') }}
+            </a>
+        </div>
 
-    <button class="auth-button" @click="handleLogin" :disabled="isLoginLoading">
-        <span v-if="isLoginLoading">{{ t('auth.signingIn') }}</span>
-        <span v-else>{{ t('auth.signIn') }}</span>
-    </button>
+        <button class="auth-button" @click="handleLogin" :disabled="isLoginLoading">
+            <span v-if="isLoginLoading">{{ t('auth.signingIn') }}</span>
+            <span v-else>{{ t('auth.signIn') }}</span>
+        </button>
 
-    <SocialAuthButtons />
+        <SocialAuthButtons />
 
-    <p class="auth-switch">
-        {{ t('auth.noAccount') }}
-        <a href="#" @click.prevent="emit('register')">{{ t('auth.register') }}</a>
-    </p>
+        <p class="auth-switch">
+            {{ t('auth.noAccount') }}
+            <a href="#" @click.prevent="emit('register')">{{ t('auth.register') }}</a>
+        </p>
+    </template>
 </template>

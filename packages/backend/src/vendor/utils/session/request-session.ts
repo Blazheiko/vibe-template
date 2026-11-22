@@ -4,6 +4,7 @@ import type {
     DestroyAllSessionsResult,
     HttpContext,
     LoginOrigin,
+    LoginPlan,
     SessionData,
     SessionDevice,
     SessionInfo,
@@ -26,8 +27,11 @@ import {
     sessionExists,
     touchSession,
     updateSessionData,
+    updateSessionAuth,
     consumeSessionData,
+    sanitizeRedisKey,
 } from '#vendor/utils/session/redis-session-storage.js'
+import { isActiveRecovery, type SessionAuthState } from 'shared/mfa'
 import logger from '#vendor/utils/logger.js'
 import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
 import { assertSessionTokenCurrent } from '#vendor/utils/session/session-token-check.js'
@@ -37,6 +41,10 @@ import { createAnonSessionToken, createSignedToken } from '#vendor/utils/session
 import { generateCsrfToken, isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { sessionPublicId } from '#vendor/utils/session/session-public-id.js'
 import { sessionListChanged } from '#vendor/utils/session/session-list-events.js'
+import {
+    activatePendingSession,
+    preparePendingSession,
+} from '#vendor/utils/session/session-index.js'
 
 /** Storage namespace of a session without a user. */
 const ANON_TOKEN = ANON_SESSION_NAMESPACE
@@ -57,6 +65,50 @@ const withCsrfToken = (data: SessionData): SessionData => ({
     ...data,
     csrfToken: isValidCsrfToken(data.csrfToken) ? data.csrfToken : generateCsrfToken(),
 })
+
+/**
+ * feat-245 (Р2): the auth state of a sign-in that did not pass one: level 1 by the origin's
+ * method, proven now. A renewal without a state keeps none (a session stored before feat-245).
+ */
+const defaultSignInAuth = (origin: LoginOrigin, now: Date): SessionAuthState | undefined => {
+    if ('inherit' in origin) return undefined
+    const method =
+        origin.method === 'oauth' ? 'oauth' : origin.method === 'passkey' ? 'webauthn' : 'pwd'
+    const at = now.toISOString()
+    return {
+        v: 1,
+        amr: [method],
+        aal: method === 'webauthn' ? 2 : 1,
+        authenticatedAt: at,
+        verified: { [method]: at },
+    }
+}
+
+/** feat-245 (Р4): `__Host-mfa` where the session cookie has the prefix, `mfa` elsewhere. */
+export const mfaTicketCookieName = (): string =>
+    sessionConfig.useHostPrefix ? '__Host-mfa' : 'mfa'
+
+/**
+ * feat-245 (Р4): what the application does when a request comes with the session a second-step
+ * sign-in created and with the ticket cookie (the browser got the answer): it retires the ticket.
+ * Registered at start (app/start), so this module does not import the application.
+ */
+type SignInCompletionHook = (context: HttpContext, completionId: string) => Promise<void>
+let signInCompletionHook: SignInCompletionHook | null = null
+export const registerSignInCompletionHook = (hook: SignInCompletionHook): void => {
+    signInCompletionHook = hook
+}
+/** Run by session_web once the session is attached (context.auth works then). */
+export const runSignInCompletionHook = async (context: HttpContext): Promise<void> => {
+    const completionId = context.session.sessionInfo?.data.completionId
+    if (signInCompletionHook === null || typeof completionId !== 'string') return
+    if (context.httpData.cookies.get(mfaTicketCookieName()) === undefined) return
+    try {
+        await signInCompletionHook(context, completionId)
+    } catch (err) {
+        logger.warn({ err }, 'Second-step ticket not retired; it expires by itself')
+    }
+}
 
 const newAnonSessionInfo = (): SessionInfo => ({
     id: crypto.randomUUID(),
@@ -174,16 +226,27 @@ export class RequestSession {
      * replace `info` and `storageToken`, not this.
      */
     private readonly presentedUserToken: string | undefined
+    /**
+     * feat-245 (Р4): the session id the request's cookie named, verified by its signature, whatever
+     * became of that session (an anonymous one replaced by a sign-in whose answer was lost).
+     */
+    private readonly cookieSessionId: string | undefined
 
     private constructor(
         private readonly context: HttpContext,
         info: SessionInfo,
-        state: { cookieHeld: boolean; storageToken: string; presentedUserToken?: string },
+        state: {
+            cookieHeld: boolean
+            storageToken: string
+            presentedUserToken?: string
+            cookieSessionId?: string
+        },
     ) {
         this.info = info
         this.cookieHeld = state.cookieHeld
         this.storageToken = state.storageToken
         this.presentedUserToken = state.presentedUserToken
+        this.cookieSessionId = state.cookieSessionId
     }
 
     /**
@@ -211,6 +274,8 @@ export class RequestSession {
             // A record past SESSION_MAX_AGE_DAYS comes back null and is deleted by the store
             // (feat-119: the same check for HTTP and WebSocket).
             info = await getSession(incoming.sessionId, incoming.userToken)
+            // feat-245 (Р4): a pending record is a sign-in not confirmed yet: it opens nothing.
+            if (info !== null && info.data.pending === true) info = null
             if (info === null) {
                 // The record expired or was deleted: the cookie names nothing. The new
                 // anonymous session must not inherit its user token as storage namespace.
@@ -226,6 +291,16 @@ export class RequestSession {
                 }
                 if (status === 'mismatch') {
                     await dropRevokedSession(incoming.sessionId, incoming.userToken)
+                    info = null
+                    presentedId = undefined
+                    presentedUserToken = undefined
+                } else if (
+                    info.data.auth?.recovery !== undefined &&
+                    !isActiveRecovery(info.data.auth, Date.now())
+                ) {
+                    // feat-245 (Р8): a recovery session ends at its absolute expiry, whatever the
+                    // record's TTL says; the request goes on as a new anonymous session.
+                    await destroySession(incoming.sessionId, incoming.userToken)
                     info = null
                     presentedId = undefined
                     presentedUserToken = undefined
@@ -268,10 +343,12 @@ export class RequestSession {
             presentedUserToken !== undefined && typeof info.data.userId === 'string'
                 ? presentedUserToken
                 : undefined
+        const cookieSessionId = incoming.kind === 'none' ? undefined : incoming.sessionId
         const session = new RequestSession(context, info, {
             cookieHeld,
             storageToken: userToken ?? ANON_TOKEN,
             ...(signedInToken !== undefined ? { presentedUserToken: signedInToken } : {}),
+            ...(cookieSessionId !== undefined ? { cookieSessionId } : {}),
         })
 
         if (startsNew) {
@@ -314,6 +391,7 @@ export class RequestSession {
         session.updateSessionData = this.updateData.bind(this)
         session.changeSessionData = this.changeData.bind(this)
         session.consumeSessionData = this.consumeData.bind(this)
+        session.updateSessionAuth = this.updateAuth.bind(this)
         session.isStored = this.isStored.bind(this)
         session.destroySession = this.destroy.bind(this)
         auth.getUserId = this.userId.bind(this)
@@ -322,6 +400,13 @@ export class RequestSession {
         auth.login = this.login.bind(this)
         auth.logout = this.logout.bind(this)
         auth.logoutAll = this.logoutAll.bind(this)
+        auth.planLogin = this.planLogin.bind(this)
+        auth.getCookieSessionId = (): string | undefined => this.cookieSessionId ?? this.info.id
+        auth.getMfaTicketCookie = (): string | undefined =>
+            this.context.httpData.cookies.get(mfaTicketCookieName()) ?? undefined
+        auth.setMfaTicketCookie = this.setMfaTicketCookie.bind(this)
+        auth.prepareLogin = this.prepareLogin.bind(this)
+        auth.activateLogin = this.activateLogin.bind(this)
     }
 
     // --- session data ------------------------------------------------------------------
@@ -331,6 +416,25 @@ export class RequestSession {
         return this.cookieHeld
             ? await this.storeAnonymous({ ...this.info.data, ...newData })
             : await updateSessionData(this.info.id, newData, this.storageToken)
+    }
+
+    /**
+     * feat-245 (Р2): a signed-in session's auth state; a cookie-held (anonymous) session has none
+     * to change.
+     */
+    private async updateAuth(
+        apply: (current: SessionAuthState) => SessionAuthState,
+        options?: { removeKeys?: readonly string[] },
+    ): Promise<SessionInfo | null> {
+        if (this.cookieHeld) return null
+        const updated = await updateSessionAuth(
+            this.info.id,
+            this.storageToken,
+            apply,
+            options?.removeKeys,
+        )
+        if (updated !== null) this.setInfo(updated)
+        return updated
     }
 
     /** Replaces the session data. A cookie-held session moves to Redis first. */
@@ -405,6 +509,7 @@ export class RequestSession {
         userId: string | undefined,
         userToken: string | undefined,
         origin: LoginOrigin,
+        auth?: SessionAuthState,
     ): Promise<SessionDevice | null> {
         if (userId === undefined || userToken === undefined) return null
 
@@ -421,7 +526,11 @@ export class RequestSession {
         // it to Redis.
         await destroySession(previousId, this.storageToken)
 
-        const signedIn = await createSessionInfo({ userId, userToken }, this.deviceFor(origin))
+        const authState = auth ?? defaultSignInAuth(origin, new Date())
+        const signedIn = await createSessionInfo(
+            { userId, userToken, ...(authState !== undefined ? { auth: authState } : {}) },
+            this.deviceFor(origin),
+        )
         this.issueStoredCookie(signedIn.id, userToken, sessionConfig.age)
         this.setInfo(signedIn)
         this.storageToken = userToken
@@ -431,6 +540,100 @@ export class RequestSession {
         logger.info({ userId, sessionId: signedIn.id }, `User logged in`)
         sessionListChanged(userId)
         return signedIn.data.device ?? null
+    }
+
+    private planLogin(
+        userId: string,
+        origin: LoginOrigin,
+        auth: SessionAuthState,
+        expectedUserToken: string,
+    ): LoginPlan {
+        const sessionId = crypto.randomUUID()
+        return {
+            sessionId,
+            userId,
+            expectedUserToken,
+            device: { ...this.deviceFor(origin), publicId: sessionPublicId(sessionId) },
+            auth,
+            createdAtMs: Date.now(),
+        }
+    }
+
+    /** The record of a planned session: pending (before the commit) or active. */
+    private planRecord(plan: LoginPlan, completionId: string, pending: boolean): SessionInfo {
+        return {
+            id: plan.sessionId,
+            data: withCsrfToken({
+                userId: plan.userId,
+                userToken: plan.expectedUserToken,
+                device: plan.device,
+                auth: plan.auth,
+                completionId,
+                ...(pending ? { pending: true } : {}),
+            }),
+            createdAt: new Date(plan.createdAtMs).toISOString(),
+        }
+    }
+
+    private async prepareLogin(
+        plan: LoginPlan,
+        completionId: string,
+        ttlSeconds: number,
+    ): Promise<'created' | 'exists' | 'conflict'> {
+        return preparePendingSession(
+            this.planRecord(plan, completionId, true),
+            plan.expectedUserToken,
+            ttlSeconds,
+            completionId,
+            sanitizeRedisKey,
+        )
+    }
+
+    private async activateLogin(
+        plan: LoginPlan,
+        ticketKey: string,
+        completionId: string,
+    ): Promise<'activated' | 'already' | 'gone'> {
+        const record = this.planRecord(plan, completionId, false)
+        const outcome = await activatePendingSession({
+            ticketKey,
+            completionId,
+            session: record,
+            userToken: plan.expectedUserToken,
+            publicId: plan.device.publicId,
+            createdAtMs: plan.createdAtMs,
+            sanitize: sanitizeRedisKey,
+        })
+        if (outcome.kind === 'gone') return 'gone'
+        if (outcome.kind === 'already' && !outcome.recordExists) return 'gone'
+        // The stored record (its CSRF token) when an earlier request activated it.
+        const active =
+            outcome.kind === 'activated'
+                ? record
+                : await getSession(plan.sessionId, plan.expectedUserToken)
+        if (active === null || active.data.pending === true) return 'gone'
+        await this.replaceWith(active, plan.expectedUserToken)
+        if (outcome.kind === 'activated') {
+            logger.info({ userId: plan.userId, sessionId: plan.sessionId }, 'User logged in (MFA)')
+            sessionListChanged(plan.userId)
+        }
+        return outcome.kind
+    }
+
+    /** The request's session becomes `active`: the previous one goes, its cookie is issued. */
+    private async replaceWith(active: SessionInfo, userToken: string): Promise<void> {
+        const previousId = this.info.id
+        if (previousId !== active.id) {
+            if (this.cookieHeld || this.storageToken === ANON_TOKEN) {
+                await markAnonSessionSuperseded(previousId, ANON_COOKIE_REFRESH_SECONDS)
+            }
+            await destroySession(previousId, this.storageToken)
+        }
+        this.issueStoredCookie(active.id, userToken, sessionConfig.age)
+        this.setInfo(active)
+        this.storageToken = userToken
+        this.cookieHeld = false
+        this.swapped = true
     }
 
     private deviceFor(origin: LoginOrigin): Omit<SessionDevice, 'publicId'> {
@@ -513,6 +716,19 @@ export class RequestSession {
             secure: sessionConfig.cookie.secure,
             maxAge,
             sameSite: sessionConfig.cookie.sameSite,
+            expires: new Date(Date.now() + maxAge * 1000),
+        })
+    }
+
+    /** feat-245 (Р4): the second-step ticket id, or null to clear it. */
+    private setMfaTicketCookie(ticketId: string | null, maxAgeSeconds: number): void {
+        const maxAge = ticketId === null ? 0 : maxAgeSeconds
+        this.context.responseData.setCookie(mfaTicketCookieName(), ticketId ?? '', {
+            path: '/',
+            httpOnly: true,
+            secure: sessionConfig.cookie.secure,
+            maxAge,
+            sameSite: 'Strict',
             expires: new Date(Date.now() + maxAge * 1000),
         })
     }

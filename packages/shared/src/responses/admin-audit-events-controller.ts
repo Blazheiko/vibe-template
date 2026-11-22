@@ -66,6 +66,12 @@ export const AuditMetadataSchema = type({
     'phoneRemoved?': 'boolean',
     'oauthRemoved?': 'string[]',
     'pushSubscriptionsRemoved?': 'number',
+    'mfaRemoved?': 'boolean',
+    // feat-245: the second factors.
+    'recoveryCodesIssued?': 'boolean',
+    'mfaDisabled?': 'boolean',
+    'count?': 'number',
+    'remaining?': 'number',
     'method?': 'string',
     'provider?': 'string',
     'mime?': 'string | null',

@@ -44,6 +44,8 @@ const methodLabel = (device: SessionDevice): string => {
             return 'registration'
         case 'password':
             return 'password'
+        case 'passkey':
+            return 'passkey'
     }
 }
 

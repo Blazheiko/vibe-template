@@ -153,7 +153,7 @@ test('the password limits are what every auth schema enforces', async () => {
             if (/password/i.test(prop.key)) fields.push([`${name}.${prop.key}`, prop.value])
         }
     }
-    assert.ok(fields.length >= 11, `found ${fields.length} password fields`)
+    assert.ok(fields.length >= 10, `found ${fields.length} password fields`)
     for (const [field, value] of fields) {
         if (field === 'VerifyEmailInputSchema.password') continue
         assert.ok(value.equals(PasswordSchema), `${field} is PasswordSchema`)

@@ -12,6 +12,7 @@ import PushSubscriptionController from '#app/controllers/http/notifications/push
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import AccountController from '#app/controllers/http/user/account-controller.js'
 import AccountSessionsController from '#app/controllers/http/user/account-sessions-controller.js'
+import MfaController from '#app/controllers/http/auth/mfa-controller.js'
 import NotificationController from '#app/controllers/http/notifications/notification-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
@@ -20,6 +21,7 @@ import { defineRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
     accountContracts,
+    mfaContracts,
     adminContracts,
     authContracts,
     avatarContracts,
@@ -79,10 +81,36 @@ export default [
                 description: 'Login a user by email or phone identifier',
             }),
             defineRoute({
+                contract: authContracts.mfaVerify,
+                handler: AuthController.mfaVerify.bind(AuthController),
+                description:
+                    'Second sign-in step (feat-245): TOTP or recovery code against the ticket cookie',
+            }),
+            defineRoute({
                 contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
                 description: 'Logout a user',
                 middlewares: ['auth_guard'],
+                allowInRecovery: true,
+            }),
+            defineRoute({
+                contract: authContracts.reauthOptions,
+                handler: AuthController.reauthOptions.bind(AuthController),
+                description: 'Step-up proofs this account can give (feat-245)',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
+                contract: authContracts.reauth,
+                handler: AuthController.reauth.bind(AuthController),
+                description: 'Step-up of this session by a password or a TOTP code (feat-245)',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
+                contract: authContracts.recoveryFinish,
+                handler: AuthController.recoveryFinish.bind(AuthController),
+                description: 'End a recovery session (feat-245); sign in again afterwards',
+                middlewares: ['auth_guard'],
+                allowInRecovery: true,
             }),
             defineRoute({
                 contract: authContracts.logoutAll,
@@ -210,6 +238,7 @@ export default [
                 handler: MainController.init.bind(MainController),
                 description: 'Initialize app state',
                 middlewares: ['auth_guard'],
+                allowInRecovery: true,
             }),
             defineRoute({
                 contract: mainContracts.updateWsToken,
@@ -360,6 +389,46 @@ export default [
         description: 'Account profile and session routes (feat-232, feat-233)',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'account',
+    },
+    {
+        group: [
+            defineRoute({
+                contract: mfaContracts.status,
+                handler: MfaController.status.bind(MfaController),
+                allowInRecovery: true,
+                description: 'Second factors and recovery codes of the current user (feat-245)',
+            }),
+            defineRoute({
+                contract: mfaContracts.totpSetup,
+                handler: MfaController.totpSetup.bind(MfaController),
+                allowInRecovery: true,
+                description:
+                    'Start a TOTP setup (needs a fresh proof); the secret stays in this session',
+            }),
+            defineRoute({
+                contract: mfaContracts.totpConfirm,
+                handler: MfaController.totpConfirm.bind(MfaController),
+                allowInRecovery: true,
+                description:
+                    'Confirm the TOTP setup with a code; replaces the previous app; idempotent',
+            }),
+            defineRoute({
+                contract: mfaContracts.totpDisable,
+                handler: MfaController.totpDisable.bind(MfaController),
+                allowInRecovery: true,
+                description: 'Turn the TOTP factor off (needs a fresh second factor)',
+            }),
+            defineRoute({
+                contract: mfaContracts.regenerateRecoveryCodes,
+                handler: MfaController.regenerateRecoveryCodes.bind(MfaController),
+                allowInRecovery: true,
+                description: 'Issue new recovery codes; the previous ones stop working',
+            }),
+        ],
+        description: 'Second factors of the account (feat-245)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'account/mfa',
+        rateLimit: { windowMs: 60_000, maxRequests: 20 },
     },
     {
         group: [

@@ -17,11 +17,14 @@ export const useSessionLifecycle = () => {
         pushStore.resetPushSubscriptionState()
     }
 
-    const redirectToLogin = async () => {
+    /** `returnTo` (feat-245): the page to come back to after signing in again. */
+    const redirectToLogin = async (returnTo?: string) => {
         resetSessionScopedState()
         websocketClose()
         userStore.clearUser()
-        await router.push('/login')
+        await router.push(
+            returnTo === undefined ? '/login' : { path: '/login', query: { redirect: returnTo } },
+        )
     }
 
     const logout = async () => {

@@ -7,6 +7,7 @@ import appConfig from '#config/app.js'
 import databaseConfig from '#config/database.js'
 import databasePoolConfig from '#config/database-pool.js'
 import { authConfig } from '#config/auth.js'
+import mfaConfig from '#config/mfa.js'
 import mailConfig from '#config/mail.js'
 import corsConfig from '#config/cors.js'
 import sentryConfig from '#config/sentry.js'
@@ -190,6 +191,16 @@ export function validateRuntimeConfig(): void {
                 'Phone authentication requires AUTH_OTP_HMAC_KEY or APP_KEY to be at least 32 characters long',
             )
         }
+    }
+
+    // feat-245 (Р9): a production-like environment refuses to start without the keys.
+    if (mfaConfig.configError !== null) {
+        throw new Error(`Invalid MFA configuration: ${mfaConfig.configError}`)
+    }
+    if (mfaConfig.encryptionKeysDerived) {
+        logger.warn(
+            'MFA_ENCRYPTION_KEYS is not set: the TOTP secrets are encrypted with a key derived from APP_KEY (development only)',
+        )
     }
 
     if (authConfig.smsProvider !== 'fake') {

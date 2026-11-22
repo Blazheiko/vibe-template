@@ -114,11 +114,11 @@ A linked identity signs in to the account whatever happens to the password: neit
 | Route                                   | What it does                                                                                                                  |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/auth/sign-in-methods`         | the account's links: `id`, `provider`, `name` (the profile name, only when it is safe to show), `linkedAt`; and `hasPassword` |
-| `POST /api/auth/sign-in-methods/unlink` | removes the link `{ id, currentPassword? }`                                                                                   |
+| `POST /api/auth/sign-in-methods/unlink` | removes the link `{ id }`                                                                                                     |
 
 Both routes are in the `auth` web group (`session_web`, `csrf_guard`, `auth_guard`). Unlinking checks:
 
-- **Who is asking.** An account with a password sends the current one; the check first spends the shared `change_password_user` budget (like `change-password`). Without it or with a wrong one: `400` (`current_password_required`, `current_password_incorrect`). An account without a password must have signed in within the last 10 minutes: a sign-in always creates a new session, so the age of the session is the age of the sign-in. An older session gets `403` with `reason: recent_sign_in_required`.
+- **Who is asking** (feat-245). The step-up matrix ([two-step sign-in](./mfa#step-up)): an account without MFA gives a fresh password (`POST /api/auth/reauth`), an account without a password a social sign-in within the last 10 minutes, an account with MFA a fresh TOTP code. Otherwise `403` with `reason: reauth_required` and the proofs in `details.proofs` (or `sign_in_again_required`).
 - **Whose link it is.** The link is looked up among this user's links; another account's `id` gives `404`, like one that does not exist.
 - **Whether it is the last one.** An account without a password cannot remove its last link: `409` with `reason: last_sign_in_method`. The decision is made on the user row under a lock (`FOR UPDATE`), so two requests at once cannot remove both links. A phone or an email without a password does not count as a way to sign in: set a password first.
 - **Whether the session is still valid.** A revoked session (`users.session_token` is already different) or a deleted session record gets `401`.

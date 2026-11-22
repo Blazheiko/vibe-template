@@ -4,7 +4,7 @@ import { useUserStore } from '@/stores/user'
 import { forgetPostSignInTarget } from '@/utils/post-sign-in-target'
 import { safeRedirectTarget } from '@/utils/safe-redirect'
 
-type SignedInUser = Parameters<ReturnType<typeof useUserStore>['setUser']>[0]
+export type SignedInUser = Parameters<ReturnType<typeof useUserStore>['setUser']>[0]
 
 /**
  * What a successful sign-in or registration does, in this order: remember the user, let the

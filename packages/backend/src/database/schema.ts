@@ -18,6 +18,7 @@ import {
     check,
     uuid,
     primaryKey,
+    bytea,
 } from 'drizzle-orm/pg-core'
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
@@ -610,5 +611,53 @@ export const auditEvents = pgTable(
         index('audit_events_request_id_idx')
             .on(table.requestId)
             .where(sql`${table.requestId} IS NOT NULL`),
+    ],
+)
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р9): the TOTP factor of a user. One per user; a
+// replacement is a new row (a new `id`, the version the second step and the recovery session
+// name), written in the same transaction that deletes the previous one. `enrollment_id` makes the
+// confirmation idempotent. The secret is sealed by app/services/shared/secret-box.ts with the user
+// id as associated data.
+export const totpFactors = pgTable(
+    'totp_factors',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        enrollmentId: varchar('enrollment_id', { length: 32 }).notNull(),
+        secretCiphertext: bytea('secret_ciphertext').notNull(),
+        keyId: varchar('key_id', { length: 16 }).notNull(),
+        /** The last 30-second step a code of this version was accepted for (replay guard). */
+        lastUsedStep: bigint('last_used_step', { mode: 'bigint' }).notNull(),
+        confirmedAt: timestamp('confirmed_at').notNull(),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+    },
+    (table) => [
+        unique('totp_factors_user_id_unique').on(table.userId),
+        unique('totp_factors_enrollment_id_unique').on(table.enrollmentId),
+    ],
+)
+
+// feat-245 (Р8): the one-time recovery codes of a user, as HMAC-SHA256 with AUTH_OTP_HMAC_KEY.
+// A regeneration voids the whole previous batch.
+export const mfaRecoveryCodes = pgTable(
+    'mfa_recovery_codes',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        codeHash: varchar('code_hash', { length: 64 }).notNull(),
+        batchId: varchar('batch_id', { length: 21 }).notNull(),
+        usedAt: timestamp('used_at'),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+    },
+    (table) => [
+        unique('mfa_recovery_codes_user_code_unique').on(table.userId, table.codeHash),
+        index('mfa_recovery_codes_unused_idx')
+            .on(table.userId)
+            .where(sql`${table.usedAt} IS NULL`),
     ],
 )

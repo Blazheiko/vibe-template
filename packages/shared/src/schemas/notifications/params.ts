@@ -20,6 +20,10 @@ export const NotificationParamsSchemas = {
     'security.logout_all': None,
     'security.session_revoked': type({ 'device?': Label, '+': 'reject' }),
     'security.account_claimed': None,
+    'security.mfa_enabled': None,
+    'security.mfa_disabled': None,
+    'security.recovery_codes_regenerated': None,
+    'security.recovery_code_used': None,
     'support.reply': None,
 } as const satisfies Record<NotificationKind, unknown>
 

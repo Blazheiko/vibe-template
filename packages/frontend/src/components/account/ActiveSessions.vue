@@ -44,6 +44,7 @@ const methodLabel = (session: SessionView): string => {
     if (session.method === 'oauth') {
         return oauthProviderLabel(session.provider ?? '')
     }
+    if (session.method === 'passkey') return t('account.sessions.methodPasskey')
     return session.method === 'register'
         ? t('account.sessions.methodRegister')
         : t('account.sessions.methodPassword')

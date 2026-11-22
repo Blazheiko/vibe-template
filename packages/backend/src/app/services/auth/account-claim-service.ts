@@ -9,6 +9,8 @@ import {
     pushSubscriptionRepository,
     userRepository,
     type UserRow,
+    recoveryCodeRepository,
+    totpFactorRepository,
 } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import type { AuditEventInput } from '#app/services/audit/audit-service.js'
@@ -73,6 +75,8 @@ export interface ClaimEffects {
     /** The provider of every OAuth link removed. */
     oauthRemoved: string[]
     pushSubscriptionsRemoved: number
+    /** feat-245: a TOTP factor or recovery codes were removed. */
+    mfaRemoved: boolean
 }
 
 export interface ClaimOutcome {
@@ -141,6 +145,10 @@ export async function claimLocked(
     if (updated === undefined) throw new Error('User disappeared during the claim')
 
     const oauthRemoved = await oauthAccountRepository.deleteByUserId(user.id, tx)
+    // feat-245 (Р9): a second factor set up before the address was proven goes with the rest, or
+    // whoever registered somebody else's address would keep a factor of the owner's account.
+    const totpRemoved = await totpFactorRepository.deleteByUserId(user.id, tx)
+    const recoveryCodesRemoved = await recoveryCodeRepository.deleteByUserId(user.id, tx)
     const pushSubscriptionsRemoved = await pushSubscriptionRepository.deleteByUserId(user.id, tx)
     for (const repository of ALL_TOKEN_REPOSITORIES) {
         await repository.invalidatePendingByUserId(user.id, tx)
@@ -159,6 +167,7 @@ export async function claimLocked(
             phoneRemoved: user.phone !== null && user.phone !== '',
             oauthRemoved,
             pushSubscriptionsRemoved,
+            mfaRemoved: totpRemoved || recoveryCodesRemoved > 0,
         },
     }
 }

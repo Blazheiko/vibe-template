@@ -38,3 +38,13 @@ Last updated: 2026-05-30
 | STL-ACCOUNT-003 | Implemented default | SMS challenges default to 10-minute TTL with resend cooldown and attempt limits.                   |
 | STL-ACCOUNT-004 | Target              | Password changes should define whether other active sessions are preserved or revoked.             |
 | STL-ACCOUNT-005 | Target              | Logout-all should revoke all active sessions for the user and clear frontend session-scoped state. |
+
+## Second factor and step-up (feat-245)
+
+| ID          | Status              | Requirement                                                                                                                                                             |
+| ----------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| STL-MFA-001 | Implemented default | A session records its sign-in level (`aal` 1/2, never raised), its sign-in methods and the time each method was last proven; a session stored before has nothing fresh. |
+| STL-MFA-002 | Implemented default | An account with a second factor gets a 5-minute, browser-bound, one-time ticket after the first factor; only the second step creates the session.                       |
+| STL-MFA-003 | Implemented default | Sensitive actions require a fresh step-up proof (300 s by default) chosen by one matrix; for an account with MFA the password alone confirms nothing.                   |
+| STL-MFA-004 | Implemented default | A recovery code opens a recovery session: level 1, absolute 15-minute lifetime, no WebSocket, only the factor routes; it signs out every other session.                 |
+| STL-MFA-005 | Implemented default | A password reset of a verified account keeps MFA; a takeover of an unverified address removes the factors.                                                              |

@@ -12,7 +12,11 @@ import {
     diffAllowed,
 } from '../dist/audit/index.js'
 import { AdminAuditEventsQuerySchema } from '../dist/schemas/index.js'
-import { AdminAuditEventsResponseSchema } from '../dist/responses/index.js'
+import {
+    AdminAuditEventsResponseSchema,
+    AuditChangesSchema,
+    AuditMetadataSchema,
+} from '../dist/responses/index.js'
 
 const isError = (result) => result !== null && typeof result === 'object' && 'summary' in result
 
@@ -49,6 +53,7 @@ const INPUTS = {
         phoneRemoved: true,
         oauthRemoved: ['google', 'github'],
         pushSubscriptionsRemoved: 2,
+        mfaRemoved: true,
     },
     'auth.phone.linked': {},
     'auth.email.linked': {},
@@ -56,6 +61,11 @@ const INPUTS = {
     'auth.sign_in_method.unlinked': { method: 'oauth', provider: 'google' },
     'auth.sessions.revoked_all': {},
     'auth.sessions.revoked_others': {},
+    'auth.mfa.totp.enabled': { recoveryCodesIssued: true },
+    'auth.mfa.totp.replaced': {},
+    'auth.mfa.totp.disabled': { mfaDisabled: false },
+    'auth.mfa.recovery_codes.regenerated': { count: 10 },
+    'auth.mfa.recovery_code.used': { remaining: 9 },
     'kb.article.created': { after: article('New'), content: fingerprint },
     'kb.article.updated': { before: article('Old'), after: article('New'), content: fingerprint },
     'kb.article.deleted': { before: article('Old'), content: fingerprint },
@@ -77,8 +87,8 @@ const withSecrets = (value) => {
     return out
 }
 
-test('the catalog has the 16 actions of the first release and user.role.changed (feat-240)', () => {
-    assert.equal(AUDIT_ACTION_NAMES.length, 17)
+test('the catalog: 16 actions of the first release, user.role.changed, 5 MFA actions (feat-245)', () => {
+    assert.equal(AUDIT_ACTION_NAMES.length, 22)
     assert.ok(AUDIT_ACTION_NAMES.includes('user.role.changed'))
     assert.deepEqual(Object.keys(INPUTS).sort(), [...AUDIT_ACTION_NAMES].sort())
 })
@@ -98,7 +108,13 @@ test('every action has a group, a target type and at least one actor kind', () =
 
 for (const action of AUDIT_ACTION_NAMES) {
     test(`${action}: the projection keeps no field it does not name`, () => {
-        const actor = ACTORS[AUDIT_ACTIONS[action].actorKinds[0]]
+        const definition = AUDIT_ACTIONS[action]
+        const kind = definition.actorKinds[0]
+        // An action that requires a proof gets the first one it lists.
+        const actor =
+            definition.proofs.length > 0 && kind !== 'system'
+                ? { ...ACTORS[kind], proof: definition.proofs[0] }
+                : ACTORS[kind]
         const payload = buildAuditPayload(action, withSecrets(INPUTS[action]), actor)
         const json = JSON.stringify(payload)
         const keys = []
@@ -311,4 +327,20 @@ test('user.role.changed projects the roles and adds the CLI source', () => {
         buildAuditPayload('user.role.changed', { from: 'admin', to: 'user' }, { source: 'cli' }),
         { changes: { role: { from: 'admin', to: 'user' } }, metadata: { source: 'cli' } },
     )
+})
+
+// feat-245: an action whose metadata key the response does not know made the admin list answer
+// 500 as soon as such an event was on the page. Every key of the catalog is in the response.
+test('every changes and metadata key of the catalog is a key of the response schema', () => {
+    const metadataKeys = new Set(AuditMetadataSchema.props.map((prop) => prop.key))
+    const changesKeys = new Set(AuditChangesSchema.props.map((prop) => prop.key))
+    for (const name of AUDIT_ACTION_NAMES) {
+        const action = AUDIT_ACTIONS[name]
+        for (const key of Object.keys(action.metadata ?? {})) {
+            assert.ok(metadataKeys.has(key), `${name}: metadata.${key}`)
+        }
+        for (const key of Object.keys(action.changes ?? {})) {
+            assert.ok(changesKeys.has(key), `${name}: changes.${key}`)
+        }
+    }
 })

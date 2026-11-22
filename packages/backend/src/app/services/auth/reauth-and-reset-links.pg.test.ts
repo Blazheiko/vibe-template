@@ -9,14 +9,17 @@ import {
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
 import { appErrorMessage } from '../shared/errors.js'
+import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
 
 // feat-109 (R06b) on real PostgreSQL and Redis:
-// - the current-password re-check of link-email / link-phone spends the per-user budget of
-//   change-password before the check, so a stolen session cannot guess the password through it;
+// - the password re-check spends the per-user budget of change-password before the check, so a
+//   stolen session cannot guess the password through it. feat-245: the re-check is the step-up of
+//   POST /auth/reauth (stepUpService.reauth); link-email, link-phone and change-password take the
+//   fresh mark it leaves on the session instead of a password in their form;
 // - change-password and logout-all retire the pending password-reset links in the transaction
 //   that rotates the credentials, and a failure retiring them rolls the rotation back.
 
@@ -68,6 +71,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
     const { RESET_PHONE_FLOW } = await import('#app/services/auth/auth-normalize.js')
     const { passwordResetRepository } = await import('#app/repositories/index.js')
     const { authService } = await import('#app/services/auth/auth-service.js')
+    const { stepUpService } = await import('#app/services/auth/mfa/step-up.js')
 
     const run = `${String(Date.now())}-${String(process.pid)}`
     const userIds: bigint[] = []
@@ -134,64 +138,122 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return row
     }
 
-    const startLink = (user: { id: bigint; sessionToken: string }, currentPassword: string) =>
+    /** A session of `user` whose auth state the step-up writes to, as the session store does. */
+    const sessionOf = () => {
+        const state: { auth: SessionAuthState } = {
+            auth: {
+                v: 1,
+                amr: ['pwd'],
+                aal: 1,
+                authenticatedAt: new Date(Date.now() - 3_600_000).toISOString(),
+                verified: {},
+            },
+        }
+        const session = {
+            sessionInfo: { id: 's', data: {} },
+            updateSessionAuth: (apply: (current: SessionAuthState) => SessionAuthState) => {
+                state.auth = apply(state.auth)
+                return Promise.resolve({ id: 's', data: { auth: state.auth } })
+            },
+        }
+        return { state, session: session as never }
+    }
+
+    /** POST /auth/reauth with a password; the session's auth state after it. */
+    const reauth = async (user: { id: bigint; sessionToken: string }, password: string) => {
+        const { state, session } = sessionOf()
+        const result = await stepUpService.reauth(
+            { userId: user.id, session, presentedSessionToken: user.sessionToken },
+            { proof: 'password', password },
+        )
+        return { result, auth: state.auth }
+    }
+
+    const freshPassword = (): SessionAuthState => ({
+        v: 1,
+        amr: ['pwd'],
+        aal: 1,
+        authenticatedAt: new Date().toISOString(),
+        verified: { pwd: new Date().toISOString() },
+    })
+
+    const startLink = (user: { id: bigint; sessionToken: string }, sessionAuth: SessionAuthState) =>
         authService.startEmailLink(
             user.id,
-            { email: `new-${run}-${String(counter)}@example.test`, currentPassword },
+            { email: `new-${run}-${String(counter)}@example.test` },
             user.sessionToken,
             sessionStillStored,
+            sessionAuth,
         )
 
     const message = (result: { isErr(): boolean; error?: unknown }): string | undefined =>
         result.isErr() ? appErrorMessage(result.error as never) : undefined
 
-    it('the 11th password re-check is refused even with the right password', async () => {
+    it('the 11th password step-up is refused even with the right password', async () => {
         const user = await insertUser(false)
 
         for (let attempt = 0; attempt < 10; attempt += 1) {
-            expect(message(await startLink(user, 'wrong-password'))).toBe(
+            expect(message((await reauth(user, 'wrong-password')).result)).toBe(
                 'Current password is incorrect',
             )
         }
 
-        expect(message(await startLink(user, PASSWORD))).toBe(
-            'Too many password attempts. Please try again later.',
-        )
+        const last = await reauth(user, PASSWORD)
+        expect(message(last.result)).toBe('Too many password attempts. Please try again later.')
+        expect(last.auth.verified.pwd).toBeUndefined()
     })
 
-    it('shares the budget with change-password', async () => {
+    it('a spent budget leaves no fresh mark: change-password and link-email answer 403', async () => {
         const user = await insertUser(false)
         for (let attempt = 0; attempt < 10; attempt += 1) {
-            await startLink(user, 'wrong-password')
+            await reauth(user, 'wrong-password')
         }
+        const { auth } = await reauth(user, PASSWORD)
 
         const change = await authService.changePassword(
             user.id,
-            { currentPassword: PASSWORD, newPassword: 'another-password-456' },
+            { newPassword: 'another-password-456' },
             user.sessionToken,
             sessionStillStored,
             undefined,
             testUserActor(),
+            auth,
         )
+        const link = await startLink(user, auth)
 
-        expect(message(change)).toBe('Too many password change attempts. Please try again later.')
+        for (const refused of [change, link]) {
+            expect(refused.isErr() && refused.error).toMatchObject({
+                _tag: 'Forbidden',
+                reason: 'reauth_required',
+            })
+        }
         expect((await userRow(user.id)).password).toBe(passwordHash)
     })
 
-    it('a right password resets the budget', async () => {
+    it('a right password resets the budget and leaves a mark link-email accepts', async () => {
         const user = await insertUser(false)
         for (let attempt = 0; attempt < 9; attempt += 1) {
-            await startLink(user, 'wrong-password')
+            await reauth(user, 'wrong-password')
         }
-        expect(message(await startLink(user, PASSWORD))).not.toBe(
-            'Too many password attempts. Please try again later.',
-        )
+        const right = await reauth(user, PASSWORD)
+        expect(right.result.isOk()).toBe(true)
+        expect(right.auth.verified.pwd).toBeDefined()
+        expect((await startLink(user, right.auth)).isOk()).toBe(true)
 
         for (let attempt = 0; attempt < 9; attempt += 1) {
-            expect(message(await startLink(user, 'wrong-password'))).toBe(
+            expect(message((await reauth(user, 'wrong-password')).result)).toBe(
                 'Current password is incorrect',
             )
         }
+    })
+
+    it('link-email and change-password spend no password budget of their own', async () => {
+        const user = await insertUser(false)
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+            await startLink(user, freshPassword())
+        }
+
+        expect((await reauth(user, PASSWORD)).result.isOk()).toBe(true)
     })
 
     it('change-password retires the pending reset links', async () => {
@@ -200,11 +262,12 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
 
         const change = await authService.changePassword(
             user.id,
-            { currentPassword: PASSWORD, newPassword: 'another-password-456' },
+            { newPassword: 'another-password-456' },
             user.sessionToken,
             sessionStillStored,
             undefined,
             testUserActor(),
+            freshPassword(),
         )
 
         expect(change.isOk()).toBe(true)
@@ -221,11 +284,12 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         await expect(
             authService.changePassword(
                 user.id,
-                { currentPassword: PASSWORD, newPassword: 'another-password-456' },
+                { newPassword: 'another-password-456' },
                 user.sessionToken,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
+                freshPassword(),
             ),
         ).rejects.toThrow('injected')
 
@@ -320,11 +384,12 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
 
         const change = await authService.changePassword(
             user.id,
-            { currentPassword: PASSWORD, newPassword: 'another-password-456' },
+            { newPassword: 'another-password-456' },
             user.sessionToken,
             sessionStillStored,
             undefined,
             testUserActor(),
+            freshPassword(),
         )
 
         expect(change.isOk()).toBe(true)
@@ -362,9 +427,10 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
 
         const result = await authService.startEmailLink(
             user.id,
-            { email: `gone-${run}@example.test`, currentPassword: PASSWORD },
+            { email: `gone-${run}@example.test` },
             user.sessionToken,
             () => Promise.resolve(false),
+            freshPassword(),
         )
 
         expect(result.isErr() && result.error).toMatchObject({
@@ -374,15 +440,16 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         expect(sendLink).not.toHaveBeenCalled()
     })
 
-    it('the guard is asked after the password check, right before the mail', async () => {
+    it('the guard is asked after the proof check, right before the mail', async () => {
         const user = await insertUser(false)
         const guard = vi.fn(() => Promise.resolve(true))
 
         const result = await authService.startEmailLink(
             user.id,
-            { email: `kept-${run}@example.test`, currentPassword: PASSWORD },
+            { email: `kept-${run}@example.test` },
             user.sessionToken,
             guard,
+            freshPassword(),
         )
 
         expect(result.isOk()).toBe(true)
@@ -390,11 +457,11 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
     })
 
     // feat-123: a spent password budget is 429.
-    it('the 11th password re-check answers 429', async () => {
+    it('the 11th password step-up answers 429', async () => {
         const user = await insertUser(false)
-        for (let attempt = 0; attempt < 10; attempt += 1) await startLink(user, 'wrong-password')
+        for (let attempt = 0; attempt < 10; attempt += 1) await reauth(user, 'wrong-password')
 
-        const result = await startLink(user, PASSWORD)
+        const { result } = await reauth(user, PASSWORD)
 
         expect(result.isErr() && result.error).toMatchObject({ _tag: 'RateLimited' })
     })

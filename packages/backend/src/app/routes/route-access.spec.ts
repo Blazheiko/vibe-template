@@ -115,11 +115,17 @@ describe('route access matrix (code-issues items 48, 67)', () => {
     it('the account routes need a session, CSRF and a signed-in user', async () => {
         const accountRoutes = http.filter((route) => route.url.includes('/account/'))
         expect(accountRoutes.map((route) => `${route.method} ${route.url}`).sort()).toEqual([
+            'del api/account/mfa/totp',
             'del api/account/sessions/:id',
             'get api/account/access',
+            'get api/account/mfa',
             'get api/account/profile',
             'get api/account/sessions',
             'patch api/account/profile',
+            // feat-245: the second factors of the account.
+            'post api/account/mfa/recovery-codes',
+            'post api/account/mfa/totp/confirm',
+            'post api/account/mfa/totp/setup',
             'post api/account/sessions/revoke-others',
         ])
         for (const route of accountRoutes) {

@@ -7,7 +7,7 @@ import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-r
  * name in `provider`), or the registration that created the account. A renewed session (password
  * change, "end all other sessions") keeps the method it was signed in with.
  */
-export const SIGN_IN_METHODS = ['password', 'oauth', 'register'] as const
+export const SIGN_IN_METHODS = ['password', 'oauth', 'register', 'passkey'] as const
 export type SignInMethod = (typeof SIGN_IN_METHODS)[number]
 
 /**

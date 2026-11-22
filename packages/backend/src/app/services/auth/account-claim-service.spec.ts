@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => {
         oauthAccountRepository: { deleteByUserId: vi.fn() },
         pushSubscriptionRepository: { deleteByUserId: vi.fn() },
         smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn() },
+        totpFactorRepository: { deleteByUserId: vi.fn(() => Promise.resolve(false)) },
+        recoveryCodeRepository: { deleteByUserId: vi.fn(() => Promise.resolve(0)) },
         destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         closeUserConnections: vi.fn(() => 0),
@@ -30,6 +32,9 @@ vi.mock('#app/repositories/index.js', () => ({
     oauthAccountRepository: mocks.oauthAccountRepository,
     pushSubscriptionRepository: mocks.pushSubscriptionRepository,
     smsAuthChallengeRepository: mocks.smsAuthChallengeRepository,
+    // feat-245: a claim removes the second factors too.
+    totpFactorRepository: mocks.totpFactorRepository,
+    recoveryCodeRepository: mocks.recoveryCodeRepository,
 }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: mocks.destroyAllSessions,
@@ -149,6 +154,7 @@ describe('claimLocked', () => {
             phoneRemoved: true,
             oauthRemoved: ['google', 'github'],
             pushSubscriptionsRemoved: 2,
+            mfaRemoved: false,
         })
         expect(claimEvent(outcome)).toEqual([
             {

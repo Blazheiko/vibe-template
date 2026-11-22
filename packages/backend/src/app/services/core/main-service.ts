@@ -63,6 +63,8 @@ export const mainService = {
         AppResult<{
             csrfToken?: string
             user: InitUserPayload
+            /** feat-245 (Р8): set in a recovery session; the client shows only the recovery wizard. */
+            recovery?: { expiresAt: string; replaced: boolean }
             wsUrl: string
             wsToken: string
             storage: StorageConfigPayload
@@ -112,6 +114,14 @@ export const mainService = {
             },
             wsUrl: wsToken !== '' ? getWsUrl() : '',
             wsToken,
+            ...(sessionInfo.data.auth?.recovery !== undefined
+                ? {
+                      recovery: {
+                          expiresAt: sessionInfo.data.auth.recovery.expiresAt,
+                          replaced: sessionInfo.data.auth.recovery.replacementFactor !== undefined,
+                      },
+                  }
+                : {}),
             storage: {
                 cdnUrl: appConfig.cdnUrl,
                 s3Prefix: diskConfig.s3Prefix ?? '',

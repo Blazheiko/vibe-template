@@ -1,0 +1,695 @@
+import { createServer } from 'node:net'
+
+import { and, eq, isNull } from 'drizzle-orm'
+import type { Redis } from 'ioredis'
+import type * as SessionIndex from '#vendor/utils/session/session-index.js'
+import type * as Transaction from '#app/repositories/transaction.js'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+import { hasPg } from '../../../../test-support/pg-test-db.js'
+import {
+    cleanupTestRedis,
+    createTestRedis,
+    hasRedis,
+} from '../../../../test-support/redis-test-client.js'
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, tasks M8) over HTTP: a real uWebSockets.js server
+// with the real routes and session layer, a real PostgreSQL and Redis. The password sign-in of an
+// account with TOTP opens a ticket; POST /auth/mfa/verify finishes it once, and a repeat finishes
+// what an earlier request confirmed. Failures are injected where the plan names them: Redis during
+// the preparation and the activation, the answer of COMMIT, a rollback after the work.
+
+const getFreePort = () =>
+    new Promise<number>((resolve, reject) => {
+        const probe = createServer()
+        probe.once('error', reject)
+        probe.listen(0, '127.0.0.1', () => {
+            const address = probe.address()
+            probe.close(() => {
+                resolve(typeof address === 'object' && address !== null ? address.port : 0)
+            })
+        })
+    })
+
+const PORT = await getFreePort()
+const ORIGIN = `http://localhost:${String(PORT)}`
+
+const { PREFIX } = vi.hoisted(() => {
+    process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
+    process.env['CSRF_ENFORCE'] = 'true'
+    process.env['CSRF_STRICT_ORIGIN'] = 'true'
+    process.env['MFA_ENCRYPTION_KEYS'] = `k1:${Buffer.alloc(32, 5).toString('base64')}`
+    process.env['AUTH_OTP_HMAC_KEY'] ??= 'o'.repeat(32)
+    return { PREFIX: `test:${crypto.randomUUID()}:` }
+})
+process.env['CSRF_ALLOWED_ORIGINS'] = ORIGIN
+
+const silent = vi.hoisted(() => {
+    const logger = {
+        error: () => undefined,
+        warn: () => undefined,
+        info: () => undefined,
+        debug: () => undefined,
+        child: (): unknown => logger,
+    }
+    return logger
+})
+vi.mock('#logger', () => ({ default: silent }))
+vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
+vi.mock('#config/app.js', async (importOriginal) => {
+    const actual = await importOriginal<{ default: Record<string, unknown> }>()
+    return {
+        default: {
+            ...actual.default,
+            host: '127.0.0.1',
+            port: PORT,
+            serveStatic: false,
+            unixPath: undefined,
+            pathPrefix: 'api',
+        },
+    }
+})
+vi.mock('#config/redis.js', async (importActual) => {
+    const actual = await importActual<{ default: object }>()
+    return { default: { ...actual.default, keyPrefix: PREFIX } }
+})
+vi.mock('#database/redis.js', async () => {
+    const { Redis: Client } = await import('ioredis')
+    const { mainRedisOptions } = await import('#database/redis-main-options.js')
+    const { createRedisHealth, createWithRedis } = await import('#database/redis-health.js')
+    const { host: _host, port: _port, ...contract } = mainRedisOptions
+    const client = new Client(process.env['REDIS_TEST_URL'] ?? 'redis://127.0.0.1:6379', {
+        ...contract,
+        keyPrefix: PREFIX,
+        lazyConnect: true,
+    })
+    const redisHealth = createRedisHealth(client, {
+        logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    })
+    return { default: client, redisHealth, withRedis: createWithRedis(client, redisHealth) }
+})
+vi.mock('#vendor/utils/rate-limit/http-rate-limit.js', () => ({
+    default: () => true,
+    checkGlobalRateLimit: () => true,
+}))
+vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
+    consumeAuthThrottle: () => Promise.resolve({ allowed: true, count: 1 }),
+    resetAuthThrottle: () => Promise.resolve(undefined),
+}))
+const security = vi.hoisted(() => vi.fn())
+vi.mock('#app/services/notifications/user-notification-service.js', () => ({
+    userNotificationService: { security, supportReply: vi.fn() },
+}))
+const newSignIn = vi.hoisted(() => vi.fn())
+vi.mock('#app/services/auth/new-sign-in-notice.js', async (importActual) => {
+    const actual = await importActual<Record<string, unknown>>()
+    return { ...actual, notifyNewSignIn: newSignIn }
+})
+
+// Injected failures (Р4, «Збої»).
+interface Injected {
+    prepare: boolean
+    /** Runs this, then fails the activation as an unreachable Redis would. */
+    activate: false | (() => Promise<void>)
+    lostCommitAnswer: boolean
+    rollbackAfterWork: boolean
+}
+const inject = vi.hoisted((): Injected => ({
+    prepare: false,
+    activate: false,
+    lostCommitAnswer: false,
+    rollbackAfterWork: false,
+}))
+vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
+    const actual = await importActual<typeof SessionIndex>()
+    return {
+        ...actual,
+        preparePendingSession: (...args: Parameters<typeof actual.preparePendingSession>) => {
+            if (inject.prepare) {
+                inject.prepare = false
+                return Promise.reject(new Error('Redis down (prepare)'))
+            }
+            return actual.preparePendingSession(...args)
+        },
+        activatePendingSession: async (
+            ...args: Parameters<typeof actual.activatePendingSession>
+        ) => {
+            if (inject.activate !== false) {
+                const before = inject.activate
+                inject.activate = false
+                await before()
+                throw new Error('Redis down (activate)')
+            }
+            return actual.activatePendingSession(...args)
+        },
+    }
+})
+vi.mock('#app/repositories/transaction.js', async (importActual) => {
+    const actual = await importActual<typeof Transaction>()
+    return {
+        ...actual,
+        withTransaction: async <T>(work: (tx: Transaction.DbTransaction) => Promise<T>) => {
+            if (inject.rollbackAfterWork) {
+                inject.rollbackAfterWork = false
+                // The work ran and then the transaction rolled back (the COMMIT failed in a way
+                // the caller cannot tell from a lost answer).
+                return actual.withTransaction(async (tx) => {
+                    await work(tx)
+                    throw new Error('connection lost (rolled back)')
+                })
+            }
+            const result = await actual.withTransaction(work)
+            if (inject.lostCommitAnswer) {
+                inject.lostCommitAnswer = false
+                throw new Error('connection lost (committed)')
+            }
+            return result
+        },
+    }
+})
+
+describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8)', async () => {
+    const { db, pool } = await import('#database/db.js')
+    const { sessionCheckPool } = await import('#database/session-check-db.js')
+    const { users, mfaRecoveryCodes } = await import('#database/schema.js')
+    const { default: redisClient, redisHealth } =
+        (await import('#database/redis.js')) as unknown as {
+            default: Redis
+            redisHealth: { stop(): void }
+        }
+    const { hashPassword } = await import('metautil')
+    const { default: sessionConfig } = await import('#config/session.js')
+    const { mfaTicketCookieName } = await import('#vendor/utils/session/request-session.js')
+    const { getSession } = await import('#vendor/utils/session/redis-session-storage.js')
+    const { totpFactorRepository, withTransaction } = await import('#app/repositories/index.js')
+    const { recoveryCodes } = await import('./recovery-codes.js')
+    const { mfaSecretBox, totpSecretOwner } = await import('./mfa-secret-box.js')
+    const { generateTotpSecret, hotp, totpStepAt } = await import('./totp.js')
+
+    await import('#app/start/index.js')
+
+    const admin = createTestRedis(PREFIX)
+    const PASSWORD = 'mfa-secret-123'
+    const createdUserIds: bigint[] = []
+    let stopServer: ((type?: string) => Promise<void>) | undefined
+    const MFA_COOKIE = mfaTicketCookieName()
+
+    interface Reply {
+        status: number
+        body: Record<string, unknown>
+        cookies: Map<string, string>
+    }
+
+    class Browser {
+        cookies = new Map<string, string>()
+        csrf: string | undefined
+
+        async request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Reply> {
+            const headers: Record<string, string> = { origin: ORIGIN }
+            if (this.cookies.size > 0) {
+                headers['cookie'] = [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ')
+            }
+            if (this.csrf !== undefined) headers['x-csrf-token'] = this.csrf
+            if (body !== undefined) headers['content-type'] = 'application/json'
+            const response = await fetch(`http://127.0.0.1:${String(PORT)}/api${path}`, {
+                method,
+                headers,
+                ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+            })
+            const text = await response.text()
+            const cookies = new Map<string, string>()
+            for (const line of response.headers.getSetCookie()) {
+                const [pair] = line.split(';')
+                const index = (pair ?? '').indexOf('=')
+                cookies.set((pair ?? '').slice(0, index), (pair ?? '').slice(index + 1))
+            }
+            return {
+                status: response.status,
+                body: (text === '' ? {} : JSON.parse(text)) as Record<string, unknown>,
+                cookies,
+            }
+        }
+
+        keep(reply: Reply): Reply {
+            for (const [name, value] of reply.cookies) {
+                if (value === '') this.cookies.delete(name)
+                else this.cookies.set(name, value)
+            }
+            if (typeof reply.body['csrfToken'] === 'string') this.csrf = reply.body['csrfToken']
+            return reply
+        }
+
+        async firstFactor(email: string): Promise<Reply> {
+            this.keep(await this.request('GET', '/main/init'))
+            return this.keep(
+                await this.request('POST', '/auth/login', {
+                    identifier: email,
+                    password: PASSWORD,
+                }),
+            )
+        }
+
+        sessionId(): string {
+            const value = Buffer.from(this.cookies.get(sessionConfig.cookieName) ?? '', 'base64')
+            return value.toString().split('.')[1] ?? ''
+        }
+    }
+
+    /** A verified account with a password, TOTP (its secret returned) and recovery codes. */
+    const mfaUser = async (name: string) => {
+        const [row] = await db
+            .insert(users)
+            .values({
+                name,
+                email: `${name}-${crypto.randomUUID()}@example.test`,
+                password: await hashPassword(PASSWORD),
+                emailVerifiedAt: new Date(),
+            })
+            .returning()
+        if (row === undefined) throw new Error('user not inserted')
+        createdUserIds.push(row.id)
+        const secret = generateTotpSecret()
+        const box = mfaSecretBox()
+        if (box === null) throw new Error('no MFA key')
+        const sealed = box.seal(secret, totpSecretOwner(row.id))
+        const codes = await withTransaction(async (tx) => {
+            await totpFactorRepository.replace(
+                {
+                    userId: row.id,
+                    enrollmentId: crypto.randomUUID().slice(0, 32),
+                    secretCiphertext: sealed.ciphertext,
+                    keyId: sealed.keyId,
+                    lastUsedStep: 0n,
+                    confirmedAt: new Date(),
+                },
+                tx,
+            )
+            return recoveryCodes.issue(row.id, tx)
+        })
+        const code = (offset = 0n) => hotp(secret, totpStepAt(Date.now()) + offset)
+        return { row, email: row.email ?? '', code, codes }
+    }
+
+    const unusedCodes = async (userId: bigint) =>
+        (
+            await db
+                .select()
+                .from(mfaRecoveryCodes)
+                .where(and(eq(mfaRecoveryCodes.userId, userId), isNull(mfaRecoveryCodes.usedAt)))
+        ).length
+
+    const tokenOf = async (userId: bigint) =>
+        (await db.select().from(users).where(eq(users.id, userId)))[0]?.sessionToken ?? ''
+
+    beforeAll(async () => {
+        await admin.connect()
+        await redisClient.connect()
+        const { routesHandler } = await import('#vendor/start/router.js')
+        const { default: httpRoutes } = await import('#app/routes/http-routes.js')
+        const server = await import('#vendor/start/server.js')
+        stopServer = server.stopServer
+        await server.initServer({
+            httpRoutes: routesHandler(httpRoutes),
+            wsRoutesByUrl: new Map(),
+            sourceHttpRoutes: httpRoutes,
+            sourceWsRoutes: [],
+        } as never)
+    })
+
+    afterEach(() => {
+        inject.prepare = false
+        inject.activate = false
+        inject.lostCommitAnswer = false
+        inject.rollbackAfterWork = false
+        security.mockClear()
+        newSignIn.mockClear()
+    })
+
+    afterAll(async () => {
+        await stopServer?.('test')
+        for (const id of createdUserIds) await db.delete(users).where(eq(users.id, id))
+        await cleanupTestRedis(admin)
+        redisHealth.stop()
+        redisClient.disconnect(false)
+        await admin.quit()
+        await sessionCheckPool.end()
+        await pool.end()
+    })
+
+    it('the password opens a ticket, not a session; the right code signs in at level 2', async () => {
+        const user = await mfaUser('mfa-happy')
+        const browser = new Browser()
+        const first = await browser.firstFactor(user.email)
+        expect(first.status).toBe(200)
+        expect(first.body).toMatchObject({
+            status: 'mfa_required',
+            methods: ['totp', 'recovery_code'],
+        })
+        expect(browser.cookies.get(MFA_COOKIE)).toMatch(/^[\w-]{43}$/)
+        expect((await browser.request('GET', '/main/init')).status).toBe(401)
+
+        const wrong = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: '000000',
+        })
+        expect(wrong.status).toBe(401)
+        expect(wrong.body).toMatchObject({ reason: 'invalid_code' })
+
+        const ok = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            }),
+        )
+        expect(ok.status).toBe(200)
+        expect(ok.body).toMatchObject({ status: 'success', user: { id: String(user.row.id) } })
+        expect(browser.keep(await browser.request('GET', '/main/init')).status).toBe(200)
+        const session = await getSession(browser.sessionId(), user.row.sessionToken)
+        expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'otp'] })
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+        // The browser came back with the new session: the ticket is retired with its cookie.
+        expect(browser.cookies.has(MFA_COOKIE)).toBe(false)
+    })
+
+    it('five wrong codes end the ticket; the ticket cookie of another browser opens nothing', async () => {
+        const user = await mfaUser('mfa-wrong')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const thief = new Browser()
+        thief.keep(await thief.request('GET', '/main/init'))
+        thief.cookies.set(MFA_COOKIE, browser.cookies.get(MFA_COOKIE) ?? '')
+        const stolen = await thief.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: user.code(),
+        })
+        expect(stolen.status).toBe(401)
+        expect(stolen.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
+
+        for (let i = 0; i < 5; i++) {
+            const reply = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: '111111',
+            })
+            expect(reply.body).toMatchObject({ reason: 'invalid_code' })
+        }
+        const after = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: user.code(),
+        })
+        expect(after.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
+    })
+
+    it('two right proofs at once: one session; the proof of the other is given back', async () => {
+        const user = await mfaUser('mfa-race')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const before = await unusedCodes(user.row.id)
+        const replies = await Promise.all([
+            browser.request('POST', '/auth/mfa/verify', { method: 'totp', code: user.code() }),
+            browser.request('POST', '/auth/mfa/verify', {
+                method: 'recovery_code',
+                code: user.codes[0] ?? '',
+            }),
+        ])
+        const statuses = replies.map((reply) => reply.status).sort()
+        expect(statuses[0]).toBe(200)
+        const loser = replies.find((reply) => reply.status !== 200)
+        if (loser !== undefined) {
+            expect(['mfa_ticket_used', 'mfa_attempt_expired']).toContain(loser.body['reason'])
+        }
+        const winner = replies.find((reply) => reply.status === 200)
+        const codeSpent = before - (await unusedCodes(user.row.id))
+        // Exactly one proof spent: the recovery code only if it won.
+        const recoveryWon = winner === replies[1]
+        expect(codeSpent).toBe(recoveryWon ? 1 : 0)
+    })
+
+    it('a session_token rotated between the steps refuses the sign-in', async () => {
+        const user = await mfaUser('mfa-rotated')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        await db
+            .update(users)
+            .set({ sessionToken: crypto.randomUUID().slice(0, 24) })
+            .where(eq(users.id, user.row.id))
+        const reply = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: user.code(),
+        })
+        expect(reply.status).toBe(401)
+        expect(reply.body).toMatchObject({ reason: 'session_revoked' })
+    })
+
+    it('Redis down while preparing: nothing spent, the same last recovery code works again', async () => {
+        const user = await mfaUser('mfa-prepare')
+        // Leave a single code: the last one.
+        await db.delete(mfaRecoveryCodes).where(eq(mfaRecoveryCodes.userId, user.row.id))
+        const [last] = await withTransaction((tx) => recoveryCodes.issue(user.row.id, tx))
+        await db
+            .delete(mfaRecoveryCodes)
+            .where(and(eq(mfaRecoveryCodes.userId, user.row.id), isNull(mfaRecoveryCodes.usedAt)))
+        const lastCode = last ?? ''
+        await withTransaction(async (tx) => {
+            const { recoveryCodeRepository } = await import('#app/repositories/index.js')
+            const { normalizeRecoveryCode, hashRecoveryCode } = await import('./recovery-codes.js')
+            await recoveryCodeRepository.replaceBatch(
+                user.row.id,
+                [hashRecoveryCode(normalizeRecoveryCode(lastCode) ?? '')],
+                'last',
+                tx,
+            )
+        })
+        const tokenBefore = await tokenOf(user.row.id)
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+
+        inject.prepare = true
+        const failed = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'recovery_code',
+            code: lastCode,
+        })
+        expect(failed.status).toBe(503)
+        expect(await unusedCodes(user.row.id)).toBe(1)
+        expect(await tokenOf(user.row.id)).toBe(tokenBefore)
+
+        const ok = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', {
+                method: 'recovery_code',
+                code: lastCode,
+            }),
+        )
+        expect(ok.status).toBe(200)
+        expect(await unusedCodes(user.row.id)).toBe(0)
+        // A recovery sign-in rotates the token and opens a recovery session.
+        const rotated = await tokenOf(user.row.id)
+        expect(rotated).not.toBe(tokenBefore)
+        const session = await getSession(browser.sessionId(), rotated)
+        expect(session?.data.auth).toMatchObject({ aal: 1, amr: ['pwd', 'recovery'] })
+        expect(session?.data.auth?.recovery?.expiresAt).toEqual(expect.any(String))
+        expect(security).toHaveBeenCalledWith(user.row.id, 'recovery_code_used')
+    })
+
+    it('a lost answer after the activation: the repeat gives the same session, one notice', async () => {
+        const user = await mfaUser('mfa-lost-answer')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        // The answer of the first request never reaches the browser (not kept).
+        const first = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(first.status).toBe(200)
+        const repeat = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(repeat.status).toBe(200)
+        const firstCookie = first.cookies.get(sessionConfig.cookieName)
+        expect(browser.cookies.get(sessionConfig.cookieName)).toBe(firstCookie)
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('two continuations after the commit: one session, one notice', async () => {
+        const user = await mfaUser('mfa-two-continuations')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        inject.activate = () => Promise.resolve()
+        const pending = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(pending.status).toBe(503)
+        expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+        const replies = await Promise.all([
+            browser.request('POST', '/auth/mfa/verify', body),
+            browser.request('POST', '/auth/mfa/verify', body),
+        ])
+        expect(replies.map((reply) => reply.status)).toEqual([200, 200])
+        const [a, b] = replies
+        expect(a.cookies.get(sessionConfig.cookieName)).toBe(
+            b.cookies.get(sessionConfig.cookieName),
+        )
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('a rotation after the commit and before the first activation: 401, no session', async () => {
+        const user = await mfaUser('mfa-rotate-after-commit')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        let plannedSession = ''
+        inject.activate = async () => {
+            // logout-all from another device lands between the commit and the activation.
+            await db
+                .update(users)
+                .set({ sessionToken: crypto.randomUUID().slice(0, 24) })
+                .where(eq(users.id, user.row.id))
+            plannedSession = 'set'
+        }
+        expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+        expect(plannedSession).toBe('set')
+        const reply = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(reply.status).toBe(401)
+        expect(reply.body).toMatchObject({ reason: 'session_revoked' })
+        expect(newSignIn).not.toHaveBeenCalled()
+        const pendingKeys = await admin.keys(`session:${user.row.sessionToken}:*`)
+        expect(pendingKeys).toEqual([])
+    })
+
+    it('a COMMIT whose answer was lost but that committed: reconciled, signed in', async () => {
+        const user = await mfaUser('mfa-lost-commit')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        inject.lostCommitAnswer = true
+        const reply = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            }),
+        )
+        expect(reply.status).toBe(200)
+        expect((await browser.request('GET', '/main/init')).status).toBe(200)
+    })
+
+    it('work done and rolled back without an answer: aborted, the same code works again', async () => {
+        const user = await mfaUser('mfa-aborted')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const code = user.codes[1] ?? ''
+        inject.rollbackAfterWork = true
+        const failed = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'recovery_code',
+            code,
+        })
+        expect(failed.status).toBe(503)
+        expect(await unusedCodes(user.row.id)).toBe(10)
+        const ok = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'recovery_code',
+            code,
+        })
+        expect(ok.status).toBe(200)
+        expect(await unusedCodes(user.row.id)).toBe(9)
+    })
+
+    // Р8 acceptance (tasks M9): the only TOTP lost, the last recovery code, a TOTP replaced in
+    // the recovery session, new codes, the recovery finished, an ordinary sign-in with the new app.
+    it('recovery: single TOTP lost, last code, replace, new codes, finish, sign in again', async () => {
+        const user = await mfaUser('mfa-recovery-path')
+        const last = user.codes[9] ?? ''
+        const { recoveryCodeRepository } = await import('#app/repositories/index.js')
+        const { normalizeRecoveryCode, hashRecoveryCode } = await import('./recovery-codes.js')
+        await withTransaction((tx) =>
+            recoveryCodeRepository.replaceBatch(
+                user.row.id,
+                [hashRecoveryCode(normalizeRecoveryCode(last) ?? '')],
+                'only',
+                tx,
+            ),
+        )
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        expect(
+            browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'recovery_code',
+                    code: last,
+                }),
+            ).status,
+        ).toBe(200)
+
+        // A recovery session: no WebSocket, only the recovery routes.
+        const init = browser.keep(await browser.request('GET', '/main/init'))
+        expect(init.status).toBe(200)
+        expect(init.body).toMatchObject({ wsToken: '', recovery: { replaced: false } })
+        for (const [method, path] of [
+            ['GET', '/account/profile'],
+            ['GET', '/account/sessions'],
+            ['POST', '/auth/login'],
+        ] as const) {
+            const refused = await browser.request(
+                method,
+                path,
+                method === 'POST' ? { identifier: user.email, password: PASSWORD } : undefined,
+            )
+            expect(refused.status, path).toBe(403)
+            expect(refused.body, path).toMatchObject({ reason: 'recovery_session' })
+        }
+        // R: removing the lost factor or new codes wait for the replacement.
+        expect(
+            (await browser.request('POST', '/account/mfa/recovery-codes', {})).body,
+        ).toMatchObject({ reason: 'recovery_session' })
+
+        const setup = browser.keep(await browser.request('POST', '/account/mfa/totp/setup', {}))
+        expect(setup.status).toBe(200)
+        const { base32Decode } = await import('./totp.js')
+        const newSecret = base32Decode(String(setup.body['secret']))
+        const confirmed = browser.keep(
+            await browser.request('POST', '/account/mfa/totp/confirm', {
+                enrollmentId: setup.body['enrollmentId'],
+                code: hotp(newSecret, totpStepAt(Date.now())),
+            }),
+        )
+        expect(confirmed.status).toBe(200)
+        // The old secret no longer works: the factor is the new version.
+        const afterReplace = browser.keep(await browser.request('GET', '/main/init'))
+        expect(afterReplace.body).toMatchObject({ recovery: { replaced: true } })
+        const codes = browser.keep(await browser.request('POST', '/account/mfa/recovery-codes', {}))
+        expect(codes.status).toBe(200)
+        expect(codes.body['recoveryCodes']).toHaveLength(10)
+        expect(
+            browser.keep(await browser.request('POST', '/auth/recovery/finish', {})).status,
+        ).toBe(200)
+        expect((await browser.request('GET', '/main/init')).status).toBe(401)
+
+        // An ordinary sign-in: password and the new app; the old app is refused.
+        const again = new Browser()
+        await again.firstFactor(user.email)
+        const oldCode = await again.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: user.code(1n),
+        })
+        expect(oldCode.body).toMatchObject({ reason: 'invalid_code' })
+        const signedIn = again.keep(
+            await again.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: hotp(newSecret, totpStepAt(Date.now()) + 1n),
+            }),
+        )
+        expect(signedIn.status).toBe(200)
+        const session = await getSession(again.sessionId(), await tokenOf(user.row.id))
+        expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'otp'] })
+    })
+
+    it('an account without a second factor signs in with the password alone, as before', async () => {
+        const [row] = await db
+            .insert(users)
+            .values({
+                name: 'no-mfa',
+                email: `no-mfa-${crypto.randomUUID()}@example.test`,
+                password: await hashPassword(PASSWORD),
+                emailVerifiedAt: new Date(),
+            })
+            .returning()
+        if (row === undefined) throw new Error('user not inserted')
+        createdUserIds.push(row.id)
+        const browser = new Browser()
+        const reply = await browser.firstFactor(row.email ?? '')
+        expect(reply.body).toMatchObject({ status: 'success' })
+        expect(browser.cookies.has(MFA_COOKIE)).toBe(false)
+        const session = await getSession(browser.sessionId(), row.sessionToken)
+        expect(session?.data.auth).toMatchObject({ aal: 1, amr: ['pwd'] })
+    })
+})

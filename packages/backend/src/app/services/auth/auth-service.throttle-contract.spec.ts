@@ -7,6 +7,7 @@ import {
     appErrorStatus,
     type AppError,
 } from '#app/services/shared/errors.js'
+import type { SessionAuthState } from 'shared/mfa'
 import type { authService } from './auth-service.js'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
@@ -63,6 +64,9 @@ vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: smsAuthChallengeRepositoryMock,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
+    // feat-245: this account has no second factor.
+    totpFactorRepository: { findByUserId: () => Promise.resolve(undefined) },
+    recoveryCodeRepository: { countUnused: () => Promise.resolve(0) },
 }))
 vi.mock('#app/transformers/index.js', () => ({ userTransformer: { serialize: vi.fn() } }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
@@ -136,6 +140,14 @@ const IP = { ipAddress: '203.0.113.9' }
 /** The user token the request presented; current for the user above (feat-096). */
 const TOKEN = 'presented-token'
 const PHONE = '+380501234567'
+/** feat-245 (row 7 of Р3): the session proved the password through POST /auth/reauth just now. */
+const FRESH_PASSWORD: SessionAuthState = {
+    v: 1,
+    amr: ['pwd'],
+    aal: 1,
+    authenticatedAt: new Date().toISOString(),
+    verified: { pwd: new Date().toISOString() },
+}
 const TOO_MANY_VERIFICATIONS = 'Too many verification attempts. Please try again later.'
 const TOO_MANY_REGISTRATIONS = 'Too many registration attempts. Please try again later.'
 
@@ -220,53 +232,24 @@ const ROWS: readonly Row[] = [
         consumed: [['confirm_phone_ip', '203.0.113.9']],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
-    // feat-109: the current password is re-checked from the per-user budget of change-password,
-    // spent before validatePassword.
-    {
-        method: 'startPhoneLink · password',
-        call: (s) =>
-            s.startPhoneLink(
-                7n,
-                { phone: PHONE, currentPassword: 'secret' },
-                {
-                    ...IP,
-                    sessionId: 's',
-                    presentedSessionToken: TOKEN,
-                    sessionStored: sessionStillStored,
-                },
-            ),
-        consumed: [['change_password_user', '7']],
-        blocked: rateLimited('Too many password attempts. Please try again later.'),
-    },
-    {
-        method: 'startEmailLink · password',
-        call: (s) =>
-            s.startEmailLink(
-                7n,
-                { email: ' New@Example.com ', currentPassword: 'secret' },
-                TOKEN,
-                sessionStillStored,
-            ),
-        consumed: [['change_password_user', '7']],
-        blocked: rateLimited('Too many password attempts. Please try again later.'),
-    },
+    // feat-245: the link starts take a fresh proof of the session instead of the current password,
+    // so they spend no password budget (POST /auth/reauth does); the change-password row is gone
+    // for the same reason.
     {
         method: 'startPhoneLink · ip',
         call: (s) =>
             s.startPhoneLink(
                 7n,
-                { phone: PHONE, currentPassword: 'secret' },
+                { phone: PHONE },
                 {
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
                     sessionStored: sessionStillStored,
+                    sessionAuth: FRESH_PASSWORD,
                 },
             ),
-        consumed: [
-            ['change_password_user', '7'],
-            ['link_phone_ip', '203.0.113.9'],
-        ],
+        consumed: [['link_phone_ip', '203.0.113.9']],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
@@ -274,16 +257,16 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startPhoneLink(
                 7n,
-                { phone: PHONE, currentPassword: 'secret' },
+                { phone: PHONE },
                 {
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
                     sessionStored: sessionStillStored,
+                    sessionAuth: FRESH_PASSWORD,
                 },
             ),
         consumed: [
-            ['change_password_user', '7'],
             ['link_phone_ip', '203.0.113.9'],
             ['link_phone_user', '7'],
         ],
@@ -294,16 +277,16 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startPhoneLink(
                 7n,
-                { phone: PHONE, currentPassword: 'secret' },
+                { phone: PHONE },
                 {
                     ...IP,
                     sessionId: 's',
                     presentedSessionToken: TOKEN,
                     sessionStored: sessionStillStored,
+                    sessionAuth: FRESH_PASSWORD,
                 },
             ),
         consumed: [
-            ['change_password_user', '7'],
             ['link_phone_ip', '203.0.113.9'],
             ['link_phone_user', '7'],
             ['sms_send_phone', PHONE],
@@ -333,14 +316,12 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startEmailLink(
                 7n,
-                { email: ' New@Example.com ', currentPassword: 'secret' },
+                { email: ' New@Example.com ' },
                 TOKEN,
                 sessionStillStored,
+                FRESH_PASSWORD,
             ),
-        consumed: [
-            ['change_password_user', '7'],
-            ['link_email_target', 'new@example.com'],
-        ],
+        consumed: [['link_email_target', 'new@example.com']],
         blocked: rateLimited(TOO_MANY_VERIFICATIONS),
     },
     {
@@ -348,12 +329,12 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startEmailLink(
                 7n,
-                { email: ' New@Example.com ', currentPassword: 'secret' },
+                { email: ' New@Example.com ' },
                 TOKEN,
                 sessionStillStored,
+                FRESH_PASSWORD,
             ),
         consumed: [
-            ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
         ],
@@ -364,12 +345,12 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startEmailLink(
                 7n,
-                { email: ' New@Example.com ', currentPassword: 'secret' },
+                { email: ' New@Example.com ' },
                 TOKEN,
                 sessionStillStored,
+                FRESH_PASSWORD,
             ),
         consumed: [
-            ['change_password_user', '7'],
             ['link_email_target', 'new@example.com'],
             ['link_email_user', '7'],
             ['link_email_user_cooldown', '7'],
@@ -399,20 +380,6 @@ const ROWS: readonly Row[] = [
             ['login_identifier', PHONE],
         ],
         blocked: INVALID,
-    },
-    {
-        method: 'changePassword · user',
-        call: (s) =>
-            s.changePassword(
-                7n,
-                { currentPassword: 'old', newPassword: 'new-password' },
-                TOKEN,
-                sessionStillStored,
-                undefined,
-                testUserActor(),
-            ),
-        consumed: [['change_password_user', '7']],
-        blocked: rateLimited('Too many password change attempts. Please try again later.'),
     },
 ]
 

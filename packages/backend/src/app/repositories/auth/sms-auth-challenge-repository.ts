@@ -26,6 +26,11 @@ export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
     /** Invalidates these challenges where they are still waiting (feat-204). */
     invalidatePendingByIds(ids: readonly string[], executor?: DbExecutor): Promise<number>
     /**
+     * feat-245 (row 7 of Р3): the pending phone links a user started (`metadata.userId`); a change
+     * of the account's MFA ends them, so a link allowed before it cannot finish after it.
+     */
+    invalidatePendingLinksOfUser(userId: bigint, executor?: DbExecutor): Promise<number>
+    /**
      * feat-134 (L2): a transaction-scoped advisory lock on this phone and flow. Two starts that
      * both passed the cooldown check take it one at a time, and the second sees the first one's
      * challenge.
@@ -133,6 +138,23 @@ export const smsAuthChallengeRepository: SmsAuthChallengeRepository = {
             .where(
                 and(
                     inArray(smsAuthChallenges.id, [...ids]),
+                    isNull(smsAuthChallenges.invalidatedAt),
+                    isNull(smsAuthChallenges.confirmedAt),
+                ),
+            )
+            .returning({ id: smsAuthChallenges.id })
+        return rows.length
+    },
+
+    async invalidatePendingLinksOfUser(userId, executor = db) {
+        const now = new Date()
+        const rows = await executor
+            .update(smsAuthChallenges)
+            .set({ invalidatedAt: now, updatedAt: now })
+            .where(
+                and(
+                    eq(smsAuthChallenges.flow, 'link_phone'),
+                    sql`${smsAuthChallenges.metadata}->>'userId' = ${String(userId)}`,
                     isNull(smsAuthChallenges.invalidatedAt),
                     isNull(smsAuthChallenges.confirmedAt),
                 ),

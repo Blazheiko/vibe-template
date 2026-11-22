@@ -43,6 +43,8 @@ const createRoute = (
         allowedContentTypes: route.allowedContentTypes,
         maxBodySize: route.maxBodySize,
         signedInBeforeBody: route.signedInBeforeBody,
+        // feat-245 (Р8): read by the server into httpData for the recovery gate of session_web.
+        allowInRecovery: route.allowInRecovery,
         ...(responseSchema !== undefined ? { ResponseSchema: responseSchema } : {}),
         // Built once here; null only for a route without a ResponseSchema.
         responseCheck: createResponseCheck(responseSchema, responseValidationConfig),

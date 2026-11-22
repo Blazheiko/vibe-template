@@ -59,6 +59,8 @@ vi.mock('@/components/account/ActiveSessions.vue', () => ({
 
 vi.mock('@/utils/api', () => ({
     avatarApi: { upload: vi.fn(), delete: vi.fn() },
+    // feat-245: the sign-in security section reads its state; tested in SignInSecurity.spec.ts.
+    mfaApi: { status: vi.fn(() => Promise.resolve({ data: null, error: null })) },
     authApi: {
         changePassword: vi.fn(),
         resendVerificationEmail: vi.fn(),
@@ -150,19 +152,16 @@ const mountAccount = () =>
 describe('UserAccount password fields', () => {
     const passwordInputs = () => mountAccount().findAll('input[type="password"]')
 
-    it('has the password inputs of the change-password form and the two re-authentication fields', () => {
-        expect(passwordInputs()).toHaveLength(5)
+    // feat-245 (Р3): no current-password field in the forms any more: a step-up (ReauthDialog)
+    // confirms the change. The change-password form keeps the new password and its repeat.
+    it('has only the new password and its repeat', () => {
+        expect(passwordInputs()).toHaveLength(2)
     })
 
-    it('tells the browser which password is the current one and which are new', () => {
-        // In the order of the form: current, new, confirm; then the two re-authentication fields
-        // (linking a phone, linking an email), which ask for the account's current password.
+    it('tells the browser both are new passwords', () => {
         expect(passwordInputs().map((input) => input.attributes('autocomplete'))).toEqual([
-            'current-password',
             'new-password',
             'new-password',
-            'current-password',
-            'current-password',
         ])
     })
 
@@ -270,62 +269,66 @@ describe('UserAccount sign-in methods', () => {
         expect(items[1]?.attributes('data-provider')).toBe('google')
     })
 
-    it('removes a method with the current password and reads the list again', async () => {
+    // feat-245 (Р3): no password field; a refusal `reauth_required` opens ReauthDialog
+    // (useReauth), and the same request goes again once after the step-up.
+    it('removes a method and reads the list again', async () => {
         const section = await panel([GITHUB, GOOGLE])
         unlinkSignInMethodMock.mockResolvedValue({ data: { status: 'success' }, error: null })
         signInMethodsMock.mockResolvedValue(methodsAnswer([GOOGLE]))
 
-        const password = section.get('input[name="unlink-current-password"]')
-        expect(password.attributes('autocomplete')).toBe('current-password')
-        await password.setValue('my-password-1')
+        expect(section.find('input[type="password"]').exists()).toBe(false)
         await section.findAll('li button')[0]?.trigger('click')
         await flushPromises()
 
-        expect(unlinkSignInMethodMock).toHaveBeenCalledWith({
-            id: '31',
-            currentPassword: 'my-password-1',
-        })
+        expect(unlinkSignInMethodMock).toHaveBeenCalledWith({ id: '31' })
         expect(section.findAll('li')).toHaveLength(1)
         expect(section.text()).toContain('GitHub was removed')
     })
 
-    it('does not call the server without the current password', async () => {
-        const section = await panel([GITHUB])
+    it('a refusal reauth_required asks for the step-up and repeats once after it', async () => {
+        const { reauthState } = await import('@/composables/useReauth')
+        const section = await panel([GITHUB, GOOGLE])
+        unlinkSignInMethodMock
+            .mockResolvedValueOnce({
+                data: {
+                    status: 'error',
+                    code: 'forbidden',
+                    message: 'Confirm it is you',
+                    reason: 'reauth_required',
+                    details: { kind: 'reauth_required', proofs: ['password'] },
+                },
+                error: { message: 'Confirm it is you', transportCode: 403 },
+            })
+            .mockResolvedValueOnce({ data: { status: 'success' }, error: null })
+        signInMethodsMock.mockResolvedValue(methodsAnswer([GOOGLE]))
 
-        await section.get('li button').trigger('click')
+        await section.findAll('li button')[0]?.trigger('click')
+        await flushPromises()
+        expect(reauthState.open).toBe(true)
+        expect(reauthState.proofs).toEqual(['password'])
+        reauthState.resolve?.(true)
         await flushPromises()
 
-        expect(unlinkSignInMethodMock).not.toHaveBeenCalled()
-        expect(section.text()).toContain('Enter your current password to remove a sign-in method')
+        expect(unlinkSignInMethodMock).toHaveBeenCalledTimes(2)
+        expect(section.text()).toContain('GitHub was removed')
     })
 
-    it('an account without a password sends none and is told the rules', async () => {
-        const section = await panel([GITHUB, GOOGLE], false)
-        unlinkSignInMethodMock.mockResolvedValue({ data: { status: 'success' }, error: null })
-
-        expect(section.find('input[type="password"]').exists()).toBe(false)
-        expect(section.text()).toContain('This account has no password')
-        await section.findAll('li button')[1]?.trigger('click')
-        await flushPromises()
-
-        expect(unlinkSignInMethodMock).toHaveBeenCalledWith({ id: '32' })
-    })
-
-    it.each([
-        ['current_password_incorrect', 'Current password is incorrect'],
-        ['recent_sign_in_required', 'Sign out and sign in again, then remove the sign-in method'],
-        ['last_sign_in_method', 'Set a password before removing your last sign-in method'],
-    ])('explains a refusal with reason %s and keeps the list', async (reason, text) => {
+    it('explains a refusal with reason last_sign_in_method and keeps the list', async () => {
         const section = await panel([GITHUB], false)
         unlinkSignInMethodMock.mockResolvedValue({
-            data: { status: 'error', code: 'conflict', message: 'server words', reason },
+            data: {
+                status: 'error',
+                code: 'conflict',
+                message: 'server words',
+                reason: 'last_sign_in_method',
+            },
             error: { message: 'server words' },
         })
 
         await section.get('li button').trigger('click')
         await flushPromises()
 
-        expect(section.text()).toContain(text)
+        expect(section.text()).toContain('Set a password before removing your last sign-in method')
         expect(section.findAll('li')).toHaveLength(1)
         expect(signInMethodsMock).toHaveBeenCalledTimes(1)
     })
@@ -350,9 +353,8 @@ describe('UserAccount password change and the WebSocket', () => {
     const submitPasswordChange = async () => {
         const wrapper = mountAccount()
         const inputs = wrapper.findAll('input[type="password"]')
-        await inputs[0]?.setValue('old-secret-123')
+        await inputs[0]?.setValue(NEW_PASSWORD)
         await inputs[1]?.setValue(NEW_PASSWORD)
-        await inputs[2]?.setValue(NEW_PASSWORD)
         // The first primary button of the security panel (the profile form has its own).
         const button = wrapper
             .findAll('button')

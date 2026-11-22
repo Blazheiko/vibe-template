@@ -156,7 +156,7 @@ const deleteBeforeNextWrite = (id: string): void => {
 }
 
 /** Context of a request with the session cookie and CSRF header. */
-const createRequest = (sessionId = 'current') => {
+const createRequest = (sessionId = 'current', options: { allowInRecovery?: boolean } = {}) => {
     const cookie = createSignedToken(`${USER_TOKEN}.${sessionId}`)
     const responseData = createResponseData()
     const context = createContext(
@@ -175,6 +175,8 @@ const createRequest = (sessionId = 'current') => {
             isJson: true,
             files: null,
             hasFile: () => false,
+            // feat-245 (Р8): what the route lets a recovery session do (the router sets it).
+            ...(options.allowInRecovery === true ? { allowInRecovery: true } : {}),
         } as never,
         responseData,
     )
@@ -182,8 +184,11 @@ const createRequest = (sessionId = 'current') => {
 }
 
 /** Whether a request with this session cookie gets past auth_guard. */
-const authenticates = async (sessionId: string): Promise<boolean> => {
-    const probe = createRequest(sessionId)
+const authenticates = async (
+    sessionId: string,
+    options: { allowInRecovery?: boolean } = {},
+): Promise<boolean> => {
+    const probe = createRequest(sessionId, options)
     return executeMiddlewares(['session_web', 'auth_guard'], probe.context)
 }
 
@@ -491,3 +496,232 @@ describe.skipIf(!hasRedis)(
         })
     },
 )
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р2, tasks M4): the auth state of a session.
+describe.skipIf(!hasRedis)('session auth state (feat-245)', () => {
+    const at = (secondsAgo: number): string =>
+        new Date(Date.now() - secondsAgo * 1000).toISOString()
+    const aal2 = {
+        v: 1 as const,
+        amr: ['pwd' as const, 'otp' as const],
+        aal: 2 as const,
+        authenticatedAt: at(600),
+        verified: { pwd: at(600), otp: at(600) },
+    }
+
+    it('concurrent step-ups keep both marks; the level never changes', async () => {
+        await save('stepup', { data: { auth: aal2 } })
+        const t1 = at(5)
+        const t2 = at(3)
+        await Promise.all([
+            storage.updateSessionAuth('stepup', USER_TOKEN, (current) => ({
+                ...current,
+                aal: 1,
+                verified: { ...current.verified, pwd: t1 },
+            })),
+            storage.updateSessionAuth('stepup', USER_TOKEN, (current) => ({
+                ...current,
+                verified: { ...current.verified, otp: t2 },
+            })),
+        ])
+        const auth = (await recordOf('stepup'))?.data['auth'] as typeof aal2
+        expect(auth.aal).toBe(2)
+        expect(auth.verified).toEqual({ pwd: t1, otp: t2 })
+    })
+
+    it('a data update or replacement keeps the stored auth, whatever it carries', async () => {
+        await save('keep', { data: { auth: aal2 } })
+        const forged = { ...aal2, aal: 1 as const, verified: {} }
+        await storage.updateSessionData('keep', { auth: forged, x: '1' }, USER_TOKEN)
+        expect((await recordOf('keep'))?.data['auth']).toEqual(aal2)
+        await storage.changeSessionData(
+            'keep',
+            { userId: '42', userToken: USER_TOKEN, csrfToken: CSRF, auth: forged },
+            USER_TOKEN,
+        )
+        expect((await recordOf('keep'))?.data['auth']).toEqual(aal2)
+        // A record without auth does not get one from a data update.
+        await save('none')
+        await storage.updateSessionData('none', { auth: aal2 }, USER_TOKEN)
+        expect((await recordOf('none'))?.data['auth']).toBeUndefined()
+    })
+
+    it('a session stored before feat-245 gets a level-1 state on its first step-up', async () => {
+        await save('legacy')
+        const t = at(1)
+        await storage.updateSessionAuth('legacy', USER_TOKEN, (current) => ({
+            ...current,
+            verified: { ...current.verified, pwd: t },
+        }))
+        expect((await recordOf('legacy'))?.data['auth']).toMatchObject({
+            aal: 1,
+            amr: [],
+            verified: { pwd: t },
+        })
+    })
+
+    it('an expired recovery session ends at restore; an active one is served', async () => {
+        const recovery = (expiresAt: string) => ({
+            ...aal2,
+            aal: 1,
+            amr: ['pwd', 'recovery'],
+            recovery: { startedAt: at(900), expiresAt },
+        })
+        await save('expired', { data: { auth: recovery(at(1)) } })
+        expect(await authenticates('expired')).toBe(false)
+        expect(await recordOf('expired')).toBeNull()
+
+        await save('active', {
+            data: { auth: recovery(new Date(Date.now() + 60_000).toISOString()) },
+        })
+        // feat-245 (M9): served on a route that rebuilds the factors, refused (403) elsewhere.
+        expect(await authenticates('active', { allowInRecovery: true })).toBe(true)
+        expect(await authenticates('active')).toBe(false)
+        expect(await recordOf('active')).not.toBeNull()
+    })
+
+    it('a renewal keeps how the session was authenticated', async () => {
+        await save('renew', {
+            data: {
+                auth: aal2,
+                device: {
+                    publicId: 'p',
+                    ip: '127.0.0.1',
+                    userAgent: 'ua',
+                    method: 'password',
+                    signedInAt: at(600),
+                },
+            },
+        })
+        const request = createRequest('renew')
+        expect(await executeMiddlewares(['session_web', 'auth_guard'], request.context)).toBe(true)
+        const { authService } = await import('#app/services/auth/auth-service.js')
+        const renewed = await authService.renewSession(
+            request.context.auth,
+            request.context.session,
+        )
+        expect(renewed.status).toBe('ok')
+        const newId = request.context.session.sessionInfo?.id ?? ''
+        expect(newId).not.toBe('renew')
+        expect((await recordOf(newId))?.data['auth']).toEqual(aal2)
+    })
+})
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, tasks M7): a sign-in finished by the second step
+// is planned once, written as pending before the commit and made active in one transition with
+// the ticket.
+describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () => {
+    const TICKET = 'auth:mfa:ticket-under-test'
+    const auth = {
+        v: 1 as const,
+        amr: ['pwd' as const, 'otp' as const],
+        aal: 2 as const,
+        authenticatedAt: new Date().toISOString(),
+        verified: { pwd: new Date().toISOString(), otp: new Date().toISOString() },
+    }
+    const writeTicket = (state: string, completionId: string) =>
+        admin.set(TICKET, JSON.stringify({ v: 1, state, completionId }), 'EX', 300)
+
+    /** A request of an anonymous visitor, past session_web: what the second step runs in. */
+    const anonymousRequest = async () => {
+        const request = createRequest('no-such-session')
+        await executeMiddlewares(['session_web'], request.context)
+        return request
+    }
+
+    const indexMembers = () => admin.zrange(`session_index:${USER_TOKEN}`, '0', '-1')
+
+    it('a pending record opens nothing and is not listed', async () => {
+        const request = await anonymousRequest()
+        const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        expect(await request.context.auth.prepareLogin(plan, 'c1', 300)).toBe('created')
+        expect(await request.context.auth.prepareLogin(plan, 'c1', 300)).toBe('exists')
+        expect(await request.context.auth.prepareLogin(plan, 'other', 300)).toBe('conflict')
+        expect((await recordOf(plan.sessionId))?.data['pending']).toBe(true)
+        expect(await indexMembers()).toEqual([])
+        expect(await authenticates(plan.sessionId)).toBe(false)
+        // No cookie of the planned session went out with the preparation (the anonymous one may).
+        const cookie = request.responseData.cookies.get(sessionConfig.cookieName) as
+            { value: string } | undefined
+        const decoded = Buffer.from(cookie?.value ?? '', 'base64').toString('utf8')
+        expect(decoded).not.toContain(plan.sessionId)
+    })
+
+    it('two activations of one completion: one session, one "activated", one index member', async () => {
+        const first = await anonymousRequest()
+        const plan = first.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        await first.context.auth.prepareLogin(plan, 'c2', 300)
+        await writeTicket('completing', 'c2')
+        const second = await anonymousRequest()
+        const outcomes = await Promise.all([
+            first.context.auth.activateLogin(plan, TICKET, 'c2'),
+            second.context.auth.activateLogin(plan, TICKET, 'c2'),
+        ])
+        expect(outcomes.sort()).toEqual(['activated', 'already'])
+        expect(await indexMembers()).toEqual([plan.device.publicId])
+        const record = await recordOf(plan.sessionId)
+        expect(record?.data['pending']).toBeUndefined()
+        expect(record?.data['auth']).toEqual(auth)
+        expect(await authenticates(plan.sessionId)).toBe(true)
+        // Both answers carry the cookie of that same session.
+        for (const request of [first, second]) {
+            expect(request.context.session.sessionInfo?.id).toBe(plan.sessionId)
+        }
+        const ticket = JSON.parse((await admin.get(TICKET)) ?? '{}') as { state: string }
+        expect(ticket.state).toBe('activated')
+    })
+
+    it('a late request with a stale snapshot does not bring back a session that signed out', async () => {
+        const request = await anonymousRequest()
+        const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        await request.context.auth.prepareLogin(plan, 'c3', 300)
+        await writeTicket('completing', 'c3')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('activated')
+        // The browser came back (ticket gone), then signed out (record deleted, no rotation).
+        await admin.del(TICKET)
+        await storage.destroySession(plan.sessionId, USER_TOKEN)
+
+        const late = await anonymousRequest()
+        expect(await late.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('gone')
+        expect(await recordOf(plan.sessionId)).toBeNull()
+
+        // Ticket still `activated` but the record is gone: nothing is written either.
+        await writeTicket('activated', 'c3')
+        expect(await late.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('gone')
+        expect(await recordOf(plan.sessionId)).toBeNull()
+    })
+
+    it('a lost pending record is written again from the plan: same id, same recovery expiry', async () => {
+        const request = await anonymousRequest()
+        const expiresAt = new Date(Date.now() + 600_000).toISOString()
+        const recoveryAuth = {
+            ...auth,
+            aal: 1 as const,
+            amr: ['pwd' as const, 'recovery' as const],
+            recovery: { startedAt: new Date().toISOString(), expiresAt },
+        }
+        const plan = request.context.auth.planLogin(
+            '42',
+            { method: 'password' },
+            recoveryAuth,
+            USER_TOKEN,
+        )
+        await request.context.auth.prepareLogin(plan, 'c4', 300)
+        await admin.del(`session:${USER_TOKEN}:${plan.sessionId}`)
+        await writeTicket('completing', 'c4')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c4')).toBe('activated')
+        const record = await recordOf(plan.sessionId)
+        expect(record?.data['auth']).toMatchObject({ recovery: { expiresAt } })
+    })
+
+    it('a ticket of another completion or not completing activates nothing', async () => {
+        const request = await anonymousRequest()
+        const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        await request.context.auth.prepareLogin(plan, 'c5', 300)
+        await writeTicket('completing', 'someone-else')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c5')).toBe('gone')
+        await writeTicket('open', 'c5')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c5')).toBe('gone')
+        expect((await recordOf(plan.sessionId))?.data['pending']).toBe(true)
+    })
+})

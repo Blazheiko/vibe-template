@@ -13,6 +13,7 @@ import { mainApi } from '@/utils/api'
 import { setCurrentUserIdProvider } from '@/utils/base-api'
 import { useEventBus } from '@/utils/event-bus'
 import AppHeader from '@/components/AppHeader.vue'
+import ReauthDialog from '@/components/account/ReauthDialog.vue'
 import UpdateNotification from '@/components/UpdateNotification.vue'
 import AiDisclosureBanner from '@/components/AiDisclosureBanner.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
@@ -63,6 +64,11 @@ const dismissUpdate = () => {
     hasUpdate.value = false
 }
 
+// feat-245 (Р15): an action needs a new sign-in; come back to `returnTo` afterwards.
+const onSignInAgain = (returnTo: string): void => {
+    void redirectToLogin(returnTo)
+}
+
 // Объявляем функции заранее
 const onReauthorize = async () => {
     console.error('onReauthorize')
@@ -106,6 +112,7 @@ onMounted(async () => {
     isLoading.value = false
     eventBus.on('init_app', onInitAppEvent)
     eventBus.on('unauthorized', onUnauthorizedEvent)
+    eventBus.on('sign_in_again', onSignInAgain)
     eventBus.on('update_available', handleUpdateAvailable)
 })
 
@@ -114,6 +121,7 @@ onBeforeUnmount(() => {
     // window.removeEventListener('resize', handleResize)
     eventBus.off('init_app', onInitAppEvent)
     eventBus.off('unauthorized', onUnauthorizedEvent)
+    eventBus.off('sign_in_again', onSignInAgain)
     eventBus.off('update_available', handleUpdateAvailable)
 })
 
@@ -160,15 +168,15 @@ const initializeApp = async () => {
                 if (!isPublicPath) await redirectToLogin()
             }
             return null
-        } else if (
-            data &&
-            !hasResponseError(data) &&
-            data.status === 'ok' &&
-            data.user &&
-            data.wsUrl &&
-            data.wsToken
-        ) {
+        } else if (data && !hasResponseError(data) && data.status === 'ok' && data.user) {
             userStore.setInitUser(data.user)
+            // feat-245 (Р8): a recovery session has no WebSocket and only the recovery wizard.
+            userStore.setRecovery(data.recovery ?? null)
+            if (data.recovery !== undefined) {
+                if (routePath !== '/account') void router.push({ name: 'UserAccount' })
+                return null
+            }
+            if (!data.wsUrl || !data.wsToken) return null
             stateStore.setStorageConfig({
                 cdnUrl: data.storage?.cdnUrl ?? '',
                 s3Prefix: data.storage?.s3Prefix ?? '',
@@ -216,6 +224,8 @@ const initializeApp = async () => {
                 :show-back="headerShowBack"
             />
             <router-view />
+            <!-- feat-245 (Р15): the one step-up dialog of every sensitive action. -->
+            <ReauthDialog />
         </template>
 
         <UpdateNotification v-if="hasUpdate" @refresh="refreshApp" @dismiss="dismissUpdate" />

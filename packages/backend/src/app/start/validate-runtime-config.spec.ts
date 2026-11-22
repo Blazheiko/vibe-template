@@ -12,9 +12,11 @@ function restoreEnv(): void {
     Object.assign(process.env, ORIGINAL_ENV)
 }
 
-// Production-like cases below need a CSRF allowlist to get past the CSRF check.
+// Production-like cases below need a CSRF allowlist to get past the CSRF check, and the MFA
+// encryption keys (feat-245) to get past the MFA check.
 beforeEach(() => {
     process.env['CSRF_ALLOWED_ORIGINS'] = 'https://app.test'
+    process.env['MFA_ENCRYPTION_KEYS'] = `k1:${Buffer.alloc(32, 7).toString('base64')}`
 })
 
 afterEach(() => {
@@ -712,4 +714,16 @@ describe('TRUSTED_PROXY_CIDRS entries (feat-132)', () => {
             }).toThrow(/Invalid network configuration: TRUSTED_PROXY_CIDRS/)
         },
     )
+})
+
+describe('MFA encryption keys (feat-245 Р9)', () => {
+    it('stops a production-like start without MFA_ENCRYPTION_KEYS', async () => {
+        process.env['APP_IS_PRODUCTION'] = 'true'
+        process.env['APP_URL'] = 'https://app.example.com'
+        delete process.env['MFA_ENCRYPTION_KEYS']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(/Invalid MFA configuration: MFA_ENCRYPTION_KEYS is required/)
+    })
 })

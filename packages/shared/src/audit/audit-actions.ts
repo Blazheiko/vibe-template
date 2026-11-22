@@ -18,6 +18,14 @@ export const AUDIT_PROOFS = [
     'sms_code',
     'oauth_email_link',
     'oauth_provider_email',
+    // feat-245 (docs/plan/passkeys-mfa-plan.md, Р14): the step-up proof of a sensitive action, or
+    // the recovery code of a recovery session; `recent_sign_in` is a fresh OAuth sign-in of an
+    // account without a password.
+    'password',
+    'totp',
+    'passkey',
+    'recovery_code',
+    'recent_sign_in',
 ] as const
 export type AuditProof = (typeof AUDIT_PROOFS)[number]
 
@@ -101,9 +109,9 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
-        proofs: [],
+        proofs: ['password', 'totp', 'passkey', 'recent_sign_in'],
         changes: null,
-        metadata: { sessionsRevoked: true },
+        metadata: { proof: true, sessionsRevoked: true },
     },
     'auth.password.reset': {
         group: 'sign-in',
@@ -125,6 +133,7 @@ export const AUDIT_ACTIONS = {
             phoneRemoved: true,
             oauthRemoved: true,
             pushSubscriptionsRemoved: true,
+            mfaRemoved: true,
         },
     },
     'auth.phone.linked': {
@@ -155,9 +164,9 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
-        proofs: [],
+        proofs: ['password', 'totp', 'passkey', 'recent_sign_in'],
         changes: null,
-        metadata: { method: true, provider: true },
+        metadata: { method: true, provider: true, proof: true },
     },
     'auth.sessions.revoked_all': {
         group: 'sessions',
@@ -174,6 +183,47 @@ export const AUDIT_ACTIONS = {
         proofs: [],
         changes: null,
         metadata: null,
+    },
+    // feat-245 (Р14): the second factors and the recovery codes of an account.
+    'auth.mfa.totp.enabled': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user'],
+        proofs: ['password', 'totp', 'passkey', 'recovery_code', 'recent_sign_in'],
+        changes: null,
+        metadata: { proof: true, recoveryCodesIssued: true },
+    },
+    'auth.mfa.totp.replaced': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user'],
+        proofs: ['totp', 'passkey', 'recovery_code'],
+        changes: null,
+        metadata: { proof: true },
+    },
+    'auth.mfa.totp.disabled': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user'],
+        proofs: ['totp', 'passkey', 'recovery_code'],
+        changes: null,
+        metadata: { proof: true, mfaDisabled: true },
+    },
+    'auth.mfa.recovery_codes.regenerated': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user'],
+        proofs: ['totp', 'passkey', 'recovery_code'],
+        changes: null,
+        metadata: { proof: true, count: true },
+    },
+    'auth.mfa.recovery_code.used': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['proof_holder'],
+        proofs: ['recovery_code'],
+        changes: null,
+        metadata: { proof: true, remaining: true },
     },
     'kb.article.created': {
         group: 'kb',
@@ -299,6 +349,8 @@ export interface AuditInputs {
         phoneRemoved: boolean
         oauthRemoved: readonly string[]
         pushSubscriptionsRemoved: number
+        /** feat-245: a second factor or recovery codes were removed. */
+        mfaRemoved: boolean
     }
     'auth.phone.linked': Record<string, never>
     'auth.email.linked': Record<string, never>
@@ -306,6 +358,11 @@ export interface AuditInputs {
     'auth.sign_in_method.unlinked': { method: 'oauth'; provider: string }
     'auth.sessions.revoked_all': Record<string, never>
     'auth.sessions.revoked_others': Record<string, never>
+    'auth.mfa.totp.enabled': { recoveryCodesIssued: boolean }
+    'auth.mfa.totp.replaced': Record<string, never>
+    'auth.mfa.totp.disabled': { mfaDisabled: boolean }
+    'auth.mfa.recovery_codes.regenerated': { count: number }
+    'auth.mfa.recovery_code.used': { remaining: number }
     'kb.article.created': { after: AuditArticleFields; content: AuditContentFingerprint }
     'kb.article.updated': {
         before: AuditArticleFields
@@ -422,6 +479,7 @@ const PROJECTIONS: Projections = {
             // Distinct names: an account may hold several links of one provider.
             oauthRemoved: [...new Set(input.oauthRemoved.map(String))].sort(),
             pushSubscriptionsRemoved: input.pushSubscriptionsRemoved,
+            mfaRemoved: input.mfaRemoved,
         },
     }),
     'auth.phone.linked': () => ({ changes: null, metadata: { method: 'phone' } }),
@@ -436,6 +494,23 @@ const PROJECTIONS: Projections = {
     }),
     'auth.sessions.revoked_all': none,
     'auth.sessions.revoked_others': none,
+    'auth.mfa.totp.enabled': (input) => ({
+        changes: null,
+        metadata: { recoveryCodesIssued: input.recoveryCodesIssued },
+    }),
+    'auth.mfa.totp.replaced': none,
+    'auth.mfa.totp.disabled': (input) => ({
+        changes: null,
+        metadata: { mfaDisabled: input.mfaDisabled },
+    }),
+    'auth.mfa.recovery_codes.regenerated': (input) => ({
+        changes: null,
+        metadata: { count: input.count },
+    }),
+    'auth.mfa.recovery_code.used': (input) => ({
+        changes: null,
+        metadata: { remaining: input.remaining },
+    }),
     'kb.article.created': (input) => ({
         changes: articleChanges(null, input.after, input.content),
         metadata: null,

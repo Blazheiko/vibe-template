@@ -118,9 +118,18 @@ test.describe('notification center', () => {
         page,
         api,
     }) => {
-        await api.answer('notifications/preferences', 200, {
-            status: 'success',
-            preferences: MATRIX,
+        // The PUT is answered with the matrix after the change, as the server does: an answer
+        // with the old matrix would tick the box again before the click is checked.
+        const answer = { status: 'success', preferences: MATRIX }
+        await api.answer('notifications/preferences', 200, answer, {
+            onRequest: () => {
+                if (api.calls.at(-1)?.method !== 'PUT') return
+                answer.preferences = MATRIX.map((cell) =>
+                    cell.category === 'support' && cell.channel === 'push'
+                        ? { ...cell, enabled: false }
+                        : cell,
+                )
+            },
         })
         await page.goto('/account')
         const preferences = page.getByTestId('notification-preferences')

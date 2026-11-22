@@ -8,6 +8,7 @@ import {
     appErrorStatus,
     type AppError,
 } from '#app/services/shared/errors.js'
+import type { SessionAuthState } from 'shared/mfa'
 import type { authService } from './auth-service.js'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
@@ -82,6 +83,9 @@ vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     smsAuthChallengeRepository: challengeRepositoryMock,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
+    // feat-245: these accounts have no second factor.
+    totpFactorRepository: { findByUserId: () => Promise.resolve(undefined) },
+    recoveryCodeRepository: { countUnused: () => Promise.resolve(0) },
 }))
 vi.mock('#app/transformers/index.js', () => ({
     userTransformer: { serialize: vi.fn((u: { id: bigint }) => ({ id: String(u.id) })) },
@@ -128,6 +132,18 @@ const IP = { ipAddress: '203.0.113.9' }
 const CSRF = 'c'.repeat(43)
 /** The user token the request presented; account() below still holds it (feat-096). */
 const TOKEN = 'old-token'
+/** feat-245 (Р3): the auth state of the request's session, with the marks it carries. */
+const authWith = (verified: SessionAuthState['verified']): SessionAuthState => ({
+    v: 1,
+    amr: ['pwd'],
+    aal: 1,
+    authenticatedAt: new Date().toISOString(),
+    verified,
+})
+/** The session proved the password through POST /auth/reauth just now. */
+const FRESH_PASSWORD = authWith({ pwd: new Date().toISOString() })
+/** A password proven longer ago than AUTH_REAUTH_WINDOW_SECONDS (300). */
+const STALE_PASSWORD = authWith({ pwd: new Date(Date.now() - 301_000).toISOString() })
 
 beforeEach(() => {
     // feat-103: every code check spends a try first; by default the try succeeds on the row
@@ -200,6 +216,9 @@ const err = (status: number, code: string, message: string, reason?: string): Ex
 const badRequest = (message: string): Expected => err(400, 'bad_request', message)
 const internalError = (message: string): Expected => err(500, 'internal_error', message)
 const SESSION_REVOKED = err(401, 'unauthorized', 'Session has been revoked', 'session_revoked')
+// feat-245 (Р3): the 403s of the proof matrix.
+const REAUTH_REQUIRED = err(403, 'forbidden', 'Confirm it is you to continue', 'reauth_required')
+const SIGN_IN_AGAIN = err(403, 'forbidden', 'Sign in again to continue', 'sign_in_again_required')
 
 const confirmReg =
     (code = '123456') =>
@@ -253,28 +272,40 @@ const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
         },
         testUserActor(),
     )
-const startLinkAs = (presented: string | undefined) => (s: Service) =>
-    s.startPhoneLink(
-        7n,
-        { phone: '+380501234567', currentPassword: 'secret' },
-        {
-            ...IP,
-            sessionId: 'sess-1',
-            presentedSessionToken: presented,
-            sessionStored: sessionStillStored,
-        },
-    )
+const startLinkAs =
+    (presented: string | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
+    (s: Service) =>
+        s.startPhoneLink(
+            7n,
+            { phone: '+380501234567' },
+            {
+                ...IP,
+                sessionId: 'sess-1',
+                presentedSessionToken: presented,
+                sessionStored: sessionStillStored,
+                sessionAuth: sessionAuth ?? undefined,
+            },
+        )
 const startLink = startLinkAs(TOKEN)
-const startEmailAs = (presented: string | undefined) => (s: Service) =>
-    s.startEmailLink(
-        7n,
-        { email: 'new@example.com', currentPassword: 'secret' },
-        presented,
-        sessionStillStored,
-    )
+const startEmailAs =
+    (presented: string | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
+    (s: Service) =>
+        s.startEmailLink(
+            7n,
+            { email: 'new@example.com' },
+            presented,
+            sessionStillStored,
+            sessionAuth ?? undefined,
+        )
 const startEmail = startEmailAs(TOKEN)
 const changeAs =
-    (presented: string | undefined, payload: Record<string, unknown>) => (s: Service) =>
+    (
+        presented: string | undefined,
+        payload: Record<string, unknown>,
+        /** null: a session with no auth state (one stored before feat-245). */
+        sessionAuth: SessionAuthState | null = FRESH_PASSWORD,
+    ) =>
+    (s: Service) =>
         s.changePassword(
             7n,
             payload as never,
@@ -282,8 +313,12 @@ const changeAs =
             sessionStillStored,
             undefined,
             testUserActor(),
+            sessionAuth ?? undefined,
         )
-const change = (payload: Record<string, unknown>) => changeAs(TOKEN, payload)
+const change = (
+    payload: Record<string, unknown>,
+    sessionAuth: SessionAuthState | null = FRESH_PASSWORD,
+) => changeAs(TOKEN, payload, sessionAuth)
 
 const account = (over: Record<string, unknown> = {}) => ({
     id: 7n,
@@ -611,12 +646,13 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startPhoneLink(
                 7n,
-                { phone: '+380501234567', currentPassword: 'x' },
+                { phone: '+380501234567' },
                 {
                     ...IP,
                     sessionId: null,
                     presentedSessionToken: TOKEN,
                     sessionStored: sessionStillStored,
+                    sessionAuth: FRESH_PASSWORD,
                 },
             ),
         error: badRequest('Phone linking requires an active session'),
@@ -644,28 +680,37 @@ const ROWS: readonly Row[] = [
             expect(issueMock).not.toHaveBeenCalled()
         },
     })),
+    // feat-245 (row 7 of Р3): an account without a password proves the owner by a recent OAuth
+    // sign-in; a fresh password mark of it means nothing.
     {
-        name: 'startPhoneLink · account without a password',
+        name: 'startPhoneLink · account without a password and no recent OAuth sign-in',
         arrange: () => userRepositoryMock.findById.mockResolvedValue(account({ password: null })),
         call: startLink,
-        error: badRequest('Set a password before managing recovery methods'),
-    },
-    {
-        name: 'startPhoneLink · wrong current password',
-        arrange: () => {
-            userRepositoryMock.findById.mockResolvedValue(account())
-            validatePasswordMock.mockResolvedValue(false)
-        },
-        call: startLink,
-        error: badRequest('Current password is incorrect'),
+        error: SIGN_IN_AGAIN,
         after: () => {
-            // feat-109: only the per-user password budget is spent, never the link counters.
-            expect(consumeAuthThrottleMock.mock.calls.map((call) => call[0].scope)).toEqual([
-                'change_password_user',
-            ])
-            expect(resetAuthThrottleMock).not.toHaveBeenCalled()
+            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.create).not.toHaveBeenCalled()
         },
     },
+    // feat-245 (row 7 of Р3): the password in the form is gone; the session must have proved it.
+    ...(
+        [
+            ['no auth state', null],
+            ['a stale password mark', STALE_PASSWORD],
+        ] as const
+    ).map(([state, sessionAuth]): Row => ({
+        name: `startPhoneLink · ${state}: reauth required`,
+        arrange: arrangeLinkStart,
+        call: startLinkAs(TOKEN, sessionAuth),
+        error: REAUTH_REQUIRED,
+        after: () => {
+            // No counter is spent and no code issued: the step-up comes first.
+            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+            expect(validatePasswordMock).not.toHaveBeenCalled()
+            expect(challengeRepositoryMock.create).not.toHaveBeenCalled()
+            expect(issueMock).not.toHaveBeenCalled()
+        },
+    })),
     {
         name: 'startPhoneLink · the account has a phone already',
         arrange: () => {
@@ -684,12 +729,13 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.startPhoneLink(
                 7n,
-                { phone: 'nope', currentPassword: 'x' },
+                { phone: 'nope' },
                 {
                     ...IP,
                     sessionId: 'sess-1',
                     presentedSessionToken: TOKEN,
                     sessionStored: sessionStillStored,
+                    sessionAuth: FRESH_PASSWORD,
                 },
             ),
         error: badRequest('Phone number must be valid and in a supported format'),
@@ -897,15 +943,24 @@ const ROWS: readonly Row[] = [
             expect(userRepositoryMock.emailExistsForOtherUser).not.toHaveBeenCalled()
         },
     })),
-    {
-        name: 'startEmailLink · wrong current password',
+    ...(
+        [
+            ['no auth state', null],
+            ['a stale password mark', STALE_PASSWORD],
+        ] as const
+    ).map(([state, sessionAuth]): Row => ({
+        name: `startEmailLink · ${state}: reauth required`,
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(account())
-            validatePasswordMock.mockResolvedValue(false)
+            userRepositoryMock.emailExistsForOtherUser.mockResolvedValue(false)
         },
-        call: startEmail,
-        error: badRequest('Current password is incorrect'),
-    },
+        call: startEmailAs(TOKEN, sessionAuth),
+        error: REAUTH_REQUIRED,
+        after: () => {
+            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+            expect(userRepositoryMock.emailExistsForOtherUser).not.toHaveBeenCalled()
+        },
+    })),
     {
         name: 'startEmailLink · the account has an e-mail already',
         arrange: () => {
@@ -915,11 +970,9 @@ const ROWS: readonly Row[] = [
         call: startEmail,
         error: badRequest('Email is already linked to this account'),
         after: () => {
-            // feat-109: the password budget is spent and, the password being right, reset.
-            expect(consumeAuthThrottleMock.mock.calls.map((call) => call[0].scope)).toEqual([
-                'change_password_user',
-            ])
-            expect(resetAuthThrottleMock).toHaveBeenCalledTimes(1)
+            // feat-245: the fresh proof spends no counter (POST /auth/reauth spent the budget).
+            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+            expect(resetAuthThrottleMock).not.toHaveBeenCalled()
         },
     },
     {
@@ -980,7 +1033,13 @@ const ROWS: readonly Row[] = [
         },
         call: (s) => s.renewSession(authMock as never, sessionMock as never, 'rotated'),
         after: () => {
-            expect(authMock.login).toHaveBeenCalledWith('7', 'rotated', expect.anything())
+            // feat-245: the auth state of the renewed session (none: a session stored before it).
+            expect(authMock.login).toHaveBeenCalledWith(
+                '7',
+                'rotated',
+                expect.anything(),
+                undefined,
+            )
         },
     },
     {
@@ -1091,7 +1150,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'changePassword · unknown user',
         arrange: () => userRepositoryMock.findById.mockResolvedValue(undefined),
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
+        call: change({ newPassword: 'new-password' }),
         error: err(404, 'not_found', 'User not found'),
     },
     ...(
@@ -1107,7 +1166,7 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
         },
-        call: changeAs(presented, { currentPassword: 'old', newPassword: 'new-password' }),
+        call: changeAs(presented, { newPassword: 'new-password' }),
         error: SESSION_REVOKED,
         after: () => {
             expect(validatePasswordMock).not.toHaveBeenCalled()
@@ -1116,20 +1175,32 @@ const ROWS: readonly Row[] = [
             expect(securityNotice).not.toHaveBeenCalled()
         },
     })),
-    {
-        name: 'changePassword · the current password is missing',
-        arrange: () => userRepositoryMock.findById.mockResolvedValue(account()),
-        call: change({ newPassword: 'new-password' }),
-        error: badRequest('Current password is required'),
-    },
-    {
-        name: 'changePassword · the current password is wrong',
+    // feat-245 (row 6 of Р3): the password in the form is gone; the session must have proved it.
+    ...(
+        [
+            ['no auth state', null],
+            ['no password mark', authWith({})],
+            ['a stale password mark', STALE_PASSWORD],
+        ] as const
+    ).map(([state, sessionAuth]): Row => ({
+        name: `changePassword · ${state}: reauth required`,
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(account())
-            validatePasswordMock.mockResolvedValue(false)
+            hashPasswordMock.mockResolvedValue('new-hash')
         },
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
-        error: badRequest('Current password is incorrect'),
+        call: change({ newPassword: 'new-password' }, sessionAuth),
+        error: REAUTH_REQUIRED,
+        after: () => {
+            expect(hashPasswordMock).not.toHaveBeenCalled()
+            expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
+            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
+        },
+    })),
+    {
+        name: 'changePassword · an account without a password and no recent OAuth sign-in',
+        arrange: () => userRepositoryMock.findById.mockResolvedValue(account({ password: null })),
+        call: change({ newPassword: 'new-password' }),
+        error: SIGN_IN_AGAIN,
         after: () => {
             expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
         },
@@ -1145,11 +1216,12 @@ const ROWS: readonly Row[] = [
         call: (s) =>
             s.changePassword(
                 7n,
-                { currentPassword: 'old', newPassword: 'new-password' },
+                { newPassword: 'new-password' },
                 TOKEN,
                 () => Promise.resolve(false),
                 undefined,
                 testUserActor(),
+                FRESH_PASSWORD,
             ),
         error: SESSION_REVOKED,
         after: () => {
@@ -1167,7 +1239,7 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
         },
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
+        call: change({ newPassword: 'new-password' }),
         error: err(409, 'conflict', 'Password was changed by another request. Please try again.'),
         after: () => {
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
@@ -1185,7 +1257,7 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
         },
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
+        call: change({ newPassword: 'new-password' }),
         error: SESSION_REVOKED,
         after: () => {
             expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(
@@ -1210,21 +1282,24 @@ const ROWS: readonly Row[] = [
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(undefined)
         },
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
+        call: change({ newPassword: 'new-password' }),
         error: err(404, 'not_found', 'User not found'),
         after: () => {
             expect(destroyAllSessionsMock).not.toHaveBeenCalled()
         },
     },
     {
-        name: 'changePassword · an account without a password may set one',
+        name: 'changePassword · an account without a password may set one after an OAuth sign-in',
         arrange: () => {
             userRepositoryMock.findById.mockResolvedValue(account({ password: null }))
             hashPasswordMock.mockResolvedValue('new-hash')
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
             destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
         },
-        call: change({ newPassword: 'new-password' }),
+        call: change(
+            { newPassword: 'new-password' },
+            authWith({ oauth: new Date().toISOString() }),
+        ),
         after: () => {
             expect(validatePasswordMock).not.toHaveBeenCalled()
             expect(userRepositoryMock.changePasswordIfCurrent).toHaveBeenCalledWith(
@@ -1245,7 +1320,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
             destroyAllSessionsMock.mockRejectedValue(new Error('redis'))
         },
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
+        call: change({ newPassword: 'new-password' }),
         after: () => {
             expect(loggerMock.warn).toHaveBeenCalledWith(
                 expect.objectContaining({ userId: '7' }),
@@ -1263,7 +1338,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.changePasswordIfCurrent.mockResolvedValue(account())
             destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
         },
-        call: change({ currentPassword: 'old', newPassword: 'new-password' }),
+        call: change({ newPassword: 'new-password' }),
         after: () => {
             expect(destroyAllSessionsMock).toHaveBeenCalledWith('old-token')
             expect(resetAuthThrottleMock).toHaveBeenCalledWith(
@@ -1360,11 +1435,12 @@ describe('authService · success payloads', () => {
         const { authService } = await import('./auth-service.js')
         const result = await authService.changePassword(
             7n,
-            { currentPassword: 'old', newPassword: 'new-password' },
+            { newPassword: 'new-password' },
             TOKEN,
             sessionStillStored,
             undefined,
             testUserActor(),
+            FRESH_PASSWORD,
         )
         expect(Result.isOk(result) && result.value).toEqual({
             status: 'success',

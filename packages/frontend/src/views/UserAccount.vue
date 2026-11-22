@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { withReauth } from '@/composables/useReauth'
 import { computed, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
 import { useStateStore } from '@/stores/state'
@@ -10,6 +12,7 @@ import { passwordLengthProblem } from '@/utils/validate-password'
 import { getErrorReason, getResponseMessage, hasResponseError } from '@/utils/response-normalizer'
 import AvatarEditorModal from '@/components/AvatarEditorModal.vue'
 import ActiveSessions from '@/components/account/ActiveSessions.vue'
+import SignInSecurity from '@/components/account/SignInSecurity.vue'
 import NotificationPreferences from '@/components/account/NotificationPreferences.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
@@ -45,7 +48,6 @@ const showAvatarEditor = ref(false)
 const selectedFile = ref<Blob | null>(null)
 const avatarUrl = computed(() => buildAvatarUrl(user.value?.avatar))
 
-const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const isChangingPassword = ref(false)
@@ -53,7 +55,6 @@ const passwordMessage = ref('')
 
 const linkPhone = ref('')
 const linkPhoneCountry = ref('')
-const linkPhoneCurrentPassword = ref('')
 const linkPhoneCode = ref('')
 const linkPhoneChallengeId = ref('')
 const linkPhoneStep = ref<'start' | 'confirm'>('start')
@@ -61,7 +62,6 @@ const linkPhoneMessage = ref('')
 const isLinkingPhone = ref(false)
 
 const linkEmail = ref('')
-const linkEmailCurrentPassword = ref('')
 const linkEmailMessage = ref('')
 const isLinkingEmail = ref(false)
 
@@ -310,14 +310,15 @@ async function changePassword(): Promise<void> {
     // cookie, get 401 and sign the user out; it waits for the answer instead.
     suspendReconnect()
     try {
-        const payload: { currentPassword?: string; newPassword: string } = {
-            newPassword: newPassword.value,
+        // feat-245 (Р3): no password field: a step-up (ReauthDialog) confirms it is the user.
+        const outcome = await withReauth(() =>
+            authApi.changePassword({ newPassword: newPassword.value }),
+        )
+        if (outcome.signInAgain) {
+            await signInAgain()
+            return
         }
-        if (currentPassword.value !== '') {
-            payload.currentPassword = currentPassword.value
-        }
-
-        const { data, error } = await authApi.changePassword(payload)
+        const { data, error } = outcome.response
         if (error || hasResponseError(data) || data?.status !== 'success') {
             passwordMessage.value = getResponseMessage(
                 data,
@@ -337,7 +338,6 @@ async function changePassword(): Promise<void> {
         }
 
         passwordMessage.value = t('account.security.successUpdate')
-        currentPassword.value = ''
         newPassword.value = ''
         confirmPassword.value = ''
     } finally {
@@ -382,18 +382,24 @@ async function resendPendingEmailLink(): Promise<void> {
 
 async function startPhoneLink(): Promise<void> {
     linkPhoneMessage.value = ''
-    if (linkPhone.value.trim() === '' || linkPhoneCurrentPassword.value.trim() === '') {
+    if (linkPhone.value.trim() === '') {
         linkPhoneMessage.value = t('account.contactMethods.linkPhoneValidation')
         return
     }
 
     isLinkingPhone.value = true
     try {
-        const { data, error } = await authApi.startPhoneLink({
-            phone: linkPhone.value.trim(),
-            currentPassword: linkPhoneCurrentPassword.value,
-            defaultCountry: linkPhoneCountry.value.trim() || undefined,
-        })
+        const outcome = await withReauth(() =>
+            authApi.startPhoneLink({
+                phone: linkPhone.value.trim(),
+                defaultCountry: linkPhoneCountry.value.trim() || undefined,
+            }),
+        )
+        if (outcome.signInAgain) {
+            await signInAgain()
+            return
+        }
+        const { data, error } = outcome.response
 
         if (error || hasResponseError(data) || data?.status !== 'success') {
             linkPhoneMessage.value = getResponseMessage(
@@ -440,7 +446,6 @@ async function confirmPhoneLink(): Promise<void> {
         linkPhoneMessage.value = data.message || t('account.contactMethods.linkPhoneSuccess')
         linkPhone.value = ''
         linkPhoneCountry.value = ''
-        linkPhoneCurrentPassword.value = ''
         linkPhoneCode.value = ''
         linkPhoneChallengeId.value = ''
         linkPhoneStep.value = 'start'
@@ -451,17 +456,21 @@ async function confirmPhoneLink(): Promise<void> {
 
 async function startEmailLink(): Promise<void> {
     linkEmailMessage.value = ''
-    if (linkEmail.value.trim() === '' || linkEmailCurrentPassword.value.trim() === '') {
+    if (linkEmail.value.trim() === '') {
         linkEmailMessage.value = t('account.contactMethods.linkEmailValidation')
         return
     }
 
     isLinkingEmail.value = true
     try {
-        const { data, error } = await authApi.startEmailLink({
-            email: linkEmail.value.trim(),
-            currentPassword: linkEmailCurrentPassword.value,
-        })
+        const outcome = await withReauth(() =>
+            authApi.startEmailLink({ email: linkEmail.value.trim() }),
+        )
+        if (outcome.signInAgain) {
+            await signInAgain()
+            return
+        }
+        const { data, error } = outcome.response
 
         linkEmailMessage.value = getResponseMessage(
             data ?? error,
@@ -469,7 +478,6 @@ async function startEmailLink(): Promise<void> {
         )
         if (!error) {
             linkEmail.value = ''
-            linkEmailCurrentPassword.value = ''
         }
     } finally {
         isLinkingEmail.value = false
@@ -541,16 +549,19 @@ interface SignInMethod {
     linkedAt: string
 }
 const signInMethods = ref<SignInMethod[]>([])
+// feat-245 (Р15): an action that needs a new sign-in (no step-up can help) comes back here.
+const route = useRoute()
+const signInAgain = (): Promise<void> => {
+    eventBus.emit('sign_in_again', route.fullPath)
+    return Promise.resolve()
+}
+
 const signInMethodsLoaded = ref(false)
 const accountHasPassword = ref(false)
-const unlinkPassword = ref('')
 const unlinkingId = ref<string | null>(null)
 const signInMethodsMessage = ref('')
 
 const UNLINK_ERRORS = new Map<string, string>([
-    ['current_password_required', 'account.signInMethods.errorPasswordRequired'],
-    ['current_password_incorrect', 'account.signInMethods.errorPasswordIncorrect'],
-    ['recent_sign_in_required', 'account.signInMethods.errorRecentSignIn'],
     ['last_sign_in_method', 'account.signInMethods.errorLastMethod'],
 ])
 
@@ -570,17 +581,14 @@ async function loadSignInMethods(): Promise<void> {
 
 async function unlinkSignInMethod(method: SignInMethod): Promise<void> {
     signInMethodsMessage.value = ''
-    if (accountHasPassword.value && unlinkPassword.value === '') {
-        signInMethodsMessage.value = t('account.signInMethods.errorPasswordRequired')
-        return
-    }
-
     unlinkingId.value = method.id
     try {
-        const { data, error } = await authApi.unlinkSignInMethod({
-            id: method.id,
-            ...(accountHasPassword.value ? { currentPassword: unlinkPassword.value } : {}),
-        })
+        const outcome = await withReauth(() => authApi.unlinkSignInMethod({ id: method.id }))
+        if (outcome.signInAgain) {
+            await signInAgain()
+            return
+        }
+        const { data, error } = outcome.response
         if (error || hasResponseError(data) || data?.status !== 'success') {
             const known = UNLINK_ERRORS.get(getErrorReason(data) ?? '')
             signInMethodsMessage.value =
@@ -592,7 +600,6 @@ async function unlinkSignInMethod(method: SignInMethod): Promise<void> {
                       )
             return
         }
-        unlinkPassword.value = ''
         signInMethodsMessage.value = t('account.signInMethods.unlinked', {
             provider: oauthProviderLabel(method.provider),
         })
@@ -602,8 +609,19 @@ async function unlinkSignInMethod(method: SignInMethod): Promise<void> {
     }
 }
 
-void pushStore.ensurePushSubscriptionsLoaded()
-void loadSignInMethods()
+// feat-245 (Р8): a recovery session may use only the recovery routes.
+// A store without the field (an older test double) counts as no recovery.
+// The store learns it from main/init, which may answer after this page mounted.
+const inRecovery = computed(() => (userStore.recovery ?? null) !== null)
+watch(
+    inRecovery,
+    (recovering) => {
+        if (recovering) return
+        void pushStore.ensurePushSubscriptionsLoaded()
+        void loadSignInMethods()
+    },
+    { immediate: true },
+)
 
 watch(
     () => pushStore.isSubscribedToPush,
@@ -614,7 +632,10 @@ watch(
 </script>
 
 <template>
-    <div class="account-page">
+    <div v-if="inRecovery" class="account-page">
+        <SignInSecurity />
+    </div>
+    <div v-else class="account-page">
         <section class="panel profile-panel">
             <button class="avatar-button" type="button" @click="openFileInput">
                 <img v-if="avatarUrl" :src="avatarUrl" alt="Avatar" class="avatar-image" />
@@ -726,13 +747,6 @@ watch(
             <h2>{{ t('account.security.title') }}</h2>
             <div class="form-grid">
                 <input
-                    v-model="currentPassword"
-                    type="password"
-                    name="current-password"
-                    autocomplete="current-password"
-                    :placeholder="t('account.security.currentPassword')"
-                />
-                <input
                     v-model="newPassword"
                     type="password"
                     name="new-password"
@@ -753,6 +767,7 @@ watch(
             <p v-if="passwordMessage" class="form-message">{{ passwordMessage }}</p>
         </section>
 
+        <SignInSecurity />
         <ActiveSessions />
 
         <section class="panel" data-testid="sign-in-methods">
@@ -788,21 +803,6 @@ watch(
                     </button>
                 </li>
             </ul>
-            <div v-if="signInMethods.length > 0 && accountHasPassword" class="form-grid">
-                <input
-                    v-model="unlinkPassword"
-                    type="password"
-                    name="unlink-current-password"
-                    autocomplete="current-password"
-                    :placeholder="t('account.signInMethods.currentPassword')"
-                />
-            </div>
-            <p
-                v-if="signInMethods.length > 0 && signInMethodsLoaded && !accountHasPassword"
-                class="form-message"
-            >
-                {{ t('account.signInMethods.noPasswordHint') }}
-            </p>
             <p v-if="signInMethodsMessage" class="form-message" role="status">
                 {{ signInMethodsMessage }}
             </p>
@@ -823,13 +823,6 @@ watch(
                     name="phone-country"
                     autocomplete="country"
                     placeholder="US"
-                />
-                <input
-                    v-model="linkPhoneCurrentPassword"
-                    type="password"
-                    name="link-phone-current-password"
-                    autocomplete="current-password"
-                    :placeholder="t('account.security.currentPassword')"
                 />
                 <input
                     v-if="linkPhoneStep === 'confirm'"
@@ -860,13 +853,6 @@ watch(
                     name="email"
                     autocomplete="email"
                     :placeholder="t('account.contactMethods.email')"
-                />
-                <input
-                    v-model="linkEmailCurrentPassword"
-                    type="password"
-                    name="link-email-current-password"
-                    autocomplete="current-password"
-                    :placeholder="t('account.security.currentPassword')"
                 />
             </div>
             <button class="secondary-button" :disabled="isLinkingEmail" @click="startEmailLink">
