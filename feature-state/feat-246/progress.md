@@ -17,6 +17,10 @@ Plan: `docs/plan/passkeys-mfa-plan.md` (rev. 7, Р5, Р6, Р9, Р12), tasks:
 - P4: passkey second step (`/auth/mfa/webauthn/options`, `mfa/verify` method `webauthn`) and
   step-up (`/auth/reauth/webauthn/options`, `reauth` proof `webauthn`); the passkey-only
   recovery path (branch A).
+- P5: `usePasskeys` (lazy library), sign-in button and conditional UI (started by a user action
+  in the identifier field), passkey in MfaChallengeForm and ReauthDialog, PasskeyList; the OAuth
+  second-step URL names the methods; passkey sign-in routes have their own rate limit.
+- P6: `backend/mfa.md` (uk + en) Passkeys section, configuration and auth pages, STL-MFA-006.
 
 ## Files Modified
 
@@ -24,9 +28,8 @@ See `git log` of the branch.
 
 ## Next Step
 
-P5: frontend (sign in with a passkey, conditional UI, passkey in MfaChallengeForm and
-ReauthDialog, the list in SignInSecurity), mock e2e and e2e-live with a CDP virtual
-authenticator; then P6 docs and closing.
+PR `feat/passkeys` → `main`, status `review`, merge after every CI job is green, then
+"Mark feat-246 done". Next feature: feat-247 (staff MFA).
 
 ## Notes for Next Session
 
@@ -36,4 +39,23 @@ authenticator; then P6 docs and closing.
 
 ## Evidence of Completion
 
-(pending)
+2026-11-22, local, branch head after the P5/P6 fixes:
+
+- `make check`: exit 0 — backend 3533, frontend 931, shared 142 pass / 0 fail, api-playground 115,
+  landing 103, documentation 26; format, typecheck, lint, bundle graph clean.
+- `pnpm test:pg` (PG_TEST_URL set): 66 files, 585 tests passed, 0 skipped.
+- `pnpm test:redis` (REDIS_TEST_URL set): 20 files, 195 tests passed, 0 skipped.
+- `pnpm --filter frontend test:e2e`: 127 passed (`e2e/mock/passkeys.spec.ts` 2, CDP virtual
+  authenticator).
+- `pnpm --filter frontend test:e2e:live`: 39 passed, including `passkeys.spec.ts` (3) and
+  `mfa.spec.ts` (3); `account-profile.spec.ts` › "a name with markup…" fails locally only
+  (accumulated accounts in the dev database; CI starts clean).
+- `pnpm docs:build && pnpm docs:verify`: all checks passed.
+
+Golden path checked by the live specs with a virtual authenticator: a passkey added from the
+account page (codes shown once), a sign-in with the passkey alone from the autofill and from the
+button, the passkey as the second step after the password, and the recovery of a lost passkey
+(last recovery code → a new passkey → the lost one removed → new codes → finish → password +
+new passkey). The PG/Redis suites cover the shared WebAuthn criterion over the four ceremonies,
+idempotent registration, concurrent removals, the counter rule and the passkey-only recovery
+path over HTTP.
