@@ -2441,8 +2441,8 @@
             "owner": "Blazheiko",
             "branch": "feat/mfa-core",
             "dependencies": [],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #767 (merge a30d009), registry #765 (registered), #766 (in_progress), #768 (review), #769 (feature-state removed). TOTP (RFC 6238, secret AES-256-GCM under MFA_ENCRYPTION_KEYS) and 80-bit recovery codes; two-step sign-in with a browser-bound one-time Redis ticket (password and OAuth); step-up matrix with POST /auth/reauth (currentPassword removed from change-password, link-*/start, unlink); recovery session; MFA notices and audit. CI on the branch head fb4fedc: ci.yml run 45026638507 (quality, e2e, e2e-live, build) success, pg-tests.yml run 45026638506 (test-pg 557 passed) success, redis-tests.yml run 45026638476 (test-redis 195 passed) success. Local: make check green (backend 3467, frontend 924, shared 139), test:e2e 125, e2e-live mfa/audit-log/session-revocation 9, docs:build + docs:verify. Docs: documentation/backend/mfa.md (uk + en)."
         },
         {
             "id": "feat-246",
