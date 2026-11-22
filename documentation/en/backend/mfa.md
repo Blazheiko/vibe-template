@@ -4,10 +4,6 @@ An account can have a second factor: an authenticator app (TOTP), passkeys (WebA
 
 Plan and decisions: [`docs/plan/passkeys-mfa-plan.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/passkeys-mfa-plan.md). Sources: the shared policy [`shared/src/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/mfa), the services [`services/auth/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/mfa), the contracts [`contracts/mfa.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/mfa.ts), [`contracts/passkeys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/passkeys.ts) and [`contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts).
 
-::: warning Planned
-The passkey-only mode for staff is `feat-248`.
-:::
-
 ## Routes
 
 | Route                                    | Middleware                                | What it does                                                                                                 |
@@ -96,6 +92,10 @@ The admin WebSocket channel keeps its subscribers in the order of their deadline
 
 **An MFA reset by an administrator**: `POST /api/admin/users/:id/mfa/reset { reason }` (`can:users.mfa.reset`, the admin's alone) or the CLI `pnpm --filter backend user:mfa-reset --email <email> --reason "<why>"` (`make user-mfa-reset`), the emergency exit of the last administrator. Not one's own account (`403`: the recovery codes or the CLI). An account that would be left without a way to sign in (only a passkey) gets `409 last_sign_in_method` without exception: the user sets a password through "forgot password" first. TOTP, the passkeys and the codes go, `session_token` rotates (the sessions and sockets end), the event `auth.mfa.reset` records the reason, the owner gets a notification and a mail.
 
+**The `passkey` mode** (`MFA_STAFF_FACTOR=passkey`, recommended): staff need a passkey, and the session a sign-in or step-up by a passkey (`webauthn` among its methods, a fresh `verified.webauthn`); TOTP stays a second factor for the account's ordinary actions but does not open the admin area. The server refuses to start in this mode without a configured WebAuthn. Removing a factor of a staff account that leaves it outside the mode is `409 mfa_required_for_role` (in `any`, the last factor; in `passkey`, the last passkey even with TOTP left; a TOTP-only account turns TOTP off after adding a passkey); the admin's reset is the exception. `GET /api/account/mfa` tells the client `staffFactor`, and staff without a passkey see a banner.
+
+**Switching to `passkey`:** configure `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` → turn `MFA_REQUIRED_FOR_STAFF` on in the `any` mode → staff add passkeys (the banner says so) → switch `MFA_STAFF_FACTOR=passkey`. After the switch staff without a passkey get `mfa_required` until they register one, and sessions opened by TOTP get `mfa_session_required`.
+
 ::: warning Transitional risk
 Staff accounts without a factor that existed before the switch-on, and the `db:seed` admin in a production-like environment (without `SEED_ADMIN_TOTP_SECRET`), get `mfa_required` in the admin area until they set up a factor (row 1 of the matrix: a fresh password). Until then whoever knows such an account's password can set up its first factor. Set the staff factors up right after the upgrade.
 :::
@@ -113,7 +113,7 @@ Staff accounts without a factor that existed before the switch-on, and the `db:s
 | `AUTH_MFA_VERIFY_WINDOW_SECONDS`        | `900`                        | the window of that limit                                                                                            |
 | `OAUTH_FRONTEND_MFA_URL`                | `/login?mfa=required`        | where OAuth sends an account with a second factor                                                                   |
 | `MFA_REQUIRED_FOR_STAFF`                | `true`                       | a staff role works only with a second factor and a fresh proof of it                                                |
-| `MFA_STAFF_FACTOR`                      | `any`                        | the staff factor: TOTP or a passkey (`passkey` is `feat-248`)                                                       |
+| `MFA_STAFF_FACTOR`                      | `any`                        | the staff factor: `any` (TOTP or a passkey) or `passkey` (recommended)                                              |
 | `MFA_STAFF_FACTOR_MAX_AGE_HOURS`        | `12`                         | how long a factor proof counts for staff                                                                            |
 | `WEBAUTHN_RP_ID`                        | the host of `FRONTEND_URL`   | the RP ID of the passkeys; required in production-like, never changed after the launch                              |
 | `WEBAUTHN_RP_NAME`                      | `APP_NAME`                   | the name in the passkey dialog                                                                                      |

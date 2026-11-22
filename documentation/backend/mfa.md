@@ -4,10 +4,6 @@
 
 План і рішення: [`docs/plan/passkeys-mfa-plan.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/passkeys-mfa-plan.md). Джерела: спільна політика [`shared/src/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/mfa), сервіси [`services/auth/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/mfa), контракти [`contracts/mfa.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/mfa.ts), [`contracts/passkeys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/passkeys.ts) і [`contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts).
 
-::: warning План
-Режим «лише passkey» для персоналу — `feat-248`.
-:::
-
 ## Маршрути
 
 | Маршрут                                  | Middleware                                | Що робить                                                                                                   |
@@ -96,6 +92,10 @@ Admin-канал WebSocket тримає підписників у порядку
 
 **Скидання MFA адміністратором** — `POST /api/admin/users/:id/mfa/reset { reason }` (`can:users.mfa.reset`, лише `admin`) або CLI `pnpm --filter backend user:mfa-reset --email <email> --reason "<чому>"` (`make user-mfa-reset`) — аварійний вихід для останнього адміністратора. Собі — заборонено (`403`: коди відновлення або CLI). Акаунт, що лишився б без способу входу (лише passkey), — `409 last_sign_in_method` без винятків: користувач спершу встановлює пароль через «Забули пароль». Видаляються TOTP, passkeys і коди, `session_token` ротується (сесії й сокети завершуються), подія `auth.mfa.reset` з причиною, сповіщення й лист власнику.
 
+**Режим `passkey`** (`MFA_STAFF_FACTOR=passkey`, рекомендований): персоналу потрібен passkey, а сесія — вхід або step-up саме passkey (`webauthn` серед методів, свіжа мітка `verified.webauthn`); TOTP лишається другим фактором для звичайних дій акаунта, але не відкриває адмінку. Сервер не стартує в цьому режимі без налаштованого WebAuthn. Видалення фактора staff-акаунта, після якого він не відповідає режиму, — `409 mfa_required_for_role` (у `any` — останній фактор; у `passkey` — останній passkey, навіть якщо TOTP лишається; акаунт лише з TOTP вимикає TOTP після додавання passkey); скидання адміністратором — виняток. `GET /api/account/mfa` повідомляє клієнту `staffFactor`, і staff без passkey бачить банер.
+
+**Порядок перемикання на `passkey`:** налаштуйте `WEBAUTHN_RP_ID` і `WEBAUTHN_ORIGINS` → увімкніть `MFA_REQUIRED_FOR_STAFF` у режимі `any` → персонал додає passkeys (банер підказує) → перемкніть `MFA_STAFF_FACTOR=passkey`. Після перемикання staff без passkey отримує `mfa_required` до реєстрації ключа, а сесії, відкриті через TOTP, — `mfa_session_required`.
+
 ::: warning Перехідний ризик
 Службові акаунти без фактора, що існували до ввімкнення, і адміністратор `db:seed` у production-like (без `SEED_ADMIN_TOTP_SECRET`) отримують `mfa_required` в адмінці, доки не підключать фактор (рядок 1 матриці: свіжий пароль). Поки фактора немає, той, хто знає пароль такого акаунта, може підключити перший фактор сам. Підключіть фактори персоналу одразу після оновлення.
 :::
@@ -113,7 +113,7 @@ Admin-канал WebSocket тримає підписників у порядку
 | `AUTH_MFA_VERIFY_WINDOW_SECONDS`        | `900`                 | вікно цього ліміту                                                                         |
 | `OAUTH_FRONTEND_MFA_URL`                | `/login?mfa=required` | куди OAuth веде акаунт з другим фактором                                                   |
 | `MFA_REQUIRED_FOR_STAFF`                | `true`                | службова роль працює лише з другим фактором і свіжим доказом                               |
-| `MFA_STAFF_FACTOR`                      | `any`                 | фактор персоналу: TOTP або passkey (`passkey` — `feat-248`)                                |
+| `MFA_STAFF_FACTOR`                      | `any`                 | фактор персоналу: `any` (TOTP або passkey) або `passkey` (рекомендовано)                   |
 | `MFA_STAFF_FACTOR_MAX_AGE_HOURS`        | `12`                  | скільки діє доказ фактора для персоналу                                                    |
 | `WEBAUTHN_RP_ID`                        | хост `FRONTEND_URL`   | RP ID passkeys; обов'язкова в production-like, не змінюється після запуску                 |
 | `WEBAUTHN_RP_NAME`                      | `APP_NAME`            | назва в діалозі passkey                                                                    |
