@@ -12,7 +12,11 @@ import {
     diffAllowed,
 } from '../dist/audit/index.js'
 import { AdminAuditEventsQuerySchema } from '../dist/schemas/index.js'
-import { AdminAuditEventsResponseSchema } from '../dist/responses/index.js'
+import {
+    AdminAuditEventsResponseSchema,
+    AuditChangesSchema,
+    AuditMetadataSchema,
+} from '../dist/responses/index.js'
 
 const isError = (result) => result !== null && typeof result === 'object' && 'summary' in result
 
@@ -323,4 +327,20 @@ test('user.role.changed projects the roles and adds the CLI source', () => {
         buildAuditPayload('user.role.changed', { from: 'admin', to: 'user' }, { source: 'cli' }),
         { changes: { role: { from: 'admin', to: 'user' } }, metadata: { source: 'cli' } },
     )
+})
+
+// feat-245: an action whose metadata key the response does not know made the admin list answer
+// 500 as soon as such an event was on the page. Every key of the catalog is in the response.
+test('every changes and metadata key of the catalog is a key of the response schema', () => {
+    const metadataKeys = new Set(AuditMetadataSchema.props.map((prop) => prop.key))
+    const changesKeys = new Set(AuditChangesSchema.props.map((prop) => prop.key))
+    for (const name of AUDIT_ACTION_NAMES) {
+        const action = AUDIT_ACTIONS[name]
+        for (const key of Object.keys(action.metadata ?? {})) {
+            assert.ok(metadataKeys.has(key), `${name}: metadata.${key}`)
+        }
+        for (const key of Object.keys(action.changes ?? {})) {
+            assert.ok(changesKeys.has(key), `${name}: changes.${key}`)
+        }
+    }
 })
