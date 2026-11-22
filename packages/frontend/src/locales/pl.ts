@@ -83,6 +83,13 @@ const pl: typeof en = {
 
     // feat-245 (Р4): the second sign-in step.
     loginMfa: {
+        passkeyHelp: 'Potwierdź kluczem dostępu na tym urządzeniu lub telefonie.',
+        usePasskeyButton: 'Użyj klucza dostępu',
+        usePasskey: 'Użyj klucza dostępu',
+        passkeyCancelled:
+            'Klucz dostępu nie został użyty. Spróbuj ponownie lub wybierz inny sposób.',
+        errorPasskey:
+            'Klucz dostępu nie został przyjęty. Spróbuj ponownie lub wybierz inny sposób.',
         totpHelp: 'Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej.',
         recoveryHelp: 'Wpisz jeden z kodów odzyskiwania. Każdy kod działa raz.',
         totpLabel: 'Kod uwierzytelniający',
@@ -97,6 +104,8 @@ const pl: typeof en = {
         errorRestart: 'Zaloguj się ponownie: potwierdzenie wygasło.',
     },
     auth: {
+        signInWithPasskey: 'Kontynuuj z kluczem dostępu',
+        passkeyFailed: 'Klucz dostępu nie zalogował. Spróbuj ponownie lub użyj hasła.',
         signIn: 'Zaloguj się',
         closeModal: 'Zamknij okno',
         back: 'Wstecz',
@@ -243,7 +252,33 @@ const pl: typeof en = {
             errorRecoveryOrder: 'Najpierw skonfiguruj nową aplikację.',
             errorGeneric: 'Coś poszło nie tak. Spróbuj ponownie.',
         },
+        passkeys: {
+            title: 'Klucze dostępu',
+            help: 'Klucz dostępu loguje odciskiem palca, twarzą lub PIN-em urządzenia, bez hasła. Potwierdza też logowanie po haśle.',
+            empty: 'Brak kluczy dostępu.',
+            add: 'Dodaj klucz dostępu',
+            added: 'Klucz dostępu został dodany.',
+            removed: 'Klucz dostępu został usunięty.',
+            cancelled: 'Klucz dostępu nie został utworzony.',
+            unsupported: 'Ta przeglądarka nie obsługuje kluczy dostępu.',
+            rename: 'Zmień nazwę',
+            save: 'Zapisz',
+            name: 'Nazwa klucza',
+            remove: 'Usuń',
+            never: 'nigdy',
+            meta: 'dodano {created}, ostatnio użyto {used}',
+            synced: 'synchronizowany',
+            removeTitle: 'Usunąć ten klucz dostępu?',
+            removeText: '„{name}” nie będzie już logować do konta.',
+            errorLimit: 'Konto ma już maksymalną liczbę kluczy dostępu.',
+            errorExists: 'To urządzenie ma już klucz dostępu tego konta.',
+            errorLast: 'To jedyny sposób logowania. Najpierw dodaj hasło lub inny klucz.',
+            errorRejected: 'Klucz dostępu nie został przyjęty. Spróbuj ponownie.',
+        },
         reauth: {
+            passkeyHint: 'Użyj klucza dostępu z tego urządzenia lub telefonu.',
+            passkeyCancelled: 'Klucz dostępu nie został użyty.',
+            errorPasskey: 'Klucz dostępu nie został przyjęty.',
             title: 'Potwierdź, że to Ty',
             text: 'Dla bezpieczeństwa potwierdź tę zmianę.',
             password: 'Hasło',

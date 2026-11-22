@@ -22,6 +22,7 @@ import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import {
+    badRequest,
     completionPending,
     rateLimited,
     serviceUnavailable,
@@ -188,7 +189,9 @@ export async function secondStepPasskeyOptions(
         return Result.err(ticketInvalid())
     }
     const keys = await webauthnCredentialRepository.listByUserId(BigInt(ticket.userId))
-    if (keys.length === 0) return Result.err(ticketInvalid())
+    if (keys.length === 0) {
+        return Result.err(badRequest('This account has no passkey', 'proof_unavailable'))
+    }
     const options = await authenticationOptions(keys)
     try {
         await passkeyTicketChallenges.issue(ticketId, options.challenge, ttl)

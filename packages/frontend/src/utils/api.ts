@@ -43,6 +43,13 @@ import type {
     TotpConfirmResponse,
     TotpDisableResponse,
     TotpSetupResponse,
+    PasskeyChallengeResponse,
+    PasskeyDeleteResponse,
+    PasskeyListResponse,
+    PasskeyLoginOptionsResponse,
+    PasskeyOptionsResponse,
+    PasskeyRegisterResponse,
+    PasskeyRenameResponse,
 } from 'shared/responses'
 import type {
     CreateSubscriptionInput,
@@ -73,6 +80,8 @@ import type {
     MfaVerifyInput,
     ReauthInput,
     TotpConfirmInput,
+    PasskeyLoginInput,
+    PasskeyRegisterInput,
 } from 'shared/schemas'
 import {
     accountContracts,
@@ -86,6 +95,7 @@ import {
     pushSubscriptionContracts,
     supportContracts,
     mfaContracts,
+    passkeyContracts,
 } from 'shared/contracts'
 import { getResponseMessage, hasResponseError } from './response-normalizer'
 
@@ -187,6 +197,20 @@ export const authApi = {
     mfaVerify: (body: MfaVerifyInput): Promise<ApiResponse<LoginResponse>> =>
         callApi(authContracts.mfaVerify, { body }, { csrfRecovery: 'public' }),
 
+    // feat-246 (Р6): a passkey as the second step (its challenge is bound to the ticket cookie).
+    mfaWebauthnOptions: (): Promise<ApiResponse<PasskeyChallengeResponse>> =>
+        callApi(authContracts.mfaWebauthnOptions, { body: {} }, { csrfRecovery: 'public' }),
+
+    // feat-246 (Р6): a sign-in with a passkey alone.
+    passkeyOptions: (): Promise<ApiResponse<PasskeyLoginOptionsResponse>> =>
+        callApi(authContracts.passkeyOptions, { body: {} }, { csrfRecovery: 'public' }),
+    passkeyVerify: (body: PasskeyLoginInput): Promise<ApiResponse<LoginResponse>> =>
+        callApi(authContracts.passkeyVerify, { body }, { csrfRecovery: 'public' }),
+
+    // feat-246 (Р6): the options of a passkey step-up of this session.
+    reauthWebauthnOptions: (): Promise<ApiResponse<PasskeyChallengeResponse>> =>
+        callApi(authContracts.reauthWebauthnOptions, { body: {} }),
+
     // feat-245 (Р3): the proofs this session can give, and a step-up.
     reauthOptions: (): Promise<ApiResponse<ReauthOptionsResponse>> =>
         callApi(authContracts.reauthOptions, { body: {} }),
@@ -208,6 +232,19 @@ export const mfaApi = {
     totpDisable: (): Promise<ApiResponse<TotpDisableResponse>> => callApi(mfaContracts.totpDisable),
     regenerateRecoveryCodes: (): Promise<ApiResponse<RecoveryCodesResponse>> =>
         callApi(mfaContracts.regenerateRecoveryCodes, { body: {} }),
+}
+
+// feat-246 (Р6): the passkeys of the signed-in account.
+export const passkeyApi = {
+    list: (): Promise<ApiResponse<PasskeyListResponse>> => callApi(passkeyContracts.list),
+    registerOptions: (): Promise<ApiResponse<PasskeyOptionsResponse>> =>
+        callApi(passkeyContracts.registerOptions, { body: {} }),
+    register: (body: PasskeyRegisterInput): Promise<ApiResponse<PasskeyRegisterResponse>> =>
+        callApi(passkeyContracts.register, { body }),
+    rename: (id: string, name: string): Promise<ApiResponse<PasskeyRenameResponse>> =>
+        callApi(passkeyContracts.rename, { params: { id }, body: { name } }),
+    remove: (id: string): Promise<ApiResponse<PasskeyDeleteResponse>> =>
+        callApi(passkeyContracts.remove, { params: { id } }),
 }
 
 // feat-232: the profile of the signed-in user. Absent field unchanged, `null` resets.
