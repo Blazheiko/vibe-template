@@ -2451,8 +2451,8 @@
             "owner": "Blazheiko",
             "branch": "feat/passkeys",
             "dependencies": ["feat-245"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #772 (merge e6c7f81), registry #771 (in_progress), #773 (review). Passkeys (WebAuthn, @simplewebauthn 14): webauthn_credentials and a random users.webauthn_user_handle; one verifyWebAuthnCeremony for registration, passwordless sign-in, the second step and step-up (UV, exact origin and RP ID, purpose-bound one-time challenge, owner's key and handle, growing counter with an audit event on regression); /account/passkeys (idempotent registration, 20 max, last way in kept); /auth/passkey sign-in at level 2 with its own rate limit; webauthn second step and step-up; conditional UI; docs. CI on the branch head 1bb9091: ci.yml run 45038618282 (quality, e2e, e2e-live, build), pg-tests.yml run 45038618320 (test-pg 585 passed), redis-tests.yml run 45038618328 (test-redis 195 passed), all success. Local: make check green (backend 3533, frontend 931, shared 142), test:e2e 127, test:e2e:live 39 incl. passkeys.spec.ts with a CDP virtual authenticator, docs:build + docs:verify."
         },
         {
             "id": "feat-247",
