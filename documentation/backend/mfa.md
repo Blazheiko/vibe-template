@@ -1,32 +1,41 @@
 # Двоетапний вхід (MFA)
 
-Акаунт може мати другий фактор: застосунок-автентифікатор (TOTP) і одноразові коди відновлення. Після пароля або входу через соцмережу такий акаунт отримує не сесію, а квиток другого кроку; сесію створює лише правильний код. Чутливі дії (зміна пароля, прив'язка контактів, відв'язка способу входу, керування факторами) підтверджуються повторно (step-up) за однією матрицею. Код відновлення відкриває обмежену сесію відновлення, у якій можна лише замінити фактор.
+Акаунт може мати другий фактор: застосунок-автентифікатор (TOTP), passkeys (WebAuthn) і одноразові коди відновлення. Passkey ще й входить сам, без пароля. Після пароля або входу через соцмережу такий акаунт отримує не сесію, а квиток другого кроку; сесію створює лише правильний код. Чутливі дії (зміна пароля, прив'язка контактів, відв'язка способу входу, керування факторами) підтверджуються повторно (step-up) за однією матрицею. Код відновлення відкриває обмежену сесію відновлення, у якій можна лише замінити фактор.
 
-План і рішення: [`docs/plan/passkeys-mfa-plan.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/passkeys-mfa-plan.md). Джерела: спільна політика [`shared/src/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/mfa), сервіси [`services/auth/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/mfa), контракти [`contracts/mfa.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/mfa.ts) і [`contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts).
+План і рішення: [`docs/plan/passkeys-mfa-plan.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/passkeys-mfa-plan.md). Джерела: спільна політика [`shared/src/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/mfa), сервіси [`services/auth/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/mfa), контракти [`contracts/mfa.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/mfa.ts), [`contracts/passkeys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/passkeys.ts) і [`contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts).
 
 ::: warning План
-Passkeys (WebAuthn) — `feat-246`; обов'язкова MFA для персоналу й скидання MFA адміністратором — `feat-247`; режим «лише passkey» для персоналу — `feat-248`.
+Обов'язкова MFA для персоналу й скидання MFA адміністратором — `feat-247`; режим «лише passkey» для персоналу — `feat-248`.
 :::
 
 ## Маршрути
 
-| Маршрут                                | Middleware                                | Що робить                                                                |
-| -------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
-| `POST /api/auth/mfa/verify`            | `session_web`, `csrf_guard`               | другий крок входу: `{ method: 'totp' \| 'recovery_code', code }`         |
-| `POST /api/auth/reauth/options`        | `session_web`, `csrf_guard`, `auth_guard` | докази step-up, які цей акаунт може дати                                 |
-| `POST /api/auth/reauth`                | `session_web`, `csrf_guard`, `auth_guard` | step-up: `{ proof: 'password', password }` або `{ proof: 'totp', code }` |
-| `POST /api/auth/recovery/finish`       | `session_web`, `csrf_guard`, `auth_guard` | завершує сесію відновлення                                               |
-| `GET /api/account/mfa`                 | `session_web`, `csrf_guard`, `auth_guard` | стан факторів, лишок кодів, чи є контакт для відновлення                 |
-| `POST /api/account/mfa/totp/setup`     | те саме                                   | новий секрет (у даних цієї сесії, 10 хв) і `otpauth://` URI              |
-| `POST /api/account/mfa/totp/confirm`   | те саме                                   | підтверджує код і записує фактор; замінює попередній застосунок          |
-| `DELETE /api/account/mfa/totp`         | те саме                                   | вимикає TOTP; останній фактор забирає й коди відновлення                 |
-| `POST /api/account/mfa/recovery-codes` | те саме                                   | новий набір кодів; попередній перестає діяти                             |
+| Маршрут                                  | Middleware                                | Що робить                                                                                                   |
+| ---------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `POST /api/auth/mfa/verify`              | `session_web`, `csrf_guard`               | другий крок входу: `{ method: 'totp' \| 'recovery_code', code }` або `{ method: 'webauthn', response }`     |
+| `POST /api/auth/mfa/webauthn/options`    | `session_web`, `csrf_guard`               | параметри підпису passkey для квитка другого кроку                                                          |
+| `POST /api/auth/passkey/options`         | `session_web`, `csrf_guard`               | параметри входу лише passkey і `challengeId`                                                                |
+| `POST /api/auth/passkey/verify`          | `session_web`, `csrf_guard`               | вхід лише passkey: `{ challengeId, response }`                                                              |
+| `POST /api/auth/reauth/options`          | `session_web`, `csrf_guard`, `auth_guard` | докази step-up, які цей акаунт може дати                                                                    |
+| `POST /api/auth/reauth`                  | `session_web`, `csrf_guard`, `auth_guard` | step-up: `{ proof: 'password', password }`, `{ proof: 'totp', code }` або `{ proof: 'webauthn', response }` |
+| `POST /api/auth/reauth/webauthn/options` | `session_web`, `csrf_guard`, `auth_guard` | параметри step-up через passkey (challenge у даних цієї сесії)                                              |
+| `POST /api/auth/recovery/finish`         | `session_web`, `csrf_guard`, `auth_guard` | завершує сесію відновлення                                                                                  |
+| `GET /api/account/mfa`                   | `session_web`, `csrf_guard`, `auth_guard` | стан факторів, лишок кодів, чи є контакт для відновлення                                                    |
+| `POST /api/account/mfa/totp/setup`       | те саме                                   | новий секрет (у даних цієї сесії, 10 хв) і `otpauth://` URI                                                 |
+| `POST /api/account/mfa/totp/confirm`     | те саме                                   | підтверджує код і записує фактор; замінює попередній застосунок                                             |
+| `DELETE /api/account/mfa/totp`           | те саме                                   | вимикає TOTP; останній фактор забирає й коди відновлення                                                    |
+| `POST /api/account/mfa/recovery-codes`   | те саме                                   | новий набір кодів; попередній перестає діяти                                                                |
+| `GET /api/account/passkeys`              | те саме                                   | passkeys акаунта (назва, тип, синхронізований, створено, останнє використання)                              |
+| `POST /api/account/passkeys/options`     | те саме                                   | параметри нового passkey і `enrollmentId` (challenge у даних цієї сесії)                                    |
+| `POST /api/account/passkeys`             | те саме                                   | зберігає новий passkey; ідемпотентно за `enrollmentId`                                                      |
+| `PATCH /api/account/passkeys/:id`        | те саме                                   | перейменовує passkey                                                                                        |
+| `DELETE /api/account/passkeys/:id`       | те саме                                   | видаляє passkey; останній спосіб входу лишається                                                            |
 
 QR-код малює браузер (`qrcode`), секрет не йде до сторонніх сервісів.
 
 ## Другий крок входу
 
-`POST /api/auth/login` (і OAuth callback) для акаунта з фактором відповідає `{ status: 'mfa_required', methods }` і ставить cookie квитка `__Host-mfa` (`mfa` без HTTPS): `HttpOnly`, `SameSite=Strict`, 5 хв. OAuth редиректить на `OAUTH_FRONTEND_MFA_URL` (типово `/login?mfa=required`). Квиток прив'язаний до сесійного cookie браузера, тож вкрадений квиток в іншому браузері нічого не відкриває.
+`POST /api/auth/login` (і OAuth callback) для акаунта з фактором відповідає `{ status: 'mfa_required', methods }` (passkey першим, якщо він є) і ставить cookie квитка `__Host-mfa` (`mfa` без HTTPS): `HttpOnly`, `SameSite=Strict`, 5 хв. OAuth редиректить на `OAUTH_FRONTEND_MFA_URL` (типово `/login?mfa=required`) з методами акаунта: `&methods=webauthn,totp,recovery_code`. Квиток прив'язаний до сесійного cookie браузера, тож вкрадений квиток в іншому браузері нічого не відкриває.
 
 - П'ять неправильних кодів закривають квиток. Ліміт рахує підтверджені невдачі, а не запити: збій інфраструктури повертає спробу.
 - Код TOTP витрачається для конкретної версії фактора (`last_used_step`), тож повтор того самого коду відхиляється.
@@ -35,18 +44,36 @@ QR-код малює браузер (`qrcode`), секрет не йде до с
 
 **Що гарантовано для останнього коду відновлення.** Квиток живе в Redis. Збій активації, тимчасова недоступність Redis і загублена відповідь код не втрачають. Повна втрата Redis разом із квитком (або недоступність БД чи Redis усі 5 хв квитка) після коміту залишає код спожитим без сесії — тоді допомагає адміністратор. Тому Redis у продакшені має бути з персистентністю (AOF).
 
+## Passkeys
+
+Бібліотека [`@simplewebauthn`](https://simplewebauthn.dev/) (`server` на бекенді, `browser` на фронтенді, точні версії). Кожну відповідь браузера перевіряє одна функція [`verifyWebAuthnCeremony`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/mfa/webauthn-ceremony.ts) — однаково для реєстрації, входу без пароля, другого кроку й step-up (архітектурний тест не дає викликати бібліотеку деінде):
+
+- обов'язкова верифікація користувача (UV): відбиток, обличчя або PIN пристрою;
+- точний `origin` зі списку `WEBAUTHN_ORIGINS` і точний `WEBAUTHN_RP_ID`;
+- challenge свого призначення й прив'язки: `register:<sessionId>`, `login`, `mfa:<hash квитка>`, `reauth:<sessionId>`; одноразовий (`GETDEL` у Redis або атомарне споживання з даних сесії);
+- ключ належить очікуваному користувачу; при вході без пароля `userHandle` відповіді дорівнює випадковому `users.webauthn_user_handle` власника (не id і не email);
+- лічильник підписів: `0` з обох боків допустимий (синхронізовані passkeys), інакше лише росте (умовний `UPDATE`). Регрес — відмова й подія `auth.passkey.counter_regressed`; ключ лишається, вирішує власник.
+
+**Реєстрація.** `POST /account/passkeys/options` (рядки 1–2 матриці; перший фактор вимагає підтвердженого контакту, 409 `recovery_contact_required`) кладе challenge і `enrollmentId` у дані сесії. `POST /account/passkeys` перевіряє відповідь і записує ключ; повтор після коміту повертає той самий ключ, а інший ключ для завершеної реєстрації — 409 `enrollment_used`. Перший passkey видає коди відновлення. До 20 ключів (409 `passkey_limit`), атестація `none`, `residentKey: required`. Видалення (рядок 3) під блокуванням рядка користувача не залишає акаунт без способу входу (409 `last_sign_in_method`).
+
+**Вхід лише passkey** — повноцінний вхід рівня 2 (`amr: ['webauthn']`), без другого кроку. Невідомий ключ, хибний підпис і чужий `userHandle` дають однакову 401. Сторінка входу пропонує passkey і в автозаповненні поля логіна (conditional UI, `autocomplete="username webauthn"`).
+
+::: warning RP ID не змінюють
+Passkey назавжди прив'язаний до свого RP ID. Зміна `WEBAUTHN_RP_ID` після запуску робить недійсними всі зареєстровані passkeys (лишаються пароль, TOTP і коди). Тому в production-like змінна обов'язкова явно, а не виводиться з URL.
+:::
+
 ## Повторне підтвердження (step-up)
 
 Сесія зберігає `auth`: рівень входу (`aal` 1 або 2, ніколи не зростає), методи входу (`amr`) і час останнього доказу кожного методу. Дія з матриці питає, чи свіжий потрібний доказ (вікно `AUTH_REAUTH_WINDOW_SECONDS`, типово 300 с), і відповідає `403 { reason: 'reauth_required', details: { kind: 'reauth_required', proofs } }`; клієнт показує діалог лише з цими доказами й повторює запит.
 
-| Дія                                         | Без MFA                                                     | З MFA       |
-| ------------------------------------------- | ----------------------------------------------------------- | ----------- |
-| Підключити перший фактор                    | свіжий пароль (або вхід через соцмережу ≤ 10 хв без пароля) | —           |
-| Додати / замінити фактор                    | —                                                           | свіжий TOTP |
-| Вимкнути фактор, нові коди                  | —                                                           | свіжий TOTP |
-| Змінити пароль, прив'язати телефон чи email | свіжий пароль (або недавній вхід через соцмережу)           | свіжий TOTP |
-| Відв'язати соцмережу                        | те саме                                                     | свіжий TOTP |
-| Завершити інші сесії                        | лише сесія                                                  | лише сесія  |
+| Дія                                         | Без MFA                                                     | З MFA                   |
+| ------------------------------------------- | ----------------------------------------------------------- | ----------------------- |
+| Підключити перший фактор                    | свіжий пароль (або вхід через соцмережу ≤ 10 хв без пароля) | —                       |
+| Додати / замінити фактор                    | —                                                           | свіжий TOTP або passkey |
+| Вимкнути фактор, нові коди                  | —                                                           | свіжий TOTP або passkey |
+| Змінити пароль, прив'язати телефон чи email | свіжий пароль (або недавній вхід через соцмережу)           | свіжий TOTP або passkey |
+| Відв'язати соцмережу                        | те саме                                                     | свіжий TOTP або passkey |
+| Завершити інші сесії                        | лише сесія                                                  | лише сесія              |
 
 Для акаунта з MFA пароль сам нічого не підтверджує. Прив'язка телефону чи email підтверджується на старті; SMS-код чи посилання завершують її без нового step-up, але будь-яка зміна стану MFA анулює незавершені прив'язки.
 
@@ -59,19 +86,22 @@ QR-код малює браузер (`qrcode`), секрет не йде до с
 
 ## Налаштування
 
-| Змінна                                  | Типово                | Що задає                                                       |
-| --------------------------------------- | --------------------- | -------------------------------------------------------------- |
-| `MFA_ENCRYPTION_KEYS`                   | —                     | `<keyId>:<base64 32 байти>[,…]`; обов'язкова в production-like |
-| `AUTH_REAUTH_WINDOW_SECONDS`            | `300`                 | скільки діє step-up                                            |
-| `MFA_RECOVERY_WINDOW_SECONDS`           | `900`                 | строк сесії відновлення                                        |
-| `MFA_TICKET_TTL_SECONDS`                | `300`                 | життя квитка другого кроку                                     |
-| `MFA_RESERVATION_TTL_SECONDS`           | `30`                  | скільки спроба тримає місце в квитку                           |
-| `AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER` | `10`                  | коди другого кроку й step-up на користувача за вікно           |
-| `AUTH_MFA_VERIFY_WINDOW_SECONDS`        | `900`                 | вікно цього ліміту                                             |
-| `OAUTH_FRONTEND_MFA_URL`                | `/login?mfa=required` | куди OAuth веде акаунт з другим фактором                       |
+| Змінна                                  | Типово                | Що задає                                                                                   |
+| --------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------ |
+| `MFA_ENCRYPTION_KEYS`                   | —                     | `<keyId>:<base64 32 байти>[,…]`; обов'язкова в production-like                             |
+| `AUTH_REAUTH_WINDOW_SECONDS`            | `300`                 | скільки діє step-up                                                                        |
+| `MFA_RECOVERY_WINDOW_SECONDS`           | `900`                 | строк сесії відновлення                                                                    |
+| `MFA_TICKET_TTL_SECONDS`                | `300`                 | життя квитка другого кроку                                                                 |
+| `MFA_RESERVATION_TTL_SECONDS`           | `30`                  | скільки спроба тримає місце в квитку                                                       |
+| `AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER` | `10`                  | коди другого кроку й step-up на користувача за вікно                                       |
+| `AUTH_MFA_VERIFY_WINDOW_SECONDS`        | `900`                 | вікно цього ліміту                                                                         |
+| `OAUTH_FRONTEND_MFA_URL`                | `/login?mfa=required` | куди OAuth веде акаунт з другим фактором                                                   |
+| `WEBAUTHN_RP_ID`                        | хост `FRONTEND_URL`   | RP ID passkeys; обов'язкова в production-like, не змінюється після запуску                 |
+| `WEBAUTHN_RP_NAME`                      | `APP_NAME`            | назва в діалозі passkey                                                                    |
+| `WEBAUTHN_ORIGINS`                      | origin `FRONTEND_URL` | точні origin церемоній через кому (`https://` у production-like), кожен на RP ID або нижче |
 
 Секрет TOTP зберігається зашифрованим (AES-256-GCM, власник як associated data). Перший ключ списку шифрує, решта читають — так ключі обертаються без перешифрування. Без `MFA_ENCRYPTION_KEYS` поза продакшеном ключ виводиться з `APP_KEY` (з попередженням у лозі). Втрата всіх ключів робить недійсними всі TOTP-фактори.
 
 ## Журнал і сповіщення
 
-Події `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used` пишуться в [журнал дій](./audit-log) з доказом (`metadata.proof`). Кожна зміна факторів надсилає сповіщення безпеки й лист на адресу акаунта.
+Події `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed` пишуться в [журнал дій](./audit-log) з доказом (`metadata.proof`). Кожна зміна факторів надсилає сповіщення безпеки й лист на адресу акаунта.
