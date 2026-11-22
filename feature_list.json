@@ -2471,7 +2471,7 @@
             "owner": "Blazheiko",
             "branch": "feat/staff-passkey-mode",
             "dependencies": ["feat-246", "feat-247"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
