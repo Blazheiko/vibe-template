@@ -19,6 +19,11 @@ export interface Events extends Record<EventType, unknown>, BroadcastContracts {
      * events meanwhile and is read again.
      */
     admin_online_reload: undefined
+    /**
+     * feat-245 (Р15): an action needs a new sign-in (`sign_in_again_required`,
+     * `mfa_session_required`); the payload is the page to come back to.
+     */
+    sign_in_again: string
 }
 
 const emitter = mitt<Events>()
