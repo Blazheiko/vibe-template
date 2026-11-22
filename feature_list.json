@@ -2471,8 +2471,8 @@
             "owner": "Blazheiko",
             "branch": "feat/staff-passkey-mode",
             "dependencies": ["feat-246", "feat-247"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #780 (merge 2e4a9d3), registry #779 (in_progress), #781 (review). Staff passkey mode: staffMfaPolicy('passkey') (enrolled with a passkey, a passkey session, passkey step-up), MFA_STAFF_FACTOR=passkey with a runtime WebAuthn check; one policy for every consumer; 409 mfa_required_for_role on removing the factor a staff account needs (both modes, reset excepted); staffFactor in GET /account/mfa and a banner; branch B of Р12 for a passkey-only account; a passkey-mode live config; docs with the switching order. CI on the branch head 0ff2367: ci.yml run 45068959523 (quality, e2e, e2e-live incl. the passkey config, build), pg-tests.yml run 45068959497 (test-pg 616 passed), redis-tests.yml run 45068959644 (test-redis 198 passed), all success. Local: make check green (backend 3631, frontend 963, shared 144), test:e2e 132, docs:build + docs:verify."
         }
     ]
 }
