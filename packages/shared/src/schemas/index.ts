@@ -159,6 +159,7 @@ export {
 } from './account/update-profile.js'
 export { RoleSchema } from '../access/role-schema.js'
 export { SetUserRoleInputSchema, type SetUserRoleInput } from './admin/set-user-role.js'
+export { ResetUserMfaInputSchema, type ResetUserMfaInput } from './admin/reset-user-mfa.js'
 export { TotpConfirmInputSchema, type TotpConfirmInput } from './mfa/totp-confirm.js'
 export { MfaVerifyInputSchema, type MfaVerifyInput } from './mfa/mfa-verify.js'
 export { ReauthInputSchema, type ReauthInput } from './mfa/reauth.js'

@@ -730,6 +730,20 @@ export default [
     {
         group: [
             defineRoute({
+                contract: adminContracts.resetUserMfa,
+                handler: AdminUserController.resetMfa.bind(AdminUserController),
+                description:
+                    'Reset the second factors of another account (feat-247): needs a fresh proof; keeps the last way in',
+            }),
+        ],
+        description: 'Admin MFA reset (feat-247)',
+        rateLimit: { windowMs: 60_000, maxRequests: 10 },
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard', 'can:users.mfa.reset'],
+        prefix: 'admin',
+    },
+    {
+        group: [
+            defineRoute({
                 contract: adminContracts.onlineHistory,
                 handler: AdminOnlineHistoryController.list.bind(AdminOnlineHistoryController),
                 description: 'List online history records (admin)',

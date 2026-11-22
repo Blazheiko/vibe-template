@@ -518,6 +518,7 @@ const uk: typeof en = {
             auth_mfa_totp_disabled: 'Застосунок-автентифікатор вимкнено',
             auth_mfa_recovery_codes_regenerated: 'Створено нові коди відновлення',
             auth_mfa_recovery_code_used: 'Вхід з кодом відновлення',
+            auth_mfa_reset: 'Двоетапний вхід скинуто адміністратором',
             auth_passkey_added: 'Додано passkey',
             auth_passkey_removed: 'Видалено passkey',
             auth_passkey_counter_regressed: 'Лічильник passkey пішов назад',
@@ -605,6 +606,10 @@ const uk: typeof en = {
             security_recovery_code_used: {
                 title: 'Використано код відновлення',
                 body: 'Хтось увійшов з кодом відновлення, інші сесії завершено. Якщо це були не ви, дійте негайно.',
+            },
+            security_mfa_reset: {
+                title: 'Двоетапний вхід скинуто',
+                body: 'Адміністратор прибрав другі фактори акаунта. Увійдіть і налаштуйте їх знову.',
             },
             security_passkey_added: {
                 title: 'Додано passkey',

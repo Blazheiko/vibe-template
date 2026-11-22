@@ -3,8 +3,13 @@ import { mapControllerError } from '#app/controllers/shared/controller-error.js'
 import { badRequest } from '#app/services/shared/errors.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import type { AdminUserListQuery } from 'shared/schemas'
-import type { AdminUserListResponse, SetUserRoleResponse } from 'shared/responses'
-import type { SetUserRoleInput } from 'shared/schemas'
+import type {
+    AdminUserListResponse,
+    ResetUserMfaResponse,
+    SetUserRoleResponse,
+} from 'shared/responses'
+import type { ResetUserMfaInput, SetUserRoleInput } from 'shared/schemas'
+import { mfaResetService } from '#app/services/auth/mfa/mfa-reset-service.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { respond } from '#app/controllers/shared/controller-error.js'
@@ -74,6 +79,29 @@ export default {
             status: 'success' as const,
             user: { id: String(value.userId), role: value.role },
             changed: value.changed,
+        }))
+    },
+
+    /**
+     * POST /admin/users/:id/mfa/reset (feat-247, Р13). The guard checked users.mfa.reset; the
+     * service asks the admin's fresh proof, refuses the own account and an account that would be
+     * left without a way to sign in, removes the factors and ends the target's sessions.
+     */
+    async resetMfa(context: HttpContext<ResetUserMfaInput>): Promise<ResetUserMfaResponse> {
+        const targetUserId = parseEntityId(context.httpData.params['id'] ?? '')
+        if (targetUserId === null) {
+            return mapControllerError(context, badRequest('Invalid user id', 'invalid_user_id'))
+        }
+        const result = await mfaResetService.reset({
+            actor: auditActorFrom(context),
+            targetUserId,
+            reason: getTypedPayload(context).reason,
+            sessionAuth: context.session.sessionInfo?.data.auth,
+        })
+        return respond(context, result, (value) => ({
+            status: 'success' as const,
+            user: { id: String(value.userId) },
+            removed: value.removed,
         }))
     },
 }

@@ -21,6 +21,7 @@ export type MfaNoticeKind =
     | 'recovery_code_used'
     | 'passkey_added'
     | 'passkey_removed'
+    | 'reset'
 
 const TEXTS: Readonly<Record<MfaNoticeKind, { subject: string; title: string; what: string }>> = {
     enabled: {
@@ -53,6 +54,12 @@ const TEXTS: Readonly<Record<MfaNoticeKind, { subject: string; title: string; wh
         subject: 'A passkey was added to your account',
         title: 'A new passkey',
         what: `A passkey was added to your ${PRODUCT.name} account: it signs in without a password.`,
+    },
+    // feat-247 (Р13).
+    reset: {
+        subject: 'Two-step sign-in was reset by an administrator',
+        title: 'Your second factors were removed',
+        what: `An administrator removed the second factors and recovery codes of your ${PRODUCT.name} account and signed out its sessions. Sign in with your password and set up two-step sign-in again.`,
     },
     passkey_removed: {
         subject: 'A passkey was removed from your account',
@@ -90,6 +97,7 @@ const NOTIFICATION = {
     recovery_code_used: 'recovery_code_used',
     passkey_added: 'passkey_added',
     passkey_removed: 'passkey_removed',
+    reset: 'mfa_reset',
 } as const satisfies Record<MfaNoticeKind, string>
 
 async function mail(userId: bigint, kind: MfaNoticeKind): Promise<void> {

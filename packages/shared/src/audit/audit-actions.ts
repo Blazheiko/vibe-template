@@ -226,6 +226,15 @@ export const AUDIT_ACTIONS = {
         changes: null,
         metadata: { proof: true, remaining: true },
     },
+    // feat-247 (Р13): an administrator (or the CLI) removed the second factors of the account.
+    'auth.mfa.reset': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user', 'system'],
+        proofs: ['password', 'totp', 'passkey', 'recent_sign_in'],
+        changes: null,
+        metadata: { proof: true, source: true, reason: true, mfaRemoved: true },
+    },
     // feat-246 (Р6, Р14): passkeys. A first passkey is the first factor (row 1 of Р3), so it may
     // be proven by the password or a recent sign-in; the later ones by a second factor.
     'auth.passkey.added': {
@@ -392,6 +401,7 @@ export interface AuditInputs {
     'auth.mfa.totp.disabled': { mfaDisabled: boolean }
     'auth.mfa.recovery_codes.regenerated': { count: number }
     'auth.mfa.recovery_code.used': { remaining: number }
+    'auth.mfa.reset': { reason: string; mfaRemoved: boolean }
     'auth.passkey.added': { recoveryCodesIssued: boolean }
     'auth.passkey.removed': { mfaDisabled: boolean }
     'auth.passkey.counter_regressed': { method: 'login' | 'mfa' | 'reauth' }
@@ -542,6 +552,10 @@ const PROJECTIONS: Projections = {
     'auth.mfa.recovery_code.used': (input) => ({
         changes: null,
         metadata: { remaining: input.remaining },
+    }),
+    'auth.mfa.reset': (input) => ({
+        changes: null,
+        metadata: { reason: input.reason, mfaRemoved: input.mfaRemoved },
     }),
     'auth.passkey.added': (input) => ({
         changes: null,

@@ -27,6 +27,8 @@ export const NotificationParamsSchemas = {
     // feat-246 (Р14).
     'security.passkey_added': None,
     'security.passkey_removed': None,
+    // feat-247 (Р13).
+    'security.mfa_reset': None,
     'support.reply': None,
 } as const satisfies Record<NotificationKind, unknown>
 

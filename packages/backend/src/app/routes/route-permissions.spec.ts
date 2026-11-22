@@ -51,6 +51,8 @@ const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
         'users.read',
         'users.sensitive.read',
         'users.roles.assign',
+        // feat-247: the MFA reset of another account is the admin's alone.
+        'users.mfa.reset',
         'audit.read.account',
         'audit.read',
     ],
@@ -77,6 +79,8 @@ const HTTP_ROUTE_PERMISSION: Record<string, string> = {
     'get api/admin/usage/stats': 'ai_usage.read',
     'get api/admin/users': 'users.read',
     'patch api/admin/users/:id/role': 'users.roles.assign',
+    // feat-247: the MFA reset of another account.
+    'post api/admin/users/:id/mfa/reset': 'users.mfa.reset',
     'get api/admin/users-online': 'users.read',
     'get api/admin/users-online/:id': 'users.sensitive.read',
     'get api/admin/history-online': 'users.sensitive.read',

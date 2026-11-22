@@ -4,6 +4,7 @@ import {
     AdminUserListQuerySchema,
     LlmTextUsageQuerySchema,
     SetUserRoleInputSchema,
+    ResetUserMfaInputSchema,
 } from 'shared/schemas'
 import * as ResponseSchemas from 'shared/responses'
 import { adminContracts } from 'shared/contracts'
@@ -17,6 +18,10 @@ export const adminSchemas = contractSchemas(adminContracts, {
     setUserRole: {
         body: SetUserRoleInputSchema,
         response: ResponseSchemas.SetUserRoleResponseSchema,
+    },
+    resetUserMfa: {
+        body: ResetUserMfaInputSchema,
+        response: ResponseSchemas.ResetUserMfaResponseSchema,
     },
     onlineUsers: { response: ResponseSchemas.AdminOnlineUserListResponseSchema },
     onlineUser: { response: ResponseSchemas.AdminOnlineUserDetailResponseSchema },
