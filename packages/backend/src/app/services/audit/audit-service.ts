@@ -69,6 +69,16 @@ function assertActor(action: AuditAction, actor: AuditActor): void {
     }
     const proofs: readonly string[] = definition.proofs
     const proof = actor.proof as string | null
+    // feat-247: a system actor (the CLI, the seed) carries its source, never a proof, even for
+    // an action whose user actor proves itself (user.role.changed).
+    if (actor.kind === 'system') {
+        if (proof != null) {
+            throw new AuditPayloadError(
+                `audit: ${action} by the system takes no proof, got ${proof}`,
+            )
+        }
+        return
+    }
     if (proofs.length === 0) {
         if (proof != null) {
             throw new AuditPayloadError(`audit: ${action} takes no proof, got ${proof}`)

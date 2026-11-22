@@ -101,9 +101,10 @@ export const AUDIT_ACTIONS = {
         group: 'rights',
         targetType: 'user',
         actorKinds: ['user', 'system'],
-        proofs: [],
+        // feat-247 (row 9 of Р3): an admin's change carries the step-up proof; the CLI none.
+        proofs: ['password', 'totp', 'passkey', 'recent_sign_in'],
         changes: { role: fromTo },
-        metadata: { source: true },
+        metadata: { source: true, proof: true },
     },
     'auth.password.changed': {
         group: 'sign-in',

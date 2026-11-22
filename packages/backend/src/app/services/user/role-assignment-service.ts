@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import { canAssignRole, roleHasPermission, type Role } from 'shared/access'
+import type { SessionAuthState } from 'shared/mfa'
 
 import { userRepository } from '#app/repositories/index.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
@@ -18,6 +19,9 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
+import { loadMfaAccount } from '#app/services/auth/mfa/mfa-account.js'
+import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
+import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 
 /** A role change by an admin (HTTP, feat-241) or by the user:set-role CLI (feat-240). */
 export type RoleAssignmentActor = UserAuditActor | SystemAuditActor
@@ -47,9 +51,31 @@ export const roleAssignmentService = {
         actor: RoleAssignmentActor
         targetUserId: bigint
         role: Role
+        /**
+         * feat-247 (row 9 of Р3): the auth state of the session of a user actor. A role change
+         * needs a fresh proof of the actor (a factor of the staff policy once the actor has MFA).
+         * The CLI (a system actor) has no session and is not asked.
+         */
+        sessionAuth?: SessionAuthState | undefined
+        now?: number
     }): Promise<AppResult<RoleAssignment>> {
-        const { actor, targetUserId, role } = input
+        const { targetUserId, role } = input
+        let { actor } = input
         let events: RecordedAuditEvent[] = []
+
+        if (actor.kind === 'user') {
+            const actorUser = await userRepository.findById(actor.userId)
+            if (actorUser === undefined) return Result.err(denied())
+            const proof = requireProof({
+                action: 'role.assign',
+                account: await loadMfaAccount(actorUser),
+                auth: input.sessionAuth,
+                staffStepUpProofs: staffPolicy().stepUpProofs,
+                ...(input.now !== undefined ? { now: input.now } : {}),
+            })
+            if (Result.isError(proof)) return Result.err(proof.error)
+            actor = { ...actor, proof: auditProofOf(input.sessionAuth) }
+        }
 
         const result = await withTransactionResult(
             async (tx): Promise<AppResult<RoleAssignment>> => {

@@ -70,6 +70,23 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                 ),
             )
 
+    /**
+     * feat-247 (row 9 of Р3): the session of the admin proved itself a moment ago. The fixtures
+     * have no password, so a recent social sign-in is the proof; the tests below vary it.
+     */
+    const freshAuth = () => {
+        const at = new Date().toISOString()
+        return {
+            v: 1 as const,
+            amr: ['oauth' as const],
+            aal: 1 as const,
+            authenticatedAt: at,
+            verified: { oauth: at },
+        }
+    }
+    const assign = (input: Parameters<typeof roleAssignmentService.assign>[0]) =>
+        roleAssignmentService.assign({ sessionAuth: freshAuth(), ...input })
+
     /** An actor as the HTTP layer builds it: the guard's role, a request of its own. */
     const actorFor = (userId: bigint, role: Role) => ({ ...testAdminActor(userId), role })
 
@@ -91,12 +108,78 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         await pool.end()
     })
 
+    // feat-247 (row 9 of Р3): a role change needs a fresh proof of the admin's session.
+    describe('step-up of the admin (feat-247 S1)', () => {
+        it('without a fresh proof: 403 reauth_required, nothing changed', async () => {
+            const admin = await insertUser('admin')
+            await db.update(users).set({ password: 'hash' }).where(eq(users.id, admin))
+            const target = await insertUser('user')
+            const result = await roleAssignmentService.assign({
+                actor: actorFor(admin, 'admin'),
+                targetUserId: target,
+                role: 'kb_editor',
+                sessionAuth: undefined,
+            })
+            expect(payloadOf(result)).toMatchObject({
+                reason: 'reauth_required',
+                details: { proofs: ['password'] },
+            })
+            expect(await roleOf(target)).toBe('user')
+        })
+
+        it('an admin with TOTP: the password is not enough, a fresh TOTP is', async () => {
+            const admin = await insertUser('admin')
+            await db.update(users).set({ password: 'hash' }).where(eq(users.id, admin))
+            const { totpFactorRepository, withTransaction } =
+                await import('#app/repositories/index.js')
+            await withTransaction((tx) =>
+                totpFactorRepository.replace(
+                    {
+                        userId: admin,
+                        enrollmentId: crypto.randomUUID().slice(0, 32),
+                        secretCiphertext: Buffer.from([1]),
+                        keyId: 'k1',
+                        lastUsedStep: 0n,
+                        confirmedAt: new Date(),
+                    },
+                    tx,
+                ),
+            )
+            const target = await insertUser('user')
+            const at = new Date().toISOString()
+            const base = { v: 1 as const, amr: ['pwd' as const], authenticatedAt: at }
+            const withPassword = await roleAssignmentService.assign({
+                actor: actorFor(admin, 'admin'),
+                targetUserId: target,
+                role: 'kb_editor',
+                sessionAuth: { ...base, aal: 1, verified: { pwd: at } },
+            })
+            expect(payloadOf(withPassword)).toMatchObject({
+                reason: 'reauth_required',
+                details: { proofs: ['totp'] },
+            })
+            const withTotp = await roleAssignmentService.assign({
+                actor: actorFor(admin, 'admin'),
+                targetUserId: target,
+                role: 'kb_editor',
+                sessionAuth: {
+                    ...base,
+                    amr: ['pwd', 'otp'],
+                    aal: 2,
+                    verified: { pwd: at, otp: at },
+                },
+            })
+            expect(withTotp.isOk()).toBe(true)
+            expect((await eventsFor(target))[0]?.metadata).toMatchObject({ proof: 'totp' })
+        })
+    })
+
     it('changes the role and writes one event in the same transaction', async () => {
         const admin = await insertUser('admin')
         const target = await insertUser('user')
         const actor = actorFor(admin, 'admin')
 
-        const result = await roleAssignmentService.assign({
+        const result = await assign({
             actor,
             targetUserId: target,
             role: 'kb_editor',
@@ -119,7 +202,8 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             targetId: String(target),
             requestId: actor.requestId,
             changes: { role: { from: 'user', to: 'kb_editor' } },
-            metadata: null,
+            // feat-247: the step-up proof of the admin's session.
+            metadata: { proof: 'recent_sign_in' },
         })
         expect(auditLogLines(actor.logger)).toHaveLength(1)
         expect(announceRoleChanged).toHaveBeenCalledWith(target)
@@ -133,7 +217,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             .from(users)
             .where(eq(users.id, target))
 
-        const result = await roleAssignmentService.assign({
+        const result = await assign({
             actor: actorFor(admin, 'admin'),
             targetUserId: target,
             role: 'kb_editor',
@@ -155,7 +239,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         vi.spyOn(auditService, 'record').mockRejectedValueOnce(new Error('audit down'))
 
         await expect(
-            roleAssignmentService.assign({
+            assign({
                 actor: actorFor(admin, 'admin'),
                 targetUserId: target,
                 role: 'support_operator',
@@ -172,13 +256,13 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         const target = await insertUser('user')
         const actor = actorFor(userAdmin, 'user_admin')
 
-        const raised = await roleAssignmentService.assign({
+        const raised = await assign({
             actor,
             targetUserId: target,
             role: 'support_operator',
         })
         expect(raised.isOk()).toBe(true)
-        const moved = await roleAssignmentService.assign({
+        const moved = await assign({
             actor,
             targetUserId: target,
             role: 'kb_editor',
@@ -198,7 +282,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         const userAdmin = await insertUser('user_admin')
         const target = await insertUser(from)
 
-        const result = await roleAssignmentService.assign({
+        const result = await assign({
             actor: actorFor(userAdmin, 'user_admin'),
             targetUserId: target,
             role: to,
@@ -216,7 +300,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
     it('refuses an actor its own role and a role without users.roles.assign', async () => {
         const admin = await insertUser('admin')
-        const own = await roleAssignmentService.assign({
+        const own = await assign({
             actor: actorFor(admin, 'admin'),
             targetUserId: admin,
             role: 'user',
@@ -226,7 +310,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
         const operator = await insertUser('support_operator')
         const target = await insertUser('user')
-        const byOperator = await roleAssignmentService.assign({
+        const byOperator = await assign({
             actor: actorFor(operator, 'support_operator'),
             targetUserId: target,
             role: 'kb_editor',
@@ -236,7 +320,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
     it('answers 404 for a user that does not exist', async () => {
         const admin = await insertUser('admin')
-        const result = await roleAssignmentService.assign({
+        const result = await assign({
             actor: actorFor(admin, 'admin'),
             targetUserId: 9_000_000_000_000n,
             role: 'kb_editor',
@@ -251,7 +335,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         const admin = await insertUser('admin')
         const target = await insertUser('user', false)
 
-        const result = await roleAssignmentService.assign({
+        const result = await assign({
             actor: kind === 'system' ? systemActor('cli') : actorFor(admin, 'admin'),
             targetUserId: target,
             role: 'support_operator',
@@ -269,7 +353,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
     it('records a CLI change as a system event with the cli source', async () => {
         const target = await insertUser('user')
 
-        const result = await roleAssignmentService.assign({
+        const result = await assign({
             actor: systemActor('cli'),
             targetUserId: target,
             role: 'user_admin',
@@ -329,12 +413,12 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                     return total
                 })
                 const results = await Promise.all([
-                    roleAssignmentService.assign({
+                    assign({
                         actor: systemActor('cli'),
                         targetUserId: first,
                         role: 'user',
                     }),
-                    roleAssignmentService.assign({
+                    assign({
                         actor: systemActor('cli'),
                         targetUserId: second,
                         role: 'user',
@@ -364,7 +448,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                 await tx.execute(
                     sql`SELECT pg_advisory_xact_lock(hashtextextended('user_role_change', 0))`,
                 )
-                assigned = roleAssignmentService.assign({
+                assigned = assign({
                     actor: actorFor(userAdmin, 'user_admin'),
                     targetUserId: target,
                     role: 'kb_editor',

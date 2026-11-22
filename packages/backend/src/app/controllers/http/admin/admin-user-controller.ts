@@ -68,6 +68,7 @@ export default {
             actor: auditActorFrom(context),
             targetUserId,
             role,
+            sessionAuth: context.session.sessionInfo?.data.auth,
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
