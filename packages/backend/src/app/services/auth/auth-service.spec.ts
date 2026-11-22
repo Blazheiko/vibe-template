@@ -916,7 +916,12 @@ describe('authService', () => {
         const { authService } = await loadAuthService()
         const result = await authService.renewSession(authMock as any, sessionMock as any)
 
-        expect(authMock.login).toHaveBeenCalledWith('7', 'user-session-token', expect.anything())
+        expect(authMock.login).toHaveBeenCalledWith(
+            '7',
+            'user-session-token',
+            expect.anything(),
+            undefined,
+        )
         expect(generateWsTokenMock).toHaveBeenCalledWith(
             expect.objectContaining({ id: 'renewed-session-id' }),
             '7',
@@ -961,7 +966,12 @@ describe('authService', () => {
         )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(authMock.login).toHaveBeenCalledWith('7', 'rotated-user-token', expect.anything())
+        expect(authMock.login).toHaveBeenCalledWith(
+            '7',
+            'rotated-user-token',
+            expect.anything(),
+            undefined,
+        )
     })
 
     describe('logoutAll rotates the sessionToken first (ADR 0002)', () => {

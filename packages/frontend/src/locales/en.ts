@@ -258,6 +258,7 @@ export default {
             },
             methodPassword: 'Password',
             methodRegister: 'Registration',
+            methodPasskey: 'Passkey',
             ip: 'IP address {ip}',
             signedIn: 'Signed in {date}',
             lastSeen: 'Active {when}',

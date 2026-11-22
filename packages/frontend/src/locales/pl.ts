@@ -265,6 +265,7 @@ const pl: typeof en = {
             },
             methodPassword: 'Hasło',
             methodRegister: 'Rejestracja',
+            methodPasskey: 'Klucz dostępu',
             ip: 'Adres IP {ip}',
             signedIn: 'Zalogowano {date}',
             lastSeen: 'Aktywna {when}',

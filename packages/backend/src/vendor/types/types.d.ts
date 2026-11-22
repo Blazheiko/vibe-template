@@ -7,6 +7,7 @@ import type { ResponseCheck } from '../utils/validation/validate-response.js'
 import type { WsMessageBudgetState } from '../utils/rate-limit/ws-message-budget.js'
 import type { WsErrorBody, WsReplyEnvelope, WsRequestEnvelope } from 'shared/ws-client'
 import type { Role } from 'shared/access'
+import type { SessionAuthState } from 'shared/mfa'
 
 export type Payload = Record<string, unknown> | string | Buffer | number | boolean | bigint | null
 
@@ -121,6 +122,12 @@ export interface Auth {
         userId: string | undefined,
         userToken: string | undefined,
         origin: LoginOrigin,
+        /**
+         * feat-245 (Р2): how the new session was authenticated. Left out: a level-1 sign-in by the
+         * origin's method, proven now; for a renewal (`inherit`) the caller passes the state of
+         * the session it replaces.
+         */
+        auth?: SessionAuthState,
     ) => Promise<SessionDevice | null>
     logout: () => Promise<boolean>
     logoutAll: () => Promise<DestroyAllSessionsResult>
@@ -161,6 +168,15 @@ export interface Session {
      * session has no record: false.
      */
     isStored: () => Promise<boolean>
+    /**
+     * feat-245 (Р2): the one way to change `data.auth`. Applies `apply` to the stored state (a
+     * compare-and-set that reads again on a conflict) and merges: every freshness mark keeps the
+     * later time, the level and the sign-in methods never change, a removed recovery state is not
+     * brought back. Null when the record is gone.
+     */
+    updateSessionAuth: (
+        apply: (current: SessionAuthState) => SessionAuthState,
+    ) => Promise<SessionInfo | null>
     /** Deletes the current session's record; it does not issue a new session. */
     destroySession: () => Promise<void>
     /** Run by the server after the handler, right before the response is sent. */
@@ -168,7 +184,7 @@ export interface Session {
 }
 
 /** How a session was signed in (feat-233, Р3); see shared `SIGN_IN_METHODS`. */
-export type SessionSignInMethod = 'password' | 'oauth' | 'register'
+export type SessionSignInMethod = 'password' | 'oauth' | 'register' | 'passkey'
 
 /**
  * The device of a signed-in session (feat-233, Р3), written when it is created. A renewal
@@ -188,7 +204,7 @@ export interface SessionDevice {
 
 /** What `auth.login` records as the device of the new session. */
 export type LoginOrigin =
-    | { method: 'password' | 'register' }
+    | { method: 'password' | 'register' | 'passkey' }
     | { method: 'oauth'; provider: string }
     /** A renewal: the device of the session it replaces, the public id aside. */
     | { inherit: SessionDevice }
@@ -199,6 +215,11 @@ export interface SessionData extends Record<string, unknown> {
     wsToken?: string
     csrfToken?: string
     device?: SessionDevice
+    /**
+     * feat-245 (Р2): how the session was authenticated. Written at sign-in and by
+     * updateSessionAuth only: updateSessionData and changeSessionData keep the stored one.
+     */
+    auth?: SessionAuthState
 }
 
 export interface SessionInfo {

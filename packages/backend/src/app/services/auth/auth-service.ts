@@ -1113,10 +1113,13 @@ export const authService = {
         // feat-233 (Р3): the renewed session keeps how and where the user signed in. Its record is
         // gone by now, but the request still holds what it read.
         const device = session.sessionInfo?.data.device
+        // feat-245 (Р2): and how it was authenticated, so a renewal never lowers the level.
+        const previousAuth = session.sessionInfo?.data.auth
         await auth.login(
             userId,
             userToken,
             device !== undefined ? { inherit: device } : { method: 'password' },
+            previousAuth,
         )
 
         const sessionInfo = session.sessionInfo

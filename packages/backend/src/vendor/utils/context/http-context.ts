@@ -9,6 +9,7 @@ const getDefaultSession = (): Session => {
         updateSessionData: async () => Promise.resolve(null),
         changeSessionData: async () => Promise.resolve(null),
         consumeSessionData: async () => Promise.resolve('gone' as const),
+        updateSessionAuth: async () => Promise.resolve(null),
         isStored: async () => Promise.resolve(false),
         destroySession: async () => Promise.resolve(),
     }

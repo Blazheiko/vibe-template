@@ -1,3 +1,4 @@
+import { mergeSessionAuth, sessionAuthOf, type SessionAuthState } from 'shared/mfa'
 import type { DestroyAllSessionsResult, SessionData, SessionInfo } from '#vendor/types/types.js'
 import redis, { withRedis } from '#database/redis.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
@@ -311,20 +312,48 @@ export const consumeSessionData = async (
     throw new SessionUpdateConflictError()
 }
 
+/**
+ * feat-245 (Р2): `auth` is written at sign-in and by updateSessionAuth only. A data update keeps
+ * the stored state whatever `newData` holds, so a request that read the session before a step-up
+ * cannot write the older state back.
+ */
+const keepStoredAuth = (session: SessionInfo, data: SessionData): SessionData => {
+    const { auth: _ignored, ...rest } = data
+    return session.data.auth === undefined ? rest : { ...rest, auth: session.data.auth }
+}
+
 /** Merges into the session data; null when the record is gone (it is not recreated). */
 export const updateSessionData = async (
     sessionId: string | undefined,
     newData: SessionData,
     userToken: string,
 ): Promise<SessionInfo | null> =>
-    await writeSessionUpdate(sessionId, userToken, (session) => ({ ...session.data, ...newData }))
+    await writeSessionUpdate(sessionId, userToken, (session) =>
+        keepStoredAuth(session, { ...session.data, ...newData }),
+    )
 
 /** Replaces the session data; null when the record is gone (it is not recreated). */
 export const changeSessionData = async (
     sessionId: string | undefined,
     newData: SessionData,
     userToken: string,
-): Promise<SessionInfo | null> => await writeSessionUpdate(sessionId, userToken, () => newData)
+): Promise<SessionInfo | null> =>
+    await writeSessionUpdate(sessionId, userToken, (session) => keepStoredAuth(session, newData))
+
+/**
+ * feat-245 (Р2): changes the auth state of a stored session. `apply` sees the state stored now (it
+ * runs again after a conflict); the result is merged with it by mergeSessionAuth, so concurrent
+ * step-ups keep both marks and nothing lowers the level or brings recovery back.
+ */
+export const updateSessionAuth = async (
+    sessionId: string | undefined,
+    userToken: string,
+    apply: (current: SessionAuthState) => SessionAuthState,
+): Promise<SessionInfo | null> =>
+    await writeSessionUpdate(sessionId, userToken, (session) => {
+        const current = sessionAuthOf(session.data.auth)
+        return { ...session.data, auth: mergeSessionAuth(current, apply(current)) }
+    })
 
 /**
  * Deletes a session record. A signed-in one goes with its index member and meta field, in one

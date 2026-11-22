@@ -491,3 +491,111 @@ describe.skipIf(!hasRedis)(
         })
     },
 )
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р2, tasks M4): the auth state of a session.
+describe.skipIf(!hasRedis)('session auth state (feat-245)', () => {
+    const at = (secondsAgo: number): string =>
+        new Date(Date.now() - secondsAgo * 1000).toISOString()
+    const aal2 = {
+        v: 1 as const,
+        amr: ['pwd' as const, 'otp' as const],
+        aal: 2 as const,
+        authenticatedAt: at(600),
+        verified: { pwd: at(600), otp: at(600) },
+    }
+
+    it('concurrent step-ups keep both marks; the level never changes', async () => {
+        await save('stepup', { data: { auth: aal2 } })
+        const t1 = at(5)
+        const t2 = at(3)
+        await Promise.all([
+            storage.updateSessionAuth('stepup', USER_TOKEN, (current) => ({
+                ...current,
+                aal: 1,
+                verified: { ...current.verified, pwd: t1 },
+            })),
+            storage.updateSessionAuth('stepup', USER_TOKEN, (current) => ({
+                ...current,
+                verified: { ...current.verified, otp: t2 },
+            })),
+        ])
+        const auth = (await recordOf('stepup'))?.data['auth'] as typeof aal2
+        expect(auth.aal).toBe(2)
+        expect(auth.verified).toEqual({ pwd: t1, otp: t2 })
+    })
+
+    it('a data update or replacement keeps the stored auth, whatever it carries', async () => {
+        await save('keep', { data: { auth: aal2 } })
+        const forged = { ...aal2, aal: 1 as const, verified: {} }
+        await storage.updateSessionData('keep', { auth: forged, x: '1' }, USER_TOKEN)
+        expect((await recordOf('keep'))?.data['auth']).toEqual(aal2)
+        await storage.changeSessionData(
+            'keep',
+            { userId: '42', userToken: USER_TOKEN, csrfToken: CSRF, auth: forged },
+            USER_TOKEN,
+        )
+        expect((await recordOf('keep'))?.data['auth']).toEqual(aal2)
+        // A record without auth does not get one from a data update.
+        await save('none')
+        await storage.updateSessionData('none', { auth: aal2 }, USER_TOKEN)
+        expect((await recordOf('none'))?.data['auth']).toBeUndefined()
+    })
+
+    it('a session stored before feat-245 gets a level-1 state on its first step-up', async () => {
+        await save('legacy')
+        const t = at(1)
+        await storage.updateSessionAuth('legacy', USER_TOKEN, (current) => ({
+            ...current,
+            verified: { ...current.verified, pwd: t },
+        }))
+        expect((await recordOf('legacy'))?.data['auth']).toMatchObject({
+            aal: 1,
+            amr: [],
+            verified: { pwd: t },
+        })
+    })
+
+    it('an expired recovery session ends at restore; an active one is served', async () => {
+        const recovery = (expiresAt: string) => ({
+            ...aal2,
+            aal: 1,
+            amr: ['pwd', 'recovery'],
+            recovery: { startedAt: at(900), expiresAt },
+        })
+        await save('expired', { data: { auth: recovery(at(1)) } })
+        expect(await authenticates('expired')).toBe(false)
+        expect(await recordOf('expired')).toBeNull()
+
+        await save('active', {
+            data: { auth: recovery(new Date(Date.now() + 60_000).toISOString()) },
+        })
+        expect(await authenticates('active')).toBe(true)
+        expect(await recordOf('active')).not.toBeNull()
+    })
+
+    it('a renewal keeps how the session was authenticated', async () => {
+        await save('renew', {
+            data: {
+                auth: aal2,
+                device: {
+                    publicId: 'p',
+                    ip: '127.0.0.1',
+                    userAgent: 'ua',
+                    method: 'password',
+                    signedInAt: at(600),
+                },
+            },
+        })
+        const request = createRequest('renew')
+        expect(await executeMiddlewares(['session_web', 'auth_guard'], request.context)).toBe(true)
+        const { authService } = await import('#app/services/auth/auth-service.js')
+        const renewed = await authService.renewSession(
+            request.context.auth,
+            request.context.session,
+        )
+        expect(renewed.status).toBe('ok')
+        const newId = request.context.session.sessionInfo?.id ?? ''
+        expect(newId).not.toBe('renew')
+        expect((await recordOf(newId))?.data['auth']).toEqual(aal2)
+    })
+})

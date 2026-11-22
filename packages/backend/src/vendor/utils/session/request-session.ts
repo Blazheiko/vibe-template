@@ -26,8 +26,10 @@ import {
     sessionExists,
     touchSession,
     updateSessionData,
+    updateSessionAuth,
     consumeSessionData,
 } from '#vendor/utils/session/redis-session-storage.js'
+import { isActiveRecovery, type SessionAuthState } from 'shared/mfa'
 import logger from '#vendor/utils/logger.js'
 import { SessionVerificationUnavailableError } from '#vendor/utils/network/errors/session-verification-unavailable-error.js'
 import { assertSessionTokenCurrent } from '#vendor/utils/session/session-token-check.js'
@@ -57,6 +59,24 @@ const withCsrfToken = (data: SessionData): SessionData => ({
     ...data,
     csrfToken: isValidCsrfToken(data.csrfToken) ? data.csrfToken : generateCsrfToken(),
 })
+
+/**
+ * feat-245 (Р2): the auth state of a sign-in that did not pass one: level 1 by the origin's
+ * method, proven now. A renewal without a state keeps none (a session stored before feat-245).
+ */
+const defaultSignInAuth = (origin: LoginOrigin, now: Date): SessionAuthState | undefined => {
+    if ('inherit' in origin) return undefined
+    const method =
+        origin.method === 'oauth' ? 'oauth' : origin.method === 'passkey' ? 'webauthn' : 'pwd'
+    const at = now.toISOString()
+    return {
+        v: 1,
+        amr: [method],
+        aal: method === 'webauthn' ? 2 : 1,
+        authenticatedAt: at,
+        verified: { [method]: at },
+    }
+}
 
 const newAnonSessionInfo = (): SessionInfo => ({
     id: crypto.randomUUID(),
@@ -229,6 +249,16 @@ export class RequestSession {
                     info = null
                     presentedId = undefined
                     presentedUserToken = undefined
+                } else if (
+                    info.data.auth?.recovery !== undefined &&
+                    !isActiveRecovery(info.data.auth, Date.now())
+                ) {
+                    // feat-245 (Р8): a recovery session ends at its absolute expiry, whatever the
+                    // record's TTL says; the request goes on as a new anonymous session.
+                    await destroySession(incoming.sessionId, incoming.userToken)
+                    info = null
+                    presentedId = undefined
+                    presentedUserToken = undefined
                 }
             }
         }
@@ -314,6 +344,7 @@ export class RequestSession {
         session.updateSessionData = this.updateData.bind(this)
         session.changeSessionData = this.changeData.bind(this)
         session.consumeSessionData = this.consumeData.bind(this)
+        session.updateSessionAuth = this.updateAuth.bind(this)
         session.isStored = this.isStored.bind(this)
         session.destroySession = this.destroy.bind(this)
         auth.getUserId = this.userId.bind(this)
@@ -331,6 +362,19 @@ export class RequestSession {
         return this.cookieHeld
             ? await this.storeAnonymous({ ...this.info.data, ...newData })
             : await updateSessionData(this.info.id, newData, this.storageToken)
+    }
+
+    /**
+     * feat-245 (Р2): a signed-in session's auth state; a cookie-held (anonymous) session has none
+     * to change.
+     */
+    private async updateAuth(
+        apply: (current: SessionAuthState) => SessionAuthState,
+    ): Promise<SessionInfo | null> {
+        if (this.cookieHeld) return null
+        const updated = await updateSessionAuth(this.info.id, this.storageToken, apply)
+        if (updated !== null) this.setInfo(updated)
+        return updated
     }
 
     /** Replaces the session data. A cookie-held session moves to Redis first. */
@@ -405,6 +449,7 @@ export class RequestSession {
         userId: string | undefined,
         userToken: string | undefined,
         origin: LoginOrigin,
+        auth?: SessionAuthState,
     ): Promise<SessionDevice | null> {
         if (userId === undefined || userToken === undefined) return null
 
@@ -421,7 +466,11 @@ export class RequestSession {
         // it to Redis.
         await destroySession(previousId, this.storageToken)
 
-        const signedIn = await createSessionInfo({ userId, userToken }, this.deviceFor(origin))
+        const authState = auth ?? defaultSignInAuth(origin, new Date())
+        const signedIn = await createSessionInfo(
+            { userId, userToken, ...(authState !== undefined ? { auth: authState } : {}) },
+            this.deviceFor(origin),
+        )
         this.issueStoredCookie(signedIn.id, userToken, sessionConfig.age)
         this.setInfo(signedIn)
         this.storageToken = userToken

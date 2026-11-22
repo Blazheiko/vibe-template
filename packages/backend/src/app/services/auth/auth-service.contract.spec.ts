@@ -980,7 +980,13 @@ const ROWS: readonly Row[] = [
         },
         call: (s) => s.renewSession(authMock as never, sessionMock as never, 'rotated'),
         after: () => {
-            expect(authMock.login).toHaveBeenCalledWith('7', 'rotated', expect.anything())
+            // feat-245: the auth state of the renewed session (none: a session stored before it).
+            expect(authMock.login).toHaveBeenCalledWith(
+                '7',
+                'rotated',
+                expect.anything(),
+                undefined,
+            )
         },
     },
     {

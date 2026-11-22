@@ -260,6 +260,7 @@ const uk: typeof en = {
             },
             methodPassword: 'Пароль',
             methodRegister: 'Реєстрація',
+            methodPasskey: 'Ключ доступу (passkey)',
             ip: 'IP-адреса {ip}',
             signedIn: 'Увійшли {date}',
             lastSeen: 'Активна {when}',

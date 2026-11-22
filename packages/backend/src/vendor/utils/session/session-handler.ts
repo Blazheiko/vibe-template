@@ -3,6 +3,7 @@ import sessionConfig from '#config/session.js'
 import {
     getSession,
     updateSessionData,
+    updateSessionAuth,
     changeSessionData,
     consumeSessionData,
     destroySession,
@@ -114,6 +115,8 @@ export const wsSessionHandler = async (
             isStored: async () => await sessionExists(sessionInfo.id, userToken),
             consumeSessionData: async (expected, keys) =>
                 (await consumeSessionData(sessionInfo.id, userToken, expected, keys)).kind,
+            updateSessionAuth: async (apply) =>
+                await updateSessionAuth(sessionInfo.id, userToken, apply),
             destroySession: async (): Promise<void> => {
                 await destroySession(sessionInfo.id, userToken)
             },
