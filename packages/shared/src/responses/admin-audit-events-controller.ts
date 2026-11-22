@@ -72,6 +72,8 @@ export const AuditMetadataSchema = type({
     'mfaDisabled?': 'boolean',
     'count?': 'number',
     'remaining?': 'number',
+    // feat-247: the reason an administrator gave for an MFA reset.
+    'reason?': 'string',
     'method?': 'string',
     'provider?': 'string',
     'mime?': 'string | null',

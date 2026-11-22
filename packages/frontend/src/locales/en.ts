@@ -241,6 +241,11 @@ export default {
             errorSetupExpired: 'The setup expired. Start again.',
             errorRecoveryOrder: 'Set up the new app first.',
             errorGeneric: 'Something went wrong. Try again.',
+            staffFactorRequired:
+                'Your role needs two-step sign-in. Set up an authenticator app or a passkey below, then sign in again with it to open the admin area.',
+            staffSessionRequired:
+                'The admin area needs a recent sign-in with your second factor. Sign in again with your authenticator app or passkey.',
+            staffSignIn: 'Sign in again',
         },
         passkeys: {
             title: 'Passkeys',
@@ -512,6 +517,7 @@ export default {
             auth_mfa_totp_disabled: 'Authenticator app turned off',
             auth_mfa_recovery_codes_regenerated: 'New recovery codes created',
             auth_mfa_recovery_code_used: 'Signed in with a recovery code',
+            auth_mfa_reset: 'Two-step sign-in reset by an administrator',
             auth_passkey_added: 'Passkey added',
             auth_passkey_removed: 'Passkey removed',
             auth_passkey_counter_regressed: 'Passkey sign-in counter went back',
@@ -601,6 +607,10 @@ export default {
             security_recovery_code_used: {
                 title: 'Recovery code used',
                 body: 'Someone signed in with a recovery code and other sessions were signed out. If it was not you, act now.',
+            },
+            security_mfa_reset: {
+                title: 'Two-step sign-in was reset',
+                body: 'An administrator removed the second factors of your account. Sign in and set them up again.',
             },
             security_passkey_added: {
                 title: 'Passkey added',

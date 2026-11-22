@@ -15,10 +15,13 @@ import { validateRuntimeConfig } from '#app/start/validate-runtime-config.js'
 import { sentryService } from '#app/services/observability/sentry-service.js'
 import { pool } from '#database/db.js'
 import { wsRoleSync } from '#app/websocket/ws-role-sync.js'
+import { wsSessionAuthSync } from '#app/websocket/ws-session-auth-sync.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
 import { userEventBus } from '#app/services/communication/user-event-bus.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
 import { onSessionListChanged } from '#vendor/utils/session/session-list-events.js'
+import { onSessionAuthRaised } from '#vendor/utils/session/session-auth-events.js'
+import { announceSessionAuthChanged } from '#app/services/communication/session-auth-announcer.js'
 import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { sessionCheckPool } from '#database/session-check-db.js'
 import readinessProbe from '#database/readiness-probe.js'
@@ -71,8 +74,12 @@ const start = async (): Promise<void> => {
         wsSessionRevocation.start()
         // feat-240 (Р8): a role changed anywhere makes this instance re-read the role of the
         // user's open connections here.
-        userEventBus.handleServerEvents((_event, userId) => {
-            void wsRoleSync.onRoleChanged(userId)
+        // feat-247 (Р11): a step-up on another instance makes this one read the session again for
+        // its connections of it.
+        userEventBus.handleServerEvents((event, userId, payload) => {
+            if (event === 'user_role_changed') void wsRoleSync.onRoleChanged(userId)
+            else if (payload !== undefined)
+                void wsSessionAuthSync.refresh(userId, payload.sessionId)
         })
         // feat-232: events to a user's connections on every instance. Not awaited: SUBSCRIBE
         // waits for Redis, and until it answers events still reach this process's connections.
@@ -81,6 +88,8 @@ const start = async (): Promise<void> => {
         })
         // feat-233: a sign-in or a logout changes the user's session list on every device.
         onSessionListChanged(announceSessionListChanged)
+        // feat-247 (Р11): a step-up gives the session's sockets their new auth state everywhere.
+        onSessionAuthRaised(announceSessionAuthChanged)
         if (schedulerConfig.enabled) scheduler.start()
         else logger.info('Scheduler: off on this process (SCHEDULER_ENABLED=false)')
 

@@ -1,6 +1,8 @@
 import { hkdfSync } from 'node:crypto'
 import { env } from 'node:process'
 
+import type { StaffFactorMode } from 'shared/mfa'
+
 import appConfig from '#config/app.js'
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 
@@ -85,7 +87,18 @@ export function parseMfaEncryptionKeys(
     return { keys, derived: false, error: null }
 }
 
+/** feat-247 (Р10): MFA_STAFF_FACTOR; only `any` until feat-248 adds the passkey mode. */
+export function parseStaffFactor(raw: string | undefined): {
+    mode: StaffFactorMode
+    error: string | null
+} {
+    const value = (raw ?? '').trim()
+    if (value === '' || value === 'any') return { mode: 'any', error: null }
+    return { mode: 'any', error: `MFA_STAFF_FACTOR must be "any", got "${value}"` }
+}
+
 const reader = createEnvReader()
+const staffFactor = parseStaffFactor(env['MFA_STAFF_FACTOR'])
 const parsedKeys = parseMfaEncryptionKeys(env['MFA_ENCRYPTION_KEYS'], {
     isProductionLike: appConfig.isProductionLike,
     appKey: appConfig.key,
@@ -107,6 +120,16 @@ export default Object.freeze({
     reservationTtlSeconds: reader.int('MFA_RESERVATION_TTL_SECONDS', 30, { min: 5, max: 300 }),
     /** A TOTP setup stays confirmable this long, in seconds. */
     totpEnrollmentTtlSeconds: 600,
+    /**
+     * feat-247 (Р10, Р11): a staff role needs a second factor and a recent proof of it to use
+     * staff permissions, and a staff role is given only to an account with a factor
+     * (MFA_REQUIRED_FOR_STAFF, on by default; `false` only for a transition).
+     */
+    requiredForStaff: reader.bool('MFA_REQUIRED_FOR_STAFF', true),
+    /** Which factor a staff role needs (MFA_STAFF_FACTOR): `any` (TOTP or a passkey). */
+    staffFactor: staffFactor.mode,
+    /** A staff session's factor proof counts this long (MFA_STAFF_FACTOR_MAX_AGE_HOURS, 12). */
+    staffFactorMaxAgeHours: reader.int('MFA_STAFF_FACTOR_MAX_AGE_HOURS', 12, { min: 1, max: 168 }),
     // Last: the reads above have run, so the reader holds every problem.
-    configError: parsedKeys.error ?? reader.error,
+    configError: parsedKeys.error ?? staffFactor.error ?? reader.error,
 })

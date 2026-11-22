@@ -36,3 +36,14 @@ export const SetUserRoleResponseSchema = type.or(
     CanonicalErrorResponseSchema,
 )
 export type SetUserRoleResponse = WithCanonicalError<typeof SetUserRoleResponseSchema.infer>
+
+/** feat-247 (Р13): the factors an administrator's reset removed. */
+export const ResetUserMfaResponseSchema = type.or(
+    {
+        status: "'success'",
+        user: { id: 'string' },
+        removed: { totp: 'boolean', passkeys: 'number', recoveryCodes: 'number' },
+    },
+    CanonicalErrorResponseSchema,
+)
+export type ResetUserMfaResponse = WithCanonicalError<typeof ResetUserMfaResponseSchema.infer>

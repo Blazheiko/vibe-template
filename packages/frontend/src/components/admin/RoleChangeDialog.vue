@@ -2,6 +2,8 @@
 import { computed, ref, useId, watch } from 'vue'
 import type { Role } from 'shared/access'
 import { useModalDialog } from '@/composables/useModalDialog'
+import { withReauth } from '@/composables/useReauth'
+import { useEventBus } from '@/utils/event-bus'
 import { adminUsersApi } from '@/utils/api'
 import { getErrorReason } from '@/utils/response-normalizer'
 import {
@@ -25,6 +27,7 @@ const emit = defineEmits<{
     changed: [role: Role]
 }>()
 
+const eventBus = useEventBus()
 const panel = ref<HTMLElement | null>(null)
 const titleId = useId()
 const selected = ref<Role | null>(null)
@@ -56,8 +59,14 @@ async function save() {
     if (target === null || role === null || saving.value) return
     saving.value = true
     error.value = null
-    const res = await adminUsersApi.setRole(target.id, role)
+    // feat-247 (row 9 of Р3): the change asks the admin to confirm it is them (step-up dialog).
+    const outcome = await withReauth(() => adminUsersApi.setRole(target.id, role))
     saving.value = false
+    if (outcome.signInAgain) {
+        eventBus.emit('sign_in_again', '/admin/users')
+        return
+    }
+    const res = outcome.response
     if (res.data?.status === 'success') {
         emit('changed', res.data.user.role)
         return

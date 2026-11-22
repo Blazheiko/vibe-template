@@ -5,7 +5,7 @@ An account can have a second factor: an authenticator app (TOTP), passkeys (WebA
 Plan and decisions: [`docs/plan/passkeys-mfa-plan.md`](https://github.com/Blazheiko/vibe-template/blob/main/docs/plan/passkeys-mfa-plan.md). Sources: the shared policy [`shared/src/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/shared/src/mfa), the services [`services/auth/mfa`](https://github.com/Blazheiko/vibe-template/tree/main/packages/backend/src/app/services/auth/mfa), the contracts [`contracts/mfa.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/mfa.ts), [`contracts/passkeys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/passkeys.ts) and [`contracts/auth.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/contracts/auth.ts).
 
 ::: warning Planned
-Mandatory MFA for staff and the administrator's MFA reset are `feat-247`; the passkey-only mode for staff is `feat-248`.
+The passkey-only mode for staff is `feat-248`.
 :::
 
 ## Routes
@@ -84,6 +84,22 @@ The first factor needs a verified email (or a phone with `AUTH_PHONE_ENABLED`): 
 - An ordinary password reset does **not** turn MFA off. The owner of an unverified address taking the account over (`claimLocked`) removes the factors with everything else set up before the proof.
 - A recovery code (16 characters, 80 bits, one-time) opens a **recovery session**: level 1, an absolute lifetime `MFA_RECOVERY_WINDOW_SECONDS` (900 s by default), no WebSocket. The other sessions end. Only `main/init`, the `/account/mfa/*` routes, `recovery/finish` and `logout` are allowed; everything else answers `403 recovery_session`. Removing the old factor or new codes come only after the factor was replaced. After finishing, an ordinary sign-in with the new factor.
 
+## Staff
+
+With `MFA_REQUIRED_FOR_STAFF=true` (the default) a staff role (any role with permissions) works only with a second factor. One policy, [`staffMfaPolicy`](https://github.com/Blazheiko/vibe-template/blob/main/packages/shared/src/mfa/staff-mfa-policy.ts) (mode `MFA_STAFF_FACTOR=any`: TOTP or a passkey), answers three questions, and every consumer asks it ([`staff-policy.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/mfa/staff-policy.ts)):
+
+- **Giving a role** (the admin area and the CLI `user:set-role`): only to an account with a factor, otherwise `409 mfa_not_enrolled`. A first administrator made by the CLI sets up TOTP as an ordinary user first; the `db:seed` demo admin gets TOTP from `SEED_ADMIN_TOTP_SECRET`.
+- **`can:` and `ws_can:`**: a level-2 session with a fresh (`MFA_STAFF_FACTOR_MAX_AGE_HOURS`, 12 h by default) factor proof, not a recovery session. Otherwise `403 mfa_required` (no factor) or `403 mfa_session_required`; the frontend goes to `/account?section=security` with an explanation.
+- **Confirming staff actions** (a role change, an MFA reset): a fresh factor; for an account without MFA, the password.
+
+The admin WebSocket channel keeps its subscribers in the order of their deadline and **drops the expired ones synchronously before every publish**, so an event published at `t` never reaches a socket whose deadline is `≤ t`, whenever its timer runs. The timer sends `access_changed { reason: 'mfa_session_required' }` and an open admin page goes to the sign-in. A step-up updates the `auth` of the session's connections on every instance (the bus event `session_auth_changed`).
+
+**An MFA reset by an administrator**: `POST /api/admin/users/:id/mfa/reset { reason }` (`can:users.mfa.reset`, the admin's alone) or the CLI `pnpm --filter backend user:mfa-reset --email <email> --reason "<why>"` (`make user-mfa-reset`), the emergency exit of the last administrator. Not one's own account (`403`: the recovery codes or the CLI). An account that would be left without a way to sign in (only a passkey) gets `409 last_sign_in_method` without exception: the user sets a password through "forgot password" first. TOTP, the passkeys and the codes go, `session_token` rotates (the sessions and sockets end), the event `auth.mfa.reset` records the reason, the owner gets a notification and a mail.
+
+::: warning Transitional risk
+Staff accounts without a factor that existed before the switch-on, and the `db:seed` admin in a production-like environment (without `SEED_ADMIN_TOTP_SECRET`), get `mfa_required` in the admin area until they set up a factor (row 1 of the matrix: a fresh password). Until then whoever knows such an account's password can set up its first factor. Set the staff factors up right after the upgrade.
+:::
+
 ## Configuration
 
 | Variable                                | Default                      | What it sets                                                                                                        |
@@ -96,6 +112,9 @@ The first factor needs a verified email (or a phone with `AUTH_PHONE_ENABLED`): 
 | `AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER` | `10`                         | second-step and step-up codes per user per window                                                                   |
 | `AUTH_MFA_VERIFY_WINDOW_SECONDS`        | `900`                        | the window of that limit                                                                                            |
 | `OAUTH_FRONTEND_MFA_URL`                | `/login?mfa=required`        | where OAuth sends an account with a second factor                                                                   |
+| `MFA_REQUIRED_FOR_STAFF`                | `true`                       | a staff role works only with a second factor and a fresh proof of it                                                |
+| `MFA_STAFF_FACTOR`                      | `any`                        | the staff factor: TOTP or a passkey (`passkey` is `feat-248`)                                                       |
+| `MFA_STAFF_FACTOR_MAX_AGE_HOURS`        | `12`                         | how long a factor proof counts for staff                                                                            |
 | `WEBAUTHN_RP_ID`                        | the host of `FRONTEND_URL`   | the RP ID of the passkeys; required in production-like, never changed after the launch                              |
 | `WEBAUTHN_RP_NAME`                      | `APP_NAME`                   | the name in the passkey dialog                                                                                      |
 | `WEBAUTHN_ORIGINS`                      | the origin of `FRONTEND_URL` | the exact origins of the ceremonies, comma-separated (`https://` in production-like), each on the RP ID or below it |
@@ -104,4 +123,4 @@ The TOTP secret is stored encrypted (AES-256-GCM, the owner as associated data).
 
 ## Audit log and notifications
 
-The events `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed` go to the [audit log](./audit-log) with their proof (`metadata.proof`). Every change of the factors sends a security notification and a mail to the account's address.
+The events `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed`, `auth.mfa.reset` go to the [audit log](./audit-log) with their proof (`metadata.proof`). Every change of the factors sends a security notification and a mail to the account's address.

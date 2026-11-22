@@ -192,8 +192,14 @@ router.beforeEach(async (to, _from, next) => {
         const redirect = to.fullPath !== '/' ? to.fullPath : undefined
         next(redirect !== undefined ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login')
     } else if (requiresStaff) {
-        // feat-240 (Р10): a page the role may not see goes to the first one it may.
-        const redirect = adminRedirect(to.path, to.meta.permission, userStore.user?.role)
+        // feat-240 (Р10): a page the role may not see goes to the first one it may; feat-247: a
+        // session refused for the staff MFA rule goes to the account's security section.
+        const redirect = adminRedirect(
+            to.path,
+            to.meta.permission,
+            userStore.user?.role,
+            userStore.staffMfaRefusal,
+        )
         if (redirect !== null) next(redirect)
         else next()
     } else {

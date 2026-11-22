@@ -251,6 +251,11 @@ const pl: typeof en = {
             errorSetupExpired: 'Konfiguracja wygasła. Zacznij od nowa.',
             errorRecoveryOrder: 'Najpierw skonfiguruj nową aplikację.',
             errorGeneric: 'Coś poszło nie tak. Spróbuj ponownie.',
+            staffFactorRequired:
+                'Twoja rola wymaga logowania dwuetapowego. Skonfiguruj poniżej aplikację uwierzytelniającą lub klucz dostępu, a potem zaloguj się ponownie, aby otworzyć panel administracyjny.',
+            staffSessionRequired:
+                'Panel administracyjny wymaga niedawnego logowania z drugim składnikiem. Zaloguj się ponownie z aplikacją uwierzytelniającą lub kluczem dostępu.',
+            staffSignIn: 'Zaloguj się ponownie',
         },
         passkeys: {
             title: 'Klucze dostępu',
@@ -525,6 +530,7 @@ const pl: typeof en = {
             auth_mfa_totp_disabled: 'Wyłączono aplikację uwierzytelniającą',
             auth_mfa_recovery_codes_regenerated: 'Utworzono nowe kody odzyskiwania',
             auth_mfa_recovery_code_used: 'Logowanie kodem odzyskiwania',
+            auth_mfa_reset: 'Logowanie dwuetapowe zresetowane przez administratora',
             auth_passkey_added: 'Dodano klucz dostępu',
             auth_passkey_removed: 'Usunięto klucz dostępu',
             auth_passkey_counter_regressed: 'Licznik klucza dostępu cofnął się',
@@ -612,6 +618,10 @@ const pl: typeof en = {
             security_recovery_code_used: {
                 title: 'Użyto kodu odzyskiwania',
                 body: 'Ktoś zalogował się kodem odzyskiwania, inne sesje zostały zakończone. Jeśli to nie Ty, działaj natychmiast.',
+            },
+            security_mfa_reset: {
+                title: 'Zresetowano logowanie dwuetapowe',
+                body: 'Administrator usunął drugie składniki konta. Zaloguj się i skonfiguruj je ponownie.',
             },
             security_passkey_added: {
                 title: 'Dodano klucz dostępu',

@@ -466,6 +466,9 @@ export const adminUsersApi = {
     // feat-241: changes the role of a user; the server applies the delegation policy.
     setRole: (id: string, role: Role) =>
         callApi(adminContracts.setUserRole, { params: { id }, body: { role } }),
+    // feat-247: resets the second factors of another account (users.mfa.reset).
+    resetMfa: (id: string, reason: string) =>
+        callApi(adminContracts.resetUserMfa, { params: { id }, body: { reason } }),
 }
 
 export const adminOnlineUsersApi = {

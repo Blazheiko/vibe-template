@@ -19,6 +19,8 @@ export const PERMISSIONS = [
     'users.read',
     'users.sensitive.read',
     'users.roles.assign',
+    // feat-247 (Р13): reset the second factors of another account; the admin's alone.
+    'users.mfa.reset',
     'audit.read.account',
     'audit.read',
 ] as const

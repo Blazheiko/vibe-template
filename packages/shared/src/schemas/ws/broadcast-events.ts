@@ -41,7 +41,9 @@ export const BroadcastEventSchemas = {
     notification_preferences_changed: type({}),
     // feat-240 (Р8): the role of this connection changed; sent to the socket after the role was
     // applied to it, so a request the client sends next is checked against this role.
-    access_changed: type({ role: RoleSchema }),
+    // feat-247 (Р11): `reason` when the role stays and the staff MFA proof of the session went
+    // stale: the admin channel was left and staff permissions refuse until a new proof.
+    access_changed: type({ role: RoleSchema, 'reason?': "'mfa_session_required'" }),
     // feat-240 (Р8): the admin channel of this connection, paused after a failed role read, may
     // be joined again; the client decides, it knows whether the admin area is still open.
     admin_channel_ready: type({}),

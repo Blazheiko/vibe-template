@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
+import { stepNow, totpAt } from '../e2e-live/totp'
 import { ORIGIN, USER_1, USER_2 } from './fixtures'
 
 /**
@@ -11,6 +12,8 @@ import { ORIGIN, USER_1, USER_2 } from './fixtures'
 interface Account {
     email: string
     password: string
+    /** feat-247: the key of the account's authenticator app (the seeded admin has one). */
+    totpSecret?: string
 }
 
 const loginInUi = async (page: Page, account: Account): Promise<void> => {
@@ -48,6 +51,15 @@ const otherTab = (request: APIRequestContext) => ({
             password: account.password,
         })
         expect(response.status()).toBe(200)
+        const body = (await response.json()) as { status?: string }
+        if (body.status !== 'mfa_required') return
+        // feat-247: the second step, with the code of the account's app.
+        if (account.totpSecret === undefined) throw new Error('a second factor is asked for')
+        const verified = await this.post('/api/auth/mfa/verify', {
+            method: 'totp',
+            code: totpAt(account.totpSecret, stepNow()),
+        })
+        expect(verified.status()).toBe(200)
     },
     async logout() {
         expect((await this.post('/api/auth/logout', {})).status()).toBe(200)

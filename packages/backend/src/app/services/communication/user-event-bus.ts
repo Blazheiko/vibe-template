@@ -32,12 +32,59 @@ const BUS_EVENTS: ReadonlySet<BroadcastEventName> = new Set([
  * feat-240 (Р8): events for the instances themselves, never delivered to a client. A role change
  * makes every instance re-read the role of the user's open connections.
  */
-export const SERVER_BUS_EVENTS = ['user_role_changed'] as const
+export const SERVER_BUS_EVENTS = ['user_role_changed', 'session_auth_changed'] as const
 export type ServerBusEvent = (typeof SERVER_BUS_EVENTS)[number]
 const SERVER_EVENTS: ReadonlySet<string> = new Set(SERVER_BUS_EVENTS)
 
+/**
+ * feat-247 (Р11): the data a server event carries. `user_role_changed` carries none (its old
+ * form); `session_auth_changed` names the session whose auth state rose (a step-up).
+ */
+export interface ServerBusPayloads {
+    user_role_changed: undefined
+    session_auth_changed: { sessionId: string }
+}
+export type ServerEventPayload = ServerBusPayloads[ServerBusEvent]
+
+/** The payload argument of a server event: none for an event without data. */
+export type ServerEventArgs<E extends ServerBusEvent> = ServerBusPayloads[E] extends undefined
+    ? []
+    : [payload: ServerBusPayloads[E]]
+
 /** What an instance does with a server event of a user. */
-export type ServerEventHandler = (event: ServerBusEvent, userId: string) => void
+export type ServerEventHandler = (
+    event: ServerBusEvent,
+    userId: string,
+    payload?: ServerEventPayload,
+) => void
+
+const SESSION_ID_MAX = 256
+
+/**
+ * The payload of a received server event, checked against its event; `invalid` when it does not
+ * match (the event is ignored). An event without data ignores what its envelope holds.
+ */
+export const parseServerPayload = (
+    event: ServerBusEvent,
+    payload: unknown,
+): { ok: true; payload: ServerEventPayload } | { ok: false } => {
+    if (event === 'user_role_changed') return { ok: true, payload: undefined }
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+        return { ok: false }
+    }
+    const record = payload as Record<string, unknown>
+    const keys = Object.keys(record)
+    const { sessionId } = record
+    if (
+        keys.length !== 1 ||
+        typeof sessionId !== 'string' ||
+        sessionId === '' ||
+        sessionId.length > SESSION_ID_MAX
+    ) {
+        return { ok: false }
+    }
+    return { ok: true, payload: { sessionId } }
+}
 
 interface BusEnvelope {
     v: 1
@@ -97,12 +144,29 @@ export interface UserEventBus {
      * A server event: handled here at once, then published to the other instances when the bus
      * is started. Never throws; a failed publish is logged (their periodic pass catches up).
      */
-    notifyServer(userId: string, event: ServerBusEvent): Promise<void>
+    notifyServer<E extends ServerBusEvent>(
+        userId: string,
+        event: E,
+        ...payload: ServerEventArgs<E>
+    ): Promise<void>
+    /**
+     * feat-247 (Р11): a server event for the other instances only, when the bus is started; this
+     * one has applied it itself. Never throws; a failed publish is logged.
+     */
+    notifyOtherInstances<E extends ServerBusEvent>(
+        userId: string,
+        event: E,
+        ...payload: ServerEventArgs<E>
+    ): Promise<void>
     /**
      * Only publishes a server event, without a subscriber or a local handler: for a process that
      * is not an instance (the user:set-role CLI). Rejects when Redis refuses.
      */
-    publishRemote(userId: string, event: ServerBusEvent): Promise<void>
+    publishRemote<E extends ServerBusEvent>(
+        userId: string,
+        event: E,
+        ...payload: ServerEventArgs<E>
+    ): Promise<void>
 }
 
 export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
@@ -110,22 +174,48 @@ export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
     let serverHandler: ServerEventHandler | null = null
     const instanceId = deps.instanceId ?? randomUUID()
 
-    const runServerHandler = (event: ServerBusEvent, userId: string): void => {
+    const runServerHandler = (
+        event: ServerBusEvent,
+        userId: string,
+        payload: ServerEventPayload,
+    ): void => {
         try {
-            serverHandler?.(event, userId)
+            if (payload === undefined) serverHandler?.(event, userId)
+            else serverHandler?.(event, userId, payload)
         } catch (err) {
             logger.error({ err, userId, event }, 'User event bus: server event handler failed')
         }
     }
 
-    const envelopeOf = (userId: string, event: ServerBusEvent): string =>
+    // An event without data keeps its old envelope (`payload: {}`).
+    const envelopeOf = (
+        userId: string,
+        event: ServerBusEvent,
+        payload: ServerEventPayload,
+    ): string =>
         JSON.stringify({
             v: 1,
             origin: instanceId,
             userId,
             event,
-            payload: {},
+            payload: payload ?? {},
         } satisfies BusEnvelope)
+
+    const publishServer = async (
+        userId: string,
+        event: ServerBusEvent,
+        payload: ServerEventPayload,
+    ): Promise<void> => {
+        if (subscriber === null) return
+        try {
+            await deps.publish(deps.channel, envelopeOf(userId, event, payload))
+        } catch (err) {
+            logger.warn(
+                { err, userId, event },
+                'User event bus publish failed: the other instances miss this event',
+            )
+        }
+    }
 
     const onMessage = (channel: string, raw: string): void => {
         if (channel !== deps.channel) return
@@ -137,7 +227,15 @@ export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
         // Delivered here when it was published.
         if (envelope.origin === instanceId) return
         if (isServerEvent(envelope.event)) {
-            runServerHandler(envelope.event, envelope.userId)
+            const parsed = parseServerPayload(envelope.event, envelope.payload)
+            if (!parsed.ok) {
+                logger.warn(
+                    { channel, event: envelope.event, userId: envelope.userId },
+                    'User event bus: server event dropped, its payload does not match',
+                )
+                return
+            }
+            runServerHandler(envelope.event, envelope.userId, parsed.payload)
             return
         }
         // The payload is checked against the event schema by the broadcast service.
@@ -175,21 +273,18 @@ export function createUserEventBus(deps: UserEventBusDeps): UserEventBus {
             serverHandler = handler
         },
 
-        async notifyServer(userId, event): Promise<void> {
-            runServerHandler(event, userId)
-            if (subscriber === null) return
-            try {
-                await deps.publish(deps.channel, envelopeOf(userId, event))
-            } catch (err) {
-                logger.warn(
-                    { err, userId, event },
-                    'User event bus publish failed: the other instances miss this event',
-                )
-            }
+        async notifyServer(userId, event, ...payload): Promise<void> {
+            const data: ServerEventPayload = payload[0]
+            runServerHandler(event, userId, data)
+            await publishServer(userId, event, data)
         },
 
-        async publishRemote(userId, event): Promise<void> {
-            await deps.publish(deps.channel, envelopeOf(userId, event))
+        async notifyOtherInstances(userId, event, ...payload): Promise<void> {
+            await publishServer(userId, event, payload[0])
+        },
+
+        async publishRemote(userId, event, ...payload): Promise<void> {
+            await deps.publish(deps.channel, envelopeOf(userId, event, payload[0]))
         },
 
         async publishToUser(userId, ...message): Promise<void> {

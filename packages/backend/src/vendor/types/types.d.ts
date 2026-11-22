@@ -28,6 +28,18 @@ export interface UserConnection extends Record<string, unknown> {
      * and `ws_can:` refuses until the next successful read clears it.
      */
     adminChannelPaused?: boolean
+    /**
+     * feat-247 (Р11): the auth state of the session the connection was opened from, copied at
+     * upgrade and refreshed after a step-up; none: as AAL1.
+     */
+    auth?: SessionAuthState
+    /**
+     * feat-247 (Р11): when this connection stops meeting the staff MFA rule, in ms (Infinity
+     * while the rule is off); set while it is subscribed to the admin channel.
+     */
+    staffAccessDeadline?: number
+    /** feat-247 (Р11): the admin channel was left because the staff MFA proof went stale. */
+    mfaStale?: boolean
     uuid: string
     sessionId: string | undefined
     userId: string | undefined

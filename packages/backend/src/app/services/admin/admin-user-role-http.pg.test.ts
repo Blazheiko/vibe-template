@@ -5,12 +5,13 @@ import type { Redis } from 'ioredis'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import { enrollTestTotp, type TestTotp } from '../../../test-support/test-totp.js'
 import {
     cleanupTestRedis,
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
-import type { Role } from 'shared/access'
+import { isStaffRole, type Role } from 'shared/access'
 
 // feat-235 T6 and T6a: GET /admin/audit-events over HTTP with the real route table, session_web,
 // csrf_guard, auth_guard and admin_guard, against a real PostgreSQL and Redis: who may read the
@@ -150,6 +151,8 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
     class Browser {
         cookie: string | undefined
         csrf: string | undefined
+        /** Other cookies, such as the second-step ticket of a sign-in with MFA (feat-247). */
+        others = new Map<string, string>()
 
         async request(
             method: 'GET' | 'POST' | 'PATCH',
@@ -157,8 +160,10 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
             body?: unknown,
         ): Promise<Reply> {
             const headers: Record<string, string> = { origin: ORIGIN }
+            const cookies = [...this.others].map(([name, value]) => `${name}=${value}`)
             if (this.cookie !== undefined)
-                headers['cookie'] = `${sessionConfig.cookieName}=${this.cookie}`
+                cookies.push(`${sessionConfig.cookieName}=${this.cookie}`)
+            if (cookies.length > 0) headers['cookie'] = cookies.join('; ')
             if (this.csrf !== undefined) headers['x-csrf-token'] = this.csrf
             if (body !== undefined) headers['content-type'] = 'application/json'
             const response = await fetch(`http://127.0.0.1:${String(PORT)}/api${path}`, {
@@ -168,6 +173,14 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
             })
             const text = await response.text()
             const parsed = (text === '' ? {} : JSON.parse(text)) as Record<string, unknown>
+            for (const line of response.headers.getSetCookie()) {
+                const [pair = ''] = line.split(';')
+                const name = pair.slice(0, pair.indexOf('='))
+                if (name === sessionConfig.cookieName) continue
+                const value = pair.slice(pair.indexOf('=') + 1)
+                if (value === '') this.others.delete(name)
+                else this.others.set(name, value)
+            }
             const setCookie = response.headers
                 .getSetCookie()
                 .find((value) => value.startsWith(`${sessionConfig.cookieName}=`))
@@ -181,13 +194,21 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
             return { status: response.status, body: parsed }
         }
 
-        async signIn(email: string): Promise<void> {
+        /** Signs in; with `totp`, answers the second step (a staff account has MFA, feat-247). */
+        async signIn(email: string, totp?: TestTotp): Promise<void> {
             await this.request('GET', '/main/init')
             const reply = await this.request('POST', '/auth/login', {
                 identifier: email,
                 password: PASSWORD,
             })
             expect(reply.status).toBe(200)
+            if (reply.body['status'] !== 'mfa_required') return
+            if (totp === undefined) throw new Error('the account asks for a second factor')
+            const verified = await this.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: totp.code(),
+            })
+            expect(verified.status).toBe(200)
         }
 
         setRole(id: bigint | string, body: unknown): Promise<Reply> {
@@ -201,8 +222,10 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
 
     const signedIn = async (role: Role, name?: string) => {
         const user = await insertUser(role, name)
+        // feat-247 (Р10): a staff role uses its permissions with a second factor (on by default).
+        const totp = isStaffRole(role) ? await enrollTestTotp(user.id) : undefined
         const browser = new Browser()
-        await browser.signIn(user.email ?? '')
+        await browser.signIn(user.email ?? '', totp)
         return { user, browser }
     }
 
@@ -264,6 +287,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
     it('lets an admin give a role, with an audit event of the request, and lists it', async () => {
         const { user: admin, browser } = await signedIn('admin')
         const target = await insertUser('user', 'future editor')
+        await enrollTestTotp(target.id)
 
         const reply = await browser.setRole(target.id, { role: 'kb_editor' })
 
@@ -306,6 +330,7 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
     it('holds a user_admin to its delegation policy and refuses its own role', async () => {
         const { user: userAdmin, browser } = await signedIn('user_admin')
         const target = await insertUser('user')
+        await enrollTestTotp(target.id)
         const admin = await insertUser('admin')
 
         expect((await browser.setRole(target.id, { role: 'support_operator' })).status).toBe(200)
@@ -338,6 +363,25 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
         expect((await browser.setRole('abc', { role: 'user' })).status).toBe(400)
         expect((await browser.setRole(unverified.id, { role: 'root' })).status).toBe(422)
         expect((await browser.setRole(unverified.id, { role: 'user', extra: 1 })).status).toBe(422)
+    })
+
+    // feat-247 (Р10): a staff role is given only to an account with a second factor.
+    it('answers 409 mfa_not_enrolled for a staff role to an account without MFA', async () => {
+        const { browser } = await signedIn('admin')
+        const target = await insertUser('user', 'no factor')
+
+        const refused = await browser.setRole(target.id, { role: 'support_operator' })
+        expect(refused.status).toBe(409)
+        expect(refused.body).toMatchObject({
+            status: 'error',
+            code: 'conflict',
+            reason: 'mfa_not_enrolled',
+        })
+        expect(await roleOf(target.id)).toBe('user')
+
+        await enrollTestTotp(target.id)
+        expect((await browser.setRole(target.id, { role: 'support_operator' })).status).toBe(200)
+        expect(await roleOf(target.id)).toBe('support_operator')
     })
 
     it('refuses an actor lowered since its session began (the guard reads the role per request)', async () => {

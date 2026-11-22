@@ -66,6 +66,7 @@ const INPUTS = {
     'auth.mfa.totp.disabled': { mfaDisabled: false },
     'auth.mfa.recovery_codes.regenerated': { count: 10 },
     'auth.mfa.recovery_code.used': { remaining: 9 },
+    'auth.mfa.reset': { reason: 'lost phone', mfaRemoved: true },
     'auth.passkey.added': { recoveryCodesIssued: false },
     'auth.passkey.removed': { mfaDisabled: false },
     'auth.passkey.counter_regressed': { method: 'login' },
@@ -90,8 +91,8 @@ const withSecrets = (value) => {
     return out
 }
 
-test('the catalog: 16 actions of the first release, user.role.changed, 5 MFA actions (feat-245), 3 passkey actions (feat-246)', () => {
-    assert.equal(AUDIT_ACTION_NAMES.length, 25)
+test('the catalog: 16 actions of the first release, user.role.changed, 5 MFA actions (feat-245), 3 passkey actions (feat-246), the MFA reset (feat-247)', () => {
+    assert.equal(AUDIT_ACTION_NAMES.length, 26)
     assert.ok(AUDIT_ACTION_NAMES.includes('user.role.changed'))
     assert.deepEqual(Object.keys(INPUTS).sort(), [...AUDIT_ACTION_NAMES].sort())
 })

@@ -2,6 +2,7 @@ import { roleHasPermission, type Role } from 'shared/access'
 
 import { userRoleService } from '#app/services/user/user-role-service.js'
 import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-service.js'
+import { staffSessionMeets } from '#app/services/auth/mfa/staff-policy.js'
 import { broadcastService } from '#app/services/communication/broadcast-service.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import websocketConfig from '#config/websocket.js'
@@ -27,6 +28,10 @@ import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 //   they leave it and `ws_can:` refuses them until a read succeeds. The server never joins the
 //   channel again itself: it sends `admin_channel_ready` and the client, which knows whether the
 //   admin area is still open, subscribes.
+// - feat-247 (docs/plan/passkeys-mfa-plan.md, Р11): the channel also needs a session that meets
+//   the staff MFA rule now. A connection whose proof went stale leaves it and is told
+//   (`access_changed` with `reason`); its deadline timer normally does that first, this pass is
+//   the safety net.
 
 /** Ids per query of the periodic pass. */
 export const ROLE_SYNC_BATCH = 1000
@@ -90,10 +95,13 @@ const apply = (userId: string, role: Role, covered: ReadonlySet<string> | undefi
             if (userData === null) continue
             const previous = userData.role
             const wasPaused = userData.adminChannelPaused === true
-            const mayUseChannel = roleHasPermission(role, 'users.read')
+            const mayReadUsers = roleHasPermission(role, 'users.read')
+            const sessionMeets = staffSessionMeets(userData.auth, Date.now())
+            const mayUseChannel = mayReadUsers && sessionMeets
             userData.role = role
             userData.adminChannelPaused = false
-            if (!mayUseChannel) adminWsChannelService.unsubscribeCurrentAdminConnection(ws)
+            if (!mayReadUsers) adminWsChannelService.unsubscribeCurrentAdminConnection(ws)
+            else if (!sessionMeets) adminWsChannelService.expireStaffAccess(ws)
             if (previous !== role) {
                 changed += 1
                 broadcastService.broadcastMessageToUserConnection(userId, uuid, 'access_changed', {

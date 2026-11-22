@@ -21,6 +21,12 @@ vi.mock('#app/services/user/user-role-service.js', () => ({
 }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#config/websocket.js', () => ({ default: { roleRecheckIntervalMs: 30_000 } }))
+const mfaConfig = vi.hoisted(() => ({
+    requiredForStaff: false,
+    staffFactor: 'any' as const,
+    staffFactorMaxAgeHours: 12,
+}))
+vi.mock('#config/mfa.js', () => ({ default: mfaConfig }))
 
 interface FakeUserData {
     role: Role | undefined
@@ -84,6 +90,7 @@ beforeEach(() => {
 })
 afterEach(() => {
     wsRoleSync.stop()
+    mfaConfig.requiredForStaff = false
 })
 
 describe('wsRoleSync.refreshUsers', () => {
@@ -290,5 +297,50 @@ describe('wsRoleSync.refreshAll', () => {
 
         expect(byUuid.get('a')?.role).toBe('user_admin')
         expect(sent.map((message) => message.event)).toEqual(['access_changed'])
+    })
+})
+
+// feat-247 (docs/plan/passkeys-mfa-plan.md, Р11): mayUseChannel also needs the staff MFA rule.
+describe('wsRoleSync with the staff MFA rule (feat-247)', () => {
+    it('a staff connection whose session does not meet the rule leaves the channel and is told once', async () => {
+        mfaConfig.requiredForStaff = true
+        const admin = connect('1', 'a', 'admin', true)
+        Object.assign(admin.userData, { userId: '1', uuid: 'a' })
+        rolesInDb([['1', 'admin']])
+
+        await wsRoleSync.refreshUsers(['1'])
+        await wsRoleSync.refreshUsers(['1'])
+
+        expect(admin.unsubscribe).toHaveBeenCalledWith('admin')
+        expect(admin.userData.isAdminChannelSubscribed).toBe(false)
+        expect(sent).toEqual([
+            {
+                uuid: 'a',
+                event: 'access_changed',
+                payload: { role: 'admin', reason: 'mfa_session_required' },
+                role: 'admin',
+            },
+        ])
+    })
+
+    it('a paused channel is not offered again while the session does not meet the rule', async () => {
+        mfaConfig.requiredForStaff = true
+        const admin = connect('1', 'a', 'admin')
+        Object.assign(admin.userData, { userId: '1', uuid: 'a', adminChannelPaused: true })
+        rolesInDb([['1', 'admin']])
+
+        await wsRoleSync.refreshUsers(['1'])
+
+        expect(sent.map(({ event }) => event)).toEqual(['access_changed'])
+    })
+
+    it('with the rule off a subscribed staff connection stays', async () => {
+        const admin = connect('1', 'a', 'admin', true)
+        rolesInDb([['1', 'admin']])
+
+        await wsRoleSync.refreshUsers(['1'])
+
+        expect(admin.unsubscribe).not.toHaveBeenCalled()
+        expect(sent).toEqual([])
     })
 })

@@ -37,6 +37,8 @@ export interface NotificationParamsMap {
     // feat-246 (Р14).
     'security.passkey_added': NoNotificationParams
     'security.passkey_removed': NoNotificationParams
+    // feat-247 (Р13).
+    'security.mfa_reset': NoNotificationParams
     'support.reply': NoNotificationParams
 }
 
@@ -67,6 +69,7 @@ export const NOTIFICATION_KINDS = {
     'security.recovery_code_used': { category: 'security', link: ACCOUNT_PAGE },
     'security.passkey_added': { category: 'security', link: ACCOUNT_PAGE },
     'security.passkey_removed': { category: 'security', link: ACCOUNT_PAGE },
+    'security.mfa_reset': { category: 'security', link: ACCOUNT_PAGE },
     'support.reply': { category: 'support', link: '/support' },
 } as const satisfies Record<NotificationKind, NotificationKindDefinition>
 

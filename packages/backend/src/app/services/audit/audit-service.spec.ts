@@ -106,6 +106,7 @@ function worstInputs(str: (n: number) => string): { [A in AuditAction]: AuditInp
         'auth.mfa.totp.disabled': { mfaDisabled: true },
         'auth.mfa.recovery_codes.regenerated': { count: Number.MAX_SAFE_INTEGER },
         'auth.mfa.recovery_code.used': { remaining: Number.MAX_SAFE_INTEGER },
+        'auth.mfa.reset': { reason: 'x'.repeat(200), mfaRemoved: true },
         'auth.passkey.added': { recoveryCodesIssued: true },
         'auth.passkey.removed': { mfaDisabled: true },
         'auth.passkey.counter_regressed': { method: 'reauth' },

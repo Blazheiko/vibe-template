@@ -43,6 +43,7 @@ import {
 import { clientKey } from '#vendor/utils/rate-limit/rate-limit-store.js'
 import { findWsRoute } from '#vendor/utils/routing/ws-route-lookup.js'
 import type { Validator } from '#vendor/contracts/validator.js'
+import type { SessionAuthState } from 'shared/mfa'
 import { ValidationError } from '#app/validate/errors/validation-error.js'
 import { MalformedBodyError } from '#vendor/utils/network/errors/malformed-body-error.js'
 import {
@@ -60,7 +61,14 @@ import { ab2str } from '#vendor/utils/helpers/ab2str.js'
 // ---------------------------------------------------------------------------
 
 export type UpgradeTokenResult =
-    | { kind: 'ok'; sessionId: string; userId: string; userToken: string }
+    | {
+          kind: 'ok'
+          sessionId: string
+          userId: string
+          userToken: string
+          /** feat-247 (Р11): the auth state of the session, copied into the connection. */
+          auth?: SessionAuthState
+      }
     | { kind: 'missing' }
     | { kind: 'unavailable' }
 
@@ -741,6 +749,7 @@ const upgradeConnection = async (
             userAgent,
             appType,
             connectionSlot: admission.slot,
+            ...(dataAccess.auth !== undefined ? { auth: dataAccess.auth } : {}),
         }
         try {
             res.upgrade(userData, secWebsocketKey, token, secWebsocketExtensions, context)

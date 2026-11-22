@@ -6,13 +6,14 @@ import type { Redis } from 'ioredis'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import { enrollTestTotp, type TestTotp } from '../../../test-support/test-totp.js'
 import {
     cleanupTestRedis,
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
 import { testAdminActor } from '../../../test-support/audit-actor.js'
-import type { Role } from 'shared/access'
+import { isStaffRole, type Role } from 'shared/access'
 
 // feat-235 T6 and T6a: GET /admin/audit-events over HTTP with the real route table, session_web,
 // csrf_guard, auth_guard and admin_guard, against a real PostgreSQL and Redis: who may read the
@@ -160,11 +161,15 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
     class Browser {
         cookie: string | undefined
         csrf: string | undefined
+        /** Other cookies, such as the second-step ticket of a sign-in with MFA (feat-247). */
+        others = new Map<string, string>()
 
         async request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Reply> {
             const headers: Record<string, string> = { origin: ORIGIN }
+            const cookies = [...this.others].map(([name, value]) => `${name}=${value}`)
             if (this.cookie !== undefined)
-                headers['cookie'] = `${sessionConfig.cookieName}=${this.cookie}`
+                cookies.push(`${sessionConfig.cookieName}=${this.cookie}`)
+            if (cookies.length > 0) headers['cookie'] = cookies.join('; ')
             if (this.csrf !== undefined) headers['x-csrf-token'] = this.csrf
             if (body !== undefined) headers['content-type'] = 'application/json'
             const response = await fetch(`http://127.0.0.1:${String(PORT)}/api${path}`, {
@@ -174,6 +179,14 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             })
             const text = await response.text()
             const parsed = (text === '' ? {} : JSON.parse(text)) as Record<string, unknown>
+            for (const line of response.headers.getSetCookie()) {
+                const [pair = ''] = line.split(';')
+                const name = pair.slice(0, pair.indexOf('='))
+                if (name === sessionConfig.cookieName) continue
+                const value = pair.slice(pair.indexOf('=') + 1)
+                if (value === '') this.others.delete(name)
+                else this.others.set(name, value)
+            }
             const setCookie = response.headers
                 .getSetCookie()
                 .find((value) => value.startsWith(`${sessionConfig.cookieName}=`))
@@ -187,13 +200,21 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             return { status: response.status, body: parsed }
         }
 
-        async signIn(email: string): Promise<void> {
+        /** Signs in; with `totp`, answers the second step (a staff account has MFA, feat-247). */
+        async signIn(email: string, totp?: TestTotp): Promise<void> {
             await this.request('GET', '/main/init')
             const reply = await this.request('POST', '/auth/login', {
                 identifier: email,
                 password: PASSWORD,
             })
             expect(reply.status).toBe(200)
+            if (reply.body['status'] !== 'mfa_required') return
+            if (totp === undefined) throw new Error('the account asks for a second factor')
+            const verified = await this.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: totp.code(),
+            })
+            expect(verified.status).toBe(200)
         }
 
         list(query: string): Promise<Reply> {
@@ -213,8 +234,10 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
 
     const signedIn = async (role: Role, name?: string) => {
         const user = await insertUser(role, name)
+        // feat-247 (Р10): a staff role uses its permissions with a second factor (on by default).
+        const totp = isStaffRole(role) ? await enrollTestTotp(user.id) : undefined
         const browser = new Browser()
-        await browser.signIn(user.email ?? '')
+        await browser.signIn(user.email ?? '', totp)
         return { user, browser }
     }
 

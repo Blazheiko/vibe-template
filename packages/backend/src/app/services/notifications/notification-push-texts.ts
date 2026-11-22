@@ -86,6 +86,11 @@ export const NOTIFICATION_PUSH_TEXTS: PushTexts = {
         body: 'A passkey was added to your account. If it was not you, secure your account.',
         tag: 'security-mfa',
     }),
+    'security.mfa_reset': () => ({
+        title: 'Two-step sign-in was reset',
+        body: 'An administrator removed the second factors of your account. Sign in and set them up again.',
+        tag: 'security-mfa',
+    }),
     'security.passkey_removed': () => ({
         title: 'Passkey removed',
         body: 'A passkey was removed from your account. If it was not you, secure your account.',

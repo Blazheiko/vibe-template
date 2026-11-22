@@ -3,6 +3,7 @@ import { useDateFormat } from '@/composables/useDateFormat'
 import { computed, onMounted, ref } from 'vue'
 import { ROLES, type Role } from 'shared/access'
 import RoleChangeDialog from '@/components/admin/RoleChangeDialog.vue'
+import MfaResetDialog from '@/components/admin/MfaResetDialog.vue'
 import { useUserStore } from '@/stores/user'
 import { ROLE_LABELS, canChangeRoleOf } from '@/views/admin/role-options'
 import AdminFilterBar from '@/components/admin/AdminFilterBar.vue'
@@ -39,6 +40,15 @@ const roleFilter = ref<Role | ''>('')
 const canOpenDetail = computed(() => userStore.can('users.sensitive.read'))
 const canReadLog = computed(() => userStore.can('audit.read.account'))
 const roleTarget = ref<AdminUserListItem | null>(null)
+// feat-247 (Р13): the MFA reset of another account needs users.mfa.reset (the admin's).
+const mfaTarget = ref<AdminUserListItem | null>(null)
+const notice = ref<string | null>(null)
+const mayResetMfa = (user: AdminUserListItem): boolean =>
+    userStore.can('users.mfa.reset') && userStore.user?.id !== user.id
+function onMfaReset(message: string) {
+    mfaTarget.value = null
+    notice.value = message
+}
 
 function mayChangeRole(user: AdminUserListItem): boolean {
     const me = userStore.user
@@ -212,6 +222,15 @@ onMounted(() => {
                             >
                                 Change role
                             </button>
+                            <button
+                                v-if="mayResetMfa(user)"
+                                type="button"
+                                class="role-btn"
+                                data-testid="mfa-reset"
+                                @click.stop="mfaTarget = user"
+                            >
+                                Reset 2FA
+                            </button>
                             <!-- feat-235: what was done to this account, in the audit log. -->
                             <router-link
                                 v-if="canReadLog"
@@ -230,6 +249,14 @@ onMounted(() => {
             </table>
 
             <div v-if="error !== null" class="admin-users__error">{{ error }}</div>
+            <div
+                v-if="notice !== null"
+                class="admin-users__notice"
+                role="status"
+                data-testid="mfa-reset-notice"
+            >
+                {{ notice }}
+            </div>
 
             <div v-if="hasMore" class="load-more-wrap">
                 <button
@@ -257,6 +284,12 @@ onMounted(() => {
             :target="roleTarget"
             @close="roleTarget = null"
             @changed="onRoleChanged"
+        />
+        <MfaResetDialog
+            :open="mfaTarget !== null"
+            :target="mfaTarget"
+            @close="mfaTarget = null"
+            @done="onMfaReset"
         />
     </div>
 </template>
@@ -324,6 +357,11 @@ onMounted(() => {
 .admin-users__loading,
 .admin-users__error {
     color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.admin-users__notice {
+    margin: 8px 0;
     font-size: 0.875rem;
 }
 

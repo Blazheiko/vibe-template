@@ -29,6 +29,7 @@
         "llm:purge-prompts": "tsx src/scripts/purge-llm-prompts.ts",
         "job:run": "tsx src/scripts/run-job.ts",
         "user:set-role": "tsx src/scripts/user-set-role.ts",
+        "user:mfa-reset": "tsx src/scripts/user-mfa-reset.ts",
         "bench:response": "tsx src/scripts/bench-response-check.ts",
         "test": "vitest run",
         "test:coverage": "vitest run --coverage --coverage.reporter=text-summary --coverage.reporter=html",

@@ -1,5 +1,9 @@
 import { Result } from 'better-result'
-import { canAssignRole, roleHasPermission, type Role } from 'shared/access'
+import { canAssignRole, isStaffRole, roleHasPermission, type Role } from 'shared/access'
+import { MFA_REASONS } from 'shared/mfa'
+import type { SessionAuthState } from 'shared/mfa'
+
+import mfaConfig from '#config/mfa.js'
 
 import { userRepository } from '#app/repositories/index.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
@@ -18,6 +22,9 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
+import { loadMfaAccount, loadMfaFactors } from '#app/services/auth/mfa/mfa-account.js'
+import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
+import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 
 /** A role change by an admin (HTTP, feat-241) or by the user:set-role CLI (feat-240). */
 export type RoleAssignmentActor = UserAuditActor | SystemAuditActor
@@ -39,17 +46,40 @@ const denied = (): AppError => forbidden('Access denied')
  *
  * Rules: the target exists (404); a user actor has users.roles.assign, does not change its own
  * role and may give and take only roles of its delegation policy (403); the same role is a no-op;
- * a staff role needs a verified email (409 identity_unverified); the last admin keeps the role
- * (409 last_admin). The change and its audit event commit together.
+ * a staff role needs a verified email (409 identity_unverified) and, while MFA_REQUIRED_FOR_STAFF is
+ * on, a second factor of the staff policy (409 mfa_not_enrolled, feat-247 Р10); the last admin
+ * keeps the role (409 last_admin). The change and its audit event commit together.
  */
 export const roleAssignmentService = {
     async assign(input: {
         actor: RoleAssignmentActor
         targetUserId: bigint
         role: Role
+        /**
+         * feat-247 (row 9 of Р3): the auth state of the session of a user actor. A role change
+         * needs a fresh proof of the actor (a factor of the staff policy once the actor has MFA).
+         * The CLI (a system actor) has no session and is not asked.
+         */
+        sessionAuth?: SessionAuthState | undefined
+        now?: number
     }): Promise<AppResult<RoleAssignment>> {
-        const { actor, targetUserId, role } = input
+        const { targetUserId, role } = input
+        let { actor } = input
         let events: RecordedAuditEvent[] = []
+
+        if (actor.kind === 'user') {
+            const actorUser = await userRepository.findById(actor.userId)
+            if (actorUser === undefined) return Result.err(denied())
+            const proof = requireProof({
+                action: 'role.assign',
+                account: await loadMfaAccount(actorUser),
+                auth: input.sessionAuth,
+                staffStepUpProofs: staffPolicy().stepUpProofs,
+                ...(input.now !== undefined ? { now: input.now } : {}),
+            })
+            if (Result.isError(proof)) return Result.err(proof.error)
+            actor = { ...actor, proof: auditProofOf(input.sessionAuth) }
+        }
 
         const result = await withTransactionResult(
             async (tx): Promise<AppResult<RoleAssignment>> => {
@@ -80,6 +110,24 @@ export const roleAssignmentService = {
                     return Result.err(
                         conflict('A staff role needs a verified email', 'identity_unverified'),
                     )
+                }
+                if (mfaConfig.requiredForStaff && isStaffRole(role)) {
+                    // feat-247 (Р10): no staff account exists without MFA, so a first factor
+                    // cannot be set up by someone who knows only the password. Read under the
+                    // same transaction; lowering to a role without permissions is always allowed.
+                    const factors = await loadMfaFactors(targetUserId, tx)
+                    const enrolled = staffPolicy().enrolled({
+                        totp: factors.totp !== undefined,
+                        passkeys: factors.passkeys,
+                    })
+                    if (!enrolled) {
+                        return Result.err(
+                            conflict(
+                                'A staff role needs a second factor: the account sets one up first',
+                                MFA_REASONS.mfaNotEnrolled,
+                            ),
+                        )
+                    }
                 }
                 if (
                     target.role === 'admin' &&

@@ -8,8 +8,10 @@ import type { AdminAuditEventsResponse } from '../responses/admin-audit-events-c
 import type {
     AdminUserListResponse,
     SetUserRoleResponse,
+    ResetUserMfaResponse,
 } from '../responses/admin-user-controller.js'
 import type { SetUserRoleInputSchema } from '../schemas/admin/set-user-role.js'
+import type { ResetUserMfaInputSchema } from '../schemas/admin/reset-user-mfa.js'
 import type {
     AdminOnlineUserDetailResponse,
     AdminOnlineUserListResponse,
@@ -54,6 +56,12 @@ export const adminContracts = {
         'patch',
         '/admin/users/:id/role',
     ),
+    // feat-247 (Р13): reset the second factors of another account (users.mfa.reset).
+    resetUserMfa: contract<
+        typeof ResetUserMfaInputSchema.inferIn,
+        undefined,
+        ResetUserMfaResponse
+    >()('post', '/admin/users/:id/mfa/reset'),
     /** feat-235 (Р7): the audit log, newest first, by the filters of the query. */
     auditEvents: contract<undefined, AdminAuditEventsQueryInput, AdminAuditEventsResponse>()(
         'get',

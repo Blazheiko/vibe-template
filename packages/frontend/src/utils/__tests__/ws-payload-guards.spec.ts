@@ -116,6 +116,7 @@ const specific: Record<BroadcastEventName, [string, unknown][]> = {
         ['an unknown role', { role: 'root' }],
         ['no role', {}],
         ['an extra key', { role: 'admin', permissions: [] }],
+        ['an unknown reason', { role: 'admin', reason: 'bored' }],
     ],
     admin_channel_ready: [['any data', { ready: true }]],
 }
@@ -149,5 +150,14 @@ describe('broadcast payload guards', () => {
 
     it.each(BROADCAST_EVENT_NAMES)('%s accepts its valid payload', (event) => {
         expect(guards[event](valid[event])).toBe(true)
+    })
+})
+
+// feat-247: a staff session that lost the admin channel to its MFA freshness is told why.
+describe('access_changed with the MFA reason (feat-247)', () => {
+    it('is accepted', () => {
+        expect(
+            broadcastGuards.access_changed({ role: 'admin', reason: 'mfa_session_required' }),
+        ).toBe(true)
     })
 })

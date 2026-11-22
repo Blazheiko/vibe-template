@@ -15,6 +15,7 @@ export default function globalSetup(): void {
             SEED_USER_PASSWORD: USER_1.password,
             SEED_ADMIN_EMAIL: USER_2.email,
             SEED_ADMIN_PASSWORD: USER_2.password,
+            SEED_ADMIN_TOTP_SECRET: USER_2.totpSecret,
         },
     })
 }
