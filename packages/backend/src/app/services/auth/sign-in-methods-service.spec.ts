@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     userRepository: { findById: vi.fn(), lockById: vi.fn() },
     oauthAccountRepository: { findByUserId: vi.fn(), deleteByIdForUser: vi.fn() },
     totpFactorRepository: { findByUserId: vi.fn() },
+    webauthnCredentialRepository: { countByUserId: vi.fn(() => Promise.resolve(0)) },
     recoveryCodeRepository: { countUnused: vi.fn() },
     security: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -28,6 +29,7 @@ vi.mock('#app/repositories/index.js', () => ({
     userRepository: mocks.userRepository,
     oauthAccountRepository: mocks.oauthAccountRepository,
     totpFactorRepository: mocks.totpFactorRepository,
+    webauthnCredentialRepository: mocks.webauthnCredentialRepository,
     recoveryCodeRepository: mocks.recoveryCodeRepository,
     withTransaction: (fn: (tx: unknown) => unknown) => fn(TX),
 }))

@@ -76,6 +76,10 @@ vi.mock('#app/services/audit/audit-service.js', () => ({
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     // feat-245: these accounts have no second factor.
+    webauthnCredentialRepository: {
+        countByUserId: () => Promise.resolve(0),
+        deleteAllOfUser: () => Promise.resolve(0),
+    },
     totpFactorRepository: {
         findByUserId: () => Promise.resolve(undefined),
         deleteByUserId: () => Promise.resolve(false),

@@ -81,6 +81,16 @@ export const NOTIFICATION_PUSH_TEXTS: PushTexts = {
         body: 'Someone signed in with a recovery code and other sessions were signed out. If it was not you, act now.',
         tag: 'security-mfa',
     }),
+    'security.passkey_added': () => ({
+        title: 'Passkey added',
+        body: 'A passkey was added to your account. If it was not you, secure your account.',
+        tag: 'security-mfa',
+    }),
+    'security.passkey_removed': () => ({
+        title: 'Passkey removed',
+        body: 'A passkey was removed from your account. If it was not you, secure your account.',
+        tag: 'security-mfa',
+    }),
     'support.reply': () => ({
         title: 'Support replied',
         body: 'A new answer is waiting in the support chat.',

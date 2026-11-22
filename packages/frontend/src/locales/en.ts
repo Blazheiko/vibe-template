@@ -479,6 +479,9 @@ export default {
             auth_mfa_totp_disabled: 'Authenticator app turned off',
             auth_mfa_recovery_codes_regenerated: 'New recovery codes created',
             auth_mfa_recovery_code_used: 'Signed in with a recovery code',
+            auth_passkey_added: 'Passkey added',
+            auth_passkey_removed: 'Passkey removed',
+            auth_passkey_counter_regressed: 'Passkey sign-in counter went back',
             kb_article_created: 'Article created',
             kb_article_updated: 'Article updated',
             kb_article_deleted: 'Article deleted',
@@ -565,6 +568,14 @@ export default {
             security_recovery_code_used: {
                 title: 'Recovery code used',
                 body: 'Someone signed in with a recovery code and other sessions were signed out. If it was not you, act now.',
+            },
+            security_passkey_added: {
+                title: 'Passkey added',
+                body: 'A passkey was added to your account. If it was not you, secure your account.',
+            },
+            security_passkey_removed: {
+                title: 'Passkey removed',
+                body: 'A passkey was removed from your account. If it was not you, secure your account.',
             },
             support_reply: {
                 title: 'Support replied',

@@ -485,6 +485,9 @@ const uk: typeof en = {
             auth_mfa_totp_disabled: 'Застосунок-автентифікатор вимкнено',
             auth_mfa_recovery_codes_regenerated: 'Створено нові коди відновлення',
             auth_mfa_recovery_code_used: 'Вхід з кодом відновлення',
+            auth_passkey_added: 'Додано passkey',
+            auth_passkey_removed: 'Видалено passkey',
+            auth_passkey_counter_regressed: 'Лічильник passkey пішов назад',
             kb_article_created: 'Статтю створено',
             kb_article_updated: 'Статтю змінено',
             kb_article_deleted: 'Статтю видалено',
@@ -569,6 +572,14 @@ const uk: typeof en = {
             security_recovery_code_used: {
                 title: 'Використано код відновлення',
                 body: 'Хтось увійшов з кодом відновлення, інші сесії завершено. Якщо це були не ви, дійте негайно.',
+            },
+            security_passkey_added: {
+                title: 'Додано passkey',
+                body: 'До акаунта додано passkey. Якщо це були не ви, захистіть акаунт.',
+            },
+            security_passkey_removed: {
+                title: 'Видалено passkey',
+                body: 'З акаунта видалено passkey. Якщо це були не ви, захистіть акаунт.',
             },
             support_reply: {
                 title: 'Відповідь підтримки',

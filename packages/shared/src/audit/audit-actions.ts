@@ -225,6 +225,34 @@ export const AUDIT_ACTIONS = {
         changes: null,
         metadata: { proof: true, remaining: true },
     },
+    // feat-246 (Р6, Р14): passkeys. A first passkey is the first factor (row 1 of Р3), so it may
+    // be proven by the password or a recent sign-in; the later ones by a second factor.
+    'auth.passkey.added': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user'],
+        proofs: ['password', 'totp', 'passkey', 'recovery_code', 'recent_sign_in'],
+        changes: null,
+        metadata: { proof: true, recoveryCodesIssued: true },
+    },
+    'auth.passkey.removed': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['user'],
+        proofs: ['totp', 'passkey', 'recovery_code'],
+        changes: null,
+        metadata: { proof: true, mfaDisabled: true },
+    },
+    // A signature whose counter did not grow: a cloned key is possible. The key stays; the owner
+    // decides (Р6). `method` is the ceremony: login, mfa or reauth.
+    'auth.passkey.counter_regressed': {
+        group: 'sign-in',
+        targetType: 'user',
+        actorKinds: ['proof_holder'],
+        proofs: ['passkey'],
+        changes: null,
+        metadata: { proof: true, method: true },
+    },
     'kb.article.created': {
         group: 'kb',
         targetType: 'kb_article',
@@ -363,6 +391,9 @@ export interface AuditInputs {
     'auth.mfa.totp.disabled': { mfaDisabled: boolean }
     'auth.mfa.recovery_codes.regenerated': { count: number }
     'auth.mfa.recovery_code.used': { remaining: number }
+    'auth.passkey.added': { recoveryCodesIssued: boolean }
+    'auth.passkey.removed': { mfaDisabled: boolean }
+    'auth.passkey.counter_regressed': { method: 'login' | 'mfa' | 'reauth' }
     'kb.article.created': { after: AuditArticleFields; content: AuditContentFingerprint }
     'kb.article.updated': {
         before: AuditArticleFields
@@ -510,6 +541,18 @@ const PROJECTIONS: Projections = {
     'auth.mfa.recovery_code.used': (input) => ({
         changes: null,
         metadata: { remaining: input.remaining },
+    }),
+    'auth.passkey.added': (input) => ({
+        changes: null,
+        metadata: { recoveryCodesIssued: input.recoveryCodesIssued },
+    }),
+    'auth.passkey.removed': (input) => ({
+        changes: null,
+        metadata: { mfaDisabled: input.mfaDisabled },
+    }),
+    'auth.passkey.counter_regressed': (input) => ({
+        changes: null,
+        metadata: { method: input.method },
     }),
     'kb.article.created': (input) => ({
         changes: articleChanges(null, input.after, input.content),

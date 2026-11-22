@@ -1,7 +1,11 @@
 import type { ProofAccount } from 'shared/mfa'
 
 import { authConfig } from '#config/auth.js'
-import { recoveryCodeRepository, totpFactorRepository } from '#app/repositories/index.js'
+import {
+    recoveryCodeRepository,
+    totpFactorRepository,
+    webauthnCredentialRepository,
+} from '#app/repositories/index.js'
 import type { DbExecutor, TotpFactorRow } from '#app/repositories/index.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р1, Р12): what the MFA flows need to know about an
@@ -19,7 +23,7 @@ export interface MfaAccount {
     userId: bigint
     hasPassword: boolean
     totp: TotpFactorRow | undefined
-    /** feat-246 counts the passkeys; none before it. */
+    /** The number of passkeys (feat-246). */
     passkeys: number
     recoveryCodesRemaining: number
     /**
@@ -42,15 +46,16 @@ export async function loadMfaAccount(
     user: MfaUserFields,
     executor?: DbExecutor,
 ): Promise<MfaAccount> {
-    const [totp, recoveryCodesRemaining] = await Promise.all([
+    const [totp, passkeys, recoveryCodesRemaining] = await Promise.all([
         totpFactorRepository.findByUserId(user.id, executor),
+        webauthnCredentialRepository.countByUserId(user.id, executor),
         recoveryCodeRepository.countUnused(user.id, executor),
     ])
     return {
         userId: user.id,
         hasPassword: hasPasswordOf(user),
         totp,
-        passkeys: 0,
+        passkeys,
         recoveryCodesRemaining,
         hasRecoveryContact: hasRecoveryContactOf(user),
     }
@@ -61,8 +66,11 @@ export async function loadMfaFactors(
     userId: bigint,
     executor?: DbExecutor,
 ): Promise<{ totp: TotpFactorRow | undefined; passkeys: number }> {
-    const totp = await totpFactorRepository.findByUserId(userId, executor)
-    return { totp, passkeys: 0 }
+    const [totp, passkeys] = await Promise.all([
+        totpFactorRepository.findByUserId(userId, executor),
+        webauthnCredentialRepository.countByUserId(userId, executor),
+    ])
+    return { totp, passkeys }
 }
 
 export const proofAccountOf = (account: MfaAccount): ProofAccount => ({

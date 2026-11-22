@@ -24,6 +24,9 @@ export const NotificationParamsSchemas = {
     'security.mfa_disabled': None,
     'security.recovery_codes_regenerated': None,
     'security.recovery_code_used': None,
+    // feat-246 (Р14).
+    'security.passkey_added': None,
+    'security.passkey_removed': None,
     'support.reply': None,
 } as const satisfies Record<NotificationKind, unknown>
 

@@ -2,7 +2,13 @@ import type { UserRow } from '#app/repositories/index.js'
 
 export type SerializedUser = Omit<
     UserRow,
-    'id' | 'password' | 'sessionToken' | 'createdAt' | 'updatedAt' | 'emailVerifiedAt'
+    | 'id'
+    | 'password'
+    | 'sessionToken'
+    | 'webauthnUserHandle'
+    | 'createdAt'
+    | 'updatedAt'
+    | 'emailVerifiedAt'
 > & {
     id: string
     created_at: string | null
@@ -19,6 +25,8 @@ export const userTransformer = {
             id,
             password: _password,
             sessionToken: _sessionToken,
+            // feat-246: the WebAuthn user.id is told to the authenticator only, never to the page.
+            webauthnUserHandle: _webauthnUserHandle,
             createdAt,
             updatedAt,
             emailVerifiedAt,

@@ -106,6 +106,9 @@ function worstInputs(str: (n: number) => string): { [A in AuditAction]: AuditInp
         'auth.mfa.totp.disabled': { mfaDisabled: true },
         'auth.mfa.recovery_codes.regenerated': { count: Number.MAX_SAFE_INTEGER },
         'auth.mfa.recovery_code.used': { remaining: Number.MAX_SAFE_INTEGER },
+        'auth.passkey.added': { recoveryCodesIssued: true },
+        'auth.passkey.removed': { mfaDisabled: true },
+        'auth.passkey.counter_regressed': { method: 'reauth' },
         'kb.article.created': { after: articleBefore, content: worstFingerprint },
         'kb.article.updated': {
             before: articleBefore,

@@ -24,8 +24,8 @@ const isError = (result) => result !== null && typeof result === 'object' && 'su
 // feat-236 (Р2): every kind of the catalog has a category, a params schema and a link that may
 // be stored.
 test('every kind has a known category, a params schema and a storable link', () => {
-    // 9 of feat-236, 4 security kinds of feat-245 (MFA).
-    assert.equal(NOTIFICATION_KIND_NAMES.length, 13)
+    // 9 of feat-236, 4 security kinds of feat-245 (MFA), 2 of feat-246 (passkeys).
+    assert.equal(NOTIFICATION_KIND_NAMES.length, 15)
     for (const kind of NOTIFICATION_KIND_NAMES) {
         const definition = NOTIFICATION_KINDS[kind]
         assert.ok(NOTIFICATION_CATEGORIES.includes(definition.category), kind)

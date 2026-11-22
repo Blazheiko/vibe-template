@@ -83,6 +83,9 @@ export const users = pgTable(
         phone: varchar('phone', { length: 20 }).unique(),
         avatar: varchar('avatar', { length: 500 }),
         role: userRoleEnum('role').notNull().default('user'),
+        // feat-246 (Р6): the WebAuthn user.id of the account's passkeys: 32 random bytes made with
+        // the first passkey, never the user id or the email. NULL until then.
+        webauthnUserHandle: bytea('webauthn_user_handle').unique(),
         sessionToken: varchar('session_token', { length: 24 })
             .notNull()
             .unique()
@@ -659,5 +662,36 @@ export const mfaRecoveryCodes = pgTable(
         index('mfa_recovery_codes_unused_idx')
             .on(table.userId)
             .where(sql`${table.usedAt} IS NULL`),
+    ],
+)
+
+// feat-246 (docs/plan/passkeys-mfa-plan.md, Р6, Р9): the passkeys of a user. `enrollment_id` makes
+// the registration idempotent (a repeat after the commit returns the same key); `sign_count` only
+// grows (0 means the authenticator keeps no counter).
+export const webauthnCredentials = pgTable(
+    'webauthn_credentials',
+    {
+        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        userId: bigint('user_id', { mode: 'bigint' })
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        credentialId: bytea('credential_id').notNull(),
+        publicKey: bytea('public_key').notNull(),
+        signCount: bigint('sign_count', { mode: 'bigint' })
+            .notNull()
+            .default(sql`0`),
+        transports: text('transports').array(),
+        aaguid: uuid('aaguid'),
+        deviceType: varchar('device_type', { length: 16 }).notNull(),
+        backedUp: boolean('backed_up').notNull(),
+        name: varchar('name', { length: 64 }).notNull(),
+        enrollmentId: varchar('enrollment_id', { length: 32 }).notNull(),
+        createdAt: timestamp('created_at').notNull().defaultNow(),
+        lastUsedAt: timestamp('last_used_at'),
+    },
+    (table) => [
+        unique('webauthn_credentials_credential_id_unique').on(table.credentialId),
+        unique('webauthn_credentials_enrollment_id_unique').on(table.enrollmentId),
+        index('webauthn_credentials_user_id_idx').on(table.userId),
     ],
 )

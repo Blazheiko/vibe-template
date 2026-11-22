@@ -43,6 +43,7 @@
         "@aws-sdk/s3-request-presigner": "3.1161.0",
         "@mistralai/mistralai": "3.4.0",
         "@sentry/node": "11.10.0",
+        "@simplewebauthn/server": "14.1.0",
         "ai": "7.0.159",
         "arctic": "3.7.0",
         "better-result": "3.0.1",

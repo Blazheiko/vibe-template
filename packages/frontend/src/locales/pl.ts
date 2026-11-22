@@ -490,6 +490,9 @@ const pl: typeof en = {
             auth_mfa_totp_disabled: 'Wyłączono aplikację uwierzytelniającą',
             auth_mfa_recovery_codes_regenerated: 'Utworzono nowe kody odzyskiwania',
             auth_mfa_recovery_code_used: 'Logowanie kodem odzyskiwania',
+            auth_passkey_added: 'Dodano klucz dostępu',
+            auth_passkey_removed: 'Usunięto klucz dostępu',
+            auth_passkey_counter_regressed: 'Licznik klucza dostępu cofnął się',
             kb_article_created: 'Utworzono artykuł',
             kb_article_updated: 'Zmieniono artykuł',
             kb_article_deleted: 'Usunięto artykuł',
@@ -574,6 +577,14 @@ const pl: typeof en = {
             security_recovery_code_used: {
                 title: 'Użyto kodu odzyskiwania',
                 body: 'Ktoś zalogował się kodem odzyskiwania, inne sesje zostały zakończone. Jeśli to nie Ty, działaj natychmiast.',
+            },
+            security_passkey_added: {
+                title: 'Dodano klucz dostępu',
+                body: 'Do konta dodano klucz dostępu (passkey). Jeśli to nie Ty, zabezpiecz konto.',
+            },
+            security_passkey_removed: {
+                title: 'Usunięto klucz dostępu',
+                body: 'Z konta usunięto klucz dostępu (passkey). Jeśli to nie Ty, zabezpiecz konto.',
             },
             support_reply: {
                 title: 'Odpowiedź pomocy',
