@@ -100,6 +100,11 @@ function worstInputs(str: (n: number) => string): { [A in AuditAction]: AuditInp
         'auth.sign_in_method.unlinked': { method: 'oauth', provider: str(PROVIDER_MAX) },
         'auth.sessions.revoked_all': {},
         'auth.sessions.revoked_others': {},
+        'auth.mfa.totp.enabled': { recoveryCodesIssued: true },
+        'auth.mfa.totp.replaced': {},
+        'auth.mfa.totp.disabled': { mfaDisabled: true },
+        'auth.mfa.recovery_codes.regenerated': { count: Number.MAX_SAFE_INTEGER },
+        'auth.mfa.recovery_code.used': { remaining: Number.MAX_SAFE_INTEGER },
         'kb.article.created': { after: articleBefore, content: worstFingerprint },
         'kb.article.updated': {
             before: articleBefore,

@@ -56,6 +56,11 @@ const INPUTS = {
     'auth.sign_in_method.unlinked': { method: 'oauth', provider: 'google' },
     'auth.sessions.revoked_all': {},
     'auth.sessions.revoked_others': {},
+    'auth.mfa.totp.enabled': { recoveryCodesIssued: true },
+    'auth.mfa.totp.replaced': {},
+    'auth.mfa.totp.disabled': { mfaDisabled: false },
+    'auth.mfa.recovery_codes.regenerated': { count: 10 },
+    'auth.mfa.recovery_code.used': { remaining: 9 },
     'kb.article.created': { after: article('New'), content: fingerprint },
     'kb.article.updated': { before: article('Old'), after: article('New'), content: fingerprint },
     'kb.article.deleted': { before: article('Old'), content: fingerprint },
@@ -77,8 +82,8 @@ const withSecrets = (value) => {
     return out
 }
 
-test('the catalog has the 16 actions of the first release and user.role.changed (feat-240)', () => {
-    assert.equal(AUDIT_ACTION_NAMES.length, 17)
+test('the catalog: 16 actions of the first release, user.role.changed, 5 MFA actions (feat-245)', () => {
+    assert.equal(AUDIT_ACTION_NAMES.length, 22)
     assert.ok(AUDIT_ACTION_NAMES.includes('user.role.changed'))
     assert.deepEqual(Object.keys(INPUTS).sort(), [...AUDIT_ACTION_NAMES].sort())
 })
@@ -98,7 +103,13 @@ test('every action has a group, a target type and at least one actor kind', () =
 
 for (const action of AUDIT_ACTION_NAMES) {
     test(`${action}: the projection keeps no field it does not name`, () => {
-        const actor = ACTORS[AUDIT_ACTIONS[action].actorKinds[0]]
+        const definition = AUDIT_ACTIONS[action]
+        const kind = definition.actorKinds[0]
+        // An action that requires a proof gets the first one it lists.
+        const actor =
+            definition.proofs.length > 0 && kind !== 'system'
+                ? { ...ACTORS[kind], proof: definition.proofs[0] }
+                : ACTORS[kind]
         const payload = buildAuditPayload(action, withSecrets(INPUTS[action]), actor)
         const json = JSON.stringify(payload)
         const keys = []
