@@ -4,6 +4,7 @@ import { Result } from 'better-result'
 import { asc, eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { SessionAuthState } from 'shared/mfa'
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { auditLogLines, testAdminActor, testRequest } from '../../../test-support/audit-actor.js'
 
@@ -77,6 +78,14 @@ vi.mock('arctic', () => {
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex')
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
+// feat-245 (rows 6 and 8 of Р3): the session proved the password through POST /auth/reauth.
+const freshPassword = (): SessionAuthState => ({
+    v: 1,
+    amr: ['pwd'],
+    aal: 1,
+    authenticatedAt: new Date().toISOString(),
+    verified: { pwd: new Date().toISOString() },
+})
 const PASSWORD = 'current-password-123'
 const CODE = '123456'
 
@@ -363,11 +372,12 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         const change = (user: { id: bigint; sessionToken: string }, actor = testAdminActor()) =>
             authService.changePassword(
                 user.id,
-                { currentPassword: PASSWORD, newPassword: 'another-password-456' },
+                { newPassword: 'another-password-456' },
                 user.sessionToken,
                 sessionStillStored,
                 undefined,
                 actor,
+                freshPassword(),
             )
 
         it('writes one auth.password.changed', async () => {
@@ -382,7 +392,8 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
                 action: 'auth.password.changed',
                 actorKind: 'user',
                 actorUserId: user.id,
-                metadata: { sessionsRevoked: 'others' },
+                // feat-245 (Р14): the proof that allowed the change.
+                metadata: { sessionsRevoked: 'others', proof: 'password' },
             })
             expect(JSON.stringify(events[0]?.metadata)).not.toContain('another-password')
         })
@@ -769,9 +780,8 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         ) =>
             signInMethodsService.unlink(user.id, {
                 linkId,
-                currentPassword: PASSWORD,
                 presentedSessionToken: user.sessionToken,
-                sessionCreatedAt: new Date().toISOString(),
+                sessionAuth: freshPassword(),
                 sessionStored: sessionStillStored,
                 actor,
             })
@@ -787,7 +797,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
                 action: 'auth.sign_in_method.unlinked',
                 actorKind: 'user',
                 actorUserId: user.id,
-                metadata: { method: 'oauth', provider: 'github' },
+                metadata: { method: 'oauth', provider: 'github', proof: 'password' },
             })
         })
 

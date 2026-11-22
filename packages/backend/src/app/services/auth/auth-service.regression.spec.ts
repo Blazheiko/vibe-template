@@ -1,6 +1,16 @@
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
+
+// feat-245 (Р3): the auth state of the request's session, with the marks it carries.
+const sessionAuthWith = (verified: SessionAuthState['verified']): SessionAuthState => ({
+    v: 1,
+    amr: ['oauth'],
+    aal: 1,
+    authenticatedAt: new Date().toISOString(),
+    verified,
+})
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -58,6 +68,9 @@ vi.mock('#app/repositories/index.js', () => ({
     smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn().mockResolvedValue(0) },
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
     userRepository: userRepositoryMock,
+    // feat-245: these accounts have no second factor.
+    totpFactorRepository: { findByUserId: () => Promise.resolve(undefined) },
+    recoveryCodeRepository: { countUnused: () => Promise.resolve(0) },
 }))
 
 vi.mock('#app/transformers/index.js', () => ({
@@ -349,7 +362,8 @@ describe('authService legacy regressions', () => {
         })
     })
 
-    it('requires the current password before changing an existing password', async () => {
+    // feat-245 (row 6 of Р3): the password in the form is gone; the session must have proved it.
+    it('requires a fresh password proof before changing an existing password', async () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 7n,
             password: 'stored-password-hash',
@@ -364,13 +378,15 @@ describe('authService legacy regressions', () => {
             sessionStillStored,
             undefined,
             testUserActor(),
+            undefined,
         )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
-            expect(result.error).toEqual({
-                _tag: 'BadRequest',
-                message: 'Current password is required',
+            expect(result.error).toMatchObject({
+                _tag: 'Forbidden',
+                reason: 'reauth_required',
+                details: { kind: 'reauth_required', proofs: ['password'] },
             })
         }
         expect(hashPasswordMock).not.toHaveBeenCalled()
@@ -378,7 +394,8 @@ describe('authService legacy regressions', () => {
         expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
     })
 
-    it('allows setting a first password for accounts that do not already have one', async () => {
+    // feat-245: an account without a password proves the owner by a recent OAuth sign-in.
+    it('allows setting a first password after a recent OAuth sign-in', async () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 9n,
             password: null,
@@ -398,6 +415,7 @@ describe('authService legacy regressions', () => {
             sessionStillStored,
             undefined,
             testUserActor(),
+            sessionAuthWith({ oauth: new Date().toISOString() }),
         )
 
         expect(hashPasswordMock).toHaveBeenCalledWith('new-password-123')
@@ -413,6 +431,41 @@ describe('authService legacy regressions', () => {
         if (Result.isOk(result)) {
             expect(result.value).toEqual({ status: 'success', sessionToken: expect.any(String) })
         }
+    })
+
+    it.each([
+        ['no OAuth mark', {}],
+        [
+            'an OAuth sign-in older than 600 s',
+            { oauth: new Date(Date.now() - 601_000).toISOString() },
+        ],
+    ])('refuses a first password with %s: sign in again', async (_name, verified) => {
+        userRepositoryMock.findById.mockResolvedValue({
+            id: 9n,
+            password: null,
+            sessionToken: 'previous-session-token',
+        })
+
+        const { authService } = await loadAuthService()
+        const result = await authService.changePassword(
+            9n,
+            { newPassword: 'new-password-123' },
+            'previous-session-token',
+            sessionStillStored,
+            undefined,
+            testUserActor(),
+            sessionAuthWith(verified),
+        )
+
+        expect(Result.isError(result)).toBe(true)
+        if (Result.isError(result)) {
+            expect(result.error).toMatchObject({
+                _tag: 'Forbidden',
+                reason: 'sign_in_again_required',
+            })
+        }
+        expect(hashPasswordMock).not.toHaveBeenCalled()
+        expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
     })
 })
 
@@ -435,74 +488,6 @@ describe('auth throttle fail-closed (email registration)', () => {
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)
         expect(userRepositoryMock.findByEmail).not.toHaveBeenCalled()
         expect(userRepositoryMock.create).not.toHaveBeenCalled()
-    })
-})
-
-describe('change password throttle', () => {
-    it.each([
-        [
-            'the budget is spent',
-            () => consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 11 }),
-        ],
-        ['Redis fails', () => consumeAuthThrottleMock.mockRejectedValue(new Error('redis down'))],
-    ])('rejects without checking the current password when %s', async (_name, arrange) => {
-        arrange()
-        userRepositoryMock.findById.mockResolvedValue({
-            id: 7n,
-            password: 'stored-password-hash',
-            sessionToken: 'previous-session-token',
-        })
-        const { authService } = await loadAuthService()
-        // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
-        const refused = await authService
-            .changePassword(
-                7n,
-                { currentPassword: 'guess', newPassword: 'new-password-123' },
-                'previous-session-token',
-                sessionStillStored,
-                undefined,
-                testUserActor(),
-            )
-            .then(
-                (result) => Result.isError(result),
-                () => true,
-            )
-        expect(refused).toBe(true)
-        expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
-            expect.objectContaining({
-                scope: 'change_password_user',
-                limit: 10,
-                windowMs: 900_000,
-            }),
-            '7',
-        )
-        expect(validatePasswordMock).not.toHaveBeenCalled()
-        expect(userRepositoryMock.update).not.toHaveBeenCalled()
-    })
-
-    it('resets the budget after a successful change', async () => {
-        userRepositoryMock.findById.mockResolvedValue({
-            id: 7n,
-            password: 'stored-password-hash',
-            sessionToken: 'previous-session-token',
-        })
-        validatePasswordMock.mockResolvedValue(true)
-        hashPasswordMock.mockResolvedValue('new-password-hash')
-        userRepositoryMock.changePasswordIfCurrent.mockResolvedValue({ id: 7n })
-        const { authService } = await loadAuthService()
-        const result = await authService.changePassword(
-            7n,
-            { currentPassword: 'secret123', newPassword: 'new-password-123' },
-            'previous-session-token',
-            sessionStillStored,
-            undefined,
-            testUserActor(),
-        )
-        expect(Result.isOk(result)).toBe(true)
-        expect(resetAuthThrottleMock).toHaveBeenCalledWith(
-            expect.objectContaining({ scope: 'change_password_user' }),
-            '7',
-        )
     })
 })
 

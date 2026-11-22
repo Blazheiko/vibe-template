@@ -20,7 +20,6 @@ import {
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import { withProof, withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
-import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import {
     badRequest,
     conflict,
@@ -41,6 +40,8 @@ import {
     type MfaAccount,
 } from './mfa-account.js'
 import { mfaSecretBox, totpSecretOwner } from './mfa-secret-box.js'
+import { retirePendingContactLinks } from './contact-links.js'
+import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
 import { auditProofOf, requireProof } from './require-proof.js'
 import {
@@ -267,6 +268,7 @@ export const totpService = {
                     },
                     tx,
                 )
+                await retirePendingContactLinks(userId, tx)
                 const codes =
                     account.recoveryCodesRemaining === 0
                         ? await recoveryCodes.issue(userId, tx)
@@ -296,7 +298,9 @@ export const totpService = {
             throw err
         }
         auditService.logCommitted(actor.logger, outcome.events)
-        if (outcome.events.length > 0) userNotificationService.security(userId, 'mfa_enabled')
+        if (outcome.events.length > 0) {
+            announceMfaChange(userId, outcome.replaced ? 'replaced' : 'enabled')
+        }
 
         const finished = await finishInSession(session, outcome.factor, now)
         if (Result.isError(finished)) return Result.err(finished.error)
@@ -372,6 +376,7 @@ export const totpService = {
                 return Result.err(notFound('TotpFactor', 'Two-step sign-in is not on'))
             }
             await totpFactorRepository.deleteByUserId(userId, tx)
+            await retirePendingContactLinks(userId, tx)
             const mfaDisabled = current.passkeys === 0
             if (mfaDisabled) await recoveryCodes.removeAll(userId, tx)
             const stamp = await auditService.stamp(tx)
@@ -387,7 +392,7 @@ export const totpService = {
         })
         if (Result.isError(result)) return Result.err(result.error)
         auditService.logCommitted(actor.logger, result.value.events)
-        userNotificationService.security(userId, 'mfa_disabled')
+        announceMfaChange(userId, 'disabled')
         return Result.ok({ mfaDisabled: result.value.mfaDisabled })
     },
 
@@ -433,7 +438,7 @@ export const totpService = {
         })
         if (Result.isError(result)) return Result.err(result.error)
         auditService.logCommitted(actor.logger, result.value.events)
-        userNotificationService.security(userId, 'recovery_codes_regenerated')
+        announceMfaChange(userId, 'recovery_codes_regenerated')
         return Result.ok({ recoveryCodes: result.value.codes })
     },
 }

@@ -94,6 +94,18 @@ export default [
                 allowInRecovery: true,
             }),
             defineRoute({
+                contract: authContracts.reauthOptions,
+                handler: AuthController.reauthOptions.bind(AuthController),
+                description: 'Step-up proofs this account can give (feat-245)',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
+                contract: authContracts.reauth,
+                handler: AuthController.reauth.bind(AuthController),
+                description: 'Step-up of this session by a password or a TOTP code (feat-245)',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
                 contract: authContracts.recoveryFinish,
                 handler: AuthController.recoveryFinish.bind(AuthController),
                 description: 'End a recovery session (feat-245); sign in again afterwards',

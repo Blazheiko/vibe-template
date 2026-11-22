@@ -1,9 +1,8 @@
 import { type } from '@arktype/type'
-import { PasswordSchema } from './password.js'
 
+// feat-245 (row 7 of Р3): allowed by a fresh step-up proof of the session.
 export const LinkEmailStartInputSchema = type({
     email: 'string.email & string <= 255',
-    currentPassword: PasswordSchema,
     '+': 'reject',
 })
 

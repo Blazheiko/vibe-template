@@ -7,6 +7,7 @@ import {
     LinkPhoneStartInputSchema,
     LoginInputSchema,
     MfaVerifyInputSchema,
+    ReauthInputSchema,
     RegisterEmailInputSchema,
     RegisterPhoneCompleteInputSchema,
     RegisterPhoneConfirmInputSchema,
@@ -25,6 +26,11 @@ export const authSchemas = contractSchemas(authContracts, {
     login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
     mfaVerify: { body: MfaVerifyInputSchema, response: ResponseSchemas.LoginResponseSchema },
     recoveryFinish: { body: EmptyFormInputSchema, response: ResponseSchemas.LogoutResponseSchema },
+    reauthOptions: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.ReauthOptionsResponseSchema,
+    },
+    reauth: { body: ReauthInputSchema, response: ResponseSchemas.ReauthResponseSchema },
     registerEmail: {
         body: RegisterEmailInputSchema,
         response: ResponseSchemas.RegisterEmailResponseSchema,

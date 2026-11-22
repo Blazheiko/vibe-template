@@ -1,3 +1,4 @@
+import { stepUpService } from '#app/services/auth/mfa/step-up.js'
 import { completeSecondStep } from '#app/services/auth/mfa/mfa-sign-in.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
@@ -10,6 +11,8 @@ import type {
     ChangePasswordResponse,
     ForgotPasswordResponse,
     LoginResponse,
+    ReauthOptionsResponse,
+    ReauthResponse,
     LogoutResponse,
     LogoutAllResponse,
     ResetPasswordResponse,
@@ -31,6 +34,7 @@ import type {
     ForgotPasswordInput,
     LoginInput,
     MfaVerifyInput,
+    ReauthInput,
     ResetPasswordInput,
     VerifyEmailInput,
     RegisterEmailInput,
@@ -184,6 +188,7 @@ export default {
             () => context.session.isStored(),
             sessionId,
             auditActorFrom(context),
+            context.session.sessionInfo?.data.auth,
         )
         if (Result.isError(result)) {
             return mapControllerError(context, result.error)
@@ -321,6 +326,7 @@ export default {
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneLink'),
             presentedSessionToken: context.auth.getPresentedUserToken(),
             sessionStored: () => context.session.isStored(),
+            sessionAuth: context.session.sessionInfo?.data.auth,
         })
         return respond(context, result)
     },
@@ -362,7 +368,40 @@ export default {
             payload,
             context.auth.getPresentedUserToken(),
             () => context.session.isStored(),
+            context.session.sessionInfo?.data.auth,
         )
         return respond(context, result)
+    },
+
+    /** feat-245 (Р3): the step-up proofs this account can give. */
+    async reauthOptions(context: HttpContext<EmptyFormInput>): Promise<ReauthOptionsResponse> {
+        const userId = requireUserId(context)
+        if (userId === null) return mapControllerError(context, unauthorized())
+        const result = await stepUpService.options({
+            userId,
+            session: context.session,
+            presentedSessionToken: context.auth.getPresentedUserToken(),
+        })
+        return respond(context, result, (value) => ({ status: 'success' as const, ...value }))
+    },
+
+    /** feat-245 (Р3): a step-up of this session. */
+    async reauth(context: HttpContext<ReauthInput>): Promise<ReauthResponse> {
+        const userId = requireUserId(context)
+        if (userId === null) return mapControllerError(context, unauthorized())
+        const payload = getTypedPayload(context)
+        const result = await stepUpService.reauth(
+            {
+                userId,
+                session: context.session,
+                presentedSessionToken: context.auth.getPresentedUserToken(),
+            },
+            {
+                proof: payload.proof,
+                ...(payload.password !== undefined ? { password: payload.password } : {}),
+                ...(payload.code !== undefined ? { code: payload.code } : {}),
+            },
+        )
+        return respond(context, result, () => ({ status: 'success' as const }))
     },
 }

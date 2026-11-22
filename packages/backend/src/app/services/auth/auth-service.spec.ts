@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
@@ -25,6 +26,15 @@ const SESSION_REVOKED_ERROR = {
     _tag: 'Unauthorized',
     message: 'Session has been revoked',
     reason: 'session_revoked',
+}
+
+// feat-245 (rows 6–7 of Р3): the session proved the password through POST /auth/reauth just now.
+const FRESH_PASSWORD: SessionAuthState = {
+    v: 1,
+    amr: ['pwd'],
+    aal: 1,
+    authenticatedAt: new Date().toISOString(),
+    verified: { pwd: new Date().toISOString() },
 }
 
 const authMock = {
@@ -111,6 +121,9 @@ vi.mock('#app/repositories/index.js', () => ({
     smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn().mockResolvedValue(0) },
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
     userRepository: userRepositoryMock,
+    // feat-245: these accounts have no second factor.
+    totpFactorRepository: { findByUserId: () => Promise.resolve(undefined) },
+    recoveryCodeRepository: { countUnused: () => Promise.resolve(0) },
 }))
 
 vi.mock('#app/transformers/index.js', () => ({
@@ -517,21 +530,22 @@ describe('authService', () => {
             9n,
             {
                 email: 'phone-only@example.com',
-                currentPassword: 'secret123',
             },
             PRESENTED_TOKEN,
             sessionStillStored,
+            FRESH_PASSWORD,
         )
 
         expect(Result.isOk(result)).toBe(true)
-        // feat-109: the first counter is the per-user password budget, then the link counters.
+        // feat-245: the fresh proof is checked without a counter (the password budget is spent
+        // by POST /auth/reauth); the link counters follow.
+        expect(consumeAuthThrottleMock).not.toHaveBeenCalledWith(
+            expect.objectContaining({ scope: 'change_password_user' }),
+            expect.anything(),
+        )
+        expect(validatePasswordMock).not.toHaveBeenCalled()
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
             1,
-            expect.objectContaining({ scope: 'change_password_user' }),
-            '9',
-        )
-        expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
-            2,
             expect.objectContaining({
                 scope: 'link_email_target',
                 limit: 3,
@@ -540,7 +554,7 @@ describe('authService', () => {
             'phone-only@example.com',
         )
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
-            3,
+            2,
             expect.objectContaining({
                 scope: 'link_email_user',
                 limit: 3,
@@ -549,7 +563,7 @@ describe('authService', () => {
             '9',
         )
         expect(consumeAuthThrottleMock).toHaveBeenNthCalledWith(
-            4,
+            3,
             expect.objectContaining({
                 scope: 'link_email_user_cooldown',
                 limit: 1,
@@ -572,20 +586,18 @@ describe('authService', () => {
             sessionToken: PRESENTED_TOKEN,
         })
         validatePasswordMock.mockResolvedValue(true)
-        // feat-109: the password budget passes first; the target counter is the one spent.
-        consumeAuthThrottleMock
-            .mockResolvedValueOnce({ allowed: true, count: 1 })
-            .mockResolvedValueOnce({ allowed: false, count: 4 })
+        // The target counter is the first one, and the one spent.
+        consumeAuthThrottleMock.mockResolvedValueOnce({ allowed: false, count: 4 })
 
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
             9n,
             {
                 email: 'victim@example.com',
-                currentPassword: 'secret123',
             },
             PRESENTED_TOKEN,
             sessionStillStored,
+            FRESH_PASSWORD,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -616,10 +628,10 @@ describe('authService', () => {
             9n,
             {
                 email: 'victim@example.com',
-                currentPassword: 'secret123',
             },
             PRESENTED_TOKEN,
             sessionStillStored,
+            FRESH_PASSWORD,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1240,11 +1252,12 @@ describe('authService', () => {
             const { authService } = await loadAuthService()
             const result = await authService.changePassword(
                 7n,
-                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                { newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
                 'asking-session',
                 testUserActor(),
+                FRESH_PASSWORD,
             )
 
             expect(Result.isOk(result)).toBe(true)
@@ -1269,11 +1282,12 @@ describe('authService', () => {
             const { authService } = await loadAuthService()
             await authService.changePassword(
                 7n,
-                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                { newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
                 undefined,
                 testUserActor(),
+                FRESH_PASSWORD,
             )
 
             expect(closeUserConnections).toHaveBeenCalledWith('7', {})
@@ -1292,11 +1306,12 @@ describe('authService', () => {
             const { authService } = await loadAuthService()
             const result = await authService.changePassword(
                 7n,
-                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                { newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
                 undefined,
                 testUserActor(),
+                FRESH_PASSWORD,
             )
 
             expect(Result.isError(result)).toBe(true)
@@ -1339,11 +1354,12 @@ describe('authService', () => {
         const { authService } = await loadAuthService()
         const result = await authService.changePassword(
             7n,
-            { currentPassword: 'old-secret', newPassword: 'new-secret' },
+            { newPassword: 'new-secret' },
             PRESENTED_TOKEN,
             sessionStillStored,
             undefined,
             testUserActor(),
+            FRESH_PASSWORD,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1371,16 +1387,20 @@ describe('authService', () => {
             destroyAllSessionsMock.mockResolvedValue({ deleted: 2, complete: true })
         }
         // Not a default parameter: `change(undefined)` must present no token.
-        const change = async (...args: [presented?: string | undefined]) => {
+        const change = async (
+            ...args: [presented?: string | undefined, sessionAuth?: SessionAuthState | undefined]
+        ) => {
             const presented = args.length === 0 ? 'previous-session-token' : args[0]
+            const sessionAuth = args.length < 2 ? FRESH_PASSWORD : args[1]
             const { authService } = await loadAuthService()
             return authService.changePassword(
                 7n,
-                { currentPassword: 'old-secret', newPassword: 'new-secret' },
+                { newPassword: 'new-secret' },
                 presented,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
+                sessionAuth,
             )
         }
 
@@ -1448,15 +1468,48 @@ describe('authService', () => {
             expect(securityNotice).not.toHaveBeenCalled()
         })
 
-        it('does not touch the password or sessions when the current password is wrong', async () => {
+        // feat-245 (row 6 of Р3): the password in the form is gone; a fresh proof of the session
+        // allows the change, and its absence answers 403 reauth_required.
+        it.each([
+            ['no auth state (a session from before feat-245)', undefined],
+            ['no password mark', { ...FRESH_PASSWORD, verified: {} }],
+            [
+                'a password mark older than the window',
+                {
+                    ...FRESH_PASSWORD,
+                    verified: { pwd: new Date(Date.now() - 301_000).toISOString() },
+                },
+            ],
+        ])(
+            'answers 403 reauth_required for %s and touches neither the password nor the sessions',
+            async (_name, sessionAuth) => {
+                arrangeUser()
+
+                const result = await change('previous-session-token', sessionAuth)
+
+                expect(Result.isError(result)).toBe(true)
+                if (Result.isError(result)) {
+                    expect(result.error).toMatchObject({
+                        _tag: 'Forbidden',
+                        reason: 'reauth_required',
+                        details: { kind: 'reauth_required', proofs: ['password'] },
+                    })
+                }
+                expect(hashPasswordMock).not.toHaveBeenCalled()
+                expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
+                expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+                expect(securityNotice).not.toHaveBeenCalled()
+            },
+        )
+
+        it('spends no password budget: the step-up of POST /auth/reauth did', async () => {
             arrangeUser()
-            validatePasswordMock.mockResolvedValue(false)
 
             const result = await change()
 
-            expect(Result.isError(result)).toBe(true)
-            expect(userRepositoryMock.changePasswordIfCurrent).not.toHaveBeenCalled()
-            expect(destroyAllSessionsMock).not.toHaveBeenCalled()
+            expect(Result.isOk(result)).toBe(true)
+            expect(validatePasswordMock).not.toHaveBeenCalled()
+            expect(consumeAuthThrottleMock).not.toHaveBeenCalled()
         })
 
         // feat-096: the row read may already be the one a claim or a logout-all left.
@@ -1536,9 +1589,10 @@ describe('startEmailLink session guard (feat-096)', () => {
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
             9n,
-            { email: 'phone-only@example.com', currentPassword: 'secret123' },
+            { email: 'phone-only@example.com' },
             presented,
             sessionStillStored,
+            FRESH_PASSWORD,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -1567,10 +1621,10 @@ describe('auth throttle fail-closed (email link)', () => {
                 9n,
                 {
                     email: 'phone-only@example.com',
-                    currentPassword: 'secret123',
                 },
                 PRESENTED_TOKEN,
                 sessionStillStored,
+                FRESH_PASSWORD,
             ),
         ).rejects.toThrow()
         expect(consumeAuthThrottleMock).toHaveBeenCalledTimes(1)

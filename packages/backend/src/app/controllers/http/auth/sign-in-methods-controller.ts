@@ -27,9 +27,8 @@ export default {
         const payload = getTypedPayload(context)
         const result = await signInMethodsService.unlink(userId, {
             linkId: BigInt(payload.id),
-            currentPassword: payload.currentPassword,
             presentedSessionToken: context.auth.getPresentedUserToken(),
-            sessionCreatedAt: context.session.sessionInfo?.createdAt,
+            sessionAuth: context.session.sessionInfo?.data.auth,
             sessionStored: () => context.session.isStored(),
             actor: auditActorFrom(context),
         })

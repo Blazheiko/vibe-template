@@ -1,25 +1,21 @@
-import { validatePassword } from 'metautil'
 import { Result } from 'better-result'
 
-import { throttlePolicies } from '#config/throttle-policies.js'
 import { oauthAccountRepository, userRepository, withTransaction } from '#app/repositories/index.js'
-import type { OAuthAccountRow } from '#app/repositories/index.js'
-import { resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
-import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import type { DbExecutor, OAuthAccountRow, UserRow } from '#app/repositories/index.js'
+import { withProof, withRole } from '#app/services/audit/audit-actor.js'
 import { mailSafeDisplayName } from '#app/services/notifications/email-templates.js'
 import { asNotificationProvider } from '#app/services/notifications/notification-provider.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import { conflict, notFound, sessionRevoked, type AppResult } from '#app/services/shared/errors.js'
+import type { SessionAuthState } from 'shared/mfa'
 import {
-    badRequest,
-    conflict,
-    forbidden,
-    notFound,
-    rateLimited,
-    sessionRevoked,
-    type AppResult,
-} from '#app/services/shared/errors.js'
+    hasRecoveryContactOf,
+    loadMfaAccount,
+    loadMfaFactors,
+} from '#app/services/auth/mfa/mfa-account.js'
+import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
 import logger from '#vendor/utils/logger.js'
-import { withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
+import type { UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 
 // feat-199 (security review 2026-11-12, M-2): an identity of an OAuth provider linked to an
@@ -27,17 +23,11 @@ import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit
 // links nor remove one. Here: the list, and the removal of a link.
 //
 // Removing a link is a change of the ways into the account, so it asks who is asking again:
-// - an account with a password gives the current one (the budget of change-password);
-// - an account without one must have signed in within RECENT_SIGN_IN_MS. A sign-in always
-//   creates a new session, so the age of the session is the age of the sign-in.
-// And it never removes the last way in: an account without a password keeps at least one link.
+// feat-245 (row 8 of Р3) through the proof matrix: a fresh password (POST /auth/reauth) without
+// MFA, a fresh second factor with it, a recent OAuth sign-in of an account without a password.
+// And it never removes the last way in (signInCapability, under the user's row lock).
 
-export const RECENT_SIGN_IN_MS = 10 * 60_000
-
-export const RECENT_SIGN_IN_REQUIRED = 'recent_sign_in_required'
 export const LAST_SIGN_IN_METHOD = 'last_sign_in_method'
-export const CURRENT_PASSWORD_REQUIRED = 'current_password_required'
-export const CURRENT_PASSWORD_INCORRECT = 'current_password_incorrect'
 
 export interface SignInMethod {
     id: string
@@ -57,22 +47,32 @@ const serialize = (link: OAuthAccountRow): SignInMethod => ({
     linkedAt: link.createdAt.toISOString(),
 })
 
-const isRecent = (sessionCreatedAt: string | undefined, now: number): boolean => {
-    if (sessionCreatedAt === undefined) return false
-    const createdAt = Date.parse(sessionCreatedAt)
-    if (Number.isNaN(createdAt)) return false
-    const age = now - createdAt
-    // A session from the future is not a recent sign-in.
-    return age >= 0 && age <= RECENT_SIGN_IN_MS
+/**
+ * feat-245 (Р12): what the account can still do, counted under the user's row lock. A change that
+ * would leave no way to sign in is refused; `meetsStaffMfa` is checked by the staff rules of
+ * feat-247, `hasRecoveryContact` by the passkey rules of feat-246.
+ */
+export async function signInCapability(
+    user: UserRow,
+    tx: DbExecutor,
+    change: { removeOAuthLinkId?: bigint } = {},
+): Promise<{ canSignIn: boolean; meetsStaffMfa: boolean; hasRecoveryContact: boolean }> {
+    const links = await oauthAccountRepository.findByUserId(user.id, tx)
+    const remainingLinks = links.filter((link) => link.id !== change.removeOAuthLinkId).length
+    const factors = await loadMfaFactors(user.id, tx)
+    return {
+        canSignIn: hasPassword(user) || remainingLinks > 0 || factors.passkeys > 0,
+        meetsStaffMfa: factors.totp !== undefined || factors.passkeys > 0,
+        hasRecoveryContact: hasRecoveryContactOf(user),
+    }
 }
 
 export interface UnlinkRequest {
     linkId: bigint
-    currentPassword: string | undefined
     /** `Auth.getPresentedUserToken()`: refused once the session was revoked meanwhile. */
     presentedSessionToken: string | undefined
-    /** `createdAt` of the request's session: the moment of its sign-in. */
-    sessionCreatedAt: string | undefined
+    /** feat-245 (row 8 of Р3): how the session was authenticated. */
+    sessionAuth: SessionAuthState | undefined
     /** Asked right before the link is removed: a logout in another tab ends the request. */
     sessionStored: () => Promise<boolean>
     now?: number
@@ -106,37 +106,13 @@ export const signInMethodsService = {
             return Result.err(sessionRevoked())
         }
 
-        const passwordHash = user.password
-        if (passwordHash !== null && passwordHash !== '') {
-            if (request.currentPassword === undefined || request.currentPassword === '') {
-                return Result.err(
-                    badRequest('Current password is required', CURRENT_PASSWORD_REQUIRED),
-                )
-            }
-            // Spent before the check, from the per-user budget of change-password: a stolen
-            // session cannot guess the password here (feat-109).
-            const throttle = await enforceThrottle(
-                throttlePolicies.changePasswordUser,
-                String(userId),
-                rateLimited('Too many password attempts. Please try again later.'),
-            )
-            if (Result.isError(throttle)) return Result.err(throttle.error)
-
-            if (!(await validatePassword(request.currentPassword, passwordHash))) {
-                return Result.err(
-                    badRequest('Current password is incorrect', CURRENT_PASSWORD_INCORRECT),
-                )
-            }
-            try {
-                await resetAuthThrottle(throttlePolicies.changePasswordUser, String(userId))
-            } catch (err: unknown) {
-                logger.warn({ err }, 'Password re-check throttle reset failed')
-            }
-        } else if (!isRecent(request.sessionCreatedAt, request.now ?? Date.now())) {
-            return Result.err(
-                forbidden('Sign in again to remove a sign-in method', RECENT_SIGN_IN_REQUIRED),
-            )
-        }
+        const proof = requireProof({
+            action: 'oauth.unlink',
+            account: await loadMfaAccount(user),
+            auth: request.sessionAuth,
+            ...(request.now !== undefined ? { now: request.now } : {}),
+        })
+        if (Result.isError(proof)) return Result.err(proof.error)
 
         if (!(await request.sessionStored())) return Result.err(sessionRevoked())
 
@@ -156,7 +132,8 @@ export const signInMethodsService = {
                 if (link === undefined) {
                     return Result.err(notFound('SignInMethod', 'Sign-in method not found'))
                 }
-                if (!hasPassword(locked) && links.length === 1) {
+                const after = await signInCapability(locked, tx, { removeOAuthLinkId: link.id })
+                if (!after.canSignIn) {
                     return Result.err(
                         conflict(
                             'Set a password before removing your last sign-in method',
@@ -170,7 +147,8 @@ export const signInMethodsService = {
                 }
                 // feat-235: committed with the removal.
                 const stamp = await auditService.stamp(tx)
-                const events = await auditService.record(tx, stamp, withRole(actor, locked.role), [
+                const proven = withProof(actor, auditProofOf(request.sessionAuth))
+                const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
                     {
                         action: 'auth.sign_in_method.unlinked',
                         targetId: String(userId),

@@ -19,7 +19,6 @@ import { authSuccessPayload, type AuthSuccessPayload } from '#app/services/auth/
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
-import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import {
     completionPending,
     rateLimited,
@@ -41,6 +40,7 @@ import {
     type PendingOAuthLink,
     type ReserveOutcome,
 } from './mfa-ticket.js'
+import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
 import { totpService } from './totp-service.js'
 
@@ -543,7 +543,7 @@ async function activate(
         // At most one attempt per completion: only the request that activated sends these.
         notifyNewSignIn(userId, plan.device, { mail: true })
         if (plan.auth.recovery !== undefined) {
-            userNotificationService.security(userId, 'recovery_code_used')
+            announceMfaChange(userId, 'recovery_code_used')
             void endOtherSessions(ticket, plan)
         }
     }

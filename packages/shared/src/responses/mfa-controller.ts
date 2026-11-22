@@ -53,3 +53,13 @@ export const RecoveryCodesResponseSchema = type.or(
     CanonicalErrorResponseSchema,
 )
 export type RecoveryCodesResponse = WithCanonicalError<typeof RecoveryCodesResponseSchema.infer>
+
+/** feat-245 (Р3): the step-up proofs this session can give now. */
+export const ReauthOptionsResponseSchema = type.or(
+    { status: "'success'", proofs: ProofMethodSchema.array() },
+    CanonicalErrorResponseSchema,
+)
+export type ReauthOptionsResponse = WithCanonicalError<typeof ReauthOptionsResponseSchema.infer>
+
+export const ReauthResponseSchema = type.or({ status: "'success'" }, CanonicalErrorResponseSchema)
+export type ReauthResponse = WithCanonicalError<typeof ReauthResponseSchema.infer>

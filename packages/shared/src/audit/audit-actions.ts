@@ -109,9 +109,9 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
-        proofs: [],
+        proofs: ['password', 'totp', 'passkey', 'recent_sign_in'],
         changes: null,
-        metadata: { sessionsRevoked: true },
+        metadata: { proof: true, sessionsRevoked: true },
     },
     'auth.password.reset': {
         group: 'sign-in',
@@ -164,9 +164,9 @@ export const AUDIT_ACTIONS = {
         group: 'sign-in',
         targetType: 'user',
         actorKinds: ['user'],
-        proofs: [],
+        proofs: ['password', 'totp', 'passkey', 'recent_sign_in'],
         changes: null,
-        metadata: { method: true, provider: true },
+        metadata: { method: true, provider: true, proof: true },
     },
     'auth.sessions.revoked_all': {
         group: 'sessions',

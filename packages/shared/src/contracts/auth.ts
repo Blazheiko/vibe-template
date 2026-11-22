@@ -15,6 +15,8 @@ import type { LinkEmailStartInputSchema } from '../schemas/auth/link-email-start
 import type { UnlinkSignInMethodInputSchema } from '../schemas/auth/unlink-sign-in-method.js'
 import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
 import type { MfaVerifyInputSchema } from '../schemas/mfa/mfa-verify.js'
+import type { ReauthInputSchema } from '../schemas/mfa/reauth.js'
+import type { ReauthOptionsResponse, ReauthResponse } from '../responses/mfa-controller.js'
 import type {
     ChangePasswordResponse,
     ForgotPasswordResponse,
@@ -73,6 +75,15 @@ export const authContracts = {
         RegisterPhoneCompleteResponse
     >()('post', '/auth/register/phone/complete-profile'),
     logout: contract<EmptyBody, undefined, LogoutResponse>()('post', '/auth/logout'),
+    // feat-245 (Р3): the step-up proofs this account can give, and a step-up of the session.
+    reauthOptions: contract<EmptyBody, undefined, ReauthOptionsResponse>()(
+        'post',
+        '/auth/reauth/options',
+    ),
+    reauth: contract<typeof ReauthInputSchema.inferIn, undefined, ReauthResponse>()(
+        'post',
+        '/auth/reauth',
+    ),
     // feat-245 (Р8): ends a recovery session; the next step is an ordinary sign-in.
     recoveryFinish: contract<EmptyBody, undefined, LogoutResponse>()(
         'post',

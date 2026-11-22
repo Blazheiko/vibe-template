@@ -46,11 +46,6 @@ vi.mock('#app/services/auth/sms-verification-provider.js', () => ({
             Promise.resolve({ code: '123456', providerRequestId: 'fake-request' }),
     },
 }))
-// The re-check of the current password in link-phone/start is not under test here.
-vi.mock('metautil', async (importOriginal) => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    validatePassword: () => Promise.resolve(true),
-}))
 
 describe.skipIf(!hasPg)('SMS budget of register and link phone starts on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -129,12 +124,20 @@ describe.skipIf(!hasPg)('SMS budget of register and link phone starts on Postgre
                     const account = accounts[index]!
                     return authService.startPhoneLink(
                         account.id,
-                        { phone, currentPassword: 'secret' },
+                        { phone },
                         {
                             ipAddress: '203.0.113.9',
                             sessionId: `session-${String(index)}`,
                             presentedSessionToken: account.sessionToken,
                             sessionStored: () => Promise.resolve(true),
+                            // feat-245: the session proved the password just now.
+                            sessionAuth: {
+                                v: 1,
+                                amr: ['pwd'],
+                                aal: 1,
+                                authenticatedAt: new Date().toISOString(),
+                                verified: { pwd: new Date().toISOString() },
+                            },
                         },
                     )
                 }

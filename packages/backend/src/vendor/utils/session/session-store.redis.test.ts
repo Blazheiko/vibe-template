@@ -156,7 +156,7 @@ const deleteBeforeNextWrite = (id: string): void => {
 }
 
 /** Context of a request with the session cookie and CSRF header. */
-const createRequest = (sessionId = 'current') => {
+const createRequest = (sessionId = 'current', options: { allowInRecovery?: boolean } = {}) => {
     const cookie = createSignedToken(`${USER_TOKEN}.${sessionId}`)
     const responseData = createResponseData()
     const context = createContext(
@@ -175,6 +175,8 @@ const createRequest = (sessionId = 'current') => {
             isJson: true,
             files: null,
             hasFile: () => false,
+            // feat-245 (Р8): what the route lets a recovery session do (the router sets it).
+            ...(options.allowInRecovery === true ? { allowInRecovery: true } : {}),
         } as never,
         responseData,
     )
@@ -182,8 +184,11 @@ const createRequest = (sessionId = 'current') => {
 }
 
 /** Whether a request with this session cookie gets past auth_guard. */
-const authenticates = async (sessionId: string): Promise<boolean> => {
-    const probe = createRequest(sessionId)
+const authenticates = async (
+    sessionId: string,
+    options: { allowInRecovery?: boolean } = {},
+): Promise<boolean> => {
+    const probe = createRequest(sessionId, options)
     return executeMiddlewares(['session_web', 'auth_guard'], probe.context)
 }
 
@@ -569,7 +574,9 @@ describe.skipIf(!hasRedis)('session auth state (feat-245)', () => {
         await save('active', {
             data: { auth: recovery(new Date(Date.now() + 60_000).toISOString()) },
         })
-        expect(await authenticates('active')).toBe(true)
+        // feat-245 (M9): served on a route that rebuilds the factors, refused (403) elsewhere.
+        expect(await authenticates('active', { allowInRecovery: true })).toBe(true)
+        expect(await authenticates('active')).toBe(false)
         expect(await recordOf('active')).not.toBeNull()
     })
 

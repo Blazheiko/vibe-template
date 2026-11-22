@@ -28,6 +28,9 @@ import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { emailVerificationService } from '#app/services/auth/email-verification-service.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { getDummyPasswordHash } from '#app/services/auth/dummy-password-hash.js'
+import type { SessionAuthState } from 'shared/mfa'
+import { loadMfaAccount } from '#app/services/auth/mfa/mfa-account.js'
+import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
 import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
@@ -165,10 +168,16 @@ async function requireSessionStored(sessionStored: SessionStillStored): Promise<
     return Result.ok(undefined)
 }
 
-async function requireCurrentPasswordReauth(
+/**
+ * feat-245 (rows 6–7 of Р3): the user of a sensitive action of their own account, once the session
+ * still is the current one and the proof matrix lets it through (a fresh password without MFA, a
+ * fresh second factor with it, a recent OAuth sign-in of an account without a password).
+ */
+async function requireStepUp(
     userId: bigint,
-    currentPassword: string,
     presentedSessionToken: string | undefined,
+    sessionAuth: SessionAuthState | undefined,
+    action: 'password.change' | 'contact.link',
 ): Promise<AppResult<UserRow>> {
     const user = await userRepository.findById(userId)
     if (user === undefined) {
@@ -177,36 +186,8 @@ async function requireCurrentPasswordReauth(
     if (presentedSessionToken === undefined || user.sessionToken !== presentedSessionToken) {
         return Result.err(sessionRevoked())
     }
-
-    const passwordHash = user.password
-    if (passwordHash === null || passwordHash === '') {
-        return Result.err(badRequest('Set a password before managing recovery methods'))
-    }
-
-    // feat-109: spent before the check, from the same per-user budget as change-password, so a
-    // stolen session cannot guess the password through link-email / link-phone from many IPs.
-    const throttle = await enforceThrottle(
-        throttlePolicies.changePasswordUser,
-        String(userId),
-        // feat-123: 429, as the R06b acceptance criteria say: a spent budget is a rate limit.
-        rateLimited('Too many password attempts. Please try again later.'),
-    )
-    if (Result.isError(throttle)) {
-        return Result.err(throttle.error)
-    }
-
-    const validResult = await validatePassword(currentPassword, passwordHash)
-
-    if (!validResult) {
-        return Result.err(badRequest('Current password is incorrect'))
-    }
-
-    await resetThrottleQuietly(
-        throttlePolicies.changePasswordUser,
-        String(userId),
-        'Password re-check',
-    )
-
+    const proof = requireProof({ action, account: await loadMfaAccount(user), auth: sessionAuth })
+    if (Result.isError(proof)) return Result.err(proof.error)
     return Result.ok(user)
 }
 
@@ -650,6 +631,8 @@ export const authService = {
             presentedSessionToken: string | undefined
             /** feat-123: checked right before the irreversible step. */
             sessionStored: SessionStillStored
+            /** feat-245 (row 7 of Р3): how the session was authenticated. */
+            sessionAuth: SessionAuthState | undefined
         },
     ): Promise<
         AppResult<{
@@ -668,10 +651,11 @@ export const authService = {
             return Result.err(badRequest('Phone linking requires an active session'))
         }
 
-        const reauthResult = await requireCurrentPasswordReauth(
+        const reauthResult = await requireStepUp(
             userId,
-            payload.currentPassword,
             requestMeta.presentedSessionToken,
+            requestMeta.sessionAuth,
+            'contact.link',
         )
         if (Result.isError(reauthResult)) {
             return Result.err(reauthResult.error)
@@ -915,11 +899,14 @@ export const authService = {
         payload: LinkEmailStartInput,
         presentedSessionToken: string | undefined,
         sessionStored: SessionStillStored,
+        /** feat-245 (row 7 of Р3): how the session was authenticated. */
+        sessionAuth: SessionAuthState | undefined,
     ): Promise<AppResult<{ status: 'success'; message: string }>> {
-        const reauthResult = await requireCurrentPasswordReauth(
+        const reauthResult = await requireStepUp(
             userId,
-            payload.currentPassword,
             presentedSessionToken,
+            sessionAuth,
+            'contact.link',
         )
         if (Result.isError(reauthResult)) {
             return Result.err(reauthResult.error)
@@ -1234,41 +1221,24 @@ export const authService = {
         requestingSessionId: string | undefined,
         /** feat-235: who changes it: the signed-in user of the request. */
         actor: UserAuditActor,
+        /** feat-245 (row 6 of Р3): how the session was authenticated. */
+        sessionAuth: SessionAuthState | undefined,
     ): Promise<AppResult<{ status: 'success'; sessionToken: string }>> {
-        // Consumed before the current-password check, same scheme as login.
-        const throttle = await enforceThrottle(
-            throttlePolicies.changePasswordUser,
-            String(userId),
-            rateLimited('Too many password change attempts. Please try again later.'),
-        )
-        if (Result.isError(throttle)) {
-            return Result.err(throttle.error)
-        }
-
-        const user = await userRepository.findById(userId)
-        if (user === undefined) {
-            return Result.err(notFound('User', 'User not found'))
-        }
         // feat-096: the row read here may already be the one a claim left (password NULL,
         // token rotated). The session must still be the current one, here and in the update.
-        if (presentedSessionToken === undefined || user.sessionToken !== presentedSessionToken) {
-            return Result.err(sessionRevoked())
-        }
-
+        // feat-245: the change is allowed by the proof matrix, not by a password in the form.
+        const stepUp = await requireStepUp(
+            userId,
+            presentedSessionToken,
+            sessionAuth,
+            'password.change',
+        )
+        if (Result.isError(stepUp)) return Result.err(stepUp.error)
+        const user = stepUp.value
+        if (presentedSessionToken === undefined) return Result.err(sessionRevoked())
+        // ADR 0002: the stored hash read here (null for an account without one) is what the
+        // conditional update below compares; a concurrent change makes it miss.
         const storedPassword = user.password
-        const hasPassword = storedPassword !== null && storedPassword !== ''
-        if (hasPassword) {
-            if (payload.currentPassword === undefined || payload.currentPassword === '') {
-                return Result.err(badRequest('Current password is required'))
-            }
-
-            const currentPassword = payload.currentPassword
-            const valid = await validatePassword(currentPassword, storedPassword)
-
-            if (!valid) {
-                return Result.err(badRequest('Current password is incorrect'))
-            }
-        }
 
         const newPasswordHash = await hashPassword(payload.newPassword)
 
@@ -1302,7 +1272,8 @@ export const authService = {
             // feat-235: the event commits with the change; a failed insert keeps the old
             // password and token.
             const stamp = await auditService.stamp(tx)
-            const events = await auditService.record(tx, stamp, withRole(actor, changed.role), [
+            const proven = withProof(actor, auditProofOf(sessionAuth))
+            const events = await auditService.record(tx, stamp, withRole(proven, changed.role), [
                 {
                     action: 'auth.password.changed',
                     targetId: String(userId),
