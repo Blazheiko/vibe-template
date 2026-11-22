@@ -37,6 +37,14 @@ export const authSchemas = contractSchemas(authContracts, {
         response: ResponseSchemas.ReauthOptionsResponseSchema,
     },
     reauth: { body: ReauthInputSchema, response: ResponseSchemas.ReauthResponseSchema },
+    mfaWebauthnOptions: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.PasskeyChallengeResponseSchema,
+    },
+    reauthWebauthnOptions: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.PasskeyChallengeResponseSchema,
+    },
     registerEmail: {
         body: RegisterEmailInputSchema,
         response: ResponseSchemas.RegisterEmailResponseSchema,

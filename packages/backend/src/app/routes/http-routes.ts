@@ -89,6 +89,11 @@ export default [
                     'Second sign-in step (feat-245): TOTP or recovery code against the ticket cookie',
             }),
             defineRoute({
+                contract: authContracts.mfaWebauthnOptions,
+                handler: AuthController.mfaWebauthnOptions.bind(AuthController),
+                description: 'Options of a passkey as the second sign-in step (feat-246)',
+            }),
+            defineRoute({
                 contract: authContracts.passkeyOptions,
                 handler: AuthController.passkeyOptions.bind(AuthController),
                 description: 'Options of a passwordless sign-in with a passkey (feat-246)',
@@ -114,7 +119,14 @@ export default [
             defineRoute({
                 contract: authContracts.reauth,
                 handler: AuthController.reauth.bind(AuthController),
-                description: 'Step-up of this session by a password or a TOTP code (feat-245)',
+                description:
+                    'Step-up of this session by a password, a TOTP code or a passkey (feat-245, feat-246)',
+                middlewares: ['auth_guard'],
+            }),
+            defineRoute({
+                contract: authContracts.reauthWebauthnOptions,
+                handler: AuthController.reauthWebauthnOptions.bind(AuthController),
+                description: 'Options of a passkey step-up of this session (feat-246)',
                 middlewares: ['auth_guard'],
             }),
             defineRoute({

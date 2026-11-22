@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { nanoid } from 'nanoid'
 import { MFA_REASONS, type SessionAuthState } from 'shared/mfa'
+import type { AuthenticationResponse } from 'shared/schemas'
 
 import mfaConfig from '#config/mfa.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
@@ -9,6 +10,7 @@ import {
     oauthAccountRepository,
     transactionStatus,
     userRepository,
+    webauthnCredentialRepository,
     withTransaction,
     type DbTransaction,
 } from '#app/repositories/index.js'
@@ -43,6 +45,14 @@ import {
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
 import { totpService } from './totp-service.js'
+import { passkeyTicketChallenges, ticketHash } from './passkey-login-challenges.js'
+import { recordCounterRegression } from './passkey-sign-in.js'
+import {
+    authenticationOptions,
+    ceremonyBinding,
+    fromBase64Url,
+    verifyWebAuthnCeremony,
+} from './webauthn-ceremony.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the second sign-in step. The first factor
 // (password or OAuth) of an account with MFA opens a ticket instead of a session; the session is
@@ -51,7 +61,7 @@ import { totpService } from './totp-service.js'
 // commit is known. A lost answer, a failed activation or an unknown commit is finished by the
 // same request repeated (continuation).
 
-export type SecondStepMethod = 'totp' | 'recovery_code'
+export type SecondStepMethod = 'webauthn' | 'totp' | 'recovery_code'
 
 export interface SecondStepRequired {
     status: 'mfa_required'
@@ -77,8 +87,10 @@ class Abort extends Error {
     }
 }
 
-const methodsOf = (account: { totp: unknown }): SecondStepMethod[] => {
+const methodsOf = (account: { totp: unknown; passkeys: number }): SecondStepMethod[] => {
     const methods: SecondStepMethod[] = []
+    // feat-246: a passkey first, it is the stronger and the quicker one.
+    if (account.passkeys > 0) methods.push('webauthn')
     if (account.totp !== undefined) methods.push('totp')
     methods.push('recovery_code')
     return methods
@@ -141,13 +153,49 @@ function plannedAuth(ticket: MfaTicket, method: SecondStepMethod, now: number): 
             },
         }
     }
+    const second = method === 'webauthn' ? 'webauthn' : 'otp'
     return {
         v: 1,
-        amr: [first, 'otp'],
+        amr: [first, second],
         aal: 2,
         authenticatedAt: at,
-        verified: { [first]: at, otp: at },
+        verified: { [first]: at, [second]: at },
     }
+}
+
+/**
+ * feat-246 (Р6): POST /auth/mfa/webauthn/options. The options of a signature with a key of the
+ * ticket's user, the challenge bound to the ticket (`mfa:<hash>`, Р5). Nothing is reserved: the
+ * answer goes through POST /auth/mfa/verify like a code.
+ */
+export async function secondStepPasskeyOptions(
+    context: SignInContext,
+): Promise<AppResult<{ options: object }>> {
+    const ticketId = context.auth.getMfaTicketCookie()
+    const cookieSession = context.auth.getCookieSessionId()
+    if (ticketId === undefined || ticketId === '' || cookieSession === undefined) {
+        return Result.err(ticketInvalid())
+    }
+    let ticket: MfaTicket | null
+    let ttl: number
+    try {
+        ticket = await mfaTicketStore.read(ticketId)
+        ttl = await mfaTicketStore.ttl(ticketId)
+    } catch (err) {
+        return Result.err(serviceUnavailable(err))
+    }
+    if (ticket?.state !== 'open' || ticket.binding !== mfaBinding(cookieSession)) {
+        return Result.err(ticketInvalid())
+    }
+    const keys = await webauthnCredentialRepository.listByUserId(BigInt(ticket.userId))
+    if (keys.length === 0) return Result.err(ticketInvalid())
+    const options = await authenticationOptions(keys)
+    try {
+        await passkeyTicketChallenges.issue(ticketId, options.challenge, ttl)
+    } catch (err) {
+        return Result.err(serviceUnavailable(err))
+    }
+    return Result.ok({ options })
 }
 
 /** Р4: the fate of a transaction whose COMMIT got no answer; a failed read is undetermined. */
@@ -162,10 +210,9 @@ export async function readTransactionStatus(
     }
 }
 
-export interface SecondStepInput {
-    method: SecondStepMethod
-    code: string
-}
+export type SecondStepInput =
+    | { method: 'totp' | 'recovery_code'; code: string }
+    | { method: 'webauthn'; response: AuthenticationResponse }
 
 export interface SecondStepDeps {
     now?: () => number
@@ -261,14 +308,44 @@ async function attempt(
     const recovery = input.method === 'recovery_code'
     const actor = proofHolderOf('recovery_code', request)
 
+    // feat-246: a passkey is checked before the transaction (no writes); the transaction spends
+    // its counter, so a rollback gives it back.
+    let passkey: { credentialId: bigint; newCounter: bigint } | null = null
+    if (input.method === 'webauthn') {
+        const checked = await checkSecondStepPasskey(ticketId, ticket, input.response, request)
+        if (checked === 'wrong') {
+            let settled = 'ok'
+            try {
+                settled = await mfaTicketStore.settle(ticketId, reservationId, 'failure')
+            } catch (settleErr) {
+                logger.warn({ err: settleErr }, 'Failure not counted on the ticket')
+            }
+            if (settled === 'deleted') context.auth.setMfaTicketCookie(null, 0)
+            return Result.err(invalidCode())
+        }
+        if (checked === 'unavailable') {
+            await release()
+            return Result.err(serviceUnavailable())
+        }
+        passkey = checked
+    }
+
     try {
         await withTransaction(async (tx) => {
             const locked = await userRepository.lockById(userId, tx)
             if (locked?.sessionToken !== ticket.userTokenAtStart) {
                 throw new Abort('revoked')
             }
-            if (recovery) {
+            if (input.method === 'recovery_code') {
                 if (!(await recoveryCodes.consume(userId, input.code, tx))) throw new Abort('wrong')
+            } else if (input.method === 'webauthn') {
+                if (passkey === null) throw new Abort('wrong')
+                const counted = await webauthnCredentialRepository.recordUse(
+                    passkey.credentialId,
+                    passkey.newCounter,
+                    tx,
+                )
+                if (counted !== 'advanced') throw new Abort('wrong')
             } else {
                 const verified = await totpService.verify(userId, input.code, {
                     now,
@@ -568,4 +645,46 @@ export async function retireCompletedTicket(auth: Auth, completionId: string): P
     if (ticketId === undefined || ticketId === '') return
     await mfaTicketStore.retire(ticketId, completionId)
     auth.setMfaTicketCookie(null, 0)
+}
+
+/**
+ * feat-246 (Р6): the passkey answer of a second step, checked against the ticket's challenge and
+ * a key of the ticket's user. 'wrong' counts as a failed attempt of the ticket.
+ */
+async function checkSecondStepPasskey(
+    ticketId: string,
+    ticket: MfaTicket,
+    response: AuthenticationResponse,
+    request: AuditRequest,
+): Promise<{ credentialId: bigint; newCounter: bigint } | 'wrong' | 'unavailable'> {
+    let challenge: string | null
+    try {
+        challenge = await passkeyTicketChallenges.take(ticketId)
+    } catch (err) {
+        logger.warn({ err }, 'Second-step passkey challenge not read')
+        return 'unavailable'
+    }
+    if (challenge === null) return 'wrong'
+    const userId = BigInt(ticket.userId)
+    const credential = await webauthnCredentialRepository.findByCredentialId(
+        fromBase64Url(response.id),
+    )
+    if (credential === undefined) return 'wrong'
+    const binding = ceremonyBinding('mfa', ticketHash(ticketId))
+    const verified = await verifyWebAuthnCeremony({
+        purpose: 'mfa',
+        stored: { challenge, binding },
+        expectedBinding: binding,
+        response,
+        credential,
+        expectedUserId: userId,
+        expectedUserHandle: await webauthnCredentialRepository.userHandleOf(userId),
+    })
+    if (!verified.ok) {
+        if (verified.failure === 'counter_regressed') {
+            await recordCounterRegression(credential, 'mfa', request)
+        }
+        return 'wrong'
+    }
+    return 'assertion' in verified ? verified.assertion : 'wrong'
 }

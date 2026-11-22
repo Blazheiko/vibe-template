@@ -1,27 +1,51 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 
 import redis, { withRedis } from '#database/redis.js'
 import webauthnConfig from '#config/webauthn.js'
 
-// feat-246 (docs/plan/passkeys-mfa-plan.md, Р5, Р6): the challenges of a passwordless sign-in.
-// Nobody is signed in yet, so they live in Redis under a random id the browser sends back, for
-// five minutes, and are taken with GETDEL: of two answers to one challenge only one is checked.
+// feat-246 (docs/plan/passkeys-mfa-plan.md, Р5, Р6): the WebAuthn challenges that live outside a
+// signed-in session. A passwordless sign-in keeps its challenge under a random id the browser
+// sends back; the second sign-in step under the hash of its ticket (the ticket id itself never
+// leaves its HttpOnly cookie). Five minutes at most; taken with GETDEL, so of two answers to one
+// challenge only one is checked.
 
-const PREFIX = 'auth:webauthn:login:'
+const LOGIN = 'auth:webauthn:login:'
+const MFA = 'auth:webauthn:mfa:'
 const ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
+
+/** `mfa:<hash>` of Р5: the binding of a second-step challenge to its ticket. */
+export const ticketHash = (ticketId: string): string =>
+    createHash('sha256').update(ticketId).digest('base64url')
+
+const ttlOf = (seconds?: number): number =>
+    Math.max(
+        1,
+        Math.min(seconds ?? webauthnConfig.challengeTtlSeconds, webauthnConfig.challengeTtlSeconds),
+    )
 
 export const passkeyLoginChallenges = {
     async issue(challenge: string): Promise<string> {
         const id = randomBytes(16).toString('base64url')
-        await withRedis(() =>
-            redis.set(`${PREFIX}${id}`, challenge, 'EX', webauthnConfig.challengeTtlSeconds),
-        )
+        await withRedis(() => redis.set(`${LOGIN}${id}`, challenge, 'EX', ttlOf()))
         return id
     },
 
     /** The challenge of `id`, removed in the same step; null when gone, spent or not an id. */
     async take(id: string): Promise<string | null> {
         if (!ID_PATTERN.test(id)) return null
-        return withRedis(() => redis.getdel(`${PREFIX}${id}`))
+        return withRedis(() => redis.getdel(`${LOGIN}${id}`))
+    },
+}
+
+export const passkeyTicketChallenges = {
+    /** A new challenge for the ticket replaces an earlier one; it never outlives the ticket. */
+    async issue(ticketId: string, challenge: string, ticketTtlSeconds: number): Promise<void> {
+        await withRedis(() =>
+            redis.set(`${MFA}${ticketHash(ticketId)}`, challenge, 'EX', ttlOf(ticketTtlSeconds)),
+        )
+    },
+
+    async take(ticketId: string): Promise<string | null> {
+        return withRedis(() => redis.getdel(`${MFA}${ticketHash(ticketId)}`))
     },
 }

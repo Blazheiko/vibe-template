@@ -17,7 +17,10 @@ import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
 import type { MfaVerifyInputSchema } from '../schemas/mfa/mfa-verify.js'
 import type { ReauthInputSchema } from '../schemas/mfa/reauth.js'
 import type { PasskeyLoginInputSchema } from '../schemas/passkeys/passkey-register.js'
-import type { PasskeyLoginOptionsResponse } from '../responses/passkeys-controller.js'
+import type {
+    PasskeyChallengeResponse,
+    PasskeyLoginOptionsResponse,
+} from '../responses/passkeys-controller.js'
 import type { ReauthOptionsResponse, ReauthResponse } from '../responses/mfa-controller.js'
 import type {
     ChangePasswordResponse,
@@ -55,6 +58,16 @@ export const authContracts = {
     mfaVerify: contract<typeof MfaVerifyInputSchema.inferIn, undefined, LoginResponse>()(
         'post',
         '/auth/mfa/verify',
+    ),
+    // feat-246 (Р6): a passkey signature as the second step (bound to the ticket cookie).
+    mfaWebauthnOptions: contract<EmptyBody, undefined, PasskeyChallengeResponse>()(
+        'post',
+        '/auth/mfa/webauthn/options',
+    ),
+    // feat-246 (Р6): a passkey signature as a step-up of this session.
+    reauthWebauthnOptions: contract<EmptyBody, undefined, PasskeyChallengeResponse>()(
+        'post',
+        '/auth/reauth/webauthn/options',
     ),
     // feat-246 (Р6): a sign-in with a passkey alone; answers like a sign-in.
     passkeyOptions: contract<EmptyBody, undefined, PasskeyLoginOptionsResponse>()(

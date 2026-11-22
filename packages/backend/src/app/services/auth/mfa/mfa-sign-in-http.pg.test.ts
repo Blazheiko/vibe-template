@@ -12,6 +12,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
+import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, tasks M8) over HTTP: a real uWebSockets.js server
 // with the real routes and session layer, a real PostgreSQL and Redis. The password sign-in of an
@@ -691,5 +692,143 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         expect(browser.cookies.has(MFA_COOKIE)).toBe(false)
         const session = await getSession(browser.sessionId(), row.sessionToken)
         expect(session?.data.auth).toMatchObject({ aal: 1, amr: ['pwd'] })
+    })
+
+    // feat-246 (Р4, Р6; tasks P4): a passkey as the second step, through the same ticket.
+    describe('a passkey as the second step (feat-246 P4)', async () => {
+        const { default: webauthnConfig } = await import('#config/webauthn.js')
+        const { webauthnCredentialRepository } = await import('#app/repositories/index.js')
+        const { registrationOptions, verifyWebAuthnCeremony, ceremonyBinding } =
+            await import('./webauthn-ceremony.js')
+        const { randomBytes } = await import('node:crypto')
+        const RP = webauthnConfig.rpId
+        const WEB_ORIGIN = webauthnConfig.origins[0] ?? ''
+
+        /** Adds a passkey to `userId` through the real registration ceremony. */
+        const addPasskey = async (userId: bigint, counter = 0) => {
+            const authenticator = new SoftAuthenticator({ counter })
+            const handle = await withTransaction((tx) =>
+                webauthnCredentialRepository.ensureUserHandle(userId, randomBytes(32), tx),
+            )
+            const options = await registrationOptions({
+                userHandle: handle,
+                userName: 'user',
+                displayName: 'User',
+                exclude: [],
+            })
+            const binding = ceremonyBinding('register', 'test')
+            const verified = await verifyWebAuthnCeremony({
+                purpose: 'register',
+                stored: { challenge: options.challenge, binding },
+                expectedBinding: binding,
+                response: authenticator.register({
+                    challenge: options.challenge,
+                    rpId: RP,
+                    origin: WEB_ORIGIN,
+                    userHandle: options.user.id,
+                }),
+            })
+            if (!verified.ok || !('registration' in verified)) throw new Error('not registered')
+            const key = await withTransaction((tx) =>
+                webauthnCredentialRepository.insert(
+                    {
+                        userId,
+                        ...verified.registration,
+                        name: 'Key',
+                        enrollmentId: crypto.randomUUID().replaceAll('-', ''),
+                    },
+                    tx,
+                ),
+            )
+            return { authenticator, key }
+        }
+
+        /** The ticket's options, answered by `authenticator`. */
+        const answer = async (browser: Browser, authenticator: SoftAuthenticator) => {
+            const options = await browser.request('POST', '/auth/mfa/webauthn/options', {})
+            expect(options.status).toBe(200)
+            const challenge = (options.body['options'] as { challenge: string }).challenge
+            return authenticator.authenticate({ challenge, rpId: RP, origin: WEB_ORIGIN })
+        }
+
+        const { webauthnCredentials } = await import('#database/schema.js')
+        const countOf = async (id: bigint) =>
+            (await db.select().from(webauthnCredentials).where(eq(webauthnCredentials.id, id)))[0]
+                ?.signCount
+
+        it('the passkey is offered first and signs in at level 2 (amr pwd + webauthn)', async () => {
+            const user = await mfaUser('mfa-passkey')
+            const { authenticator } = await addPasskey(user.row.id, 3)
+            const browser = new Browser()
+            const first = await browser.firstFactor(user.email)
+            expect(first.body).toMatchObject({
+                status: 'mfa_required',
+                methods: ['webauthn', 'totp', 'recovery_code'],
+            })
+            const response = await answer(browser, authenticator)
+            const ok = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'webauthn', response }),
+            )
+            expect(ok.status).toBe(200)
+            const session = await getSession(browser.sessionId(), user.row.sessionToken)
+            expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'webauthn'] })
+        })
+
+        it("another user's key is a failed attempt; a spent challenge answers nothing", async () => {
+            const user = await mfaUser('mfa-passkey-foreign')
+            const mine = await addPasskey(user.row.id)
+            const other = await mfaUser('mfa-passkey-other')
+            const theirs = await addPasskey(other.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const foreign = await answer(browser, theirs.authenticator)
+            const refused = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: foreign,
+            })
+            expect(refused.status).toBe(401)
+            expect(refused.body).toMatchObject({ reason: 'invalid_code' })
+
+            // The challenge of that attempt is spent: the right key's answer to it fails too.
+            const stale = mine.authenticator.authenticate({
+                challenge: 'c3BlbnQ',
+                rpId: RP,
+                origin: WEB_ORIGIN,
+            })
+            const again = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: stale,
+            })
+            expect(again.status).toBe(401)
+
+            const fresh = await answer(browser, mine.authenticator)
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: fresh,
+            })
+            expect(ok.status).toBe(200)
+        })
+
+        it('a rollback after the work gives the counter back', async () => {
+            const user = await mfaUser('mfa-passkey-rollback')
+            const { authenticator, key } = await addPasskey(user.row.id, 7)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const response = await answer(browser, authenticator)
+            inject.rollbackAfterWork = true
+            const failed = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response,
+            })
+            expect(failed.status).toBe(503)
+            expect(await countOf(key.id)).toBe(7n)
+            const retry = await answer(browser, authenticator)
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: retry,
+            })
+            expect(ok.status).toBe(200)
+            expect(await countOf(key.id)).toBe(9n)
+        })
     })
 })

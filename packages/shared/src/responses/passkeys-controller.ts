@@ -96,3 +96,12 @@ export const PasskeyLoginOptionsResponseSchema = type.or(
 export type PasskeyLoginOptionsResponse = WithCanonicalError<
     typeof PasskeyLoginOptionsResponseSchema.infer
 >
+
+/** feat-246: the options of a passkey signature for the second step or a step-up. */
+export const PasskeyChallengeResponseSchema = type.or(
+    { status: "'success'", options: WebAuthnRequestOptionsSchema },
+    CanonicalErrorResponseSchema,
+)
+export type PasskeyChallengeResponse = WithCanonicalError<
+    typeof PasskeyChallengeResponseSchema.infer
+>
