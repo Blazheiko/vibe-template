@@ -2480,9 +2480,7 @@
             "description": "Review of feat-245…feat-248 (2026-11-22). Blockers: (1) a staff role assignment reads the target's factors before locking the target row, so a parallel removal of the last factor can win: lock the target with lockById before the factor check; (2) the second-step reservation is captured with the request's start time: check the expiry at the atomic capture (401 mfa_attempt_expired, the factor's use rolled back); (3) the passkey second step after a long failure: options refuse a completing ticket and a reconciled rollback re-checks the old assertion with its spent challenge (a counted failure): keep continuing the current request until the ticket ends, and after a confirmed rollback ask for a new challenge without counting a failure; (4) an accepted role change or MFA reset can write after the actor's token rotated or role/MFA state changed: re-check the actor's token, permission and proof under the lock at the write. Others: the staff policy accepts marks from the far future (apply the 60 s skew bound; passkey mode checks aal 2); the MFA reset deletes the sessions by the user id instead of the previous session token; the audit proof is the freshest mark instead of the proof that allowed the action; main/init answers wsToken '' instead of null in a recovery session. Acceptance gaps: a live TOTP step-up through ReauthDialog, a live WebAuthn step-up, a real connection drop during COMMIT of the second step.",
             "owner": "Blazheiko",
             "branch": "fix/mfa-review",
-            "dependencies": [
-                "feat-248"
-            ],
+            "dependencies": ["feat-248"],
             "status": "in_progress",
             "evidence": ""
         }
