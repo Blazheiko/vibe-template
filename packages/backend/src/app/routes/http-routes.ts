@@ -89,6 +89,16 @@ export default [
                     'Second sign-in step (feat-245): TOTP or recovery code against the ticket cookie',
             }),
             defineRoute({
+                contract: authContracts.passkeyOptions,
+                handler: AuthController.passkeyOptions.bind(AuthController),
+                description: 'Options of a passwordless sign-in with a passkey (feat-246)',
+            }),
+            defineRoute({
+                contract: authContracts.passkeyVerify,
+                handler: AuthController.passkeyVerify.bind(AuthController),
+                description: 'Sign in with a passkey alone (feat-246): a full, level-2 sign-in',
+            }),
+            defineRoute({
                 contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
                 description: 'Logout a user',

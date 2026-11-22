@@ -13,6 +13,7 @@ import type {
     PasskeyOptionsResponse,
     PasskeyRegisterResponse,
     PasskeyRenameResponse,
+    WebAuthnCreationOptions,
 } from 'shared/responses'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6): the passkeys of the signed-in account.
@@ -47,7 +48,8 @@ export default {
         return respond(context, result, (value) => ({
             status: 'success' as const,
             enrollmentId: value.enrollmentId,
-            options: value.options as { challenge: string },
+            // The library's JSON options; the response schema checks every field of them.
+            options: value.options as WebAuthnCreationOptions,
         }))
     },
 

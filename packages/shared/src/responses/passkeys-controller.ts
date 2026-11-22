@@ -14,14 +14,52 @@ export const PasskeySchema = type({
 })
 export type Passkey = typeof PasskeySchema.infer
 
+const CredentialDescriptorSchema = type({
+    id: 'string',
+    type: "'public-key'",
+    'transports?': 'string[] | undefined',
+})
+
 /**
- * The WebAuthn options (PublicKeyCredentialCreationOptionsJSON or
- * PublicKeyCredentialRequestOptionsJSON) handed to @simplewebauthn/browser as they are.
+ * PublicKeyCredentialCreationOptionsJSON as @simplewebauthn/server makes it, handed to
+ * @simplewebauthn/browser as it is. The library leaves unused optional fields as undefined.
  */
-export const WebAuthnOptionsSchema = type({ challenge: 'string' }).and('object')
+export const WebAuthnCreationOptionsSchema = type({
+    challenge: 'string',
+    rp: { name: 'string', 'id?': 'string | undefined' },
+    user: { id: 'string', name: 'string', displayName: 'string' },
+    pubKeyCredParams: type({ alg: 'number', type: "'public-key'" }).array(),
+    'timeout?': 'number | undefined',
+    'excludeCredentials?': CredentialDescriptorSchema.array().or('undefined'),
+    'authenticatorSelection?': {
+        'authenticatorAttachment?': 'string | undefined',
+        'requireResidentKey?': 'boolean | undefined',
+        'residentKey?': 'string | undefined',
+        'userVerification?': 'string | undefined',
+    },
+    'hints?': 'string[] | undefined',
+    'attestation?': 'string | undefined',
+    'attestationFormats?': 'string[] | undefined',
+    'extensions?': 'Record<string, unknown> | undefined',
+})
+
+export type WebAuthnCreationOptions = typeof WebAuthnCreationOptionsSchema.infer
+
+/** PublicKeyCredentialRequestOptionsJSON: the options of a signature. */
+export const WebAuthnRequestOptionsSchema = type({
+    challenge: 'string',
+    'timeout?': 'number | undefined',
+    'rpId?': 'string | undefined',
+    'allowCredentials?': CredentialDescriptorSchema.array().or('undefined'),
+    'userVerification?': 'string | undefined',
+    'hints?': 'string[] | undefined',
+    'extensions?': 'Record<string, unknown> | undefined',
+})
+
+export type WebAuthnRequestOptions = typeof WebAuthnRequestOptionsSchema.infer
 
 export const PasskeyOptionsResponseSchema = type.or(
-    { status: "'success'", enrollmentId: 'string', options: WebAuthnOptionsSchema },
+    { status: "'success'", enrollmentId: 'string', options: WebAuthnCreationOptionsSchema },
     CanonicalErrorResponseSchema,
 )
 export type PasskeyOptionsResponse = WithCanonicalError<typeof PasskeyOptionsResponseSchema.infer>
@@ -49,3 +87,12 @@ export const PasskeyDeleteResponseSchema = type.or(
     CanonicalErrorResponseSchema,
 )
 export type PasskeyDeleteResponse = WithCanonicalError<typeof PasskeyDeleteResponseSchema.infer>
+
+/** feat-246: the options of a passwordless sign-in and the id the answer is sent back with. */
+export const PasskeyLoginOptionsResponseSchema = type.or(
+    { status: "'success'", challengeId: 'string', options: WebAuthnRequestOptionsSchema },
+    CanonicalErrorResponseSchema,
+)
+export type PasskeyLoginOptionsResponse = WithCanonicalError<
+    typeof PasskeyLoginOptionsResponseSchema.infer
+>

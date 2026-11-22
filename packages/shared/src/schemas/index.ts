@@ -171,6 +171,8 @@ export {
 export {
     PasskeyRegisterInputSchema,
     PasskeyRenameInputSchema,
+    PasskeyLoginInputSchema,
+    type PasskeyLoginInput,
     type PasskeyRegisterInput,
     type PasskeyRenameInput,
 } from './passkeys/passkey-register.js'

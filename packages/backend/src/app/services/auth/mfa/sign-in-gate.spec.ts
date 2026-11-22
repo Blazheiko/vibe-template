@@ -48,6 +48,8 @@ describe('sign-in call sites (feat-245 Р4)', () => {
             'services/auth/auth-service.ts: buildAuthSuccess',
             // A renewal of a session that already passed its sign-in; it keeps its auth state.
             'services/auth/auth-service.ts: renewSession',
+            // feat-246 (Р6): a passkey with user verification is itself a level-2 sign-in.
+            'services/auth/mfa/passkey-sign-in.ts: verify',
             // The mailed link confirmation (gated in the same function, below the claim).
             'services/auth/oauth-service.ts: confirmLink',
             // Every OAuth sign-in (gated in the same function).

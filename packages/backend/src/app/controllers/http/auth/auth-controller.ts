@@ -1,5 +1,6 @@
 import { stepUpService } from '#app/services/auth/mfa/step-up.js'
 import { completeSecondStep } from '#app/services/auth/mfa/mfa-sign-in.js'
+import { passkeySignIn } from '#app/services/auth/mfa/passkey-sign-in.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
@@ -27,6 +28,8 @@ import type {
     LinkEmailStartResponse,
     ResetPhoneStartResponse,
     ResetPhoneCompleteResponse,
+    PasskeyLoginOptionsResponse,
+    WebAuthnRequestOptions,
 } from 'shared'
 import type {
     ChangePasswordInput,
@@ -34,6 +37,7 @@ import type {
     ForgotPasswordInput,
     LoginInput,
     MfaVerifyInput,
+    PasskeyLoginInput,
     ReauthInput,
     ResetPasswordInput,
     VerifyEmailInput,
@@ -146,6 +150,34 @@ export default {
             { auth: context.auth, session: context.session },
             { method: payload.method, code: payload.code },
             { requestId: context.requestId, logger: context.logger },
+        )
+        return respond(context, result)
+    },
+
+    /** feat-246 (Р6): the options of a passwordless sign-in. */
+    async passkeyOptions(
+        context: HttpContext<EmptyFormInput>,
+    ): Promise<PasskeyLoginOptionsResponse> {
+        const result = await passkeySignIn.options()
+        return respond(context, result, (value) => ({
+            status: 'success' as const,
+            challengeId: value.challengeId,
+            // The library's JSON options; the response schema checks every field of them.
+            options: value.options as WebAuthnRequestOptions,
+        }))
+    },
+
+    /** feat-246 (Р6): a sign-in with a passkey alone. */
+    async passkeyVerify(context: HttpContext<PasskeyLoginInput>): Promise<LoginResponse> {
+        const payload = getTypedPayload(context)
+        const result = await passkeySignIn.verify(
+            { challengeId: payload.challengeId, response: payload.response },
+            {
+                auth: context.auth,
+                session: context.session,
+                ipAddress: context.httpData.ip ?? '',
+                request: { requestId: context.requestId, logger: context.logger },
+            },
         )
         return respond(context, result)
     },
