@@ -19,6 +19,11 @@ M0–M14). Branch `feat/mfa-core`. Registry: #765 (registered), #766 (in_progres
 - M6: recovery codes (80 bits, HMAC).
 - M5: TOTP (RFC vectors), `totpService` (setup/confirm/verify/disable/regenerate), `requireProof`
   with 403 `reauth_required` + `details.proofs`, routes `/account/mfa/*`.
+- M7: `auth.planLogin` / `prepareLogin` / `activateLogin` (pending record, one Lua transition
+  with the ticket). Single-node Redis assumed, as for the session index (no hash tag).
+- M8a: ticket store (Lua). M8b: `POST /auth/mfa/verify`, password sign-in opens the ticket,
+  continuation, recovery sign-in (rotation, recovery session), ticket retired by a session_web
+  hook. `mfa-sign-in-http.pg.test.ts` covers the Р4 acceptance list over HTTP.
 
 ## Files Modified
 
@@ -26,7 +31,7 @@ See `git log` of the branch.
 
 ## Next Step
 
-M7 (prepareLogin / activateLogin), then M8 (ticket).
+M8c (OAuth: finishSignIn, linkTrusted and link/confirm with pendingOAuthLink; architecture test of auth.login callers), then M9.
 
 ## Notes for Next Session
 
