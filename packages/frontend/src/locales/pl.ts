@@ -251,10 +251,16 @@ const pl: typeof en = {
             errorSetupExpired: 'Konfiguracja wygasła. Zacznij od nowa.',
             errorRecoveryOrder: 'Najpierw skonfiguruj nową aplikację.',
             errorGeneric: 'Coś poszło nie tak. Spróbuj ponownie.',
+            errorStaffFactor:
+                'Twoja rola wymaga tego drugiego składnika. Najpierw dodaj inny, który akceptuje (jeśli wdrożenie wymaga klucza dostępu — inny klucz dostępu).',
             staffFactorRequired:
                 'Twoja rola wymaga logowania dwuetapowego. Skonfiguruj poniżej aplikację uwierzytelniającą lub klucz dostępu, a potem zaloguj się ponownie, aby otworzyć panel administracyjny.',
             staffSessionRequired:
                 'Panel administracyjny wymaga niedawnego logowania z drugim składnikiem. Zaloguj się ponownie z aplikacją uwierzytelniającą lub kluczem dostępu.',
+            staffPasskeyRequired:
+                'W tym wdrożeniu panel administracyjny otwiera się tylko z kluczem dostępu. Dodaj poniżej klucz dostępu, a potem zaloguj się ponownie z nim; aplikacja uwierzytelniająca nadal chroni resztę konta.',
+            staffPasskeySessionRequired:
+                'Panel administracyjny wymaga niedawnego logowania kluczem dostępu. Zaloguj się ponownie kluczem dostępu; kod z aplikacji uwierzytelniającej tu nie wystarczy.',
             staffSignIn: 'Zaloguj się ponownie',
         },
         passkeys: {

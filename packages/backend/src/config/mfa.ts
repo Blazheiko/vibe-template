@@ -87,14 +87,19 @@ export function parseMfaEncryptionKeys(
     return { keys, derived: false, error: null }
 }
 
-/** feat-247 (Р10): MFA_STAFF_FACTOR; only `any` until feat-248 adds the passkey mode. */
+/**
+ * feat-247 / feat-248 (Р10, Д11): MFA_STAFF_FACTOR, `any` (TOTP or a passkey, the default) or
+ * `passkey` (phishing-resistant: only a passkey). The passkey mode also needs a usable WebAuthn
+ * configuration; validateRuntimeConfig checks that.
+ */
 export function parseStaffFactor(raw: string | undefined): {
     mode: StaffFactorMode
     error: string | null
 } {
     const value = (raw ?? '').trim()
     if (value === '' || value === 'any') return { mode: 'any', error: null }
-    return { mode: 'any', error: `MFA_STAFF_FACTOR must be "any", got "${value}"` }
+    if (value === 'passkey') return { mode: 'passkey', error: null }
+    return { mode: 'any', error: `MFA_STAFF_FACTOR must be "any" or "passkey", got "${value}"` }
 }
 
 const reader = createEnvReader()
@@ -126,7 +131,7 @@ export default Object.freeze({
      * (MFA_REQUIRED_FOR_STAFF, on by default; `false` only for a transition).
      */
     requiredForStaff: reader.bool('MFA_REQUIRED_FOR_STAFF', true),
-    /** Which factor a staff role needs (MFA_STAFF_FACTOR): `any` (TOTP or a passkey). */
+    /** Which factor a staff role needs (MFA_STAFF_FACTOR): `any` (TOTP or a passkey) or `passkey`. */
     staffFactor: staffFactor.mode,
     /** A staff session's factor proof counts this long (MFA_STAFF_FACTOR_MAX_AGE_HOURS, 12). */
     staffFactorMaxAgeHours: reader.int('MFA_STAFF_FACTOR_MAX_AGE_HOURS', 12, { min: 1, max: 168 }),

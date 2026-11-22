@@ -241,10 +241,16 @@ export default {
             errorSetupExpired: 'The setup expired. Start again.',
             errorRecoveryOrder: 'Set up the new app first.',
             errorGeneric: 'Something went wrong. Try again.',
+            errorStaffFactor:
+                'Your role needs this second factor. Add another one it accepts first (on a passkey-only deployment, another passkey).',
             staffFactorRequired:
                 'Your role needs two-step sign-in. Set up an authenticator app or a passkey below, then sign in again with it to open the admin area.',
             staffSessionRequired:
                 'The admin area needs a recent sign-in with your second factor. Sign in again with your authenticator app or passkey.',
+            staffPasskeyRequired:
+                'This deployment opens the admin area only with a passkey. Add a passkey below, then sign in again with it; an authenticator app still protects the rest of your account.',
+            staffPasskeySessionRequired:
+                'The admin area needs a recent sign-in with your passkey. Sign in again with the passkey; a code from the authenticator app is not enough here.',
             staffSignIn: 'Sign in again',
         },
         passkeys: {

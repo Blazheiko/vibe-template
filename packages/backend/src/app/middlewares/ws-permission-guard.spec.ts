@@ -1,14 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { SessionAuthState } from 'shared/mfa'
+import type { SessionAuthState, StaffFactorMode } from 'shared/mfa'
 
 import type { WsContext } from '#vendor/types/types.js'
 
-const mfaConfig = vi.hoisted(() => ({
-    requiredForStaff: false,
-    staffFactor: 'any' as const,
-    staffFactorMaxAgeHours: 12,
-}))
+const mfaConfig = vi.hoisted(() => {
+    const config: {
+        requiredForStaff: boolean
+        staffFactor: StaffFactorMode
+        staffFactorMaxAgeHours: number
+    } = {
+        requiredForStaff: false,
+        staffFactor: 'any',
+        staffFactorMaxAgeHours: 12,
+    }
+    return config
+})
 vi.mock('#config/mfa.js', () => ({ default: mfaConfig }))
 
 const { wsPermissionGuard } = await import('./ws-permission-guard.js')
@@ -108,5 +115,78 @@ describe('ws_can:<permission> with the staff MFA rule (feat-247)', () => {
 
     it('with the rule off an AAL1 staff session passes as before', async () => {
         expect((await run(undefined)).next).toHaveBeenCalledOnce()
+    })
+})
+
+// feat-248 (Р11, Д11): the same check per message in both modes of MFA_STAFF_FACTOR.
+describe('ws_can:<permission> in both staff factor modes (feat-248)', () => {
+    const NOW = Date.parse('2026-11-22T12:00:00.000Z')
+    const HOUR = 3_600_000
+    const at = (ms: number): string => new Date(ms).toISOString()
+    const totpSignIn: SessionAuthState = {
+        v: 1,
+        amr: ['pwd', 'otp'],
+        aal: 2,
+        authenticatedAt: at(NOW - HOUR),
+        verified: { pwd: at(NOW - HOUR), otp: at(NOW - HOUR) },
+    }
+    const passkeySignIn: SessionAuthState = {
+        v: 1,
+        amr: ['webauthn'],
+        aal: 2,
+        authenticatedAt: at(NOW - HOUR),
+        verified: { webauthn: at(NOW - HOUR) },
+    }
+
+    afterEach(() => {
+        vi.useRealTimers()
+        mfaConfig.requiredForStaff = false
+        mfaConfig.staffFactor = 'any'
+    })
+
+    // [session, passes with any, passes with passkey]
+    const TABLE: [string, SessionAuthState, boolean, boolean][] = [
+        ['a TOTP sign-in', totpSignIn, true, false],
+        [
+            'a TOTP sign-in with a passkey step-up',
+            { ...totpSignIn, verified: { ...totpSignIn.verified, webauthn: at(NOW - 1000) } },
+            true,
+            false,
+        ],
+        ['a passkey sign-in', passkeySignIn, true, true],
+        [
+            'a passkey sign-in older than 12 h',
+            { ...passkeySignIn, verified: { webauthn: at(NOW - 12 * HOUR) } },
+            false,
+            false,
+        ],
+    ]
+
+    describe.each([
+        ['any', 2],
+        ['passkey', 3],
+    ] as const)('MFA_STAFF_FACTOR=%s', (mode, column) => {
+        it.each(TABLE)('%s', async (...row) => {
+            const auth = row[1]
+            const passes = row[column]
+            vi.useFakeTimers({ toFake: ['Date'] })
+            vi.setSystemTime(NOW)
+            mfaConfig.requiredForStaff = true
+            mfaConfig.staffFactor = mode
+            const context = wsContext({ role: 'admin', auth })
+            const next = vi.fn(async () => {})
+            await wsPermissionGuard('users.read')(context as unknown as WsContext, next)
+            if (passes) {
+                expect(next).toHaveBeenCalledOnce()
+            } else {
+                expect(next).not.toHaveBeenCalled()
+                expect(context.responseData.data).toEqual({
+                    status: 'error',
+                    code: 'forbidden',
+                    message: 'Access denied',
+                    reason: 'mfa_session_required',
+                })
+            }
+        })
     })
 })

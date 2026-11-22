@@ -14,6 +14,7 @@ import {
     loadMfaFactors,
 } from '#app/services/auth/mfa/mfa-account.js'
 import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
+import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 import logger from '#vendor/utils/logger.js'
 import type { UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
@@ -48,14 +49,20 @@ const serialize = (link: OAuthAccountRow): SignInMethod => ({
 })
 
 /**
- * feat-245 (Р12): what the account can still do, counted under the user's row lock. A change that
- * would leave no way to sign in is refused; `meetsStaffMfa` is checked by the staff rules of
- * feat-247, `hasRecoveryContact` by the passkey rules of feat-246.
+ * feat-245 (Р12): what the account can still do after `change`, counted under the user's row
+ * lock. A change that would leave no way to sign in is refused; `meetsStaffMfa` is the staff
+ * policy of this deployment (feat-248: `enrolled` of `any` or `passkey`), checked by the factor
+ * removals (staffFactorLossError), `hasRecoveryContact` by the passkey rules of feat-246.
  */
 export async function signInCapability(
     user: UserRow,
     tx: DbExecutor,
-    change: { removeOAuthLinkId?: bigint; removePasskey?: boolean; removePasskeys?: number } = {},
+    change: {
+        removeOAuthLinkId?: bigint
+        removePasskey?: boolean
+        removePasskeys?: number
+        removeTotp?: boolean
+    } = {},
 ): Promise<{ canSignIn: boolean; meetsStaffMfa: boolean; hasRecoveryContact: boolean }> {
     const links = await oauthAccountRepository.findByUserId(user.id, tx)
     const remainingLinks = links.filter((link) => link.id !== change.removeOAuthLinkId).length
@@ -65,7 +72,10 @@ export async function signInCapability(
     const passkeys = Math.max(0, factors.passkeys - removed)
     return {
         canSignIn: hasPassword(user) || remainingLinks > 0 || passkeys > 0,
-        meetsStaffMfa: factors.totp !== undefined || passkeys > 0,
+        meetsStaffMfa: staffPolicy().enrolled({
+            totp: factors.totp !== undefined && change.removeTotp !== true,
+            passkeys,
+        }),
         hasRecoveryContact: hasRecoveryContactOf(user),
     }
 }

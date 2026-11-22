@@ -6,6 +6,7 @@ import {
     stepUpProofsOf,
     withReplacementFactor,
     type SessionAuthState,
+    type StaffFactorMode,
 } from 'shared/mfa'
 
 import mfaConfig from '#config/mfa.js'
@@ -20,6 +21,7 @@ import {
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import { withProof, withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import { signInCapability } from '#app/services/auth/sign-in-methods-service.js'
 import {
     badRequest,
     conflict,
@@ -44,6 +46,7 @@ import { retirePendingContactLinks } from './contact-links.js'
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
 import { auditProofOf, requireProof } from './require-proof.js'
+import { staffFactorFor, staffFactorLossError } from './staff-policy.js'
 import {
     base32Decode,
     base32Encode,
@@ -86,6 +89,8 @@ export interface MfaStatus {
     recoveryContact: boolean
     stepUpProofs: ('password' | 'totp' | 'webauthn')[]
     recovery: { expiresAt: string; replaced: boolean } | null
+    /** feat-248: the factor a staff role needs here; null without one. */
+    staffFactor: StaffFactorMode | null
 }
 
 const authOf = (session: Session): SessionAuthState | undefined => session.sessionInfo?.data.auth
@@ -115,9 +120,10 @@ export function openTotpSecret(factor: TotpFactorRow): Buffer | null {
 
 export const totpService = {
     async status(userId: bigint, session: Session): Promise<AppResult<MfaStatus>> {
-        const account = await readAccount(userId)
-        if (Result.isError(account)) return Result.err(account.error)
-        const { totp, passkeys, recoveryCodesRemaining, hasRecoveryContact } = account.value
+        const user = await userRepository.findById(userId)
+        if (user === undefined) return Result.err(notFound('User', 'User not found'))
+        const account = await loadMfaAccount(user)
+        const { totp, passkeys, recoveryCodesRemaining, hasRecoveryContact } = account
         const recovery = authOf(session)?.recovery
         return Result.ok({
             totp: {
@@ -127,7 +133,7 @@ export const totpService = {
             passkeys,
             recoveryCodesRemaining,
             recoveryContact: hasRecoveryContact,
-            stepUpProofs: stepUpProofsOf(proofAccountOf(account.value)),
+            stepUpProofs: stepUpProofsOf(proofAccountOf(account)),
             recovery:
                 recovery === undefined
                     ? null
@@ -135,6 +141,7 @@ export const totpService = {
                           expiresAt: recovery.expiresAt,
                           replaced: recovery.replacementFactor !== undefined,
                       },
+            staffFactor: staffFactorFor(user.role),
         })
     },
 
@@ -375,6 +382,11 @@ export const totpService = {
             if (current.totp === undefined) {
                 return Result.err(notFound('TotpFactor', 'Two-step sign-in is not on'))
             }
+            // feat-248 (Р12): a staff account keeps the factor its role needs (in the passkey
+            // mode TOTP may go while a passkey stays).
+            const after = await signInCapability(locked, tx, { removeTotp: true })
+            const staffLoss = staffFactorLossError(locked.role, after)
+            if (staffLoss !== null) return Result.err(staffLoss)
             await totpFactorRepository.deleteByUserId(userId, tx)
             await retirePendingContactLinks(userId, tx)
             const mfaDisabled = current.passkeys === 0

@@ -28,6 +28,7 @@ import { hasRecoveryContactOf, loadMfaAccount, mfaEnabledOf } from './mfa-accoun
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
 import { auditProofOf, requireProof } from './require-proof.js'
+import { staffFactorLossError } from './staff-policy.js'
 import {
     ceremonyBinding,
     fromBase64Url,
@@ -352,6 +353,9 @@ export const passkeyService = {
                     ),
                 )
             }
+            // feat-248 (Р12): a staff account keeps the factor its role needs.
+            const staffLoss = staffFactorLossError(locked.role, capability)
+            if (staffLoss !== null) return Result.err(staffLoss)
             const current = await loadMfaAccount(locked, tx)
             await webauthnCredentialRepository.deleteOne(id, userId, tx)
             await retirePendingContactLinks(userId, tx)

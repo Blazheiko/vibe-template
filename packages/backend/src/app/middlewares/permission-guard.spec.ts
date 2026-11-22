@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { SessionAuthState } from 'shared/mfa'
+import type { SessionAuthState, StaffFactorMode } from 'shared/mfa'
 
 import type { HttpContext } from '#vendor/types/types.js'
 
@@ -9,11 +9,18 @@ vi.mock('#app/services/user/user-role-service.js', () => ({ userRoleService: { f
 const rememberActorRole = vi.fn()
 vi.mock('#app/controllers/shared/audit-actor.js', () => ({ rememberActorRole }))
 
-const mfaConfig = vi.hoisted(() => ({
-    requiredForStaff: false,
-    staffFactor: 'any' as const,
-    staffFactorMaxAgeHours: 12,
-}))
+const mfaConfig = vi.hoisted(() => {
+    const config: {
+        requiredForStaff: boolean
+        staffFactor: StaffFactorMode
+        staffFactorMaxAgeHours: number
+    } = {
+        requiredForStaff: false,
+        staffFactor: 'any',
+        staffFactorMaxAgeHours: 12,
+    }
+    return config
+})
 vi.mock('#config/mfa.js', () => ({ default: mfaConfig }))
 const loadMfaFactors = vi.fn()
 vi.mock('#app/services/auth/mfa/mfa-account.js', () => ({ loadMfaFactors }))
@@ -31,6 +38,7 @@ afterEach(() => {
     vi.clearAllMocks()
     vi.useRealTimers()
     mfaConfig.requiredForStaff = false
+    mfaConfig.staffFactor = 'any'
 })
 
 describe('can:<permission> (feat-240)', () => {
@@ -169,6 +177,94 @@ describe('can:<permission> with the staff MFA rule (feat-247)', () => {
             status: 'error',
             code: 'forbidden',
             message: 'Access denied',
+        })
+    })
+})
+
+// feat-248 (Р10, Д11): the same guard, the same table, in both modes of MFA_STAFF_FACTOR.
+describe('can:<permission> in both staff factor modes (feat-248)', () => {
+    const NOW = Date.parse('2026-11-22T12:00:00.000Z')
+    const HOUR = 3_600_000
+    const at = (ms: number): string => new Date(ms).toISOString()
+    const totpSignIn: SessionAuthState = {
+        v: 1,
+        amr: ['pwd', 'otp'],
+        aal: 2,
+        authenticatedAt: at(NOW - HOUR),
+        verified: { pwd: at(NOW - HOUR), otp: at(NOW - HOUR) },
+    }
+    const passkeySignIn: SessionAuthState = {
+        v: 1,
+        amr: ['webauthn'],
+        aal: 2,
+        authenticatedAt: at(NOW - HOUR),
+        verified: { webauthn: at(NOW - HOUR) },
+    }
+    const totpWithPasskeyStepUp: SessionAuthState = {
+        ...totpSignIn,
+        verified: { ...totpSignIn.verified, webauthn: at(NOW - 60_000) },
+    }
+    const TOTP_ONLY = { totp: { id: 1n }, passkeys: 0 }
+    const PASSKEY_ONLY = { totp: undefined, passkeys: 1 }
+    const BOTH = { totp: { id: 1n }, passkeys: 1 }
+
+    // [factors, session, any, passkey]: null lets the request through.
+    const TABLE: [
+        string,
+        typeof BOTH | typeof PASSKEY_ONLY,
+        SessionAuthState,
+        string | null,
+        string | null,
+    ][] = [
+        ['TOTP only, TOTP sign-in', TOTP_ONLY, totpSignIn, null, 'mfa_required'],
+        ['passkey only, passkey sign-in', PASSKEY_ONLY, passkeySignIn, null, null],
+        ['both, TOTP sign-in', BOTH, totpSignIn, null, 'mfa_session_required'],
+        [
+            'both, TOTP sign-in with a passkey step-up',
+            BOTH,
+            totpWithPasskeyStepUp,
+            null,
+            'mfa_session_required',
+        ],
+        ['both, passkey sign-in', BOTH, passkeySignIn, null, null],
+        [
+            'both, passkey sign-in older than 12 h',
+            BOTH,
+            { ...passkeySignIn, verified: { webauthn: at(NOW - 12 * HOUR - 1) } },
+            'mfa_session_required',
+            'mfa_session_required',
+        ],
+    ]
+
+    describe.each([
+        ['any', 3],
+        ['passkey', 4],
+    ] as const)('MFA_STAFF_FACTOR=%s', (mode, column) => {
+        it.each(TABLE)('%s', async (...row) => {
+            const [, factors, auth] = row
+            const expected = row[column]
+            vi.useFakeTimers({ toFake: ['Date'] })
+            vi.setSystemTime(NOW)
+            mfaConfig.requiredForStaff = true
+            mfaConfig.staffFactor = mode
+            loadMfaFactors.mockResolvedValue(factors)
+            findRole.mockResolvedValue('admin')
+            const ctx = context('7', auth)
+            const next = vi.fn(async () => {})
+            await permissionGuard('users.read')(ctx, next)
+            if (expected === null) {
+                expect(next).toHaveBeenCalledOnce()
+                expect(ctx.responseData.status).toBe(200)
+            } else {
+                expect(next).not.toHaveBeenCalled()
+                expect(ctx.responseData.status).toBe(403)
+                expect(ctx.responseData.payload).toEqual({
+                    status: 'error',
+                    code: 'forbidden',
+                    message: 'Access denied',
+                    reason: expected,
+                })
+            }
         })
     })
 })

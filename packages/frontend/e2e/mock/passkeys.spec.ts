@@ -36,6 +36,7 @@ const MFA_STATUS = {
     recoveryContact: true,
     stepUpProofs: ['password'],
     recovery: null,
+    staffFactor: null,
 }
 
 const creationOptions = (rpId: string) => ({

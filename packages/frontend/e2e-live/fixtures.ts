@@ -6,6 +6,10 @@ export const SMTP_PORT = 2526
 // Throwaway database and Redis key prefix: the run never touches a developer's data.
 export const DB_NAME = 'vibe_e2e_live'
 export const REDIS_PREFIX = 'e2e-live:'
+// feat-248: the run with MFA_STAFF_FACTOR=passkey (playwright.live-passkey.config.ts) has a
+// database of its own: the seeded admin gets a passkey there, which the other specs' TOTP sign-in
+// of the same admin must not meet.
+export const DB_NAME_PASSKEY = 'vibe_e2e_live_passkey'
 
 // Verified accounts, seeded by global-setup.ts (pnpm --filter backend db:seed --demo).
 export const USER_1 = { email: 'live-e2e-user@example.test', password: 'live-e2e-pass-1' }

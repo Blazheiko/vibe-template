@@ -35,6 +35,8 @@ interface Status {
     recoveryCodesRemaining: number
     recoveryContact: boolean
     recovery: { expiresAt: string; replaced: boolean } | null
+    /** feat-248: the factor a staff role needs on this deployment; null without one. */
+    staffFactor: 'any' | 'passkey' | null
 }
 
 const status = ref<Status | null>(null)
@@ -53,11 +55,23 @@ const mfaEnabled = computed(
 /**
  * feat-247 (Р10): what a staff account must do for the admin area. Without a factor: set one up
  * (also shown unasked, as a banner). With one, refused for the session: sign in again with it.
+ * feat-248 (Д11): with MFA_STAFF_FACTOR=passkey only a passkey counts: a staff account without
+ * one sees the banner unasked, and signs in again with the passkey.
  */
-const staffNotice = computed<'factor' | 'signIn' | null>(() => {
+type StaffNotice = 'factor' | 'passkey' | 'signIn' | 'signInPasskey'
+const STAFF_NOTICE_TEXT: Record<StaffNotice, string> = {
+    factor: 'account.mfa.staffFactorRequired',
+    passkey: 'account.mfa.staffPasskeyRequired',
+    signIn: 'account.mfa.staffSessionRequired',
+    signInPasskey: 'account.mfa.staffPasskeySessionRequired',
+}
+const passkeyMode = computed(() => status.value?.staffFactor === 'passkey')
+const staffNotice = computed<StaffNotice | null>(() => {
     if (status.value === null || inRecovery.value) return null
+    if (passkeyMode.value && status.value.passkeys === 0) return 'passkey'
     if (!mfaEnabled.value) return props.staff || props.staffReason !== null ? 'factor' : null
-    return props.staffReason !== null ? 'signIn' : null
+    if (props.staffReason === null) return null
+    return passkeyMode.value ? 'signInPasskey' : 'signIn'
 })
 const signInForAdmin = (): void => {
     eventBus.emit('sign_in_again', '/admin')
@@ -71,6 +85,8 @@ const REASONS = new Map<string, string>([
     ['invalid_code', 'account.mfa.errorCode'],
     ['enrollment_not_found', 'account.mfa.errorSetupExpired'],
     ['recovery_session', 'account.mfa.errorRecoveryOrder'],
+    // feat-248 (Р12): the factor a staff role needs stays.
+    ['mfa_required_for_role', 'account.mfa.errorStaffFactor'],
 ])
 
 const explain = (data: unknown): string =>
@@ -89,6 +105,7 @@ async function load(): Promise<void> {
             recoveryCodesRemaining: data.recoveryCodesRemaining,
             recoveryContact: data.recoveryContact,
             recovery: data.recovery,
+            staffFactor: data.staffFactor,
         }
         userStore.setRecovery(data.recovery)
     }
@@ -233,15 +250,9 @@ onMounted(() => {
             role="alert"
             data-testid="staff-mfa-notice"
         >
-            <p>
-                {{
-                    staffNotice === 'factor'
-                        ? t('account.mfa.staffFactorRequired')
-                        : t('account.mfa.staffSessionRequired')
-                }}
-            </p>
+            <p>{{ t(STAFF_NOTICE_TEXT[staffNotice]) }}</p>
             <button
-                v-if="staffNotice === 'signIn'"
+                v-if="staffNotice === 'signIn' || staffNotice === 'signInPasskey'"
                 class="primary-button"
                 type="button"
                 data-testid="staff-mfa-sign-in"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseMfaEncryptionKeys } from './mfa.js'
+import { parseMfaEncryptionKeys, parseStaffFactor } from './mfa.js'
 
 const b64 = (byte: number, length = 32): string => Buffer.alloc(length, byte).toString('base64')
 
@@ -63,5 +63,14 @@ describe('parseMfaEncryptionKeys (feat-245 Р9)', () => {
         expect(parseMfaEncryptionKeys(`k1:${b64(1, 16)}`, ctx).error).toMatch(/32 bytes/)
         expect(parseMfaEncryptionKeys('k1:not*base64', ctx).error).toMatch(/32 bytes/)
         expect(parseMfaEncryptionKeys(`k1:${b64(1)},k1:${b64(2)}`, ctx).error).toMatch(/repeated/)
+    })
+})
+
+describe('parseStaffFactor (feat-247/feat-248 Р10, Д11)', () => {
+    it('reads any (the default) and passkey; refuses anything else', () => {
+        expect(parseStaffFactor(undefined)).toEqual({ mode: 'any', error: null })
+        expect(parseStaffFactor(' any ')).toEqual({ mode: 'any', error: null })
+        expect(parseStaffFactor('passkey')).toEqual({ mode: 'passkey', error: null })
+        expect(parseStaffFactor('totp').error).toMatch(/must be "any" or "passkey"/)
     })
 })

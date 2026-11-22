@@ -1,4 +1,5 @@
 import type { Role } from 'shared/access'
+import type { StaffFactorMode } from 'shared/mfa'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MyWebSocket } from '#vendor/types/types.js'
@@ -21,11 +22,18 @@ vi.mock('#app/services/user/user-role-service.js', () => ({
 }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: logger }))
 vi.mock('#config/websocket.js', () => ({ default: { roleRecheckIntervalMs: 30_000 } }))
-const mfaConfig = vi.hoisted(() => ({
-    requiredForStaff: false,
-    staffFactor: 'any' as const,
-    staffFactorMaxAgeHours: 12,
-}))
+const mfaConfig = vi.hoisted(() => {
+    const config: {
+        requiredForStaff: boolean
+        staffFactor: StaffFactorMode
+        staffFactorMaxAgeHours: number
+    } = {
+        requiredForStaff: false,
+        staffFactor: 'any',
+        staffFactorMaxAgeHours: 12,
+    }
+    return config
+})
 vi.mock('#config/mfa.js', () => ({ default: mfaConfig }))
 
 interface FakeUserData {
@@ -91,6 +99,7 @@ beforeEach(() => {
 afterEach(() => {
     wsRoleSync.stop()
     mfaConfig.requiredForStaff = false
+    mfaConfig.staffFactor = 'any'
 })
 
 describe('wsRoleSync.refreshUsers', () => {
@@ -343,4 +352,54 @@ describe('wsRoleSync with the staff MFA rule (feat-247)', () => {
         expect(admin.unsubscribe).not.toHaveBeenCalled()
         expect(sent).toEqual([])
     })
+})
+
+// feat-248 (Р11, Д11): the same pass in both modes: a TOTP sign-in keeps the channel with `any`
+// and loses it with `passkey`; a passkey sign-in keeps it in both.
+describe('wsRoleSync in both staff factor modes (feat-248)', () => {
+    const now = Date.now()
+    const iso = (ms: number): string => new Date(ms).toISOString()
+    const totpSignIn = {
+        v: 1,
+        amr: ['pwd', 'otp'],
+        aal: 2,
+        authenticatedAt: iso(now),
+        verified: { pwd: iso(now), otp: iso(now) },
+    }
+    const passkeySignIn = {
+        v: 1,
+        amr: ['webauthn'],
+        aal: 2,
+        authenticatedAt: iso(now),
+        verified: { webauthn: iso(now) },
+    }
+
+    it.each([
+        ['any', 'a TOTP sign-in', totpSignIn, true],
+        ['any', 'a passkey sign-in', passkeySignIn, true],
+        ['passkey', 'a TOTP sign-in', totpSignIn, false],
+        ['passkey', 'a passkey sign-in', passkeySignIn, true],
+    ] as const)(
+        'MFA_STAFF_FACTOR=%s, %s: keeps the channel = %s',
+        async (mode, _name, auth, keeps) => {
+            mfaConfig.requiredForStaff = true
+            mfaConfig.staffFactor = mode
+            const admin = connect('1', 'a', 'admin', true)
+            Object.assign(admin.userData, { userId: '1', uuid: 'a', auth })
+            rolesInDb([['1', 'admin']])
+
+            await wsRoleSync.refreshUsers(['1'])
+
+            if (keeps) {
+                expect(admin.unsubscribe).not.toHaveBeenCalled()
+                expect(admin.userData.isAdminChannelSubscribed).toBe(true)
+                expect(sent).toEqual([])
+            } else {
+                expect(admin.unsubscribe).toHaveBeenCalledWith('admin')
+                expect(sent.map(({ payload }) => payload)).toEqual([
+                    { role: 'admin', reason: 'mfa_session_required' },
+                ])
+            }
+        },
+    )
 })

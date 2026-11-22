@@ -47,6 +47,11 @@ const silent = vi.hoisted(() => {
 })
 vi.mock('#logger', () => ({ default: silent }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
+// feat-248 (Р10): the staff factor mode is switched per test; the CLI reads it through the policy.
+vi.mock('#config/mfa.js', async (importOriginal) => {
+    const actual = await importOriginal<{ default: Record<string, unknown> }>()
+    return { default: { ...actual.default, requiredForStaff: true, staffFactor: 'any' } }
+})
 
 describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -58,6 +63,11 @@ describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
         }
     const { USER_EVENTS_CHANNEL } = await import('#app/services/communication/user-event-bus.js')
     const { runUserSetRole } = await import('./user-set-role-cli.js')
+    const { webauthnCredentialRepository, withTransaction } =
+        await import('#app/repositories/index.js')
+    const { default: mfaConfig } = (await import('#config/mfa.js')) as unknown as {
+        default: { staffFactor: 'any' | 'passkey' }
+    }
 
     const listener = new Redis(REDIS_TEST_URL ?? 'redis://127.0.0.1:6379', { lazyConnect: true })
     const received: Record<string, unknown>[] = []
@@ -155,6 +165,53 @@ describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
         expect(row?.role).toBe('user')
         await new Promise((resolve) => setTimeout(resolve, 100))
         expect(received).toHaveLength(before)
+    })
+
+    // feat-248 (Р10, Д11): the same TOTP-only account in both modes of MFA_STAFF_FACTOR.
+    it('any gives a staff role to a TOTP-only account; passkey refuses it until a passkey', async () => {
+        const anyMode = await insertUser(true)
+        await enrollTestTotp(anyMode.id)
+        expect((await run(['--email', anyMode.email, '--role', 'kb_editor'])).code).toBe(0)
+
+        mfaConfig.staffFactor = 'passkey'
+        try {
+            const user = await insertUser(true)
+            await enrollTestTotp(user.id)
+            const refused = await run(['--email', user.email, '--role', 'kb_editor'])
+            expect(refused.code).toBe(1)
+            expect(refused.errors[0]).toContain('mfa_not_enrolled')
+            const [before] = await db
+                .select({ role: users.role })
+                .from(users)
+                .where(eq(users.id, user.id))
+            expect(before?.role).toBe('user')
+
+            await withTransaction((tx) =>
+                webauthnCredentialRepository.insert(
+                    {
+                        userId: user.id,
+                        credentialId: Buffer.from(crypto.randomUUID()),
+                        publicKey: Buffer.from([1]),
+                        signCount: 0n,
+                        transports: null,
+                        aaguid: null,
+                        deviceType: 'multiDevice',
+                        backedUp: true,
+                        name: 'Key',
+                        enrollmentId: crypto.randomUUID().replaceAll('-', ''),
+                    },
+                    tx,
+                ),
+            )
+            expect((await run(['--email', user.email, '--role', 'kb_editor'])).code).toBe(0)
+            const [after] = await db
+                .select({ role: users.role })
+                .from(users)
+                .where(eq(users.id, user.id))
+            expect(after?.role).toBe('kb_editor')
+        } finally {
+            mfaConfig.staffFactor = 'any'
+        }
     })
 
     it('answers an unknown email with exit code 1', async () => {

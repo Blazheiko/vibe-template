@@ -55,10 +55,33 @@ const anyPolicy: StaffMfaPolicy = {
     stepUpProofs: ['totp', 'webauthn'],
 }
 
+const PASSKEY_MARKS: readonly VerifiedMethodRef[] = ['webauthn']
+
+// feat-248 (Р10, Д11): phishing-resistant staff access. The session must have been signed in
+// with a passkey (`amr`), and only a passkey refreshes it: a TOTP sign-in with a passkey step-up
+// does not qualify, the staff member signs in again with the passkey.
+const passkeyPolicy: StaffMfaPolicy = {
+    mode: 'passkey',
+    enrolled: (factors) => factors.passkeys > 0,
+    sessionDeadline(input, now, maxAgeHours) {
+        const auth = sessionAuthOf(input)
+        if (
+            !auth.amr.includes('webauthn') ||
+            auth.recovery !== undefined ||
+            isActiveRecovery(auth, now)
+        ) {
+            return null
+        }
+        const mark = latestMark(auth, PASSKEY_MARKS)
+        if (mark === null) return null
+        const deadline = mark + maxAgeHours * 3_600_000
+        return now < deadline ? deadline : null
+    },
+    stepUpProofs: ['webauthn'],
+}
+
 export function staffMfaPolicy(mode: StaffFactorMode): StaffMfaPolicy {
-    if (mode === 'any') return anyPolicy
-    // feat-248 (X1) adds the passkey mode.
-    throw new Error(`Staff MFA mode "${mode}" is not available yet`)
+    return mode === 'passkey' ? passkeyPolicy : anyPolicy
 }
 
 /** Whether the session meets the staff requirement now. */
