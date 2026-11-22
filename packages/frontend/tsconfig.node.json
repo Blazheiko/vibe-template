@@ -15,6 +15,7 @@
         "playwright.csp.config.*",
         "playwright.security.config.*",
         "playwright.live.config.*",
+        "playwright.live-passkey.config.*",
         "e2e-security/fixtures.ts",
         "e2e-live/fixtures.ts",
         "eslint.config.*"

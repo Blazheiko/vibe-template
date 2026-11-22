@@ -43,6 +43,7 @@ const status = (over: Record<string, unknown> = {}) => ({
         recoveryContact: true,
         stepUpProofs: ['password'],
         recovery: null,
+        staffFactor: null,
         ...over,
     },
     error: null,
@@ -202,4 +203,62 @@ describe('SignInSecurity: the staff MFA notice (feat-247)', () => {
             expect(emit).toHaveBeenCalledWith('sign_in_again', '/admin')
         },
     )
+})
+
+// feat-248 (docs/plan/passkeys-mfa-plan.md, Р10, Д11): with MFA_STAFF_FACTOR=passkey only a
+// passkey opens the admin area.
+describe('SignInSecurity: the staff passkey mode (feat-248)', () => {
+    const notice = (wrapper: Awaited<ReturnType<typeof mountSection>>) =>
+        wrapper.find('[data-testid="staff-mfa-notice"]')
+    const TOTP_ONLY = { totp: { enabled: true, createdAt: 'x' }, recoveryCodesRemaining: 10 }
+
+    it('a staff account with TOTP and no passkey sees the passkey banner, unasked', async () => {
+        mfa.status.mockResolvedValue(status({ ...TOTP_ONLY, staffFactor: 'passkey' }))
+        const wrapper = await mountSection({ staff: true })
+        expect(notice(wrapper).text()).toContain(en.account.mfa.staffPasskeyRequired)
+        expect(wrapper.find('[data-testid="staff-mfa-sign-in"]').exists()).toBe(false)
+    })
+
+    it('a staff account without any factor is asked for a passkey too', async () => {
+        mfa.status.mockResolvedValue(status({ staffFactor: 'passkey' }))
+        const wrapper = await mountSection({ staff: true, staffReason: 'mfa_required' })
+        expect(notice(wrapper).text()).toContain(en.account.mfa.staffPasskeyRequired)
+    })
+
+    it('with a passkey: no banner; refused for the session, sign in again with the passkey', async () => {
+        const withPasskey = status({ ...TOTP_ONLY, passkeys: 1, staffFactor: 'passkey' })
+        mfa.status.mockResolvedValue(withPasskey)
+        expect(notice(await mountSection({ staff: true })).exists()).toBe(false)
+
+        const emit = vi.spyOn(useEventBus(), 'emit')
+        const wrapper = await mountSection({ staff: true, staffReason: 'mfa_session_required' })
+        expect(notice(wrapper).text()).toContain(en.account.mfa.staffPasskeySessionRequired)
+        await wrapper.find('[data-testid="staff-mfa-sign-in"]').trigger('click')
+        expect(emit).toHaveBeenCalledWith('sign_in_again', '/admin')
+    })
+
+    it('turning off the factor a staff role needs explains the refusal (Р12)', async () => {
+        mfa.status.mockResolvedValue(status({ ...TOTP_ONLY, staffFactor: 'any' }))
+        mfa.totpDisable.mockResolvedValue({
+            data: {
+                status: 'error',
+                code: 'conflict',
+                message: 'A staff role needs a second factor',
+                reason: 'mfa_required_for_role',
+            },
+            error: null,
+        })
+        const wrapper = await mountSection({ staff: true })
+        await wrapper.get('[data-testid="mfa-disable"]').trigger('click')
+        await wrapper.get('[data-testid="confirm-accept"]').trigger('click')
+        await flushPromises()
+        expect(wrapper.get('[data-testid="mfa-message"]').text()).toBe(
+            en.account.mfa.errorStaffFactor,
+        )
+    })
+
+    it('the any mode keeps the TOTP-only staff account without a banner', async () => {
+        mfa.status.mockResolvedValue(status({ ...TOTP_ONLY, staffFactor: 'any' }))
+        expect(notice(await mountSection({ staff: true })).exists()).toBe(false)
+    })
 })

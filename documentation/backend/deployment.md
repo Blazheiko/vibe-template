@@ -247,6 +247,7 @@ Workflow для збірки й публікації Docker-образу або 
 - [ ] Healthcheck відповідає вашим `PORT` / `API_PATH_PREFIX`.
 - [ ] `CSRF_ALLOWED_ORIGINS` з origin фронтенду: образ задає `APP_ENV=production`, і без цієї змінної сервер не стартує ([CSRF](/backend/security#csrf)).
 - [ ] `APP_ENV=production`, `APP_KEY` і решта пунктів із [чекліста безпеки](/backend/security#чекліст-для-production).
+- [ ] MFA: `MFA_ENCRYPTION_KEYS`, `WEBAUTHN_RP_ID` і `WEBAUTHN_ORIGINS` задано (RP ID не змінюють після запуску); персонал має другий фактор; рекомендовано `MFA_STAFF_FACTOR=passkey` у [порядку перемикання](/backend/mfa#персонал).
 - [ ] TLS на проксі, `TRUST_PROXY` і `TRUSTED_PROXY_CIDRS` налаштовано (на unix-сокеті — `TRUST_UNIX_SOCKET_PROXY=true`).
 - [ ] Визначено, хто віддає фронтенд: `SERVE_STATIC=true` або окремий хостинг/CDN.
 - [ ] `VITE_SENTRY_*` передано як build-args, `SENTRY_*` — як runtime env.

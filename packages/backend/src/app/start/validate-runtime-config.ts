@@ -25,6 +25,7 @@ import authTokenCleanupConfig from '#config/auth-token-cleanup.js'
 import auditEventsRetentionConfig from '#config/audit-events-retention.js'
 import notificationsRetentionConfig from '#config/notifications-retention.js'
 import logger from '#logger'
+import type { StaffFactorMode } from 'shared/mfa'
 import { nonEmpty } from '#vendor/utils/env/non-empty.js'
 
 /** Per-IP limits are only as good as the client IP: warn when it is the proxy's. */
@@ -62,6 +63,25 @@ export function getUnixPathError(unixPath: string | undefined = appConfig.unixPa
     const bytes = Buffer.byteLength(unixPath, 'utf8')
     if (bytes <= UNIX_PATH_MAX_BYTES) return null
     return `APP_UNIX_PATH is ${String(bytes)} bytes; a unix socket path can have at most ${String(UNIX_PATH_MAX_BYTES)} on this platform`
+}
+
+/**
+ * feat-248 (Р10, Д11): MFA_STAFF_FACTOR=passkey without a usable relying party would lock every
+ * staff member out of staff access, so it is refused at start.
+ */
+export function getStaffPasskeyModeError(
+    mode: StaffFactorMode = mfaConfig.staffFactor,
+    webauthn: {
+        rpId: string
+        origins: readonly string[]
+        configError: string | null
+    } = webauthnConfig,
+): string | null {
+    if (mode !== 'passkey') return null
+    if (webauthn.configError !== null || webauthn.rpId === '' || webauthn.origins.length === 0) {
+        return 'MFA_STAFF_FACTOR=passkey requires a usable WebAuthn configuration (WEBAUTHN_RP_ID and WEBAUTHN_ORIGINS)'
+    }
+    return null
 }
 
 export function validateRuntimeConfig(): void {
@@ -202,6 +222,11 @@ export function validateRuntimeConfig(): void {
         logger.warn(
             'MFA_ENCRYPTION_KEYS is not set: the TOTP secrets are encrypted with a key derived from APP_KEY (development only)',
         )
+    }
+
+    const staffPasskeyModeError = getStaffPasskeyModeError()
+    if (staffPasskeyModeError !== null) {
+        throw new Error(`Invalid MFA configuration: ${staffPasskeyModeError}`)
     }
 
     // feat-246 (Р6): a passkey is bound to its RP ID for good; production names it explicitly.

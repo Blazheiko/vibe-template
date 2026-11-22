@@ -17,6 +17,10 @@ const CONSUMERS = [
     'app/services/admin/admin-ws-channel-service.ts',
     'app/services/user/role-assignment-service.ts',
     'app/services/auth/mfa/mfa-reset-service.ts',
+    // feat-248 (Р12): meetsStaffMfa and the factor removals.
+    'app/services/auth/sign-in-methods-service.ts',
+    'app/services/auth/mfa/totp-service.ts',
+    'app/services/auth/mfa/passkey-service.ts',
 ]
 
 function sources(dir: string): string[] {

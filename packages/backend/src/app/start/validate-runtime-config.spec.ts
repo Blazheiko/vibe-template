@@ -741,3 +741,53 @@ describe('WebAuthn relying party (feat-246 Р6)', () => {
         }).toThrow(/Invalid WebAuthn configuration: WEBAUTHN_RP_ID is required/)
     })
 })
+
+describe('MFA_STAFF_FACTOR=passkey (feat-248 Р10, Д11)', () => {
+    it('starts with a usable relying party', async () => {
+        process.env['MFA_STAFF_FACTOR'] = 'passkey'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).not.toThrow()
+    })
+
+    it('stops when the relying party has a configuration error', async () => {
+        process.env['MFA_STAFF_FACTOR'] = 'passkey'
+        process.env['WEBAUTHN_ORIGINS'] = 'https://elsewhere.test'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(/Invalid MFA configuration: MFA_STAFF_FACTOR=passkey requires a usable WebAuthn/)
+    })
+
+    it('stops a production-like start without WEBAUTHN_RP_ID', async () => {
+        process.env['APP_IS_PRODUCTION'] = 'true'
+        process.env['APP_URL'] = 'https://app.example.com'
+        process.env['MFA_STAFF_FACTOR'] = 'passkey'
+        delete process.env['WEBAUTHN_RP_ID']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(/MFA_STAFF_FACTOR=passkey requires a usable WebAuthn/)
+    })
+
+    it('refuses a relying party without an RP ID or origins; any needs none', async () => {
+        const { getStaffPasskeyModeError } = await import('./validate-runtime-config.js')
+        const usable = { rpId: 'app.test', origins: ['https://app.test'], configError: null }
+        expect(getStaffPasskeyModeError('passkey', usable)).toBeNull()
+        expect(getStaffPasskeyModeError('passkey', { ...usable, rpId: '' })).toMatch(/WebAuthn/)
+        expect(getStaffPasskeyModeError('passkey', { ...usable, origins: [] })).toMatch(/WebAuthn/)
+        expect(getStaffPasskeyModeError('passkey', { ...usable, configError: 'broken' })).toMatch(
+            /WebAuthn/,
+        )
+        expect(getStaffPasskeyModeError('any', { ...usable, rpId: '' })).toBeNull()
+    })
+
+    it('refuses an unknown mode', async () => {
+        process.env['MFA_STAFF_FACTOR'] = 'totp'
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(/MFA_STAFF_FACTOR must be "any" or "passkey"/)
+    })
+})

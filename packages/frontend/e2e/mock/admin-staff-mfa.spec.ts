@@ -11,7 +11,7 @@ const REFUSED = (reason: string) => ({
     message: 'Access denied',
     reason,
 })
-const MFA_STATUS = (totp: boolean) => ({
+const MFA_STATUS = (totp: boolean, staffFactor: 'any' | 'passkey' = 'any') => ({
     status: 'success',
     totp: { enabled: totp, createdAt: totp ? '2026-11-01T10:00:00.000Z' : null },
     passkeys: 0,
@@ -19,6 +19,7 @@ const MFA_STATUS = (totp: boolean) => ({
     recoveryContact: true,
     stepUpProofs: totp ? ['password', 'totp'] : ['password'],
     recovery: null,
+    staffFactor,
 })
 
 test.describe('the staff MFA rule in the admin area', () => {
@@ -67,5 +68,22 @@ test.describe('the staff MFA rule in the admin area', () => {
             'Your role needs two-step sign-in',
         )
         await expect(page.getByTestId('mfa-setup-start')).toBeEnabled()
+    })
+
+    // feat-248 (Р10, Д11): MFA_STAFF_FACTOR=passkey, a staff account with TOTP and no passkey.
+    test('the passkey mode: a TOTP-only staff account is asked for a passkey', async ({
+        page,
+        api,
+    }) => {
+        await api.answer('admin/users?*', 403, REFUSED('mfa_required'))
+        await api.answer('account/mfa', 200, MFA_STATUS(true, 'passkey'))
+
+        await page.goto('/admin/users')
+
+        await expect(page).toHaveURL(/\/account\?section=security&reason=mfa_required$/)
+        await expect(page.getByTestId('staff-mfa-notice')).toContainText(
+            'opens the admin area only with a passkey',
+        )
+        await expect(page.getByTestId('staff-mfa-sign-in')).toHaveCount(0)
     })
 })

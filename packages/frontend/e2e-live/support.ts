@@ -1,3 +1,6 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { expect, test as base } from '@playwright/test'
 import type { APIRequestContext, Browser, BrowserContext, Page } from '@playwright/test'
 
@@ -16,21 +19,32 @@ export interface Account {
     totpSecret?: string
 }
 
-/** The last step this run spent per key: the server accepts every step once (replay guard). */
-const spentSteps = new Map<string, number>()
+/**
+ * The last step spent per key, kept in a file: the server accepts every step once (replay guard)
+ * and remembers it in the database, across Playwright workers and runs. A worker restarted after a
+ * failure, or a run started right after another, reads what was spent and waits for a fresh step.
+ */
+const STEPS_FILE = join(tmpdir(), 'vibe-e2e-live-totp-steps.json')
+const readSpent = (): Record<string, number> => {
+    try {
+        return JSON.parse(readFileSync(STEPS_FILE, 'utf8')) as Record<string, number>
+    } catch {
+        return {}
+    }
+}
 
 /**
  * A code the server has not seen yet: the current step, or the next one (the server accepts one
  * step either way), waiting for the clock when both were spent already.
  */
 export async function nextTotp(secret: string): Promise<string> {
-    const spent = spentSteps.get(secret) ?? -1
+    const spent = readSpent()[secret] ?? -1
     let step = Math.max(stepNow(), spent + 1)
     while (step > stepNow() + 1) {
         await new Promise((resolve) => setTimeout(resolve, 500))
         step = Math.max(stepNow(), spent + 1)
     }
-    spentSteps.set(secret, step)
+    writeFileSync(STEPS_FILE, JSON.stringify({ ...readSpent(), [secret]: step }))
     return totpAt(secret, step)
 }
 

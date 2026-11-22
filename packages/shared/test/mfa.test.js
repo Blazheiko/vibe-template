@@ -209,8 +209,84 @@ test('staff policy any: the factor, the session level, the age and recovery', ()
     assert.equal(staffSessionOk(policy, undefined, NOW, 12), false)
 })
 
-test('staff policy passkey is not available before feat-248', () => {
-    assert.throws(() => staffMfaPolicy('passkey'))
+test('staff policy passkey: a passkey, a passkey sign-in and a fresh passkey mark', () => {
+    const policy = staffMfaPolicy('passkey')
+    assert.equal(policy.mode, 'passkey')
+    assert.equal(policy.enrolled({ totp: true, passkeys: 0 }), false)
+    assert.equal(policy.enrolled({ totp: false, passkeys: 1 }), true)
+    assert.equal(policy.enrolled({ totp: true, passkeys: 2 }), true)
+    assert.deepEqual(policy.stepUpProofs, ['webauthn'])
+
+    const passkeySignIn = session({ webauthn: ago(3600) }, { aal: 2, amr: ['webauthn'] })
+    assert.equal(staffSessionOk(policy, passkeySignIn, NOW, 12), true)
+    assert.equal(policy.sessionDeadline(passkeySignIn, NOW, 12), NOW - 3600_000 + 12 * 3600_000)
+    // A passkey step-up moves the deadline of a passkey session.
+    assert.equal(
+        policy.sessionDeadline(withVerified(passkeySignIn, 'webauthn', ago(10)), NOW, 12),
+        NOW - 10_000 + 12 * 3600_000,
+    )
+    // Signed in with TOTP: a passkey step-up does not make it a passkey session.
+    const totpSignIn = session({ pwd: ago(60), otp: ago(60) }, { aal: 2, amr: ['pwd', 'otp'] })
+    assert.equal(
+        staffSessionOk(policy, withVerified(totpSignIn, 'webauthn', ago(5)), NOW, 12),
+        false,
+    )
+    // A fresh TOTP mark does not refresh a passkey session either.
+    const stale = { ...passkeySignIn, verified: { webauthn: ago(13 * 3600), otp: ago(5) } }
+    assert.equal(staffSessionOk(policy, stale, NOW, 12), false)
+    assert.equal(
+        staffSessionOk(
+            policy,
+            { ...passkeySignIn, recovery: { startedAt: ago(1), expiresAt: later(1) } },
+            NOW,
+            12,
+        ),
+        false,
+    )
+    assert.equal(staffSessionOk(policy, undefined, NOW, 12), false)
+})
+
+test('staff policy: the table of both modes', () => {
+    const totpSignIn = session({ pwd: ago(60), otp: ago(60) }, { aal: 2, amr: ['pwd', 'otp'] })
+    const passkeySignIn = session({ webauthn: ago(60) }, { aal: 2, amr: ['webauthn'] })
+    const passwordOnly = session({ pwd: ago(60) })
+    const rows = [
+        // [session, any, passkey]
+        [totpSignIn, true, false],
+        [withVerified(totpSignIn, 'webauthn', ago(5)), true, false],
+        [passkeySignIn, true, true],
+        [withVerified(passwordOnly, 'webauthn', ago(5)), false, false],
+        [withVerified(passwordOnly, 'otp', ago(5)), false, false],
+        [{ ...passkeySignIn, verified: { webauthn: ago(13 * 3600) } }, false, false],
+        [{ ...totpSignIn, verified: { otp: ago(13 * 3600) } }, false, false],
+    ]
+    for (const [auth, any, passkey] of rows) {
+        assert.equal(staffSessionOk(staffMfaPolicy('any'), auth, NOW, 12), any)
+        assert.equal(staffSessionOk(staffMfaPolicy('passkey'), auth, NOW, 12), passkey)
+    }
+    const factors = [
+        // [factors, any, passkey]
+        [{ totp: false, passkeys: 0 }, false, false],
+        [{ totp: true, passkeys: 0 }, true, false],
+        [{ totp: false, passkeys: 1 }, true, true],
+        [{ totp: true, passkeys: 1 }, true, true],
+    ]
+    for (const [account, any, passkey] of factors) {
+        assert.equal(staffMfaPolicy('any').enrolled(account), any)
+        assert.equal(staffMfaPolicy('passkey').enrolled(account), passkey)
+    }
+    // Rows 9–10 with the passkey policy: a TOTP step-up is not accepted.
+    const staffStepUpProofs = staffMfaPolicy('passkey').stepUpProofs
+    assert.deepEqual(
+        decide('role.assign', TOTP_AND_PASSKEY, session({ otp: ago(5) }), { staffStepUpProofs }),
+        { kind: 'reauth_required', proofs: ['webauthn'] },
+    )
+    assert.deepEqual(
+        decide('role.assign', TOTP_AND_PASSKEY, session({ webauthn: ago(5) }), {
+            staffStepUpProofs,
+        }),
+        { kind: 'ok' },
+    )
 })
 
 test('MFA reasons are unique snake_case strings', () => {

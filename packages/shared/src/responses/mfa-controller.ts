@@ -17,6 +17,11 @@ export const MfaStatusResponseSchema = type.or(
         stepUpProofs: ProofMethodSchema.array(),
         /** Set in a recovery session (Р8). */
         recovery: type({ expiresAt: 'string', replaced: 'boolean' }).or('null'),
+        /**
+         * feat-248 (Р10, Д11): the factor this staff account needs (MFA_STAFF_FACTOR); null for an
+         * account without a staff role or while MFA_REQUIRED_FOR_STAFF is off.
+         */
+        staffFactor: "'any' | 'passkey' | null",
     },
     CanonicalErrorResponseSchema,
 )

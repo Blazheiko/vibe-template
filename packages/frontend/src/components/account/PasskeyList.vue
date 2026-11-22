@@ -38,6 +38,8 @@ const REASONS = new Map<string, string>([
     ['enrollment_not_found', 'account.mfa.errorSetupExpired'],
     ['enrollment_used', 'account.mfa.errorSetupExpired'],
     ['last_sign_in_method', 'account.passkeys.errorLast'],
+    // feat-248 (Р12): the factor a staff role needs stays.
+    ['mfa_required_for_role', 'account.mfa.errorStaffFactor'],
     ['recovery_session', 'account.mfa.errorRecoveryOrder'],
     ['invalid_code', 'account.passkeys.errorRejected'],
 ])

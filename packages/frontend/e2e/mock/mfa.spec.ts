@@ -17,6 +17,7 @@ const MFA_STATUS = {
     recoveryContact: true,
     stepUpProofs: ['totp'],
     recovery: null,
+    staffFactor: null,
 }
 
 const reauthRequired = (proofs: string[]) => ({
