@@ -349,10 +349,14 @@ export const updateSessionAuth = async (
     sessionId: string | undefined,
     userToken: string,
     apply: (current: SessionAuthState) => SessionAuthState,
+    removeKeys: readonly string[] = [],
 ): Promise<SessionInfo | null> =>
     await writeSessionUpdate(sessionId, userToken, (session) => {
         const current = sessionAuthOf(session.data.auth)
-        return { ...session.data, auth: mergeSessionAuth(current, apply(current)) }
+        const kept = Object.fromEntries(
+            Object.entries(session.data).filter(([key]) => !removeKeys.includes(key)),
+        ) as SessionData
+        return { ...kept, auth: mergeSessionAuth(current, apply(current)) }
     })
 
 /**

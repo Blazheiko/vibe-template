@@ -159,3 +159,4 @@ export {
 } from './account/update-profile.js'
 export { RoleSchema } from '../access/role-schema.js'
 export { SetUserRoleInputSchema, type SetUserRoleInput } from './admin/set-user-role.js'
+export { TotpConfirmInputSchema, type TotpConfirmInput } from './mfa/totp-confirm.js'

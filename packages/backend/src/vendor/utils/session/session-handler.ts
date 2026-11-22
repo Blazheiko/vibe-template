@@ -115,8 +115,8 @@ export const wsSessionHandler = async (
             isStored: async () => await sessionExists(sessionInfo.id, userToken),
             consumeSessionData: async (expected, keys) =>
                 (await consumeSessionData(sessionInfo.id, userToken, expected, keys)).kind,
-            updateSessionAuth: async (apply) =>
-                await updateSessionAuth(sessionInfo.id, userToken, apply),
+            updateSessionAuth: async (apply, options) =>
+                await updateSessionAuth(sessionInfo.id, userToken, apply, options?.removeKeys),
             destroySession: async (): Promise<void> => {
                 await destroySession(sessionInfo.id, userToken)
             },

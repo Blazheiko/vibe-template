@@ -1,10 +1,18 @@
 import type { ErrorCode } from 'shared/errors'
 import type { Result as ResultType } from 'better-result'
+import type { ProofMethod } from 'shared/mfa'
+import type { ErrorDetails, ReauthRequiredErrorDetails } from 'shared/errors'
 
 export type AppError =
     | { _tag: 'BadRequest'; message: string; reason?: string }
     | { _tag: 'Unauthorized'; message: string; reason?: string }
-    | { _tag: 'Forbidden'; message: string; reason?: string }
+    | {
+          _tag: 'Forbidden'
+          message: string
+          reason?: string
+          /** feat-245 (Р3): the step-up proofs this account can give for the refused action. */
+          details?: ReauthRequiredErrorDetails
+      }
     | { _tag: 'NotFound'; resource: string; message: string }
     | { _tag: 'Conflict'; message: string; reason?: string }
     | { _tag: 'RateLimited'; message: string; reason?: string; retryAfterSeconds?: number }
@@ -91,6 +99,19 @@ export function forbidden(message: string, reason?: string): AppError {
     }
 }
 
+/**
+ * feat-245 (Р3): the action needs a fresh proof; `proofs` are the ones this account can give
+ * (POST /auth/reauth takes any of them).
+ */
+export function reauthRequired(proofs: ProofMethod[]): AppError {
+    return {
+        _tag: 'Forbidden',
+        message: 'Confirm it is you to continue',
+        reason: 'reauth_required',
+        details: { kind: 'reauth_required', proofs },
+    }
+}
+
 export function notFound(resource: string, message: string): AppError {
     return { _tag: 'NotFound', resource, message }
 }
@@ -156,6 +177,10 @@ export function appErrorMessage(error: AppError): string {
 
 export function appErrorReason(error: AppError): string | undefined {
     return 'reason' in error ? error.reason : undefined
+}
+
+export function appErrorDetails(error: AppError): ErrorDetails | undefined {
+    return 'details' in error ? error.details : undefined
 }
 
 export function appErrorRetryAfterSeconds(error: AppError): number | undefined {

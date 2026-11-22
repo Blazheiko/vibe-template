@@ -1,0 +1,463 @@
+import { Result } from 'better-result'
+import { nanoid } from 'nanoid'
+import { PRODUCT } from 'shared/product'
+import {
+    MFA_REASONS,
+    stepUpProofsOf,
+    withReplacementFactor,
+    type SessionAuthState,
+} from 'shared/mfa'
+
+import mfaConfig from '#config/mfa.js'
+import { throttlePolicies } from '#config/throttle-policies.js'
+import {
+    totpFactorRepository,
+    userRepository,
+    withTransaction,
+    type DbExecutor,
+    type TotpFactorRow,
+} from '#app/repositories/index.js'
+import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import { withProof, withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
+import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
+import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
+import {
+    badRequest,
+    conflict,
+    notFound,
+    rateLimited,
+    serviceUnavailable,
+    sessionRevoked,
+    type AppError,
+    type AppResult,
+} from '#app/services/shared/errors.js'
+import type { Session } from '#vendor/types/types.js'
+import logger from '#vendor/utils/logger.js'
+import {
+    hasRecoveryContactOf,
+    loadMfaAccount,
+    mfaEnabledOf,
+    proofAccountOf,
+    type MfaAccount,
+} from './mfa-account.js'
+import { mfaSecretBox, totpSecretOwner } from './mfa-secret-box.js'
+import { recoveryCodes } from './recovery-codes.js'
+import { auditProofOf, requireProof } from './require-proof.js'
+import {
+    base32Decode,
+    base32Encode,
+    generateTotpSecret,
+    matchTotpStep,
+    otpauthUri,
+} from './totp.js'
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8): the TOTP factor of the signed-in user.
+
+/** The pending setup, in the data of the session that started it (not shared with others). */
+export const TOTP_ENROLLMENT_KEY = 'totpEnrollment'
+
+interface TotpEnrollment {
+    enrollmentId: string
+    /** base32 of the secret; the record lives in Redis for at most the setup's lifetime. */
+    secret: string
+    expiresAt: string
+}
+
+const isEnrollment = (value: unknown): value is TotpEnrollment =>
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as TotpEnrollment).enrollmentId === 'string' &&
+    typeof (value as TotpEnrollment).secret === 'string' &&
+    typeof (value as TotpEnrollment).expiresAt === 'string'
+
+export interface TotpRequest {
+    userId: bigint
+    session: Session
+    presentedSessionToken: string | undefined
+    actor: UserAuditActor
+    now?: number
+}
+
+export interface MfaStatus {
+    totp: { enabled: boolean; createdAt: string | null }
+    passkeys: number
+    recoveryCodesRemaining: number
+    recoveryContact: boolean
+    stepUpProofs: ('password' | 'totp' | 'webauthn')[]
+    recovery: { expiresAt: string; replaced: boolean } | null
+}
+
+const authOf = (session: Session): SessionAuthState | undefined => session.sessionInfo?.data.auth
+
+const tooManyCodes = (): AppError => rateLimited('Too many codes. Please try again later.')
+
+async function readAccount(userId: bigint): Promise<AppResult<MfaAccount>> {
+    const user = await userRepository.findById(userId)
+    if (user === undefined) return Result.err(notFound('User', 'User not found'))
+    return Result.ok(await loadMfaAccount(user))
+}
+
+/** The secret of a stored version, or null when it does not open (lost key, tampering). */
+export function openTotpSecret(factor: TotpFactorRow): Buffer | null {
+    const box = mfaSecretBox()
+    if (box === null) return null
+    try {
+        return box.open(
+            { ciphertext: factor.secretCiphertext, keyId: factor.keyId },
+            totpSecretOwner(factor.userId),
+        )
+    } catch (err) {
+        logger.error({ err, userId: String(factor.userId) }, 'TOTP secret does not open')
+        return null
+    }
+}
+
+export const totpService = {
+    async status(userId: bigint, session: Session): Promise<AppResult<MfaStatus>> {
+        const account = await readAccount(userId)
+        if (Result.isError(account)) return Result.err(account.error)
+        const { totp, passkeys, recoveryCodesRemaining, hasRecoveryContact } = account.value
+        const recovery = authOf(session)?.recovery
+        return Result.ok({
+            totp: {
+                enabled: totp !== undefined,
+                createdAt: totp?.confirmedAt.toISOString() ?? null,
+            },
+            passkeys,
+            recoveryCodesRemaining,
+            recoveryContact: hasRecoveryContact,
+            stepUpProofs: stepUpProofsOf(proofAccountOf(account.value)),
+            recovery:
+                recovery === undefined
+                    ? null
+                    : {
+                          expiresAt: recovery.expiresAt,
+                          replaced: recovery.replacementFactor !== undefined,
+                      },
+        })
+    },
+
+    /** Rows 1–2 of the matrix: a new secret, kept in this session until it is confirmed. */
+    async setup(
+        request: TotpRequest,
+    ): Promise<AppResult<{ enrollmentId: string; secret: string; otpauthUri: string }>> {
+        const user = await userRepository.findById(request.userId)
+        if (user === undefined) return Result.err(notFound('User', 'User not found'))
+        const account = await loadMfaAccount(user)
+        const proof = requireProof({
+            action: 'mfa.add_factor',
+            account,
+            auth: authOf(request.session),
+            ...(request.now !== undefined ? { now: request.now } : {}),
+        })
+        if (Result.isError(proof)) return Result.err(proof.error)
+        // Р12: an account with MFA always has a channel through which a password is set again.
+        if (!mfaEnabledOf(account) && !account.hasRecoveryContact) {
+            return Result.err(
+                conflict(
+                    'Verify your email (or phone) before turning on two-step sign-in',
+                    MFA_REASONS.recoveryContactRequired,
+                ),
+            )
+        }
+        if (mfaSecretBox() === null) return Result.err(serviceUnavailable())
+
+        const secret = generateTotpSecret()
+        const enrollment: TotpEnrollment = {
+            enrollmentId: nanoid(24),
+            secret: base32Encode(secret),
+            expiresAt: new Date(
+                (request.now ?? Date.now()) + mfaConfig.totpEnrollmentTtlSeconds * 1000,
+            ).toISOString(),
+        }
+        const stored = await request.session.updateSessionData({
+            [TOTP_ENROLLMENT_KEY]: enrollment,
+        })
+        if (stored === null) return Result.err(sessionRevoked())
+        const accountName = user.email ?? user.phone ?? user.name
+        return Result.ok({
+            enrollmentId: enrollment.enrollmentId,
+            secret: enrollment.secret,
+            otpauthUri: otpauthUri(secret, PRODUCT.name, accountName),
+        })
+    },
+
+    /**
+     * Р7: confirms the setup with a code of the new secret. Idempotent by `enrollmentId`: a
+     * repeat after a commit whose session write failed finishes it without a second version.
+     */
+    async confirm(
+        request: TotpRequest,
+        input: { enrollmentId: string; code: string },
+    ): Promise<AppResult<{ recoveryCodes: string[] | null }>> {
+        const { userId, session } = request
+        const now = request.now ?? Date.now()
+        const pending = session.sessionInfo?.data[TOTP_ENROLLMENT_KEY]
+        const enrollment =
+            isEnrollment(pending) && pending.enrollmentId === input.enrollmentId ? pending : null
+
+        // A repeat of a confirmation that committed: finish the session write only.
+        const committed = await totpFactorRepository.findByEnrollment(userId, input.enrollmentId)
+        if (committed !== undefined) {
+            if (enrollment === null) return Result.ok({ recoveryCodes: null })
+            const finished = await finishInSession(session, committed, now)
+            if (Result.isError(finished)) return Result.err(finished.error)
+            return Result.ok({ recoveryCodes: null })
+        }
+
+        if (enrollment === null || Date.parse(enrollment.expiresAt) <= now) {
+            return Result.err(badRequest('Start the setup again', MFA_REASONS.enrollmentNotFound))
+        }
+
+        const throttle = await enforceThrottle(
+            throttlePolicies.mfaVerifyUser,
+            String(userId),
+            tooManyCodes(),
+        )
+        if (Result.isError(throttle)) return Result.err(throttle.error)
+
+        const secret = base32Decode(enrollment.secret)
+        const step = matchTotpStep(secret, input.code, now)
+        if (step === null) return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
+
+        const box = mfaSecretBox()
+        if (box === null) return Result.err(serviceUnavailable())
+        const sealed = box.seal(secret, totpSecretOwner(userId))
+        const actor = withProof(request.actor, auditProofOf(authOf(session)))
+
+        let outcome: {
+            factor: TotpFactorRow
+            replaced: boolean
+            codes: string[] | null
+            events: RecordedAuditEvent[]
+        }
+        try {
+            const result = await withTransaction(async (tx) => {
+                const locked = await userRepository.lockById(userId, tx)
+                if (locked === undefined) return Result.err(notFound('User', 'User not found'))
+                if (locked.sessionToken !== request.presentedSessionToken) {
+                    return Result.err(sessionRevoked())
+                }
+                // Under the lock: a parallel confirmation of the same setup got here first.
+                const again = await totpFactorRepository.findByEnrollment(
+                    userId,
+                    input.enrollmentId,
+                    tx,
+                )
+                if (again !== undefined) {
+                    return Result.ok({ factor: again, replaced: false, codes: null, events: [] })
+                }
+                const account = await loadMfaAccount(locked, tx)
+                if (!mfaEnabledOf(account) && !hasRecoveryContactOf(locked)) {
+                    return Result.err(
+                        conflict(
+                            'Verify your email (or phone) before turning on two-step sign-in',
+                            MFA_REASONS.recoveryContactRequired,
+                        ),
+                    )
+                }
+                const { created, replaced } = await totpFactorRepository.replace(
+                    {
+                        userId,
+                        enrollmentId: input.enrollmentId,
+                        secretCiphertext: sealed.ciphertext,
+                        keyId: sealed.keyId,
+                        lastUsedStep: step,
+                        confirmedAt: new Date(now),
+                    },
+                    tx,
+                )
+                const codes =
+                    account.recoveryCodesRemaining === 0
+                        ? await recoveryCodes.issue(userId, tx)
+                        : null
+                const stamp = await auditService.stamp(tx)
+                const events = await auditService.record(tx, stamp, withRole(actor, locked.role), [
+                    replaced
+                        ? {
+                              action: 'auth.mfa.totp.replaced',
+                              targetId: String(userId),
+                              targetUserId: userId,
+                              input: {},
+                          }
+                        : {
+                              action: 'auth.mfa.totp.enabled',
+                              targetId: String(userId),
+                              targetUserId: userId,
+                              input: { recoveryCodesIssued: codes !== null },
+                          },
+                ])
+                return Result.ok({ factor: created, replaced, codes, events })
+            })
+            if (Result.isError(result)) return Result.err(result.error)
+            outcome = result.value
+        } catch (err) {
+            logger.error({ err, userId: String(userId) }, 'TOTP confirmation failed')
+            throw err
+        }
+        auditService.logCommitted(actor.logger, outcome.events)
+        if (outcome.events.length > 0) userNotificationService.security(userId, 'mfa_enabled')
+
+        const finished = await finishInSession(session, outcome.factor, now)
+        if (Result.isError(finished)) return Result.err(finished.error)
+        return Result.ok({ recoveryCodes: outcome.codes })
+    },
+
+    /**
+     * Р4, Р7: checks a code against the version stored now and spends its step for that version
+     * only. Throttled per user before the check. Answers the version that matched.
+     */
+    async verify(
+        userId: bigint,
+        code: string,
+        options: { now?: number; executor?: DbExecutor; throttle?: boolean } = {},
+    ): Promise<AppResult<{ factorId: bigint }>> {
+        if (options.throttle !== false) {
+            const throttle = await enforceThrottle(
+                throttlePolicies.mfaVerifyUser,
+                String(userId),
+                tooManyCodes(),
+            )
+            if (Result.isError(throttle)) return Result.err(throttle.error)
+        }
+        const factor = await totpFactorRepository.findByUserId(userId, options.executor)
+        if (factor === undefined) {
+            return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
+        }
+        const secret = openTotpSecret(factor)
+        if (secret === null) return Result.err(serviceUnavailable())
+        const step = matchTotpStep(secret, code, options.now ?? Date.now())
+        if (step === null) return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
+        const spent = await totpFactorRepository.consumeStep(
+            factor.id,
+            userId,
+            step,
+            options.executor,
+        )
+        if (!spent) return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
+        return Result.ok({ factorId: factor.id })
+    },
+
+    /** Row 3: removes the TOTP factor; the last factor takes the recovery codes with it. */
+    async disable(request: TotpRequest): Promise<AppResult<{ mfaDisabled: boolean }>> {
+        const { userId, session } = request
+        const account = await readAccount(userId)
+        if (Result.isError(account)) return Result.err(account.error)
+        if (account.value.totp === undefined) {
+            return Result.err(notFound('TotpFactor', 'Two-step sign-in is not on'))
+        }
+        const auth = authOf(session)
+        const proof = requireProof({
+            action: 'mfa.remove_factor',
+            account: account.value,
+            auth,
+            ...(request.now !== undefined ? { now: request.now } : {}),
+        })
+        if (Result.isError(proof)) return Result.err(proof.error)
+        // R+: the replacement installed in this recovery session stays.
+        if (auth?.recovery?.replacementFactor?.kind === 'totp') {
+            return Result.err(
+                conflict('The factor set up in this recovery stays', MFA_REASONS.recoverySession),
+            )
+        }
+        const actor = withProof(request.actor, auditProofOf(auth))
+        const result = await withTransaction(async (tx) => {
+            const locked = await userRepository.lockById(userId, tx)
+            if (locked === undefined) return Result.err(notFound('User', 'User not found'))
+            if (locked.sessionToken !== request.presentedSessionToken) {
+                return Result.err(sessionRevoked())
+            }
+            const current = await loadMfaAccount(locked, tx)
+            if (current.totp === undefined) {
+                return Result.err(notFound('TotpFactor', 'Two-step sign-in is not on'))
+            }
+            await totpFactorRepository.deleteByUserId(userId, tx)
+            const mfaDisabled = current.passkeys === 0
+            if (mfaDisabled) await recoveryCodes.removeAll(userId, tx)
+            const stamp = await auditService.stamp(tx)
+            const events = await auditService.record(tx, stamp, withRole(actor, locked.role), [
+                {
+                    action: 'auth.mfa.totp.disabled',
+                    targetId: String(userId),
+                    targetUserId: userId,
+                    input: { mfaDisabled },
+                },
+            ])
+            return Result.ok({ mfaDisabled, events })
+        })
+        if (Result.isError(result)) return Result.err(result.error)
+        auditService.logCommitted(actor.logger, result.value.events)
+        userNotificationService.security(userId, 'mfa_disabled')
+        return Result.ok({ mfaDisabled: result.value.mfaDisabled })
+    },
+
+    /** Row 5: a new batch of recovery codes; the previous one stops working. */
+    async regenerateRecoveryCodes(
+        request: TotpRequest,
+    ): Promise<AppResult<{ recoveryCodes: string[] }>> {
+        const { userId, session } = request
+        const account = await readAccount(userId)
+        if (Result.isError(account)) return Result.err(account.error)
+        const auth = authOf(session)
+        const proof = requireProof({
+            action: 'mfa.regenerate_codes',
+            account: account.value,
+            auth,
+            ...(request.now !== undefined ? { now: request.now } : {}),
+        })
+        if (Result.isError(proof)) return Result.err(proof.error)
+        const actor = withProof(request.actor, auditProofOf(auth))
+        const result = await withTransaction(async (tx) => {
+            const locked = await userRepository.lockById(userId, tx)
+            if (locked === undefined) return Result.err(notFound('User', 'User not found'))
+            if (locked.sessionToken !== request.presentedSessionToken) {
+                return Result.err(sessionRevoked())
+            }
+            const current = await loadMfaAccount(locked, tx)
+            if (!mfaEnabledOf(current)) {
+                return Result.err(
+                    conflict('Turn on two-step sign-in first', MFA_REASONS.mfaRequired),
+                )
+            }
+            const codes = await recoveryCodes.issue(userId, tx)
+            const stamp = await auditService.stamp(tx)
+            const events = await auditService.record(tx, stamp, withRole(actor, locked.role), [
+                {
+                    action: 'auth.mfa.recovery_codes.regenerated',
+                    targetId: String(userId),
+                    targetUserId: userId,
+                    input: { count: codes.length },
+                },
+            ])
+            return Result.ok({ codes, events })
+        })
+        if (Result.isError(result)) return Result.err(result.error)
+        auditService.logCommitted(actor.logger, result.value.events)
+        userNotificationService.security(userId, 'recovery_codes_regenerated')
+        return Result.ok({ recoveryCodes: result.value.codes })
+    },
+}
+
+/**
+ * Р7 step 4: one write of the session drops the consumed setup and, in a recovery session, records
+ * the new version as the replacement (R+).
+ */
+async function finishInSession(
+    session: Session,
+    factor: TotpFactorRow,
+    now: number,
+): Promise<AppResult<void>> {
+    const updated = await session.updateSessionAuth(
+        (current) =>
+            current.recovery === undefined
+                ? current
+                : withReplacementFactor(current, {
+                      kind: 'totp',
+                      id: String(factor.id),
+                      at: new Date(now).toISOString(),
+                  }),
+        { removeKeys: [TOTP_ENROLLMENT_KEY] },
+    )
+    if (updated === null) return Result.err(sessionRevoked())
+    return Result.ok(undefined)
+}

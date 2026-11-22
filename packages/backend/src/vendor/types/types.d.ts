@@ -176,6 +176,8 @@ export interface Session {
      */
     updateSessionAuth: (
         apply: (current: SessionAuthState) => SessionAuthState,
+        /** Data keys removed in the same write (a consumed TOTP setup, Р7). */
+        options?: { removeKeys?: readonly string[] },
     ) => Promise<SessionInfo | null>
     /** Deletes the current session's record; it does not issue a new session. */
     destroySession: () => Promise<void>

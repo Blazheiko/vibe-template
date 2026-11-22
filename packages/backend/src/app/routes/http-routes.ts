@@ -12,6 +12,7 @@ import PushSubscriptionController from '#app/controllers/http/notifications/push
 import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import AccountController from '#app/controllers/http/user/account-controller.js'
 import AccountSessionsController from '#app/controllers/http/user/account-sessions-controller.js'
+import MfaController from '#app/controllers/http/auth/mfa-controller.js'
 import NotificationController from '#app/controllers/http/notifications/notification-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
@@ -20,6 +21,7 @@ import { defineRoute } from '#app/routes/contract-schemas/index.js'
 import type { routeList } from '#vendor/types/types.js'
 import {
     accountContracts,
+    mfaContracts,
     adminContracts,
     authContracts,
     avatarContracts,
@@ -360,6 +362,41 @@ export default [
         description: 'Account profile and session routes (feat-232, feat-233)',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'account',
+    },
+    {
+        group: [
+            defineRoute({
+                contract: mfaContracts.status,
+                handler: MfaController.status.bind(MfaController),
+                description: 'Second factors and recovery codes of the current user (feat-245)',
+            }),
+            defineRoute({
+                contract: mfaContracts.totpSetup,
+                handler: MfaController.totpSetup.bind(MfaController),
+                description:
+                    'Start a TOTP setup (needs a fresh proof); the secret stays in this session',
+            }),
+            defineRoute({
+                contract: mfaContracts.totpConfirm,
+                handler: MfaController.totpConfirm.bind(MfaController),
+                description:
+                    'Confirm the TOTP setup with a code; replaces the previous app; idempotent',
+            }),
+            defineRoute({
+                contract: mfaContracts.totpDisable,
+                handler: MfaController.totpDisable.bind(MfaController),
+                description: 'Turn the TOTP factor off (needs a fresh second factor)',
+            }),
+            defineRoute({
+                contract: mfaContracts.regenerateRecoveryCodes,
+                handler: MfaController.regenerateRecoveryCodes.bind(MfaController),
+                description: 'Issue new recovery codes; the previous ones stop working',
+            }),
+        ],
+        description: 'Second factors of the account (feat-245)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'account/mfa',
+        rateLimit: { windowMs: 60_000, maxRequests: 20 },
     },
     {
         group: [

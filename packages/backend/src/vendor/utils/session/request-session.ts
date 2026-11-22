@@ -370,9 +370,15 @@ export class RequestSession {
      */
     private async updateAuth(
         apply: (current: SessionAuthState) => SessionAuthState,
+        options?: { removeKeys?: readonly string[] },
     ): Promise<SessionInfo | null> {
         if (this.cookieHeld) return null
-        const updated = await updateSessionAuth(this.info.id, this.storageToken, apply)
+        const updated = await updateSessionAuth(
+            this.info.id,
+            this.storageToken,
+            apply,
+            options?.removeKeys,
+        )
         if (updated !== null) this.setInfo(updated)
         return updated
     }
