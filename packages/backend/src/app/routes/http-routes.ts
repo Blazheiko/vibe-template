@@ -94,16 +94,6 @@ export default [
                 description: 'Options of a passkey as the second sign-in step (feat-246)',
             }),
             defineRoute({
-                contract: authContracts.passkeyOptions,
-                handler: AuthController.passkeyOptions.bind(AuthController),
-                description: 'Options of a passwordless sign-in with a passkey (feat-246)',
-            }),
-            defineRoute({
-                contract: authContracts.passkeyVerify,
-                handler: AuthController.passkeyVerify.bind(AuthController),
-                description: 'Sign in with a passkey alone (feat-246): a full, level-2 sign-in',
-            }),
-            defineRoute({
                 contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
                 description: 'Logout a user',
@@ -219,6 +209,26 @@ export default [
         middlewares: ['session_web', 'csrf_guard'],
         prefix: 'auth',
         rateLimit: { windowMs: 60_000, maxRequests: 10 },
+    },
+    {
+        group: [
+            defineRoute({
+                contract: authContracts.passkeyOptions,
+                handler: AuthController.passkeyOptions.bind(AuthController),
+                description: 'Options of a passwordless sign-in with a passkey (feat-246)',
+            }),
+            defineRoute({
+                contract: authContracts.passkeyVerify,
+                handler: AuthController.passkeyVerify.bind(AuthController),
+                description: 'Sign in with a passkey alone (feat-246): a full, level-2 sign-in',
+            }),
+        ],
+        // feat-246: the sign-in page asks for passkey options for its autofill; they must not
+        // spend the budget of the password sign-in. verify keeps the login IP budget.
+        description: 'Passkey sign-in routes (feat-246)',
+        middlewares: ['session_web', 'csrf_guard'],
+        prefix: 'auth/passkey',
+        rateLimit: { windowMs: 60_000, maxRequests: 30 },
     },
     {
         group: [

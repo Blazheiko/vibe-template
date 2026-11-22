@@ -132,11 +132,18 @@ function handlePasskeyButton(): void {
     void passkeySignIn(false)
 }
 
+// The autofill request starts when the user acts in the identifier field (a pointer or a key),
+// once per visit; the modal's own focus does not start it, so a page that only passes through
+// /login (a redirect after a sign-out) holds no pending ceremony. The button needs none.
+let autofillStarted = false
+async function startAutofill(): Promise<void> {
+    if (autofillStarted || secondStep.value !== null) return
+    autofillStarted = true
+    if (await passkeyAutofillSupported()) await passkeySignIn(true)
+}
+
 onMounted(async () => {
     passkeyAvailable.value = await passkeysSupported()
-    if (secondStep.value === null && (await passkeyAutofillSupported())) {
-        void passkeySignIn(true)
-    }
 })
 
 async function handleLogin(): Promise<void> {
@@ -204,6 +211,8 @@ async function handleLogin(): Promise<void> {
                     phoneAuthEnabled ? t('auth.identifierPlaceholder') : t('auth.emailPlaceholder')
                 "
                 autocomplete="username webauthn"
+                @pointerdown="startAutofill"
+                @keydown="startAutofill"
                 :class="{ 'has-error': loginIdentifierError }"
             />
             <div v-if="loginIdentifierError" class="error-message">

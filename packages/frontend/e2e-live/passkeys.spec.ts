@@ -84,6 +84,7 @@ test('a passkey added on the account page signs in alone, from the autofill and 
         // offers the passkey (conditional UI); the user present picks it.
         await first.context.clearCookies()
         await first.page.goto('/login')
+        await first.page.locator('#login-identifier').click()
         await expect(first.page).toHaveURL(/\/account/)
         await expect(first.page.getByText(account.email)).toBeVisible()
 
@@ -91,9 +92,10 @@ test('a passkey added on the account page signs in alone, from the autofill and 
         await first.context.clearCookies()
         await authenticator.present(false)
         await first.page.goto('/login')
-        await expect(first.page.getByTestId('passkey-sign-in')).toBeVisible()
-        await authenticator.present(true)
+        // The button starts its ceremony (it would replace a pending autofill one), and the user
+        // confirms on the authenticator after that.
         await first.page.getByTestId('passkey-sign-in').click()
+        await authenticator.present(true)
         await expect(first.page).toHaveURL(/\/account/)
         await expect(first.page.getByText(account.email)).toBeVisible()
     } finally {
@@ -146,11 +148,13 @@ test('recovery: the lost passkey replaced, removed, new codes, sign in again', a
 
         await security(page).getByTestId('mfa-regenerate').click()
         await expect(security(page).getByTestId('mfa-codes').locator('li')).toHaveCount(10)
+        // The sign-in page after the finish would take the new passkey from the autofill at
+        // once: the authenticator waits, so the password comes first.
+        await authenticator.present(false)
         await security(page).getByTestId('mfa-recovery-finish').click()
         await expect(page).toHaveURL(/\/login/)
 
         // An ordinary sign-in: the password (the autofill waiting), then the new passkey.
-        await authenticator.present(false)
         await signInPassword(page, account)
         await expect(page.getByTestId('mfa-challenge')).toBeVisible()
         await authenticator.present(true)

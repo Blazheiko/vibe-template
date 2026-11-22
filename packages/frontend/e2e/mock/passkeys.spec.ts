@@ -135,20 +135,16 @@ test.describe('passkeys in the browser', () => {
         await virtualAuthenticator(page)
         // A key for this site in the authenticator: made by a ceremony on the page itself.
         await page.goto('/login')
-        await page.evaluate(async () => {
-            await navigator.credentials.create({
-                publicKey: {
-                    challenge: new Uint8Array(32),
-                    rp: { name: 'Vibe', id: location.hostname },
-                    user: { id: new Uint8Array(32), name: 'jane', displayName: 'Jane' },
-                    pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
-                    authenticatorSelection: {
-                        residentKey: 'required',
-                        userVerification: 'required',
-                    },
-                },
-            })
-        })
+        // A string: the e2e TypeScript project has no DOM types; this runs in the page.
+        await page.evaluate(`navigator.credentials.create({
+            publicKey: {
+                challenge: new Uint8Array(32),
+                rp: { name: 'Vibe', id: location.hostname },
+                user: { id: new Uint8Array(32), name: 'jane', displayName: 'Jane' },
+                pubKeyCredParams: [{ alg: -7, type: 'public-key' }],
+                authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+            },
+        }).then(() => true)`)
 
         await api.answer('auth/login', 200, {
             status: 'mfa_required',

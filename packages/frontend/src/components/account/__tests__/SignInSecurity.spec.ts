@@ -15,9 +15,17 @@ const mfa = vi.hoisted(() => ({
     regenerateRecoveryCodes: vi.fn(),
 }))
 const auth = vi.hoisted(() => ({ recoveryFinish: vi.fn() }))
+// feat-246: the passkey list of the section.
+const passkeys = vi.hoisted(() => ({
+    list: vi.fn(),
+    registerOptions: vi.fn(),
+    register: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+}))
 const push = vi.hoisted(() => vi.fn())
 const store = vi.hoisted(() => ({ setRecovery: vi.fn(), clearUser: vi.fn() }))
-vi.mock('@/utils/api', () => ({ mfaApi: mfa, authApi: auth }))
+vi.mock('@/utils/api', () => ({ mfaApi: mfa, authApi: auth, passkeyApi: passkeys }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('@/stores/user', () => ({ useUserStore: () => store }))
 vi.mock('qrcode', () => ({ toDataURL: () => Promise.resolve('data:image/png;base64,QR') }))
@@ -47,6 +55,7 @@ const mountSection = async () => {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    passkeys.list.mockResolvedValue({ data: { status: 'success', passkeys: [] }, error: null })
 })
 
 describe('SignInSecurity (feat-245)', () => {
@@ -125,5 +134,30 @@ describe('SignInSecurity (feat-245)', () => {
         expect(auth.recoveryFinish).toHaveBeenCalledOnce()
         expect(store.clearUser).toHaveBeenCalled()
         expect(push).toHaveBeenCalledWith('/login')
+    })
+
+    it('a passkey counts as a factor: listed, with codes left and new codes (feat-246)', async () => {
+        mfa.status.mockResolvedValue(status({ passkeys: 1, recoveryCodesRemaining: 9 }))
+        passkeys.list.mockResolvedValue({
+            data: {
+                status: 'success',
+                passkeys: [
+                    {
+                        id: '1',
+                        name: 'Laptop',
+                        deviceType: 'multiDevice',
+                        backedUp: true,
+                        createdAt: '2026-11-01T10:00:00.000Z',
+                        lastUsedAt: null,
+                    },
+                ],
+            },
+            error: null,
+        })
+        const wrapper = await mountSection()
+        await flushPromises()
+        expect(wrapper.get('[data-testid="passkey-name"]').text()).toBe('Laptop')
+        expect(wrapper.get('[data-testid="mfa-codes-left"]').text()).toContain('9')
+        expect(wrapper.find('[data-testid="mfa-regenerate"]').exists()).toBe(true)
     })
 })
