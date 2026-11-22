@@ -174,7 +174,13 @@ export function useAdminChannel(onResumed: () => void = () => undefined): void {
     const onReady = (): void => {
         void channel.ensure()
     }
-    const onAccessChanged = (): void => {
+    const onAccessChanged = (payload: { reason?: string | undefined }): void => {
+        // feat-247: the staff session lost the channel to its MFA freshness; no subscribe until
+        // a new sign-in with the factor (the page is left for the sign-in page meanwhile).
+        if (payload.reason === 'mfa_session_required') {
+            void channel.leave()
+            return
+        }
         void channel.onAccessChanged()
     }
     const onChannelReady = (): void => {

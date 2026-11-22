@@ -41,7 +41,17 @@ export function createAccessSync(deps: AccessSyncDeps) {
         if (target !== null && target !== current.path) deps.replace(target)
     }
 
-    return { readAgain, recheckRoute }
+    /**
+     * feat-247 (Р11): the server took the admin channel away because this session no longer
+     * meets the staff MFA rule (its factor proof is too old, or it never had one). An open admin
+     * page closes the way a lowered role closes it: to the sign-in page, back here afterwards.
+     */
+    const staffSessionExpired = (signInAgain: (returnTo: string) => void): void => {
+        const current = deps.currentPath()
+        if (current.staff) signInAgain(current.path)
+    }
+
+    return { readAgain, recheckRoute, staffSessionExpired }
 }
 
 async function fetchRole(): Promise<Role | null> {
@@ -71,8 +81,13 @@ export function useAccessSync(router: Router): void {
         },
     })
 
-    eventBus.on('access_changed', ({ role }) => {
+    eventBus.on('access_changed', ({ role, reason }) => {
         userStore.applyAccessChanged(role)
+        if (reason === 'mfa_session_required') {
+            sync.staffSessionExpired((returnTo) => {
+                eventBus.emit('sign_in_again', returnTo)
+            })
+        }
     })
     eventBus.on('ws_ready', () => {
         void sync.readAgain()
