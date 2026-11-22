@@ -203,7 +203,8 @@ const key = (ticketId: string): string => sanitizeRedisKey(mfaTicketKey(ticketId
 
 export type ReserveOutcome =
     | { kind: 'ok'; ticket: MfaTicket }
-    | { kind: 'busy' | 'invalid' }
+    | { kind: 'busy' }
+    | { kind: 'invalid' }
     | { kind: 'completing' | 'activated'; ticket: MfaTicket }
 
 export const mfaTicketStore = {
@@ -241,7 +242,8 @@ export const mfaTicketStore = {
                 reservationId,
             ),
         )) as [string, string]
-        if (outcome === 'busy' || outcome === 'invalid') return { kind: outcome }
+        if (outcome === 'busy') return { kind: 'busy' }
+        if (outcome === 'invalid') return { kind: 'invalid' }
         const ticket = parseTicket(json)
         if (ticket === null) return { kind: 'invalid' }
         if (outcome === 'completing' || outcome === 'activated') return { kind: outcome, ticket }

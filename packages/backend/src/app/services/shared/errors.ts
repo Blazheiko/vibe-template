@@ -18,7 +18,14 @@ export type AppError =
     | { _tag: 'RateLimited'; message: string; reason?: string; retryAfterSeconds?: number }
     | { _tag: 'Internal'; publicMessage: string; cause?: unknown }
     // A dependency (Redis) is temporarily down; answered with Retry-After.
-    | { _tag: 'ServiceUnavailable'; message: string; retryAfterSeconds: number; cause?: unknown }
+    | {
+          _tag: 'ServiceUnavailable'
+          message: string
+          retryAfterSeconds: number
+          cause?: unknown
+          /** feat-245: why, when the client should act on it (mfa_completion_pending). */
+          reason?: string
+      }
     // An external provider (LLM) answered with an error / did not answer in time.
     | { _tag: 'UpstreamError'; message: string; cause?: unknown }
     | { _tag: 'UpstreamTimeout'; message: string; cause?: unknown }
@@ -143,6 +150,16 @@ export function internal(cause: unknown, publicMessage = 'Internal error'): AppE
         _tag: 'Internal',
         publicMessage,
         ...(cause !== undefined ? { cause } : {}),
+    }
+}
+
+/** feat-245 (Р4): the sign-in was confirmed but not finished; the same request finishes it. */
+export function completionPending(): AppError {
+    return {
+        _tag: 'ServiceUnavailable',
+        message: 'Signing in is still finishing. Try again in a moment.',
+        retryAfterSeconds: 1,
+        reason: 'mfa_completion_pending',
     }
 }
 

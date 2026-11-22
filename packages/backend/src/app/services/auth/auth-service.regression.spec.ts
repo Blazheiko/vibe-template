@@ -40,6 +40,11 @@ const resetAuthThrottleMock = vi.fn()
 const sendVerificationEmailAfterRegistrationMock = vi.fn()
 
 // feat-235: the audit write of each write point is covered by its *.pg.test.ts.
+// feat-245: these accounts have no second factor; the second step has its own tests.
+vi.mock('#app/services/auth/mfa/mfa-sign-in.js', async () => {
+    const { Result: R } = await import('better-result')
+    return { startSecondStepIfRequired: () => Promise.resolve(R.ok(null)) }
+})
 vi.mock('#app/services/audit/audit-service.js', () => ({
     auditService: {
         stamp: vi.fn(() => Promise.resolve({ occurredAt: '2026-11-20 00:00:00' })),

@@ -14,6 +14,7 @@ import type { LinkPhoneConfirmInputSchema } from '../schemas/auth/link-phone-con
 import type { LinkEmailStartInputSchema } from '../schemas/auth/link-email-start.js'
 import type { UnlinkSignInMethodInputSchema } from '../schemas/auth/unlink-sign-in-method.js'
 import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
+import type { MfaVerifyInputSchema } from '../schemas/mfa/mfa-verify.js'
 import type {
     ChangePasswordResponse,
     ForgotPasswordResponse,
@@ -45,6 +46,11 @@ export const authContracts = {
     login: contract<typeof LoginInputSchema.inferIn, undefined, LoginResponse>()(
         'post',
         '/auth/login',
+    ),
+    // feat-245 (Р4): the second sign-in step; answers like a sign-in.
+    mfaVerify: contract<typeof MfaVerifyInputSchema.inferIn, undefined, LoginResponse>()(
+        'post',
+        '/auth/mfa/verify',
     ),
     registerEmail: contract<
         typeof RegisterEmailInputSchema.inferIn,

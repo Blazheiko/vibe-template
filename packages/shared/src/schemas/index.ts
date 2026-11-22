@@ -160,3 +160,4 @@ export {
 export { RoleSchema } from '../access/role-schema.js'
 export { SetUserRoleInputSchema, type SetUserRoleInput } from './admin/set-user-role.js'
 export { TotpConfirmInputSchema, type TotpConfirmInput } from './mfa/totp-confirm.js'
+export { MfaVerifyInputSchema, type MfaVerifyInput } from './mfa/mfa-verify.js'

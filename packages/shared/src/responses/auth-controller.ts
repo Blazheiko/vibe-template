@@ -110,6 +110,13 @@ export const LoginResponseSchema = type.or(
         'wsToken?': 'string',
         'csrfToken?': 'string',
     },
+    // feat-245 (Р4): the first factor was right and the account has a second one; the second step
+    // (POST /auth/mfa/verify) finishes the sign-in. The ticket travels in an HttpOnly cookie.
+    {
+        status: "'mfa_required'",
+        methods: type.enumerated('totp', 'recovery_code', 'webauthn').array(),
+        'csrfToken?': 'string',
+    },
     CanonicalErrorResponseSchema,
 )
 export type LoginResponse = typeof LoginResponseSchema.infer

@@ -132,6 +132,15 @@ export interface Auth {
     logout: () => Promise<boolean>
     logoutAll: () => Promise<DestroyAllSessionsResult>
     /**
+     * feat-245 (Р4): the session id the request's cookie named (verified), even when that session
+     * was replaced since; the session of the request when it came without a cookie.
+     */
+    getCookieSessionId: () => string | undefined
+    /** feat-245 (Р4): the second-step ticket id of the request's cookie. */
+    getMfaTicketCookie: () => string | undefined
+    /** feat-245 (Р4): sets (or with null clears) the second-step ticket cookie. */
+    setMfaTicketCookie: (ticketId: string | null, maxAgeSeconds: number) => void
+    /**
      * feat-245 (Р4): what a second-step sign-in will create, fixed once so a repeat creates the same
      * session (same id, device, auth state and recovery expiry). Pure: nothing is written.
      */

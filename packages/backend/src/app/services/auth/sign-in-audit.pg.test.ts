@@ -212,6 +212,9 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         logout: () => Promise.resolve(true),
         logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
         // feat-245: a second-step sign-in is not exercised here.
+        getCookieSessionId: () => undefined,
+        getMfaTicketCookie: () => undefined,
+        setMfaTicketCookie: () => undefined,
         planLogin: () => {
             throw new Error('not used')
         },
@@ -258,6 +261,9 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
                 getPresentedUserToken: () => user.sessionToken,
                 logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
                 // feat-245: a second-step sign-in is not exercised here.
+                getCookieSessionId: () => undefined,
+                getMfaTicketCookie: () => undefined,
+                setMfaTicketCookie: () => undefined,
                 planLogin: () => {
                     throw new Error('not used')
                 },

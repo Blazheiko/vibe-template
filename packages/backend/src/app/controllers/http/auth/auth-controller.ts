@@ -1,3 +1,4 @@
+import { completeSecondStep } from '#app/services/auth/mfa/mfa-sign-in.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
@@ -29,6 +30,7 @@ import type {
     EmptyFormInput,
     ForgotPasswordInput,
     LoginInput,
+    MfaVerifyInput,
     ResetPasswordInput,
     VerifyEmailInput,
     RegisterEmailInput,
@@ -130,6 +132,17 @@ export default {
         const result = await authService.login(payload, context.auth, context.session, {
             ipAddress: context.httpData.ip ?? '',
         })
+        return respond(context, result)
+    },
+
+    /** feat-245 (Р4): the second sign-in step against the ticket cookie. */
+    async mfaVerify(context: HttpContext<MfaVerifyInput>): Promise<LoginResponse> {
+        const payload = getTypedPayload(context)
+        const result = await completeSecondStep(
+            { auth: context.auth, session: context.session },
+            { method: payload.method, code: payload.code },
+            { requestId: context.requestId, logger: context.logger },
+        )
         return respond(context, result)
     },
 

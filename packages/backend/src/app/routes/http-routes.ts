@@ -81,6 +81,12 @@ export default [
                 description: 'Login a user by email or phone identifier',
             }),
             defineRoute({
+                contract: authContracts.mfaVerify,
+                handler: AuthController.mfaVerify.bind(AuthController),
+                description:
+                    'Second sign-in step (feat-245): TOTP or recovery code against the ticket cookie',
+            }),
+            defineRoute({
                 contract: authContracts.logout,
                 handler: AuthController.logout.bind(AuthController),
                 description: 'Logout a user',

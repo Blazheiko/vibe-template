@@ -84,6 +84,32 @@ const defaultSignInAuth = (origin: LoginOrigin, now: Date): SessionAuthState | u
     }
 }
 
+/** feat-245 (Р4): `__Host-mfa` where the session cookie has the prefix, `mfa` elsewhere. */
+export const mfaTicketCookieName = (): string =>
+    sessionConfig.useHostPrefix ? '__Host-mfa' : 'mfa'
+
+/**
+ * feat-245 (Р4): what the application does when a request comes with the session a second-step
+ * sign-in created and with the ticket cookie (the browser got the answer): it retires the ticket.
+ * Registered at start (app/start), so this module does not import the application.
+ */
+type SignInCompletionHook = (context: HttpContext, completionId: string) => Promise<void>
+let signInCompletionHook: SignInCompletionHook | null = null
+export const registerSignInCompletionHook = (hook: SignInCompletionHook): void => {
+    signInCompletionHook = hook
+}
+/** Run by session_web once the session is attached (context.auth works then). */
+export const runSignInCompletionHook = async (context: HttpContext): Promise<void> => {
+    const completionId = context.session.sessionInfo?.data.completionId
+    if (signInCompletionHook === null || typeof completionId !== 'string') return
+    if (context.httpData.cookies.get(mfaTicketCookieName()) === undefined) return
+    try {
+        await signInCompletionHook(context, completionId)
+    } catch (err) {
+        logger.warn({ err }, 'Second-step ticket not retired; it expires by itself')
+    }
+}
+
 const newAnonSessionInfo = (): SessionInfo => ({
     id: crypto.randomUUID(),
     data: withCsrfToken({}),
@@ -200,16 +226,27 @@ export class RequestSession {
      * replace `info` and `storageToken`, not this.
      */
     private readonly presentedUserToken: string | undefined
+    /**
+     * feat-245 (Р4): the session id the request's cookie named, verified by its signature, whatever
+     * became of that session (an anonymous one replaced by a sign-in whose answer was lost).
+     */
+    private readonly cookieSessionId: string | undefined
 
     private constructor(
         private readonly context: HttpContext,
         info: SessionInfo,
-        state: { cookieHeld: boolean; storageToken: string; presentedUserToken?: string },
+        state: {
+            cookieHeld: boolean
+            storageToken: string
+            presentedUserToken?: string
+            cookieSessionId?: string
+        },
     ) {
         this.info = info
         this.cookieHeld = state.cookieHeld
         this.storageToken = state.storageToken
         this.presentedUserToken = state.presentedUserToken
+        this.cookieSessionId = state.cookieSessionId
     }
 
     /**
@@ -306,10 +343,12 @@ export class RequestSession {
             presentedUserToken !== undefined && typeof info.data.userId === 'string'
                 ? presentedUserToken
                 : undefined
+        const cookieSessionId = incoming.kind === 'none' ? undefined : incoming.sessionId
         const session = new RequestSession(context, info, {
             cookieHeld,
             storageToken: userToken ?? ANON_TOKEN,
             ...(signedInToken !== undefined ? { presentedUserToken: signedInToken } : {}),
+            ...(cookieSessionId !== undefined ? { cookieSessionId } : {}),
         })
 
         if (startsNew) {
@@ -362,6 +401,10 @@ export class RequestSession {
         auth.logout = this.logout.bind(this)
         auth.logoutAll = this.logoutAll.bind(this)
         auth.planLogin = this.planLogin.bind(this)
+        auth.getCookieSessionId = (): string | undefined => this.cookieSessionId ?? this.info.id
+        auth.getMfaTicketCookie = (): string | undefined =>
+            this.context.httpData.cookies.get(mfaTicketCookieName()) ?? undefined
+        auth.setMfaTicketCookie = this.setMfaTicketCookie.bind(this)
         auth.prepareLogin = this.prepareLogin.bind(this)
         auth.activateLogin = this.activateLogin.bind(this)
     }
@@ -673,6 +716,19 @@ export class RequestSession {
             secure: sessionConfig.cookie.secure,
             maxAge,
             sameSite: sessionConfig.cookie.sameSite,
+            expires: new Date(Date.now() + maxAge * 1000),
+        })
+    }
+
+    /** feat-245 (Р4): the second-step ticket id, or null to clear it. */
+    private setMfaTicketCookie(ticketId: string | null, maxAgeSeconds: number): void {
+        const maxAge = ticketId === null ? 0 : maxAgeSeconds
+        this.context.responseData.setCookie(mfaTicketCookieName(), ticketId ?? '', {
+            path: '/',
+            httpOnly: true,
+            secure: sessionConfig.cookie.secure,
+            maxAge,
+            sameSite: 'Strict',
             expires: new Date(Date.now() + maxAge * 1000),
         })
     }

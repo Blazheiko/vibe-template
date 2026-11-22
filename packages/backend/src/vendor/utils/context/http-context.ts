@@ -19,6 +19,9 @@ const getDefaultAuth = (): Auth => ({
     getPresentedUserToken: () => undefined,
     check: () => false,
     login: () => Promise.resolve(null),
+    getCookieSessionId: () => undefined,
+    getMfaTicketCookie: () => undefined,
+    setMfaTicketCookie: () => undefined,
     planLogin: (): never => {
         throw new Error('No session: a sign-in cannot be planned')
     },

@@ -69,14 +69,11 @@ import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
-
-interface AuthSuccessPayload {
-    status: 'success'
-    user: ReturnType<typeof userTransformer.serialize>
-    wsUrl: string
-    wsToken: string
-    csrfToken?: string
-}
+import { authSuccessPayload, type AuthSuccessPayload } from '#app/services/auth/auth-success.js'
+import {
+    startSecondStepIfRequired,
+    type SecondStepRequired,
+} from '#app/services/auth/mfa/mfa-sign-in.js'
 
 interface GenericAcceptedPayload {
     status: 'success'
@@ -226,25 +223,7 @@ async function buildAuthSuccess(
         return Result.err(internalMessage(loginFailureMessage))
     }
 
-    const sessionInfo = session.sessionInfo
-    let wsToken = ''
-    if (sessionInfo !== null) {
-        const wsTokenResult = await generateWsToken(sessionInfo, String(user.id))
-
-        wsToken = wsTokenResult
-    }
-
-    const csrfToken = getSessionCsrfToken(sessionInfo)
-    const payload: AuthSuccessPayload = {
-        status: 'success',
-        user: userTransformer.serialize(user),
-        wsUrl: wsToken !== '' ? getWsUrl() : '',
-        wsToken,
-    }
-    if (csrfToken !== undefined) {
-        payload.csrfToken = csrfToken
-    }
-    return Result.ok(payload)
+    return Result.ok(await authSuccessPayload(user, session))
 }
 
 async function persistRegisteredUser(
@@ -991,7 +970,7 @@ export const authService = {
         auth: Auth,
         session: Session,
         requestMeta: { ipAddress: string },
-    ): Promise<AppResult<AuthSuccessPayload>> {
+    ): Promise<AppResult<AuthSuccessPayload | SecondStepRequired>> {
         const { password } = payload
         const invalidCredentials = (): AppResult<never> =>
             Result.err(unauthorized('Invalid email or password'))
@@ -1055,6 +1034,19 @@ export const authService = {
 
         // The correct password resets the per-account budget; the IP budget stays.
         await resetThrottleQuietly(throttlePolicies.loginIdentifier, loginKey.value, 'Login')
+
+        // feat-245 (Р4): an account with a second factor gets a ticket, not a session.
+        const second = await startSecondStepIfRequired({ auth, session }, user, {
+            method: 'password',
+        })
+        if (Result.isError(second)) return Result.err(second.error)
+        if (second.value !== null) {
+            const csrfToken = getSessionCsrfToken(session.sessionInfo)
+            return Result.ok({
+                ...second.value,
+                ...(csrfToken !== undefined ? { csrfToken } : {}),
+            })
+        }
 
         const success = await buildAuthSuccess(user, auth, session, { method: 'password' })
         const device = session.sessionInfo?.data.device

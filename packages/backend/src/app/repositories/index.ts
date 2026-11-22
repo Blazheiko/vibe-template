@@ -102,3 +102,4 @@ export type {
 } from './audit/audit-events-repository.js'
 export { withTransaction } from './transaction.js'
 export type { DbExecutor, DbTransaction } from './transaction.js'
+export { currentTransactionId, transactionStatus } from './transaction.js'
