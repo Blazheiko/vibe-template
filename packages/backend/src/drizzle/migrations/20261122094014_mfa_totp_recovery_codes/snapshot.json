@@ -1,0 +1,520 @@
+{
+  "type": "diff",
+  "version": "9",
+  "dialect": "postgres",
+  "id": "42f75773-68d4-4601-9ab3-d59d2cfce453",
+  "prevIds": [
+    "7a24c28b-19a2-4966-a887-755e70a164a4"
+  ],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "mfa_recovery_codes"
+      ],
+      "writes": [
+        "s|tbl|public.mfa_recovery_codes",
+        "n|tbl|public.mfa_recovery_codes",
+        "e|tbl|public.mfa_recovery_codes",
+        "n|rel|public.mfa_recovery_codes",
+        "n|type|public.mfa_recovery_codes",
+        "n|rel|public.mfa_recovery_codes_pkey",
+        "n|rel|public.mfa_recovery_codes_user_code_unique"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "totp_factors"
+      ],
+      "writes": [
+        "s|tbl|public.totp_factors",
+        "n|tbl|public.totp_factors",
+        "e|tbl|public.totp_factors",
+        "n|rel|public.totp_factors",
+        "n|type|public.totp_factors",
+        "n|rel|public.totp_factors_pkey",
+        "n|rel|public.totp_factors_user_id_unique",
+        "n|rel|public.totp_factors_enrollment_id_unique"
+      ],
+      "reads": [
+        "n|sch|public"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "mfa_recovery_codes",
+        "mfa_recovery_codes_unused_idx"
+      ],
+      "writes": [
+        "s|idx|public.mfa_recovery_codes_unused_idx",
+        "n|idx|public.mfa_recovery_codes_unused_idx",
+        "e|idx|public.mfa_recovery_codes_unused_idx",
+        "n|rel|public.mfa_recovery_codes_unused_idx"
+      ],
+      "reads": [
+        "n|tbl|public.mfa_recovery_codes",
+        "n|sch|public",
+        "n|col|public.mfa_recovery_codes.user_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "mfa_recovery_codes"
+      ],
+      "writes": [
+        "s|fk|public.mfa_recovery_codes.mfa_recovery_codes_user_id_users_id_fkey",
+        "n|fk|public.mfa_recovery_codes.mfa_recovery_codes_user_id_users_id_fkey",
+        "e|fk|public.mfa_recovery_codes.mfa_recovery_codes_user_id_users_id_fkey",
+        "n|con|public.mfa_recovery_codes.mfa_recovery_codes_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.mfa_recovery_codes",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.mfa_recovery_codes.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "totp_factors"
+      ],
+      "writes": [
+        "s|fk|public.totp_factors.totp_factors_user_id_users_id_fkey",
+        "n|fk|public.totp_factors.totp_factors_user_id_users_id_fkey",
+        "e|fk|public.totp_factors.totp_factors_user_id_users_id_fkey",
+        "n|con|public.totp_factors.totp_factors_user_id_users_id_fkey"
+      ],
+      "reads": [
+        "n|tbl|public.totp_factors",
+        "n|sch|public",
+        "n|tbl|public.users",
+        "n|sch|public",
+        "n|col|public.totp_factors.user_id",
+        "n|col|public.users.id",
+        "e|uniqueness|public.users.id"
+      ]
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": [
+        "table",
+        "public",
+        "notifications"
+      ],
+      "writes": [
+        "s|ck|public.notifications.notifications_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.notifications",
+        "n|sch|public",
+        "n|col|public.notifications.kind",
+        "e|col|public.notifications.kind"
+      ],
+      "sqlHash": "ae09089fd7b4080d"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "mfa_recovery_codes",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "totp_factors",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "id",
+        "type": "bigserial",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "user_id",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "code_hash",
+        "type": "varchar(64)",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "batch_id",
+        "type": "varchar(21)",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "used_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "created_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "id",
+        "type": "bigserial",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "user_id",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "enrollment_id",
+        "type": "varchar(32)",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "secret_ciphertext",
+        "type": "bytea",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "key_id",
+        "type": "varchar(16)",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "last_used_step",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "confirmed_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "created_at",
+        "type": "timestamp",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "mfa_recovery_codes_unused_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"used_at\" IS NULL",
+        "with": "",
+        "method": "btree",
+        "concurrently": false,
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "mfa_recovery_codes_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "totp_factors_user_id_users_id_fkey",
+        "nameExplicit": false,
+        "columns": [
+          "user_id"
+        ],
+        "schemaTo": "public",
+        "tableTo": "users",
+        "columnsTo": [
+          "id"
+        ],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "mfa_recovery_codes_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "totp_factors_pkey",
+        "columns": [
+          "id"
+        ],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "mfa_recovery_codes",
+        "name": "mfa_recovery_codes_user_code_unique",
+        "nameExplicit": true,
+        "columns": [
+          "user_id",
+          "code_hash"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "totp_factors_user_id_unique",
+        "nameExplicit": true,
+        "columns": [
+          "user_id"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "totp_factors",
+        "name": "totp_factors_enrollment_id_unique",
+        "nameExplicit": true,
+        "columns": [
+          "enrollment_id"
+        ],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"notifications\",\"notifications_kind_check\"]",
+      "set": {
+        "value": "\"kind\" IN ('security.new_sign_in', 'security.method_added', 'security.method_removed', 'security.password_changed', 'security.password_reset', 'security.logout_all', 'security.session_revoked', 'security.account_claimed', 'security.mfa_enabled', 'security.mfa_disabled', 'security.recovery_codes_regenerated', 'security.recovery_code_used', 'support.reply')"
+      }
+    }
+  ]
+}

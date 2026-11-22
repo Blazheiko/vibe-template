@@ -29,6 +29,11 @@ export interface NotificationParamsMap {
     'security.logout_all': NoNotificationParams
     'security.session_revoked': { device?: string }
     'security.account_claimed': NoNotificationParams
+    // feat-245 (docs/plan/passkeys-mfa-plan.md, Р14).
+    'security.mfa_enabled': NoNotificationParams
+    'security.mfa_disabled': NoNotificationParams
+    'security.recovery_codes_regenerated': NoNotificationParams
+    'security.recovery_code_used': NoNotificationParams
     'support.reply': NoNotificationParams
 }
 
@@ -53,6 +58,10 @@ export const NOTIFICATION_KINDS = {
     'security.logout_all': { category: 'security', link: ACCOUNT_PAGE },
     'security.session_revoked': { category: 'security', link: SESSIONS_PAGE },
     'security.account_claimed': { category: 'security', link: ACCOUNT_PAGE },
+    'security.mfa_enabled': { category: 'security', link: ACCOUNT_PAGE },
+    'security.mfa_disabled': { category: 'security', link: ACCOUNT_PAGE },
+    'security.recovery_codes_regenerated': { category: 'security', link: ACCOUNT_PAGE },
+    'security.recovery_code_used': { category: 'security', link: ACCOUNT_PAGE },
     'support.reply': { category: 'support', link: '/support' },
 } as const satisfies Record<NotificationKind, NotificationKindDefinition>
 

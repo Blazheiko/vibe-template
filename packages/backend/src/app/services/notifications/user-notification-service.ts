@@ -16,6 +16,11 @@ const SECURITY_KINDS = {
     logout_all: 'security.logout_all',
     account_claimed: 'security.account_claimed',
     session_revoked: 'security.session_revoked',
+    // feat-245 (Р14).
+    mfa_enabled: 'security.mfa_enabled',
+    mfa_disabled: 'security.mfa_disabled',
+    recovery_codes_regenerated: 'security.recovery_codes_regenerated',
+    recovery_code_used: 'security.recovery_code_used',
 } as const satisfies Record<string, NotificationKind>
 
 export type SecurityEvent = keyof typeof SECURITY_KINDS

@@ -490,6 +490,22 @@ const pl: typeof en = {
                 title: 'Konto zabezpieczone',
                 body: 'Twój e-mail został potwierdzony. Wcześniejsze metody logowania i sesje usunięto.',
             },
+            security_mfa_enabled: {
+                title: 'Zmieniono logowanie dwuetapowe',
+                body: 'Do konta dodano drugi składnik. Jeśli to nie Ty, zabezpiecz konto.',
+            },
+            security_mfa_disabled: {
+                title: 'Wyłączono logowanie dwuetapowe',
+                body: 'Drugi składnik usunięto z konta. Jeśli to nie Ty, zabezpiecz konto.',
+            },
+            security_recovery_codes_regenerated: {
+                title: 'Nowe kody odzyskiwania',
+                body: 'Utworzono nowe kody odzyskiwania; stare już nie działają.',
+            },
+            security_recovery_code_used: {
+                title: 'Użyto kodu odzyskiwania',
+                body: 'Ktoś zalogował się kodem odzyskiwania, inne sesje zostały zakończone. Jeśli to nie Ty, działaj natychmiast.',
+            },
             support_reply: {
                 title: 'Odpowiedź pomocy',
                 body: 'Na czacie pomocy czeka nowa odpowiedź.',

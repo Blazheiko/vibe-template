@@ -61,6 +61,26 @@ export const NOTIFICATION_PUSH_TEXTS: PushTexts = {
         body: 'Your email was confirmed. Earlier sign-in methods and sessions were removed.',
         tag: 'security-sessions',
     }),
+    'security.mfa_enabled': () => ({
+        title: 'Two-step sign-in changed',
+        body: 'A second factor was added to your account. If it was not you, secure your account.',
+        tag: 'security-mfa',
+    }),
+    'security.mfa_disabled': () => ({
+        title: 'Two-step sign-in turned off',
+        body: 'The second factor was removed from your account. If it was not you, secure your account.',
+        tag: 'security-mfa',
+    }),
+    'security.recovery_codes_regenerated': () => ({
+        title: 'New recovery codes',
+        body: 'New recovery codes were created; the old ones no longer work.',
+        tag: 'security-mfa',
+    }),
+    'security.recovery_code_used': () => ({
+        title: 'Recovery code used',
+        body: 'Someone signed in with a recovery code and other sessions were signed out. If it was not you, act now.',
+        tag: 'security-mfa',
+    }),
     'support.reply': () => ({
         title: 'Support replied',
         body: 'A new answer is waiting in the support chat.',
