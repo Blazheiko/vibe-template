@@ -34,6 +34,9 @@ export interface NotificationParamsMap {
     'security.mfa_disabled': NoNotificationParams
     'security.recovery_codes_regenerated': NoNotificationParams
     'security.recovery_code_used': NoNotificationParams
+    // feat-246 (Р14).
+    'security.passkey_added': NoNotificationParams
+    'security.passkey_removed': NoNotificationParams
     'support.reply': NoNotificationParams
 }
 
@@ -62,6 +65,8 @@ export const NOTIFICATION_KINDS = {
     'security.mfa_disabled': { category: 'security', link: ACCOUNT_PAGE },
     'security.recovery_codes_regenerated': { category: 'security', link: ACCOUNT_PAGE },
     'security.recovery_code_used': { category: 'security', link: ACCOUNT_PAGE },
+    'security.passkey_added': { category: 'security', link: ACCOUNT_PAGE },
+    'security.passkey_removed': { category: 'security', link: ACCOUNT_PAGE },
     'support.reply': { category: 'support', link: '/support' },
 } as const satisfies Record<NotificationKind, NotificationKindDefinition>
 

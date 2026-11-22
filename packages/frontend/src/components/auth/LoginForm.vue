@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ErrorCode } from 'shared/errors'
 import { authApi } from '@/utils/api'
@@ -9,6 +9,7 @@ import { isPhoneAuthEnabled } from '@/utils/phone-auth'
 import { passwordLengthProblem } from '@/utils/validate-password'
 import { useAuthRequest } from '@/composables/useAuthRequest'
 import { useCompleteSignIn } from '@/composables/useCompleteSignIn'
+import { passkeyAutofillSupported, passkeysSupported, usePasskey } from '@/composables/usePasskeys'
 import SocialAuthButtons from '../SocialAuthButtons.vue'
 import MfaChallengeForm from './MfaChallengeForm.vue'
 import { useRoute } from 'vue-router'
@@ -40,11 +41,18 @@ const loginError = ref(props.notice)
 const isLoginLoading = ref(false)
 
 // feat-245 (Р4): the password (or an OAuth sign-in, back on /login?mfa=required) was right and
-// the account has a second factor: the second step replaces the password form.
+// the account has a second factor: the second step replaces the password form. feat-246: the
+// OAuth return names the methods of the account (`&methods=webauthn,totp,recovery_code`).
 type SecondStepMethod = 'totp' | 'recovery_code' | 'webauthn'
+const SECOND_STEP_METHODS: readonly SecondStepMethod[] = ['webauthn', 'totp', 'recovery_code']
 const route = useRoute()
+const methodsOfQuery = (): SecondStepMethod[] => {
+    const raw = typeof route.query.methods === 'string' ? route.query.methods.split(',') : []
+    const methods = SECOND_STEP_METHODS.filter((method) => raw.includes(method))
+    return methods.length > 0 ? methods : ['totp', 'recovery_code']
+}
 const secondStep = ref<SecondStepMethod[] | null>(
-    route.query.mfa === 'required' ? ['totp', 'recovery_code'] : null,
+    route.query.mfa === 'required' ? methodsOfQuery() : null,
 )
 const restartSignIn = (message: string): void => {
     secondStep.value = null
@@ -89,6 +97,54 @@ function validateLoginPassword(): boolean {
 
     return true
 }
+
+// feat-246 (Р6): a sign-in with a passkey alone, by the button or from the suggestions of the
+// identifier field (conditional UI). Only one ceremony runs at a time: the button replaces the
+// waiting autofill one (the library aborts it).
+const passkeyAvailable = ref(false)
+
+async function passkeySignIn(autofill: boolean): Promise<void> {
+    const { data } = await authApi.passkeyOptions()
+    if (data?.status !== 'success') {
+        if (!autofill) loginError.value = t('auth.errorServer')
+        return
+    }
+    const signed = await usePasskey(data.options, autofill)
+    if (!signed.ok) {
+        if (!autofill && signed.failure !== 'cancelled') loginError.value = t('auth.passkeyFailed')
+        return
+    }
+    await runAuthRequest(isLoginLoading, loginError, 'Passkey sign-in', async () => {
+        const verified = await authApi.passkeyVerify({
+            challengeId: data.challengeId,
+            response: signed.value,
+        })
+        if (verified.data?.status === 'success' && verified.data.user !== undefined) {
+            completeSignIn(verified.data.user)
+            return
+        }
+        loginError.value = t('auth.passkeyFailed')
+    })
+}
+
+function handlePasskeyButton(): void {
+    loginError.value = ''
+    void passkeySignIn(false)
+}
+
+// The autofill request starts when the user acts in the identifier field (a pointer or a key),
+// once per visit; the modal's own focus does not start it, so a page that only passes through
+// /login (a redirect after a sign-out) holds no pending ceremony. The button needs none.
+let autofillStarted = false
+async function startAutofill(): Promise<void> {
+    if (autofillStarted || secondStep.value !== null) return
+    autofillStarted = true
+    if (await passkeyAutofillSupported()) await passkeySignIn(true)
+}
+
+onMounted(async () => {
+    passkeyAvailable.value = await passkeysSupported()
+})
 
 async function handleLogin(): Promise<void> {
     loginError.value = ''
@@ -154,7 +210,9 @@ async function handleLogin(): Promise<void> {
                 :placeholder="
                     phoneAuthEnabled ? t('auth.identifierPlaceholder') : t('auth.emailPlaceholder')
                 "
-                autocomplete="username"
+                autocomplete="username webauthn"
+                @pointerdown="startAutofill"
+                @keydown="startAutofill"
                 :class="{ 'has-error': loginIdentifierError }"
             />
             <div v-if="loginIdentifierError" class="error-message">
@@ -190,6 +248,17 @@ async function handleLogin(): Promise<void> {
         <button class="auth-button" @click="handleLogin" :disabled="isLoginLoading">
             <span v-if="isLoginLoading">{{ t('auth.signingIn') }}</span>
             <span v-else>{{ t('auth.signIn') }}</span>
+        </button>
+
+        <button
+            v-if="passkeyAvailable"
+            class="auth-button secondary"
+            type="button"
+            data-testid="passkey-sign-in"
+            :disabled="isLoginLoading"
+            @click="handlePasskeyButton"
+        >
+            {{ t('auth.signInWithPasskey') }}
         </button>
 
         <SocialAuthButtons />

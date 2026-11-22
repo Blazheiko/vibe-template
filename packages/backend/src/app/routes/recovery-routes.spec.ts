@@ -66,11 +66,16 @@ describe('recovery session over the route registry (feat-245 Р8)', () => {
             .sort()
         expect(allowed).toEqual([
             'del api/account/mfa/totp',
+            // feat-246: a recovery session replaces a lost passkey (R) and removes it (R+).
+            'del api/account/passkeys/:id',
             'get api/account/mfa',
+            'get api/account/passkeys',
             'get api/main/init',
             'post api/account/mfa/recovery-codes',
             'post api/account/mfa/totp/confirm',
             'post api/account/mfa/totp/setup',
+            'post api/account/passkeys',
+            'post api/account/passkeys/options',
             'post api/auth/logout',
             'post api/auth/recovery/finish',
         ])

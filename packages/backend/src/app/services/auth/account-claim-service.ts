@@ -10,6 +10,7 @@ import {
     userRepository,
     type UserRow,
     recoveryCodeRepository,
+    webauthnCredentialRepository,
     totpFactorRepository,
 } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
@@ -149,6 +150,8 @@ export async function claimLocked(
     // whoever registered somebody else's address would keep a factor of the owner's account.
     const totpRemoved = await totpFactorRepository.deleteByUserId(user.id, tx)
     const recoveryCodesRemoved = await recoveryCodeRepository.deleteByUserId(user.id, tx)
+    // feat-246 (Р9): the passkeys and the WebAuthn user handle go with the other factors.
+    const passkeysRemoved = await webauthnCredentialRepository.deleteAllOfUser(user.id, tx)
     const pushSubscriptionsRemoved = await pushSubscriptionRepository.deleteByUserId(user.id, tx)
     for (const repository of ALL_TOKEN_REPOSITORIES) {
         await repository.invalidatePendingByUserId(user.id, tx)
@@ -167,7 +170,7 @@ export async function claimLocked(
             phoneRemoved: user.phone !== null && user.phone !== '',
             oauthRemoved,
             pushSubscriptionsRemoved,
-            mfaRemoved: totpRemoved || recoveryCodesRemoved > 0,
+            mfaRemoved: totpRemoved || recoveryCodesRemoved > 0 || passkeysRemoved > 0,
         },
     }
 }

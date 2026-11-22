@@ -14,6 +14,12 @@ export { oauthAccountRepository } from './auth/oauth-account-repository.js'
 export { totpFactorRepository } from './auth/totp-factor-repository.js'
 export type { TotpFactorRow, NewTotpFactor } from './auth/totp-factor-repository.js'
 export { recoveryCodeRepository } from './auth/recovery-code-repository.js'
+export { webauthnCredentialRepository } from './auth/webauthn-credential-repository.js'
+export type {
+    WebAuthnCredentialRow,
+    NewWebAuthnCredential,
+    CounterOutcome,
+} from './auth/webauthn-credential-repository.js'
 export { emailVerificationRepository } from './auth/email-verification-repository.js'
 export { emailLinkVerificationRepository } from './auth/email-link-verification-repository.js'
 export { passwordResetRepository } from './auth/password-reset-repository.js'

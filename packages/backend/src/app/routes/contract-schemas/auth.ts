@@ -7,6 +7,7 @@ import {
     LinkPhoneStartInputSchema,
     LoginInputSchema,
     MfaVerifyInputSchema,
+    PasskeyLoginInputSchema,
     ReauthInputSchema,
     RegisterEmailInputSchema,
     RegisterPhoneCompleteInputSchema,
@@ -25,12 +26,25 @@ import { contractSchemas } from '#app/routing/contract-registry.js'
 export const authSchemas = contractSchemas(authContracts, {
     login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
     mfaVerify: { body: MfaVerifyInputSchema, response: ResponseSchemas.LoginResponseSchema },
+    passkeyOptions: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.PasskeyLoginOptionsResponseSchema,
+    },
+    passkeyVerify: { body: PasskeyLoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
     recoveryFinish: { body: EmptyFormInputSchema, response: ResponseSchemas.LogoutResponseSchema },
     reauthOptions: {
         body: EmptyFormInputSchema,
         response: ResponseSchemas.ReauthOptionsResponseSchema,
     },
     reauth: { body: ReauthInputSchema, response: ResponseSchemas.ReauthResponseSchema },
+    mfaWebauthnOptions: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.PasskeyChallengeResponseSchema,
+    },
+    reauthWebauthnOptions: {
+        body: EmptyFormInputSchema,
+        response: ResponseSchemas.PasskeyChallengeResponseSchema,
+    },
     registerEmail: {
         body: RegisterEmailInputSchema,
         response: ResponseSchemas.RegisterEmailResponseSchema,

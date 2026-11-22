@@ -8,6 +8,7 @@ import databaseConfig from '#config/database.js'
 import databasePoolConfig from '#config/database-pool.js'
 import { authConfig } from '#config/auth.js'
 import mfaConfig from '#config/mfa.js'
+import webauthnConfig from '#config/webauthn.js'
 import mailConfig from '#config/mail.js'
 import corsConfig from '#config/cors.js'
 import sentryConfig from '#config/sentry.js'
@@ -201,6 +202,11 @@ export function validateRuntimeConfig(): void {
         logger.warn(
             'MFA_ENCRYPTION_KEYS is not set: the TOTP secrets are encrypted with a key derived from APP_KEY (development only)',
         )
+    }
+
+    // feat-246 (Р6): a passkey is bound to its RP ID for good; production names it explicitly.
+    if (webauthnConfig.configError !== null) {
+        throw new Error(`Invalid WebAuthn configuration: ${webauthnConfig.configError}`)
     }
 
     if (authConfig.smsProvider !== 'fake') {

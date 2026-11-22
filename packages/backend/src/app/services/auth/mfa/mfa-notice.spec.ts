@@ -27,6 +27,8 @@ const KINDS: [Kind, string][] = [
     ['disabled', 'mfa_disabled'],
     ['recovery_codes_regenerated', 'recovery_codes_regenerated'],
     ['recovery_code_used', 'recovery_code_used'],
+    ['passkey_added', 'passkey_added'],
+    ['passkey_removed', 'passkey_removed'],
 ]
 
 beforeEach(() => {

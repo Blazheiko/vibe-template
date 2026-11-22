@@ -14,15 +14,17 @@ const row = {
     avatar: null,
     role: 'user' as const,
     emailVerifiedAt: null,
+    webauthnUserHandle: Buffer.alloc(32, 9),
     createdAt: new Date('2026-10-25T10:00:00.000Z'),
     updatedAt: new Date('2026-10-25T10:01:00.000Z'),
 }
 
 describe('userTransformer', () => {
-    it('drops password and sessionToken', () => {
+    it('drops password, sessionToken and the WebAuthn user handle', () => {
         const serialized = userTransformer.serialize(row)
         expect(serialized).not.toHaveProperty('password')
         expect(serialized).not.toHaveProperty('sessionToken')
+        expect(serialized).not.toHaveProperty('webauthnUserHandle')
         expect(JSON.stringify(serialized)).not.toContain('abcdefghijklmnopqrstuvwx')
         expect(serialized).toMatchObject({ id: '7', name: 'Jane', emailVerified: false })
     })

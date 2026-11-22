@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
         smsAuthChallengeRepository: { invalidatePendingForPhoneFlow: vi.fn() },
         totpFactorRepository: { deleteByUserId: vi.fn(() => Promise.resolve(false)) },
         recoveryCodeRepository: { deleteByUserId: vi.fn(() => Promise.resolve(0)) },
+        webauthnCredentialRepository: { deleteAllOfUser: vi.fn(() => Promise.resolve(0)) },
         destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
         closeUserConnections: vi.fn(() => 0),
@@ -35,6 +36,7 @@ vi.mock('#app/repositories/index.js', () => ({
     // feat-245: a claim removes the second factors too.
     totpFactorRepository: mocks.totpFactorRepository,
     recoveryCodeRepository: mocks.recoveryCodeRepository,
+    webauthnCredentialRepository: mocks.webauthnCredentialRepository,
 }))
 vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: mocks.destroyAllSessions,

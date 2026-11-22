@@ -86,6 +86,7 @@ vi.mock('#app/repositories/index.js', () => ({
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work({}),
     // feat-245: these accounts have no second factor.
     totpFactorRepository: { findByUserId: () => Promise.resolve(undefined) },
+    webauthnCredentialRepository: { countByUserId: () => Promise.resolve(0) },
     recoveryCodeRepository: { countUnused: () => Promise.resolve(0) },
 }))
 

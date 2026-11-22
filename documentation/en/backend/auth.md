@@ -285,7 +285,7 @@ Since feat-233 a signed-in session carries its device, and the sessions of a use
 
 ## Sign-in methods
 
-An account with a second factor gets a second-step ticket instead of a session after the password or a social sign-in (`{ status: 'mfa_required' }`); `POST /api/auth/mfa/verify` creates the session. The session keeps in `auth` the level of the sign-in, its methods and when each method was last proven. See [two-step sign-in](/en/backend/mfa).
+An account with a second factor gets a second-step ticket instead of a session after the password or a social sign-in (`{ status: 'mfa_required' }`); `POST /api/auth/mfa/verify` creates the session. The session keeps in `auth` the level of the sign-in, its methods and when each method was last proven. A passkey also signs in on its own, without a password (`POST /api/auth/passkey/verify`, level 2). See [two-step sign-in](/en/backend/mfa).
 
 The routes of the `auth` group are declared in [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). The group has the `session_web` and `csrf_guard` middleware and a rate limit of 10 requests per minute per IP for each route of the group (individual routes have stricter limits of their own). Controllers: [`auth-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/auth/auth-controller.ts) and [`oauth-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/auth/oauth-controller.ts).
 

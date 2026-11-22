@@ -14,7 +14,13 @@ import logger from '#vendor/utils/logger.js'
 // the change is committed already; a failed mail is logged, never undone.
 
 export type MfaNoticeKind =
-    'enabled' | 'replaced' | 'disabled' | 'recovery_codes_regenerated' | 'recovery_code_used'
+    | 'enabled'
+    | 'replaced'
+    | 'disabled'
+    | 'recovery_codes_regenerated'
+    | 'recovery_code_used'
+    | 'passkey_added'
+    | 'passkey_removed'
 
 const TEXTS: Readonly<Record<MfaNoticeKind, { subject: string; title: string; what: string }>> = {
     enabled: {
@@ -41,6 +47,17 @@ const TEXTS: Readonly<Record<MfaNoticeKind, { subject: string; title: string; wh
         subject: 'A recovery code was used to sign in',
         title: 'Somebody signed in with a recovery code',
         what: `A recovery code was used to sign in to your ${PRODUCT.name} account, and its other sessions were signed out.`,
+    },
+    // feat-246 (Р14).
+    passkey_added: {
+        subject: 'A passkey was added to your account',
+        title: 'A new passkey',
+        what: `A passkey was added to your ${PRODUCT.name} account: it signs in without a password.`,
+    },
+    passkey_removed: {
+        subject: 'A passkey was removed from your account',
+        title: 'A passkey was removed',
+        what: `A passkey was removed from your ${PRODUCT.name} account; it no longer signs in.`,
     },
 }
 
@@ -71,6 +88,8 @@ const NOTIFICATION = {
     disabled: 'mfa_disabled',
     recovery_codes_regenerated: 'recovery_codes_regenerated',
     recovery_code_used: 'recovery_code_used',
+    passkey_added: 'passkey_added',
+    passkey_removed: 'passkey_removed',
 } as const satisfies Record<MfaNoticeKind, string>
 
 async function mail(userId: bigint, kind: MfaNoticeKind): Promise<void> {

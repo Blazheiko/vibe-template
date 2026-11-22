@@ -8,6 +8,7 @@ import { authApi, mfaApi } from '@/utils/api'
 import { useEventBus } from '@/utils/event-bus'
 import { getErrorReason } from '@/utils/response-normalizer'
 import ConfirmDialog from './ConfirmDialog.vue'
+import PasskeyList from './PasskeyList.vue'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8, Р15): the second factors of the account. The
 // TOTP setup draws its QR code in the browser (the secret never leaves for another service);
@@ -20,6 +21,7 @@ const eventBus = useEventBus()
 
 interface Status {
     totp: { enabled: boolean; createdAt: string | null }
+    passkeys: number
     recoveryCodesRemaining: number
     recoveryContact: boolean
     recovery: { expiresAt: string; replaced: boolean } | null
@@ -34,6 +36,13 @@ const codes = ref<string[] | null>(null)
 const confirmingDisable = ref(false)
 
 const inRecovery = computed(() => status.value?.recovery !== null && status.value !== null)
+// feat-246: a passkey is a second factor too.
+const mfaEnabled = computed(
+    () => status.value !== null && (status.value.totp.enabled || status.value.passkeys > 0),
+)
+const showCodes = (next: string[]): void => {
+    codes.value = next
+}
 
 const REASONS = new Map<string, string>([
     ['recovery_contact_required', 'account.mfa.errorContact'],
@@ -54,6 +63,7 @@ async function load(): Promise<void> {
     if (data?.status === 'success') {
         status.value = {
             totp: data.totp,
+            passkeys: data.passkeys,
             recoveryCodesRemaining: data.recoveryCodesRemaining,
             recoveryContact: data.recoveryContact,
             recovery: data.recovery,
@@ -244,7 +254,7 @@ onMounted(() => {
                     {{ status.totp.enabled ? t('account.mfa.replace') : t('account.mfa.turnOn') }}
                 </button>
                 <button
-                    v-if="status.totp.enabled && (!inRecovery || status.recovery?.replaced)"
+                    v-if="mfaEnabled && (!inRecovery || status.recovery?.replaced)"
                     class="secondary-button"
                     type="button"
                     :disabled="busy"
@@ -265,7 +275,15 @@ onMounted(() => {
                 </button>
             </div>
 
-            <p v-if="status.totp.enabled" class="form-message" data-testid="mfa-codes-left">
+            <PasskeyList
+                :can-add="status.recoveryContact || mfaEnabled"
+                :in-recovery="inRecovery"
+                :recovery-replaced="status.recovery?.replaced === true"
+                @changed="load"
+                @codes="showCodes"
+            />
+
+            <p v-if="mfaEnabled" class="form-message" data-testid="mfa-codes-left">
                 {{ t('account.mfa.codesLeft', { count: status.recoveryCodesRemaining }) }}
                 <template v-if="status.recoveryCodesRemaining <= 2">
                     {{ t('account.mfa.codesLow') }}

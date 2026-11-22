@@ -162,3 +162,17 @@ export { SetUserRoleInputSchema, type SetUserRoleInput } from './admin/set-user-
 export { TotpConfirmInputSchema, type TotpConfirmInput } from './mfa/totp-confirm.js'
 export { MfaVerifyInputSchema, type MfaVerifyInput } from './mfa/mfa-verify.js'
 export { ReauthInputSchema, type ReauthInput } from './mfa/reauth.js'
+export {
+    RegistrationResponseSchema,
+    AuthenticationResponseSchema,
+    type RegistrationResponse,
+    type AuthenticationResponse,
+} from './passkeys/webauthn-response.js'
+export {
+    PasskeyRegisterInputSchema,
+    PasskeyRenameInputSchema,
+    PasskeyLoginInputSchema,
+    type PasskeyLoginInput,
+    type PasskeyRegisterInput,
+    type PasskeyRenameInput,
+} from './passkeys/passkey-register.js'

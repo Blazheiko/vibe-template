@@ -97,7 +97,7 @@ describe.skipIf(!hasPg || !hasRedis)(
     async () => {
         const { db, pool } = await import('#database/db.js')
         const { sessionCheckPool } = await import('#database/session-check-db.js')
-        const { users, oauthAccounts, totpFactors, mfaRecoveryCodes } =
+        const { users, oauthAccounts, totpFactors, mfaRecoveryCodes, webauthnCredentials } =
             await import('#database/schema.js')
         const { default: redisClient, redisHealth } =
             (await import('#database/redis.js')) as unknown as {
@@ -255,7 +255,10 @@ describe.skipIf(!hasPg || !hasRedis)(
             const browser = new Map<string, string>()
             const result = await callback(browser)
             expect(result.status).toBe('ok')
-            if (result.status === 'ok') expect(result.value.redirectUrl).toBe('/login?mfa=required')
+            if (result.status === 'ok')
+                expect(result.value.redirectUrl).toBe(
+                    '/login?mfa=required&methods=totp,recovery_code',
+                )
             expect(browser.has(mfaTicketCookieName())).toBe(true)
             expect(await linksOf(user.row.id)).toEqual([])
 
@@ -292,7 +295,10 @@ describe.skipIf(!hasPg || !hasRedis)(
             google({ id, email: user.email })
             const browser = new Map<string, string>()
             const result = await callback(browser)
-            if (result.status === 'ok') expect(result.value.redirectUrl).toBe('/login?mfa=required')
+            if (result.status === 'ok')
+                expect(result.value.redirectUrl).toBe(
+                    '/login?mfa=required&methods=totp,recovery_code',
+                )
             expect(browser.has(sessionConfig.cookieName)).toBe(true)
             const signedIn = await verify(browser, { method: 'totp', code: user.code() })
             expect(signedIn.status).toBe('ok')
@@ -300,6 +306,20 @@ describe.skipIf(!hasPg || !hasRedis)(
 
         it('a claim of an unverified address removes the factors and signs in without a second step', async () => {
             const user = await mfaAccount(false)
+            // feat-246 (Р9): a passkey and the WebAuthn user handle go with the other factors.
+            await db
+                .update(users)
+                .set({ webauthnUserHandle: Buffer.alloc(32, 5) })
+                .where(eq(users.id, user.row.id))
+            await db.insert(webauthnCredentials).values({
+                userId: user.row.id,
+                credentialId: Buffer.from(crypto.randomUUID()),
+                publicKey: Buffer.from([1]),
+                deviceType: 'singleDevice',
+                backedUp: false,
+                name: 'Key',
+                enrollmentId: crypto.randomUUID().replaceAll('-', ''),
+            })
             google({ id: `g-${crypto.randomUUID()}`, email: user.email })
             const browser = new Map<string, string>()
             const result = await callback(browser)
@@ -314,6 +334,17 @@ describe.skipIf(!hasPg || !hasRedis)(
                     .from(mfaRecoveryCodes)
                     .where(and(eq(mfaRecoveryCodes.userId, user.row.id))),
             ).toEqual([])
+            expect(
+                await db
+                    .select()
+                    .from(webauthnCredentials)
+                    .where(eq(webauthnCredentials.userId, user.row.id)),
+            ).toEqual([])
+            const [after] = await db
+                .select({ handle: users.webauthnUserHandle })
+                .from(users)
+                .where(eq(users.id, user.row.id))
+            expect(after?.handle).toBeNull()
             expect((await linksOf(user.row.id)).map((link) => link.provider)).toEqual(['google'])
         })
     },

@@ -21,6 +21,9 @@ const SECURITY_KINDS = {
     mfa_disabled: 'security.mfa_disabled',
     recovery_codes_regenerated: 'security.recovery_codes_regenerated',
     recovery_code_used: 'security.recovery_code_used',
+    // feat-246 (Р14).
+    passkey_added: 'security.passkey_added',
+    passkey_removed: 'security.passkey_removed',
 } as const satisfies Record<string, NotificationKind>
 
 export type SecurityEvent = keyof typeof SECURITY_KINDS

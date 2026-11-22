@@ -114,6 +114,23 @@ export const test = base.extend<{ api: Api }>({
                 }),
             })
         })
+        // feat-246: the sign-in page asks for passkey options for the autofill (conditional UI);
+        // a challenge nobody answers just waits. A test that signs in with a passkey answers it.
+        await page.route('**/api/auth/passkey/options', async (route: Route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    status: 'success',
+                    challengeId: 'AAAAAAAAAAAAAAAAAAAAAA',
+                    options: {
+                        challenge: 'Y2hhbGxlbmdl',
+                        allowCredentials: [],
+                        userVerification: 'required',
+                    },
+                }),
+            })
+        })
         // Which social buttons the page shows: none.
         await page.route('**/api/auth/oauth/providers', async (route: Route) => {
             await route.fulfill({

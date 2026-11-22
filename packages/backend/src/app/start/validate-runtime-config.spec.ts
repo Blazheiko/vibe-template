@@ -12,11 +12,13 @@ function restoreEnv(): void {
     Object.assign(process.env, ORIGINAL_ENV)
 }
 
-// Production-like cases below need a CSRF allowlist to get past the CSRF check, and the MFA
-// encryption keys (feat-245) to get past the MFA check.
+// Production-like cases below need a CSRF allowlist to get past the CSRF check, the MFA
+// encryption keys (feat-245) to get past the MFA check and a passkey RP (feat-246).
 beforeEach(() => {
     process.env['CSRF_ALLOWED_ORIGINS'] = 'https://app.test'
     process.env['MFA_ENCRYPTION_KEYS'] = `k1:${Buffer.alloc(32, 7).toString('base64')}`
+    process.env['WEBAUTHN_RP_ID'] = 'app.test'
+    process.env['WEBAUTHN_ORIGINS'] = 'https://app.test'
 })
 
 afterEach(() => {
@@ -725,5 +727,17 @@ describe('MFA encryption keys (feat-245 Р9)', () => {
         expect(() => {
             validateRuntimeConfig()
         }).toThrow(/Invalid MFA configuration: MFA_ENCRYPTION_KEYS is required/)
+    })
+})
+
+describe('WebAuthn relying party (feat-246 Р6)', () => {
+    it('stops a production-like start without WEBAUTHN_RP_ID', async () => {
+        process.env['APP_IS_PRODUCTION'] = 'true'
+        process.env['APP_URL'] = 'https://app.example.com'
+        delete process.env['WEBAUTHN_RP_ID']
+        const { validateRuntimeConfig } = await import('./validate-runtime-config.js')
+        expect(() => {
+            validateRuntimeConfig()
+        }).toThrow(/Invalid WebAuthn configuration: WEBAUTHN_RP_ID is required/)
     })
 })

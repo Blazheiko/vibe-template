@@ -55,14 +55,16 @@ const serialize = (link: OAuthAccountRow): SignInMethod => ({
 export async function signInCapability(
     user: UserRow,
     tx: DbExecutor,
-    change: { removeOAuthLinkId?: bigint } = {},
+    change: { removeOAuthLinkId?: bigint; removePasskey?: boolean } = {},
 ): Promise<{ canSignIn: boolean; meetsStaffMfa: boolean; hasRecoveryContact: boolean }> {
     const links = await oauthAccountRepository.findByUserId(user.id, tx)
     const remainingLinks = links.filter((link) => link.id !== change.removeOAuthLinkId).length
     const factors = await loadMfaFactors(user.id, tx)
+    // feat-246: a passkey signs in on its own, so the last one may be the last way in.
+    const passkeys = Math.max(0, factors.passkeys - (change.removePasskey === true ? 1 : 0))
     return {
-        canSignIn: hasPassword(user) || remainingLinks > 0 || factors.passkeys > 0,
-        meetsStaffMfa: factors.totp !== undefined || factors.passkeys > 0,
+        canSignIn: hasPassword(user) || remainingLinks > 0 || passkeys > 0,
+        meetsStaffMfa: factors.totp !== undefined || passkeys > 0,
         hasRecoveryContact: hasRecoveryContactOf(user),
     }
 }

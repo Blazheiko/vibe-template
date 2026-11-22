@@ -771,7 +771,9 @@ async function finishSignIn(
         pendingOAuthLink !== undefined ? { pendingOAuthLink } : {},
     )
     if (Result.isError(second)) return Result.err(second.error)
-    if (second.value !== null) return Result.ok({ redirectUrl: oauthConfig.frontendMfaUrl })
+    if (second.value !== null) {
+        return Result.ok({ redirectUrl: secondStepUrl(second.value.methods) })
+    }
 
     const device = await auth.login(String(userId), sessionToken, { method: 'oauth', provider })
     if (device === null) return Result.err(badRequest('Failed to sign in'))
@@ -1099,4 +1101,13 @@ async function sendFirstEmailLinkQuietly(
     } catch (err: unknown) {
         logger.warn({ err, userId: String(userId) }, 'first email link not sent')
     }
+}
+
+/**
+ * feat-246: the second-step page with the methods of the account, as a password sign-in gets them
+ * in its answer (`webauthn,totp,recovery_code`), so a passkey-only account is asked for a passkey.
+ */
+export function secondStepUrl(methods: readonly string[]): string {
+    const base = oauthConfig.frontendMfaUrl
+    return `${base}${base.includes('?') ? '&' : '?'}methods=${methods.join(',')}`
 }

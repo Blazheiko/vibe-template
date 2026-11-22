@@ -123,6 +123,10 @@ vi.mock('#app/services/auth/mfa/mfa-sign-in.js', async () => {
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
     // feat-245: these accounts have no second factor.
+    webauthnCredentialRepository: {
+        countByUserId: () => Promise.resolve(0),
+        deleteAllOfUser: () => Promise.resolve(0),
+    },
     totpFactorRepository: {
         findByUserId: () => Promise.resolve(undefined),
         deleteByUserId: () => Promise.resolve(false),

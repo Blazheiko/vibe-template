@@ -285,7 +285,7 @@ sequenceDiagram
 
 ## Способи входу
 
-Акаунт із другим фактором після пароля чи входу через соцмережу отримує не сесію, а квиток другого кроку (`{ status: 'mfa_required' }`); сесію створює `POST /api/auth/mfa/verify`. Сесія зберігає в `auth` рівень входу, його методи й час останнього підтвердження кожного методу. Див. [двоетапний вхід](/backend/mfa).
+Акаунт із другим фактором після пароля чи входу через соцмережу отримує не сесію, а квиток другого кроку (`{ status: 'mfa_required' }`); сесію створює `POST /api/auth/mfa/verify`. Сесія зберігає в `auth` рівень входу, його методи й час останнього підтвердження кожного методу. Passkey входить і сам, без пароля (`POST /api/auth/passkey/verify`, рівень 2). Див. [двоетапний вхід](/backend/mfa).
 
 Маршрути групи `auth` оголошено в [`http-routes.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/routes/http-routes.ts). Група має middleware `session_web` і `csrf_guard` та rate limit 10 запитів на хвилину з IP на кожен маршрут групи (окремі маршрути мають суворіші власні ліміти). Контролери: [`auth-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/auth/auth-controller.ts) і [`oauth-controller.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/http/auth/oauth-controller.ts).
 

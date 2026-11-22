@@ -2,6 +2,7 @@
 import { computed, ref, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useModalDialog } from '@/composables/useModalDialog'
+import { usePasskey } from '@/composables/usePasskeys'
 import { reauthState, type ReauthProof } from '@/composables/useReauth'
 import { authApi } from '@/utils/api'
 import { getErrorReason } from '@/utils/response-normalizer'
@@ -19,8 +20,9 @@ const code = ref('')
 const error = ref('')
 const busy = ref(false)
 
+// feat-246: a passkey is offered first when the server lists it.
 const usable = computed(() =>
-    reauthState.proofs.filter((p): p is 'password' | 'totp' => p === 'password' || p === 'totp'),
+    (['webauthn', 'totp', 'password'] as const).filter((p) => reauthState.proofs.includes(p)),
 )
 
 watch(
@@ -46,16 +48,39 @@ const ERRORS = new Map<string, string>([
     ['invalid_code', 'account.reauth.errorCode'],
 ])
 
+/** feat-246: the options of this session, the passkey dialog, then the step-up request. */
+async function passkeyProof(): Promise<ReturnType<typeof authApi.reauth> | null> {
+    const options = await authApi.reauthWebauthnOptions()
+    if (options.data?.status !== 'success') return null
+    const signed = await usePasskey(options.data.options)
+    if (!signed.ok) {
+        error.value =
+            signed.failure === 'cancelled'
+                ? t('account.reauth.passkeyCancelled')
+                : t('account.reauth.errorPasskey')
+        return null
+    }
+    return authApi.reauth({ proof: 'webauthn', response: signed.value })
+}
+
 async function submit(): Promise<void> {
     if (proof.value === null || busy.value) return
     busy.value = true
     error.value = ''
     try {
-        const { data, error: transport } = await authApi.reauth(
-            proof.value === 'password'
-                ? { proof: 'password', password: password.value }
-                : { proof: 'totp', code: code.value.replace(/\s/g, '') },
-        )
+        const answer =
+            proof.value === 'webauthn'
+                ? await passkeyProof()
+                : await authApi.reauth(
+                      proof.value === 'password'
+                          ? { proof: 'password', password: password.value }
+                          : { proof: 'totp', code: code.value.replace(/\s/g, '') },
+                  )
+        if (answer === null) {
+            if (error.value === '') error.value = t('account.reauth.errorGeneric')
+            return
+        }
+        const { data, error: transport } = answer
         if (transport === null && data?.status === 'success') {
             reauthState.resolve?.(true)
             return
@@ -123,6 +148,9 @@ async function submit(): Promise<void> {
                     required
                 />
             </label>
+            <p v-else-if="proof === 'webauthn'" class="reauth-hint" data-testid="reauth-passkey">
+                {{ t('account.reauth.passkeyHint') }}
+            </p>
             <p v-else class="reauth-error">{{ t('account.reauth.noProof') }}</p>
 
             <p v-if="error !== ''" class="reauth-error" role="alert" data-testid="reauth-error">
@@ -184,6 +212,11 @@ async function submit(): Promise<void> {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.reauth-hint {
+    margin: 0;
+    color: var(--text-secondary);
 }
 
 .reauth-error {
