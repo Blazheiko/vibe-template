@@ -584,6 +584,95 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         expect(await unusedCodes(user.row.id)).toBe(9)
     })
 
+    // Р8 acceptance (tasks M9): the only TOTP lost, the last recovery code, a TOTP replaced in
+    // the recovery session, new codes, the recovery finished, an ordinary sign-in with the new app.
+    it('recovery: single TOTP lost, last code, replace, new codes, finish, sign in again', async () => {
+        const user = await mfaUser('mfa-recovery-path')
+        const last = user.codes[9] ?? ''
+        const { recoveryCodeRepository } = await import('#app/repositories/index.js')
+        const { normalizeRecoveryCode, hashRecoveryCode } = await import('./recovery-codes.js')
+        await withTransaction((tx) =>
+            recoveryCodeRepository.replaceBatch(
+                user.row.id,
+                [hashRecoveryCode(normalizeRecoveryCode(last) ?? '')],
+                'only',
+                tx,
+            ),
+        )
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        expect(
+            browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'recovery_code',
+                    code: last,
+                }),
+            ).status,
+        ).toBe(200)
+
+        // A recovery session: no WebSocket, only the recovery routes.
+        const init = browser.keep(await browser.request('GET', '/main/init'))
+        expect(init.status).toBe(200)
+        expect(init.body).toMatchObject({ wsToken: '', recovery: { replaced: false } })
+        for (const [method, path] of [
+            ['GET', '/account/profile'],
+            ['GET', '/account/sessions'],
+            ['POST', '/auth/login'],
+        ] as const) {
+            const refused = await browser.request(
+                method,
+                path,
+                method === 'POST' ? { identifier: user.email, password: PASSWORD } : undefined,
+            )
+            expect(refused.status, path).toBe(403)
+            expect(refused.body, path).toMatchObject({ reason: 'recovery_session' })
+        }
+        // R: removing the lost factor or new codes wait for the replacement.
+        expect(
+            (await browser.request('POST', '/account/mfa/recovery-codes', {})).body,
+        ).toMatchObject({ reason: 'recovery_session' })
+
+        const setup = browser.keep(await browser.request('POST', '/account/mfa/totp/setup', {}))
+        expect(setup.status).toBe(200)
+        const { base32Decode } = await import('./totp.js')
+        const newSecret = base32Decode(String(setup.body['secret']))
+        const confirmed = browser.keep(
+            await browser.request('POST', '/account/mfa/totp/confirm', {
+                enrollmentId: setup.body['enrollmentId'],
+                code: hotp(newSecret, totpStepAt(Date.now())),
+            }),
+        )
+        expect(confirmed.status).toBe(200)
+        // The old secret no longer works: the factor is the new version.
+        const afterReplace = browser.keep(await browser.request('GET', '/main/init'))
+        expect(afterReplace.body).toMatchObject({ recovery: { replaced: true } })
+        const codes = browser.keep(await browser.request('POST', '/account/mfa/recovery-codes', {}))
+        expect(codes.status).toBe(200)
+        expect(codes.body['recoveryCodes']).toHaveLength(10)
+        expect(
+            browser.keep(await browser.request('POST', '/auth/recovery/finish', {})).status,
+        ).toBe(200)
+        expect((await browser.request('GET', '/main/init')).status).toBe(401)
+
+        // An ordinary sign-in: password and the new app; the old app is refused.
+        const again = new Browser()
+        await again.firstFactor(user.email)
+        const oldCode = await again.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: user.code(1n),
+        })
+        expect(oldCode.body).toMatchObject({ reason: 'invalid_code' })
+        const signedIn = again.keep(
+            await again.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: hotp(newSecret, totpStepAt(Date.now()) + 1n),
+            }),
+        )
+        expect(signedIn.status).toBe(200)
+        const session = await getSession(again.sessionId(), await tokenOf(user.row.id))
+        expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'otp'] })
+    })
+
     it('an account without a second factor signs in with the password alone, as before', async () => {
         const [row] = await db
             .insert(users)

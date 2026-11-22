@@ -146,6 +146,12 @@ export default {
         return respond(context, result)
     },
 
+    /** feat-245 (Р8): a recovery session ends like a logout. */
+    async recoveryFinish(context: HttpContext<EmptyFormInput>): Promise<LogoutResponse> {
+        const result = await authService.logout(context.auth, context.session)
+        return respond(context, result)
+    },
+
     async logout(context: HttpContext<EmptyFormInput>): Promise<LogoutResponse> {
         const result = await authService.logout(context.auth, context.session)
         return respond(context, result)

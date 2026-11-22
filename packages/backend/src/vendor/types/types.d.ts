@@ -296,6 +296,8 @@ export interface UploadedFile {
 
 export interface HttpData<TPayload = unknown, TQuery = null, TParams = Params> {
     method: Method
+    /** feat-245 (Р8): the route lets a recovery session in (RouteConfig.allowInRecovery). */
+    allowInRecovery?: boolean
     ip: string | null | undefined
     params: TParams
     payload: TPayload | null
@@ -443,6 +445,11 @@ export interface RouteConfig<
      * an anonymous client makes the server buffer the whole upload to answer 401.
      */
     signedInBeforeBody?: boolean | undefined
+    /**
+     * feat-245 (Р8): a recovery session may use this route. Every other route behind
+     * `session_web` answers 403 `recovery_session` to such a session.
+     */
+    allowInRecovery?: boolean | undefined
 }
 
 // RouteItem with handler - uses function overload pattern for type erasure

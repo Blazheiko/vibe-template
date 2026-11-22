@@ -91,6 +91,14 @@ export default [
                 handler: AuthController.logout.bind(AuthController),
                 description: 'Logout a user',
                 middlewares: ['auth_guard'],
+                allowInRecovery: true,
+            }),
+            defineRoute({
+                contract: authContracts.recoveryFinish,
+                handler: AuthController.recoveryFinish.bind(AuthController),
+                description: 'End a recovery session (feat-245); sign in again afterwards',
+                middlewares: ['auth_guard'],
+                allowInRecovery: true,
             }),
             defineRoute({
                 contract: authContracts.logoutAll,
@@ -218,6 +226,7 @@ export default [
                 handler: MainController.init.bind(MainController),
                 description: 'Initialize app state',
                 middlewares: ['auth_guard'],
+                allowInRecovery: true,
             }),
             defineRoute({
                 contract: mainContracts.updateWsToken,
@@ -374,28 +383,33 @@ export default [
             defineRoute({
                 contract: mfaContracts.status,
                 handler: MfaController.status.bind(MfaController),
+                allowInRecovery: true,
                 description: 'Second factors and recovery codes of the current user (feat-245)',
             }),
             defineRoute({
                 contract: mfaContracts.totpSetup,
                 handler: MfaController.totpSetup.bind(MfaController),
+                allowInRecovery: true,
                 description:
                     'Start a TOTP setup (needs a fresh proof); the secret stays in this session',
             }),
             defineRoute({
                 contract: mfaContracts.totpConfirm,
                 handler: MfaController.totpConfirm.bind(MfaController),
+                allowInRecovery: true,
                 description:
                     'Confirm the TOTP setup with a code; replaces the previous app; idempotent',
             }),
             defineRoute({
                 contract: mfaContracts.totpDisable,
                 handler: MfaController.totpDisable.bind(MfaController),
+                allowInRecovery: true,
                 description: 'Turn the TOTP factor off (needs a fresh second factor)',
             }),
             defineRoute({
                 contract: mfaContracts.regenerateRecoveryCodes,
                 handler: MfaController.regenerateRecoveryCodes.bind(MfaController),
+                allowInRecovery: true,
                 description: 'Issue new recovery codes; the previous ones stop working',
             }),
         ],

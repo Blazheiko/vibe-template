@@ -73,6 +73,11 @@ export const authContracts = {
         RegisterPhoneCompleteResponse
     >()('post', '/auth/register/phone/complete-profile'),
     logout: contract<EmptyBody, undefined, LogoutResponse>()('post', '/auth/logout'),
+    // feat-245 (Р8): ends a recovery session; the next step is an ordinary sign-in.
+    recoveryFinish: contract<EmptyBody, undefined, LogoutResponse>()(
+        'post',
+        '/auth/recovery/finish',
+    ),
     logoutAll: contract<EmptyBody, undefined, LogoutAllResponse>()('post', '/auth/logout-all'),
     changePassword: contract<
         typeof ChangePasswordInputSchema.inferIn,

@@ -1,6 +1,7 @@
 import type { HttpContext, Middleware } from '#vendor/types/types.js'
 import { sessionHandler } from '#vendor/utils/session/session-handler.js'
 import sessionConfig from '#config/session.js'
+import { isActiveRecovery, MFA_REASONS } from 'shared/mfa'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
 
 /**
@@ -32,11 +33,36 @@ const attachCsrfToken = (context: HttpContext): void => {
     payload['csrfToken'] ??= token
 }
 
+/**
+ * feat-245 (Р8): false (and a 403 written) when a recovery session reaches a route that does not
+ * allow it. Exported for the registry test, which runs it for every route.
+ */
+export const recoveryGate = (context: HttpContext): boolean => {
+    const auth = context.session.sessionInfo?.data.auth
+    if (auth?.recovery === undefined || !isActiveRecovery(auth, Date.now())) return true
+    if (context.httpData.allowInRecovery === true) return true
+    context.responseData.status = 403
+    context.responseData.payload = {
+        status: 'error',
+        code: 'forbidden',
+        message: 'Finish recovering your account first',
+        reason: MFA_REASONS.recoverySession,
+    }
+    return false
+}
+
 const sessionWeb: Middleware = async (
     context: HttpContext,
     next: () => Promise<void>,
 ): Promise<void> => {
     await sessionHandler(context, context.httpData.cookies.get(sessionConfig.cookieName), undefined)
+    // feat-245 (Р8): a recovery session is its own mode: only the routes that rebuild the
+    // factors let it in, whatever the route (sign-in, reset, OAuth) does without a session guard.
+    if (!recoveryGate(context)) {
+        attachCsrfToken(context)
+        return
+    }
+
     // From here on the request's log records name the user (code-issues item 33).
     const userId = context.auth.getUserId()
     if (userId !== null) {

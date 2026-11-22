@@ -13,6 +13,10 @@ export async function generateWsToken(sessionInfo: SessionInfo, userId: string):
     if (userToken === undefined) {
         return ''
     }
+    // feat-245 (Р8): a recovery session opens no WebSocket.
+    if (sessionInfo.data.auth?.recovery !== undefined) {
+        return ''
+    }
 
     const wsToken = generateKey(configApp.characters, 16)
     const tokenData = JSON.stringify({
