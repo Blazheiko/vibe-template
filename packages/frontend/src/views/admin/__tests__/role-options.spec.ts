@@ -46,6 +46,11 @@ describe('role options', () => {
         [409, 'identity_unverified', 'A staff role needs a verified email.'],
         [404, undefined, 'The user no longer exists.'],
         [403, undefined, 'You may not change this role.'],
+        [
+            409,
+            'mfa_not_enrolled',
+            'A staff role needs two-step sign-in: the user sets it up in the account first.',
+        ],
         [500, undefined, 'The role could not be changed.'],
     ])('says what a %i %s means', (status, reason, text) => {
         expect(roleChangeErrorText(status, reason)).toBe(text)

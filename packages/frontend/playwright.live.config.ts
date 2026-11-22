@@ -48,6 +48,8 @@ export default defineConfig({
             SEED_USER_PASSWORD: USER_1.password,
             SEED_ADMIN_EMAIL: USER_2.email,
             SEED_ADMIN_PASSWORD: USER_2.password,
+            // feat-247: the admin passes the staff MFA rule with an app of a known key.
+            SEED_ADMIN_TOTP_SECRET: USER_2.totpSecret,
             PROD_LOCAL_SKIP_BUILD: 'true',
             PORT: String(PORT),
             PGSQL_DB_NAME: DB_NAME,
@@ -78,6 +80,9 @@ export default defineConfig({
             // The scenarios also load the SPA many times.
             HTTP_GLOBAL_RATE_LIMIT_MAX: '1000000',
             AUTH_LOGIN_MAX_ATTEMPTS_PER_IP: '10000',
+            // feat-247: the seeded admin signs in with its app's code in many scenarios of a run;
+            // every code spends one attempt of its per-user budget (10 in 15 minutes).
+            AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER: '10000',
             // account-profile.spec.ts changes the two seeded profiles many times in one run.
             AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN: '10000',
             // Not left to a developer's .env: the production default, and the SPA is built without phone.

@@ -23,6 +23,24 @@ vi.mock('#database/db.js', () => ({ db: {}, pool: {} }))
 vi.mock('#database/redis.js', () => ({ default: {}, redisHealth: {}, withRedis: vi.fn() }))
 const findRole = vi.fn()
 vi.mock('#app/services/user/user-role-service.js', () => ({ userRoleService: { findRole } }))
+// feat-247 (Р10, Р11): MFA_REQUIRED_FOR_STAFF is on by default, so every staff fixture meets it:
+// a TOTP factor and a session that proved it a moment ago. The refusals themselves are in
+// permission-guard.spec.ts and ws-permission-guard.spec.ts.
+const loadMfaFactors = vi.fn(async () => ({ totp: { id: 1n }, passkeys: 0 }))
+vi.mock('#app/services/auth/mfa/mfa-account.js', async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    loadMfaFactors,
+}))
+const staffAuth = () => {
+    const at = new Date().toISOString()
+    return {
+        v: 1,
+        amr: ['pwd', 'otp'],
+        aal: 2,
+        authenticatedAt: at,
+        verified: { pwd: at, otp: at },
+    }
+}
 
 vi.stubEnv('APP_KEY', 'a'.repeat(32))
 
@@ -105,13 +123,13 @@ const httpContext = (userId: string | null): HttpContext =>
     ({
         auth: { check: () => userId !== null, getUserId: () => userId },
         responseData: { status: 200, payload: null, headers: [], cookies: [] },
-        session: null,
+        session: { sessionInfo: { data: { auth: staffAuth() } } },
         httpData: { headers: new Map(), cookies: new Map(), method: 'get' },
     }) as unknown as HttpContext
 
 const wsContext = (userData: Record<string, unknown>): WsContext =>
     ({
-        userData,
+        userData: { auth: staffAuth(), ...userData },
         responseData: { status: '200', data: null, error: null, event: 'admin/x', timestamp: 0 },
         logger: { error: vi.fn() },
         signal: new AbortController().signal,

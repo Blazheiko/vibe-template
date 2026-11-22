@@ -52,6 +52,10 @@ export function roleChangeErrorText(status: number, reason: string | undefined):
     if (status === 409 && reason === 'identity_unverified') {
         return 'A staff role needs a verified email.'
     }
+    // feat-247 (Р10): no staff account without a second factor.
+    if (status === 409 && reason === 'mfa_not_enrolled') {
+        return 'A staff role needs two-step sign-in: the user sets it up in the account first.'
+    }
     if (status === 404) return 'The user no longer exists.'
     if (status === 403) return 'You may not change this role.'
     if (status === 429) return 'Too many changes, try again in a minute.'

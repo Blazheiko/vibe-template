@@ -122,9 +122,10 @@ export default Object.freeze({
     totpEnrollmentTtlSeconds: 600,
     /**
      * feat-247 (Р10, Р11): a staff role needs a second factor and a recent proof of it to use
-     * staff permissions (MFA_REQUIRED_FOR_STAFF). Off until the switch-on step (S5).
+     * staff permissions, and a staff role is given only to an account with a factor
+     * (MFA_REQUIRED_FOR_STAFF, on by default; `false` only for a transition).
      */
-    requiredForStaff: reader.bool('MFA_REQUIRED_FOR_STAFF', false),
+    requiredForStaff: reader.bool('MFA_REQUIRED_FOR_STAFF', true),
     /** Which factor a staff role needs (MFA_STAFF_FACTOR): `any` (TOTP or a passkey). */
     staffFactor: staffFactor.mode,
     /** A staff session's factor proof counts this long (MFA_STAFF_FACTOR_MAX_AGE_HOURS, 12). */

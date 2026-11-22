@@ -46,4 +46,17 @@ describe('admin pages by role', () => {
         expect(adminRedirect('/admin/knowledge-base', 'kb.read', 'kb_editor')).toBeNull()
         expect(adminRedirect('/admin/history-online', 'users.sensitive.read', 'admin')).toBeNull()
     })
+
+    // feat-247 (Р10): a session the admin area refused for the staff MFA rule.
+    it('sends a staff session refused for the MFA rule to the security section', () => {
+        expect(adminRedirect('/admin/users', 'users.read', 'admin', 'mfa_required')).toBe(
+            '/account?section=security&reason=mfa_required',
+        )
+        expect(adminRedirect('/admin', undefined, 'kb_editor', 'mfa_session_required')).toBe(
+            '/account?section=security&reason=mfa_session_required',
+        )
+        // A role without admin permissions still goes to the account page itself.
+        expect(adminRedirect('/admin/users', 'users.read', 'user', 'mfa_required')).toBe('/account')
+        expect(adminRedirect('/admin/users', 'users.read', 'admin', null)).toBeNull()
+    })
 })

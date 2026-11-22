@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import supportConfig from '../../config/support.js'
 import { llmPromptTypeEnum } from '../../database/schema.js'
 import { SEED_PROMPTS } from './prompts.js'
+import { base32Encode } from '#app/services/auth/mfa/totp.js'
 import { runSeed } from './run-seed.js'
 import { seedCommitted } from './seed-transaction.js'
 import type { ExistingUser, SeedStore, SeedUser } from './run-seed.js'
@@ -227,6 +228,107 @@ describe('runSeed', () => {
         const report = await runSeed(store, { demo: true, env: demoEnv, hashPassword: fakeHash })
         expect(report.admin).toEqual({ status: 'skipped', reason: 'exists_without_admin_role' })
         expect(report.auditEvents).toEqual([])
+    })
+})
+
+// feat-247 (Р10): the demo admin gets a TOTP factor, so it meets MFA_REQUIRED_FOR_STAFF.
+describe('runSeed: the TOTP factor of the demo admin', () => {
+    const KNOWN = Buffer.alloc(20, 7)
+    const GENERATED = Buffer.alloc(20, 9)
+    const totpOptions = (isProductionLike: boolean, canSeal = true) => ({
+        isProductionLike,
+        canSeal,
+        generateSecret: () => GENERATED,
+    })
+    const run = (
+        store: FakeStore,
+        env: Record<string, string>,
+        isProductionLike: boolean,
+        canSeal = true,
+    ) =>
+        runSeed(store, {
+            demo: true,
+            env,
+            hashPassword: fakeHash,
+            adminTotp: totpOptions(isProductionLike, canSeal),
+        })
+
+    it('development without SEED_ADMIN_TOTP_SECRET: a generated secret, for the admin only', async () => {
+        const store = createFakeStore()
+        const report = await run(store, demoEnv, false)
+
+        expect(report.adminTotp).toEqual({
+            status: 'inserted',
+            secret: GENERATED,
+            source: 'generated',
+        })
+        expect(store.insertedUsers[0]?.totpSecret).toEqual(GENERATED)
+        expect(store.insertedUsers[1]).not.toHaveProperty('totpSecret')
+    })
+
+    it.each([false, true])(
+        'SEED_ADMIN_TOTP_SECRET is used as it is (production-like: %s)',
+        async (isProductionLike) => {
+            const store = createFakeStore()
+            const env = {
+                ...demoEnv,
+                SEED_ADMIN_TOTP_SECRET: ` ${base32Encode(KNOWN).toLowerCase()} `,
+            }
+            const report = await run(store, env, isProductionLike)
+
+            expect(report.adminTotp).toEqual({ status: 'inserted', secret: KNOWN, source: 'env' })
+            expect(store.insertedUsers[0]?.totpSecret).toEqual(KNOWN)
+        },
+    )
+
+    it('production-like without the secret: no known secret is made, the admin has no factor', async () => {
+        const store = createFakeStore()
+        const report = await run(store, demoEnv, true)
+
+        expect(report.admin).toEqual({ status: 'inserted' })
+        expect(report.adminTotp).toEqual({ status: 'skipped', reason: 'production_like' })
+        expect(store.insertedUsers[0]).not.toHaveProperty('totpSecret')
+    })
+
+    it('no key to seal the secret with: the admin is created without a factor', async () => {
+        const store = createFakeStore()
+        const report = await run(store, demoEnv, false, false)
+
+        expect(report.adminTotp).toEqual({ status: 'skipped', reason: 'no_mfa_key' })
+        expect(store.insertedUsers[0]).not.toHaveProperty('totpSecret')
+    })
+
+    it.each([
+        ['not base32', 'not-base32!'],
+        ['too short', 'JBSWY3DPEHPK3PXP'],
+    ])('a malformed SEED_ADMIN_TOTP_SECRET (%s) fails the seed before writing', async (_n, raw) => {
+        const store = createFakeStore()
+        await expect(
+            run(store, { ...demoEnv, SEED_ADMIN_TOTP_SECRET: raw }, false),
+        ).rejects.toThrow('SEED_ADMIN_TOTP_SECRET')
+        expect(store.insertedUsers).toEqual([])
+    })
+
+    it('an admin that exists, or no --demo: no factor and nothing reported as inserted', async () => {
+        const store = createFakeStore()
+        await run(store, demoEnv, false)
+        const again = await run(store, demoEnv, false)
+        expect(again.adminTotp).toEqual({ status: 'skipped', reason: 'admin_not_created' })
+
+        const noDemo = await runSeed(createFakeStore(), {
+            demo: false,
+            env: { ...demoEnv, SEED_ADMIN_TOTP_SECRET: 'not-base32!' },
+            hashPassword: fakeHash,
+            adminTotp: totpOptions(false),
+        })
+        expect(noDemo.adminTotp).toEqual({ status: 'skipped', reason: 'admin_not_created' })
+    })
+
+    it('without adminTotp options the admin gets no factor', async () => {
+        const store = createFakeStore()
+        const report = await runSeed(store, { demo: true, env: demoEnv, hashPassword: fakeHash })
+        expect(report.adminTotp).toEqual({ status: 'skipped', reason: 'not_configured' })
+        expect(store.insertedUsers[0]).not.toHaveProperty('totpSecret')
     })
 })
 

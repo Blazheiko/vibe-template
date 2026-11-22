@@ -1,5 +1,6 @@
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import type { RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import { base32Decode } from '#app/services/auth/mfa/totp.js'
 import type { Role } from 'shared/access'
 import { SEED_PROMPTS } from './prompts.js'
 import type { PromptType, SeedPrompt } from './prompts.js'
@@ -11,6 +12,8 @@ export interface SeedUser {
     email: string
     passwordHash: string
     role: SeedRole
+    /** feat-247: a confirmed TOTP factor of this secret, sealed and stored with the user. */
+    totpSecret?: Buffer
 }
 
 export interface ExistingUser {
@@ -24,7 +27,8 @@ export interface SeedStore {
     findUserByEmail(normalizedEmail: string): Promise<ExistingUser | undefined>
     /**
      * Inserts the user; for an admin also its `user.admin.created` event, in the same transaction
-     * (feat-235). Answers the events written, to be logged once the transaction committed.
+     * (feat-235), and its TOTP factor when `totpSecret` is given (feat-247). Answers the events
+     * written, to be logged once the transaction committed.
      */
     insertUser(user: SeedUser): Promise<RecordedAuditEvent[]>
 }
@@ -34,9 +38,36 @@ export type SkipReason =
 
 export type SeedOutcome = { status: 'inserted' } | { status: 'skipped'; reason: SkipReason }
 
+/**
+ * feat-247 (Р10): the TOTP factor of the demo admin, so it meets MFA_REQUIRED_FOR_STAFF from the
+ * first sign-in. `env`: SEED_ADMIN_TOTP_SECRET; `generated`: a new secret, development only.
+ */
+export type AdminTotpOutcome =
+    | { status: 'inserted'; secret: Buffer; source: 'env' | 'generated' }
+    | { status: 'skipped'; reason: AdminTotpSkipReason }
+
+export type AdminTotpSkipReason =
+    /** The admin was not created by this run (no --demo, no credentials, it exists). */
+    | 'admin_not_created'
+    /** The caller does not seed factors. */
+    | 'not_configured'
+    /** No SEED_ADMIN_TOTP_SECRET in a production-like environment: no known secret is made. */
+    | 'production_like'
+    /** No key seals a TOTP secret (MFA_ENCRYPTION_KEYS, or APP_KEY in development). */
+    | 'no_mfa_key'
+
+export interface AdminTotpOptions {
+    isProductionLike: boolean
+    /** A key that seals TOTP secrets is configured. */
+    canSeal: boolean
+    generateSecret: () => Buffer
+}
+
 export interface SeedReport {
     prompts: Record<PromptType, SeedOutcome>
     admin: SeedOutcome
+    /** feat-247: the TOTP factor of the admin created by this run. */
+    adminTotp: AdminTotpOutcome
     user: SeedOutcome
     /** Written in the seed's transaction; logged after its commit (feat-235, Р12). */
     auditEvents: RecordedAuditEvent[]
@@ -46,6 +77,42 @@ export interface SeedOptions {
     demo: boolean
     env: Record<string, string | undefined>
     hashPassword: (password: string) => Promise<string>
+    /** feat-247: how the demo admin gets its TOTP factor; left out, it gets none. */
+    adminTotp?: AdminTotpOptions
+}
+
+/** The fewest bytes SEED_ADMIN_TOTP_SECRET may decode to (RFC 4226 asks for 128 bits). */
+const MIN_TOTP_SECRET_BYTES = 16
+
+/** SEED_ADMIN_TOTP_SECRET as bytes; a malformed value fails the seed rather than be skipped. */
+export function parseSeedTotpSecret(raw: string): Buffer {
+    let secret: Buffer
+    try {
+        secret = base32Decode(raw)
+    } catch {
+        throw new Error('SEED_ADMIN_TOTP_SECRET must be base32 (A–Z, 2–7)')
+    }
+    if (secret.length < MIN_TOTP_SECRET_BYTES) {
+        throw new Error(
+            `SEED_ADMIN_TOTP_SECRET must decode to at least ${String(MIN_TOTP_SECRET_BYTES)} bytes (26 base32 characters)`,
+        )
+    }
+    return secret
+}
+
+/** The secret the new demo admin gets, or why it gets none. */
+function planAdminTotp(options: SeedOptions): AdminTotpOutcome {
+    const totp = options.adminTotp
+    if (totp === undefined) return { status: 'skipped', reason: 'not_configured' }
+    const raw = nonEmpty(options.env['SEED_ADMIN_TOTP_SECRET'])
+    const secret = raw === undefined ? undefined : parseSeedTotpSecret(raw)
+    if (secret === undefined && totp.isProductionLike) {
+        return { status: 'skipped', reason: 'production_like' }
+    }
+    if (!totp.canSeal) return { status: 'skipped', reason: 'no_mfa_key' }
+    return secret === undefined
+        ? { status: 'inserted', secret: totp.generateSecret(), source: 'generated' }
+        : { status: 'inserted', secret, source: 'env' }
 }
 
 interface DemoAccount {
@@ -84,6 +151,7 @@ async function seedAccount(
     account: DemoAccount,
     options: SeedOptions,
     auditEvents: RecordedAuditEvent[],
+    totpSecret?: Buffer,
 ): Promise<SeedOutcome> {
     if (!options.demo) return skipped('demo_disabled')
 
@@ -107,6 +175,7 @@ async function seedAccount(
         email,
         passwordHash: await options.hashPassword(password),
         role: account.kind === 'admin' ? 'admin' : 'user',
+        ...(totpSecret !== undefined ? { totpSecret } : {}),
     })
     auditEvents.push(...events)
     return inserted
@@ -122,8 +191,22 @@ export async function runSeed(store: SeedStore, options: SeedOptions): Promise<S
 
     const [adminAccount, userAccount] = DEMO_ACCOUNTS as [DemoAccount, DemoAccount]
     const auditEvents: RecordedAuditEvent[] = []
-    const admin = await seedAccount(store, adminAccount, options, auditEvents)
+    // Planned before the admin is written: a malformed secret fails the seed with nothing written.
+    const plannedTotp: AdminTotpOutcome = options.demo
+        ? planAdminTotp(options)
+        : { status: 'skipped', reason: 'admin_not_created' }
+    const admin = await seedAccount(
+        store,
+        adminAccount,
+        options,
+        auditEvents,
+        plannedTotp.status === 'inserted' ? plannedTotp.secret : undefined,
+    )
+    const adminTotp: AdminTotpOutcome =
+        admin.status === 'inserted'
+            ? plannedTotp
+            : { status: 'skipped', reason: 'admin_not_created' }
     const user = await seedAccount(store, userAccount, options, auditEvents)
 
-    return { prompts, admin, user, auditEvents }
+    return { prompts, admin, adminTotp, user, auditEvents }
 }

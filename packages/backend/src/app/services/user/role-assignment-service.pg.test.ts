@@ -24,6 +24,11 @@ vi.mock('#logger', () => ({ default: silent }))
 vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
 const announceRoleChanged = vi.hoisted(() => vi.fn())
 vi.mock('#app/services/communication/role-change-announcer.js', () => ({ announceRoleChanged }))
+// feat-247 (Р10): MFA_REQUIRED_FOR_STAFF is on by default; one test turns it off.
+vi.mock('#config/mfa.js', async (importOriginal) => {
+    const actual = await importOriginal<{ default: Record<string, unknown> }>()
+    return { default: { ...actual.default, requiredForStaff: true } }
+})
 
 describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -32,7 +37,11 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
     const { systemActor } = await import('#app/services/audit/audit-actor.js')
     const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
     const { roleAssignmentService } = await import('./role-assignment-service.js')
-    const { userRepository } = await import('#app/repositories/index.js')
+    const { userRepository, totpFactorRepository, withTransaction } =
+        await import('#app/repositories/index.js')
+    const { default: mfaConfig } = (await import('#config/mfa.js')) as unknown as {
+        default: { requiredForStaff: boolean }
+    }
 
     const stamp = String(Date.now())
     const userIds: bigint[] = []
@@ -53,6 +62,29 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         userIds.push(row.id)
         return row.id
     }
+
+    /**
+     * feat-247 (Р10): a confirmed TOTP factor, so the account may get a staff role. The secret is
+     * never read here, so a placeholder stands for its ciphertext.
+     */
+    const addFactor = async (userId: bigint): Promise<bigint> => {
+        await withTransaction((tx) =>
+            totpFactorRepository.replace(
+                {
+                    userId,
+                    enrollmentId: crypto.randomUUID().slice(0, 32),
+                    secretCiphertext: Buffer.from([1]),
+                    keyId: 'k1',
+                    lastUsedStep: 0n,
+                    confirmedAt: new Date(),
+                },
+                tx,
+            ),
+        )
+        return userId
+    }
+    /** A user that may be given a staff role: verified, with a second factor. */
+    const insertEnrolled = async (role: Role): Promise<bigint> => addFactor(await insertUser(role))
 
     const roleOf = async (id: bigint): Promise<Role | undefined> => {
         const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, id))
@@ -96,6 +128,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         )
 
     afterEach(() => {
+        mfaConfig.requiredForStaff = true
         vi.restoreAllMocks()
         announceRoleChanged.mockClear()
     })
@@ -130,22 +163,8 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         it('an admin with TOTP: the password is not enough, a fresh TOTP is', async () => {
             const admin = await insertUser('admin')
             await db.update(users).set({ password: 'hash' }).where(eq(users.id, admin))
-            const { totpFactorRepository, withTransaction } =
-                await import('#app/repositories/index.js')
-            await withTransaction((tx) =>
-                totpFactorRepository.replace(
-                    {
-                        userId: admin,
-                        enrollmentId: crypto.randomUUID().slice(0, 32),
-                        secretCiphertext: Buffer.from([1]),
-                        keyId: 'k1',
-                        lastUsedStep: 0n,
-                        confirmedAt: new Date(),
-                    },
-                    tx,
-                ),
-            )
-            const target = await insertUser('user')
+            await addFactor(admin)
+            const target = await insertEnrolled('user')
             const at = new Date().toISOString()
             const base = { v: 1 as const, amr: ['pwd' as const], authenticatedAt: at }
             const withPassword = await roleAssignmentService.assign({
@@ -176,7 +195,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
     it('changes the role and writes one event in the same transaction', async () => {
         const admin = await insertUser('admin')
-        const target = await insertUser('user')
+        const target = await insertEnrolled('user')
         const actor = actorFor(admin, 'admin')
 
         const result = await assign({
@@ -235,7 +254,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
     it('rolls the role back when the event cannot be written', async () => {
         const admin = await insertUser('admin')
-        const target = await insertUser('user')
+        const target = await insertEnrolled('user')
         vi.spyOn(auditService, 'record').mockRejectedValueOnce(new Error('audit down'))
 
         await expect(
@@ -253,7 +272,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
     it('lets a user_admin move a user between the roles it manages', async () => {
         const userAdmin = await insertUser('user_admin')
-        const target = await insertUser('user')
+        const target = await insertEnrolled('user')
         const actor = actorFor(userAdmin, 'user_admin')
 
         const raised = await assign({
@@ -351,7 +370,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
     })
 
     it('records a CLI change as a system event with the cli source', async () => {
-        const target = await insertUser('user')
+        const target = await insertEnrolled('user')
 
         const result = await assign({
             actor: systemActor('cli'),
@@ -368,6 +387,93 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             requestId: null,
             changes: { role: { from: 'user', to: 'user_admin' } },
             metadata: { source: 'cli' },
+        })
+    })
+
+    // feat-247 (Р10): with MFA_REQUIRED_FOR_STAFF on, a staff role needs a second factor.
+    describe('a staff role needs MFA (feat-247 S5)', () => {
+        it.each([
+            ['an admin', 'user'],
+            ['the CLI', 'system'],
+        ])('%s gets 409 mfa_not_enrolled for an account without a factor', async (_name, kind) => {
+            const admin = await insertUser('admin')
+            const target = await insertUser('user')
+
+            const result = await assign({
+                actor: kind === 'system' ? systemActor('cli') : actorFor(admin, 'admin'),
+                targetUserId: target,
+                role: 'kb_editor',
+            })
+
+            expect(payloadOf(result)).toMatchObject({
+                status: 'error',
+                code: 'conflict',
+                reason: 'mfa_not_enrolled',
+            })
+            expect(await roleOf(target)).toBe('user')
+            expect(await eventsFor(target)).toHaveLength(0)
+            expect(announceRoleChanged).not.toHaveBeenCalled()
+
+            await addFactor(target)
+            const again = await assign({
+                actor: kind === 'system' ? systemActor('cli') : actorFor(admin, 'admin'),
+                targetUserId: target,
+                role: 'kb_editor',
+            })
+            expect(again.isOk()).toBe(true)
+            expect(await roleOf(target)).toBe('kb_editor')
+        })
+
+        it('reads the factors in the transaction: a factor removed before the change counts', async () => {
+            const target = await insertEnrolled('user')
+            await db.execute(sql`DELETE FROM totp_factors WHERE user_id = ${target}`)
+
+            const result = await assign({
+                actor: systemActor('cli'),
+                targetUserId: target,
+                role: 'support_operator',
+            })
+            expect(payloadOf(result)).toMatchObject({ reason: 'mfa_not_enrolled' })
+        })
+
+        it.each([
+            ['an admin', 'user'],
+            ['the CLI', 'system'],
+        ])('%s may always lower a staff account without a factor to user', async (_name, kind) => {
+            const admin = await insertUser('admin')
+            const target = await insertUser('support_operator')
+
+            const result = await assign({
+                actor: kind === 'system' ? systemActor('cli') : actorFor(admin, 'admin'),
+                targetUserId: target,
+                role: 'user',
+            })
+
+            expect(result.isOk() && result.value.changed).toBe(true)
+            expect(await roleOf(target)).toBe('user')
+        })
+
+        it('moves a staff account without a factor between staff roles only with one', async () => {
+            const target = await insertUser('support_operator')
+            const moved = await assign({
+                actor: systemActor('cli'),
+                targetUserId: target,
+                role: 'kb_editor',
+            })
+            expect(payloadOf(moved)).toMatchObject({ reason: 'mfa_not_enrolled' })
+            expect(await roleOf(target)).toBe('support_operator')
+        })
+
+        it('gives the role without a factor while MFA_REQUIRED_FOR_STAFF is off', async () => {
+            mfaConfig.requiredForStaff = false
+            const target = await insertUser('user')
+            const result = await assign({
+                actor: systemActor('cli'),
+                targetUserId: target,
+                role: 'kb_editor',
+            })
+            expect(result.isOk()).toBe(true)
+            expect(await roleOf(target)).toBe('kb_editor')
         })
     })
 

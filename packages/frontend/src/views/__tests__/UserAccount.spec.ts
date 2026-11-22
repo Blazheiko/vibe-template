@@ -89,7 +89,14 @@ vi.mock('@/stores/user', () => ({
             return profileState.profile.value
         },
         setUser: vi.fn(),
+        // feat-247: the staff MFA notice of the security section.
+        isStaff: () => false,
     }),
+}))
+// feat-247: `?section=security&reason=…` of the admin area; none here.
+vi.mock('vue-router', () => ({
+    useRoute: () => ({ path: '/account', fullPath: '/account', query: {} }),
+    useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }))
 vi.mock('@/stores/state', () => ({
     useStateStore: () => ({

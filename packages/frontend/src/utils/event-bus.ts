@@ -1,6 +1,7 @@
 import mitt from 'mitt'
 import type { EventType } from 'mitt'
 import type { BroadcastContracts } from 'shared/contracts'
+import type { StaffMfaReason } from './staff-mfa'
 
 // The events of the app. A broadcast event of the server (`broadcast:<event>`) comes out here
 // under its own name with the payload of its contract (ADR 0006, decision 3): a new event in
@@ -24,6 +25,11 @@ export interface Events extends Record<EventType, unknown>, BroadcastContracts {
      * `mfa_session_required`); the payload is the page to come back to.
      */
     sign_in_again: string
+    /**
+     * feat-247 (Р10): the admin area refused this session for the staff MFA rule (403
+     * `mfa_required` or `mfa_session_required`).
+     */
+    staff_mfa_refused: StaffMfaReason
 }
 
 const emitter = mitt<Events>()

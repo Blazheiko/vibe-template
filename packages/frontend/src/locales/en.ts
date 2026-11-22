@@ -241,6 +241,11 @@ export default {
             errorSetupExpired: 'The setup expired. Start again.',
             errorRecoveryOrder: 'Set up the new app first.',
             errorGeneric: 'Something went wrong. Try again.',
+            staffFactorRequired:
+                'Your role needs two-step sign-in. Set up an authenticator app or a passkey below, then sign in again with it to open the admin area.',
+            staffSessionRequired:
+                'The admin area needs a recent sign-in with your second factor. Sign in again with your authenticator app or passkey.',
+            staffSignIn: 'Sign in again',
         },
         passkeys: {
             title: 'Passkeys',

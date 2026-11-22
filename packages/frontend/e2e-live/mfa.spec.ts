@@ -1,7 +1,6 @@
-import { createHmac } from 'node:crypto'
 import type { Page } from '@playwright/test'
 
-import { createVerifiedAccount, expect, newBrowser, test } from './support'
+import { createVerifiedAccount, expect, newBrowser, test, totpAt } from './support'
 import type { Account } from './support'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, Р8, Р15, tasks M13) against the real backend: an
@@ -10,34 +9,9 @@ import type { Account } from './support'
 // the last recovery code, a new app, new codes, an ordinary sign-in). The test computes the TOTP
 // codes from the key the setup shows, like the app would.
 
-const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
-const fromBase32 = (text: string): Buffer => {
-    let bits = 0
-    let value = 0
-    const out: number[] = []
-    for (const char of text.replace(/=+$/, '')) {
-        value = (value << 5) | BASE32.indexOf(char)
-        bits += 5
-        if (bits >= 8) {
-            out.push((value >>> (bits - 8)) & 255)
-            bits -= 8
-        }
-    }
-    return Buffer.from(out)
-}
 /** The code of the step `offset` steps from now (30 s each). */
-const totp = (secret: string, offset = 0): string => {
-    const counter = Buffer.alloc(8)
-    counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000) + offset))
-    const digest = createHmac('sha1', fromBase32(secret)).update(counter).digest()
-    const at = (digest[digest.length - 1] ?? 0) & 0x0f
-    const binary =
-        (((digest[at] ?? 0) & 0x7f) << 24) |
-        ((digest[at + 1] ?? 0) << 16) |
-        ((digest[at + 2] ?? 0) << 8) |
-        (digest[at + 3] ?? 0)
-    return String(binary % 1_000_000).padStart(6, '0')
-}
+const totp = (secret: string, offset = 0): string =>
+    totpAt(secret, Math.floor(Date.now() / 30_000) + offset)
 
 const security = (page: Page) => page.getByTestId('mfa-settings')
 

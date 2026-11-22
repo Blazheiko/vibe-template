@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../test-support/pg-test-db.js'
 import { hasRedis, REDIS_TEST_URL } from '../test-support/redis-test-client.js'
+import { enrollTestTotp } from '../test-support/test-totp.js'
 
 // feat-240 (Р7, T6): user:set-role on a real PostgreSQL and Redis. The CLI process is not an
 // instance: its user event bus is never started, so publishToUser would not reach Redis. It
@@ -108,6 +109,8 @@ describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
 
     it('gives the role, records a cli event and signals the running instances', async () => {
         const user = await insertUser(true)
+        // feat-247 (Р10): a staff role needs a second factor while MFA_REQUIRED_FOR_STAFF is on.
+        await enrollTestTotp(user.id)
 
         const result = await run(['--email', user.email.toUpperCase(), '--role', 'kb_editor'])
 
@@ -135,6 +138,21 @@ describe.skipIf(!hasPg || !hasRedis)('user:set-role (feat-240)', async () => {
 
         expect(result.code).toBe(1)
         expect(result.errors[0]).toContain('identity_unverified')
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        expect(received).toHaveLength(before)
+    })
+
+    // feat-247 (Р10): no staff account without MFA, the CLI included.
+    it('refuses a staff role to an account without a factor: mfa_not_enrolled, exit code 1', async () => {
+        const user = await insertUser(true)
+        const before = received.length
+
+        const result = await run(['--email', user.email, '--role', 'admin'])
+
+        expect(result.code).toBe(1)
+        expect(result.errors[0]).toContain('mfa_not_enrolled')
+        const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, user.id))
+        expect(row?.role).toBe('user')
         await new Promise((resolve) => setTimeout(resolve, 100))
         expect(received).toHaveLength(before)
     })

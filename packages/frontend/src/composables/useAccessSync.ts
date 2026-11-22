@@ -6,6 +6,7 @@ import { useUserStore } from '@/stores/user'
 import { useEventBus } from '@/utils/event-bus'
 import { accountApi } from '@/utils/api'
 import { hasResponseError } from '@/utils/response-normalizer'
+import type { StaffMfaReason } from '@/utils/staff-mfa'
 import { adminRedirect } from '@/views/admin/admin-pages'
 
 // feat-240 (docs/plan/roles-permissions-plan.md Р8, Р10): the role of the signed-in user in this
@@ -37,7 +38,12 @@ export function createAccessSync(deps: AccessSyncDeps) {
     const recheckRoute = (): void => {
         const current = deps.currentPath()
         if (!current.staff) return
-        const target = adminRedirect(current.path, current.permission, userStore.user?.role)
+        const target = adminRedirect(
+            current.path,
+            current.permission,
+            userStore.user?.role,
+            userStore.staffMfaRefusal,
+        )
         if (target !== null && target !== current.path) deps.replace(target)
     }
 
@@ -51,7 +57,17 @@ export function createAccessSync(deps: AccessSyncDeps) {
         if (current.staff) signInAgain(current.path)
     }
 
-    return { readAgain, recheckRoute, staffSessionExpired }
+    /**
+     * feat-247 (Р10): a request of the admin area was refused for the staff MFA rule. The page
+     * shown is left for the account's security section, which says what to do; the staff routes
+     * lead there until the user is set again (a new sign-in).
+     */
+    const staffMfaRefused = (reason: StaffMfaReason): void => {
+        userStore.setStaffMfaRefusal(reason)
+        recheckRoute()
+    }
+
+    return { readAgain, recheckRoute, staffSessionExpired, staffMfaRefused }
 }
 
 async function fetchRole(): Promise<Role | null> {
@@ -88,6 +104,9 @@ export function useAccessSync(router: Router): void {
                 eventBus.emit('sign_in_again', returnTo)
             })
         }
+    })
+    eventBus.on('staff_mfa_refused', (reason) => {
+        sync.staffMfaRefused(reason)
     })
     eventBus.on('ws_ready', () => {
         void sync.readAgain()

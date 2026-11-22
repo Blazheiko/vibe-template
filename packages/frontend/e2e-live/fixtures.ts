@@ -9,4 +9,10 @@ export const REDIS_PREFIX = 'e2e-live:'
 
 // Verified accounts, seeded by global-setup.ts (pnpm --filter backend db:seed --demo).
 export const USER_1 = { email: 'live-e2e-user@example.test', password: 'live-e2e-pass-1' }
-export const USER_2 = { email: 'live-e2e-admin@example.test', password: 'live-e2e-pass-2' }
+// feat-247: the seeded admin has an authenticator app of this key (SEED_ADMIN_TOTP_SECRET), so it
+// passes the staff MFA rule; loginInUi answers the second step with its code.
+export const USER_2 = {
+    email: 'live-e2e-admin@example.test',
+    password: 'live-e2e-pass-2',
+    totpSecret: 'JBSWY3DPEHPK3PXPLIVEE2EADMINTOTP',
+}

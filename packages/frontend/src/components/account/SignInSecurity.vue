@@ -7,6 +7,7 @@ import { useUserStore } from '@/stores/user'
 import { authApi, mfaApi } from '@/utils/api'
 import { useEventBus } from '@/utils/event-bus'
 import { getErrorReason } from '@/utils/response-normalizer'
+import type { StaffMfaReason } from '@/utils/staff-mfa'
 import ConfirmDialog from './ConfirmDialog.vue'
 import PasskeyList from './PasskeyList.vue'
 
@@ -14,6 +15,15 @@ import PasskeyList from './PasskeyList.vue'
 // TOTP setup draws its QR code in the browser (the secret never leaves for another service);
 // recovery codes are shown once. In a recovery session this is the whole page: replace the
 // lost factor, get new codes, finish, sign in again.
+const props = withDefaults(
+    defineProps<{
+        /** feat-247: the account holds a staff role (the staff MFA rule applies to it). */
+        staff?: boolean
+        /** feat-247: why the admin area sent this session here, if it did. */
+        staffReason?: StaffMfaReason | null
+    }>(),
+    { staff: false, staffReason: null },
+)
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
@@ -40,6 +50,18 @@ const inRecovery = computed(() => status.value?.recovery !== null && status.valu
 const mfaEnabled = computed(
     () => status.value !== null && (status.value.totp.enabled || status.value.passkeys > 0),
 )
+/**
+ * feat-247 (Р10): what a staff account must do for the admin area. Without a factor: set one up
+ * (also shown unasked, as a banner). With one, refused for the session: sign in again with it.
+ */
+const staffNotice = computed<'factor' | 'signIn' | null>(() => {
+    if (status.value === null || inRecovery.value) return null
+    if (!mfaEnabled.value) return props.staff || props.staffReason !== null ? 'factor' : null
+    return props.staffReason !== null ? 'signIn' : null
+})
+const signInForAdmin = (): void => {
+    eventBus.emit('sign_in_again', '/admin')
+}
 const showCodes = (next: string[]): void => {
     codes.value = next
 }
@@ -205,6 +227,30 @@ onMounted(() => {
             </ol>
         </div>
 
+        <div
+            v-if="staffNotice !== null"
+            class="mfa-staff"
+            role="alert"
+            data-testid="staff-mfa-notice"
+        >
+            <p>
+                {{
+                    staffNotice === 'factor'
+                        ? t('account.mfa.staffFactorRequired')
+                        : t('account.mfa.staffSessionRequired')
+                }}
+            </p>
+            <button
+                v-if="staffNotice === 'signIn'"
+                class="primary-button"
+                type="button"
+                data-testid="staff-mfa-sign-in"
+                @click="signInForAdmin"
+            >
+                {{ t('account.mfa.staffSignIn') }}
+            </button>
+        </div>
+
         <p v-if="status === null" class="form-message">{{ t('account.mfa.loading') }}</p>
         <template v-else>
             <p class="form-message" data-testid="mfa-totp-state">
@@ -353,6 +399,13 @@ onMounted(() => {
 .mfa-codes ul {
     columns: 2;
     padding-left: 16px;
+}
+
+.mfa-staff {
+    border: 1px solid var(--warning-color, var(--border-color));
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
 }
 
 .mfa-recovery {

@@ -149,7 +149,22 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
             responseData,
         )
         await sessionHandler(context, undefined, undefined)
-        await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
+        // feat-247 (Р11): MFA_REQUIRED_FOR_STAFF is on by default; the session proved a second
+        // factor a moment ago, so its staff access follows the role alone, which is the subject
+        // here. The MFA side of the channel is in admin-channel-deadline.spec.ts.
+        const at = new Date().toISOString()
+        await context.auth.login(
+            String(user.id),
+            user.sessionToken,
+            { method: 'password' },
+            {
+                v: 1,
+                amr: ['pwd', 'otp'],
+                aal: 2,
+                authenticatedAt: at,
+                verified: { pwd: at, otp: at },
+            },
+        )
         const sessionInfo = context.session.sessionInfo
         if (sessionInfo === null) throw new Error('no session after login')
         const token = await generateWsToken(sessionInfo, String(user.id))

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { withReauth } from '@/composables/useReauth'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useUserStore } from '@/stores/user'
@@ -16,6 +16,7 @@ import SignInSecurity from '@/components/account/SignInSecurity.vue'
 import NotificationPreferences from '@/components/account/NotificationPreferences.vue'
 import { useWebSocketConnection } from '@/composables/useWebSocketConnection'
 import { useEventBus } from '@/utils/event-bus'
+import { isStaffMfaReason } from '@/utils/staff-mfa'
 import { oauthProviderLabel } from '@/utils/oauth-provider-label'
 import { useDateFormat } from '@/composables/useDateFormat'
 import { useProfileSave, type ProfileChanges } from '@/composables/useProfileSave'
@@ -556,6 +557,19 @@ const signInAgain = (): Promise<void> => {
     return Promise.resolve()
 }
 
+// feat-247 (Р10): the admin area sends a staff session it refused for the staff MFA rule to
+// `?section=security&reason=…`; the security section explains the reason and is scrolled to.
+const staffMfaReason = computed(() => {
+    const reason = route.query.reason
+    return isStaffMfaReason(reason) ? reason : null
+})
+onMounted(() => {
+    if (route.query.section !== 'security') return
+    void nextTick(() => {
+        document.querySelector('[data-testid="mfa-settings"]')?.scrollIntoView({ block: 'start' })
+    })
+})
+
 const signInMethodsLoaded = ref(false)
 const accountHasPassword = ref(false)
 const unlinkingId = ref<string | null>(null)
@@ -767,7 +781,7 @@ watch(
             <p v-if="passwordMessage" class="form-message">{{ passwordMessage }}</p>
         </section>
 
-        <SignInSecurity />
+        <SignInSecurity :staff="userStore.isStaff()" :staff-reason="staffMfaReason" />
         <ActiveSessions />
 
         <section class="panel" data-testid="sign-in-methods">

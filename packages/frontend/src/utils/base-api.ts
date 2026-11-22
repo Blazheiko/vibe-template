@@ -8,6 +8,7 @@ import {
 } from './response-normalizer'
 import type { ApiResponse, CsrfClientCode, HttpApiError } from './api-error'
 import { apiPath } from './api-path'
+import { isStaffApiRoute, isStaffMfaReason } from './staff-mfa'
 import {
     confirmCsrfToken,
     enterReloading,
@@ -397,6 +398,12 @@ const send = async <T>(
                     transportCode: normalizedError.transportCode,
                     message: normalizedError.message,
                 },
+            }
+
+            // feat-247 (Р10): the admin area refused a staff role for the staff MFA rule.
+            const reason = isRecord(responseData) ? responseData.reason : undefined
+            if (response.status === 403 && isStaffMfaReason(reason) && isStaffApiRoute(route)) {
+                eventBus.emit('staff_mfa_refused', reason)
             }
 
             // A 401 of a request that runs without a session of its own (sign-in, registration,

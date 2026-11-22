@@ -1,6 +1,9 @@
 import { Result } from 'better-result'
-import { canAssignRole, roleHasPermission, type Role } from 'shared/access'
+import { canAssignRole, isStaffRole, roleHasPermission, type Role } from 'shared/access'
+import { MFA_REASONS } from 'shared/mfa'
 import type { SessionAuthState } from 'shared/mfa'
+
+import mfaConfig from '#config/mfa.js'
 
 import { userRepository } from '#app/repositories/index.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
@@ -19,7 +22,7 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
-import { loadMfaAccount } from '#app/services/auth/mfa/mfa-account.js'
+import { loadMfaAccount, loadMfaFactors } from '#app/services/auth/mfa/mfa-account.js'
 import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
 import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 
@@ -43,8 +46,9 @@ const denied = (): AppError => forbidden('Access denied')
  *
  * Rules: the target exists (404); a user actor has users.roles.assign, does not change its own
  * role and may give and take only roles of its delegation policy (403); the same role is a no-op;
- * a staff role needs a verified email (409 identity_unverified); the last admin keeps the role
- * (409 last_admin). The change and its audit event commit together.
+ * a staff role needs a verified email (409 identity_unverified) and, while MFA_REQUIRED_FOR_STAFF is
+ * on, a second factor of the staff policy (409 mfa_not_enrolled, feat-247 Р10); the last admin
+ * keeps the role (409 last_admin). The change and its audit event commit together.
  */
 export const roleAssignmentService = {
     async assign(input: {
@@ -106,6 +110,24 @@ export const roleAssignmentService = {
                     return Result.err(
                         conflict('A staff role needs a verified email', 'identity_unverified'),
                     )
+                }
+                if (mfaConfig.requiredForStaff && isStaffRole(role)) {
+                    // feat-247 (Р10): no staff account exists without MFA, so a first factor
+                    // cannot be set up by someone who knows only the password. Read under the
+                    // same transaction; lowering to a role without permissions is always allowed.
+                    const factors = await loadMfaFactors(targetUserId, tx)
+                    const enrolled = staffPolicy().enrolled({
+                        totp: factors.totp !== undefined,
+                        passkeys: factors.passkeys,
+                    })
+                    if (!enrolled) {
+                        return Result.err(
+                            conflict(
+                                'A staff role needs a second factor: the account sets one up first',
+                                MFA_REASONS.mfaNotEnrolled,
+                            ),
+                        )
+                    }
                 }
                 if (
                     target.role === 'admin' &&

@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import type { InitResponse, Profile, Role } from 'shared'
 import { isStaffRole, roleHasPermission, type Permission } from 'shared/access'
 import { sentryService as sentry } from '@/utils/sentry-service'
+import type { StaffMfaReason } from '@/utils/staff-mfa'
 
 // Tracks the currently active initializeApp() cycle.
 let _resolveReady: (() => void) | null = null
@@ -66,6 +67,16 @@ export const useUserStore = defineStore('user', () => {
      */
     let accessEpoch = 0
     let accessReads = 0
+    /**
+     * feat-247 (Р10): the admin area answered this session 403 `mfa_required` or
+     * `mfa_session_required`. The staff routes lead to the account's security section until a
+     * new sign-in (or a new init) sets the user again; the backend still checks every request.
+     */
+    const staffMfaRefusal = ref<StaffMfaReason | null>(null)
+
+    function setStaffMfaRefusal(reason: StaffMfaReason | null): void {
+        staffMfaRefusal.value = reason
+    }
 
     function setUser(userData: User) {
         // Another account: the profile of the previous one never stays (Р10).
@@ -74,6 +85,7 @@ export const useUserStore = defineStore('user', () => {
             accessEpoch += 1
         }
         user.value = userData
+        staffMfaRefusal.value = null
         anonymousConfirmed.value = false
         sentry.setUser({ id: userData.id })
     }
@@ -110,6 +122,7 @@ export const useUserStore = defineStore('user', () => {
         user.value = null
         profile.value = null
         recovery.value = null
+        staffMfaRefusal.value = null
         anonymousConfirmed.value = true
         sentry.setUser(null)
     }
@@ -176,6 +189,8 @@ export const useUserStore = defineStore('user', () => {
         anonymousConfirmed,
         recovery,
         setRecovery,
+        staffMfaRefusal,
+        setStaffMfaRefusal,
         markAnonymous,
         setUser,
         setInitUser,

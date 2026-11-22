@@ -251,6 +251,11 @@ const pl: typeof en = {
             errorSetupExpired: 'Konfiguracja wygasła. Zacznij od nowa.',
             errorRecoveryOrder: 'Najpierw skonfiguruj nową aplikację.',
             errorGeneric: 'Coś poszło nie tak. Spróbuj ponownie.',
+            staffFactorRequired:
+                'Twoja rola wymaga logowania dwuetapowego. Skonfiguruj poniżej aplikację uwierzytelniającą lub klucz dostępu, a potem zaloguj się ponownie, aby otworzyć panel administracyjny.',
+            staffSessionRequired:
+                'Panel administracyjny wymaga niedawnego logowania z drugim składnikiem. Zaloguj się ponownie z aplikacją uwierzytelniającą lub kluczem dostępu.',
+            staffSignIn: 'Zaloguj się ponownie',
         },
         passkeys: {
             title: 'Klucze dostępu',

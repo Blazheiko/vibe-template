@@ -5,10 +5,33 @@ import { randomUUID } from 'node:crypto'
 
 import { ORIGIN, SMTP_PORT } from './fixtures'
 import { MailSink } from './mail-sink'
+import { stepNow, totpAt } from './totp'
+
+export { totpAt }
 
 export interface Account {
     email: string
     password: string
+    /** feat-247: the key of the account's authenticator app, when it has one (base32). */
+    totpSecret?: string
+}
+
+/** The last step this run spent per key: the server accepts every step once (replay guard). */
+const spentSteps = new Map<string, number>()
+
+/**
+ * A code the server has not seen yet: the current step, or the next one (the server accepts one
+ * step either way), waiting for the clock when both were spent already.
+ */
+export async function nextTotp(secret: string): Promise<string> {
+    const spent = spentSteps.get(secret) ?? -1
+    let step = Math.max(stepNow(), spent + 1)
+    while (step > stepNow() + 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        step = Math.max(stepNow(), spent + 1)
+    }
+    spentSteps.set(secret, step)
+    return totpAt(secret, step)
 }
 
 /** One inbox for the run: the backend sends here (playwright.live.config.ts). */
@@ -74,9 +97,56 @@ export async function loginInUi(page: Page, account: Account): Promise<void> {
     await page
         .locator('button.auth-button', { has: page.locator('span', { hasText: 'Sign In' }) })
         .click()
-    expect((await signedIn).status()).toBe(200)
+    const answer = await signedIn
+    expect(answer.status()).toBe(200)
+    // feat-247: an account with an authenticator app (every staff account) has a second step.
+    if (((await answer.json()) as { status?: string }).status === 'mfa_required') {
+        await answerSecondStep(page, account)
+    }
     await page.goto('/account')
     await expect(page.getByText(account.email)).toBeVisible()
+}
+
+/** The second step of the sign-in with the app's code (a spent step is tried once more). */
+async function answerSecondStep(page: Page, account: Account): Promise<void> {
+    const secret = account.totpSecret
+    if (secret === undefined) throw new Error(`${account.email} asks for a second factor`)
+    await expect(page.getByTestId('mfa-challenge')).toBeVisible()
+    for (let attempt = 0; ; attempt += 1) {
+        const verified = page.waitForResponse(
+            (response) =>
+                new URL(response.url()).pathname === '/api/auth/mfa/verify' &&
+                response.request().method() === 'POST',
+        )
+        await page.getByTestId('mfa-code').fill(await nextTotp(secret))
+        await page.getByTestId('mfa-submit').click()
+        const status = (await verified).status()
+        // A step an earlier run spent (the database outlives a run) is refused once.
+        if (status === 200 || attempt >= 1) {
+            expect(status).toBe(200)
+            return
+        }
+    }
+}
+
+/**
+ * feat-247: sets up an authenticator app for the signed-in account of `request` (its sign-in a
+ * moment ago is the fresh proof the first factor needs); answers the app's key.
+ */
+export async function enrollTotp(request: APIRequestContext): Promise<string> {
+    const tab = session(request)
+    const setup = await tab.post('/api/account/mfa/totp/setup', {})
+    expect(setup.status()).toBe(200)
+    const { enrollmentId, secret } = (await setup.json()) as {
+        enrollmentId: string
+        secret: string
+    }
+    const confirmed = await tab.post('/api/account/mfa/totp/confirm', {
+        enrollmentId,
+        code: await nextTotp(secret),
+    })
+    expect(confirmed.status()).toBe(200)
+    return secret
 }
 
 /**
@@ -164,4 +234,20 @@ export async function createVerifiedAccount(
         await context.close()
     }
     return account
+}
+
+/**
+ * feat-247 (Р10): a verified account with an authenticator app, which may be given a staff role
+ * (an account without a second factor gets 409 mfa_not_enrolled). Nothing is signed in afterwards;
+ * loginInUi signs it in with the app's code.
+ */
+export async function createStaffCandidate(browser: Browser, sink: MailSink): Promise<Account> {
+    const account = await createVerifiedAccount(browser, sink)
+    const { context, page } = await newBrowser(browser)
+    try {
+        await loginInUi(page, account)
+        return { ...account, totpSecret: await enrollTotp(context.request) }
+    } finally {
+        await context.close()
+    }
 }

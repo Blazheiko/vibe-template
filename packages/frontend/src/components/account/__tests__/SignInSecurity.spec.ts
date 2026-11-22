@@ -3,6 +3,7 @@ import { createI18n } from 'vue-i18n'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import en from '@/locales/en'
+import { useEventBus } from '@/utils/event-bus'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8, Р15): the sign-in security section, with the
 // API, the router and the QR library replaced.
@@ -47,8 +48,8 @@ const status = (over: Record<string, unknown> = {}) => ({
     error: null,
 })
 
-const mountSection = async () => {
-    const wrapper = mount(SignInSecurity, { global: { plugins: [i18n] } })
+const mountSection = async (props: Record<string, unknown> = {}) => {
+    const wrapper = mount(SignInSecurity, { props, global: { plugins: [i18n] } })
     await flushPromises()
     return wrapper
 }
@@ -160,4 +161,45 @@ describe('SignInSecurity (feat-245)', () => {
         expect(wrapper.get('[data-testid="mfa-codes-left"]').text()).toContain('9')
         expect(wrapper.find('[data-testid="mfa-regenerate"]').exists()).toBe(true)
     })
+})
+
+// feat-247 (docs/plan/passkeys-mfa-plan.md, Р10): what a staff account must do for the admin area.
+describe('SignInSecurity: the staff MFA notice (feat-247)', () => {
+    const notice = (wrapper: Awaited<ReturnType<typeof mountSection>>) =>
+        wrapper.find('[data-testid="staff-mfa-notice"]')
+
+    it('a staff account without a factor sees the banner, unasked', async () => {
+        mfa.status.mockResolvedValue(status())
+        const wrapper = await mountSection({ staff: true })
+        expect(notice(wrapper).text()).toContain(en.account.mfa.staffFactorRequired)
+        expect(wrapper.find('[data-testid="staff-mfa-sign-in"]').exists()).toBe(false)
+    })
+
+    it('a user account without a factor, or a staff one with it, sees none', async () => {
+        mfa.status.mockResolvedValue(status())
+        expect(notice(await mountSection()).exists()).toBe(false)
+        mfa.status.mockResolvedValue(status({ passkeys: 1, recoveryCodesRemaining: 10 }))
+        expect(notice(await mountSection({ staff: true })).exists()).toBe(false)
+    })
+
+    it('mfa_required without a factor: set one up', async () => {
+        mfa.status.mockResolvedValue(status())
+        const wrapper = await mountSection({ staff: true, staffReason: 'mfa_required' })
+        expect(notice(wrapper).text()).toContain(en.account.mfa.staffFactorRequired)
+    })
+
+    it.each(['mfa_session_required', 'mfa_required'])(
+        '%s with a factor: sign in again with it, back to the admin area',
+        async (reason) => {
+            mfa.status.mockResolvedValue(
+                status({ totp: { enabled: true, createdAt: 'x' }, recoveryCodesRemaining: 10 }),
+            )
+            const emit = vi.spyOn(useEventBus(), 'emit')
+            const wrapper = await mountSection({ staff: true, staffReason: reason })
+
+            expect(notice(wrapper).text()).toContain(en.account.mfa.staffSessionRequired)
+            await wrapper.find('[data-testid="staff-mfa-sign-in"]').trigger('click')
+            expect(emit).toHaveBeenCalledWith('sign_in_again', '/admin')
+        },
+    )
 })

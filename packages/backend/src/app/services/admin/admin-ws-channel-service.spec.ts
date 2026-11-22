@@ -2,6 +2,7 @@ import { Result } from 'better-result'
 import type { MyWebSocket } from '#vendor/types/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { Role } from 'shared/access'
+import type { SessionAuthState } from 'shared/mfa'
 
 const broadcastMessageToUserConnection = vi.fn()
 vi.mock('#app/services/communication/broadcast-service.js', () => ({
@@ -10,13 +11,33 @@ vi.mock('#app/services/communication/broadcast-service.js', () => ({
 
 const { adminWsChannelService } = await import('./admin-ws-channel-service.js')
 
+/**
+ * feat-247 (Р11): MFA_REQUIRED_FOR_STAFF is on by default, so the socket's session proved its
+ * second factor a moment ago; the refusals are in admin-channel-deadline.spec.ts.
+ */
+const staffAuth = (): SessionAuthState => {
+    const at = new Date().toISOString()
+    return {
+        v: 1,
+        amr: ['pwd', 'otp'],
+        aal: 2,
+        authenticatedAt: at,
+        verified: { pwd: at, otp: at },
+    }
+}
+
 function createWs(role: Role, adminChannelPaused = false) {
-    const userData: { role: Role; isAdminChannelSubscribed: boolean; adminChannelPaused: boolean } =
-        {
-            role,
-            isAdminChannelSubscribed: false,
-            adminChannelPaused,
-        }
+    const userData: {
+        role: Role
+        isAdminChannelSubscribed: boolean
+        adminChannelPaused: boolean
+        auth: SessionAuthState
+    } = {
+        role,
+        isAdminChannelSubscribed: false,
+        adminChannelPaused,
+        auth: staffAuth(),
+    }
     const subscribe = vi.fn()
     const unsubscribe = vi.fn()
     const ws = {
