@@ -211,6 +211,12 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             ),
         logout: () => Promise.resolve(true),
         logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
+        // feat-245: a second-step sign-in is not exercised here.
+        planLogin: () => {
+            throw new Error('not used')
+        },
+        prepareLogin: () => Promise.resolve('conflict' as const),
+        activateLogin: () => Promise.resolve('gone' as const),
     })
     const mailedToken = (to: string): string => {
         const message = [...mail.sent].reverse().find((m) => m.to === to)
@@ -251,6 +257,12 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
                 getUserId: () => String(user.id),
                 getPresentedUserToken: () => user.sessionToken,
                 logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
+                // feat-245: a second-step sign-in is not exercised here.
+                planLogin: () => {
+                    throw new Error('not used')
+                },
+                prepareLogin: () => Promise.resolve('conflict' as const),
+                activateLogin: () => Promise.resolve('gone' as const),
             } as never,
             { sessionInfo: { id: 's', data: { csrfToken: 'c'.repeat(43) } } } as never,
             actor,

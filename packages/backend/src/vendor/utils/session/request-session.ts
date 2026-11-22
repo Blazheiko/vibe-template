@@ -4,6 +4,7 @@ import type {
     DestroyAllSessionsResult,
     HttpContext,
     LoginOrigin,
+    LoginPlan,
     SessionData,
     SessionDevice,
     SessionInfo,
@@ -28,6 +29,7 @@ import {
     updateSessionData,
     updateSessionAuth,
     consumeSessionData,
+    sanitizeRedisKey,
 } from '#vendor/utils/session/redis-session-storage.js'
 import { isActiveRecovery, type SessionAuthState } from 'shared/mfa'
 import logger from '#vendor/utils/logger.js'
@@ -39,6 +41,10 @@ import { createAnonSessionToken, createSignedToken } from '#vendor/utils/session
 import { generateCsrfToken, isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { sessionPublicId } from '#vendor/utils/session/session-public-id.js'
 import { sessionListChanged } from '#vendor/utils/session/session-list-events.js'
+import {
+    activatePendingSession,
+    preparePendingSession,
+} from '#vendor/utils/session/session-index.js'
 
 /** Storage namespace of a session without a user. */
 const ANON_TOKEN = ANON_SESSION_NAMESPACE
@@ -231,6 +237,8 @@ export class RequestSession {
             // A record past SESSION_MAX_AGE_DAYS comes back null and is deleted by the store
             // (feat-119: the same check for HTTP and WebSocket).
             info = await getSession(incoming.sessionId, incoming.userToken)
+            // feat-245 (Р4): a pending record is a sign-in not confirmed yet: it opens nothing.
+            if (info !== null && info.data.pending === true) info = null
             if (info === null) {
                 // The record expired or was deleted: the cookie names nothing. The new
                 // anonymous session must not inherit its user token as storage namespace.
@@ -353,6 +361,9 @@ export class RequestSession {
         auth.login = this.login.bind(this)
         auth.logout = this.logout.bind(this)
         auth.logoutAll = this.logoutAll.bind(this)
+        auth.planLogin = this.planLogin.bind(this)
+        auth.prepareLogin = this.prepareLogin.bind(this)
+        auth.activateLogin = this.activateLogin.bind(this)
     }
 
     // --- session data ------------------------------------------------------------------
@@ -486,6 +497,100 @@ export class RequestSession {
         logger.info({ userId, sessionId: signedIn.id }, `User logged in`)
         sessionListChanged(userId)
         return signedIn.data.device ?? null
+    }
+
+    private planLogin(
+        userId: string,
+        origin: LoginOrigin,
+        auth: SessionAuthState,
+        expectedUserToken: string,
+    ): LoginPlan {
+        const sessionId = crypto.randomUUID()
+        return {
+            sessionId,
+            userId,
+            expectedUserToken,
+            device: { ...this.deviceFor(origin), publicId: sessionPublicId(sessionId) },
+            auth,
+            createdAtMs: Date.now(),
+        }
+    }
+
+    /** The record of a planned session: pending (before the commit) or active. */
+    private planRecord(plan: LoginPlan, completionId: string, pending: boolean): SessionInfo {
+        return {
+            id: plan.sessionId,
+            data: withCsrfToken({
+                userId: plan.userId,
+                userToken: plan.expectedUserToken,
+                device: plan.device,
+                auth: plan.auth,
+                completionId,
+                ...(pending ? { pending: true } : {}),
+            }),
+            createdAt: new Date(plan.createdAtMs).toISOString(),
+        }
+    }
+
+    private async prepareLogin(
+        plan: LoginPlan,
+        completionId: string,
+        ttlSeconds: number,
+    ): Promise<'created' | 'exists' | 'conflict'> {
+        return preparePendingSession(
+            this.planRecord(plan, completionId, true),
+            plan.expectedUserToken,
+            ttlSeconds,
+            completionId,
+            sanitizeRedisKey,
+        )
+    }
+
+    private async activateLogin(
+        plan: LoginPlan,
+        ticketKey: string,
+        completionId: string,
+    ): Promise<'activated' | 'already' | 'gone'> {
+        const record = this.planRecord(plan, completionId, false)
+        const outcome = await activatePendingSession({
+            ticketKey,
+            completionId,
+            session: record,
+            userToken: plan.expectedUserToken,
+            publicId: plan.device.publicId,
+            createdAtMs: plan.createdAtMs,
+            sanitize: sanitizeRedisKey,
+        })
+        if (outcome.kind === 'gone') return 'gone'
+        if (outcome.kind === 'already' && !outcome.recordExists) return 'gone'
+        // The stored record (its CSRF token) when an earlier request activated it.
+        const active =
+            outcome.kind === 'activated'
+                ? record
+                : await getSession(plan.sessionId, plan.expectedUserToken)
+        if (active === null || active.data.pending === true) return 'gone'
+        await this.replaceWith(active, plan.expectedUserToken)
+        if (outcome.kind === 'activated') {
+            logger.info({ userId: plan.userId, sessionId: plan.sessionId }, 'User logged in (MFA)')
+            sessionListChanged(plan.userId)
+        }
+        return outcome.kind
+    }
+
+    /** The request's session becomes `active`: the previous one goes, its cookie is issued. */
+    private async replaceWith(active: SessionInfo, userToken: string): Promise<void> {
+        const previousId = this.info.id
+        if (previousId !== active.id) {
+            if (this.cookieHeld || this.storageToken === ANON_TOKEN) {
+                await markAnonSessionSuperseded(previousId, ANON_COOKIE_REFRESH_SECONDS)
+            }
+            await destroySession(previousId, this.storageToken)
+        }
+        this.issueStoredCookie(active.id, userToken, sessionConfig.age)
+        this.setInfo(active)
+        this.storageToken = userToken
+        this.cookieHeld = false
+        this.swapped = true
     }
 
     private deviceFor(origin: LoginOrigin): Omit<SessionDevice, 'publicId'> {

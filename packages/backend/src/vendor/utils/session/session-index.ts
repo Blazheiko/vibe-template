@@ -395,3 +395,115 @@ const dropDeadMembers = async (
         }
     }
 }
+
+// ─── feat-245: a sign-in finished by the second step (docs/plan/passkeys-mfa-plan.md, Р4) ──────
+
+/**
+ * KEYS: record. ARGV: record JSON, TTL (s), completion id. Writes the pending record of a sign-in
+ * not confirmed yet, or leaves the one this completion already wrote. A pending record is not in
+ * the index and `restore` refuses it, so it opens nothing before the activation.
+ */
+const PENDING_PREPARE_LUA = `
+local current = redis.call('GET', KEYS[1])
+if current then
+  local ok, record = pcall(cjson.decode, current)
+  if ok and type(record) == 'table' and type(record.data) == 'table'
+     and record.data.completionId == ARGV[3] then
+    return 'exists'
+  end
+  return 'conflict'
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+return 'created'
+`
+
+/**
+ * KEYS: ticket, record, index, meta. ARGV: completion id, final record JSON, record TTL (s),
+ * publicId, createdAt (ms), meta JSON, members created before this (ms) are dropped, TTL of index
+ * and meta (s), session id.
+ *
+ * The one transition that makes a second-step sign-in real (Р4): it reads the ticket as it is now,
+ * and only while the ticket is `completing` for this completion writes the active record, its
+ * index member and meta field and moves the ticket to `activated`. A request holding an older
+ * snapshot gets `already` (nothing written) or `gone`, so it never brings back a record a logout
+ * deleted after the activation.
+ */
+const PENDING_ACTIVATE_LUA = `${TYPE_CHECK}
+local raw = redis.call('GET', KEYS[1])
+if not raw then return {'gone', 0} end
+local ok, ticket = pcall(cjson.decode, raw)
+if not ok or type(ticket) ~= 'table' or ticket.completionId ~= ARGV[1] then return {'gone', 0} end
+if ticket.state == 'activated' then return {'already', redis.call('EXISTS', KEYS[2])} end
+if ticket.state ~= 'completing' then return {'gone', 0} end
+if wrongType(KEYS[2], 'string') or wrongType(KEYS[3], 'zset') or wrongType(KEYS[4], 'hash') then
+  return redis.error_reply('WRONGTYPE session record, index or meta key holds another type')
+end
+redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
+dropMembers(KEYS[3], KEYS[4], redis.call('ZRANGEBYSCORE', KEYS[3], '-inf', '(' .. ARGV[7]))
+redis.call('ZADD', KEYS[3], ARGV[5], ARGV[4])
+redis.call('HSET', KEYS[4], ARGV[4], ARGV[6])
+redis.call('EXPIRE', KEYS[3], ARGV[8])
+redis.call('EXPIRE', KEYS[4], ARGV[8])
+ticket.state = 'activated'
+ticket.sessionId = ARGV[9]
+redis.call('SET', KEYS[1], cjson.encode(ticket), 'KEEPTTL')
+return {'activated', 1}
+`
+
+export const preparePendingSession = async (
+    session: SessionInfo,
+    userToken: string,
+    ttlSeconds: number,
+    completionId: string,
+    sanitize: (key: string) => string,
+): Promise<'created' | 'exists' | 'conflict'> => {
+    const outcome = await withRedis(() =>
+        redis.eval(
+            PENDING_PREPARE_LUA,
+            1,
+            sanitize(recordKey(userToken, session.id)),
+            serialize(session),
+            String(Math.max(1, Math.ceil(ttlSeconds))),
+            completionId,
+        ),
+    )
+    return outcome as 'created' | 'exists' | 'conflict'
+}
+
+export type ActivationOutcome =
+    { kind: 'activated' } | { kind: 'already'; recordExists: boolean } | { kind: 'gone' }
+
+export const activatePendingSession = async (input: {
+    ticketKey: string
+    completionId: string
+    session: SessionInfo
+    userToken: string
+    publicId: string
+    createdAtMs: number
+    sanitize: (key: string) => string
+}): Promise<ActivationOutcome> => {
+    const maxAgeSeconds = sessionConfig.maxAgeDays * DAY_SECONDS
+    const { session, userToken, publicId, createdAtMs, sanitize } = input
+    const result = (await withRedis(() =>
+        redis.eval(
+            PENDING_ACTIVATE_LUA,
+            4,
+            sanitize(input.ticketKey),
+            sanitize(recordKey(userToken, session.id)),
+            sanitize(indexKey(userToken)),
+            sanitize(metaKey(userToken)),
+            input.completionId,
+            serialize(session),
+            String(storedSessionTtl(userToken)),
+            publicId,
+            String(createdAtMs),
+            JSON.stringify({ sid: session.id, seen: createdAtMs }),
+            String(createdAtMs - maxAgeSeconds * 1000),
+            String(maxAgeSeconds),
+            session.id,
+        ),
+    )) as [string, number]
+    if (result[0] === 'activated') return { kind: 'activated' }
+    if (result[0] === 'already') return { kind: 'already', recordExists: result[1] === 1 }
+    return { kind: 'gone' }
+}

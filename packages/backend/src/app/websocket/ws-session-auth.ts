@@ -76,6 +76,8 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
             return MISSING
         }
         const data: SessionData = sessionInfo.data
+        // feat-245 (Р4): a pending record is a sign-in not confirmed yet: it opens no socket.
+        if (data.pending === true) return MISSING
         if ('userId' in data && data.userId === userId) {
             // ADR 0002: a rotated sessionToken revokes the session even though its
             // Redis record is still there.

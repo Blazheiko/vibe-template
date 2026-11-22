@@ -131,6 +131,48 @@ export interface Auth {
     ) => Promise<SessionDevice | null>
     logout: () => Promise<boolean>
     logoutAll: () => Promise<DestroyAllSessionsResult>
+    /**
+     * feat-245 (Р4): what a second-step sign-in will create, fixed once so a repeat creates the same
+     * session (same id, device, auth state and recovery expiry). Pure: nothing is written.
+     */
+    planLogin: (
+        userId: string,
+        origin: LoginOrigin,
+        auth: SessionAuthState,
+        expectedUserToken: string,
+    ) => LoginPlan
+    /**
+     * feat-245 (Р4): writes the planned session as pending (not in the index, refused by restore),
+     * before the transaction of the second step commits. Idempotent per completion.
+     */
+    prepareLogin: (
+        plan: LoginPlan,
+        completionId: string,
+        ttlSeconds: number,
+    ) => Promise<'created' | 'exists' | 'conflict'>
+    /**
+     * feat-245 (Р4): after the commit, makes the planned session active in one Redis transition
+     * with the ticket. `activated`: this request did it (it sends the notices); `already`: an
+     * earlier request did, and the cookie of that same session is issued again while its record
+     * exists; `gone`: nothing to activate. The previous anonymous session is replaced only when a
+     * cookie is issued.
+     */
+    activateLogin: (
+        plan: LoginPlan,
+        ticketKey: string,
+        completionId: string,
+    ) => Promise<'activated' | 'already' | 'gone'>
+}
+
+/** feat-245 (Р4): a second-step sign-in planned once, stored in the ticket. */
+export interface LoginPlan {
+    sessionId: string
+    userId: string
+    /** The session_token the sign-in was confirmed under; the session exists only under it. */
+    expectedUserToken: string
+    device: SessionDevice
+    auth: SessionAuthState
+    createdAtMs: number
 }
 
 /** Outcome of deleting all sessions of a user (destroyAllSessions, auth.logoutAll). */
@@ -217,6 +259,10 @@ export interface SessionData extends Record<string, unknown> {
     wsToken?: string
     csrfToken?: string
     device?: SessionDevice
+    /** feat-245 (Р4): a planned sign-in written before its commit; restore refuses it. */
+    pending?: boolean
+    /** feat-245 (Р4): the second-step completion that created this session. */
+    completionId?: string
     /**
      * feat-245 (Р2): how the session was authenticated. Written at sign-in and by
      * updateSessionAuth only: updateSessionData and changeSessionData keep the stored one.

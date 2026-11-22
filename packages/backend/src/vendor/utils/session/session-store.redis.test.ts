@@ -599,3 +599,122 @@ describe.skipIf(!hasRedis)('session auth state (feat-245)', () => {
         expect((await recordOf(newId))?.data['auth']).toEqual(aal2)
     })
 })
+
+// feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, tasks M7): a sign-in finished by the second step
+// is planned once, written as pending before the commit and made active in one transition with
+// the ticket.
+describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () => {
+    const TICKET = 'auth:mfa:ticket-under-test'
+    const auth = {
+        v: 1 as const,
+        amr: ['pwd' as const, 'otp' as const],
+        aal: 2 as const,
+        authenticatedAt: new Date().toISOString(),
+        verified: { pwd: new Date().toISOString(), otp: new Date().toISOString() },
+    }
+    const writeTicket = (state: string, completionId: string) =>
+        admin.set(TICKET, JSON.stringify({ v: 1, state, completionId }), 'EX', 300)
+
+    /** A request of an anonymous visitor, past session_web: what the second step runs in. */
+    const anonymousRequest = async () => {
+        const request = createRequest('no-such-session')
+        await executeMiddlewares(['session_web'], request.context)
+        return request
+    }
+
+    const indexMembers = () => admin.zrange(`session_index:${USER_TOKEN}`, '0', '-1')
+
+    it('a pending record opens nothing and is not listed', async () => {
+        const request = await anonymousRequest()
+        const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        expect(await request.context.auth.prepareLogin(plan, 'c1', 300)).toBe('created')
+        expect(await request.context.auth.prepareLogin(plan, 'c1', 300)).toBe('exists')
+        expect(await request.context.auth.prepareLogin(plan, 'other', 300)).toBe('conflict')
+        expect((await recordOf(plan.sessionId))?.data['pending']).toBe(true)
+        expect(await indexMembers()).toEqual([])
+        expect(await authenticates(plan.sessionId)).toBe(false)
+        // No cookie of the planned session went out with the preparation (the anonymous one may).
+        const cookie = request.responseData.cookies.get(sessionConfig.cookieName) as
+            { value: string } | undefined
+        const decoded = Buffer.from(cookie?.value ?? '', 'base64').toString('utf8')
+        expect(decoded).not.toContain(plan.sessionId)
+    })
+
+    it('two activations of one completion: one session, one "activated", one index member', async () => {
+        const first = await anonymousRequest()
+        const plan = first.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        await first.context.auth.prepareLogin(plan, 'c2', 300)
+        await writeTicket('completing', 'c2')
+        const second = await anonymousRequest()
+        const outcomes = await Promise.all([
+            first.context.auth.activateLogin(plan, TICKET, 'c2'),
+            second.context.auth.activateLogin(plan, TICKET, 'c2'),
+        ])
+        expect(outcomes.sort()).toEqual(['activated', 'already'])
+        expect(await indexMembers()).toEqual([plan.device.publicId])
+        const record = await recordOf(plan.sessionId)
+        expect(record?.data['pending']).toBeUndefined()
+        expect(record?.data['auth']).toEqual(auth)
+        expect(await authenticates(plan.sessionId)).toBe(true)
+        // Both answers carry the cookie of that same session.
+        for (const request of [first, second]) {
+            expect(request.context.session.sessionInfo?.id).toBe(plan.sessionId)
+        }
+        const ticket = JSON.parse((await admin.get(TICKET)) ?? '{}') as { state: string }
+        expect(ticket.state).toBe('activated')
+    })
+
+    it('a late request with a stale snapshot does not bring back a session that signed out', async () => {
+        const request = await anonymousRequest()
+        const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        await request.context.auth.prepareLogin(plan, 'c3', 300)
+        await writeTicket('completing', 'c3')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('activated')
+        // The browser came back (ticket gone), then signed out (record deleted, no rotation).
+        await admin.del(TICKET)
+        await storage.destroySession(plan.sessionId, USER_TOKEN)
+
+        const late = await anonymousRequest()
+        expect(await late.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('gone')
+        expect(await recordOf(plan.sessionId)).toBeNull()
+
+        // Ticket still `activated` but the record is gone: nothing is written either.
+        await writeTicket('activated', 'c3')
+        expect(await late.context.auth.activateLogin(plan, TICKET, 'c3')).toBe('gone')
+        expect(await recordOf(plan.sessionId)).toBeNull()
+    })
+
+    it('a lost pending record is written again from the plan: same id, same recovery expiry', async () => {
+        const request = await anonymousRequest()
+        const expiresAt = new Date(Date.now() + 600_000).toISOString()
+        const recoveryAuth = {
+            ...auth,
+            aal: 1 as const,
+            amr: ['pwd' as const, 'recovery' as const],
+            recovery: { startedAt: new Date().toISOString(), expiresAt },
+        }
+        const plan = request.context.auth.planLogin(
+            '42',
+            { method: 'password' },
+            recoveryAuth,
+            USER_TOKEN,
+        )
+        await request.context.auth.prepareLogin(plan, 'c4', 300)
+        await admin.del(`session:${USER_TOKEN}:${plan.sessionId}`)
+        await writeTicket('completing', 'c4')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c4')).toBe('activated')
+        const record = await recordOf(plan.sessionId)
+        expect(record?.data['auth']).toMatchObject({ recovery: { expiresAt } })
+    })
+
+    it('a ticket of another completion or not completing activates nothing', async () => {
+        const request = await anonymousRequest()
+        const plan = request.context.auth.planLogin('42', { method: 'password' }, auth, USER_TOKEN)
+        await request.context.auth.prepareLogin(plan, 'c5', 300)
+        await writeTicket('completing', 'someone-else')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c5')).toBe('gone')
+        await writeTicket('open', 'c5')
+        expect(await request.context.auth.activateLogin(plan, TICKET, 'c5')).toBe('gone')
+        expect((await recordOf(plan.sessionId))?.data['pending']).toBe(true)
+    })
+})

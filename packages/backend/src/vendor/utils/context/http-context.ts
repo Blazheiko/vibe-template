@@ -19,6 +19,11 @@ const getDefaultAuth = (): Auth => ({
     getPresentedUserToken: () => undefined,
     check: () => false,
     login: () => Promise.resolve(null),
+    planLogin: (): never => {
+        throw new Error('No session: a sign-in cannot be planned')
+    },
+    prepareLogin: () => Promise.resolve('conflict' as const),
+    activateLogin: () => Promise.resolve('gone' as const),
     logout: () => Promise.resolve(false),
     logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
 })

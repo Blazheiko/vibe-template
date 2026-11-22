@@ -191,6 +191,12 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
                 },
                 logout: () => Promise.resolve(true),
                 logoutAll: () => Promise.resolve({ deleted: 0, complete: true }),
+                // feat-245: a second-step sign-in is not exercised here.
+                planLogin: () => {
+                    throw new Error('not used')
+                },
+                prepareLogin: () => Promise.resolve('conflict' as const),
+                activateLogin: () => Promise.resolve('gone' as const),
             },
         }
     }
