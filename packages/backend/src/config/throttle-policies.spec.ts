@@ -67,6 +67,8 @@ describe('throttlePolicies registry', () => {
             reset_password_ip: [20, HOUR, 'ip'],
             verify_email_ip: [20, HOUR, 'ip'],
             verify_email_password_user: [5, HOUR, 'user'],
+            // feat-245: codes of the second sign-in step and of a step-up.
+            mfa_verify_user: [10, 900_000, 'user'],
             support_chat_user: [20, 60_000, 'user'],
             support_open_chat_user: [5, 60_000, 'user'],
             login_unverified_resend: [1, 300_000, 'user'],
