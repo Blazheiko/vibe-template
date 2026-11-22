@@ -2433,6 +2433,46 @@
             "dependencies": ["feat-243"],
             "status": "done",
             "evidence": "PR #762 (merge 7f57c37), registry #761 (in_progress), #763 (review). Review of feat-243 (2026-11-21): useAdminChannel.leave() joins the unsubscribe still running for the same socket (access_changed and the permission watcher both leave on losing users.read; two unsubscribes could finish out of order and undo a later subscribe); a leave on a new socket sends its own. New test fails on the previous code (two unsubscribes sent). Local: make check (backend 3414, frontend 906). CI on e3e80dd: quality, e2e, e2e-live green (CI 44942459705); frontend-only change, no PG/Redis/docs jobs triggered."
+        },
+        {
+            "id": "feat-245",
+            "name": "MFA Core",
+            "description": "docs/plan/passkeys-mfa-plan.md (revision 7, D1-D11 accepted as recommended), tasks docs/plan/passkeys-mfa-tasks.md (revision 3). Item 7 of docs/plan/future/template-functionality-recommendations.md. Tasks M0-M14: session auth state (aal, amr, per-method freshness, recovery) written only by conditional updates; the action x proof x consequence matrix (proof-policy) and step-up (POST /auth/reauth) replacing the inline current password and the 10-minute rule for password change, contact linking and OAuth unlinking; TOTP (own RFC 6238, version-bound step consumption, idempotent and atomic replacement, AES-GCM secret with MFA_ENCRYPTION_KEYS); 80-bit recovery codes; second sign-in step through a one-time ticket (browser binding, failures vs reservations, completing/activated states, prepareLogin/activateLogin as one Redis transition, pg_xact_status reconciliation, expectedUserToken, continuation); limited recovery session (allowlist in session_web, no WS token, R/R+, absolute expiry); OAuth link only after the second step; claimLocked wipes factors; audit events, notifications and mails; frontend challenge form, ReauthDialog, sign-in security section; docs.",
+            "owner": "Blazheiko",
+            "branch": "feat/mfa-core",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-246",
+            "name": "Passkeys",
+            "description": "docs/plan/passkeys-mfa-plan.md (revision 7, D1-D11 accepted as recommended), tasks docs/plan/passkeys-mfa-tasks.md (revision 3). Item 7 of docs/plan/future/template-functionality-recommendations.md. Tasks P0-P6: @simplewebauthn server/browser, config/webauthn.ts (explicit RP ID and origins), webauthn_credentials and users.webauthn_user_handle; one verifyWebAuthnCeremony for registration, passwordless sign-in, second factor and step-up (UV, exact origin and RP ID, purpose-bound one-time challenge, owner userHandle, monotonic counter with 0 allowed); idempotent registration by enrollment_id; passkey as first factor needs a recovery contact; conditional UI; passkey-only recovery steps 1-3; e2e-live with a virtual authenticator.",
+            "owner": "Blazheiko",
+            "branch": "feat/passkeys",
+            "dependencies": ["feat-245"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-247",
+            "name": "Staff MFA",
+            "description": "docs/plan/passkeys-mfa-plan.md (revision 7, D1-D11 accepted as recommended), tasks docs/plan/passkeys-mfa-tasks.md (revision 3). Item 7 of docs/plan/future/template-functionality-recommendations.md. Tasks S0-S6: step-up for role changes; users.mfa.reset with POST /admin/users/:id/mfa/reset and the user:mfa-reset CLI (canSignIn kept, token rotation); staffMfaPolicy('any') in can:, ws_can: and ws-role-sync with auth copied to connections at upgrade, admin-channel deadline enforced synchronously before publish plus a notification timer, server bus payload for session_auth_changed across instances; HTTP and WS matrices and delivery tests under MFA_REQUIRED_FOR_STAFF=false, then staff roles only for enrolled accounts and the requirement on by default.",
+            "owner": "Blazheiko",
+            "branch": "feat/staff-mfa",
+            "dependencies": ["feat-245"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-248",
+            "name": "Staff Passkey Mode",
+            "description": "docs/plan/passkeys-mfa-plan.md (revision 7, D1-D11 accepted as recommended), tasks docs/plan/passkeys-mfa-tasks.md (revision 3). Item 7 of docs/plan/future/template-functionality-recommendations.md. Tasks X0-X3: MFA_STAFF_FACTOR=passkey through staffMfaPolicy('passkey') (passkey enrolled, webauthn in amr and fresh webauthn mark, passkey-only step-up) for role assignment, factor removal, can:, ws_can: and ws-role-sync; tests of both modes; the full passkey-only recovery scenario with administrative reset; deployment docs.",
+            "owner": "Blazheiko",
+            "branch": "feat/staff-passkey-mode",
+            "dependencies": ["feat-246", "feat-247"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
