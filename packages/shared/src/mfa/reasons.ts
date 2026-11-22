@@ -32,8 +32,14 @@ export const MFA_REASONS = {
     mfaNotEnrolled: 'mfa_not_enrolled',
     /** 409: the change would leave the account without any way to sign in. */
     lastSignInMethod: 'last_sign_in_method',
-    /** 400: no TOTP setup of this id in this session (expired or replaced). */
+    /** 400: no setup (TOTP or passkey) of this id in this session (expired or replaced). */
     enrollmentNotFound: 'enrollment_not_found',
+    /** 409 (feat-246): this passkey registration was finished with another key. */
+    enrollmentUsed: 'enrollment_used',
+    /** 409 (feat-246): the authenticator holds a key registered already. */
+    passkeyExists: 'passkey_exists',
+    /** 409 (feat-246): the account has the most passkeys it may have. */
+    passkeyLimit: 'passkey_limit',
 } as const
 
 export type MfaReason = (typeof MFA_REASONS)[keyof typeof MFA_REASONS]

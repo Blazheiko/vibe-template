@@ -13,6 +13,7 @@ import AvatarController from '#app/controllers/http/user/avatar-controller.js'
 import AccountController from '#app/controllers/http/user/account-controller.js'
 import AccountSessionsController from '#app/controllers/http/user/account-sessions-controller.js'
 import MfaController from '#app/controllers/http/auth/mfa-controller.js'
+import PasskeyController from '#app/controllers/http/auth/passkey-controller.js'
 import NotificationController from '#app/controllers/http/notifications/notification-controller.js'
 import OAuthController from '#app/controllers/http/auth/oauth-controller.js'
 import PromptController from '#app/controllers/http/ai/prompt-controller.js'
@@ -22,6 +23,7 @@ import type { routeList } from '#vendor/types/types.js'
 import {
     accountContracts,
     mfaContracts,
+    passkeyContracts,
     adminContracts,
     authContracts,
     avatarContracts,
@@ -428,6 +430,45 @@ export default [
         description: 'Second factors of the account (feat-245)',
         middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
         prefix: 'account/mfa',
+        rateLimit: { windowMs: 60_000, maxRequests: 20 },
+    },
+    {
+        group: [
+            defineRoute({
+                contract: passkeyContracts.list,
+                handler: PasskeyController.list.bind(PasskeyController),
+                allowInRecovery: true,
+                description: 'Passkeys of the current user (feat-246)',
+            }),
+            defineRoute({
+                contract: passkeyContracts.registerOptions,
+                handler: PasskeyController.registerOptions.bind(PasskeyController),
+                allowInRecovery: true,
+                description:
+                    'Options of a new passkey (needs a fresh proof); the challenge stays in this session',
+            }),
+            defineRoute({
+                contract: passkeyContracts.register,
+                handler: PasskeyController.register.bind(PasskeyController),
+                allowInRecovery: true,
+                description: 'Store the new passkey; idempotent by the enrollment id',
+            }),
+            defineRoute({
+                contract: passkeyContracts.rename,
+                handler: PasskeyController.rename.bind(PasskeyController),
+                description: 'Rename a passkey of the current user',
+            }),
+            defineRoute({
+                contract: passkeyContracts.remove,
+                handler: PasskeyController.remove.bind(PasskeyController),
+                allowInRecovery: true,
+                description:
+                    'Remove a passkey (needs a fresh second factor; keeps the last way in)',
+            }),
+        ],
+        description: 'Passkeys of the account (feat-246)',
+        middlewares: ['session_web', 'csrf_guard', 'auth_guard'],
+        prefix: 'account/passkeys',
         rateLimit: { windowMs: 60_000, maxRequests: 20 },
     },
     {

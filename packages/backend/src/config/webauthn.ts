@@ -14,6 +14,8 @@ export interface ParsedWebAuthn {
     error: string | null
 }
 
+const DEV_FRONTEND_URL = 'http://localhost:5173'
+
 const HOST_PATTERN =
     /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/
 
@@ -51,6 +53,12 @@ export function parseWebAuthnConfig(
     context: { isProductionLike: boolean; frontendUrl: string; appName: string },
 ): ParsedWebAuthn {
     const fail = (error: string): ParsedWebAuthn => ({ rpId: '', rpName: '', origins: [], error })
+    // Outside production a setup without FRONTEND_URL (tests, a bare checkout) still gets the
+    // frontend dev server of .env.example.
+    const frontendUrl =
+        context.frontendUrl === '' && !context.isProductionLike
+            ? DEV_FRONTEND_URL
+            : context.frontendUrl
     const namedRp = (raw.rpName ?? '').trim()
     const rpName = namedRp === '' ? context.appName : namedRp
 
@@ -59,7 +67,7 @@ export function parseWebAuthnConfig(
         if (context.isProductionLike) {
             return fail('WEBAUTHN_RP_ID is required in a production-like environment')
         }
-        rpId = hostOf(context.frontendUrl) ?? ''
+        rpId = hostOf(frontendUrl) ?? ''
     }
     if (rpId !== 'localhost' && !HOST_PATTERN.test(rpId)) {
         return fail(`WEBAUTHN_RP_ID must be a host name, got "${rpId}"`)
@@ -69,7 +77,7 @@ export function parseWebAuthnConfig(
         .split(',')
         .map((entry) => entry.trim())
         .filter((entry) => entry !== '')
-    const sources = listed.length > 0 ? listed : [context.frontendUrl]
+    const sources = listed.length > 0 ? listed : [frontendUrl]
     const origins: string[] = []
     for (const source of sources) {
         const origin = originOf(source)

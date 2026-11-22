@@ -16,6 +16,14 @@ describe('parseWebAuthnConfig', () => {
         })
     })
 
+    it('in development without FRONTEND_URL: the frontend dev server', () => {
+        expect(parseWebAuthnConfig({}, { ...DEV, frontendUrl: '' })).toMatchObject({
+            rpId: 'localhost',
+            origins: ['http://localhost:5173'],
+            error: null,
+        })
+    })
+
     it('production-like needs the RP ID named', () => {
         expect(parseWebAuthnConfig({}, PROD).error).toMatch(/WEBAUTHN_RP_ID is required/)
         expect(parseWebAuthnConfig({ rpId: 'app.example.com' }, PROD)).toMatchObject({
