@@ -127,6 +127,26 @@ export const sessionsExist = async (
     })
 }
 
+/**
+ * feat-247 (Р11): the stored record of a signed-in session, read without extending its TTL (a
+ * read for another instance's connections is not activity of the session). Null when it is gone
+ * or unreadable.
+ */
+export const readStoredSession = async (
+    sessionId: string,
+    userToken: string,
+): Promise<SessionInfo | null> => {
+    const key = sanitizeRedisKey(`session:${userToken}:${sessionId}`)
+    const json = await withRedis(() => redis.get(key))
+    if (json === null) return null
+    try {
+        return JSON.parse(json) as SessionInfo
+    } catch (err) {
+        logger.error({ err }, 'Failed to parse session JSON:')
+        return null
+    }
+}
+
 export const saveSession = async (sessionInfo: SessionInfo): Promise<void> => {
     // Authenticated sessions use the user's nanoid token; anonymous sessions use shared prefix
     const userToken =

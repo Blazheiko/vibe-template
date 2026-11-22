@@ -92,7 +92,14 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
                 )
                 return MISSING
             }
-            return { kind: 'ok', sessionId, userId, userToken }
+            // feat-247 (Р11): the connection carries the auth state of its session.
+            return {
+                kind: 'ok',
+                sessionId,
+                userId,
+                userToken,
+                ...(data.auth !== undefined ? { auth: data.auth } : {}),
+            }
         }
 
         logger.warn(

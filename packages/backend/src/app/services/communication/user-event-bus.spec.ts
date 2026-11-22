@@ -8,7 +8,8 @@ vi.mock('#app/services/communication/broadcast-service.js', () => ({
     broadcastService: { broadcastMessageToUser: vi.fn() },
 }))
 
-const { createUserEventBus, parseEnvelope } = await import('./user-event-bus.js')
+const { createUserEventBus, parseEnvelope, parseServerPayload } =
+    await import('./user-event-bus.js')
 
 // feat-232 (Р9 B): the user event bus with Redis replaced by a fake subscriber.
 
@@ -191,5 +192,97 @@ describe('user event bus', () => {
         expect(
             parseEnvelope(JSON.stringify({ ...envelope, event: 'notification_created' })),
         ).toBeNull()
+    })
+
+    // feat-247 (Р11): a server event may carry a payload, checked against its event on receipt.
+    describe('server event payload (feat-247)', () => {
+        const envelope = (event: string, payload?: unknown): string =>
+            JSON.stringify({
+                v: 1,
+                origin: 'other',
+                userId: '7',
+                event,
+                ...(payload === undefined ? {} : { payload }),
+            })
+
+        it('session_auth_changed reaches the handler with its payload; the envelope carries it', async () => {
+            const { bus, subscriber, publish } = setup()
+            const handler = vi.fn()
+            bus.handleServerEvents(handler)
+            await bus.start()
+
+            await bus.notifyServer('7', 'session_auth_changed', { sessionId: 'sess-1' })
+            expect(handler).toHaveBeenCalledExactlyOnceWith('session_auth_changed', '7', {
+                sessionId: 'sess-1',
+            })
+            expect(JSON.parse(publish.mock.calls[0]![1])).toEqual({
+                v: 1,
+                origin: 'self',
+                userId: '7',
+                event: 'session_auth_changed',
+                payload: { sessionId: 'sess-1' },
+            })
+
+            handler.mockClear()
+            subscriber.emit(
+                'message',
+                'test:user-events',
+                envelope('session_auth_changed', { sessionId: 'sess-2' }),
+            )
+            expect(handler).toHaveBeenCalledExactlyOnceWith('session_auth_changed', '7', {
+                sessionId: 'sess-2',
+            })
+        })
+
+        it('notifyOtherInstances only publishes', async () => {
+            const { bus, publish } = setup()
+            const handler = vi.fn()
+            bus.handleServerEvents(handler)
+            await bus.notifyOtherInstances('7', 'session_auth_changed', { sessionId: 's' })
+            expect(publish).not.toHaveBeenCalled()
+            await bus.start()
+            await bus.notifyOtherInstances('7', 'session_auth_changed', { sessionId: 's' })
+            expect(publish).toHaveBeenCalledOnce()
+            expect(handler).not.toHaveBeenCalled()
+        })
+
+        it('user_role_changed keeps its old form: no payload, or {}, reaches the handler without one', async () => {
+            const { bus, subscriber, publish } = setup()
+            const handler = vi.fn()
+            bus.handleServerEvents(handler)
+            await bus.start()
+            await bus.notifyServer('7', 'user_role_changed')
+            expect(handler).toHaveBeenLastCalledWith('user_role_changed', '7')
+            expect(JSON.parse(publish.mock.calls[0]![1]).payload).toEqual({})
+
+            handler.mockClear()
+            subscriber.emit('message', 'test:user-events', envelope('user_role_changed'))
+            subscriber.emit('message', 'test:user-events', envelope('user_role_changed', {}))
+            expect(handler.mock.calls).toEqual([
+                ['user_role_changed', '7'],
+                ['user_role_changed', '7'],
+            ])
+        })
+
+        it.each([
+            ['no payload', undefined],
+            ['an empty payload', {}],
+            ['a numeric session id', { sessionId: 1 }],
+            ['an empty session id', { sessionId: '' }],
+            ['an extra key', { sessionId: 's', userId: '8' }],
+            ['an array', ['s']],
+        ])('session_auth_changed with %s is ignored', async (_name, payload) => {
+            const { bus, subscriber } = setup()
+            const handler = vi.fn()
+            bus.handleServerEvents(handler)
+            await bus.start()
+            subscriber.emit(
+                'message',
+                'test:user-events',
+                envelope('session_auth_changed', payload),
+            )
+            expect(handler).not.toHaveBeenCalled()
+            expect(parseServerPayload('session_auth_changed', payload)).toEqual({ ok: false })
+        })
     })
 })

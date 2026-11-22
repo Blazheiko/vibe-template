@@ -2,7 +2,13 @@ import { Result } from 'better-result'
 import type { MyWebSocket } from '#vendor/types/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { Role } from 'shared/access'
-import { adminWsChannelService } from './admin-ws-channel-service.js'
+
+const broadcastMessageToUserConnection = vi.fn()
+vi.mock('#app/services/communication/broadcast-service.js', () => ({
+    broadcastService: { broadcastMessageToUserConnection },
+}))
+
+const { adminWsChannelService } = await import('./admin-ws-channel-service.js')
 
 function createWs(role: Role, adminChannelPaused = false) {
     const userData: { role: Role; isAdminChannelSubscribed: boolean; adminChannelPaused: boolean } =

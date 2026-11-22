@@ -1,16 +1,25 @@
 import { randomUUID } from 'node:crypto'
 import { Redis } from 'ioredis'
 import type { Profile } from 'shared'
+import type { SessionAuthState } from 'shared/mfa'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
+import type { ListedConnection } from '#app/websocket/ws-connection-registry.js'
+import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { hasRedis, REDIS_TEST_URL } from '../../../test-support/redis-test-client.js'
 
 vi.mock('#database/redis.js', () => ({ default: { publish: vi.fn() } }))
+const broadcastMessageToUserConnection = vi.fn()
 vi.mock('#app/services/communication/broadcast-service.js', () => ({
-    broadcastService: { broadcastMessageToUser: vi.fn() },
+    broadcastService: { broadcastMessageToUser: vi.fn(), broadcastMessageToUserConnection },
+}))
+// feat-247: the staff rule on, so a step-up changes what a connection may do.
+vi.mock('#config/mfa.js', () => ({
+    default: { requiredForStaff: true, staffFactor: 'any', staffFactorMaxAgeHours: 12 },
 }))
 
 const { createUserEventBus } = await import('./user-event-bus.js')
+const { createWsSessionAuthSync } = await import('#app/websocket/ws-session-auth-sync.js')
 
 // feat-232 (Р9 B): two backend instances on one real Redis. An event published by one reaches
 // the connections held by both, the publishing one included.
@@ -41,9 +50,9 @@ const instance = (channel: string) => {
             return 1
         },
     })
-    const handled: [string, string][] = []
-    bus.handleServerEvents((event, userId) => {
-        handled.push([event, userId])
+    const handled: unknown[][] = []
+    bus.handleServerEvents((event, userId, payload) => {
+        handled.push(payload === undefined ? [event, userId] : [event, userId, payload])
     })
     return { bus, delivered, handled }
 }
@@ -142,5 +151,128 @@ describe.skipIf(!hasRedis)('user event bus across instances', () => {
         })
         expect(cli.handled).toEqual([])
         await server.bus.stop()
+    })
+
+    // feat-247 (Р11): a server event carries a payload across instances.
+    it('session_auth_changed of A reaches B with its payload, not A again', async () => {
+        const channel = `test:${randomUUID()}:user-events`
+        const a = instance(channel)
+        const b = instance(channel)
+        await a.bus.start()
+        await b.bus.start()
+
+        await a.bus.notifyOtherInstances('7', 'session_auth_changed', { sessionId: 'sess-1' })
+
+        await vi.waitFor(() => {
+            expect(b.handled).toEqual([['session_auth_changed', '7', { sessionId: 'sess-1' }]])
+        })
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        expect(a.handled).toEqual([])
+        expect(b.delivered).toEqual([])
+        await a.bus.stop()
+        await b.bus.stop()
+    })
+
+    it('an old-form server event (no payload) still works; an invalid payload is ignored', async () => {
+        const channel = `test:${randomUUID()}:user-events`
+        const b = instance(channel)
+        await b.bus.start()
+        const raw = client()
+        const envelope = (event: string, payload?: unknown): string =>
+            JSON.stringify({
+                v: 1,
+                origin: 'old-instance',
+                userId: '9',
+                event,
+                ...(payload === undefined ? {} : { payload }),
+            })
+
+        await raw.publish(channel, envelope('session_auth_changed', { sessionId: 7 }))
+        await raw.publish(channel, envelope('session_auth_changed'))
+        await raw.publish(channel, envelope('user_role_changed'))
+
+        await vi.waitFor(() => {
+            expect(b.handled).toEqual([['user_role_changed', '9']])
+        })
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        expect(b.handled).toEqual([['user_role_changed', '9']])
+        await b.bus.stop()
+    })
+
+    it('a step-up on instance A updates the auth of the session connection held by B', async () => {
+        const channel = `test:${randomUUID()}:user-events`
+        const store = client()
+        const sessionId = `s-${randomUUID()}`
+        const userToken = `t-${randomUUID()}`
+        const key = `test:${randomUUID()}:session:${userToken}:${sessionId}`
+        const now = Date.now()
+        const raised: SessionAuthState = {
+            v: 1,
+            amr: ['pwd', 'otp'],
+            aal: 2,
+            authenticatedAt: new Date(now - 13 * 3_600_000).toISOString(),
+            verified: { otp: new Date(now).toISOString() },
+        }
+
+        // B holds a connection of the session whose proof went stale (the deadline took it out).
+        const userData = {
+            uuid: 'conn-b',
+            userId: '7',
+            sessionId,
+            userToken,
+            role: 'admin',
+            mfaStale: true,
+            auth: { ...raised, verified: { otp: new Date(now - 13 * 3_600_000).toISOString() } },
+        } as unknown as UserConnection
+        const ws = { getUserData: () => userData } as unknown as MyWebSocket
+        const connections: ListedConnection[] = [
+            { userId: '7', uuid: 'conn-b', ws, sessionId, userToken },
+        ]
+        const syncB = createWsSessionAuthSync({
+            listUserConnections: (userId) => (userId === '7' ? connections : []),
+            readSession: async (id, token) => {
+                expect([id, token]).toEqual([sessionId, userToken])
+                const json = await store.get(key)
+                return json === null
+                    ? null
+                    : (JSON.parse(json) as { data: { auth: SessionAuthState } })
+            },
+        })
+
+        const a = instance(channel)
+        const b = instance(channel)
+        const refreshed: Promise<number>[] = []
+        b.bus.handleServerEvents((event, userId, payload) => {
+            if (event === 'session_auth_changed' && payload !== undefined) {
+                refreshed.push(syncB.refresh(userId, payload.sessionId))
+            }
+        })
+        await a.bus.start()
+        await b.bus.start()
+
+        // The step-up on A: the session record gets the new mark, then A tells the others.
+        await store.set(
+            key,
+            JSON.stringify({ id: sessionId, data: { userId: '7', auth: raised } }),
+            'EX',
+            60,
+        )
+        await a.bus.notifyOtherInstances('7', 'session_auth_changed', { sessionId })
+
+        await vi.waitFor(() => {
+            expect(refreshed).toHaveLength(1)
+        })
+        expect(await refreshed[0]).toBe(1)
+        expect(userData.auth).toEqual(raised)
+        expect(userData.mfaStale).toBe(false)
+        expect(broadcastMessageToUserConnection).toHaveBeenCalledWith(
+            '7',
+            'conn-b',
+            'admin_channel_ready',
+            {},
+        )
+        await store.del(key)
+        await a.bus.stop()
+        await b.bus.stop()
     })
 })

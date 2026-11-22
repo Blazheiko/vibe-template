@@ -133,13 +133,17 @@ export const isNotificationPreferencesChangedPayload = (
 ): value is BroadcastPayload<'notification_preferences_changed'> =>
     isObject(value) && Object.keys(value).length === 0
 
-const ACCESS_CHANGED_KEYS = new Set(['role'])
+// feat-247: `reason` tells a staff session that lost the admin channel to its MFA freshness.
+const ACCESS_CHANGED_KEYS = new Set(['role', 'reason'])
 
 /** feat-240 (Р8): the role of this connection, already applied to it on the server. */
 export const isAccessChangedPayload = (
     value: unknown,
 ): value is BroadcastPayload<'access_changed'> =>
-    isObject(value) && hasOnlyKeys(value, ACCESS_CHANGED_KEYS) && isRole(value.role)
+    isObject(value) &&
+    hasOnlyKeys(value, ACCESS_CHANGED_KEYS) &&
+    isRole(value.role) &&
+    (value.reason === undefined || value.reason === 'mfa_session_required')
 
 /** feat-240 (Р8): the paused admin channel may be joined again. */
 export const isAdminChannelReadyPayload = (

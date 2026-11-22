@@ -8,6 +8,7 @@ import {
     type ResponseCheckOptions,
 } from '#vendor/utils/validation/validate-response.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
+import { adminChannelSubscribers } from '#app/services/admin/admin-channel-subscribers.js'
 import {
     BROADCAST_EVENT_NAMES,
     BroadcastEventSchemas,
@@ -156,6 +157,11 @@ export const createBroadcastService = (options: ResponseCheckOptions): Broadcast
             logger.info({ channel, event }, 'broadcastMessageToChannel')
             const message = serialize(event, payload)
             if (message === null) return false
+            // feat-247 (Р11): the one publish to the admin channel (the only channel today). The
+            // admin subscribers whose staff deadline has passed leave the topic first, with
+            // nothing awaited before the publish: an event published at t never reaches a socket
+            // whose deadline is ≤ t, whenever its timer runs.
+            adminChannelSubscribers.dropExpired(Date.now())
             return broadcastToChannel(channel, event, message)
         },
     }

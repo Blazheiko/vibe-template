@@ -32,6 +32,7 @@ import {
 } from '#app/services/shared/errors.js'
 import type { Session } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
+import { sessionAuthRaised } from '#vendor/utils/session/session-auth-events.js'
 import { loadMfaAccount, proofAccountOf } from './mfa-account.js'
 import { totpService } from './totp-service.js'
 import { recordCounterRegression } from './passkey-sign-in.js'
@@ -181,6 +182,8 @@ export const stepUpService = {
             withVerified(current, PROOF_METHOD_REF[input.proof], at),
         )
         if (updated === null) return Result.err(sessionRevoked())
+        // feat-247 (Р11): the sockets of this session carry the new state (staff deadline).
+        sessionAuthRaised(String(request.userId), updated.id, updated.data.auth)
         return Result.ok(undefined)
     },
 }
