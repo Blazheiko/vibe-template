@@ -21,6 +21,8 @@ import { sanitizeRedisKey } from '#vendor/utils/session/redis-session-storage.js
 export const MFA_MAX_FAILURES = 5
 
 export interface PendingOAuthLink {
+    /** What proved the address when the link was decided (the audit proof of `auth.oauth.linked`). */
+    proof: 'oauth_provider_email' | 'oauth_email_link'
     provider: string
     providerUserId: string
     providerEmail: string | null

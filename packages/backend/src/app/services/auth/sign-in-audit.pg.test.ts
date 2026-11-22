@@ -470,6 +470,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
                     phoneRemoved: true,
                     oauthRemoved: ['facebook', 'github'],
                     pushSubscriptionsRemoved: 0,
+                    mfaRemoved: false,
                 },
             })
             expect(resetEvent?.requestId).toBe(req.requestId)

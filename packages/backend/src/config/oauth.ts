@@ -25,6 +25,8 @@ const oauthConfig = Object.freeze({
     frontendErrorUrl: env['OAUTH_FRONTEND_ERROR_URL'] ?? '/?error=oauth_failed',
     // feat-097: a sign-in that waits for the link to be confirmed by mail.
     frontendLinkPendingUrl: env['OAUTH_FRONTEND_LINK_PENDING_URL'] ?? '/?oauth=link_pending',
+    // feat-245 (Р4): the provider was right and the account has a second factor.
+    frontendMfaUrl: env['OAUTH_FRONTEND_MFA_URL'] ?? '/login?mfa=required',
 })
 
 export default oauthConfig

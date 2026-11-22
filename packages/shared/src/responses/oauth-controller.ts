@@ -30,6 +30,11 @@ export type OAuthProvidersResponse = typeof OAuthProvidersResponseSchema.infer
 // feat-097: a mailed OAuth link confirmed in the browser that started the sign-in.
 export const OAuthLinkConfirmResponseSchema = type.or(
     { status: "'success'" },
+    // feat-245 (Р4): the account has a second factor; the link is made by the second step.
+    {
+        status: "'mfa_required'",
+        methods: type.enumerated('totp', 'recovery_code', 'webauthn').array(),
+    },
     CanonicalErrorResponseSchema,
 )
 export type OAuthLinkConfirmResponse = typeof OAuthLinkConfirmResponseSchema.infer

@@ -75,6 +75,15 @@ vi.mock('#app/services/audit/audit-service.js', () => ({
 }))
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
+    // feat-245: these accounts have no second factor.
+    totpFactorRepository: {
+        findByUserId: () => Promise.resolve(undefined),
+        deleteByUserId: () => Promise.resolve(false),
+    },
+    recoveryCodeRepository: {
+        countUnused: () => Promise.resolve(0),
+        deleteByUserId: () => Promise.resolve(0),
+    },
     passwordResetRepository: resetRepositoryMock,
     smsAuthChallengeRepository: challengeRepositoryMock,
     ...claimRepositoryMocks,

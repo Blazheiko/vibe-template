@@ -66,6 +66,7 @@ export const AuditMetadataSchema = type({
     'phoneRemoved?': 'boolean',
     'oauthRemoved?': 'string[]',
     'pushSubscriptionsRemoved?': 'number',
+    'mfaRemoved?': 'boolean',
     'method?': 'string',
     'provider?': 'string',
     'mime?': 'string | null',

@@ -10,7 +10,9 @@ import {
     transactionStatus,
     userRepository,
     withTransaction,
+    type DbTransaction,
 } from '#app/repositories/index.js'
+import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
 import { proofHolderOf, type AuditRequest } from '#app/services/audit/audit-actor.js'
 import { authSuccessPayload, type AuthSuccessPayload } from '#app/services/auth/auth-success.js'
@@ -30,7 +32,7 @@ import {
 import type { Auth, LoginOrigin, LoginPlan, Session } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { destroyAllSessions, destroySession } from '#vendor/utils/session/redis-session-storage.js'
-import { loadMfaAccount, mfaEnabledOf, type MfaUserFields } from './mfa-account.js'
+import { loadMfaFactors } from './mfa-account.js'
 import {
     mfaBinding,
     mfaTicketStore,
@@ -87,15 +89,15 @@ const methodsOf = (account: { totp: unknown }): SecondStepMethod[] => {
  * signs in as before), or the second step it opened: a ticket and its cookie.
  */
 export async function startSecondStepIfRequired(
-    context: SignInContext,
-    user: MfaUserFields & { sessionToken: string },
+    auth: Auth,
+    browserSession: string | null,
+    user: { id: bigint; sessionToken: string },
     origin: Exclude<LoginOrigin, { inherit: unknown }>,
     extras: { pendingOAuthLink?: PendingOAuthLink } = {},
 ): Promise<AppResult<SecondStepRequired | null>> {
-    const account = await loadMfaAccount(user)
-    if (!mfaEnabledOf(account)) return Result.ok(null)
-    const browserSession = context.session.sessionInfo?.id
-    if (browserSession === undefined) return Result.err(serviceUnavailable())
+    const account = await loadMfaFactors(user.id)
+    if (account.totp === undefined && account.passkeys === 0) return Result.ok(null)
+    if (browserSession === null) return Result.err(serviceUnavailable())
     const ticketId = newTicketId()
     const ticket: MfaTicket = {
         v: 1,
@@ -118,7 +120,7 @@ export async function startSecondStepIfRequired(
         logger.error({ err }, 'Second-step ticket not created')
         return Result.err(serviceUnavailable(err))
     }
-    context.auth.setMfaTicketCookie(ticketId, mfaConfig.ticketTtlSeconds)
+    auth.setMfaTicketCookie(ticketId, mfaConfig.ticketTtlSeconds)
     return Result.ok({ status: 'mfa_required', methods: methodsOf(account) })
 }
 
@@ -254,7 +256,8 @@ async function attempt(
         plan?: LoginPlan
         xid?: string
         events: RecordedAuditEvent[]
-    } = { captured: false, callbackDone: false, events: [] }
+        linkEvents: RecordedAuditEvent[]
+    } = { captured: false, callbackDone: false, events: [], linkEvents: [] }
     const recovery = input.method === 'recovery_code'
     const actor = proofHolderOf('recovery_code', request)
 
@@ -309,7 +312,12 @@ async function attempt(
                 if (rotated === undefined) throw new Abort('revoked')
             } else if (ticket.pendingOAuthLink !== undefined && ticket.pendingOAuthLink !== null) {
                 // Row 16: a link made by this sign-in exists only once the second step passed.
-                await oauthAccountRepository.create({ userId, ...ticket.pendingOAuthLink }, tx)
+                progress.linkEvents = await createPendingLink(
+                    tx,
+                    userId,
+                    ticket.pendingOAuthLink,
+                    request,
+                )
             }
 
             const ttl = Math.max(1, await mfaTicketStore.ttl(ticketId))
@@ -391,8 +399,40 @@ async function attempt(
     }
 
     auditService.logCommitted(actor.logger, progress.events)
+    auditService.logCommitted(request.logger, progress.linkEvents)
     if (progress.plan === undefined) return Result.err(serviceUnavailable())
     return activate(context, ticketId, ticket, progress.plan, completionId)
+}
+
+/**
+ * Row 16 of Р3: the link a sign-in decided, written by the transaction of the second step. An
+ * identity linked to another account meanwhile is left out (savepoint): the sign-in goes on.
+ */
+async function createPendingLink(
+    tx: DbTransaction,
+    userId: bigint,
+    link: PendingOAuthLink,
+    request: AuditRequest,
+): Promise<RecordedAuditEvent[]> {
+    const { proof, ...identity } = link
+    try {
+        await tx.transaction(async (savepoint) => {
+            await oauthAccountRepository.create({ userId, ...identity }, savepoint)
+        })
+    } catch (err) {
+        if (!isUniqueViolation(err)) throw err
+        logger.warn({ provider: identity.provider }, 'Pending OAuth link taken meanwhile; skipped')
+        return []
+    }
+    const stamp = await auditService.stamp(tx)
+    return auditService.record(tx, stamp, proofHolderOf(proof, request), [
+        {
+            action: 'auth.oauth.linked',
+            targetId: String(userId),
+            targetUserId: userId,
+            input: { provider: identity.provider },
+        },
+    ])
 }
 
 async function discardPending(plan: LoginPlan | undefined): Promise<void> {

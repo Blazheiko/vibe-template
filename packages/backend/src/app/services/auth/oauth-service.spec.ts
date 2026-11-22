@@ -115,8 +115,22 @@ vi.mock('#config/oauth.js', () => ({
     },
 }))
 
+// feat-245: the second step is tested in mfa/; these accounts have no second factor.
+vi.mock('#app/services/auth/mfa/mfa-sign-in.js', async () => {
+    const { Result: R } = await import('better-result')
+    return { startSecondStepIfRequired: () => Promise.resolve(R.ok(null)) }
+})
 vi.mock('#app/repositories/index.js', () => ({
     userRepository: userRepositoryMock,
+    // feat-245: these accounts have no second factor.
+    totpFactorRepository: {
+        findByUserId: () => Promise.resolve(undefined),
+        deleteByUserId: () => Promise.resolve(false),
+    },
+    recoveryCodeRepository: {
+        countUnused: () => Promise.resolve(0),
+        deleteByUserId: () => Promise.resolve(0),
+    },
     oauthAccountRepository: oauthAccountRepositoryMock,
     oauthLinkVerificationRepository: oauthLinkVerificationRepositoryMock,
     withTransaction: <T>(work: (tx: unknown) => Promise<T>): Promise<T> => work(TX),

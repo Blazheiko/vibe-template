@@ -56,6 +56,15 @@ export async function loadMfaAccount(
     }
 }
 
+/** The second factors of a user, without the rest of the account (the sign-in gate, Р4). */
+export async function loadMfaFactors(
+    userId: bigint,
+    executor?: DbExecutor,
+): Promise<{ totp: TotpFactorRow | undefined; passkeys: number }> {
+    const totp = await totpFactorRepository.findByUserId(userId, executor)
+    return { totp, passkeys: 0 }
+}
+
 export const proofAccountOf = (account: MfaAccount): ProofAccount => ({
     hasPassword: account.hasPassword,
     totp: account.totp !== undefined,

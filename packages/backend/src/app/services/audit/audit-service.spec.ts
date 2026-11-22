@@ -93,6 +93,7 @@ function worstInputs(str: (n: number) => string): { [A in AuditAction]: AuditInp
                 (_, i) => `${str(PROVIDER_MAX - 1)}${String(i)}`,
             ),
             pushSubscriptionsRemoved: Number.MAX_SAFE_INTEGER,
+            mfaRemoved: true,
         },
         'auth.phone.linked': {},
         'auth.email.linked': {},
@@ -252,6 +253,7 @@ describe('auditService.record', () => {
                     phoneRemoved: true,
                     oauthRemoved: ['github', 'google', 'github'],
                     pushSubscriptionsRemoved: 1,
+                    mfaRemoved: false,
                 },
             },
         ])
@@ -264,6 +266,7 @@ describe('auditService.record', () => {
             phoneRemoved: true,
             oauthRemoved: ['github', 'google'],
             pushSubscriptionsRemoved: 1,
+            mfaRemoved: false,
         })
     })
 

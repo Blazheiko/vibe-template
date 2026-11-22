@@ -133,6 +133,7 @@ export const AUDIT_ACTIONS = {
             phoneRemoved: true,
             oauthRemoved: true,
             pushSubscriptionsRemoved: true,
+            mfaRemoved: true,
         },
     },
     'auth.phone.linked': {
@@ -348,6 +349,8 @@ export interface AuditInputs {
         phoneRemoved: boolean
         oauthRemoved: readonly string[]
         pushSubscriptionsRemoved: number
+        /** feat-245: a second factor or recovery codes were removed. */
+        mfaRemoved: boolean
     }
     'auth.phone.linked': Record<string, never>
     'auth.email.linked': Record<string, never>
@@ -476,6 +479,7 @@ const PROJECTIONS: Projections = {
             // Distinct names: an account may hold several links of one provider.
             oauthRemoved: [...new Set(input.oauthRemoved.map(String))].sort(),
             pushSubscriptionsRemoved: input.pushSubscriptionsRemoved,
+            mfaRemoved: input.mfaRemoved,
         },
     }),
     'auth.phone.linked': () => ({ changes: null, metadata: { method: 'phone' } }),

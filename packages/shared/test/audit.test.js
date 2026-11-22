@@ -49,6 +49,7 @@ const INPUTS = {
         phoneRemoved: true,
         oauthRemoved: ['google', 'github'],
         pushSubscriptionsRemoved: 2,
+        mfaRemoved: true,
     },
     'auth.phone.linked': {},
     'auth.email.linked': {},

@@ -50,6 +50,12 @@ import {
     renderBrandedEmail,
 } from '#app/services/notifications/email-templates.js'
 import type { Auth } from '#vendor/types/types.js'
+import { loadMfaAccount, mfaEnabledOf } from '#app/services/auth/mfa/mfa-account.js'
+import {
+    startSecondStepIfRequired,
+    type SecondStepMethod,
+} from '#app/services/auth/mfa/mfa-sign-in.js'
+import type { PendingOAuthLink } from '#app/services/auth/mfa/mfa-ticket.js'
 import logger from '#vendor/utils/logger.js'
 import { normalizeEmail } from '#app/services/auth/auth-normalize.js'
 import { maskEmailForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
@@ -519,7 +525,9 @@ export const oauthService = {
         sessionId: string | null,
         /** feat-235: the request, for the audit event. */
         request: AuditRequest,
-    ): Promise<AppResult<{ status: 'success' }>> {
+    ): Promise<
+        AppResult<{ status: 'success' } | { status: 'mfa_required'; methods: SecondStepMethod[] }>
+    > {
         const used = badRequest('This link has already been used', 'used_token')
         const expired = badRequest('This link has expired', 'expired_token')
         const found = await findUsableToken(oauthLinkVerificationRepository, token.trim(), {
@@ -550,7 +558,7 @@ export const oauthService = {
                 typeof runTokenTransaction<
                     typeof verification,
                     never,
-                    ClaimedLink & { events: RecordedAuditEvent[] }
+                    ClaimedLink & { events: RecordedAuditEvent[]; secondStep: boolean }
                 >
             >
         >
@@ -562,6 +570,18 @@ export const oauthService = {
                         : Result.err(emailChanged()),
                 apply: async (user, tx) => {
                     const claim = await claimLocked(tx, user)
+                    // feat-245 (row 16 of Р3): an account that keeps a second factor gets the
+                    // link only once the second step passes; the mailed token is spent here.
+                    if (!claim.claimed && mfaEnabledOf(await loadMfaAccount(claim.user, tx))) {
+                        return {
+                            claimed: false,
+                            sessionToken: claim.user.sessionToken,
+                            previousSessionToken: claim.previousSessionToken,
+                            account: { email: claim.user.email, name: claim.user.name },
+                            events: [],
+                            secondStep: true,
+                        }
+                    }
                     await oauthAccountRepository.create(
                         {
                             userId: user.id,
@@ -590,6 +610,7 @@ export const oauthService = {
                         previousSessionToken: claim.previousSessionToken,
                         account: { email: claim.user.email, name: claim.user.name },
                         events,
+                        secondStep: false,
                     }
                 },
             })
@@ -610,6 +631,27 @@ export const oauthService = {
         }
 
         const linked = outcome.value
+        if (linked.secondStep) {
+            const second = await startSecondStepIfRequired(
+                auth,
+                sessionId,
+                { id: verification.userId, sessionToken: linked.sessionToken },
+                { method: 'oauth', provider: verification.provider },
+                {
+                    pendingOAuthLink: {
+                        proof: 'oauth_email_link',
+                        provider: verification.provider,
+                        providerUserId: verification.providerUserId,
+                        providerEmail: verification.providerEmail,
+                        providerName: verification.providerName,
+                        providerAvatar: verification.providerAvatar,
+                    },
+                },
+            )
+            if (Result.isError(second)) return Result.err(second.error)
+            if (second.value !== null) return Result.ok(second.value)
+            return Result.err(badRequest('Failed to sign in'))
+        }
         auditService.logCommitted(actor.logger, linked.events)
         if (linked.claimed) {
             await destroySessionsQuietly(linked.previousSessionToken, verification.userId)
@@ -716,7 +758,21 @@ async function finishSignIn(
     sessionToken: string,
     provider: string,
     notice: SignInNotice,
+    /** feat-245 (Р4): the browser session a second step would be bound to. */
+    sessionId: string | null,
+    pendingOAuthLink?: PendingOAuthLink,
 ): Promise<AppResult<{ redirectUrl: string }>> {
+    // feat-245 (Р4): an account with a second factor gets a ticket, not a session.
+    const second = await startSecondStepIfRequired(
+        auth,
+        sessionId,
+        { id: userId, sessionToken },
+        { method: 'oauth', provider },
+        pendingOAuthLink !== undefined ? { pendingOAuthLink } : {},
+    )
+    if (Result.isError(second)) return Result.err(second.error)
+    if (second.value !== null) return Result.ok({ redirectUrl: oauthConfig.frontendMfaUrl })
+
     const device = await auth.login(String(userId), sessionToken, { method: 'oauth', provider })
     if (device === null) return Result.err(badRequest('Failed to sign in'))
     if (notice !== 'none') notifyNewSignIn(userId, device, { mail: notice === 'full' })
@@ -733,12 +789,14 @@ async function linkTrusted(
     userId: bigint,
     identity: OAuthIdentity,
     request: AuditRequest,
+    sessionId: string | null,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     // feat-235: nobody is signed in; the provider's proof of the address allows the link.
     const actor = proofHolderOf('oauth_provider_email', request)
     let linked:
         | { kind: 'missing' }
         | { kind: 'changed' }
+        | { kind: 'second_step'; sessionToken: string }
         | ({ kind: 'ok'; events: RecordedAuditEvent[] } & ClaimedLink)
     try {
         linked = await withTransaction(async (tx) => {
@@ -746,6 +804,11 @@ async function linkTrusted(
             if (user === undefined) return { kind: 'missing' as const }
             if (!addressMatches(user, identity.providerEmail)) return { kind: 'changed' as const }
             const claim = await claimLocked(tx, user)
+            // feat-245 (row 16 of Р3): an account that keeps a second factor (no claim: its
+            // address was verified) gets the link only once the second step passes.
+            if (!claim.claimed && mfaEnabledOf(await loadMfaAccount(claim.user, tx))) {
+                return { kind: 'second_step' as const, sessionToken: claim.user.sessionToken }
+            }
             await oauthAccountRepository.create({ userId: user.id, ...identity }, tx)
             // Only on this branch: a missing or changed account links nothing.
             const stamp = await auditService.stamp(tx)
@@ -773,6 +836,17 @@ async function linkTrusted(
     }
     if (linked.kind === 'missing') return Result.err(notFound('User', 'User not found'))
     if (linked.kind === 'changed') return Result.err(emailChanged())
+    if (linked.kind === 'second_step') {
+        return await finishSignIn(
+            auth,
+            userId,
+            linked.sessionToken,
+            identity.provider,
+            'none',
+            sessionId,
+            { ...identity, proof: 'oauth_provider_email' },
+        )
+    }
     auditService.logCommitted(actor.logger, linked.events)
 
     if (linked.claimed) {
@@ -788,6 +862,7 @@ async function linkTrusted(
         linked.sessionToken,
         identity.provider,
         linked.claimed ? 'push' : 'none',
+        sessionId,
     )
 }
 
@@ -920,7 +995,14 @@ async function signInWithIdentity(
                 badRequest('This sign-in method was removed from the account', OAUTH_LINK_REVOKED),
             )
         }
-        return await finishSignIn(auth, existingOAuth.userId, signIn.sessionToken, provider, 'full')
+        return await finishSignIn(
+            auth,
+            existingOAuth.userId,
+            signIn.sessionToken,
+            provider,
+            'full',
+            sessionId,
+        )
     }
 
     const existingUser = await userRepository.findByEmail(providerEmail)
@@ -935,7 +1017,7 @@ async function signInWithIdentity(
 
     if (existingUser !== undefined) {
         if (emailTrust === 'authoritative') {
-            return await linkTrusted(auth, existingUser.id, identity, request)
+            return await linkTrusted(auth, existingUser.id, identity, request, sessionId)
         }
         // Any other provider: the account's owner confirms the link by mail, from this
         // browser session (feat-097).
@@ -979,7 +1061,14 @@ async function signInWithIdentity(
     }
 
     // A registration: nobody else could have signed in to this new account (Р11).
-    const signedIn = await finishSignIn(auth, newUser.id, newUser.sessionToken, provider, 'none')
+    const signedIn = await finishSignIn(
+        auth,
+        newUser.id,
+        newUser.sessionToken,
+        provider,
+        'none',
+        sessionId,
+    )
     if (Result.isOk(signedIn) && !authoritative) {
         await sendFirstEmailLinkQuietly(newUser.id, providerEmail, newUser.sessionToken)
     }
