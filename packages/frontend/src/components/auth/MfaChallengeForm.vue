@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MfaVerifyInput } from 'shared/schemas'
 import type { SignedInUser } from '@/composables/useCompleteSignIn'
@@ -19,9 +19,15 @@ import { getErrorReason } from '@/utils/response-normalizer'
 // answer `mfa_completion_pending` (the answer of a confirmed passkey was lost, or the page was
 // reloaded), the form keeps no request to repeat: it sends `{ method: 'continue' }`, which only
 // finishes what this browser's ticket confirmed, with the same pauses. While a completion is
-// pending the other factors are hidden: the retry sends the kept request, not a new one.
+// pending the other factors are hidden: the retry sends the kept request, not a new one. Mounted
+// after a reload for a ticket that is finishing (`completing`, from POST /auth/mfa/state), the
+// form sends `continue` at once. A recovery sign-in's answer carries the recovery state (Р8): it
+// goes to the store before the account page opens, so that page never asks what a recovery
+// session is refused.
 type Method = 'webauthn' | 'totp' | 'recovery_code'
-const props = defineProps<{ methods: Method[] }>()
+const props = withDefaults(defineProps<{ methods: Method[]; completing?: boolean }>(), {
+    completing: false,
+})
 const emit = defineEmits<{ 'signed-in': [user: SignedInUser]; restart: [message: string] }>()
 
 const { t } = useI18n()
@@ -63,13 +69,9 @@ async function send(body: MfaVerifyInput): Promise<void> {
         const { data } = await authApi.mfaVerify(body)
         if (data?.status === 'success' && data.user !== undefined) {
             pendingBody.value = null
+            // Before the navigation: main/init says the same, but after the page mounted.
+            userStore.setRecovery(data.recovery ?? null)
             emit('signed-in', data.user)
-            // A recovery code opens a recovery session (Р8). main/init says so too, but it
-            // answers after the account page mounted; until then the page must not ask the
-            // routes a recovery session is refused.
-            if (body.method === 'recovery_code') {
-                userStore.setRecovery({ expiresAt: '', replaced: false })
-            }
             return
         }
         const reason = getErrorReason(data) ?? ''
@@ -138,6 +140,17 @@ async function submit(): Promise<void> {
         busy.value = false
     }
 }
+
+/** After a reload: a confirmed attempt is finishing and nothing is kept to repeat. */
+onMounted(async () => {
+    if (!props.completing) return
+    busy.value = true
+    try {
+        await send({ method: 'continue' })
+    } finally {
+        busy.value = false
+    }
+})
 
 /** feat-246: the options of the ticket, the passkey dialog, then the same verify request. */
 async function withPasskey(): Promise<void> {

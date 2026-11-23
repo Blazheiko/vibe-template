@@ -131,6 +131,15 @@ export const test = base.extend<{ api: Api }>({
                 }),
             })
         })
+        // feat-245 (Р4): the sign-in page asks whether this browser holds a second step (after a
+        // reload); none here. A test of the reload answers it.
+        await page.route('**/api/auth/mfa/state', async (route: Route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ status: 'none' }),
+            })
+        })
         // Which social buttons the page shows: none.
         await page.route('**/api/auth/oauth/providers', async (route: Route) => {
             await route.fulfill({

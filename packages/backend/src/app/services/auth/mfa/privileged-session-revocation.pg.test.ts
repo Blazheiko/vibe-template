@@ -85,6 +85,17 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     const { mfaResetService } = await import('./mfa-reset-service.js')
     const { loadMfaFactors } = await import('./mfa-account.js')
     const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
+    const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
+    const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
+    const { registerSessionDeletionLock } = await import('#vendor/utils/session/request-session.js')
+    const { registerSessionTokenChecker } =
+        await import('#vendor/utils/session/session-token-check.js')
+    const { createResponseData } = await import('#vendor/utils/network/response-data.js')
+    const { default: createContext } = await import('#vendor/utils/context/http-context.js')
+    const { default: sessionConfig } = await import('#config/session.js')
+
+    // The token rotation is not what these tests are about: every presented token is current.
+    registerSessionTokenChecker(() => Promise.resolve('ok'))
 
     const redisAdmin = createTestRedis(PREFIX)
     const created: bigint[] = []
@@ -165,6 +176,32 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             publicId,
             /** What the controller passes: `context.session.isStored()`. */
             isStored: () => storage.sessionExists(id, user.sessionToken),
+        }
+    }
+
+    /** One HTTP request of the session the cookie names, through the real session layer. */
+    const requestWith = async (cookie: string | undefined) => {
+        const responseData = createResponseData()
+        const context = createContext(
+            { method: 'post', headers: new Map(), cookies: new Map() } as never,
+            responseData,
+        )
+        await sessionHandler(context, cookie, undefined)
+        return { context, responseData }
+    }
+
+    /** A signed-in session made by `auth.login`, as a sign-in request makes it; its cookie. */
+    const signInOverHttp = async (user: { id: bigint; sessionToken: string }) => {
+        const { context, responseData } = await requestWith(undefined)
+        await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
+        const cookie = responseData.cookies.get(sessionConfig.cookieName)?.value
+        if (cookie === undefined) throw new Error('no session cookie issued')
+        return {
+            cookie,
+            /** `context.session.isStored()` of a request that presents the cookie. */
+            isStored: async () => (await requestWith(cookie)).context.session.isStored(),
+            /** POST /auth/logout of this session: `context.auth.logout()`. */
+            logout: async () => (await requestWith(cookie)).context.auth.logout(),
         }
     }
 
@@ -346,6 +383,75 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             await write.written(target.id)
         })
 
+        describe('a plain logout of the session that sent the write', () => {
+            beforeAll(() => {
+                registerSessionDeletionLock(underUserRowLock)
+            })
+            afterAll(() => {
+                registerSessionDeletionLock(null)
+            })
+
+            it('a logout that finishes first: 401 session_revoked, nothing written', async () => {
+                // As above: the write waits on the target's row (locked by the test) before it
+                // locks the admin's, and the logout, which locks the admin's, goes on.
+                const target = await write.target()
+                const admin = await insertUser('admin')
+                const requesting = await signInOverHttp(admin)
+
+                let pending: ReturnType<typeof write.run> | undefined
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`SELECT id FROM users WHERE id = ${target.id} FOR UPDATE`)
+                    pending = write.run(admin, requesting.isStored, target.id)
+                    await waitForLockWaiters((q) => pool.query(q), 1)
+                    expect(await requesting.logout()).toBe(true)
+                })
+                if (pending === undefined) throw new Error('not started')
+
+                expect(payloadOf(await pending)).toMatchObject({
+                    code: 'unauthorized',
+                    reason: 'session_revoked',
+                })
+                await write.unchanged(target.id)
+                expect(await requesting.isStored()).toBe(false)
+                expect(await userRepository.findSessionToken(admin.id)).toBe(admin.sessionToken)
+            })
+
+            it('a logout during the write (after its session check) waits for its commit', async () => {
+                const target = await write.target()
+                const admin = await insertUser('admin')
+                const requesting = await signInOverHttp(admin)
+
+                let reached: () => void = () => undefined
+                const atWrite = new Promise<void>((resolve) => {
+                    reached = resolve
+                })
+                let release: () => void = () => undefined
+                const gate = new Promise<void>((resolve) => {
+                    release = resolve
+                })
+                write.hold(async () => {
+                    reached()
+                    await gate
+                })
+
+                const pending = write.run(admin, requesting.isStored, target.id)
+                await atWrite
+                let logoutDone = false
+                const logout = requesting.logout().finally(() => {
+                    logoutDone = true
+                })
+                await waitForLockWaiters((q) => pool.query(q), 1)
+                expect(logoutDone).toBe(false)
+                expect(await requesting.isStored()).toBe(true)
+
+                release()
+                expect((await pending).status).toBe('ok')
+                expect(await logout).toBe(true)
+                expect(await requesting.isStored()).toBe(false)
+                await write.written(target.id)
+            })
+        })
+
         it('a user actor without the session check is refused: 401 session_revoked', async () => {
             const target = await write.target()
             const admin = await insertUser('admin')
@@ -353,6 +459,39 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             const result = await write.run(admin, undefined, target.id)
             expect(payloadOf(result)).toMatchObject({ reason: 'session_revoked' })
             await write.unchanged(target.id)
+        })
+    })
+
+    describe('a logout and the row lock hook', () => {
+        afterEach(() => {
+            registerSessionDeletionLock(null)
+        })
+
+        it('without the hook (tests, the CLI) the record is deleted as before', async () => {
+            registerSessionDeletionLock(null)
+            const admin = await insertUser('admin')
+            const session = await signInOverHttp(admin)
+            expect(await session.logout()).toBe(true)
+            expect(await session.isStored()).toBe(false)
+        })
+
+        it('a lock that cannot be taken (PostgreSQL down) does not keep the logout', async () => {
+            registerSessionDeletionLock(() => Promise.reject(new Error('PostgreSQL unreachable')))
+            const admin = await insertUser('admin')
+            const session = await signInOverHttp(admin)
+            expect(await session.logout()).toBe(true)
+            expect(await session.isStored()).toBe(false)
+        })
+
+        it('a COMMIT that fails after the deletion does not fail the logout', async () => {
+            registerSessionDeletionLock(async (_userId, work) => {
+                await work()
+                throw new Error('connection lost at COMMIT')
+            })
+            const admin = await insertUser('admin')
+            const session = await signInOverHttp(admin)
+            expect(await session.logout()).toBe(true)
+            expect(await session.isStored()).toBe(false)
         })
     })
 })

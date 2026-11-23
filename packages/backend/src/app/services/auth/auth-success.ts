@@ -13,11 +13,14 @@ export interface AuthSuccessPayload {
     wsUrl: string
     wsToken: string
     csrfToken?: string
+    /** feat-245 (Р8): set when the request's session is a recovery session (as main/init says). */
+    recovery?: { expiresAt: string; replaced: boolean }
 }
 
 /**
  * The answer of a sign-in once the request's session is the signed-in one: the user, the WebSocket
- * token of that session and its CSRF token. feat-245: the second step answers the same.
+ * token of that session and its CSRF token. feat-245: the second step answers the same, with the
+ * recovery state of a recovery session.
  */
 export async function authSuccessPayload(
     user: Parameters<typeof userTransformer.serialize>[0],
@@ -40,6 +43,15 @@ export async function authSuccessPayload(
     }
     if (csrfToken !== undefined) {
         payload.csrfToken = csrfToken
+    }
+    // A recovery code (or a `continue` that finished one) created a recovery session: the client
+    // must show only the recovery wizard before main/init answers.
+    const recovery = sessionInfo?.data.auth?.recovery
+    if (recovery !== undefined) {
+        payload.recovery = {
+            expiresAt: recovery.expiresAt,
+            replaced: recovery.replacementFactor !== undefined,
+        }
     }
     return payload
 }

@@ -34,6 +34,8 @@ vi.mock('@/utils/api', () => ({
     authApi: {
         getOAuthProviders: vi.fn().mockResolvedValue({ data: null, error: null }),
         login: loginMock,
+        // feat-245: the sign-in page asks for a second step a reload took out of memory.
+        mfaState: vi.fn().mockResolvedValue({ data: { status: 'none' }, error: null }),
         forgotPassword: forgotPasswordMock,
         startPhonePasswordReset: startPhonePasswordResetMock,
         completePhonePasswordReset: completePhonePasswordResetMock,

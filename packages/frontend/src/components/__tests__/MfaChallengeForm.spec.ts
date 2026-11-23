@@ -36,9 +36,9 @@ const OPTIONS = { data: { status: 'success', options: { challenge: 'c' } }, erro
 const ASSERTION = { id: 'cred', response: {} }
 const SECOND_ASSERTION = { id: 'cred', response: { second: true } }
 
-const mountForm = (methods: ('webauthn' | 'totp' | 'recovery_code')[]) =>
+const mountForm = (methods: ('webauthn' | 'totp' | 'recovery_code')[], completing = false) =>
     mount(MfaChallengeForm, {
-        props: { methods },
+        props: { methods, completing },
         global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })] },
     })
 
@@ -224,6 +224,64 @@ describe('MfaChallengeForm', () => {
         await submit(wrapper)
         expect(mfaVerifyMock).toHaveBeenCalledWith({ method: 'totp', code: '123456' })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
+    it('a recovery sign-in stores the recovery state of the answer before it signs in', async () => {
+        const recovery = { expiresAt: '2026-11-22T12:15:00.000Z', replaced: false }
+        const order: string[] = []
+        setRecoveryMock.mockImplementation(() => order.push('recovery'))
+        mfaVerifyMock.mockResolvedValueOnce({
+            data: { status: 'success', user: USER, recovery },
+            error: null,
+        })
+        const wrapper = mount(MfaChallengeForm, {
+            props: {
+                methods: ['totp', 'recovery_code'],
+                onSignedIn: () => order.push('signed-in'),
+            },
+            global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })] },
+        })
+        await wrapper.find('[data-testid="mfa-use-recovery"]').trigger('click')
+        await wrapper.find('[data-testid="mfa-code"]').setValue('ABCD-EFGH')
+        await submit(wrapper)
+        expect(setRecoveryMock).toHaveBeenCalledWith(recovery)
+        expect(order).toEqual(['recovery', 'signed-in'])
+    })
+
+    it('a continue that finishes a recovery ticket stores it too; an ordinary sign-in clears it', async () => {
+        const recovery = { expiresAt: '2026-11-22T12:15:00.000Z', replaced: false }
+        mfaWebauthnOptionsMock.mockResolvedValue(pending)
+        mfaVerifyMock.mockResolvedValueOnce({
+            data: { status: 'success', user: USER, recovery },
+            error: null,
+        })
+        await submit(mountForm(['webauthn', 'recovery_code']))
+        expect(mfaVerifyMock).toHaveBeenCalledWith({ method: 'continue' })
+        expect(setRecoveryMock).toHaveBeenLastCalledWith(recovery)
+
+        mfaVerifyMock.mockResolvedValueOnce(success)
+        const wrapper = mountForm(['totp'])
+        await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+        await submit(wrapper)
+        expect(setRecoveryMock).toHaveBeenLastCalledWith(null)
+    })
+
+    it('mounted for a completing ticket (after a reload): continue at once, and signs in', async () => {
+        mfaVerifyMock.mockResolvedValueOnce(pending).mockResolvedValueOnce(success)
+        const wrapper = mountForm(['totp', 'recovery_code'], true)
+        for (let i = 0; i < 10; i++) {
+            await flushPromises()
+            await vi.runAllTimersAsync()
+        }
+        expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
+        for (const [body] of mfaVerifyMock.mock.calls) expect(body).toEqual({ method: 'continue' })
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
+    it('mounted for an open ticket: nothing is sent until a proof is given', async () => {
+        mountForm(['totp', 'recovery_code'])
+        await flushPromises()
+        expect(mfaVerifyMock).not.toHaveBeenCalled()
     })
 
     it('a wrong code ends the pending state', async () => {

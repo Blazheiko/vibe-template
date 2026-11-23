@@ -111,6 +111,52 @@ test.describe('second sign-in step', () => {
         ])
     })
 
+    test('a reload during the second step shows the code form again, no new password', async ({
+        page,
+        api,
+    }) => {
+        await api.answer('auth/login', 200, {
+            status: 'mfa_required',
+            methods: ['totp', 'recovery_code'],
+        })
+        // The ticket cookie survives the reload; the server says so for this browser.
+        let ticket = false
+        await page.route('**/api/auth/mfa/state', async (route) => {
+            await json(
+                route,
+                200,
+                ticket
+                    ? { status: 'mfa_required', methods: ['totp', 'recovery_code'] }
+                    : { status: 'none' },
+            )
+        })
+        const bodies: unknown[] = []
+        await page.route('**/api/auth/mfa/verify', async (route) => {
+            bodies.push(route.request().postDataJSON())
+            api.setSession(USER)
+            await json(route, 200, SIGNED_IN)
+        })
+        api.ignoreOtherRequests()
+
+        const modal = await openLogin(page)
+        await modal.locator('#login-identifier').fill('jane@example.com')
+        await modal.locator('#login-password').fill('correct-horse')
+        await modal.getByRole('button', { name: 'Sign In' }).click()
+        await expect(page.getByTestId('mfa-challenge')).toBeVisible()
+        ticket = true
+
+        await page.reload()
+        await expect(page.getByTestId('mfa-challenge')).toBeVisible()
+        await expect(page.locator('#login-password')).toHaveCount(0)
+        await page.getByTestId('mfa-code').fill('123456')
+        await page.getByTestId('mfa-submit').click()
+
+        await expect(page).toHaveURL(/\/account$/)
+        expect(bodies).toEqual([{ method: 'totp', code: '123456' }])
+        // The password was sent once: the reload did not start a new sign-in.
+        expect(api.callsTo('auth/login')).toHaveLength(1)
+    })
+
     test('a recovery code opens only the recovery wizard: no refused route is asked', async ({
         page,
         api,
@@ -122,7 +168,11 @@ test.describe('second sign-in step', () => {
         let recovering = false
         await page.route('**/api/auth/mfa/verify', async (route) => {
             recovering = true
-            await json(route, 200, SIGNED_IN)
+            // Р8: the answer carries the recovery state; the client stores it before navigating.
+            await json(route, 200, {
+                ...SIGNED_IN,
+                recovery: { expiresAt: '2026-11-22T12:15:00.000Z', replaced: false },
+            })
         })
         // main/init of a recovery session: no WebSocket, `recovery` set.
         await page.route('**/api/main/init', async (route) => {

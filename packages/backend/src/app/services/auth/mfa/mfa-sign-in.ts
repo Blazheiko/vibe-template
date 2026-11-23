@@ -139,6 +139,39 @@ export async function startSecondStepIfRequired(
     return Result.ok({ status: 'mfa_required', methods: methodsOf(account) })
 }
 
+export type SecondStepState =
+    { status: 'mfa_required'; methods: SecondStepMethod[]; completing?: true } | { status: 'none' }
+
+/**
+ * Р4: POST /auth/mfa/state. The sign-in page keeps the second step of a password sign-in in
+ * memory; after a reload it asks here before a new sign-in, so the password is not typed again
+ * (a new ticket) while this browser's ticket still waits for its second step or is finishing.
+ * Answers the methods for a ticket of THIS browser (the cookie and the binding, as `continue`
+ * checks them), with `completing` once an attempt was confirmed; `none` for no cookie, an
+ * expired ticket or one bound to another browser, and for an account that lost its factors
+ * meanwhile (the password then signs in alone). Nothing is reserved, counted or changed.
+ */
+export async function secondStepState(context: SignInContext): Promise<AppResult<SecondStepState>> {
+    const none = Result.ok<SecondStepState>({ status: 'none' })
+    const ticketId = context.auth.getMfaTicketCookie()
+    const cookieSession = context.auth.getCookieSessionId()
+    if (ticketId === undefined || ticketId === '' || cookieSession === undefined) return none
+    let ticket: MfaTicket | null
+    try {
+        ticket = await mfaTicketStore.read(ticketId)
+    } catch (err) {
+        return Result.err(serviceUnavailable(err))
+    }
+    if (ticket?.binding !== mfaBinding(cookieSession)) return none
+    const account = await loadMfaFactors(BigInt(ticket.userId))
+    if (account.totp === undefined && account.passkeys === 0) return none
+    return Result.ok({
+        status: 'mfa_required',
+        methods: methodsOf(account),
+        ...(ticket.state !== 'open' ? { completing: true as const } : {}),
+    })
+}
+
 /** The session the second step creates (Р2, Р8). */
 function plannedAuth(ticket: MfaTicket, method: SecondStepMethod, now: number): SessionAuthState {
     const at = new Date(now).toISOString()

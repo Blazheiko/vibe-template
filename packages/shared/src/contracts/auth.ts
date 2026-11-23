@@ -31,6 +31,7 @@ import type {
     LinkPhoneStartResponse,
     LoginResponse,
     LogoutAllResponse,
+    MfaStateResponse,
     LogoutResponse,
     RegisterEmailResponse,
     RegisterPhoneCompleteResponse,
@@ -59,6 +60,8 @@ export const authContracts = {
         'post',
         '/auth/mfa/verify',
     ),
+    // feat-245 (Р4): whether this browser holds a second step (after a reload of the sign-in page).
+    mfaState: contract<EmptyBody, undefined, MfaStateResponse>()('post', '/auth/mfa/state'),
     // feat-246 (Р6): a passkey signature as the second step (bound to the ticket cookie).
     mfaWebauthnOptions: contract<EmptyBody, undefined, PasskeyChallengeResponse>()(
         'post',
