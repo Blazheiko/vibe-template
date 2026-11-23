@@ -94,6 +94,9 @@ const failures = vi.hoisted((): { claim: 'none' | 'throw' | 'lost'; cleanup: boo
 }))
 vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     const actual = await importActual<typeof SessionIndex>()
+    // What withRedis throws for an unreachable Redis (ADR 0004: answered as a repeatable failure).
+    const { RedisUnavailableError } =
+        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     return {
         ...actual,
         claimActivationEffects: async (
@@ -101,9 +104,9 @@ vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
         ) => {
             const mode = failures.claim
             failures.claim = 'none'
-            if (mode === 'throw') throw new Error('Redis down (claim)')
+            if (mode === 'throw') throw new RedisUnavailableError('Redis down (claim)')
             const claimed = await actual.claimActivationEffects(...args)
-            if (mode === 'lost') throw new Error('Redis answer lost (claim)')
+            if (mode === 'lost') throw new RedisUnavailableError('Redis answer lost (claim)')
             return claimed
         },
     }
