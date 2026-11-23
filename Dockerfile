@@ -8,7 +8,7 @@ ARG NODE_VERSION=24.22.2
 # (`curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sha256sum`).
 ARG NODESOURCE_ASC_SHA256=b42e0321dabdc24e892115da705cf061167eac12a317f23d329862d0aa0a271d
 
-FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5 AS builder
+FROM ubuntu:24.04@sha256:9c7f200c07e3d4a03e7249d2c16bf66a51120fb876aa2242cf31451412543289 AS builder
 WORKDIR /app
 
 # Устанавливаем Node.js 24 и необходимые инструменты
@@ -88,7 +88,7 @@ RUN rm -rf packages/backend/public && \
 
 
 # --- Этап 2: продакшн ---
-FROM ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5 AS production
+FROM ubuntu:24.04@sha256:9c7f200c07e3d4a03e7249d2c16bf66a51120fb876aa2242cf31451412543289 AS production
 WORKDIR /app
 
 # Устанавливаем Node.js 24 и необходимые инструменты
