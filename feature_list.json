@@ -2481,8 +2481,8 @@
             "owner": "Blazheiko",
             "branch": "fix/mfa-review",
             "dependencies": ["feat-248"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #784 (merge f7798f2), registry #783 (in_progress), #785 (review). Review of feat-245…248 fixed: the target row locked before the staff factor check; the reservation checked at capture; passkey continuation (pending options, a spent challenge is mfa_attempt_expired without a failure); the actor re-checked at the write under ascending-id row locks; future marks bounded and aal 2 in passkey mode; the reset deletes the previous token's sessions; the audit records the accepted proof; wsToken null in recovery; ESLint ignores .claude/**. Acceptance: live TOTP and passkey step-up through ReauthDialog, a real COMMIT connection drop through a wire-protocol proxy. CI on the branch head 0198e2b: ci.yml run 45141677445, pg-tests.yml run 45141677313 (test-pg 632 passed), redis-tests.yml run 45141677356 (198 passed), all success. Local: make check green (backend 3631, frontend 970, shared 147), test:e2e 132, the short-window live config 3 passed."
         }
     ]
 }
