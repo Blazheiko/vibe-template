@@ -2523,6 +2523,16 @@
             "dependencies": ["feat-252"],
             "status": "done",
             "evidence": "PR #801 (merge a492015), registry #799 (in_progress), #802 (review). Review of feat-252 fixed: only 08001/08004/57P03 delete without the lock, the rest of SQLSTATE class 08 is connection_lost; a failed effects claim or recovery cleanup answers mfa_completion_pending with no new cookie, the recovery cleanup is idempotent and awaited on every finishing request; a push record restored after a kept logout keeps its is_active (create takes an optional isActive); a push DELETE outliving its bound is reconciled when it lands. CI on the branch head ef0fba8: ci.yml run 45204977798, pg-tests.yml run 45204977909, redis-tests.yml run 45204977777, all success. Local: make check green (backend 3691, frontend 1010, shared 147), test:pg 686, test:redis 198, test:e2e 133, docs verify."
+        },
+        {
+            "id": "feat-254",
+            "name": "MFA Review Fixes 6",
+            "description": "Review of feat-253 (2026-11-23, REQUEST CHANGES). (1) The previous authorized session is deleted before the recovery cleanup and the effects claim; when one of them fails the browser repeats with the cookie of a deleted session, gets a new anonymous session, fails CSRF and loses the ticket binding: run the fallible steps before the replaced session is deleted, and test it through real HTTP with the browser's cookies and CSRF; (2) the repeated recovery cleanup closes every socket of the user but the new session's: close only the sockets of the rotated (old) token; (3) the late push restore can cross an account change or a new logout: bind it to the account at the start of the logout, re-check owner and sign-out generation right before the POST, and do not let a pending restore block the leftover cleanup of the next account.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-6",
+            "dependencies": ["feat-253"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
