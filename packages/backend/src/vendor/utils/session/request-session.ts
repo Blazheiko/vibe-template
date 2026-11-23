@@ -44,6 +44,7 @@ import { sessionListChanged } from '#vendor/utils/session/session-list-events.js
 import { deleteUnderLock } from '#vendor/utils/session/session-deletion-lock.js'
 import {
     activatePendingSession,
+    claimActivationEffects,
     preparePendingSession,
 } from '#vendor/utils/session/session-index.js'
 
@@ -585,6 +586,7 @@ export class RequestSession {
         plan: LoginPlan,
         ticketKey: string,
         completionId: string,
+        onEffects?: () => void,
     ): Promise<'activated' | 'already' | 'gone'> {
         const record = this.planRecord(plan, completionId, false)
         const outcome = await activatePendingSession({
@@ -605,11 +607,29 @@ export class RequestSession {
                 : await getSession(plan.sessionId, plan.expectedUserToken)
         if (active === null || active.data.pending === true) return 'gone'
         await this.replaceWith(active, plan.expectedUserToken)
-        if (outcome.kind === 'activated') {
+        // Р4: the effects belong to whichever request first gets past the replacement, the
+        // activating one or a repeat after its replacement threw: one claim per completion. The
+        // ticket is still there: it is retired only once the browser comes back with this cookie.
+        if (await this.claimEffects(ticketKey, completionId)) {
             logger.info({ userId: plan.userId, sessionId: plan.sessionId }, 'User logged in (MFA)')
             sessionListChanged(plan.userId)
+            onEffects?.()
         }
         return outcome.kind
+    }
+
+    /** At most once: a claim that failed (Redis) skips the effects rather than risk a second run. */
+    private async claimEffects(ticketKey: string, completionId: string): Promise<boolean> {
+        try {
+            return await claimActivationEffects({
+                ticketKey,
+                completionId,
+                sanitize: sanitizeRedisKey,
+            })
+        } catch (err) {
+            logger.warn({ err }, 'Sign-in effects not claimed; they are skipped (notices, log)')
+            return false
+        }
     }
 
     /**

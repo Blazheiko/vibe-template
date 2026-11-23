@@ -426,7 +426,8 @@ return 'created'
  * and only while the ticket is `completing` for this completion writes the active record, its
  * index member and meta field and moves the ticket to `activated`. A request holding an older
  * snapshot gets `already` (nothing written) or `gone`, so it never brings back a record a logout
- * deleted after the activation.
+ * deleted after the activation. The ticket's `effects` become `pending`: the effects of the sign-in
+ * (its notices) are claimed once, after the previous session was replaced (EFFECTS_CLAIM_LUA).
  */
 const PENDING_ACTIVATE_LUA = `${TYPE_CHECK}
 local raw = redis.call('GET', KEYS[1])
@@ -446,8 +447,24 @@ redis.call('EXPIRE', KEYS[3], ARGV[8])
 redis.call('EXPIRE', KEYS[4], ARGV[8])
 ticket.state = 'activated'
 ticket.sessionId = ARGV[9]
+ticket.effects = 'pending'
 redis.call('SET', KEYS[1], cjson.encode(ticket), 'KEEPTTL')
 return {'activated', 1}
+`
+
+/**
+ * KEYS: ticket. ARGV: completion id. The one-shot claim of a sign-in's effects: `pending` → `done`
+ * on the activated ticket of this completion, answering 1 once and 0 to every other caller.
+ */
+const EFFECTS_CLAIM_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 0 end
+local ok, ticket = pcall(cjson.decode, raw)
+if not ok or type(ticket) ~= 'table' or ticket.completionId ~= ARGV[1] then return 0 end
+if ticket.state ~= 'activated' or ticket.effects ~= 'pending' then return 0 end
+ticket.effects = 'done'
+redis.call('SET', KEYS[1], cjson.encode(ticket), 'KEEPTTL')
+return 1
 `
 
 export const preparePendingSession = async (
@@ -506,4 +523,21 @@ export const activatePendingSession = async (input: {
     if (result[0] === 'activated') return { kind: 'activated' }
     if (result[0] === 'already') return { kind: 'already', recordExists: result[1] === 1 }
     return { kind: 'gone' }
+}
+
+/**
+ * Р4: claims the effects of an activated sign-in (its notices, the log, the session-list event):
+ * true for exactly one caller per completion. Called after the previous session was replaced,
+ * by the request that activated and by a repeat that found the activation done, so the effects
+ * neither run twice nor get lost when the first replacement could not take its lock.
+ */
+export const claimActivationEffects = async (input: {
+    ticketKey: string
+    completionId: string
+    sanitize: (key: string) => string
+}): Promise<boolean> => {
+    const claimed = await withRedis(() =>
+        redis.eval(EFFECTS_CLAIM_LUA, 1, input.sanitize(input.ticketKey), input.completionId),
+    )
+    return Number(claimed) === 1
 }

@@ -19,10 +19,12 @@ import {
 //
 // The browser keeps its subscription across sign-outs and accounts, and the server sends to
 // whoever owns the record, so the two are kept in step (feat-148): "enabled" means this browser's
-// subscription is an active record of the signed-in account; a sign-out releases it; a
-// subscription another account left in this browser is removed at the next sign-in.
+// subscription is an active record of the signed-in account; a sign-out releases it (the record
+// before the request, the browser's subscription once the sign-out went through, or the record
+// back when the server kept the session); a subscription another account left in this browser is
+// removed at the next sign-in.
 
-/** How long a sign-out waits for the push service and the server before it goes on. */
+/** How long each push step of a sign-out waits for the push service or the server. */
 const RELEASE_TIMEOUT_MS = 3000
 
 interface ServerSubscription {
@@ -312,52 +314,90 @@ export const usePushStore = defineStore('push', () => {
     }
 
     /**
-     * A sign-out: the record on the server and the browser's subscription both go, so the
-     * account's notifications stop arriving in this browser. Best effort and bounded: neither a
-     * failure nor a slow push service holds the sign-out, and what is left behind is removed
-     * when another account signs in (ensurePushSubscriptionsLoaded).
+     * The server record a sign-out removed (releaseServerSubscription), kept until the sign-out
+     * is known: whether it was the active one, so restoreServerSubscription can put it back as it
+     * was. Null when nothing was removed.
      */
-    const releaseBrowserSubscription = async (): Promise<void> => {
-        const release = async (): Promise<void> => {
-            const current = await currentBrowserSubscription()
-            if (current === null) return
+    let releasedRecord: { active: boolean } | null = null
 
-            try {
-                let id = pushSubscriptionId.value
-                if (id === null) {
-                    const response = await pushSubscriptionApi.getSubscriptions()
-                    id =
-                        serverSubscriptionsOf(response.data).find((sub) =>
-                            isSameEndpoint(sub.endpoint, current.endpoint),
-                        )?.id ?? null
-                }
-                if (id !== null) {
-                    const response = await pushSubscriptionApi.deleteSubscription(id)
-                    if (response.error) {
-                        console.warn('Failed to remove the push subscription:', response.error)
-                    }
-                }
-            } catch (error) {
-                console.warn('Failed to remove the push subscription:', error)
-            }
-
-            await current.unsubscribe()
-        }
-
+    /** Runs a step of the sign-out best effort and bounded: it never throws nor waits longer. */
+    const bounded = async (step: string, work: () => Promise<void>): Promise<void> => {
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
             await Promise.race([
-                release(),
+                work(),
                 new Promise<void>((resolve) => {
                     timer = setTimeout(resolve, RELEASE_TIMEOUT_MS)
                 }),
             ])
         } catch (error) {
-            console.warn('Failed to release the push subscription:', error)
+            console.warn(`Failed to ${step}:`, error)
         } finally {
             clearTimeout(timer)
         }
     }
+
+    /**
+     * A sign-out, before its request (the route needs the live session): the server record of
+     * this browser's subscription goes, so the account's notifications stop arriving here. The
+     * browser's subscription is left alone until the sign-out is known: unsubscribeBrowser when
+     * it went through, restoreServerSubscription when the server kept the session (Р13).
+     */
+    const releaseServerSubscription = (): Promise<void> =>
+        bounded('remove the push subscription', async () => {
+            releasedRecord = null
+            const current = await currentBrowserSubscription()
+            if (current === null) return
+
+            let id = pushSubscriptionId.value
+            let active = isSubscribedToPush.value
+            if (id === null) {
+                const response = await pushSubscriptionApi.getSubscriptions()
+                const record = serverSubscriptionsOf(response.data).find((sub) =>
+                    isSameEndpoint(sub.endpoint, current.endpoint),
+                )
+                id = record?.id ?? null
+                active = record?.isActive ?? false
+            }
+            if (id === null) return
+            const response = await pushSubscriptionApi.deleteSubscription(id)
+            if (response.error) {
+                console.warn('Failed to remove the push subscription:', response.error)
+                return
+            }
+            releasedRecord = { active }
+        })
+
+    /**
+     * A sign-out that went through: the browser's subscription goes too. What is left behind is
+     * removed when another account signs in (ensurePushSubscriptionsLoaded).
+     */
+    const unsubscribeBrowser = (): Promise<void> =>
+        bounded('unsubscribe the browser from push', async () => {
+            releasedRecord = null
+            const current = await currentBrowserSubscription()
+            if (current !== null) await current.unsubscribe()
+        })
+
+    /**
+     * A sign-out the server refused (every repeat answered `logout_retry`): the user stays signed
+     * in, so the record releaseServerSubscription removed is registered again from the browser's
+     * subscription, which was not touched (no permission prompt).
+     */
+    const restoreServerSubscription = (): Promise<void> =>
+        bounded('restore the push subscription', async () => {
+            const released = releasedRecord
+            releasedRecord = null
+            if (released === null) return
+            const current = await currentBrowserSubscription()
+            if (current === null) return
+            await sendSubscriptionToServer(current)
+            pushSubscriptionsResource.reset()
+            if (released.active) {
+                pushSubscription.value = current
+                isSubscribedToPush.value = true
+            }
+        })
 
     const resetPushSubscriptionState = (): void => {
         pushSubscription.value = null
@@ -379,7 +419,9 @@ export const usePushStore = defineStore('push', () => {
         subscribeToPush,
         unsubscribeFromPush,
         ensurePushSubscriptionsLoaded,
-        releaseBrowserSubscription,
+        releaseServerSubscription,
+        unsubscribeBrowser,
+        restoreServerSubscription,
         resetPushSubscriptionState,
     }
 })

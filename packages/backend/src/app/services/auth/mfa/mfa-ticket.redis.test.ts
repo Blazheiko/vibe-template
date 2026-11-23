@@ -223,8 +223,11 @@ describe.skipIf(!hasRedis)('MFA ticket store (feat-245 M8)', () => {
         const outcome = await mfaTicketStore.reserve(id, 'browser-a', 'z', NOW, TTL_MS)
         expect(outcome.kind).toBe('completing')
         if (outcome.kind === 'completing') expect(outcome.ticket.xid).toBe('9')
-        expect(await mfaTicketStore.retire(id, 'other')).toBe(false)
-        expect(await mfaTicketStore.retire(id, 'c')).toBe(true)
+        // Another completion's ticket (a newer second step) is left as it is.
+        expect(await mfaTicketStore.retire(id, 'other')).toBe('foreign')
+        expect((await mfaTicketStore.read(id))?.state).toBe('completing')
+        expect(await mfaTicketStore.retire(id, 'c')).toBe('retired')
         expect(await mfaTicketStore.read(id)).toBeNull()
+        expect(await mfaTicketStore.retire(id, 'c')).toBe('absent')
     })
 })

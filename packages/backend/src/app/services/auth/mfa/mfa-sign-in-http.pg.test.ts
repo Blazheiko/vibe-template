@@ -587,6 +587,53 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         expect(newSignIn).toHaveBeenCalledTimes(1)
     })
 
+    it('a request of an older MFA session during a new second step keeps the new ticket cookie; continue signs in', async () => {
+        const earlier = await mfaUser('mfa-older-session')
+        const later = await mfaUser('mfa-newer-step')
+        const browser = new Browser()
+        await browser.firstFactor(earlier.email)
+        const signedIn = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: earlier.code(),
+            }),
+        )
+        expect(signedIn.status).toBe(200)
+        // The browser came back with that session: its ticket is retired with the cookie.
+        browser.keep(await browser.request('GET', '/main/init'))
+        expect(browser.cookies.has(MFA_COOKIE)).toBe(false)
+        const olderSession = browser.sessionId()
+
+        // A new sign-in in the same browser: a new ticket, its activation not finished yet.
+        await browser.firstFactor(later.email)
+        const ticketCookie = browser.cookies.get(MFA_COOKIE)
+        expect(ticketCookie).toMatch(/^[\w-]{43}$/)
+        inject.activate = () => Promise.resolve()
+        const pending = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: later.code(),
+            }),
+        )
+        expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+        // Requests of the older session (its completion is another one) leave the new ticket.
+        const other = browser.keep(await browser.request('GET', '/main/init'))
+        expect(other.status).toBe(200)
+        expect(other.cookies.has(MFA_COOKIE)).toBe(false)
+        expect(browser.sessionId()).toBe(olderSession)
+        expect(browser.cookies.get(MFA_COOKIE)).toBe(ticketCookie)
+        expect((await browser.ticket())?.state).toBe('completing')
+
+        const done = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+        )
+        expect(done.status).toBe(200)
+        expect(done.body).toMatchObject({ status: 'success', user: { id: String(later.row.id) } })
+        // Now the browser comes back with the new session: that ticket is retired.
+        browser.keep(await browser.request('GET', '/main/init'))
+        expect(browser.cookies.has(MFA_COOKIE)).toBe(false)
+    })
+
     it('a rotation after the commit and before the first activation: 401, no session', async () => {
         const user = await mfaUser('mfa-rotate-after-commit')
         const browser = new Browser()

@@ -16,6 +16,15 @@ export const LOGOUT_RETRIES = 3
 export const LOGOUT_RETRY_DELAY_MS = 1000
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
+/** A push step of the sign-out: its failure is logged and never holds the sign-out. */
+const quietly = async (step: () => Promise<void>): Promise<void> => {
+    try {
+        await step()
+    } catch (error) {
+        console.error('Push release error:', error)
+    }
+}
+
 export const useSessionLifecycle = () => {
     const router = useRouter()
     const supportStore = useSupportStore()
@@ -63,17 +72,17 @@ export const useSessionLifecycle = () => {
     /**
      * Signs out and opens /login. Answers false when the server kept the session through every
      * repeat (Р13): the browser stays signed in and the caller tells the user the sign-out did
-     * not finish.
+     * not finish. Push (feat-148) is best effort and bounded at every step: the server record
+     * goes while the session still exists, the browser's subscription only once the sign-out went
+     * through; a kept session gets its record back, so push keeps working.
      */
     const logout = async (): Promise<boolean> => {
-        // While the session still exists: the server record needs it (feat-148). On its own,
-        // so that a failure here never skips the logout request.
-        try {
-            await pushStore.releaseBrowserSubscription()
-        } catch (error) {
-            console.error('Push release error:', error)
+        await quietly(() => pushStore.releaseServerSubscription())
+        if ((await sendLogout()) === 'kept') {
+            await quietly(() => pushStore.restoreServerSubscription())
+            return false
         }
-        if ((await sendLogout()) === 'kept') return false
+        await quietly(() => pushStore.unsubscribeBrowser())
         await redirectToLogin()
         return true
     }

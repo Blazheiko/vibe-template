@@ -20,7 +20,8 @@ import { getErrorReason } from '@/utils/response-normalizer'
 // reloaded), the form keeps no request to repeat: it sends `{ method: 'continue' }`, which only
 // finishes what this browser's ticket confirmed, with the same pauses. Every verify request (a
 // `continue` too) is kept as pending before it is sent and dropped only on a final answer, so one
-// whose answer the network lost is still the one "Try again" sends. While a completion is
+// whose answer the network lost, or that the rate limit (429) or a timeout (408) turned away, is
+// still the one "Try again" sends, without asking for the factor again. While a completion is
 // pending the other factors are hidden: the retry sends the kept request, not a new one. Mounted
 // after a reload for a ticket that is finishing (`completing`, from POST /auth/mfa/state), the
 // form sends `continue` at once. A recovery sign-in's answer carries the recovery state (Р8): it
@@ -67,11 +68,19 @@ const alternatives = computed(() =>
 )
 
 /**
- * A final answer: the server refused this request (a reason of FINAL_REASONS, or any 4xx), so it
- * confirmed nothing to finish. No answer (the network) or a 5xx is not one.
+ * A 4xx that refuses nothing: the request was not looked at (429 the rate limit) or not received
+ * whole in time (408), so it may be sent again as it is.
+ */
+const RETRYABLE_STATUSES = new Set([408, 429])
+
+/**
+ * A final answer: the server refused this request (a reason of FINAL_REASONS, or a 4xx other than
+ * RETRYABLE_STATUSES), so it confirmed nothing to finish. No answer (the network), a 5xx, a 408 or
+ * a 429 is not one.
  */
 const isFinal = (reason: string, status: number | undefined): boolean =>
-    FINAL_REASONS.has(reason) || (status !== undefined && status >= 400 && status < 500)
+    FINAL_REASONS.has(reason) ||
+    (status !== undefined && status >= 400 && status < 500 && !RETRYABLE_STATUSES.has(status))
 
 async function send(body: MfaVerifyInput): Promise<void> {
     // Kept BEFORE the request goes out: when its answer is lost (the network), the server may have
@@ -118,9 +127,11 @@ async function send(body: MfaVerifyInput): Promise<void> {
                       : t('loginMfa.errorRetry')
                   : reason === 'mfa_ticket_used'
                     ? t('loginMfa.errorUsed')
-                    : pendingBody.value !== null
-                      ? t('loginMfa.errorPending')
-                      : t('auth.errorServer')
+                    : status === 429
+                      ? t('loginMfa.errorRateLimited')
+                      : pendingBody.value !== null
+                        ? t('loginMfa.errorPending')
+                        : t('auth.errorServer')
         return
     }
 }

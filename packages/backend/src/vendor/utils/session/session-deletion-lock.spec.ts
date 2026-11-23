@@ -13,7 +13,8 @@ const {
 } = await import('./session-deletion-lock.js')
 
 // docs/plan/passkeys-mfa-plan.md (Р13): a session record is deleted without the user row lock only
-// when PostgreSQL cannot be reached; a wait that was cut is repeated, then the record stays.
+// when PostgreSQL cannot be reached; a wait that was cut or a connection that broke is asked
+// again, then the record stays.
 
 /** An ErrorResponse of PostgreSQL as node-postgres raises it. */
 const pgError = (code: string): Error =>
@@ -34,19 +35,36 @@ describe('classifyLockFailure', () => {
 
     it.each([
         ['a refused connection', Object.assign(new Error('connect'), { code: 'ECONNREFUSED' })],
-        ['a reset connection', Object.assign(new Error('read'), { code: 'ECONNRESET' })],
         ['an unknown host', Object.assign(new Error('dns'), { code: 'ENOTFOUND' })],
-        ['a dropped connection', new Error('Connection terminated unexpectedly')],
-        ['a connect timeout', new Error('Connection terminated due to connection timeout')],
-        ['the server shutting down (57P01)', pgError('57P01')],
+        ['a failed DNS lookup', Object.assign(new Error('dns'), { code: 'EAI_AGAIN' })],
+        ['an unreachable host', Object.assign(new Error('c'), { code: 'EHOSTUNREACH' })],
+        ['an unreachable network', Object.assign(new Error('c'), { code: 'ENETUNREACH' })],
         ['the server starting (57P03)', pgError('57P03')],
         ['a connection exception (08006)', pgError('08006')],
+        ['a connection refused by the server (08004)', pgError('08004')],
         [
             'ECONNREFUSED wrapped by Drizzle',
             wrapped(Object.assign(new Error('c'), { code: 'ECONNREFUSED' })),
         ],
     ])('%s: unreachable', (_, err) => {
         expect(classifyLockFailure(err)).toBe('unreachable')
+    })
+
+    it.each([
+        ['a reset connection', Object.assign(new Error('read'), { code: 'ECONNRESET' })],
+        ['a broken pipe', Object.assign(new Error('write'), { code: 'EPIPE' })],
+        ['a socket timeout', Object.assign(new Error('read'), { code: 'ETIMEDOUT' })],
+        ['a dropped connection', new Error('Connection terminated unexpectedly')],
+        ['a connect timeout', new Error('Connection terminated due to connection timeout')],
+        ['the backend terminated (57P01)', pgError('57P01')],
+        ['the server crashed (57P02)', pgError('57P02')],
+        ['57P01 wrapped by Drizzle', wrapped(pgError('57P01'))],
+        [
+            'ECONNRESET wrapped by Drizzle',
+            wrapped(Object.assign(new Error('r'), { code: 'ECONNRESET' })),
+        ],
+    ])('%s: connection_lost', (_, err) => {
+        expect(classifyLockFailure(err)).toBe('connection_lost')
     })
 
     it.each([
@@ -119,6 +137,60 @@ describe('deleteUnderLock', () => {
         const work = vi.fn(() => Promise.resolve(true))
         expect(await deleteUnderLock('7', work)).toBe(true)
         expect(work).toHaveBeenCalledTimes(1)
+    })
+
+    describe('a lost connection is asked again on a new one', () => {
+        const lost = () => pgError('57P01')
+        const refused = () => Object.assign(new Error('connect'), { code: 'ECONNREFUSED' })
+        const underLock = (_: string, work: () => Promise<boolean>) => work()
+
+        it('the repeat takes the lock: deleted under it', async () => {
+            const lock = vi.fn().mockRejectedValueOnce(lost()).mockImplementation(underLock)
+            registerSessionDeletionLock(lock)
+            const work = vi.fn(() => Promise.resolve(true))
+            expect(await deleteUnderLock('7', work)).toBe(true)
+            expect(lock).toHaveBeenCalledTimes(2)
+            expect(work).toHaveBeenCalledTimes(1)
+        })
+
+        it('the repeat cannot connect: unreachable, deleted without the lock', async () => {
+            const lock = vi.fn().mockRejectedValueOnce(lost()).mockRejectedValueOnce(refused())
+            registerSessionDeletionLock(lock)
+            const work = vi.fn(() => Promise.resolve(true))
+            expect(await deleteUnderLock('7', work)).toBe(true)
+            expect(lock).toHaveBeenCalledTimes(2)
+            expect(work).toHaveBeenCalledTimes(1)
+        })
+
+        it.each([
+            ['lost again', lost()],
+            ['a cut wait', pgError('57014')],
+            ['a failure not known to be an outage', new Error('Query read timeout')],
+        ])('the repeat fails with %s: deferred, nothing deleted', async (_, second) => {
+            const lock = vi.fn().mockRejectedValueOnce(lost()).mockRejectedValueOnce(second)
+            registerSessionDeletionLock(lock)
+            const work = vi.fn(() => Promise.resolve(true))
+            await expect(deleteUnderLock('7', work)).rejects.toBeInstanceOf(
+                SessionDeletionDeferredError,
+            )
+            expect(lock).toHaveBeenCalledTimes(LOCK_WAIT_ATTEMPTS)
+            expect(work).not.toHaveBeenCalled()
+        })
+
+        it('one bound for cut waits and lost connections together', async () => {
+            const lock = vi
+                .fn()
+                .mockRejectedValueOnce(pgError('55P03'))
+                .mockRejectedValueOnce(lost())
+                .mockImplementation(underLock)
+            registerSessionDeletionLock(lock)
+            const work = vi.fn(() => Promise.resolve(true))
+            await expect(deleteUnderLock('7', work)).rejects.toBeInstanceOf(
+                SessionDeletionDeferredError,
+            )
+            expect(lock).toHaveBeenCalledTimes(LOCK_WAIT_ATTEMPTS)
+            expect(work).not.toHaveBeenCalled()
+        })
     })
 
     it('a failure of the deletion itself is the caller’s; one after it (COMMIT) is not', async () => {

@@ -64,8 +64,21 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
 vi.mock('#app/services/notifications/email-service.js', () => ({
     emailService: { send: () => Promise.resolve({ status: 'ok', value: { id: 'm' } }) },
 }))
+const effects = vi.hoisted(() => ({
+    closeUserConnections: vi.fn(() => 0),
+    notifyNewSignIn: vi.fn(),
+    announceMfaChange: vi.fn(),
+}))
 vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
-    wsSessionRevocation: { closeUserConnections: vi.fn(() => 0) },
+    wsSessionRevocation: { closeUserConnections: effects.closeUserConnections },
+}))
+vi.mock('#app/services/auth/new-sign-in-notice.js', async (importActual) => ({
+    ...(await importActual<Record<string, unknown>>()),
+    notifyNewSignIn: effects.notifyNewSignIn,
+}))
+vi.mock('#app/services/auth/mfa/mfa-notice.js', async (importActual) => ({
+    ...(await importActual<Record<string, unknown>>()),
+    announceMfaChange: effects.announceMfaChange,
 }))
 vi.mock('#app/services/communication/role-change-announcer.js', () => ({
     announceRoleChanged: vi.fn(),
@@ -92,6 +105,12 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     const { createResponseData } = await import('#vendor/utils/network/response-data.js')
     const { default: createContext } = await import('#vendor/utils/context/http-context.js')
     const { default: sessionConfig } = await import('#config/session.js')
+    const { completeSecondStep } = await import('#app/services/auth/mfa/mfa-sign-in.js')
+    const { mfaBinding, mfaTicketStore, newTicketId } =
+        await import('#app/services/auth/mfa/mfa-ticket.js')
+    const { currentTransactionId, withTransaction } = await import('#app/repositories/index.js')
+    const { mfaTicketCookieName } = await import('#vendor/utils/session/request-session.js')
+    const { testRequest } = await import('../../../../test-support/audit-actor.js')
 
     registerSessionTokenChecker(() => Promise.resolve('ok'))
 
@@ -112,6 +131,9 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     })
     afterEach(() => {
         vi.restoreAllMocks()
+        effects.closeUserConnections.mockClear()
+        effects.notifyNewSignIn.mockClear()
+        effects.announceMfaChange.mockClear()
         attempts = 0
         onAttempt = () => undefined
     })
@@ -144,10 +166,12 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         return row
     }
 
-    const requestWith = async (cookie: string | undefined) => {
+    const requestWith = async (cookie: string | undefined, ticketCookie?: string) => {
         const responseData = createResponseData()
+        const cookies = new Map<string, string>()
+        if (ticketCookie !== undefined) cookies.set(mfaTicketCookieName(), ticketCookie)
         const context = createContext(
-            { method: 'post', headers: new Map(), cookies: new Map() } as never,
+            { method: 'post', headers: new Map(), cookies } as never,
             responseData,
         )
         await sessionHandler(context, cookie, undefined)
@@ -279,6 +303,65 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         expect(await session.isStored()).toBe(false)
     })
 
+    /** Kills the backend of the one lock wait running now (the logout's lock connection). */
+    const terminateLockWaiter = async () => {
+        await waitForLockWaiters((q) => pool.query(q), 1)
+        const { rows } = await pool.query<{ pid: number }>(
+            `SELECT pid FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        )
+        expect(rows).toHaveLength(1)
+        await pool.query('SELECT pg_terminate_backend($1)', [rows[0]?.pid])
+    }
+
+    it('the lock connection of a logout killed (pg_terminate_backend): asked again on a new one, ends after the commit', async () => {
+        const admin = await insertUser('admin')
+        const session = await signInOverHttp(admin)
+        const write = await heldRoleChange(admin, session.isStored)
+
+        const secondAttempt = new Promise<void>((resolve) => {
+            onAttempt = (n) => {
+                if (n === 2) resolve()
+            }
+        })
+        const logout = session.logout()
+        await terminateLockWaiter()
+        // A single connection broke, the pool still answers: the record is not deleted without
+        // the lock while the role change that checked it is uncommitted.
+        await secondAttempt
+        await waitForLockWaiters((q) => pool.query(q), 1)
+        expect(await session.isStored()).toBe(true)
+
+        write.release()
+        expect((await write.pending).status).toBe('ok')
+        expect((await logout).status).toBe('ok')
+        expect(attempts).toBe(2)
+        expect(await session.isStored()).toBe(false)
+        await write.written()
+    })
+
+    it('the lock connection of a logout killed and the write still held: 503 logout_retry, the session stays', async () => {
+        const admin = await insertUser('admin')
+        const session = await signInOverHttp(admin)
+        const write = await heldRoleChange(admin, session.isStored)
+
+        const logout = session.logout()
+        await terminateLockWaiter()
+        const refused = await logout
+        expect(payloadOf(refused)).toMatchObject({
+            code: 'service_unavailable',
+            reason: 'logout_retry',
+        })
+        expect(attempts).toBe(LOCK_WAIT_ATTEMPTS)
+        expect(await session.isStored()).toBe(true)
+
+        write.release()
+        expect((await write.pending).status).toBe('ok')
+        await write.written()
+        expect((await session.logout()).status).toBe('ok')
+        expect(await session.isStored()).toBe(false)
+    })
+
     it('a password sign-in over the session held past every wait: nothing new issued, the previous session stays', async () => {
         const admin = await insertUser('admin')
         const newcomer = await insertUser('user')
@@ -344,5 +427,163 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         )
         expect(await session.isStored()).toBe(false)
         expect(await storage.sessionExists(plan.sessionId, newcomer.sessionToken)).toBe(true)
+    })
+
+    /**
+     * A second step of `newcomer` confirmed in the browser of `cookie`: its transaction committed,
+     * the ticket `completing`, the session pending. `continue` is POST /auth/mfa/verify
+     * `{ method: 'continue' }` of that browser, as the controller runs it.
+     */
+    const confirmedSecondStep = async (
+        cookie: string,
+        newcomer: Awaited<ReturnType<typeof insertUser>>,
+        options: { recovery?: { userTokenAtStart: string } } = {},
+    ) => {
+        const { context } = await requestWith(cookie)
+        const at = new Date().toISOString()
+        const auth =
+            options.recovery === undefined
+                ? {
+                      v: 1 as const,
+                      amr: ['pwd' as const, 'otp' as const],
+                      aal: 2 as const,
+                      authenticatedAt: at,
+                      verified: { pwd: at, otp: at },
+                  }
+                : {
+                      v: 1 as const,
+                      amr: ['pwd' as const, 'recovery' as const],
+                      aal: 1 as const,
+                      authenticatedAt: at,
+                      verified: { pwd: at },
+                      recovery: {
+                          startedAt: at,
+                          expiresAt: new Date(Date.now() + 600_000).toISOString(),
+                      },
+                  }
+        const plan = context.auth.planLogin(
+            String(newcomer.id),
+            { method: 'password' },
+            auth,
+            newcomer.sessionToken,
+        )
+        const completionId = crypto.randomUUID()
+        expect(await context.auth.prepareLogin(plan, completionId, 300)).toBe('created')
+        const xid = await withTransaction((tx) => currentTransactionId(tx))
+        const ticketId = newTicketId()
+        await mfaTicketStore.create(
+            ticketId,
+            {
+                v: 1,
+                state: 'completing',
+                userId: String(newcomer.id),
+                userTokenAtStart: options.recovery?.userTokenAtStart ?? newcomer.sessionToken,
+                binding: mfaBinding(context.auth.getCookieSessionId() ?? ''),
+                origin: { method: 'password' },
+                firstFactor: 'pwd',
+                failures: 0,
+                reservations: [],
+                settled: [],
+                completionId,
+                xid,
+                plan,
+            },
+            300,
+        )
+        return {
+            plan,
+            ticket: () => mfaTicketStore.read(ticketId),
+            continue: async () => {
+                const { context } = await requestWith(cookie, ticketId)
+                return completeSecondStep(context, { method: 'continue' }, testRequest())
+            },
+        }
+    }
+
+    describe('the effects of a second-step sign-in (Р4): once, after the replacement', () => {
+        it('a replacement held past every wait: no notice yet; the repeat sends it, exactly once', async () => {
+            const admin = await insertUser('admin')
+            const newcomer = await insertUser('user')
+            const session = await signInOverHttp(admin)
+            const write = await heldRoleChange(admin, session.isStored)
+            const step = await confirmedSecondStep(session.cookie, newcomer)
+
+            const pending = await step.continue()
+            expect(payloadOf(pending)).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'pending' })
+            expect(await session.isStored()).toBe(true)
+
+            write.release()
+            expect((await write.pending).status).toBe('ok')
+            await write.written()
+
+            // The repeat finds the activation done (`already`) and replaces the session now.
+            expect((await step.continue()).status).toBe('ok')
+            expect(await session.isStored()).toBe(false)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledWith(newcomer.id, step.plan.device, {
+                mail: true,
+            })
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
+            // Not a recovery sign-in: nothing else ends.
+            expect(effects.announceMfaChange).not.toHaveBeenCalled()
+            expect(effects.closeUserConnections).not.toHaveBeenCalled()
+        })
+
+        it('a recovery sign-in whose replacement was held: the repeat closes the sockets and ends the rotated token’s sessions, once', async () => {
+            const admin = await insertUser('admin')
+            const newcomer = await insertUser('user')
+            // The sessions of the token the recovery sign-in rotated away.
+            const rotatedToken = crypto.randomUUID().replaceAll('-', '').slice(0, 24)
+            const stale = await signInOverHttp({ id: newcomer.id, sessionToken: rotatedToken })
+            expect(await stale.isStored()).toBe(true)
+            const session = await signInOverHttp(admin)
+            const write = await heldRoleChange(admin, session.isStored)
+            const step = await confirmedSecondStep(session.cookie, newcomer, {
+                recovery: { userTokenAtStart: rotatedToken },
+            })
+
+            expect(payloadOf(await step.continue())).toMatchObject({
+                reason: 'mfa_completion_pending',
+            })
+            expect(effects.closeUserConnections).not.toHaveBeenCalled()
+            expect(effects.announceMfaChange).not.toHaveBeenCalled()
+            expect(await stale.isStored()).toBe(true)
+
+            write.release()
+            expect((await write.pending).status).toBe('ok')
+            expect((await step.continue()).status).toBe('ok')
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledWith(
+                newcomer.id,
+                'recovery_code_used',
+            )
+            await vi.waitFor(async () => {
+                expect(await stale.isStored()).toBe(false)
+            })
+            expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
+                exceptSessionId: step.plan.sessionId,
+            })
+            expect(
+                (await storage.listSessions(rotatedToken, { after: null })).sessions,
+            ).toHaveLength(0)
+        })
+
+        it('an activation without contention sends the notice once; a lost answer repeated sends none', async () => {
+            const admin = await insertUser('admin')
+            const newcomer = await insertUser('user')
+            const session = await signInOverHttp(admin)
+            const step = await confirmedSecondStep(session.cookie, newcomer)
+
+            expect((await step.continue()).status).toBe('ok')
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
+            // The answer was lost: the browser repeats with the cookie it still has.
+            expect((await step.continue()).status).toBe('ok')
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+        })
     })
 })

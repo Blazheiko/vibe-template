@@ -329,6 +329,55 @@ describe('MfaChallengeForm', () => {
         expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.submit)
     })
 
+    it.each([
+        [429, 'rate_limited', en.loginMfa.errorRateLimited],
+        [408, 'request_timeout', en.loginMfa.errorPending],
+    ])(
+        'a %i keeps the request: "Try again" resends it without asking the factor again',
+        async (status, code, message) => {
+            mfaVerifyMock.mockResolvedValueOnce({
+                data: { status: 'error', code, message: 'no' },
+                error: { code, transportCode: status, message: 'no' },
+            })
+            const wrapper = mountForm(['totp', 'recovery_code'])
+            await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+            await submit(wrapper)
+            expect(mfaVerifyMock).toHaveBeenCalledTimes(1)
+            expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+            expect(wrapper.find('[role="alert"]').text()).toBe(message)
+            // The other factors stay hidden: the retry is the kept request.
+            expect(wrapper.find('[data-testid="mfa-use-recovery"]').exists()).toBe(false)
+
+            await wrapper.find('[data-testid="mfa-code"]').setValue('999999')
+            mfaVerifyMock.mockResolvedValueOnce(success)
+            await submit(wrapper)
+            expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
+            expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'totp', code: '123456' })
+            expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+        },
+    )
+
+    it('a rate-limited passkey answer is resent as it is, no new ceremony', async () => {
+        mfaWebauthnOptionsMock.mockResolvedValue(OPTIONS)
+        usePasskeyMock.mockResolvedValue({ ok: true, value: ASSERTION })
+        mfaVerifyMock.mockResolvedValueOnce({
+            data: { status: 'error', code: 'rate_limited', message: 'no' },
+            error: { code: 'rate_limited', transportCode: 429, message: 'no' },
+        })
+        const wrapper = mountForm(['webauthn', 'totp'])
+        await submit(wrapper)
+        expect(wrapper.find('[role="alert"]').text()).toBe(en.loginMfa.errorRateLimited)
+
+        mfaVerifyMock.mockResolvedValueOnce(success)
+        await submit(wrapper)
+        expect(usePasskeyMock).toHaveBeenCalledTimes(1)
+        expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
+        for (const [body] of mfaVerifyMock.mock.calls) {
+            expect(body).toEqual({ method: 'webauthn', response: ASSERTION })
+        }
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
     it('mounted for an open ticket: nothing is sent until a proof is given', async () => {
         mountForm(['totp', 'recovery_code'])
         await flushPromises()
