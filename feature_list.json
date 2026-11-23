@@ -2531,8 +2531,8 @@
             "owner": "Blazheiko",
             "branch": "fix/mfa-review-6",
             "dependencies": ["feat-253"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #805 (merge c04813e), registry #804 (in_progress), #806 (review). Reviews of feat-253 and of the branch fixed: every fallible step of the MFA activation (recovery cleanup, effects claim and effects) runs before the replaced session is deleted, so a repeat keeps CSRF and the ticket binding (real-HTTP PG tests); the recovery cleanup closes only the rotated token's sockets; POST /auth/logout takes an optional pushEndpoint and the server deletes that record after the session was really deleted, replacing the client release/restore machinery. CI on the branch head 7d5e1e4: ci.yml run 45243263947, pg-tests.yml run 45243263902, redis-tests.yml run 45243263968, all success. Local: make check green (backend 3702, frontend 1001, shared 148), test:pg 696, test:redis 199, test:e2e 133, docs verify."
         }
     ]
 }
