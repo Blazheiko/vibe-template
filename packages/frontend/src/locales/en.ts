@@ -93,6 +93,7 @@ export default {
         errorPasskeyRetry: 'That took too long. Use your passkey again.',
         errorPending: 'Signing in is still finishing. Press “Try again” in a moment.',
         retryPending: 'Try again',
+        errorRateLimited: 'Too many attempts. Wait a minute, then press “Try again”.',
         errorUsed: 'You are already signed in from another attempt. Reload the page.',
         errorRestart: 'Sign in again: the confirmation expired.',
     },

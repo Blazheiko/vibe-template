@@ -48,6 +48,8 @@ export interface MfaTicket {
     xid?: string
     plan?: LoginPlan
     sessionId?: string
+    /** Set by the activation: the sign-in's effects wait for their one claim (session-index). */
+    effects?: 'pending' | 'done'
 }
 
 /** The Redis key of a ticket: the hash of its id, so a leaked key opens nothing. */
@@ -178,12 +180,18 @@ save(KEYS[1], ticket)
 return 1
 `
 
-/** KEYS: ticket. ARGV: completion id. Deletes the ticket once its session is in use. */
+/**
+ * KEYS: ticket. ARGV: completion id. Deletes the ticket once its session is in use: `retired`;
+ * `absent` when there is no ticket (or it cannot be read); `foreign` when the ticket belongs to
+ * another completion (a newer second step of this browser), which is left as it is.
+ */
 const RETIRE_LUA = `${LUA_COMMON}
+if redis.call('EXISTS', KEYS[1]) == 0 then return 'absent' end
 local ticket = load(KEYS[1])
-if not ticket or ticket.completionId ~= ARGV[1] then return 0 end
+if not ticket then return 'absent' end
+if ticket.completionId ~= ARGV[1] then return 'foreign' end
 redis.call('DEL', KEYS[1])
-return 1
+return 'retired'
 `
 
 const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
@@ -208,6 +216,9 @@ export type ReserveOutcome =
     | { kind: 'busy' }
     | { kind: 'invalid' }
     | { kind: 'completing' | 'activated'; ticket: MfaTicket }
+
+/** What retiring a ticket found (RETIRE_LUA). */
+export type RetireOutcome = 'retired' | 'absent' | 'foreign'
 
 export const mfaTicketStore = {
     async create(ticketId: string, ticket: MfaTicket, ttlSeconds: number): Promise<void> {
@@ -297,9 +308,12 @@ export const mfaTicketStore = {
         return Number(done) === 1
     },
 
-    async retire(ticketId: string, completionId: string): Promise<boolean> {
-        const done = await withRedis(() => redis.eval(RETIRE_LUA, 1, key(ticketId), completionId))
-        return Number(done) === 1
+    async retire(ticketId: string, completionId: string): Promise<RetireOutcome> {
+        const outcome = await withRedis(() =>
+            redis.eval(RETIRE_LUA, 1, key(ticketId), completionId),
+        )
+        if (outcome === 'retired' || outcome === 'foreign') return outcome
+        return 'absent'
     },
 
     async delete(ticketId: string): Promise<void> {

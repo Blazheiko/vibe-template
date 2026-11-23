@@ -692,11 +692,15 @@ async function activate(
     }
 
     let outcome: 'activated' | 'already' | 'gone'
+    const effects = { claimed: false }
     try {
         outcome = await context.auth.activateLogin(
             plan,
             mfaTicketStore.keyOf(ticketId),
             completionId,
+            () => {
+                effects.claimed = true
+            },
         )
     } catch (err) {
         logger.warn({ err }, 'Activation failed; the same request finishes it')
@@ -707,8 +711,10 @@ async function activate(
         return Result.err(ticketInvalid())
     }
 
-    if (outcome === 'activated') {
-        // At most one attempt per completion: only the request that activated sends these.
+    if (effects.claimed) {
+        // At most once per completion: only the request that claimed the effects after its
+        // replacement went through sends these (the activating one, or the repeat of one whose
+        // replacement waited past the lock and answered mfa_completion_pending).
         notifyNewSignIn(userId, plan.device, { mail: true })
         if (plan.auth.recovery !== undefined) {
             announceMfaChange(userId, 'recovery_code_used')
@@ -730,11 +736,17 @@ async function endOtherSessions(ticket: MfaTicket, plan: LoginPlan): Promise<voi
     }
 }
 
-/** Р4: the browser came back with the new session: its ticket is not needed any more. */
+/**
+ * Р4: the browser came back with the new session: its ticket is not needed any more. The cookie
+ * is cleared only with the ticket (or when there is none left); a ticket of another completion
+ * is a newer second step of this browser (a request of the older session while it runs), so it
+ * and its cookie stay. A Redis failure throws (the hook logs it) and keeps the cookie too.
+ */
 export async function retireCompletedTicket(auth: Auth, completionId: string): Promise<void> {
     const ticketId = auth.getMfaTicketCookie()
     if (ticketId === undefined || ticketId === '') return
-    await mfaTicketStore.retire(ticketId, completionId)
+    const outcome = await mfaTicketStore.retire(ticketId, completionId)
+    if (outcome === 'foreign') return
     auth.setMfaTicketCookie(null, 0)
 }
 

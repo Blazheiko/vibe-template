@@ -16,7 +16,12 @@ export const registerSessionDeletionLock = (lock: SessionDeletionLock | null): v
     sessionDeletionLock = lock
 }
 
-/** How many times the lock is waited for when its wait is cut (statement or lock timeout). */
+/**
+ * How many times, at most, the lock is asked for by one deletion: the first attempt and one
+ * repeat, whether the repeat follows a cut wait (`busy`) or a lost connection
+ * (`connection_lost`). One counter for both keeps the request within two lock waits (two
+ * statement timeouts), as before connection losses were repeated.
+ */
 export const LOCK_WAIT_ATTEMPTS = 2
 
 /**
@@ -24,27 +29,36 @@ export const LOCK_WAIT_ATTEMPTS = 2
  * - `busy`: PostgreSQL answered, the wait was cut (57014 statement_timeout, 55P03 lock_timeout,
  *   40P01 a deadlock) or the pool had no free connection in time. A privileged write can still
  *   commit: the record is never deleted without the lock.
- * - `unreachable`: no connection to PostgreSQL (refused, reset, dropped, the server shutting down
- *   or starting). A privileged write commits through the same database, so it cannot commit
- *   either; the record is deleted without the lock, so a logout is not refused in an outage.
+ * - `unreachable`: no connection to PostgreSQL could be opened (refused, an unknown or unreachable
+ *   host, class 08, 57P03 the server starting). A privileged write commits through the same
+ *   database, so it cannot commit either; the record is deleted without the lock, so a logout is
+ *   not refused in an outage.
+ * - `connection_lost`: the one connection of the attempt broke (a reset, a broken pipe, a socket
+ *   timeout, `Connection terminated`, 57P01/57P02 the backend killed). That also happens to a
+ *   single pooled connection (pg_terminate_backend, a pgbouncer restart, a dead idle socket)
+ *   while the other connections of the pool still commit a privileged write, so it proves no
+ *   outage: the lock is asked for again on a new connection (the pool discards the broken one),
+ *   and that attempt decides.
  * - `other`: anything else (a query that got no answer in time, a bug). Not known to be safe: the
  *   record stays, as for `busy`, without another wait.
  */
-export type LockFailure = 'busy' | 'unreachable' | 'other'
+export type LockFailure = 'busy' | 'unreachable' | 'connection_lost' | 'other'
 
 const BUSY_SQLSTATES = new Set(['57014', '55P03', '40P01'])
-/** admin_shutdown, crash_shutdown, cannot_connect_now; class 08 is checked by its prefix. */
-const UNREACHABLE_SQLSTATES = new Set(['57P01', '57P02', '57P03'])
-const SOCKET_ERROR_CODES = new Set([
+/** cannot_connect_now; class 08 (connection exception) is checked by its prefix. */
+const UNREACHABLE_SQLSTATES = new Set(['57P03'])
+/** admin_shutdown (pg_terminate_backend too), crash_shutdown: this backend went away. */
+const LOST_SQLSTATES = new Set(['57P01', '57P02'])
+/** A connection could not be opened. */
+const CONNECT_ERROR_CODES = new Set([
     'ECONNREFUSED',
-    'ECONNRESET',
     'ENOTFOUND',
     'EAI_AGAIN',
-    'ETIMEDOUT',
     'EHOSTUNREACH',
     'ENETUNREACH',
-    'EPIPE',
 ])
+/** An open connection broke. */
+const LOST_ERROR_CODES = new Set(['ECONNRESET', 'EPIPE', 'ETIMEDOUT'])
 const SQLSTATE = /^[0-9A-Z]{5}$/
 
 const field = (value: unknown, key: string): unknown =>
@@ -61,14 +75,16 @@ const classifyOne = (value: unknown): LockFailure | null => {
         typeof field(value, 'severity') === 'string'
     ) {
         if (BUSY_SQLSTATES.has(code)) return 'busy'
+        if (LOST_SQLSTATES.has(code)) return 'connection_lost'
         if (UNREACHABLE_SQLSTATES.has(code) || code.startsWith('08')) return 'unreachable'
         return 'other'
     }
-    if (typeof code === 'string' && SOCKET_ERROR_CODES.has(code)) return 'unreachable'
+    if (typeof code === 'string' && CONNECT_ERROR_CODES.has(code)) return 'unreachable'
+    if (typeof code === 'string' && LOST_ERROR_CODES.has(code)) return 'connection_lost'
     const message = field(value, 'message')
     if (typeof message === 'string') {
-        // pg: the connection broke or could not be opened in time.
-        if (message.startsWith('Connection terminated')) return 'unreachable'
+        // pg: the connection broke (or its opening timed out): not known to be an outage.
+        if (message.startsWith('Connection terminated')) return 'connection_lost'
         // pg-pool: no free connection within connectionTimeoutMillis (the pool is busy).
         if (message.includes('timeout exceeded when trying to connect')) return 'busy'
     }
@@ -117,11 +133,12 @@ export class SessionDeletionDeferredError extends HttpError {
 }
 
 /**
- * Deletes a record under the registered lock. A wait that is cut (`busy`) is repeated up to
- * LOCK_WAIT_ATTEMPTS times; then, as for `other`, SessionDeletionDeferredError and the record
- * stays. Only `unreachable` deletes without the lock. A failure of the deletion itself is the
- * caller's, as without the lock; a failure after it (the COMMIT of a transaction that wrote
- * nothing) is not.
+ * Deletes a record under the registered lock. A wait that is cut (`busy`) or a connection that
+ * broke (`connection_lost`) is asked for again, within LOCK_WAIT_ATTEMPTS attempts in all; past
+ * them, as for `other`, SessionDeletionDeferredError and the record stays. Only `unreachable`
+ * (also on the repeat after a lost connection: then the database does not answer at all) deletes
+ * without the lock. A failure of the deletion itself is the caller's, as without the lock; a
+ * failure after it (the COMMIT of a transaction that wrote nothing) is not.
  */
 export const deleteUnderLock = async (
     userId: unknown,
@@ -147,13 +164,21 @@ export const deleteUnderLock = async (
             const failure = classifyLockFailure(err)
             if (failure === 'unreachable') {
                 logger.warn(
-                    { err },
+                    { err, attempt },
                     'PostgreSQL unreachable; the session record is deleted without the lock',
                 )
                 return work()
             }
-            if (failure === 'busy' && attempt < LOCK_WAIT_ATTEMPTS) {
-                logger.warn({ err, attempt }, 'User row lock wait cut; waiting again')
+            if (
+                (failure === 'busy' || failure === 'connection_lost') &&
+                attempt < LOCK_WAIT_ATTEMPTS
+            ) {
+                logger.warn(
+                    { err, attempt, failure },
+                    failure === 'busy'
+                        ? 'User row lock wait cut; waiting again'
+                        : 'User row lock connection lost; asking again on a new connection',
+                )
                 continue
             }
             logger.warn({ err, failure }, 'User row lock not taken; the session record stays')

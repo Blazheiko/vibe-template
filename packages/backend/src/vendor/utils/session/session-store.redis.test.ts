@@ -653,11 +653,14 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
         await first.context.auth.prepareLogin(plan, 'c2', 300)
         await writeTicket('completing', 'c2')
         const second = await anonymousRequest()
+        const onEffects = vi.fn()
         const outcomes = await Promise.all([
-            first.context.auth.activateLogin(plan, TICKET, 'c2'),
-            second.context.auth.activateLogin(plan, TICKET, 'c2'),
+            first.context.auth.activateLogin(plan, TICKET, 'c2', onEffects),
+            second.context.auth.activateLogin(plan, TICKET, 'c2', onEffects),
         ])
         expect(outcomes.sort()).toEqual(['activated', 'already'])
+        // The sign-in's effects are claimed by exactly one of them.
+        expect(onEffects).toHaveBeenCalledTimes(1)
         expect(await indexMembers()).toEqual([plan.device.publicId])
         const record = await recordOf(plan.sessionId)
         expect(record?.data['pending']).toBeUndefined()
@@ -667,8 +670,18 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
         for (const request of [first, second]) {
             expect(request.context.session.sessionInfo?.id).toBe(plan.sessionId)
         }
-        const ticket = JSON.parse((await admin.get(TICKET)) ?? '{}') as { state: string }
+        const ticket = JSON.parse((await admin.get(TICKET)) ?? '{}') as {
+            state: string
+            effects: string
+        }
         expect(ticket.state).toBe('activated')
+        expect(ticket.effects).toBe('done')
+        // A later repeat claims nothing.
+        const third = await anonymousRequest()
+        expect(await third.context.auth.activateLogin(plan, TICKET, 'c2', onEffects)).toBe(
+            'already',
+        )
+        expect(onEffects).toHaveBeenCalledTimes(1)
     })
 
     it('a late request with a stale snapshot does not bring back a session that signed out', async () => {

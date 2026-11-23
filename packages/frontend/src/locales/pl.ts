@@ -103,6 +103,7 @@ const pl: typeof en = {
         errorPasskeyRetry: 'Minęło zbyt dużo czasu. Użyj klucza dostępu ponownie.',
         errorPending: 'Logowanie jeszcze się kończy. Za chwilę naciśnij „Spróbuj ponownie”.',
         retryPending: 'Spróbuj ponownie',
+        errorRateLimited: 'Zbyt wiele prób. Odczekaj minutę i naciśnij „Spróbuj ponownie”.',
         errorUsed: 'Jesteś już zalogowany inną próbą. Odśwież stronę.',
         errorRestart: 'Zaloguj się ponownie: potwierdzenie wygasło.',
     },
