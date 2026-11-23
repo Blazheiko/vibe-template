@@ -607,27 +607,39 @@ export class RequestSession {
                 ? record
                 : await getSession(plan.sessionId, plan.expectedUserToken)
         if (active === null || active.data.pending === true) return 'gone'
-        if (this.info.id !== active.id) await this.destroyReplaced()
-        // Everything that can still fail runs before the cookie of the new session is issued: a
-        // request that throws from here answers without it, so the browser repeats with the
-        // cookie it had, the completion hook does not retire the ticket, and the repeat (the
-        // activation `already`) runs the rest again.
-        await hooks.afterReplacement?.()
-        // Р4: the effects belong to whichever request first gets past the replacement, the
-        // activating one or a repeat after its replacement threw: one claim per completion. A
-        // claim that fails (Redis) throws: the effects stay `pending` for the repeat. A claim
-        // whose answer was lost is `done` already: the effects are skipped rather than run twice.
+        const replaces = this.info.id !== active.id
+        // Р4: everything that can fail and must be repeated runs BEFORE the previous session is
+        // deleted. A request that throws from here answers 503 `mfa_completion_pending` without the
+        // new cookie, and the browser repeats with the cookie it holds: its session (the CSRF
+        // token, the ticket's binding) must still be there for the repeat to get this far.
+        // Р8: the recovery cleanup, on every request that finishes the sign-in (it is idempotent);
+        // it spares the request's own session, which destroyReplaced deletes under the lock.
+        await hooks.cleanup?.(this.info.id)
+        // Р4: the effects belong to whichever request first gets this far, the activating one or a
+        // repeat after its cleanup or claim threw: one claim per completion. A claim that fails
+        // (Redis) throws: the effects stay `pending` for the repeat. A claim whose answer was lost
+        // is `done` already: the effects are skipped rather than run twice.
         const claimed = await claimActivationEffects({
             ticketKey,
             completionId,
             sanitize: sanitizeRedisKey,
         })
-        this.issueActive(active, plan.expectedUserToken)
         if (claimed) {
             logger.info({ userId: plan.userId, sessionId: plan.sessionId }, 'User logged in (MFA)')
             sessionListChanged(plan.userId)
             hooks.onEffects?.()
         }
+        // Р13: last of what can fail. A deletion deferred by the lock deleted nothing; the repeat
+        // (`already`, the claim `done`) deletes it, without the effects, and issues the cookie.
+        if (replaces) {
+            const replacedUserId = this.info.data.userId
+            await this.destroyReplaced()
+            // The list announced with the effects may still have shown a signed-in predecessor.
+            if (typeof replacedUserId === 'string' && replacedUserId !== '') {
+                sessionListChanged(replacedUserId)
+            }
+        }
+        this.issueActive(active, plan.expectedUserToken)
         return outcome.kind
     }
 
@@ -658,9 +670,9 @@ export class RequestSession {
 
     /**
      * The request's session becomes `active`, its cookie is issued. Run after the activation's own
-     * transition (the Lua script of activatePendingSession) and the deletion of the previous
-     * session (destroyReplaced), never inside the transition: a deletion that waits for the lock,
-     * or fails, leaves the activation done, and the repeated request (503
+     * transition (the Lua script of activatePendingSession), the cleanup, the effects' claim and the
+     * deletion of the previous session (destroyReplaced), never inside the transition: a deletion
+     * that waits for the lock, or fails, leaves the activation done, and the repeated request (503
      * `mfa_completion_pending`) finds it `already` and deletes again.
      */
     private issueActive(active: SessionInfo, userToken: string): void {

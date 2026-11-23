@@ -6,6 +6,7 @@ import {
     LinkPhoneConfirmInputSchema,
     LinkPhoneStartInputSchema,
     LoginInputSchema,
+    LogoutInputSchema,
     MfaVerifyInputSchema,
     PasskeyLoginInputSchema,
     ReauthInputSchema,
@@ -62,7 +63,7 @@ export const authSchemas = contractSchemas(authContracts, {
         body: RegisterPhoneCompleteInputSchema,
         response: ResponseSchemas.RegisterPhoneCompleteResponseSchema,
     },
-    logout: { body: EmptyFormInputSchema, response: ResponseSchemas.LogoutResponseSchema },
+    logout: { body: LogoutInputSchema, response: ResponseSchemas.LogoutResponseSchema },
     logoutAll: { body: EmptyFormInputSchema, response: ResponseSchemas.LogoutAllResponseSchema },
     changePassword: {
         body: ChangePasswordInputSchema,

@@ -68,6 +68,7 @@ const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complet
 const securityNotice = vi.fn()
 const generateWsTokenMock = vi.fn()
 const issueMock = vi.fn()
+const deletePushRecordMock = vi.fn()
 
 // feat-235: the audit write of each write point is covered by its *.pg.test.ts.
 vi.mock('#app/services/audit/audit-service.js', () => ({
@@ -107,6 +108,10 @@ vi.mock('#app/services/communication/get-ws-url-service.js', () => ({
 vi.mock('#app/services/notifications/user-notification-service.js', () => ({
     userNotificationService: { security: securityNotice, supportReply: vi.fn() },
 }))
+// feat-254: the logout removes the push record of the browser it came from.
+vi.mock('#app/services/notifications/push-subscription-service.js', () => ({
+    pushSubscriptionService: { deleteOwnSubscriptionByEndpoint: deletePushRecordMock },
+}))
 vi.mock('#app/services/auth/email-verification-service.js', () => ({
     emailVerificationService: {
         sendVerificationEmailAfterRegistration: vi.fn(),
@@ -145,6 +150,14 @@ const authWith = (verified: SessionAuthState['verified']): SessionAuthState => (
 const FRESH_PASSWORD = authWith({ pwd: new Date().toISOString() })
 /** A password proven longer ago than AUTH_REAUTH_WINDOW_SECONDS (300). */
 const STALE_PASSWORD = authWith({ pwd: new Date(Date.now() - 301_000).toISOString() })
+/** feat-254: the push endpoint a logout names. */
+const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/this-browser'
+/** A signed-in session of user 7 whose record the logout deletes. */
+const signedInLogout = (): void => {
+    authMock.logout.mockResolvedValue(true)
+    authMock.getUserId.mockReturnValue('7')
+    sessionMock.sessionInfo = { id: 'session-id', data: { csrfToken: CSRF, userToken: TOKEN } }
+}
 
 beforeEach(() => {
     // feat-103: every code check spends a try first; by default the try succeeds on the row
@@ -1028,6 +1041,83 @@ const ROWS: readonly Row[] = [
         name: 'logout · ok hands out the rotated CSRF token',
         arrange: () => authMock.logout.mockResolvedValue(true),
         call: (s) => s.logout(authMock as never, sessionMock as never),
+    },
+    // feat-254: the push record of this browser goes with the session, and only then.
+    {
+        name: 'logout · pushEndpoint: the record of the user goes after the session',
+        arrange: signedInLogout,
+        call: (s) => s.logout(authMock as never, sessionMock as never, { pushEndpoint: ENDPOINT }),
+        after: () => {
+            expect(deletePushRecordMock).toHaveBeenCalledExactlyOnceWith(7n, ENDPOINT)
+            expect(authMock.logout.mock.invocationCallOrder[0]).toBeLessThan(
+                deletePushRecordMock.mock.invocationCallOrder[0] ?? 0,
+            )
+        },
+    },
+    {
+        name: 'logout · pushEndpoint: a logout the server kept (logout_retry) keeps the record',
+        call: async (s) => {
+            signedInLogout()
+            const { SessionDeletionDeferredError } =
+                await import('#vendor/utils/session/session-deletion-lock.js')
+            authMock.logout.mockRejectedValue(new SessionDeletionDeferredError())
+            return s.logout(authMock as never, sessionMock as never, { pushEndpoint: ENDPOINT })
+        },
+        error: err(
+            503,
+            'service_unavailable',
+            'Signing out is still finishing. Try again in a moment.',
+            'logout_retry',
+        ),
+        after: () => {
+            expect(deletePushRecordMock).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'logout · pushEndpoint: the session library refuses, the record stays',
+        arrange: () => {
+            signedInLogout()
+            authMock.logout.mockResolvedValue(false)
+        },
+        call: (s) => s.logout(authMock as never, sessionMock as never, { pushEndpoint: ENDPOINT }),
+        error: internalError('Failed to log out user'),
+        after: () => {
+            expect(deletePushRecordMock).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'logout · pushEndpoint: nobody was signed in, no record is touched',
+        arrange: () => {
+            authMock.logout.mockResolvedValue(true)
+            authMock.getUserId.mockReturnValue(null)
+        },
+        call: (s) => s.logout(authMock as never, sessionMock as never, { pushEndpoint: ENDPOINT }),
+        after: () => {
+            expect(deletePushRecordMock).not.toHaveBeenCalled()
+        },
+    },
+    {
+        name: 'logout · pushEndpoint: a failed push delete still answers a successful logout',
+        arrange: () => {
+            signedInLogout()
+            deletePushRecordMock.mockRejectedValue(new Error('db'))
+        },
+        call: (s) => s.logout(authMock as never, sessionMock as never, { pushEndpoint: ENDPOINT }),
+        after: () => {
+            expect(deletePushRecordMock).toHaveBeenCalledOnce()
+            expect(loggerMock.warn).toHaveBeenCalledWith(
+                expect.objectContaining({ userId: '7' }),
+                'Logout: removing the push record failed',
+            )
+        },
+    },
+    {
+        name: 'logout · no pushEndpoint: no push record is touched',
+        arrange: signedInLogout,
+        call: (s) => s.logout(authMock as never, sessionMock as never),
+        after: () => {
+            expect(deletePushRecordMock).not.toHaveBeenCalled()
+        },
     },
     {
         name: 'renewSession · nobody is signed in',

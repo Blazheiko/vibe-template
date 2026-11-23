@@ -208,6 +208,26 @@ describe.skipIf(!hasRedis)('destroyAllSessions on a real Redis', () => {
         expect(await admin.keys(`${PREFIX}logout_all:*`)).toEqual([])
     })
 
+    // Р8: a recovery sign-in deletes the browser's own session separately, under the lock.
+    it('keepSessionId spares that one record and the index its deletion updates', async () => {
+        for (let i = 0; i < 150; i++) await save(`s${String(i)}`)
+        await admin.zadd(`session_index:${USER_TOKEN}`, '1', 'p')
+
+        await expect(
+            storage.destroyAllSessions(USER_TOKEN, { keepSessionId: 's7' }),
+        ).resolves.toEqual({ deleted: 149, complete: true })
+
+        expect(await sessionsOf()).toEqual([`${PREFIX}session:${USER_TOKEN}:s7`])
+        expect(await admin.exists(`session_index:${USER_TOKEN}`)).toBe(1)
+
+        // A kept id that names no record changes nothing of the full cleanup.
+        await expect(
+            storage.destroyAllSessions(USER_TOKEN, { keepSessionId: 'missing' }),
+        ).resolves.toEqual({ deleted: 1, complete: true })
+        expect(await sessionsOf()).toEqual([])
+        expect(await admin.exists(`session_index:${USER_TOKEN}`)).toBe(0)
+    })
+
     it('a stop after several DELs reports the confirmed deletions, complete: false', async () => {
         // Enough keys for several SCAN pages (COUNT 100).
         for (let i = 0; i < 300; i++) await save(`s${String(i)}`)

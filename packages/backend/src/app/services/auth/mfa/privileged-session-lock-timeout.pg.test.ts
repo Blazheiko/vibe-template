@@ -87,6 +87,7 @@ vi.mock('#app/services/communication/role-change-announcer.js', () => ({
 }))
 // Injected Redis failures of the activation's tail (Р4, Р8): the effects claim fails before it
 // runs (`throw`) or after it ran, its answer lost (`lost`); the recovery cleanup stops part-way.
+// All of these run before the previous session is deleted (the last step that can fail).
 const failures = vi.hoisted((): { claim: 'none' | 'throw' | 'lost'; cleanup: boolean } => ({
     claim: 'none',
     cleanup: false,
@@ -546,8 +547,8 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         }
     }
 
-    describe('the effects of a second-step sign-in (Р4): once, after the replacement', () => {
-        it('a replacement held past every wait: no notice yet; the repeat sends it, exactly once', async () => {
+    describe('the effects of a second-step sign-in (Р4): once, before the replacement', () => {
+        it('a replacement held past every wait: the notice is sent once, the previous session stays; the repeat replaces it and sends nothing', async () => {
             const admin = await insertUser('admin')
             const newcomer = await insertUser('user')
             const session = await signInOverHttp(admin)
@@ -556,8 +557,14 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
 
             const pending = await step.continue()
             expect(payloadOf(pending)).toMatchObject({ reason: 'mfa_completion_pending' })
-            expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
-            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'pending' })
+            expect(step.issuedNewSession()).toBe(false)
+            // The claim ran before the deletion that was deferred: the effects are done.
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledWith(newcomer.id, step.plan.device, {
+                mail: true,
+            })
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
+            // Nothing was deleted without the lock: the browser's session is still there.
             expect(await session.isStored()).toBe(true)
 
             write.release()
@@ -566,18 +573,15 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
 
             // The repeat finds the activation done (`already`) and replaces the session now.
             expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
             expect(await session.isStored()).toBe(false)
             expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
-            expect(effects.notifyNewSignIn).toHaveBeenCalledWith(newcomer.id, step.plan.device, {
-                mail: true,
-            })
-            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
             // Not a recovery sign-in: nothing else ends.
             expect(effects.announceMfaChange).not.toHaveBeenCalled()
             expect(effects.closeUserConnections).not.toHaveBeenCalled()
         })
 
-        it('a recovery sign-in whose replacement was held: the repeat closes the sockets and ends the rotated token’s sessions, once', async () => {
+        it('a recovery sign-in whose replacement was held: the rotated token is cleaned up and announced once; the repeat replaces the session', async () => {
             const admin = await insertUser('admin')
             const newcomer = await insertUser('user')
             // The sessions of the token the recovery sign-in rotated away.
@@ -593,26 +597,28 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             expect(payloadOf(await step.continue())).toMatchObject({
                 reason: 'mfa_completion_pending',
             })
-            expect(effects.closeUserConnections).not.toHaveBeenCalled()
-            expect(effects.announceMfaChange).not.toHaveBeenCalled()
-            expect(await stale.isStored()).toBe(true)
-
-            write.release()
-            expect((await write.pending).status).toBe('ok')
-            expect((await step.continue()).status).toBe('ok')
+            expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
+                exceptSessionId: step.plan.sessionId,
+                userToken: rotatedToken,
+            })
+            expect(await stale.isStored()).toBe(false)
             expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
             expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)
             expect(effects.announceMfaChange).toHaveBeenCalledWith(
                 newcomer.id,
                 'recovery_code_used',
             )
-            await vi.waitFor(async () => {
-                expect(await stale.isStored()).toBe(false)
-            })
-            expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
-            expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
-                exceptSessionId: step.plan.sessionId,
-            })
+            expect(await session.isStored()).toBe(true)
+
+            write.release()
+            expect((await write.pending).status).toBe('ok')
+            expect((await step.continue()).status).toBe('ok')
+            expect(await session.isStored()).toBe(false)
+            // The cleanup runs again (idempotent), the effects do not.
+            expect(effects.closeUserConnections).toHaveBeenCalledTimes(2)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)
             expect(
                 (await storage.listSessions(rotatedToken, { after: null })).sessions,
             ).toHaveLength(0)
@@ -633,7 +639,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         })
     })
 
-    describe('a Redis failure after the replacement (Р4, Р8): retried, never lost or doubled', () => {
+    describe('a Redis failure before the replacement (Р4, Р8): retried, never lost or doubled', () => {
         /** A recovery sign-in of `newcomer` and a stored session of the token it rotated away. */
         const recoverySetup = async () => {
             const admin = await insertUser('admin')
@@ -662,6 +668,8 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
             // Not retired: the effects wait for the repeat.
             expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'pending' })
+            // The browser's session is still there for the repeat (its CSRF token, the binding).
+            expect(await session.isStored()).toBe(true)
 
             expect((await step.continue()).status).toBe('ok')
             expect(step.issuedNewSession()).toBe(true)
@@ -687,6 +695,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             expect(step.issuedNewSession()).toBe(false)
             // The claim ran: the effects are `done`, at most once means none now.
             expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
+            expect(await session.isStored()).toBe(true)
 
             expect((await step.continue()).status).toBe('ok')
             expect(step.issuedNewSession()).toBe(true)
@@ -694,7 +703,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         })
 
         it('a recovery cleanup that fails: mfa_completion_pending; the repeat closes the sockets, ends the rotated sessions, signs in', async () => {
-            const { newcomer, rotatedToken, stale, step } = await recoverySetup()
+            const { newcomer, rotatedToken, stale, session, step } = await recoverySetup()
 
             failures.cleanup = true
             expect(payloadOf(await step.continue())).toMatchObject({
@@ -705,6 +714,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
             expect(effects.announceMfaChange).not.toHaveBeenCalled()
             expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'pending' })
+            expect(await session.isStored()).toBe(true)
 
             expect((await step.continue()).status).toBe('ok')
             expect(step.issuedNewSession()).toBe(true)
@@ -715,7 +725,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             for (const call of effects.closeUserConnections.mock.calls as unknown[][]) {
                 expect(call).toEqual([
                     String(newcomer.id),
-                    { exceptSessionId: step.plan.sessionId },
+                    { exceptSessionId: step.plan.sessionId, userToken: rotatedToken },
                 ])
             }
             expect(effects.closeUserConnections).toHaveBeenCalledTimes(2)
@@ -725,6 +735,29 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
                 newcomer.id,
                 'recovery_code_used',
             )
+        })
+
+        it('the cleanup spares the browser’s own session even when it carries the rotated token: a failed claim leaves it for the repeat', async () => {
+            const newcomer = await insertUser('user')
+            const rotatedToken = crypto.randomUUID().replaceAll('-', '').slice(0, 24)
+            const stale = await signInOverHttp({ id: newcomer.id, sessionToken: rotatedToken })
+            // The browser of the recovery sign-in is itself signed in with the rotated token.
+            const browser = await signInOverHttp({ id: newcomer.id, sessionToken: rotatedToken })
+            const step = await confirmedSecondStep(browser.cookie, newcomer, {
+                recovery: { userTokenAtStart: rotatedToken },
+            })
+
+            failures.claim = 'throw'
+            expect(payloadOf(await step.continue())).toMatchObject({
+                reason: 'mfa_completion_pending',
+            })
+            expect(await stale.isStored()).toBe(false)
+            expect(await browser.isStored()).toBe(true)
+
+            expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
+            expect(await browser.isStored()).toBe(false)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
         })
 
         it('a recovery sign-in without failures: cleaned up before the answer; a lost answer repeated is harmless', async () => {
@@ -737,6 +770,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
             expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
                 exceptSessionId: step.plan.sessionId,
+                userToken: rotatedToken,
             })
             expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
             expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)

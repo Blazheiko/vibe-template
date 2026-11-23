@@ -3,6 +3,7 @@ import { createServer } from 'node:net'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
 import type * as SessionIndex from '#vendor/utils/session/session-index.js'
+import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import type * as Transaction from '#app/repositories/transaction.js'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -135,6 +136,10 @@ interface Injected {
     statusUnknown: number
     /** pg_xact_status reads made (counted, not injected). */
     statusReads: number
+    /** The claim of the activation's effects fails (Redis), once. */
+    claim: boolean
+    /** The recovery cleanup of the rotated token stops part-way (Redis), once. */
+    cleanup: boolean
 }
 const inject = vi.hoisted((): Injected => ({
     prepare: false,
@@ -144,6 +149,8 @@ const inject = vi.hoisted((): Injected => ({
     clockJumpMs: 0,
     statusUnknown: 0,
     statusReads: 0,
+    claim: false,
+    cleanup: false,
 }))
 vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     const actual = await importActual<typeof SessionIndex>()
@@ -166,6 +173,26 @@ vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
                 throw new Error('Redis down (activate)')
             }
             return actual.activatePendingSession(...args)
+        },
+        claimActivationEffects: (...args: Parameters<typeof actual.claimActivationEffects>) => {
+            if (inject.claim) {
+                inject.claim = false
+                return Promise.reject(new Error('Redis down (claim)'))
+            }
+            return actual.claimActivationEffects(...args)
+        },
+    }
+})
+vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) => {
+    const actual = await importActual<typeof SessionStorage>()
+    return {
+        ...actual,
+        destroyAllSessions: (...args: Parameters<typeof actual.destroyAllSessions>) => {
+            if (inject.cleanup) {
+                inject.cleanup = false
+                return Promise.resolve({ deleted: 0, complete: false })
+            }
+            return actual.destroyAllSessions(...args)
         },
     }
 })
@@ -379,6 +406,8 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         inject.clockJumpMs = 0
         inject.statusUnknown = 0
         inject.statusReads = 0
+        inject.claim = false
+        inject.cleanup = false
         proxy.disarm()
         security.mockClear()
         newSignIn.mockClear()
@@ -996,6 +1025,207 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 expiresAt: expect.any(String),
                 replaced: false,
             })
+        })
+    })
+
+    // Р4, Р8, Р13 (review of feat-253): a failure of the activation's tail answers 503
+    // `mfa_completion_pending`, and the browser repeats with the cookies and the CSRF token it
+    // actually holds. Everything that can fail runs before its previous session is deleted, so
+    // that session (the CSRF token, the ticket's binding) is still there for the repeat.
+    describe('a failed activation tail repeated by the browser itself (Р4, Р8, Р13)', async () => {
+        const { wsConnectionRegistry } = await import('#app/websocket/ws-connection-registry.js')
+        const { registerSessionDeletionLock } =
+            await import('#vendor/utils/session/session-deletion-lock.js')
+        const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
+        const { sessionExists } = await import('#vendor/utils/session/redis-session-storage.js')
+
+        afterEach(() => {
+            registerSessionDeletionLock(underUserRowLock)
+        })
+
+        /** POST /auth/mfa/verify, its answer kept as a browser keeps it. */
+        const verify = async (browser: Browser, body: unknown) =>
+            browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        const CONTINUE = { method: 'continue' }
+
+        /** The repeat signs in: the browser holds the new session, and it opens the app. */
+        const expectSignedIn = async (browser: Browser, reply: Reply, userId: bigint) => {
+            expect(reply.status).toBe(200)
+            expect(reply.body).toMatchObject({ status: 'success', user: { id: String(userId) } })
+            const init = browser.keep(await browser.request('GET', '/main/init'))
+            expect(init.status).toBe(200)
+            expect(await getSession(browser.sessionId(), await tokenOf(userId))).not.toBeNull()
+        }
+
+        /**
+         * A browser signed in (password) to an account without a second factor: its session has a
+         * stored record, which the next sign-in in it replaces. (A cookie-held anonymous session
+         * has none to lose.)
+         */
+        const signedInBrowser = async () => {
+            const [row] = await db
+                .insert(users)
+                .values({
+                    name: 'mfa-tail-plain',
+                    email: `mfa-tail-plain-${crypto.randomUUID()}@example.test`,
+                    password: await hashPassword(PASSWORD),
+                    emailVerifiedAt: new Date(),
+                })
+                .returning()
+            if (row === undefined) throw new Error('user not inserted')
+            createdUserIds.push(row.id)
+            const browser = new Browser()
+            expect((await browser.firstFactor(row.email ?? '')).body).toMatchObject({
+                status: 'success',
+            })
+            browser.keep(await browser.request('GET', '/main/init'))
+            const sessionId = browser.sessionId()
+            expect(await sessionExists(sessionId, row.sessionToken)).toBe(true)
+            // Its own sign-in notice is not the one counted below.
+            newSignIn.mockClear()
+            return {
+                browser,
+                /** Whether the record of that signed-in session is still stored. */
+                stored: () => sessionExists(sessionId, row.sessionToken),
+            }
+        }
+
+        /** A fake socket of `userId` registered on this instance; `ended` tells its close. */
+        const fakeSocket = (userId: bigint, sessionId: string, userToken: string) => {
+            const ended: number[] = []
+            const ws = {
+                cork: (fn: () => void): void => {
+                    fn()
+                },
+                send: (): void => undefined,
+                end: (code: number): void => {
+                    ended.push(code)
+                },
+            }
+            const uuid = crypto.randomUUID()
+            wsConnectionRegistry.registerConnection(String(userId), uuid, ws as never, {
+                ip: '203.0.113.9',
+                userAgent: 'test',
+                appType: 'web',
+                sessionId,
+                userToken,
+            })
+            return {
+                ended,
+                remove: () => wsConnectionRegistry.unregisterConnection(String(userId), uuid),
+            }
+        }
+
+        it('(a) a claim that fails: the browser’s continue with its own cookies signs in, one notice', async () => {
+            const user = await mfaUser('mfa-tail-claim')
+            const { browser, stored } = await signedInBrowser()
+            await browser.firstFactor(user.email)
+            const before = browser.sessionId()
+            const csrfBefore = browser.csrf
+
+            inject.claim = true
+            const pending = await verify(browser, { method: 'totp', code: user.code() })
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            // No new cookie: the browser still holds its session and its CSRF token.
+            expect(browser.sessionId()).toBe(before)
+            expect(browser.csrf).toBe(csrfBefore)
+            expect(await stored()).toBe(true)
+            expect(newSignIn).not.toHaveBeenCalled()
+
+            const done = await verify(browser, CONTINUE)
+            await expectSignedIn(browser, done, user.row.id)
+            expect(browser.sessionId()).not.toBe(before)
+            expect(await stored()).toBe(false)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('(b) a recovery cleanup that fails: the browser’s continue signs in; the rotated token’s sessions are gone, a new-token socket survives', async () => {
+            const user = await mfaUser('mfa-tail-cleanup')
+            // A session of the token the recovery sign-in rotates away (the lost device).
+            const lost = new Browser()
+            await lost.firstFactor(user.email)
+            expect((await verify(lost, { method: 'totp', code: user.code() })).status).toBe(200)
+            const oldToken = await tokenOf(user.row.id)
+            const lostSession = lost.sessionId()
+            expect(await sessionExists(lostSession, oldToken)).toBe(true)
+            newSignIn.mockClear()
+
+            const { browser, stored } = await signedInBrowser()
+            await browser.firstFactor(user.email)
+            const before = browser.sessionId()
+            inject.cleanup = true
+            const pending = await verify(browser, {
+                method: 'recovery_code',
+                code: user.codes[0] ?? '',
+            })
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(browser.sessionId()).toBe(before)
+            expect(await stored()).toBe(true)
+            expect(newSignIn).not.toHaveBeenCalled()
+            const newToken = await tokenOf(user.row.id)
+            expect(newToken).not.toBe(oldToken)
+
+            // Between the attempts: a socket of the lost device's token and one of a session
+            // signed in with the new token (another tab of the recovery, say).
+            const stale = fakeSocket(user.row.id, lostSession, oldToken)
+            const fresh = fakeSocket(user.row.id, crypto.randomUUID(), newToken)
+            try {
+                const done = await verify(browser, CONTINUE)
+                expect(done.status).toBe(200)
+                expect(stale.ended).toEqual([4001])
+                expect(fresh.ended).toEqual([])
+            } finally {
+                stale.remove()
+                fresh.remove()
+            }
+            expect(await sessionExists(lostSession, oldToken)).toBe(false)
+            expect(await getSession(browser.sessionId(), newToken)).not.toBeNull()
+            expect(browser.sessionId()).not.toBe(before)
+            expect(await stored()).toBe(false)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+            expect(security).toHaveBeenCalledWith(user.row.id, 'recovery_code_used')
+            expect(
+                security.mock.calls.filter((call) => call[1] === 'recovery_code_used'),
+            ).toHaveLength(1)
+        })
+
+        it('(c) the replaced session’s lock not taken: the browser’s continue replaces it and signs in, one notice', async () => {
+            const earlier = await mfaUser('mfa-tail-lock-earlier')
+            const later = await mfaUser('mfa-tail-lock-later')
+            const browser = new Browser()
+            await browser.firstFactor(earlier.email)
+            expect((await verify(browser, { method: 'totp', code: earlier.code() })).status).toBe(
+                200,
+            )
+            browser.keep(await browser.request('GET', '/main/init'))
+            const earlierSession = browser.sessionId()
+            const earlierToken = await tokenOf(earlier.row.id)
+            newSignIn.mockClear()
+
+            // A sign-in of another account in the same browser; the signed-in session it replaces
+            // is deleted under its user's row lock, which is not taken (Р13).
+            await browser.firstFactor(later.email)
+            let refusals = 0
+            registerSessionDeletionLock(() => {
+                refusals += 1
+                return Promise.reject(new Error('lock held'))
+            })
+            const pending = await verify(browser, { method: 'totp', code: later.code() })
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(refusals).toBe(1)
+            expect(browser.sessionId()).toBe(earlierSession)
+            expect(await sessionExists(earlierSession, earlierToken)).toBe(true)
+            // The claim ran before the deletion: the notice is out, once.
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+
+            registerSessionDeletionLock(underUserRowLock)
+            const done = await verify(browser, CONTINUE)
+            await expectSignedIn(browser, done, later.row.id)
+            expect(await sessionExists(earlierSession, earlierToken)).toBe(false)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
         })
     })
 

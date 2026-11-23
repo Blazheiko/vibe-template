@@ -14,6 +14,7 @@ import type { LinkPhoneConfirmInputSchema } from '../schemas/auth/link-phone-con
 import type { LinkEmailStartInputSchema } from '../schemas/auth/link-email-start.js'
 import type { UnlinkSignInMethodInputSchema } from '../schemas/auth/unlink-sign-in-method.js'
 import type { EmptyFormInputSchema } from '../schemas/common/empty-form.js'
+import type { LogoutInputSchema } from '../schemas/auth/logout.js'
 import type { MfaVerifyInputSchema } from '../schemas/mfa/mfa-verify.js'
 import type { ReauthInputSchema } from '../schemas/mfa/reauth.js'
 import type { PasskeyLoginInputSchema } from '../schemas/passkeys/passkey-register.js'
@@ -101,7 +102,10 @@ export const authContracts = {
         undefined,
         RegisterPhoneCompleteResponse
     >()('post', '/auth/register/phone/complete-profile'),
-    logout: contract<EmptyBody, undefined, LogoutResponse>()('post', '/auth/logout'),
+    logout: contract<typeof LogoutInputSchema.inferIn, undefined, LogoutResponse>()(
+        'post',
+        '/auth/logout',
+    ),
     // feat-245 (Р3): the step-up proofs this account can give, and a step-up of the session.
     reauthOptions: contract<EmptyBody, undefined, ReauthOptionsResponse>()(
         'post',
