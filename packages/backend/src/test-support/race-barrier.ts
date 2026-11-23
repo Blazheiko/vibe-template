@@ -27,3 +27,28 @@ export const bothReadBeforeEitherWrites = <T extends object>(
         return result
     }) as never)
 }
+
+/**
+ * Waits until at least `count` backends of the current database wait for a lock (a row lock
+ * held by the test, say), so requests started one after another queue in that order. The PG
+ * suites run one file at a time, so the waiters are the ones the test started.
+ */
+export const waitForLockWaiters = async (
+    execute: (query: string) => Promise<{ rows: unknown[] }>,
+    count: number,
+    timeoutMs = 5000,
+): Promise<void> => {
+    const deadline = Date.now() + timeoutMs
+    for (;;) {
+        const { rows } = await execute(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+        )
+        const [row] = rows as [{ n: number }]
+        if (row.n >= count) return
+        if (Date.now() > deadline) {
+            throw new Error(`expected ${String(count)} lock waiters, saw ${String(row.n)}`)
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+}

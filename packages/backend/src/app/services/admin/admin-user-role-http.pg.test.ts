@@ -394,4 +394,45 @@ describe.skipIf(!hasPg || !hasRedis)('PATCH /admin/users/:id/role (feat-241)', a
         expect(reply.status).toBe(403)
         expect(await roleOf(target.id)).toBe('user')
     })
+
+    // Review of feat-247, item 5: the reset rotates the token and deletes the session records
+    // stored under the previous one (session:<token>:*, the index and the meta of the list).
+    it('POST /admin/users/:id/mfa/reset deletes the sessions of the previous token from Redis', async () => {
+        const { browser: adminBrowser } = await signedIn('admin')
+        const target = await insertUser('user', 'reset target')
+        const totp = await enrollTestTotp(target.id)
+        const targetBrowser = new Browser()
+        await targetBrowser.signIn(target.email ?? '', totp)
+        const previous = target.sessionToken
+        const keysOf = async (token: string): Promise<string[]> => {
+            const found: string[] = []
+            for (const pattern of [
+                `${PREFIX}session:${token}:*`,
+                `${PREFIX}session_index:${token}`,
+                `${PREFIX}session_meta:${token}`,
+            ]) {
+                let cursor = '0'
+                do {
+                    const [next, keys] = await redisAdmin.scan(cursor, 'MATCH', pattern)
+                    cursor = next
+                    found.push(...keys)
+                } while (cursor !== '0')
+            }
+            return found
+        }
+        expect((await keysOf(previous)).length).toBeGreaterThan(0)
+
+        const reply = await adminBrowser.request(
+            'POST',
+            `/admin/users/${String(target.id)}/mfa/reset`,
+            {
+                reason: 'lost the phone and the codes',
+            },
+        )
+
+        expect(reply.status).toBe(200)
+        expect(await keysOf(previous)).toEqual([])
+        const [row] = await db.select().from(users).where(eq(users.id, target.id))
+        expect(row?.sessionToken).not.toBe(previous)
+    })
 })

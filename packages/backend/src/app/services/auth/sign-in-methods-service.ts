@@ -13,7 +13,7 @@ import {
     loadMfaAccount,
     loadMfaFactors,
 } from '#app/services/auth/mfa/mfa-account.js'
-import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
+import { requireProof } from '#app/services/auth/mfa/require-proof.js'
 import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 import logger from '#vendor/utils/logger.js'
 import type { UserAuditActor } from '#app/services/audit/audit-actor.js'
@@ -160,7 +160,7 @@ export const signInMethodsService = {
                 }
                 // feat-235: committed with the removal.
                 const stamp = await auditService.stamp(tx)
-                const proven = withProof(actor, auditProofOf(request.sessionAuth))
+                const proven = withProof(actor, proof.value)
                 const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
                     {
                         action: 'auth.sign_in_method.unlinked',

@@ -48,7 +48,10 @@ test('without MFA: a fresh password allows rows 1, 6, 7, 8, 9, 10; a stale one a
         'role.assign',
         'mfa.reset_other',
     ]) {
-        assert.deepEqual(decide(action, NO_MFA_PASSWORD, session({ pwd: ago(60) })), { kind: 'ok' })
+        assert.deepEqual(decide(action, NO_MFA_PASSWORD, session({ pwd: ago(60) })), {
+            kind: 'ok',
+            proof: 'password',
+        })
         assert.deepEqual(decide(action, NO_MFA_PASSWORD, session({ pwd: ago(301) })), {
             kind: 'reauth_required',
             proofs: ['password'],
@@ -63,6 +66,7 @@ test('without MFA: a fresh password allows rows 1, 6, 7, 8, 9, 10; a stale one a
 test('without MFA and without a password: only a recent OAuth sign-in counts', () => {
     assert.deepEqual(decide('password.change', NO_MFA_OAUTH_ONLY, session({ oauth: ago(599) })), {
         kind: 'ok',
+        proof: 'recent_sign_in',
     })
     assert.deepEqual(decide('password.change', NO_MFA_OAUTH_ONLY, session({ oauth: ago(601) })), {
         kind: 'sign_in_again_required',
@@ -87,7 +91,10 @@ test('with MFA: the password alone proves nothing; a fresh factor does', () => {
             kind: 'reauth_required',
             proofs: ['totp'],
         })
-        assert.deepEqual(decide(action, TOTP, session({ otp: ago(10) })), { kind: 'ok' })
+        assert.deepEqual(decide(action, TOTP, session({ otp: ago(10) })), {
+            kind: 'ok',
+            proof: 'totp',
+        })
         assert.deepEqual(decide(action, TOTP, session({ otp: ago(301) })), {
             kind: 'reauth_required',
             proofs: ['totp'],
@@ -99,6 +106,7 @@ test('with MFA: the password alone proves nothing; a fresh factor does', () => {
     })
     assert.deepEqual(decide('password.change', TOTP_AND_PASSKEY, session({ webauthn: ago(5) })), {
         kind: 'ok',
+        proof: 'passkey',
     })
     assert.deepEqual(decide('oauth.unlink', PASSKEY_ONLY, session({})), {
         kind: 'reauth_required',
@@ -118,7 +126,7 @@ test('rows 9–10 accept only the proofs of the staff policy', () => {
     // Other rows ignore it.
     assert.deepEqual(
         decide('password.change', TOTP_AND_PASSKEY, session({ otp: ago(5) }), passkeyOnlyStaff),
-        { kind: 'ok' },
+        { kind: 'ok', proof: 'totp' },
     )
 })
 
@@ -126,11 +134,17 @@ test('a recovery session: add a factor in R, remove and regenerate only in R+', 
     const recovery = { startedAt: ago(60), expiresAt: later(840) }
     const r = session({ pwd: ago(60) }, { amr: ['pwd', 'recovery'], recovery })
     const rPlus = withReplacementFactor(r, { kind: 'totp', id: '7', at: ago(10) })
-    assert.deepEqual(decide('mfa.add_factor', TOTP, r), { kind: 'ok' })
+    assert.deepEqual(decide('mfa.add_factor', TOTP, r), { kind: 'ok', proof: 'recovery_code' })
     assert.deepEqual(decide('mfa.remove_factor', TOTP, r), { kind: 'recovery_session' })
     assert.deepEqual(decide('mfa.regenerate_codes', TOTP, r), { kind: 'recovery_session' })
-    assert.deepEqual(decide('mfa.remove_factor', TOTP, rPlus), { kind: 'ok' })
-    assert.deepEqual(decide('mfa.regenerate_codes', TOTP, rPlus), { kind: 'ok' })
+    assert.deepEqual(decide('mfa.remove_factor', TOTP, rPlus), {
+        kind: 'ok',
+        proof: 'recovery_code',
+    })
+    assert.deepEqual(decide('mfa.regenerate_codes', TOTP, rPlus), {
+        kind: 'ok',
+        proof: 'recovery_code',
+    })
     for (const action of [
         'password.change',
         'contact.link',
@@ -285,7 +299,44 @@ test('staff policy: the table of both modes', () => {
         decide('role.assign', TOTP_AND_PASSKEY, session({ webauthn: ago(5) }), {
             staffStepUpProofs,
         }),
-        { kind: 'ok' },
+        { kind: 'ok', proof: 'passkey' },
+    )
+    // The proof that allowed it is the accepted one, not a fresher mark of another factor.
+    assert.deepEqual(
+        decide('role.assign', TOTP_AND_PASSKEY, session({ webauthn: ago(60), otp: ago(5) }), {
+            staffStepUpProofs,
+        }),
+        { kind: 'ok', proof: 'passkey' },
+    )
+})
+
+test('ok names the proof that allowed the action: the latest fresh accepted factor', () => {
+    assert.deepEqual(
+        decide('password.change', TOTP_AND_PASSKEY, session({ webauthn: ago(60), otp: ago(5) })),
+        { kind: 'ok', proof: 'totp' },
+    )
+    assert.deepEqual(
+        decide('password.change', TOTP_AND_PASSKEY, session({ webauthn: ago(5), otp: ago(60) })),
+        { kind: 'ok', proof: 'passkey' },
+    )
+    // A stale mark is not the proof, however late it is compared with the fresh one.
+    assert.deepEqual(
+        decide(
+            'password.change',
+            TOTP_AND_PASSKEY,
+            session({ webauthn: ago(10), otp: later(120) }),
+        ),
+        { kind: 'ok', proof: 'passkey' },
+    )
+    // A password mark fresher than the factor counts for nothing once MFA is on.
+    assert.deepEqual(
+        decide('password.change', TOTP_AND_PASSKEY, session({ webauthn: ago(10), pwd: ago(1) })),
+        { kind: 'ok', proof: 'passkey' },
+    )
+    // Without MFA a password account is proven by the password even after a fresher OAuth sign-in.
+    assert.deepEqual(
+        decide('password.change', NO_MFA_PASSWORD, session({ pwd: ago(60), oauth: ago(1) })),
+        { kind: 'ok', proof: 'password' },
     )
 })
 

@@ -116,8 +116,18 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             verified: { oauth: at },
         }
     }
-    const assign = (input: Parameters<typeof roleAssignmentService.assign>[0]) =>
-        roleAssignmentService.assign({ sessionAuth: freshAuth(), ...input })
+    const tokenOf = async (id: bigint): Promise<string | undefined> =>
+        (await db.select({ token: users.sessionToken }).from(users).where(eq(users.id, id)))[0]
+            ?.token
+    /** As the HTTP layer calls it: a fresh proof and the session token of a user actor. */
+    const assign = async (input: Parameters<typeof roleAssignmentService.assign>[0]) =>
+        roleAssignmentService.assign({
+            sessionAuth: freshAuth(),
+            ...(input.actor.kind === 'user'
+                ? { presentedSessionToken: await tokenOf(input.actor.userId) }
+                : {}),
+            ...input,
+        })
 
     /** An actor as the HTTP layer builds it: the guard's role, a request of its own. */
     const actorFor = (userId: bigint, role: Role) => ({ ...testAdminActor(userId), role })
@@ -177,7 +187,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                 reason: 'reauth_required',
                 details: { proofs: ['totp'] },
             })
-            const withTotp = await roleAssignmentService.assign({
+            const withTotp = await assign({
                 actor: actorFor(admin, 'admin'),
                 targetUserId: target,
                 role: 'kb_editor',
@@ -542,6 +552,42 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                 const events = [...(await eventsFor(first)), ...(await eventsFor(second))]
                 expect(events).toHaveLength(1)
             })
+        })
+
+        // Review of feat-247, item 4: the actor's session is checked again at the write.
+        it('refuses an actor whose session token rotated while its change waited: 401', async () => {
+            const admin = await insertUser('admin')
+            const target = await insertEnrolled('user')
+            const presented = await tokenOf(admin)
+
+            let assigned: ReturnType<typeof roleAssignmentService.assign> | undefined
+            await db.transaction(async (tx) => {
+                await tx.execute(
+                    sql`SELECT pg_advisory_xact_lock(hashtextextended('user_role_change', 0))`,
+                )
+                assigned = roleAssignmentService.assign({
+                    actor: actorFor(admin, 'admin'),
+                    targetUserId: target,
+                    role: 'kb_editor',
+                    sessionAuth: freshAuth(),
+                    presentedSessionToken: presented,
+                })
+                await new Promise((resolve) => setTimeout(resolve, 300))
+                // Logout everywhere of the admin meanwhile.
+                await tx
+                    .update(users)
+                    .set({ sessionToken: 'rotated-admin-token' })
+                    .where(eq(users.id, admin))
+            })
+
+            if (assigned === undefined) throw new Error('the change never started')
+            const result = await assigned
+            expect(payloadOf(result)).toMatchObject({
+                code: 'unauthorized',
+                reason: 'session_revoked',
+            })
+            expect(await roleOf(target)).toBe('user')
+            expect(await eventsFor(target)).toHaveLength(0)
         })
 
         it('refuses an actor lowered while its change waited for the lock', async () => {

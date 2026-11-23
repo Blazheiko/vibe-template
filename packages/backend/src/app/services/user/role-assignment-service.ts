@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { canAssignRole, isStaffRole, roleHasPermission, type Role } from 'shared/access'
+import { canAssignRole, isStaffRole, type Role } from 'shared/access'
 import { MFA_REASONS } from 'shared/mfa'
 import type { SessionAuthState } from 'shared/mfa'
 
@@ -23,7 +23,8 @@ import {
 } from '#app/services/shared/errors.js'
 import { withTransactionResult } from '#app/services/shared/transaction-result.js'
 import { loadMfaAccount, loadMfaFactors } from '#app/services/auth/mfa/mfa-account.js'
-import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
+import { recheckPrivilegedActor } from '#app/services/auth/mfa/privileged-actor.js'
+import { requireProof } from '#app/services/auth/mfa/require-proof.js'
 import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 
 /** A role change by an admin (HTTP, feat-241) or by the user:set-role CLI (feat-240). */
@@ -40,9 +41,11 @@ const denied = (): AppError => forbidden('Access denied')
 
 /**
  * Changes the role of a user (feat-240, docs/plan/roles-permissions-plan.md Р6). Every change runs
- * under one advisory lock, so changes are serialized without locking rows in any order. Under it
- * the actor and the target are read again: the permission guard read the actor's role before the
- * transaction, and the actor may have been lowered since.
+ * under one advisory lock, so changes are serialized. Under it the rows of the actor and the target
+ * are locked in ascending id order (the order an MFA reset takes them too) and read again: the
+ * permission guard read the actor before the transaction, and since then its session may have been
+ * revoked (401 session_revoked), its role lowered or its proof gone (403). The target's lock holds
+ * off a parallel removal of its last factor (which locks the same row) until the change commits.
  *
  * Rules: the target exists (404); a user actor has users.roles.assign, does not change its own
  * role and may give and take only roles of its delegation policy (403); the same role is a no-op;
@@ -61,6 +64,8 @@ export const roleAssignmentService = {
          * The CLI (a system actor) has no session and is not asked.
          */
         sessionAuth?: SessionAuthState | undefined
+        /** The session token the request of a user actor presented; checked under the lock. */
+        presentedSessionToken?: string | undefined
         now?: number
     }): Promise<AppResult<RoleAssignment>> {
         const { targetUserId, role } = input
@@ -78,29 +83,42 @@ export const roleAssignmentService = {
                 ...(input.now !== undefined ? { now: input.now } : {}),
             })
             if (Result.isError(proof)) return Result.err(proof.error)
-            actor = { ...actor, proof: auditProofOf(input.sessionAuth) }
+            actor = { ...actor, proof: proof.value }
         }
 
         const result = await withTransactionResult(
             async (tx): Promise<AppResult<RoleAssignment>> => {
                 await userRepository.lockRoleChanges(tx)
 
-                const target = await userRepository.findRoleSubject(targetUserId, tx)
+                const locked = await userRepository.lockManyById(
+                    actor.kind === 'user' ? [targetUserId, actor.userId] : [targetUserId],
+                    tx,
+                )
+                const target = locked.get(targetUserId)
                 if (target === undefined) return Result.err(notFound('User', 'User not found'))
 
                 let auditActor: AuditActor = actor
                 if (actor.kind === 'user') {
                     if (actor.userId === targetUserId) return Result.err(denied())
-                    const actorRow = await userRepository.findRoleSubject(actor.userId, tx)
+                    const actorRow = locked.get(actor.userId)
+                    const proof = await recheckPrivilegedActor({
+                        actorRow,
+                        presentedSessionToken: input.presentedSessionToken,
+                        permission: 'users.roles.assign',
+                        action: 'role.assign',
+                        sessionAuth: input.sessionAuth,
+                        now: input.now,
+                        tx,
+                    })
+                    if (Result.isError(proof)) return Result.err(proof.error)
                     if (
                         actorRow === undefined ||
-                        !roleHasPermission(actorRow.role, 'users.roles.assign') ||
                         !canAssignRole(actorRow.role, target.role, role)
                     ) {
                         return Result.err(denied())
                     }
-                    // The role the actor holds now, not the one the guard read.
-                    auditActor = withRole(actor, actorRow.role)
+                    // The role and the proof the actor holds now, not the ones read before.
+                    auditActor = withRole({ ...actor, proof: proof.value }, actorRow.role)
                 }
 
                 if (target.role === role) {
@@ -114,7 +132,9 @@ export const roleAssignmentService = {
                 if (mfaConfig.requiredForStaff && isStaffRole(role)) {
                     // feat-247 (Р10): no staff account exists without MFA, so a first factor
                     // cannot be set up by someone who knows only the password. Read under the
-                    // same transaction; lowering to a role without permissions is always allowed.
+                    // target's row lock: a removal of its last factor waits for this change and
+                    // then sees the staff role. Lowering to a role without permissions is always
+                    // allowed.
                     const factors = await loadMfaFactors(targetUserId, tx)
                     const enrolled = staffPolicy().enrolled({
                         totp: factors.totp !== undefined,
