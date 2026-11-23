@@ -187,7 +187,7 @@ export async function secondStepPasskeyOptions(
     } catch (err) {
         return Result.err(serviceUnavailable(err))
     }
-    if (ticket === null || ticket.binding !== mfaBinding(cookieSession)) {
+    if (ticket?.binding !== mfaBinding(cookieSession)) {
         return Result.err(ticketInvalid())
     }
     // Р4: an attempt of this ticket was confirmed and is finishing. A new challenge would not
