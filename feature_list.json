@@ -2483,6 +2483,16 @@
             "dependencies": ["feat-248"],
             "status": "done",
             "evidence": "PR #784 (merge f7798f2), registry #783 (in_progress), #785 (review). Review of feat-245…248 fixed: the target row locked before the staff factor check; the reservation checked at capture; passkey continuation (pending options, a spent challenge is mfa_attempt_expired without a failure); the actor re-checked at the write under ascending-id row locks; future marks bounded and aal 2 in passkey mode; the reset deletes the previous token's sessions; the audit records the accepted proof; wsToken null in recovery; ESLint ignores .claude/**. Acceptance: live TOTP and passkey step-up through ReauthDialog, a real COMMIT connection drop through a wire-protocol proxy. CI on the branch head 0198e2b: ci.yml run 45141677445, pg-tests.yml run 45141677313 (test-pg 632 passed), redis-tests.yml run 45141677356 (198 passed), all success. Local: make check green (backend 3631, frontend 970, shared 147), test:e2e 132, the short-window live config 3 passed."
+        },
+        {
+            "id": "feat-250",
+            "name": "MFA Review Fixes 2",
+            "description": "Second review of feat-249 (2026-11-23, REQUEST CHANGES). Blockers: (1) revoking one admin session deletes its Redis record without rotating users.session_token, so an accepted role change or MFA reset can still write after it: check, under the lock, that the very session of the request is still stored, and serialize a single-session revocation with the user's row lock; (2) a passkey-only second step can get stuck when the first verify answer is lost or the page reloads: the form keeps the assertion only after a 503, and new options answer mfa_completion_pending again: give the browser-bound ticket a continuation path that needs no form state. Mediums: (3) while the sign-in is finishing the form lets the user pick another factor but submit still sends the kept request: hide the switches; (4) the audit of adding a factor determines the proof again at the confirmation: keep the requireProof result with the enrollment data.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-2",
+            "dependencies": ["feat-249"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
