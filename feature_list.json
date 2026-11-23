@@ -2511,8 +2511,8 @@
             "owner": "Blazheiko",
             "branch": "fix/mfa-review-4",
             "dependencies": ["feat-251"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #796 (merge b3aea80), registry #795 (in_progress), #797 (review). Review of feat-251 fixed: a lost single PostgreSQL connection (connection_lost) asks the lock again on a new connection, only a connect-time failure deletes without the lock; the ticket cookie is cleared only when this ticket was retired or is absent; the post-activation effects run exactly once through a one-shot claim after the replacement; the MFA form keeps the pending request after 429/408; a kept logout re-registers the push subscription. CI on the branch head 2d7af9a: ci.yml run 45194336545, pg-tests.yml run 45194336578, redis-tests.yml run 45194336562, all success. Local: make check green (backend 3675, frontend 997, shared 147), test:pg 678, test:redis 198, test:e2e 133, docs verify."
         }
     ]
 }
