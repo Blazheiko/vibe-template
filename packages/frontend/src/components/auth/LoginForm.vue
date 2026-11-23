@@ -1,3 +1,22 @@
+<script lang="ts">
+// A ticket can only be left over from an earlier page: the second step of a sign-in started on this
+// page lives in memory. So the sign-in page asks the server only when this page load opened the
+// sign-in page itself (a reload, a new tab), once — not when the app navigates here after a
+// sign-out, where there is no ticket and the stale session's request would only disturb the page.
+let pageLoadPath = typeof window === 'undefined' ? '' : window.location.pathname
+let askedThisPageLoad = false
+export function consumePageLoadAsk(): boolean {
+    if (askedThisPageLoad || !pageLoadPath.endsWith('/login')) return false
+    askedThisPageLoad = true
+    return true
+}
+/** Test seam: a new page load that opened `path`. */
+export function resetPageLoadAsk(path = '/login'): void {
+    pageLoadPath = path
+    askedThisPageLoad = false
+}
+</script>
+
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -75,7 +94,7 @@ let secondStepAsked = false
 /** A sign-in started (or its second step shown) while the answer was on its way wins. */
 const signInUnderway = (): boolean => secondStep.value !== null || isLoginLoading.value
 async function restoreSecondStep(): Promise<void> {
-    if (secondStepAsked || signInUnderway()) return
+    if (secondStepAsked || signInUnderway() || !consumePageLoadAsk()) return
     secondStepAsked = true
     const { data } = await authApi.mfaState()
     if (data?.status !== 'mfa_required' || signInUnderway()) return

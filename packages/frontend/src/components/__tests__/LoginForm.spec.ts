@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import LoginForm from '../auth/LoginForm.vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import LoginForm, { resetPageLoadAsk } from '../auth/LoginForm.vue'
 import en from '../../locales/en'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the second step of a password sign-in lives only
@@ -37,6 +37,11 @@ const mountForm = (active = true) =>
         props: { notice: '', identifier: '', password: '', active },
         global: { plugins: [createI18n({ legacy: false, locale: 'en', messages: { en } })] },
     })
+
+beforeEach(() => {
+    // Each test is a new page load of the sign-in page.
+    resetPageLoadAsk('/login')
+})
 
 afterEach(() => {
     vi.clearAllMocks()
@@ -94,5 +99,23 @@ describe('LoginForm after a reload', () => {
         await wrapper.setProps({ active: true })
         await flushPromises()
         expect(mfaStateMock).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('LoginForm after a sign-out within the app', () => {
+    it('a page loaded elsewhere (e.g. /account) never asks, even when the app goes to /login', async () => {
+        resetPageLoadAsk('/account')
+        mountForm()
+        await flushPromises()
+        expect(mfaStateMock).not.toHaveBeenCalled()
+    })
+
+    it('asks for a ticket once per page load, not on a later visit of the sign-in page', async () => {
+        mfaStateMock.mockResolvedValue({ data: { status: 'none' }, error: null })
+        mountForm().unmount()
+        await flushPromises()
+        mountForm()
+        await flushPromises()
+        expect(mfaStateMock).toHaveBeenCalledOnce()
     })
 })
