@@ -11,6 +11,9 @@ export default tseslint.config(
             '**/dist-e2e-mock/**',
             '**/dist-e2e-sentry/**',
             '**/node_modules/**',
+            // local agent worktrees and settings (git-ignored): each worktree is a whole copy of
+            // the repository and would be linted twice
+            '.claude/**',
             // the SPA copied into the backend by scripts/prod-local.sh and the Dockerfile
             'packages/backend/public/**',
             '**/coverage/**',
