@@ -12,8 +12,8 @@ Second review of feat-249 (2026-11-23, REQUEST CHANGES). Branch `fix/mfa-review-
   rollback reopens the ticket for a new proof); the form continues when the options answer pending.
 - Medium 3: the factor switches are hidden while a completion is pending.
 - Medium 4: the proof of the first step of adding a factor is kept with the enrollment and recorded.
-- Known gap: a recovery-code sign-in finished by `continue` after a page reload learns the recovery
-  mode from main/init a moment later (the form cannot tell).
+- Third review: a plain logout under the user's row lock (hook); `POST /auth/mfa/state` brings the
+  second step back after a reload; the verify answer carries the recovery state.
 
 ## Files Modified
 
@@ -34,6 +34,8 @@ REDIS_TEST_URL=redis://127.0.0.1:6390`.
 
 - `make check`: exit 0 — backend 3631, frontend 973, shared 147, api-playground 115, landing 103,
   documentation 26.
+- After the third review: `make check` green (frontend 981), `test:pg` 70 files 658 passed,
+  `test:redis` 198, `test:e2e` 133, docs build and verify passed.
 - `pnpm test:pg` (PG_TEST_URL set): 70 files, 647 passed, 0 skipped (new:
   privileged-session-revocation.pg.test.ts 6, the `continue` cases of mfa-sign-in-http 5, the kept
   add-factor proof 4).
