@@ -13,6 +13,8 @@ Registry: #783 (in_progress).
   capture; a completing ticket's passkey options answer 503 pending and the client resends the same
   request; a spent passkey challenge is mfa_attempt_expired without a failure; the staff policy
   bounds future marks and needs aal 2 in passkey mode; main/init answers wsToken null in recovery).
+- Acceptance gaps: done (live TOTP and passkey step-up through ReauthDialog in the short-window
+  live config; a real connection drop during COMMIT through a wire-protocol TCP proxy).
 - ESLint ignores `.claude/**` (agent worktrees there broke `make check` with an out-of-memory).
 
 ## Files Modified
@@ -21,8 +23,8 @@ See `git log` of the branch.
 
 ## Next Step
 
-Acceptance gaps: a live TOTP step-up through ReauthDialog, a live WebAuthn step-up, a real
-connection drop during COMMIT of the second step. Then PR, review status, merge, done.
+PR `fix/mfa-review` → `main`, status `review`, merge after every CI job is green, then
+"Mark feat-249 done".
 
 ## Notes for Next Session
 
@@ -31,4 +33,14 @@ REDIS_TEST_URL=redis://127.0.0.1:6390`.
 
 ## Evidence of Completion
 
-(pending)
+2026-11-23, local:
+
+- `make check`: exit 0 — backend 3631, frontend 970, shared 147, api-playground 115, landing 103,
+  documentation 26.
+- `pnpm test:pg` (PG_TEST_URL set): 69 files, 632 passed, 0 skipped (a run during a machine sleep
+  showed timing failures; the rerun is clean).
+- `pnpm test:redis` (REDIS_TEST_URL set): 20 files, 198 passed.
+- `pnpm --filter frontend test:e2e`: 132 passed.
+- `pnpm --filter frontend test:e2e:live`: main config 41 passed + the known local-only
+  `account-profile` failure (persisted accounts; CI starts clean); `playwright.live-passkey.config.ts`
+  3 passed (both live step-ups and the staff passkey mode).
