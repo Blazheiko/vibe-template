@@ -2493,6 +2493,16 @@
             "dependencies": ["feat-249"],
             "status": "done",
             "evidence": "PR #788 (merge 8c3935e), registry #787 (in_progress), #789 (review). Second and third reviews of feat-249 fixed: the request's own session checked under the actor's row lock at a role change and an MFA reset; ending one session and a plain logout delete the record under the user's row lock (a logout is never refused: without the lock only when it cannot be taken); POST /auth/mfa/verify { method: 'continue' } finishes a confirmed browser-bound ticket; POST /auth/mfa/state restores the second step after a reload (asked only when the page load opened /login); the verify answer carries the recovery state; factor switches hidden while pending; the add-factor proof kept with the enrollment. CI on the branch head 71f1959: ci.yml run 45166167440, pg-tests.yml run 45166167263, redis-tests.yml run 45166167314, all success. Local: make check green (backend 3631, frontend 983, shared 147), test:pg 658, test:redis 198, test:e2e 133, docs verify."
+        },
+        {
+            "id": "feat-251",
+            "name": "MFA Review Fixes 3",
+            "description": "Review of feat-250 (2026-11-23, REQUEST CHANGES). (1) A logout whose row-lock wait hits statement_timeout deletes the session without the lock, bringing back the race with a privileged write that holds the row: retry the wait, or fail the logout explicitly so it can be repeated; (2) login() and replaceWith() delete the previous session record directly: delete a previous authorized session through the same row-lock mechanism; (3) the first continue after a reload keeps its request only after a 503, so a lost answer drops the form back to factor entry: keep the continue request before sending, clear it on a final answer; (4) a recovery sign-in with ?redirect= opens the requested route (an admin page) before main/init moves it to /account: choose /account before the first navigation for a recovery session.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-3",
+            "dependencies": ["feat-250"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
