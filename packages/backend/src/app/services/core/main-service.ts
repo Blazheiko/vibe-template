@@ -66,7 +66,8 @@ export const mainService = {
             /** feat-245 (Р8): set in a recovery session; the client shows only the recovery wizard. */
             recovery?: { expiresAt: string; replaced: boolean }
             wsUrl: string
-            wsToken: string
+            /** Null in a recovery session (Р8): it opens no WebSocket. */
+            wsToken: string | null
             storage: StorageConfigPayload
         }>
     > {
@@ -84,8 +85,11 @@ export const mainService = {
             return Result.err(unauthorized('Session expired'))
         }
 
+        const recovery = sessionInfo.data.auth?.recovery
         const [wsToken, profile] = await Promise.all([
-            generateWsToken(sessionInfo, String(user.id)),
+            recovery !== undefined
+                ? Promise.resolve(null)
+                : generateWsToken(sessionInfo, String(user.id)),
             accountService.getProfile(user.id),
         ])
         // The user may have been deleted between the two reads: the session is gone then.
@@ -112,13 +116,13 @@ export const mainService = {
                 preferences: profile.value.preferences,
                 revision: profile.value.revision,
             },
-            wsUrl: wsToken !== '' ? getWsUrl() : '',
+            wsUrl: wsToken !== null && wsToken !== '' ? getWsUrl() : '',
             wsToken,
-            ...(sessionInfo.data.auth?.recovery !== undefined
+            ...(recovery !== undefined
                 ? {
                       recovery: {
-                          expiresAt: sessionInfo.data.auth.recovery.expiresAt,
-                          replaced: sessionInfo.data.auth.recovery.replacementFactor !== undefined,
+                          expiresAt: recovery.expiresAt,
+                          replaced: recovery.replacementFactor !== undefined,
                       },
                   }
                 : {}),

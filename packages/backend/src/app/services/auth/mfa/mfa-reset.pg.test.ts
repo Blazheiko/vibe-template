@@ -2,11 +2,12 @@ import { execFile } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testAdminActor } from '../../../../test-support/audit-actor.js'
+import { waitForLockWaiters } from '../../../../test-support/race-barrier.js'
 import { REDIS_TEST_URL } from '../../../../test-support/redis-test-client.js'
 
 // feat-247 (docs/plan/passkeys-mfa-plan.md, Р12, Р13; tasks S2) on a real PostgreSQL: an
@@ -126,6 +127,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
 
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
+            presentedSessionToken: admin.sessionToken,
             targetUserId: target.id,
             reason: 'lost phone and codes',
             sessionAuth: freshAdminAuth(),
@@ -142,7 +144,8 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         ).toEqual([])
         expect(await tokenOf(target.id)).not.toBe(before)
         expect(closed).toHaveBeenCalledWith(String(target.id))
-        expect(destroyed).toHaveBeenCalledWith(String(target.id))
+        // The records live under the token the account had before the rotation.
+        expect(destroyed).toHaveBeenCalledWith(before)
         expect(security).toHaveBeenCalledWith(target.id, 'mfa_reset')
         // The next password sign-in has no second step; a new factor can be set up (row 1).
         expect(await loadMfaFactors(target.id)).toEqual({ totp: undefined, passkeys: 0 })
@@ -167,6 +170,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         await withTotp(admin.id)
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
+            presentedSessionToken: admin.sessionToken,
             targetUserId: admin.id,
             reason: 'my own factors',
             sessionAuth: freshAdminAuth(),
@@ -181,6 +185,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         await withTotp(target.id)
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
+            presentedSessionToken: admin.sessionToken,
             targetUserId: target.id,
             reason: 'lost phone',
             sessionAuth: undefined,
@@ -203,12 +208,110 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         })
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
+            presentedSessionToken: admin.sessionToken,
             targetUserId: target.id,
             reason: 'lost the passkey',
             sessionAuth: freshAdminAuth(),
         })
         expect(payloadOf(result)).toMatchObject({ reason: 'last_sign_in_method' })
         expect((await loadMfaFactors(target.id)).passkeys).toBe(1)
+    })
+
+    // Review of feat-247, item 4: the admin is checked again at the write, under its row lock.
+    describe('the admin at the write', () => {
+        const freshTotpAuth = () => {
+            const at = new Date().toISOString()
+            return {
+                v: 1 as const,
+                amr: ['pwd' as const, 'otp' as const],
+                aal: 2 as const,
+                authenticatedAt: at,
+                verified: { pwd: at, otp: at },
+            }
+        }
+
+        it('a session token rotated after the request came in: 401 session_revoked, nothing removed', async () => {
+            const admin = await insertUser({ role: 'admin' })
+            const target = await insertUser({})
+            await withTotp(target.id)
+            const targetToken = await tokenOf(target.id)
+            // Logout everywhere (or a password change) of the admin, after its request was let in.
+            await db
+                .update(users)
+                .set({ sessionToken: 'rotated-admin-token' })
+                .where(eq(users.id, admin.id))
+
+            const result = await mfaResetService.reset({
+                actor: actorOf(admin),
+                presentedSessionToken: admin.sessionToken,
+                targetUserId: target.id,
+                reason: 'lost phone',
+                sessionAuth: freshAdminAuth(),
+            })
+            expect(payloadOf(result)).toMatchObject({
+                code: 'unauthorized',
+                reason: 'session_revoked',
+            })
+            expect((await loadMfaFactors(target.id)).totp).toBeDefined()
+            expect(await tokenOf(target.id)).toBe(targetToken)
+        })
+
+        it('an admin lowered after the guard: 403, nothing removed', async () => {
+            const admin = await insertUser({ role: 'admin' })
+            const target = await insertUser({})
+            await withTotp(target.id)
+            await db.update(users).set({ role: 'user' }).where(eq(users.id, admin.id))
+
+            const result = await mfaResetService.reset({
+                actor: actorOf(admin),
+                presentedSessionToken: admin.sessionToken,
+                targetUserId: target.id,
+                reason: 'lost phone',
+                sessionAuth: freshAdminAuth(),
+            })
+            expect(payloadOf(result)).toMatchObject({ code: 'forbidden' })
+            expect((await loadMfaFactors(target.id)).totp).toBeDefined()
+        })
+
+        it('two admins resetting each other at once: no deadlock, the second finds its session revoked', async () => {
+            const first = await insertUser({ role: 'admin' })
+            const second = await insertUser({ role: 'admin' })
+            await withTotp(first.id)
+            await withTotp(second.id)
+            const resetOther = (actor: typeof first, target: typeof first) =>
+                mfaResetService.reset({
+                    actor: actorOf(actor),
+                    presentedSessionToken: actor.sessionToken,
+                    targetUserId: target.id,
+                    reason: 'crossed resets',
+                    sessionAuth: freshTotpAuth(),
+                })
+
+            let one: ReturnType<typeof resetOther> | undefined
+            let two: ReturnType<typeof resetOther> | undefined
+            // The test holds both rows, so both resets are inside their transactions, waiting
+            // for the same lock, before either goes on.
+            await db.transaction(async (tx) => {
+                await tx.execute(
+                    sql`SELECT id FROM users WHERE id IN (${first.id}, ${second.id}) ORDER BY id FOR UPDATE`,
+                )
+                one = resetOther(first, second)
+                two = resetOther(second, first)
+                await waitForLockWaiters((q) => pool.query(q), 2)
+            })
+            if (one === undefined || two === undefined) throw new Error('not started')
+            const results = await Promise.all([one, two])
+
+            const ok = results.filter((result) => result.status === 'ok')
+            expect(ok).toHaveLength(1)
+            const refused = results.find((result) => result.status !== 'ok')
+            expect(payloadOf(refused)).toMatchObject({ reason: 'session_revoked' })
+            const factors = [
+                (await loadMfaFactors(first.id)).totp,
+                (await loadMfaFactors(second.id)).totp,
+            ]
+            expect(factors.filter((totp) => totp === undefined)).toHaveLength(1)
+        })
     })
 
     it('the real CLI process resets the last administrator and records a cli event', async () => {

@@ -74,6 +74,7 @@ export default {
             targetUserId,
             role,
             sessionAuth: context.session.sessionInfo?.data.auth,
+            presentedSessionToken: context.auth.getPresentedUserToken(),
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
@@ -97,6 +98,7 @@ export default {
             targetUserId,
             reason: getTypedPayload(context).reason,
             sessionAuth: context.session.sessionInfo?.data.auth,
+            presentedSessionToken: context.auth.getPresentedUserToken(),
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,

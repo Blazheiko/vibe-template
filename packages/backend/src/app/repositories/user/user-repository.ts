@@ -73,15 +73,17 @@ export interface IUserRepository {
      */
     lockById(id: bigint, tx: DbExecutor): Promise<UserRow | undefined>
     /**
+     * Locks the rows of several users FOR UPDATE, one at a time in ascending id order, so two
+     * transactions that lock the same pair (an admin and the account it acts on, two admins
+     * acting on each other) wait for each other instead of deadlocking. Users that do not exist
+     * are missing from the map.
+     */
+    lockManyById(ids: readonly bigint[], tx: DbExecutor): Promise<Map<bigint, UserRow>>
+    /**
      * feat-240 (Р6): serializes every role change on one transaction-scoped advisory lock, taken
      * first in the transaction; released at commit or rollback.
      */
     lockRoleChanges(tx: DbTransaction): Promise<void>
-    /** The role and the email verification of a user, read in the role-change transaction. */
-    findRoleSubject(
-        id: bigint,
-        tx: DbExecutor,
-    ): Promise<{ id: bigint; role: Role; emailVerifiedAt: Date | null } | undefined>
     countByRole(role: Role, tx: DbExecutor): Promise<number>
     updateRole(id: bigint, role: Role, tx: DbExecutor): Promise<Role | undefined>
     /**
@@ -319,15 +321,6 @@ export const userRepository: IUserRepository = {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended('user_role_change', 0))`)
     },
 
-    async findRoleSubject(id, tx) {
-        return await tx
-            .select({ id: users.id, role: users.role, emailVerifiedAt: users.emailVerifiedAt })
-            .from(users)
-            .where(eq(users.id, id))
-            .limit(1)
-            .then((rows) => rows.at(0))
-    },
-
     async countByRole(role, tx) {
         const [row] = await tx.select({ total: count() }).from(users).where(eq(users.role, role))
         return row?.total ?? 0
@@ -350,6 +343,16 @@ export const userRepository: IUserRepository = {
             .limit(1)
             .for('update')
             .then((rows) => rows.at(0))
+    },
+
+    async lockManyById(ids, tx) {
+        const locked = new Map<bigint, UserRow>()
+        const ordered = [...new Set(ids)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+        for (const id of ordered) {
+            const row = await userRepository.lockById(id, tx)
+            if (row !== undefined) locked.set(id, row)
+        }
+        return locked
     },
 
     async updateIfSessionToken(id, expectedSessionToken, data, executor = db) {

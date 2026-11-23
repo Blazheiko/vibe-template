@@ -24,7 +24,8 @@ import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.
 import { retirePendingContactLinks } from './contact-links.js'
 import { loadMfaAccount } from './mfa-account.js'
 import { announceMfaChange } from './mfa-notice.js'
-import { auditProofOf, requireProof } from './require-proof.js'
+import { recheckPrivilegedActor } from './privileged-actor.js'
+import { requireProof } from './require-proof.js'
 import { staffPolicy } from './staff-policy.js'
 
 // feat-247 (docs/plan/passkeys-mfa-plan.md, Р12, Р13): an administrator (users.mfa.reset, row 10
@@ -32,6 +33,8 @@ import { staffPolicy } from './staff-policy.js'
 // keeps its password and its social sign-ins; the reset is refused, without exception, when it
 // would leave no way to sign in (a passkey-only account sets a password through "forgot password"
 // first). The session token rotates in the same transaction: every session and socket ends.
+// The rows of the admin and the target are locked in ascending id order (as a role change does),
+// and the admin's session, permission and proof are checked again under the lock.
 
 export interface MfaResetOutcome {
     userId: bigint
@@ -45,6 +48,8 @@ export const mfaResetService = {
         reason: string
         /** The auth state of the admin's session (row 10); the CLI has none and is not asked. */
         sessionAuth?: SessionAuthState | undefined
+        /** The session token the admin's request presented; checked under the lock. */
+        presentedSessionToken?: string | undefined
         now?: number
     }): Promise<AppResult<MfaResetOutcome>> {
         const { targetUserId } = input
@@ -66,57 +71,86 @@ export const mfaResetService = {
                 ...(input.now !== undefined ? { now: input.now } : {}),
             })
             if (Result.isError(proof)) return Result.err(proof.error)
-            actor = withProof(actor, auditProofOf(input.sessionAuth))
+            actor = withProof(actor, proof.value)
         }
 
         let events: RecordedAuditEvent[] = []
-        const result = await withTransaction(async (tx): Promise<AppResult<MfaResetOutcome>> => {
-            const locked = await userRepository.lockById(targetUserId, tx)
-            if (locked === undefined) return Result.err(notFound('User', 'User not found'))
-
-            // Р12: the state after the reset (no passkeys) must still sign in. No exception for
-            // an administrator or the CLI.
-            const before = await loadMfaAccount(locked, tx)
-            const capability = await signInCapability(locked, tx, {
-                removePasskeys: before.passkeys,
-            })
-            if (!capability.canSignIn) {
-                return Result.err(
-                    conflict(
-                        'The account would have no way to sign in: the user sets a password first ("forgot password")',
-                        MFA_REASONS.lastSignInMethod,
-                    ),
+        // The outcome and the token the target had before the rotation: its session records
+        // live under it.
+        const result = await withTransaction(
+            async (
+                tx,
+            ): Promise<AppResult<{ outcome: MfaResetOutcome; previousSessionToken: string }>> => {
+                const rows = await userRepository.lockManyById(
+                    actor.kind === 'user' ? [targetUserId, actor.userId] : [targetUserId],
+                    tx,
                 )
-            }
+                const locked = rows.get(targetUserId)
+                if (locked === undefined) return Result.err(notFound('User', 'User not found'))
 
-            const totp = await totpFactorRepository.deleteByUserId(targetUserId, tx)
-            const passkeys = await webauthnCredentialRepository.deleteAllOfUser(targetUserId, tx)
-            const recoveryCodes = await recoveryCodeRepository.deleteByUserId(targetUserId, tx)
-            await retirePendingContactLinks(targetUserId, tx)
-            const rotated = await userRepository.updateIfSessionToken(
-                targetUserId,
-                locked.sessionToken,
-                { sessionToken: nanoid() },
-                tx,
-            )
-            if (rotated === undefined) throw new Error('session token changed under the lock')
+                let auditActor: UserAuditActor | SystemAuditActor = actor
+                if (actor.kind === 'user') {
+                    const actorRow = rows.get(actor.userId)
+                    const proof = await recheckPrivilegedActor({
+                        actorRow,
+                        presentedSessionToken: input.presentedSessionToken,
+                        permission: 'users.mfa.reset',
+                        action: 'mfa.reset_other',
+                        sessionAuth: input.sessionAuth,
+                        now: input.now,
+                        tx,
+                    })
+                    if (Result.isError(proof)) return Result.err(proof.error)
+                    if (actorRow === undefined) return Result.err(forbidden('Access denied'))
+                    // The role and the proof the admin holds now, not the ones read before.
+                    auditActor = withRole(withProof(actor, proof.value), actorRow.role)
+                }
 
-            const stamp = await auditService.stamp(tx)
-            events = await auditService.record(
-                tx,
-                stamp,
-                actor.kind === 'user' ? withRole(actor, actor.role ?? 'admin') : actor,
-                [
+                // Р12: the state after the reset (no passkeys) must still sign in. No exception for
+                // an administrator or the CLI.
+                const before = await loadMfaAccount(locked, tx)
+                const capability = await signInCapability(locked, tx, {
+                    removePasskeys: before.passkeys,
+                })
+                if (!capability.canSignIn) {
+                    return Result.err(
+                        conflict(
+                            'The account would have no way to sign in: the user sets a password first ("forgot password")',
+                            MFA_REASONS.lastSignInMethod,
+                        ),
+                    )
+                }
+
+                const totp = await totpFactorRepository.deleteByUserId(targetUserId, tx)
+                const passkeys = await webauthnCredentialRepository.deleteAllOfUser(
+                    targetUserId,
+                    tx,
+                )
+                const recoveryCodes = await recoveryCodeRepository.deleteByUserId(targetUserId, tx)
+                await retirePendingContactLinks(targetUserId, tx)
+                const rotated = await userRepository.updateIfSessionToken(
+                    targetUserId,
+                    locked.sessionToken,
+                    { sessionToken: nanoid() },
+                    tx,
+                )
+                if (rotated === undefined) throw new Error('session token changed under the lock')
+
+                const stamp = await auditService.stamp(tx)
+                events = await auditService.record(tx, stamp, auditActor, [
                     {
                         action: 'auth.mfa.reset',
                         targetId: String(targetUserId),
                         targetUserId,
                         input: { reason, mfaRemoved: totp || passkeys > 0 || recoveryCodes > 0 },
                     },
-                ],
-            )
-            return Result.ok({ userId: targetUserId, removed: { totp, passkeys, recoveryCodes } })
-        })
+                ])
+                return Result.ok({
+                    outcome: { userId: targetUserId, removed: { totp, passkeys, recoveryCodes } },
+                    previousSessionToken: locked.sessionToken,
+                })
+            },
+        )
         if (Result.isError(result)) return Result.err(result.error)
 
         auditService.logCommitted(input.actor.logger, events)
@@ -124,7 +158,7 @@ export const mfaResetService = {
         // periodic pass), and the session records go.
         wsSessionRevocation.closeUserConnections(String(targetUserId))
         try {
-            await destroyAllSessions(String(targetUserId))
+            await destroyAllSessions(result.value.previousSessionToken)
         } catch (err) {
             logger.warn(
                 { err, userId: String(targetUserId) },
@@ -132,6 +166,6 @@ export const mfaResetService = {
             )
         }
         announceMfaChange(targetUserId, 'reset')
-        return result
+        return Result.ok(result.value.outcome)
     },
 }

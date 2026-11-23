@@ -2,8 +2,11 @@ import { Result } from 'better-result'
 import {
     MFA_REASONS,
     proofDecision,
+    type AcceptedProof,
     type ProofAction,
+    type ProofDecision,
     type ProofMethod,
+    type ProofWindows,
     type SessionAuthState,
 } from 'shared/mfa'
 
@@ -23,23 +26,33 @@ export interface ProofGate {
     staffStepUpProofs?: readonly ProofMethod[]
 }
 
-export function requireProof(gate: ProofGate): AppResult<void> {
-    const decision = proofDecision({
+/** The windows of the matrix from the configuration. */
+const configuredWindows = (): ProofWindows => ({
+    reauthSeconds: mfaConfig.reauthWindowSeconds,
+    oauthRecentSeconds: mfaConfig.oauthRecentSeconds,
+})
+
+const decide = (gate: ProofGate, windows: ProofWindows): ProofDecision =>
+    proofDecision({
         action: gate.action,
         account: proofAccountOf(gate.account),
         auth: gate.auth,
         now: gate.now ?? Date.now(),
-        windows: {
-            reauthSeconds: mfaConfig.reauthWindowSeconds,
-            oauthRecentSeconds: mfaConfig.oauthRecentSeconds,
-        },
+        windows,
         ...(gate.staffStepUpProofs !== undefined
             ? { staffStepUpProofs: gate.staffStepUpProofs }
             : {}),
     })
+
+/**
+ * The gate: the 403 the matrix decides, or the proof that allowed the action (Р14). The caller
+ * records exactly that proof in the audit log.
+ */
+export function requireProof(gate: ProofGate): AppResult<AcceptedProof> {
+    const decision = decide(gate, configuredWindows())
     switch (decision.kind) {
         case 'ok':
-            return Result.ok(undefined)
+            return Result.ok(decision.proof)
         case 'reauth_required':
             return Result.err(reauthRequired(decision.proofs))
         case 'sign_in_again_required':
@@ -53,25 +66,15 @@ export function requireProof(gate: ProofGate): AppResult<void> {
     }
 }
 
+const UNBOUNDED_WINDOWS: ProofWindows = { reauthSeconds: Infinity, oauthRecentSeconds: Infinity }
+
 /**
- * The audit proof of an action this session was allowed to do (Р14): the freshest mark among the
- * ones the matrix accepts, `recovery_code` in a recovery session.
+ * The audit proof of the second step of a two-step action (finishing a TOTP setup or a passkey
+ * registration) whose first step passed `requireProof`: the proof the same row accepts, read
+ * without the freshness windows, since the step-up may have aged out between the two steps.
  */
-export function auditProofOf(
-    auth: SessionAuthState | undefined,
-): 'password' | 'totp' | 'passkey' | 'recovery_code' | 'recent_sign_in' {
-    if (auth?.recovery !== undefined) return 'recovery_code'
-    const verified = auth?.verified ?? {}
-    const candidates: [string | undefined, 'password' | 'totp' | 'passkey' | 'recent_sign_in'][] = [
-        [verified.otp, 'totp'],
-        [verified.webauthn, 'passkey'],
-        [verified.pwd, 'password'],
-        [verified.oauth, 'recent_sign_in'],
-    ]
-    let best: { at: number; proof: (typeof candidates)[number][1] } | null = null
-    for (const [iso, proof] of candidates) {
-        const at = iso === undefined ? NaN : Date.parse(iso)
-        if (Number.isFinite(at) && (best === null || at > best.at)) best = { at, proof }
-    }
-    return best?.proof ?? 'password'
+export function acceptedProofOf(gate: ProofGate): AcceptedProof {
+    if (gate.auth?.recovery !== undefined) return 'recovery_code'
+    const decision = decide(gate, UNBOUNDED_WINDOWS)
+    return decision.kind === 'ok' ? decision.proof : 'password'
 }

@@ -76,6 +76,8 @@ export interface SignInContext {
 
 const ticketInvalid = (): AppError => unauthorized('Sign in again', MFA_REASONS.mfaTicketInvalid)
 const invalidCode = (): AppError => unauthorized('Invalid code', MFA_REASONS.invalidCode)
+const attemptExpired = (): AppError =>
+    unauthorized('Try the code again', MFA_REASONS.mfaAttemptExpired)
 
 /** Thrown inside the transaction to roll it back with a decided answer. */
 class Abort extends Error {
@@ -185,9 +187,12 @@ export async function secondStepPasskeyOptions(
     } catch (err) {
         return Result.err(serviceUnavailable(err))
     }
-    if (ticket?.state !== 'open' || ticket.binding !== mfaBinding(cookieSession)) {
+    if (ticket?.binding !== mfaBinding(cookieSession)) {
         return Result.err(ticketInvalid())
     }
+    // Р4: an attempt of this ticket was confirmed and is finishing. A new challenge would not
+    // help: the browser repeats the same verify request, which continues the confirmed one.
+    if (ticket.state !== 'open') return Result.err(completionPending())
     const keys = await webauthnCredentialRepository.listByUserId(BigInt(ticket.userId))
     if (keys.length === 0) {
         return Result.err(badRequest('This account has no passkey', 'proof_unavailable'))
@@ -218,6 +223,10 @@ export type SecondStepInput =
     | { method: 'webauthn'; response: AuthenticationResponse }
 
 export interface SecondStepDeps {
+    /**
+     * The clock. Read at the start of the request (the reservation, the TOTP window) and again at
+     * the capture, so a test can move time between the two.
+     */
     now?: () => number
     /** Test seam: called after the attempt captured the ticket and before COMMIT. */
     beforeCommit?: () => Promise<void>
@@ -316,6 +325,12 @@ async function attempt(
     let passkey: { credentialId: bigint; newCounter: bigint } | null = null
     if (input.method === 'webauthn') {
         const checked = await checkSecondStepPasskey(ticketId, ticket, input.response, request)
+        if (checked === 'stale') {
+            // The challenge is gone or spent (an earlier attempt took it, then rolled back or
+            // lapsed): not a wrong proof. Nothing counted; the browser runs a new ceremony.
+            await release()
+            return Result.err(attemptExpired())
+        }
         if (checked === 'wrong') {
             let settled = 'ok'
             try {
@@ -371,10 +386,12 @@ async function attempt(
                 expectedUserToken,
             )
             progress.plan = plan
+            // Р4: the reservation is checked against the clock of the capture itself: a factor check
+            // or a row lock that outlasted the reservation TTL rolls the proof back (401).
             const capture = await mfaTicketStore.capture(
                 ticketId,
                 reservationId,
-                now,
+                deps.now?.() ?? Date.now(),
                 mfaConfig.reservationTtlSeconds * 1000,
                 { completionId, xid, plan },
             )
@@ -450,9 +467,7 @@ async function attempt(
                 case 'used':
                     return Result.err(unauthorized('Signed in already', MFA_REASONS.mfaTicketUsed))
                 case 'expired':
-                    return Result.err(
-                        unauthorized('Try the code again', MFA_REASONS.mfaAttemptExpired),
-                    )
+                    return Result.err(attemptExpired())
                 case 'gone':
                     context.auth.setMfaTicketCookie(null, 0)
                     return Result.err(ticketInvalid())
@@ -561,7 +576,9 @@ async function continueCompletion(
     if (status === 'committed') return activate(context, ticketId, ticket, plan, completionId)
     if (status === 'aborted') {
         // The confirmed attempt rolled back after all: the ticket opens again and this request,
-        // which carries the code, is an attempt of its own.
+        // which carries the code, is an attempt of its own. A passkey answer's challenge was
+        // spent by the rolled-back attempt: that attempt answers 401 `mfa_attempt_expired`
+        // without counting a failure, and the browser runs a new ceremony.
         await discardPending(plan)
         const reopened = await mfaTicketStore.reopen(ticketId, completionId).catch(() => false)
         if (!reopened) return Result.err(completionPending())
@@ -652,14 +669,15 @@ export async function retireCompletedTicket(auth: Auth, completionId: string): P
 
 /**
  * feat-246 (Р6): the passkey answer of a second step, checked against the ticket's challenge and
- * a key of the ticket's user. 'wrong' counts as a failed attempt of the ticket.
+ * a key of the ticket's user. 'wrong' counts as a failed attempt of the ticket; 'stale' (no
+ * challenge left: never asked, spent by an earlier attempt, or lapsed) does not.
  */
 async function checkSecondStepPasskey(
     ticketId: string,
     ticket: MfaTicket,
     response: AuthenticationResponse,
     request: AuditRequest,
-): Promise<{ credentialId: bigint; newCounter: bigint } | 'wrong' | 'unavailable'> {
+): Promise<{ credentialId: bigint; newCounter: bigint } | 'wrong' | 'stale' | 'unavailable'> {
     let challenge: string | null
     try {
         challenge = await passkeyTicketChallenges.take(ticketId)
@@ -667,7 +685,7 @@ async function checkSecondStepPasskey(
         logger.warn({ err }, 'Second-step passkey challenge not read')
         return 'unavailable'
     }
-    if (challenge === null) return 'wrong'
+    if (challenge === null) return 'stale'
     const userId = BigInt(ticket.userId)
     const credential = await webauthnCredentialRepository.findByCredentialId(
         fromBase64Url(response.id),

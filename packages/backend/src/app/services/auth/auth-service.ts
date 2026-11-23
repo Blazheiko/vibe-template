@@ -28,9 +28,9 @@ import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { emailVerificationService } from '#app/services/auth/email-verification-service.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { getDummyPasswordHash } from '#app/services/auth/dummy-password-hash.js'
-import type { SessionAuthState } from 'shared/mfa'
+import type { AcceptedProof, SessionAuthState } from 'shared/mfa'
 import { loadMfaAccount } from '#app/services/auth/mfa/mfa-account.js'
-import { auditProofOf, requireProof } from '#app/services/auth/mfa/require-proof.js'
+import { requireProof } from '#app/services/auth/mfa/require-proof.js'
 import logger from '#vendor/utils/logger.js'
 import { maskPhoneForLogs } from '#vendor/utils/helpers/mask-sensitive.js'
 import { authConfig } from '#config/auth.js'
@@ -171,14 +171,15 @@ async function requireSessionStored(sessionStored: SessionStillStored): Promise<
 /**
  * feat-245 (rows 6–7 of Р3): the user of a sensitive action of their own account, once the session
  * still is the current one and the proof matrix lets it through (a fresh password without MFA, a
- * fresh second factor with it, a recent OAuth sign-in of an account without a password).
+ * fresh second factor with it, a recent OAuth sign-in of an account without a password), with the
+ * proof that let it through (Р14).
  */
 async function requireStepUp(
     userId: bigint,
     presentedSessionToken: string | undefined,
     sessionAuth: SessionAuthState | undefined,
     action: 'password.change' | 'contact.link',
-): Promise<AppResult<UserRow>> {
+): Promise<AppResult<{ user: UserRow; proof: AcceptedProof }>> {
     const user = await userRepository.findById(userId)
     if (user === undefined) {
         return Result.err(notFound('User', 'User not found'))
@@ -188,7 +189,7 @@ async function requireStepUp(
     }
     const proof = requireProof({ action, account: await loadMfaAccount(user), auth: sessionAuth })
     if (Result.isError(proof)) return Result.err(proof.error)
-    return Result.ok(user)
+    return Result.ok({ user, proof: proof.value })
 }
 
 async function buildAuthSuccess(
@@ -661,7 +662,7 @@ export const authService = {
             return Result.err(reauthResult.error)
         }
 
-        const user = reauthResult.value
+        const { user } = reauthResult.value
         if (user.phone !== null && user.phone !== '') {
             return Result.err(badRequest('Phone is already linked to this account'))
         }
@@ -912,7 +913,7 @@ export const authService = {
             return Result.err(reauthResult.error)
         }
 
-        const user = reauthResult.value
+        const { user } = reauthResult.value
         if (user.email !== null && user.email !== '') {
             return Result.err(badRequest('Email is already linked to this account'))
         }
@@ -1234,7 +1235,7 @@ export const authService = {
             'password.change',
         )
         if (Result.isError(stepUp)) return Result.err(stepUp.error)
-        const user = stepUp.value
+        const { user, proof } = stepUp.value
         if (presentedSessionToken === undefined) return Result.err(sessionRevoked())
         // ADR 0002: the stored hash read here (null for an account without one) is what the
         // conditional update below compares; a concurrent change makes it miss.
@@ -1272,7 +1273,7 @@ export const authService = {
             // feat-235: the event commits with the change; a failed insert keeps the old
             // password and token.
             const stamp = await auditService.stamp(tx)
-            const proven = withProof(actor, auditProofOf(sessionAuth))
+            const proven = withProof(actor, proof)
             const events = await auditService.record(tx, stamp, withRole(proven, changed.role), [
                 {
                     action: 'auth.password.changed',

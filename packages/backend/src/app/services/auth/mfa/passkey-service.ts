@@ -27,7 +27,7 @@ import { retirePendingContactLinks } from './contact-links.js'
 import { hasRecoveryContactOf, loadMfaAccount, mfaEnabledOf } from './mfa-account.js'
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
-import { auditProofOf, requireProof } from './require-proof.js'
+import { acceptedProofOf, requireProof } from './require-proof.js'
 import { staffFactorLossError } from './staff-policy.js'
 import {
     ceremonyBinding,
@@ -223,7 +223,7 @@ export const passkeyService = {
         }
         const key = verified.registration
         const name = (input.name ?? '').trim() === '' ? defaultName(input.response) : input.name
-        const actor = withProof(request.actor, auditProofOf(authOf(session)))
+        const { actor } = request
 
         const result = await withTransaction(async (tx) => {
             const locked = await userRepository.lockById(userId, tx)
@@ -270,8 +270,13 @@ export const passkeyService = {
             await retirePendingContactLinks(userId, tx)
             const codes =
                 account.recoveryCodesRemaining === 0 ? await recoveryCodes.issue(userId, tx) : null
+            // Р14: the proof the registration accepted (the step-up of its first step).
+            const proven = withProof(
+                actor,
+                acceptedProofOf({ action: 'mfa.add_factor', account, auth: authOf(session) }),
+            )
             const stamp = await auditService.stamp(tx)
-            const events = await auditService.record(tx, stamp, withRole(actor, locked.role), [
+            const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
                 {
                     action: 'auth.passkey.added',
                     targetId: String(userId),
@@ -332,7 +337,7 @@ export const passkeyService = {
                 conflict('The passkey added in this recovery stays', MFA_REASONS.recoverySession),
             )
         }
-        const actor = withProof(request.actor, auditProofOf(auth))
+        const actor = withProof(request.actor, proof.value)
         const result = await withTransaction(async (tx) => {
             const locked = await userRepository.lockById(userId, tx)
             if (locked === undefined) return Result.err(notFound('User', 'User not found'))

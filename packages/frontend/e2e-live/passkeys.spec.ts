@@ -1,6 +1,6 @@
 import type { Browser, Page } from '@playwright/test'
 
-import { createVerifiedAccount, expect, newBrowser, test } from './support'
+import { createVerifiedAccount, expect, newBrowser, test, withAuthenticator } from './support'
 import type { Account } from './support'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6, Р8, Р15; tasks P5) against the real backend, with
@@ -8,34 +8,6 @@ import type { Account } from './support'
 // sign-in with the passkey alone, the passkey as the second step after the password, and the
 // recovery that replaces a lost passkey (the last recovery code, a new passkey, the lost one
 // removed, new codes, finish, an ordinary sign-in).
-
-/**
- * A platform authenticator with user verification. With the user present it answers at once,
- * the autofill of the sign-in field included (conditional UI); `present(false)` makes it wait, so
- * a page can be used with the password while a conditional request is pending.
- */
-async function withAuthenticator(page: Page): Promise<{ present: (on: boolean) => Promise<void> }> {
-    const cdp = await page.context().newCDPSession(page)
-    await cdp.send('WebAuthn.enable')
-    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-            protocol: 'ctap2',
-            transport: 'internal',
-            hasResidentKey: true,
-            hasUserVerification: true,
-            isUserVerified: true,
-            automaticPresenceSimulation: true,
-        },
-    })
-    return {
-        present: async (on) => {
-            await cdp.send('WebAuthn.setAutomaticPresenceSimulation', {
-                authenticatorId,
-                enabled: on,
-            })
-        },
-    }
-}
 
 async function signInPassword(page: Page, account: Account): Promise<void> {
     await page.goto('/login')

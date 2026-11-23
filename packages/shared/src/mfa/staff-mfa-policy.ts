@@ -37,6 +37,8 @@ export interface StaffMfaPolicy {
     readonly stepUpProofs: readonly ProofMethod[]
 }
 
+// A mark more than a minute in the future (a skewed clock, or a forged mark) does not count, so
+// it cannot push the deadline past the configured age (the bound of `isFresh`).
 const ANY_FACTOR_MARKS: readonly VerifiedMethodRef[] = ['otp', 'webauthn']
 
 const anyPolicy: StaffMfaPolicy = {
@@ -47,7 +49,7 @@ const anyPolicy: StaffMfaPolicy = {
         if (auth.aal !== 2 || auth.recovery !== undefined || isActiveRecovery(auth, now)) {
             return null
         }
-        const mark = latestMark(auth, ANY_FACTOR_MARKS)
+        const mark = latestMark(auth, ANY_FACTOR_MARKS, now)
         if (mark === null) return null
         const deadline = mark + maxAgeHours * 3_600_000
         return now < deadline ? deadline : null
@@ -60,19 +62,21 @@ const PASSKEY_MARKS: readonly VerifiedMethodRef[] = ['webauthn']
 // feat-248 (Р10, Д11): phishing-resistant staff access. The session must have been signed in
 // with a passkey (`amr`), and only a passkey refreshes it: a TOTP sign-in with a passkey step-up
 // does not qualify, the staff member signs in again with the passkey.
+// Level 2 is checked as well (Р3): a passkey sign-in is level 2 by itself.
 const passkeyPolicy: StaffMfaPolicy = {
     mode: 'passkey',
     enrolled: (factors) => factors.passkeys > 0,
     sessionDeadline(input, now, maxAgeHours) {
         const auth = sessionAuthOf(input)
         if (
+            auth.aal !== 2 ||
             !auth.amr.includes('webauthn') ||
             auth.recovery !== undefined ||
             isActiveRecovery(auth, now)
         ) {
             return null
         }
-        const mark = latestMark(auth, PASSKEY_MARKS)
+        const mark = latestMark(auth, PASSKEY_MARKS, now)
         if (mark === null) return null
         const deadline = mark + maxAgeHours * 3_600_000
         return now < deadline ? deadline : null

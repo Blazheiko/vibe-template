@@ -11,6 +11,7 @@
 import {
     isActiveRecovery,
     isFresh,
+    latestMark,
     PROOF_METHOD_REF,
     sessionAuthOf,
     type ProofMethod,
@@ -48,8 +49,21 @@ export const DEFAULT_PROOF_WINDOWS: ProofWindows = {
     oauthRecentSeconds: 600,
 }
 
+/**
+ * The proof that allowed an action (Р14), as the audit log records it: the step-up proof the row
+ * accepted, a fresh OAuth sign-in of an account without a password (`recent_sign_in`), or the
+ * recovery code of a recovery session.
+ */
+export type AcceptedProof = 'password' | 'totp' | 'passkey' | 'recovery_code' | 'recent_sign_in'
+
+const ACCEPTED_PROOF_OF: Readonly<Record<ProofMethod, AcceptedProof>> = {
+    password: 'password',
+    totp: 'totp',
+    webauthn: 'passkey',
+}
+
 export type ProofDecision =
-    | { kind: 'ok' }
+    | { kind: 'ok'; proof: AcceptedProof }
     | { kind: 'reauth_required'; proofs: ProofMethod[] }
     | { kind: 'sign_in_again_required' }
     | { kind: 'recovery_session' }
@@ -96,7 +110,8 @@ export interface ProofInput {
 
 /**
  * The decision of row `action` of the matrix for this account and session. `ok` means the action
- * may go ahead now; otherwise the 403 the backend answers.
+ * may go ahead now and names the proof that allowed it (of several fresh accepted factors, the
+ * latest); otherwise the 403 the backend answers.
  */
 export function proofDecision(input: ProofInput): ProofDecision {
     const { action, account, now } = input
@@ -111,7 +126,7 @@ export function proofDecision(input: ProofInput): ProofDecision {
         if (needs === 'R+' && auth.recovery.replacementFactor === undefined) {
             return { kind: 'recovery_session' }
         }
-        return { kind: 'ok' }
+        return { kind: 'ok', proof: 'recovery_code' }
     }
 
     const fresh = (proof: ProofMethod): boolean =>
@@ -121,12 +136,12 @@ export function proofDecision(input: ProofInput): ProofDecision {
         if (!ROWS_WITHOUT_MFA.has(action)) return { kind: 'sign_in_again_required' }
         if (account.hasPassword) {
             return fresh('password')
-                ? { kind: 'ok' }
+                ? { kind: 'ok', proof: 'password' }
                 : { kind: 'reauth_required', proofs: ['password'] }
         }
         // No password and no factor: only a recent OAuth sign-in proves the owner.
         return isFresh(auth, 'oauth', now, windows.oauthRecentSeconds)
-            ? { kind: 'ok' }
+            ? { kind: 'ok', proof: 'recent_sign_in' }
             : { kind: 'sign_in_again_required' }
     }
 
@@ -134,7 +149,19 @@ export function proofDecision(input: ProofInput): ProofDecision {
     // otherwise get around the second factor).
     const staffRow = action === 'role.assign' || action === 'mfa.reset_other'
     const proofs = factorProofs(account, staffRow ? input.staffStepUpProofs : undefined)
-    if (proofs.some(fresh)) return { kind: 'ok' }
+    // The proof that allowed it is the latest fresh one of the accepted factors: a fresher mark
+    // of a factor this row does not accept (TOTP in the staff passkey mode) is not it.
+    let accepted: ProofMethod | null = null
+    let acceptedAt = -Infinity
+    for (const proof of proofs) {
+        if (!fresh(proof)) continue
+        const at = latestMark(auth, [PROOF_METHOD_REF[proof]]) ?? -Infinity
+        if (accepted === null || at > acceptedAt) {
+            accepted = proof
+            acceptedAt = at
+        }
+    }
+    if (accepted !== null) return { kind: 'ok', proof: ACCEPTED_PROOF_OF[accepted] }
     return proofs.length === 0
         ? { kind: 'sign_in_again_required' }
         : { kind: 'reauth_required', proofs }

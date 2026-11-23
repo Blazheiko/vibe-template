@@ -18,7 +18,9 @@ import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.j
 // with the real routes and session layer, a real PostgreSQL and Redis. The password sign-in of an
 // account with TOTP opens a ticket; POST /auth/mfa/verify finishes it once, and a repeat finishes
 // what an earlier request confirmed. Failures are injected where the plan names them: Redis during
-// the preparation and the activation, the answer of COMMIT, a rollback after the work.
+// the preparation and the activation, the answer of COMMIT, a rollback after the work. The pool
+// reaches PostgreSQL through a TCP proxy (test-support/pg-commit-drop-proxy.ts) that can also
+// drop the connection for real while COMMIT is answered.
 
 const getFreePort = () =>
     new Promise<number>((resolve, reject) => {
@@ -31,6 +33,19 @@ const getFreePort = () =>
             })
         })
     })
+
+// Before #database/db.js is imported: the pools connect to the throwaway database of
+// pg-global-setup.ts through the proxy.
+const proxy = await vi.hoisted(async () => {
+    const { CommitDropProxy } = await import('../../../../test-support/pg-commit-drop-proxy.js')
+    const commitDrop = new CommitDropProxy({
+        host: process.env['PGSQL_HOST'] ?? '127.0.0.1',
+        port: Number(process.env['PGSQL_PORT'] ?? 5432),
+    })
+    process.env['PGSQL_HOST'] = '127.0.0.1'
+    process.env['PGSQL_PORT'] = String(await commitDrop.start())
+    return commitDrop
+})
 
 const PORT = await getFreePort()
 const ORIGIN = `http://localhost:${String(PORT)}`
@@ -114,12 +129,21 @@ interface Injected {
     activate: false | (() => Promise<void>)
     lostCommitAnswer: boolean
     rollbackAfterWork: boolean
+    /** The clock jumps this far ahead inside the transaction (after the reservation). */
+    clockJumpMs: number
+    /** pg_xact_status reads that fail (the outcome stays undetermined). */
+    statusUnknown: number
+    /** pg_xact_status reads made (counted, not injected). */
+    statusReads: number
 }
 const inject = vi.hoisted((): Injected => ({
     prepare: false,
     activate: false,
     lostCommitAnswer: false,
     rollbackAfterWork: false,
+    clockJumpMs: 0,
+    statusUnknown: 0,
+    statusReads: 0,
 }))
 vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     const actual = await importActual<typeof SessionIndex>()
@@ -149,7 +173,28 @@ vi.mock('#app/repositories/transaction.js', async (importActual) => {
     const actual = await importActual<typeof Transaction>()
     return {
         ...actual,
+        transactionStatus: (...args: Parameters<typeof actual.transactionStatus>) => {
+            inject.statusReads += 1
+            if (inject.statusUnknown > 0) {
+                inject.statusUnknown -= 1
+                return Promise.reject(new Error('PostgreSQL unreachable (status)'))
+            }
+            return actual.transactionStatus(...args)
+        },
         withTransaction: async <T>(work: (tx: Transaction.DbTransaction) => Promise<T>) => {
+            if (inject.clockJumpMs > 0) {
+                // The factor check or the row lock outlasts the reservation: the server's clock
+                // is ahead while the transaction runs.
+                const jump = inject.clockJumpMs
+                inject.clockJumpMs = 0
+                const realNow = Date.now.bind(Date)
+                const clock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + jump)
+                try {
+                    return await actual.withTransaction(work)
+                } finally {
+                    clock.mockRestore()
+                }
+            }
             if (inject.rollbackAfterWork) {
                 inject.rollbackAfterWork = false
                 // The work ran and then the transaction rolled back (the COMMIT failed in a way
@@ -186,6 +231,10 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
     const { recoveryCodes } = await import('./recovery-codes.js')
     const { mfaSecretBox, totpSecretOwner } = await import('./mfa-secret-box.js')
     const { generateTotpSecret, hotp, totpStepAt } = await import('./totp.js')
+    const { mfaTicketStore } = await import('./mfa-ticket.js')
+    const { default: mfaConfig } = await import('#config/mfa.js')
+    /** Past the reservation TTL: the capture finds the reservation lapsed. */
+    const PAST_RESERVATION_MS = (mfaConfig.reservationTtlSeconds + 5) * 1000
 
     await import('#app/start/index.js')
 
@@ -248,6 +297,11 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                     password: PASSWORD,
                 }),
             )
+        }
+
+        /** The ticket this browser holds, as stored. */
+        ticket() {
+            return mfaTicketStore.read(this.cookies.get(MFA_COOKIE) ?? '')
         }
 
         sessionId(): string {
@@ -322,6 +376,10 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         inject.activate = false
         inject.lostCommitAnswer = false
         inject.rollbackAfterWork = false
+        inject.clockJumpMs = 0
+        inject.statusUnknown = 0
+        inject.statusReads = 0
+        proxy.disarm()
         security.mockClear()
         newSignIn.mockClear()
     })
@@ -335,6 +393,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         await admin.quit()
         await sessionCheckPool.end()
         await pool.end()
+        await proxy.stop()
     })
 
     it('the password opens a ticket, not a session; the right code signs in at level 2', async () => {
@@ -565,6 +624,62 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         expect((await browser.request('GET', '/main/init')).status).toBe(200)
     })
 
+    // Р4 with a real failure: the connection drops while COMMIT is answered (the proxy forwards
+    // the COMMIT, the server commits, the answer never reaches the pool).
+    it('a connection dropped during COMMIT: reconciled by pg_xact_status, the repeat gives the same session', async () => {
+        const user = await mfaUser('mfa-commit-drop')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        const dropped = proxy.dropped
+        proxy.arm()
+        // The answer of the first request never reaches the browser either (not kept).
+        const first = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(proxy.dropped).toBe(dropped + 1)
+        expect(inject.statusReads).toBeGreaterThan(0)
+        expect(first.status).toBe(200)
+        const firstCookie = first.cookies.get(sessionConfig.cookieName)
+        expect(firstCookie).toEqual(expect.any(String))
+
+        const repeat = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(repeat.status).toBe(200)
+        expect(browser.cookies.get(sessionConfig.cookieName)).toBe(firstCookie)
+        expect(browser.keep(await browser.request('GET', '/main/init')).status).toBe(200)
+        const session = await getSession(browser.sessionId(), user.row.sessionToken)
+        expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'otp'] })
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('a connection dropped during COMMIT of a recovery code: the code spent once, one session', async () => {
+        const user = await mfaUser('mfa-commit-drop-recovery')
+        const tokenBefore = await tokenOf(user.row.id)
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'recovery_code', code: user.codes[3] ?? '' }
+        const dropped = proxy.dropped
+        proxy.arm()
+        const first = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(proxy.dropped).toBe(dropped + 1)
+        expect(inject.statusReads).toBeGreaterThan(0)
+        expect(first.status).toBe(200)
+        expect(await unusedCodes(user.row.id)).toBe(9)
+
+        const repeat = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(repeat.status).toBe(200)
+        expect(browser.cookies.get(sessionConfig.cookieName)).toBe(
+            first.cookies.get(sessionConfig.cookieName),
+        )
+        expect(await unusedCodes(user.row.id)).toBe(9)
+        const rotated = await tokenOf(user.row.id)
+        expect(rotated).not.toBe(tokenBefore)
+        const session = await getSession(browser.sessionId(), rotated)
+        expect(session?.data.auth).toMatchObject({ aal: 1, amr: ['pwd', 'recovery'] })
+        expect(
+            security.mock.calls.filter(([, kind]) => kind === 'recovery_code_used'),
+        ).toHaveLength(1)
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+    })
+
     it('work done and rolled back without an answer: aborted, the same code works again', async () => {
         const user = await mfaUser('mfa-aborted')
         const browser = new Browser()
@@ -583,6 +698,57 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         })
         expect(ok.status).toBe(200)
         expect(await unusedCodes(user.row.id)).toBe(9)
+    })
+
+    it('a reservation that lapsed before the capture: 401, the TOTP step not spent', async () => {
+        const user = await mfaUser('mfa-expired-totp')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        inject.clockJumpMs = PAST_RESERVATION_MS
+        const late = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(late.status).toBe(401)
+        expect(late.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+        expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
+        expect(newSignIn).not.toHaveBeenCalled()
+        // The same code again: its step was rolled back with the attempt.
+        const ok = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(ok.status).toBe(200)
+    })
+
+    it('a reservation that lapsed before the capture: the recovery code not spent', async () => {
+        const user = await mfaUser('mfa-expired-recovery')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const tokenBefore = await tokenOf(user.row.id)
+        const body = { method: 'recovery_code', code: user.codes[2] ?? '' }
+        inject.clockJumpMs = PAST_RESERVATION_MS
+        const late = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(late.status).toBe(401)
+        expect(late.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+        expect(await unusedCodes(user.row.id)).toBe(10)
+        expect(await tokenOf(user.row.id)).toBe(tokenBefore)
+        expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
+        const ok = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(ok.status).toBe(200)
+        expect(await unusedCodes(user.row.id)).toBe(9)
+    })
+
+    it('a code continuation that finds a rollback: the same request signs in', async () => {
+        const user = await mfaUser('mfa-continue-aborted')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        // The work ran, the transaction rolled back, and its status could not be read.
+        inject.rollbackAfterWork = true
+        inject.statusUnknown = 1
+        const pending = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(pending.status).toBe(503)
+        expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+        expect(await browser.ticket()).toMatchObject({ state: 'completing' })
+        const ok = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(ok.status).toBe(200)
+        expect(newSignIn).toHaveBeenCalledTimes(1)
     })
 
     // Р8 acceptance (tasks M9): the only TOTP lost, the last recovery code, a TOTP replaced in
@@ -614,7 +780,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         // A recovery session: no WebSocket, only the recovery routes.
         const init = browser.keep(await browser.request('GET', '/main/init'))
         expect(init.status).toBe(200)
-        expect(init.body).toMatchObject({ wsToken: '', recovery: { replaced: false } })
+        expect(init.body).toMatchObject({ wsToken: null, recovery: { replaced: false } })
         for (const [method, path] of [
             ['GET', '/account/profile'],
             ['GET', '/account/sessions'],
@@ -829,6 +995,86 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             })
             expect(ok.status).toBe(200)
             expect(await countOf(key.id)).toBe(9n)
+        })
+
+        it('a reservation that lapsed before the capture: 401, the counter not spent', async () => {
+            const user = await mfaUser('mfa-passkey-expired')
+            const { authenticator, key } = await addPasskey(user.row.id, 4)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const response = await answer(browser, authenticator)
+            inject.clockJumpMs = PAST_RESERVATION_MS
+            const late = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response,
+            })
+            expect(late.status).toBe(401)
+            expect(late.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+            expect(await countOf(key.id)).toBe(4n)
+            expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
+            // Its challenge was spent: the same answer asks for a new ceremony, counts nothing.
+            const again = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response,
+            })
+            expect(again.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+            expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: await answer(browser, authenticator),
+            })
+            expect(ok.status).toBe(200)
+            expect(await countOf(key.id)).toBe(6n)
+        })
+
+        it('a pending completion: options answer pending, the same answer finishes it', async () => {
+            const user = await mfaUser('mfa-passkey-pending')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const body = { method: 'webauthn', response: await answer(browser, authenticator) }
+            inject.activate = () => Promise.resolve()
+            const pending = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            // A new ceremony is not offered while the confirmed attempt finishes.
+            const options = await browser.request('POST', '/auth/mfa/webauthn/options', {})
+            expect(options.status).toBe(503)
+            expect(options.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            const ok = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+            expect(ok.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('a continuation that finds a rollback: a new ceremony, no failure counted', async () => {
+            const user = await mfaUser('mfa-passkey-continue-aborted')
+            const { authenticator, key } = await addPasskey(user.row.id, 2)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const body = { method: 'webauthn', response: await answer(browser, authenticator) }
+            inject.rollbackAfterWork = true
+            inject.statusUnknown = 1
+            const pending = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(
+                (await browser.request('POST', '/auth/mfa/webauthn/options', {})).body,
+            ).toMatchObject({ reason: 'mfa_completion_pending' })
+
+            const rolledBack = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(rolledBack.status).toBe(401)
+            expect(rolledBack.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+            expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
+            expect(await countOf(key.id)).toBe(2n)
+
+            const ok = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'webauthn',
+                    response: await answer(browser, authenticator),
+                }),
+            )
+            expect(ok.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
         })
     })
 })

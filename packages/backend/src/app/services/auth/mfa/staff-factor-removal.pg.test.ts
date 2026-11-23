@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Role } from 'shared/access'
@@ -6,6 +6,7 @@ import type { StaffFactorMode } from 'shared/mfa'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testAdminActor, testUserActor } from '../../../../test-support/audit-actor.js'
+import { waitForLockWaiters } from '../../../../test-support/race-barrier.js'
 import type { Session, SessionData, SessionInfo } from '#vendor/types/types.js'
 
 // feat-248 (docs/plan/passkeys-mfa-plan.md, Р12; tasks X2) on a real PostgreSQL: removing a
@@ -44,6 +45,10 @@ vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) =
     ...(await importActual<Record<string, unknown>>()),
     destroyAllSessions: vi.fn(() => Promise.resolve({ deleted: 0, complete: true })),
 }))
+// The role change of the race below announces nothing here.
+vi.mock('#app/services/communication/role-change-announcer.js', () => ({
+    announceRoleChanged: vi.fn(),
+}))
 // The mode is switched per test: every consumer reads it through staffPolicy() on each call.
 vi.mock('#config/mfa.js', async (importOriginal) => {
     const actual = await importOriginal<{ default: Record<string, unknown> }>()
@@ -54,12 +59,14 @@ describe.skipIf(!hasPg)(
     'factor removal of a staff account in both modes (feat-248 X2)',
     async () => {
         const { db, pool } = await import('#database/db.js')
-        const { users } = await import('#database/schema.js')
+        const { users, auditEvents } = await import('#database/schema.js')
         const { totpFactorRepository, webauthnCredentialRepository, withTransaction } =
             await import('#app/repositories/index.js')
         const { totpService } = await import('./totp-service.js')
         const { passkeyService } = await import('./passkey-service.js')
         const { mfaResetService } = await import('./mfa-reset-service.js')
+        const { roleAssignmentService } =
+            await import('#app/services/user/role-assignment-service.js')
         const { loadMfaFactors } = await import('./mfa-account.js')
         const { systemActor } = await import('#app/services/audit/audit-actor.js')
         const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
@@ -259,6 +266,7 @@ describe.skipIf(!hasPg)(
                     actor: { ...testAdminActor(admin.id), role: 'admin' },
                     targetUserId: byAdmin.id,
                     reason: 'lost every factor',
+                    presentedSessionToken: admin.sessionToken,
                     sessionAuth: {
                         v: 1,
                         amr: ['webauthn'],
@@ -280,5 +288,92 @@ describe.skipIf(!hasPg)(
                 expect(await factorsOf(byCli.id)).toEqual({ totp: false, passkeys: 0 })
             },
         )
+
+        // Review of feat-247/248, item 1: the role change locks the target's row before it counts
+        // the factors, so a removal of the last factor (under the same lock) either commits first
+        // and the change sees no factor, or waits and then sees the staff role.
+        it.each(['removal', 'role change'])(
+            'a role change racing the removal of the last factor: the %s queued first wins, never staff without a factor',
+            async (first) => {
+                const user = await account('user', { totp: true })
+                const remove = () => totpService.disable(request(user))
+                const raise = () =>
+                    roleAssignmentService.assign({
+                        actor: systemActor('cli'),
+                        targetUserId: user.id,
+                        role: 'support_operator',
+                    })
+                let removal: ReturnType<typeof remove> | undefined
+                let change: ReturnType<typeof raise> | undefined
+                // The test holds the row; both queue behind it in a known order, then go.
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`SELECT id FROM users WHERE id = ${user.id} FOR UPDATE`)
+                    if (first === 'removal') {
+                        removal = remove()
+                        await waitForLockWaiters((q) => pool.query(q), 1)
+                        change = raise()
+                    } else {
+                        change = raise()
+                        await waitForLockWaiters((q) => pool.query(q), 1)
+                        removal = remove()
+                    }
+                    await waitForLockWaiters((q) => pool.query(q), 2)
+                })
+                if (removal === undefined || change === undefined) throw new Error('not started')
+                const [removed, changed] = await Promise.all([removal, change])
+
+                const [row] = await db
+                    .select({ role: users.role })
+                    .from(users)
+                    .where(eq(users.id, user.id))
+                const factors = await factorsOf(user.id)
+                if (first === 'removal') {
+                    expect(removed.status).toBe('ok')
+                    expect(reasonOf(changed)).toBe('mfa_not_enrolled')
+                    expect(row?.role).toBe('user')
+                    expect(factors).toEqual({ totp: false, passkeys: 0 })
+                } else {
+                    expect(changed.status).toBe('ok')
+                    expect(reasonOf(removed)).toBe('mfa_required_for_role')
+                    expect(row?.role).toBe('support_operator')
+                    expect(factors).toEqual({ totp: true, passkeys: 0 })
+                }
+            },
+        )
+
+        // Review item 6 (Р14): the audit records the proof the row accepted. In the passkey mode
+        // rows 9–10 accept only a passkey, so a fresher TOTP mark is not what allowed the reset.
+        it('MFA_STAFF_FACTOR=passkey: the reset records passkey even after a fresher TOTP', async () => {
+            mfaConfig.staffFactor = 'passkey'
+            const admin = await account('admin', { totp: true, passkeys: 1 })
+            const target = await account('user', { totp: true })
+            const reset = await mfaResetService.reset({
+                actor: { ...testAdminActor(admin.id), role: 'admin' },
+                targetUserId: target.id,
+                reason: 'lost the phone',
+                presentedSessionToken: admin.sessionToken,
+                sessionAuth: {
+                    v: 1,
+                    amr: ['webauthn'],
+                    aal: 2,
+                    authenticatedAt: new Date(Date.now() - 120_000).toISOString(),
+                    verified: {
+                        webauthn: new Date(Date.now() - 120_000).toISOString(),
+                        otp: new Date(Date.now() - 5_000).toISOString(),
+                    },
+                },
+            })
+            expect(reset.status).toBe('ok')
+            const [event] = await db
+                .select()
+                .from(auditEvents)
+                .where(
+                    and(
+                        eq(auditEvents.targetUserId, target.id),
+                        eq(auditEvents.action, 'auth.mfa.reset'),
+                    ),
+                )
+            expect(event?.metadata).toMatchObject({ proof: 'passkey' })
+        })
     },
 )
