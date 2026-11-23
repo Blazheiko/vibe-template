@@ -241,7 +241,7 @@ async function upsertSubscription(
                 osName: payload.osName,
                 osVersion: payload.osVersion,
                 timezone: payload.timezone,
-                isActive: true,
+                isActive: payload.isActive ?? true,
             },
             tx,
         )
@@ -270,6 +270,7 @@ async function upsertSubscription(
             osName: payload.osName ?? null,
             osVersion: payload.osVersion ?? null,
             timezone: payload.timezone ?? null,
+            isActive: payload.isActive ?? true,
             userId,
         },
         tx,

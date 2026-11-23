@@ -177,16 +177,31 @@ export interface Auth {
      * cookie of that same session is issued again while its record exists; `gone`: nothing to
      * activate. The previous session is replaced only when a cookie is issued; a signed-in one's
      * record is deleted under its user's row lock after the transition (Р13), and a deletion that
-     * could not take the lock throws with the activation done. `onEffects` runs in the one request
-     * (`activated` or `already`) that claims the sign-in's effects after a successful replacement:
-     * the caller sends its notices there, never twice.
+     * could not take the lock throws with the activation done. See ActivationHooks for what runs
+     * after the replacement. Anything that throws after the transition leaves the activation done
+     * and issues no cookie: the caller answers 503 and the repeat finds it `already`.
      */
     activateLogin: (
         plan: LoginPlan,
         ticketKey: string,
         completionId: string,
-        onEffects?: () => void,
+        hooks?: ActivationHooks,
     ) => Promise<'activated' | 'already' | 'gone'>
+}
+
+/** feat-245 (Р4, Р8): what the caller of `activateLogin` runs once the previous session is gone. */
+export interface ActivationHooks {
+    /**
+     * Run by every request that gets past the replacement (`activated` and `already`), before the
+     * effects are claimed and the cookie is issued; it must be harmless to repeat. A throw ends
+     * the request without the cookie and leaves the effects unclaimed.
+     */
+    afterReplacement?: () => Promise<void>
+    /**
+     * Run in the one request that claims the sign-in's effects, after the cookie is issued: the
+     * caller sends its notices there, never twice. A claim that fails (Redis) throws instead.
+     */
+    onEffects?: () => void
 }
 
 /** feat-245 (Р4): a second-step sign-in planned once, stored in the ticket. */

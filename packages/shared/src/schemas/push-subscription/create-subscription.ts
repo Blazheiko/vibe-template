@@ -16,6 +16,9 @@ export const CreateSubscriptionInputSchema = type({
     'osName?': 'string <= 100',
     'osVersion?': 'string <= 50',
     'timezone?': 'string <= 50',
+    // The state the record is written in; absent, it is active. A sign-out the server refused
+    // puts back the record it removed as it was, a disabled one disabled (feat-252).
+    'isActive?': 'boolean',
     '+': 'reject',
 })
 

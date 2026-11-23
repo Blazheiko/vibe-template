@@ -263,6 +263,9 @@ test('the push subscription schemas bound every string and take no address from 
             `${field} of ${String(max + 1)} characters is rejected`,
         )
     }
+    // feat-252: the state of the record is optional and a boolean.
+    assert.ok(!rejected(CreateSubscriptionInputSchema, { ...base, isActive: false }))
+    assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, isActive: 'false' }))
     assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, endpoint: '' }))
     assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, ipAddress: '203.0.113.9' }))
     assert.ok(

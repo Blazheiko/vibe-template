@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 
 import type {
+    ActivationHooks,
     DestroyAllSessionsResult,
     HttpContext,
     LoginOrigin,
@@ -586,7 +587,7 @@ export class RequestSession {
         plan: LoginPlan,
         ticketKey: string,
         completionId: string,
-        onEffects?: () => void,
+        hooks: ActivationHooks = {},
     ): Promise<'activated' | 'already' | 'gone'> {
         const record = this.planRecord(plan, completionId, false)
         const outcome = await activatePendingSession({
@@ -606,30 +607,28 @@ export class RequestSession {
                 ? record
                 : await getSession(plan.sessionId, plan.expectedUserToken)
         if (active === null || active.data.pending === true) return 'gone'
-        await this.replaceWith(active, plan.expectedUserToken)
+        if (this.info.id !== active.id) await this.destroyReplaced()
+        // Everything that can still fail runs before the cookie of the new session is issued: a
+        // request that throws from here answers without it, so the browser repeats with the
+        // cookie it had, the completion hook does not retire the ticket, and the repeat (the
+        // activation `already`) runs the rest again.
+        await hooks.afterReplacement?.()
         // Р4: the effects belong to whichever request first gets past the replacement, the
-        // activating one or a repeat after its replacement threw: one claim per completion. The
-        // ticket is still there: it is retired only once the browser comes back with this cookie.
-        if (await this.claimEffects(ticketKey, completionId)) {
+        // activating one or a repeat after its replacement threw: one claim per completion. A
+        // claim that fails (Redis) throws: the effects stay `pending` for the repeat. A claim
+        // whose answer was lost is `done` already: the effects are skipped rather than run twice.
+        const claimed = await claimActivationEffects({
+            ticketKey,
+            completionId,
+            sanitize: sanitizeRedisKey,
+        })
+        this.issueActive(active, plan.expectedUserToken)
+        if (claimed) {
             logger.info({ userId: plan.userId, sessionId: plan.sessionId }, 'User logged in (MFA)')
             sessionListChanged(plan.userId)
-            onEffects?.()
+            hooks.onEffects?.()
         }
         return outcome.kind
-    }
-
-    /** At most once: a claim that failed (Redis) skips the effects rather than risk a second run. */
-    private async claimEffects(ticketKey: string, completionId: string): Promise<boolean> {
-        try {
-            return await claimActivationEffects({
-                ticketKey,
-                completionId,
-                sanitize: sanitizeRedisKey,
-            })
-        } catch (err) {
-            logger.warn({ err }, 'Sign-in effects not claimed; they are skipped (notices, log)')
-            return false
-        }
     }
 
     /**
@@ -658,13 +657,13 @@ export class RequestSession {
     }
 
     /**
-     * The request's session becomes `active`: the previous one goes, its cookie is issued. Run
-     * after the activation's own transition (the Lua script of activatePendingSession), never
-     * inside it: a deletion that waits for the lock, or fails, leaves the activation done, and the
-     * repeated request (503 `mfa_completion_pending`) finds it `already` and deletes again.
+     * The request's session becomes `active`, its cookie is issued. Run after the activation's own
+     * transition (the Lua script of activatePendingSession) and the deletion of the previous
+     * session (destroyReplaced), never inside the transition: a deletion that waits for the lock,
+     * or fails, leaves the activation done, and the repeated request (503
+     * `mfa_completion_pending`) finds it `already` and deletes again.
      */
-    private async replaceWith(active: SessionInfo, userToken: string): Promise<void> {
-        if (this.info.id !== active.id) await this.destroyReplaced()
+    private issueActive(active: SessionInfo, userToken: string): void {
         this.issueStoredCookie(active.id, userToken, sessionConfig.age)
         this.setInfo(active)
         this.storageToken = userToken

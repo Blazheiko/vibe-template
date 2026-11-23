@@ -361,6 +361,7 @@ describe('push store: what the server already knows', () => {
 // feat-148: a sign-out releases this browser's subscription: the record before the request, the
 // browser's subscription once it went through, the record back when the server kept the session.
 describe('push store: releasing the subscription at sign-out', () => {
+    const signedIn = () => true
     const listed = (isActive = true) => ({
         data: {
             status: 'success',
@@ -384,7 +385,7 @@ describe('push store: releasing the subscription at sign-out', () => {
         await store.unsubscribeBrowser()
         expect(unsubscribe).toHaveBeenCalledTimes(1)
         // The sign-out went through: nothing is restored afterwards.
-        await store.restoreServerSubscription()
+        await store.restoreServerSubscription(signedIn)
         expect(api.createSubscription).not.toHaveBeenCalled()
     })
 
@@ -402,7 +403,7 @@ describe('push store: releasing the subscription at sign-out', () => {
         const store = usePushStore()
 
         await store.releaseServerSubscription()
-        await store.restoreServerSubscription()
+        await store.restoreServerSubscription(signedIn)
 
         expect(api.createSubscription).toHaveBeenCalledTimes(1)
         expect(api.createSubscription.mock.calls[0]?.[0]).toMatchObject({
@@ -414,7 +415,7 @@ describe('push store: releasing the subscription at sign-out', () => {
         expect(store.pushSubscriptionId).toBe('c')
         expect(store.isSubscribedToPush).toBe(true)
         // Once: a second call has nothing to restore.
-        await store.restoreServerSubscription()
+        await store.restoreServerSubscription(signedIn)
         expect(api.createSubscription).toHaveBeenCalledTimes(1)
     })
 
@@ -428,7 +429,7 @@ describe('push store: releasing the subscription at sign-out', () => {
         const store = usePushStore()
 
         await store.releaseServerSubscription()
-        await store.restoreServerSubscription()
+        await store.restoreServerSubscription(signedIn)
 
         expect(api.deleteSubscription).not.toHaveBeenCalled()
         expect(api.createSubscription).not.toHaveBeenCalled()
@@ -446,10 +447,56 @@ describe('push store: releasing the subscription at sign-out', () => {
         const store = usePushStore()
 
         await store.releaseServerSubscription()
-        await store.restoreServerSubscription()
+        await store.restoreServerSubscription(signedIn)
 
         expect(api.createSubscription).toHaveBeenCalledTimes(1)
         expect(store.isSubscribedToPush).toBe(false)
+    })
+
+    // feat-252: the record comes back in the state it had on the server, not only in the UI.
+    it.each([
+        ['disabled', false],
+        ['active', true],
+    ])('restores a record that was %s with isActive: %s', async (_state, isActive) => {
+        stubBrowser({ existing: subscription('https://push.example/1') })
+        api.getSubscriptions.mockResolvedValue(listed(isActive))
+        api.deleteSubscription.mockResolvedValue({ data: {}, error: null })
+        api.createSubscription.mockResolvedValue({
+            data: { status: 'success', subscription: { id: 'c' } },
+            error: null,
+        })
+        const { usePushStore } = await import('../push')
+        const store = usePushStore()
+
+        await store.releaseServerSubscription()
+        await store.restoreServerSubscription(signedIn)
+
+        expect(api.createSubscription).toHaveBeenCalledWith(
+            expect.objectContaining({ endpoint: 'https://push.example/1', isActive }),
+        )
+    })
+
+    it('a subscription made by hand carries no isActive: the server makes it active', async () => {
+        stubBrowser({ existing: subscription('https://push.example/1') })
+        api.createSubscription.mockResolvedValue({
+            data: { status: 'success', subscription: { id: 'c' } },
+            error: null,
+        })
+        const { usePushStore } = await import('../push')
+
+        await usePushStore().subscribeToPush()
+
+        expect(api.createSubscription.mock.calls[0]?.[0]).not.toHaveProperty('isActive')
+    })
+
+    it('restores nothing without a sign-out: no release, no request', async () => {
+        stubBrowser({ existing: subscription('https://push.example/1') })
+        const { usePushStore } = await import('../push')
+
+        await expect(usePushStore().restoreServerSubscription(signedIn)).resolves.toBeUndefined()
+
+        expect(api.getSubscriptions).not.toHaveBeenCalled()
+        expect(api.createSubscription).not.toHaveBeenCalled()
     })
 
     it('does nothing in a browser with no subscription', async () => {
@@ -459,7 +506,7 @@ describe('push store: releasing the subscription at sign-out', () => {
 
         await store.releaseServerSubscription()
         await store.unsubscribeBrowser()
-        await store.restoreServerSubscription()
+        await store.restoreServerSubscription(signedIn)
 
         expect(api.getSubscriptions).not.toHaveBeenCalled()
         expect(api.deleteSubscription).not.toHaveBeenCalled()
@@ -480,7 +527,7 @@ describe('push store: releasing the subscription at sign-out', () => {
         api.deleteSubscription.mockResolvedValue({ data: {}, error: null })
         api.createSubscription.mockRejectedValue(new Error('offline'))
         await store.releaseServerSubscription()
-        await expect(store.restoreServerSubscription()).resolves.toBeUndefined()
+        await expect(store.restoreServerSubscription(signedIn)).resolves.toBeUndefined()
     })
 
     it.each([
@@ -518,4 +565,175 @@ describe('push store: releasing the subscription at sign-out', () => {
             }
         },
     )
+
+    // feat-252: the sign-out stops waiting for a slow DELETE, but the DELETE goes on. A kept
+    // session must not end up without its record once it lands.
+    describe('a DELETE slower than the bound', () => {
+        const slowDelete = () => {
+            let finish: () => void = () => undefined
+            api.deleteSubscription.mockImplementation(
+                () =>
+                    new Promise((resolve) => {
+                        finish = () => {
+                            resolve({ data: {}, error: null })
+                        }
+                    }),
+            )
+            return {
+                finish: () => {
+                    finish()
+                },
+            }
+        }
+
+        const setUp = async (isActive: boolean) => {
+            const unsubscribe = vi.fn().mockResolvedValue(true)
+            stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+            api.getSubscriptions.mockResolvedValue(listed(isActive))
+            api.createSubscription.mockResolvedValue({
+                data: { status: 'success', subscription: { id: 'c' } },
+                error: null,
+            })
+            const deletion = slowDelete()
+            const { usePushStore } = await import('../push')
+            const store = usePushStore()
+            // The sign-out goes on after three seconds, the DELETE does not answer.
+            const release = store.releaseServerSubscription()
+            await vi.advanceTimersByTimeAsync(3000)
+            await release
+            expect(api.deleteSubscription).toHaveBeenCalledWith('b')
+            return { store, deletion, unsubscribe }
+        }
+
+        beforeEach(() => {
+            vi.useFakeTimers()
+        })
+        afterEach(() => {
+            vi.useRealTimers()
+        })
+
+        it.each([true, false])(
+            'kept (active: %s): the record comes back in its state once the DELETE lands',
+            async (isActive) => {
+                const { store, deletion, unsubscribe } = await setUp(isActive)
+
+                // The restore is bounded too: the user is told the sign-out did not finish.
+                const restore = store.restoreServerSubscription(signedIn)
+                await vi.advanceTimersByTimeAsync(3000)
+                await restore
+                expect(api.createSubscription).not.toHaveBeenCalled()
+
+                deletion.finish()
+                await vi.advanceTimersByTimeAsync(0)
+
+                expect(api.createSubscription).toHaveBeenCalledTimes(1)
+                expect(api.createSubscription).toHaveBeenCalledWith(
+                    expect.objectContaining({ endpoint: 'https://push.example/1', isActive }),
+                )
+                expect(store.pushSubscriptionId).toBe('c')
+                expect(store.isSubscribedToPush).toBe(isActive)
+                expect(unsubscribe).not.toHaveBeenCalled()
+            },
+        )
+
+        it('kept, and the DELETE lands within the restore bound: restored before it returns', async () => {
+            const { store, deletion } = await setUp(true)
+
+            const restore = store.restoreServerSubscription(signedIn)
+            await vi.advanceTimersByTimeAsync(1000)
+            deletion.finish()
+            await vi.advanceTimersByTimeAsync(0)
+            await restore
+
+            expect(api.createSubscription).toHaveBeenCalledTimes(1)
+            expect(store.isSubscribedToPush).toBe(true)
+        })
+
+        it('left: the DELETE landing later registers nothing', async () => {
+            const { store, deletion, unsubscribe } = await setUp(true)
+
+            await store.unsubscribeBrowser()
+            deletion.finish()
+            await vi.advanceTimersByTimeAsync(0)
+            await store.restoreServerSubscription(signedIn)
+
+            expect(unsubscribe).toHaveBeenCalledTimes(1)
+            expect(api.createSubscription).not.toHaveBeenCalled()
+        })
+
+        it('kept, but signed out by the time the DELETE lands: nothing is registered', async () => {
+            const { store, deletion } = await setUp(true)
+            let stillSignedIn = true
+
+            const restore = store.restoreServerSubscription(() => stillSignedIn)
+            await vi.advanceTimersByTimeAsync(3000)
+            await restore
+            stillSignedIn = false
+            deletion.finish()
+            await vi.advanceTimersByTimeAsync(0)
+
+            expect(api.createSubscription).not.toHaveBeenCalled()
+        })
+
+        it('kept, then a newer sign-out began: the late restore gives way to it', async () => {
+            const { store, deletion } = await setUp(true)
+
+            const restore = store.restoreServerSubscription(signedIn)
+            await vi.advanceTimersByTimeAsync(3000)
+            await restore
+            const again = store.releaseServerSubscription()
+            deletion.finish()
+            await vi.advanceTimersByTimeAsync(3000)
+            await again
+
+            expect(api.createSubscription).not.toHaveBeenCalled()
+        })
+
+        it('kept, and the DELETE fails: the record is still there, nothing is registered', async () => {
+            const unsubscribe = vi.fn().mockResolvedValue(true)
+            stubBrowser({ existing: subscription('https://push.example/1', unsubscribe) })
+            api.getSubscriptions.mockResolvedValue(listed())
+            let fail: () => void = () => undefined
+            api.deleteSubscription.mockImplementation(
+                () =>
+                    new Promise((_resolve, reject) => {
+                        fail = () => {
+                            reject(new Error('offline'))
+                        }
+                    }),
+            )
+            const { usePushStore } = await import('../push')
+            const store = usePushStore()
+            const release = store.releaseServerSubscription()
+            await vi.advanceTimersByTimeAsync(3000)
+            await release
+
+            const restore = store.restoreServerSubscription(signedIn)
+            fail()
+            await vi.advanceTimersByTimeAsync(0)
+            await restore
+
+            expect(api.createSubscription).not.toHaveBeenCalled()
+        })
+
+        it('while the restore waits, the sign-in check does not take the subscription for a leftover', async () => {
+            const { store, deletion, unsubscribe } = await setUp(true)
+            const restore = store.restoreServerSubscription(signedIn)
+            await vi.advanceTimersByTimeAsync(3000)
+            await restore
+            // The record is gone from the server while the DELETE has not answered yet.
+            api.getSubscriptions.mockResolvedValue({
+                data: { status: 'success', subscriptions: [] },
+                error: null,
+            })
+
+            store.resetPushSubscriptionState()
+            await store.ensurePushSubscriptionsLoaded()
+            expect(unsubscribe).not.toHaveBeenCalled()
+
+            deletion.finish()
+            await vi.advanceTimersByTimeAsync(0)
+            expect(api.createSubscription).toHaveBeenCalledTimes(1)
+        })
+    })
 })

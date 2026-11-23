@@ -23,7 +23,10 @@ vi.mock('@/stores/push', () => ({ usePushStore: () => pushStore }))
 const supportStore = vi.hoisted(() => ({ reset: vi.fn() }))
 vi.mock('@/stores/support', () => ({ useSupportStore: () => supportStore }))
 
-const userStore = vi.hoisted(() => ({ clearUser: vi.fn() }))
+const userStore = vi.hoisted(() => ({
+    clearUser: vi.fn(),
+    user: null as { id: string } | null,
+}))
 vi.mock('@/stores/user', () => ({ useUserStore: () => userStore }))
 
 const websocketClose = vi.hoisted(() => vi.fn())
@@ -34,6 +37,7 @@ vi.mock('@/composables/useWebSocketConnection', () => ({
 beforeEach(() => {
     order.length = 0
     vi.clearAllMocks()
+    userStore.user = { id: '7' }
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     pushStore.releaseServerSubscription.mockImplementation(() => {
         order.push('release push record')
@@ -150,6 +154,24 @@ describe('useSessionLifecycle: a logout the server asks to repeat', () => {
         expect(userStore.clearUser).not.toHaveBeenCalled()
         expect(websocketClose).not.toHaveBeenCalled()
         expect(push).not.toHaveBeenCalled()
+    })
+
+    // feat-252: a record whose removal outlived the bound is put back later, only while the
+    // account that signed out is still the signed-in one.
+    it('kept: the restore is told whether the same account is still signed in', async () => {
+        authApi.logout.mockImplementation(retryAnswer)
+        const { useSessionLifecycle } = await import('../useSessionLifecycle')
+
+        const done = useSessionLifecycle().logout()
+        await vi.runAllTimersAsync()
+        expect(await done).toBe(false)
+
+        const isSignedIn = pushStore.restoreServerSubscription.mock.calls[0]?.[0] as () => boolean
+        expect(isSignedIn()).toBe(true)
+        userStore.user = { id: '8' }
+        expect(isSignedIn()).toBe(false)
+        userStore.user = null
+        expect(isSignedIn()).toBe(false)
     })
 
     it('kept, and restoring the record fails: still answers false, nothing thrown', async () => {
