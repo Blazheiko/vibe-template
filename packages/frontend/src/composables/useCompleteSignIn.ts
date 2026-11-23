@@ -13,8 +13,9 @@ export type SignedInUser = Parameters<ReturnType<typeof useUserStore>['setUser']
  *
  * The page comes from `?redirect=`, which the router guard writes when it sends an anonymous
  * visitor to /login. It is read first: closing the modal replaces the route, and the query goes
- * with it (feat-154). The app reads the session only after the navigation settled, so its own
- * "where to after a sign-in" rule sees the new page and leaves it alone.
+ * with it (feat-154). A recovery sign-in always opens the account page (Р8). The app reads the
+ * session only after the navigation settled, so its own "where to after a sign-in" rule sees the
+ * new page and leaves it alone.
  */
 export function useCompleteSignIn(onSignedIn: () => void) {
     const router = useRouter()
@@ -23,7 +24,11 @@ export function useCompleteSignIn(onSignedIn: () => void) {
     const eventBus = useEventBus()
 
     return (user: SignedInUser): void => {
-        const intended = safeRedirectTarget(route.query.redirect)
+        // feat-245 (Р8): a recovery session (its state is in the store already, from the answer)
+        // opens only the account page's recovery wizard: `?redirect=` would open a page that
+        // answers 403 `recovery_session` until main/init moves it to /account.
+        const intended =
+            userStore.recovery !== null ? null : safeRedirectTarget(route.query.redirect)
         // A target kept for an OAuth sign-in that was started and not finished is not this one's.
         forgetPostSignInTarget()
         userStore.setUser(user)

@@ -175,8 +175,9 @@ export interface Auth {
      * feat-245 (Р4): after the commit, makes the planned session active in one Redis transition
      * with the ticket. `activated`: this request did it (it sends the notices); `already`: an
      * earlier request did, and the cookie of that same session is issued again while its record
-     * exists; `gone`: nothing to activate. The previous anonymous session is replaced only when a
-     * cookie is issued.
+     * exists; `gone`: nothing to activate. The previous session is replaced only when a cookie is
+     * issued; a signed-in one's record is deleted under its user's row lock after the transition
+     * (Р13), and a deletion that could not take the lock throws with the activation done.
      */
     activateLogin: (
         plan: LoginPlan,

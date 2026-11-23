@@ -17,6 +17,7 @@ import {
     badRequest,
     conflict,
     internalMessage,
+    logoutRetry,
     sessionRevoked,
     notFound,
     rateLimited,
@@ -69,6 +70,7 @@ import type {
 } from 'shared/schemas'
 import type { Logger } from 'pino'
 import { getSessionCsrfToken } from '#vendor/utils/session/csrf-token.js'
+import { SessionDeletionDeferredError } from '#vendor/utils/session/session-deletion-lock.js'
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
@@ -1055,7 +1057,15 @@ export const authService = {
         // other sessions of the user keep theirs.
         const userId = auth.getUserId()
         const sessionId = session.sessionInfo?.id
-        const result = await auth.logout()
+        let result: boolean
+        try {
+            result = await auth.logout()
+        } catch (err) {
+            // Р13: the record was not deleted under the row lock; the session (and its sockets)
+            // stays signed in and the browser sends the logout again.
+            if (err instanceof SessionDeletionDeferredError) return Result.err(logoutRetry())
+            throw err
+        }
         if (userId !== null && sessionId !== undefined) {
             wsSessionRevocation.closeUserConnections(userId, { sessionId })
         }

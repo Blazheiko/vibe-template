@@ -39,8 +39,8 @@ import { sessionListChanged } from '#vendor/utils/session/session-list-events.js
 /**
  * Р13: runs `work` (the deletion of a session record) in a transaction that holds the user's row
  * lock, the lock a role change or an MFA reset of another account reads its session record under
- * (privileged-actor). Ending one session here and a plain logout (registered for the session
- * layer in app/start) both use it.
+ * (privileged-actor). Ending one session here, a plain logout and a sign-in replacing a signed-in
+ * session (registered for the session layer in app/start) all use it.
  */
 export async function underUserRowLock<T>(userId: string, work: () => Promise<T>): Promise<T> {
     return withTransaction(async (tx) => {

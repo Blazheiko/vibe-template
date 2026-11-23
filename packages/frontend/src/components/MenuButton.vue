@@ -2,6 +2,7 @@
 import '@khmyznikov/pwa-install'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useStateStore } from '@/stores/state'
 import PwaInstallButton from '@/components/PwaInstallButton.vue'
 import { usePwaInstallButton } from '@/composables/usePwaInstallButton'
@@ -10,6 +11,7 @@ import { usePreferences } from '@/composables/usePreferences'
 import { PRODUCT } from 'shared/product'
 
 const router = useRouter()
+const { t } = useI18n()
 //const route = useRoute()
 const stateStore = useStateStore()
 const { logout: logoutSession } = useSessionLifecycle()
@@ -82,7 +84,8 @@ const logout = async () => {
     isLoggingOut.value = true
 
     try {
-        await logoutSession()
+        // Р13: the server kept the session through every repeat; the user is still signed in.
+        if (!(await logoutSession())) window.alert(t('auth.logoutUnfinished'))
     } finally {
         isLoggingOut.value = false
         closeMenu()

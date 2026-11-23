@@ -41,6 +41,7 @@ import { createAnonSessionToken, createSignedToken } from '#vendor/utils/session
 import { generateCsrfToken, isValidCsrfToken } from '#vendor/utils/session/csrf-token.js'
 import { sessionPublicId } from '#vendor/utils/session/session-public-id.js'
 import { sessionListChanged } from '#vendor/utils/session/session-list-events.js'
+import { deleteUnderLock } from '#vendor/utils/session/session-deletion-lock.js'
 import {
     activatePendingSession,
     preparePendingSession,
@@ -107,50 +108,6 @@ export const runSignInCompletionHook = async (context: HttpContext): Promise<voi
         await signInCompletionHook(context, completionId)
     } catch (err) {
         logger.warn({ err }, 'Second-step ticket not retired; it expires by itself')
-    }
-}
-
-/**
- * docs/plan/passkeys-mfa-plan.md (Р13): what the application does around the deletion of the
- * current session's record by a logout. A role change or an MFA reset of another account reads
- * the record of the request's session under the actor's row lock and writes under it; deleting
- * the record under the same lock makes a logout either come first (the write answers 401
- * `session_revoked`) or wait until that write has committed. Registered at start (app/start), so
- * this module does not import the application's repositories; without it (tests, the CLI) the
- * record is deleted as before.
- */
-export type SessionDeletionLock = (userId: string, work: () => Promise<boolean>) => Promise<boolean>
-let sessionDeletionLock: SessionDeletionLock | null = null
-export const registerSessionDeletionLock = (lock: SessionDeletionLock | null): void => {
-    sessionDeletionLock = lock
-}
-
-/**
- * Deletes a record under the registered lock. When the lock cannot be taken (PostgreSQL down, the
- * wait cut by statement_timeout) the record is deleted without it: a logout is never refused or
- * held longer than one bounded statement, and a privileged write needs the same database to
- * commit. A failure of the deletion itself is the caller's, as without the lock; a failure after
- * it (the COMMIT of a transaction that wrote nothing) is not.
- */
-const deleteUnderLock = async (userId: unknown, work: () => Promise<boolean>): Promise<boolean> => {
-    const lock = sessionDeletionLock
-    if (lock === null || typeof userId !== 'string') return work()
-    const progress: { stage: 'waiting' | 'deleting' | 'deleted'; removed: boolean } = {
-        stage: 'waiting',
-        removed: false,
-    }
-    try {
-        return await lock(userId, async () => {
-            progress.stage = 'deleting'
-            progress.removed = await work()
-            progress.stage = 'deleted'
-            return progress.removed
-        })
-    } catch (err) {
-        if (progress.stage === 'deleted') return progress.removed
-        if (progress.stage === 'deleting') throw err
-        logger.warn({ err }, 'User row lock not taken; the session record is deleted without it')
-        return work()
     }
 }
 
@@ -559,16 +516,7 @@ export class RequestSession {
 
         // The previous session goes away whether it was signed in or anonymous: its cookie
         // and CSRF token must not stay usable after the login.
-        const previousId = this.info.id
-        // Any anonymous predecessor — cookie-held or already moved to Redis — is marked
-        // before it goes away: a slower response of that session must not re-issue its
-        // anonymous cookie over the login's one.
-        if (this.cookieHeld || this.storageToken === ANON_TOKEN) {
-            await markAnonSessionSuperseded(previousId, ANON_COOKIE_REFRESH_SECONDS)
-        }
-        // A cookie-held session may still have a record: a parallel request can have moved
-        // it to Redis.
-        await destroySession(previousId, this.storageToken)
+        await this.destroyReplaced()
 
         const authState = auth ?? defaultSignInAuth(origin, new Date())
         const signedIn = await createSessionInfo(
@@ -664,15 +612,39 @@ export class RequestSession {
         return outcome.kind
     }
 
-    /** The request's session becomes `active`: the previous one goes, its cookie is issued. */
-    private async replaceWith(active: SessionInfo, userToken: string): Promise<void> {
+    /**
+     * Deletes the record of the session a sign-in replaces. Any anonymous predecessor — cookie-held
+     * or already moved to Redis — is marked before it goes away: a slower response of that session
+     * must not re-issue its anonymous cookie over the sign-in's one. A cookie-held session may still
+     * have a record: a parallel request can have moved it to Redis.
+     *
+     * Р13: a signed-in predecessor goes under ITS user's row lock (that may be another account than
+     * the new sign-in), as a logout's record does: a role change or an MFA reset that read it under
+     * that lock commits first, or sees it gone. When the lock is not taken the sign-in fails with
+     * SessionDeletionDeferredError before anything of the new session is written or issued.
+     */
+    private async destroyReplaced(): Promise<void> {
         const previousId = this.info.id
-        if (previousId !== active.id) {
-            if (this.cookieHeld || this.storageToken === ANON_TOKEN) {
-                await markAnonSessionSuperseded(previousId, ANON_COOKIE_REFRESH_SECONDS)
-            }
-            await destroySession(previousId, this.storageToken)
+        const storageToken = this.storageToken
+        if (this.cookieHeld || storageToken === ANON_TOKEN) {
+            await markAnonSessionSuperseded(previousId, ANON_COOKIE_REFRESH_SECONDS)
+            await destroySession(previousId, storageToken)
+            return
         }
+        const publicId = this.info.data.device?.publicId
+        await deleteUnderLock(this.info.data.userId, () =>
+            destroySession(previousId, storageToken, publicId),
+        )
+    }
+
+    /**
+     * The request's session becomes `active`: the previous one goes, its cookie is issued. Run
+     * after the activation's own transition (the Lua script of activatePendingSession), never
+     * inside it: a deletion that waits for the lock, or fails, leaves the activation done, and the
+     * repeated request (503 `mfa_completion_pending`) finds it `already` and deletes again.
+     */
+    private async replaceWith(active: SessionInfo, userToken: string): Promise<void> {
+        if (this.info.id !== active.id) await this.destroyReplaced()
         this.issueStoredCookie(active.id, userToken, sessionConfig.age)
         this.setInfo(active)
         this.storageToken = userToken
