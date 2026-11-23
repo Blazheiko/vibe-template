@@ -2503,6 +2503,16 @@
             "dependencies": ["feat-250"],
             "status": "done",
             "evidence": "PR #792 (merge cac270a), registry #791 (in_progress), #793 (review). Review of feat-250 fixed: a logout whose row-lock wait is cut waits again and then answers 503 logout_retry with the session kept (deleted without the lock only when the database is unreachable; classifyLockFailure in vendor/utils/session/session-deletion-lock.ts), the client repeats it; login() and replaceWith() delete a signed-in previous session under its own user row lock (after the Lua activation at MFA); the MFA form keeps a request pending before sending; a recovery sign-in opens /account before ?redirect=. CI on the branch head b7e31fc: ci.yml run 45180465647, pg-tests.yml run 45180465918, redis-tests.yml run 45180465699, all success. Local: make check green (backend 3660, frontend 990, shared 147), test:pg 672, test:redis 198, test:e2e 133, docs verify."
+        },
+        {
+            "id": "feat-252",
+            "name": "MFA Review Fixes 4",
+            "description": "Review of feat-251 (2026-11-23, REQUEST CHANGES). (1) A lost single connection (ECONNRESET, EPIPE, Connection terminated, 57P01/57P02, ETIMEDOUT) counts as an unreachable database and deletes the session without the lock: retry on a new connection and delete without the lock only on a connect-time failure, otherwise keep the session (logout_retry); (2) retireCompletedTicket clears the ticket cookie even when the ticket belongs to another completion: clear it only when this ticket was retired or is absent; (3) a repeat after a replacement timeout gets 'already' and skips the post-activation effects (new sign-in notice, recovery socket close and session cleanup): a one-time claim of the effects run by whichever request finishes; (4) a 429 clears the kept continue request: keep it after 429/408; (5) a logout that ends with logout_retry has already released the push subscription: delete the server record before the logout, unsubscribe the browser only after it, re-register when the session was kept.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-4",
+            "dependencies": ["feat-251"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
