@@ -1076,5 +1076,124 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             expect(ok.status).toBe(200)
             expect(newSignIn).toHaveBeenCalledTimes(1)
         })
+
+        // Р4: `continue` finishes a confirmed ticket without the answer the browser lost.
+        const CONTINUE = { method: 'continue' }
+
+        it('a lost answer of a committed passkey verify: continue gives the same session', async () => {
+            const user = await mfaUser('mfa-passkey-continue-lost')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const response = await answer(browser, authenticator)
+            // The answer never reaches the browser (not kept); the page reloads.
+            const first = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response,
+            })
+            expect(first.status).toBe(200)
+            const options = await browser.request('POST', '/auth/mfa/webauthn/options', {})
+            expect(options.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            const ok = browser.keep(await browser.request('POST', '/auth/mfa/verify', CONTINUE))
+            expect(ok.status).toBe(200)
+            expect(browser.cookies.get(sessionConfig.cookieName)).toBe(
+                first.cookies.get(sessionConfig.cookieName),
+            )
+            const session = await getSession(browser.sessionId(), user.row.sessionToken)
+            expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'webauthn'] })
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('a pending activation: continue finishes it, one notice', async () => {
+            const user = await mfaUser('mfa-passkey-continue-pending')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            inject.activate = () => Promise.resolve()
+            const pending = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: await answer(browser, authenticator),
+            })
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            const ok = browser.keep(await browser.request('POST', '/auth/mfa/verify', CONTINUE))
+            expect(ok.status).toBe(200)
+            expect(browser.keep(await browser.request('GET', '/main/init')).status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('continue of an open ticket proves nothing: 401 mfa_attempt_expired, nothing counted', async () => {
+            const user = await mfaUser('mfa-passkey-continue-open')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            for (let i = 0; i < 6; i++) {
+                const reply = await browser.request('POST', '/auth/mfa/verify', CONTINUE)
+                expect(reply.status).toBe(401)
+                expect(reply.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+            }
+            expect(await browser.ticket()).toMatchObject({
+                state: 'open',
+                failures: 0,
+                reservations: [],
+            })
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: await answer(browser, authenticator),
+            })
+            expect(ok.status).toBe(200)
+        })
+
+        it('continue after a rollback: mfa_attempt_expired, the ticket reopened, a new ceremony works', async () => {
+            const user = await mfaUser('mfa-passkey-continue-aborted')
+            const { authenticator, key } = await addPasskey(user.row.id, 5)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            inject.rollbackAfterWork = true
+            inject.statusUnknown = 1
+            const pending = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: await answer(browser, authenticator),
+            })
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+
+            const rolledBack = await browser.request('POST', '/auth/mfa/verify', CONTINUE)
+            expect(rolledBack.status).toBe(401)
+            expect(rolledBack.body).toMatchObject({ reason: 'mfa_attempt_expired' })
+            expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
+            expect(await countOf(key.id)).toBe(5n)
+
+            const ok = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'webauthn',
+                    response: await answer(browser, authenticator),
+                }),
+            )
+            expect(ok.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('continue from another browser: the ticket is invalid there, the owner finishes', async () => {
+            const user = await mfaUser('mfa-passkey-continue-thief')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            inject.activate = () => Promise.resolve()
+            const pending = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response: await answer(browser, authenticator),
+            })
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            const thief = new Browser()
+            thief.keep(await thief.request('GET', '/main/init'))
+            thief.cookies.set(MFA_COOKIE, browser.cookies.get(MFA_COOKIE) ?? '')
+            const stolen = await thief.request('POST', '/auth/mfa/verify', CONTINUE)
+            expect(stolen.status).toBe(401)
+            expect(stolen.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
+            expect(newSignIn).not.toHaveBeenCalled()
+
+            const ok = await browser.request('POST', '/auth/mfa/verify', CONTINUE)
+            expect(ok.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
     })
 })

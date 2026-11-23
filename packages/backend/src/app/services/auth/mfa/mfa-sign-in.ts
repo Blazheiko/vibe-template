@@ -218,9 +218,12 @@ export async function readTransactionStatus(
     }
 }
 
-export type SecondStepInput =
+type ProofInput =
     | { method: 'totp' | 'recovery_code'; code: string }
     | { method: 'webauthn'; response: AuthenticationResponse }
+
+/** A proof, or `continue`: finish the sign-in this browser's ticket already confirmed. */
+export type SecondStepInput = ProofInput | { method: 'continue' }
 
 export interface SecondStepDeps {
     /**
@@ -251,6 +254,9 @@ export async function completeSecondStep(
         return Result.err(ticketInvalid())
     }
     const binding = mfaBinding(cookieSession)
+    if (input.method === 'continue') {
+        return continueByRequest(context, ticketId, binding, input, request, deps)
+    }
     const reservationId = nanoid()
     const reservationTtlMs = mfaConfig.reservationTtlSeconds * 1000
 
@@ -277,12 +283,42 @@ export async function completeSecondStep(
     return attempt(context, ticketId, reserved.ticket, reservationId, input, request, deps, now)
 }
 
+/**
+ * Р4: `{ method: 'continue' }`. The browser lost the answer of a confirmed attempt (or reloaded
+ * the page) and has no proof to repeat. Nothing is reserved and nothing is counted: the request
+ * only finishes a ticket that left `open`. An `open` ticket was never captured, so the browser
+ * gives a proof: 401 `mfa_attempt_expired`, the answer the form already treats as "ask again,
+ * nothing counted". The route's rate limit bounds it like any other verify request; the per-user
+ * code budget is not spent, as by the repeat of a confirmed request, since no proof is checked.
+ */
+async function continueByRequest(
+    context: SignInContext,
+    ticketId: string,
+    binding: string,
+    input: SecondStepInput,
+    request: AuditRequest,
+    deps: SecondStepDeps,
+): Promise<AppResult<AuthSuccessPayload>> {
+    let ticket: MfaTicket | null
+    try {
+        ticket = await mfaTicketStore.read(ticketId)
+    } catch (err) {
+        return Result.err(serviceUnavailable(err))
+    }
+    if (ticket?.binding !== binding) {
+        context.auth.setMfaTicketCookie(null, 0)
+        return Result.err(ticketInvalid())
+    }
+    if (ticket.state === 'open') return Result.err(attemptExpired())
+    return continueCompletion(context, ticketId, ticket, input, request, deps)
+}
+
 async function attempt(
     context: SignInContext,
     ticketId: string,
     ticket: MfaTicket,
     reservationId: string,
-    input: SecondStepInput,
+    input: ProofInput,
     request: AuditRequest,
     deps: SecondStepDeps,
     now: number,
@@ -578,10 +614,12 @@ async function continueCompletion(
         // The confirmed attempt rolled back after all: the ticket opens again and this request,
         // which carries the code, is an attempt of its own. A passkey answer's challenge was
         // spent by the rolled-back attempt: that attempt answers 401 `mfa_attempt_expired`
-        // without counting a failure, and the browser runs a new ceremony.
+        // without counting a failure, and the browser runs a new ceremony. A `continue` carries
+        // no proof: it answers the same, and the browser gives one.
         await discardPending(plan)
         const reopened = await mfaTicketStore.reopen(ticketId, completionId).catch(() => false)
         if (!reopened) return Result.err(completionPending())
+        if (input.method === 'continue') return Result.err(attemptExpired())
         return completeSecondStep(context, input, request, { ...deps })
     }
     return Result.err(completionPending())

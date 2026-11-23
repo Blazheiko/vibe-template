@@ -7,7 +7,8 @@ import en from '../../locales/en'
 // feat-245 / feat-246 (docs/plan/passkeys-mfa-plan.md, Р4): the client side of a continuation.
 // While the server answers `mfa_completion_pending` the form repeats the SAME verify request (a
 // passkey answer is not replaced by a new ceremony); a passkey answer refused with
-// `mfa_attempt_expired` asks for a new ceremony.
+// `mfa_attempt_expired` asks for a new ceremony. Options answering `mfa_completion_pending` (the
+// form lost the request) send `{ method: 'continue' }`; the other factors hide while pending.
 
 const { mfaVerifyMock, mfaWebauthnOptionsMock, usePasskeyMock, setRecoveryMock } = vi.hoisted(
     () => ({
@@ -142,12 +143,71 @@ describe('MfaChallengeForm', () => {
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
-    it('options of a ticket that is finishing say so, not "sign in again"', async () => {
+    it('options of a ticket that is finishing: continue, no ceremony, and signs in', async () => {
+        // The answer of the confirmed passkey was lost (or the page reloaded): nothing is kept.
         mfaWebauthnOptionsMock.mockResolvedValue(pending)
+        mfaVerifyMock.mockResolvedValueOnce(pending).mockResolvedValueOnce(success)
+        const wrapper = mountForm(['webauthn', 'totp', 'recovery_code'])
+        await submit(wrapper)
+        expect(usePasskeyMock).not.toHaveBeenCalled()
+        expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
+        for (const [body] of mfaVerifyMock.mock.calls) expect(body).toEqual({ method: 'continue' })
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+        expect(wrapper.emitted('restart')).toBeUndefined()
+    })
+
+    it('a continue still pending after the pauses: "Try again" sends continue again', async () => {
+        mfaWebauthnOptionsMock.mockResolvedValue(pending)
+        mfaVerifyMock.mockResolvedValue(pending)
         const wrapper = mountForm(['webauthn'])
         await submit(wrapper)
+        expect(mfaVerifyMock).toHaveBeenCalledTimes(6)
         expect(wrapper.find('[role="alert"]').text()).toBe(en.loginMfa.errorPending)
-        expect(wrapper.emitted('restart')).toBeUndefined()
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+
+        mfaVerifyMock.mockReset()
+        mfaVerifyMock.mockResolvedValueOnce(success)
+        await submit(wrapper)
+        expect(mfaWebauthnOptionsMock).toHaveBeenCalledTimes(1)
+        expect(mfaVerifyMock).toHaveBeenCalledWith({ method: 'continue' })
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
+    it('a continue that finds the attempt rolled back asks for a new ceremony', async () => {
+        mfaWebauthnOptionsMock.mockResolvedValueOnce(pending).mockResolvedValue(OPTIONS)
+        usePasskeyMock.mockResolvedValue({ ok: true, value: ASSERTION })
+        mfaVerifyMock.mockResolvedValueOnce(failure('mfa_attempt_expired'))
+        const wrapper = mountForm(['webauthn', 'totp'])
+        await submit(wrapper)
+        expect(wrapper.find('[role="alert"]').text()).toBe(en.loginMfa.errorPasskeyRetry)
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.usePasskeyButton)
+        expect(wrapper.find('[data-testid="mfa-use-totp"]').exists()).toBe(true)
+
+        mfaVerifyMock.mockResolvedValueOnce(success)
+        await submit(wrapper)
+        expect(usePasskeyMock).toHaveBeenCalledTimes(1)
+        expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'webauthn', response: ASSERTION })
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
+    it('hides the other factors while a completion is pending, shows them after', async () => {
+        mfaWebauthnOptionsMock.mockResolvedValue(OPTIONS)
+        usePasskeyMock.mockResolvedValue({ ok: true, value: ASSERTION })
+        mfaVerifyMock.mockResolvedValue(pending)
+        const wrapper = mountForm(['webauthn', 'totp', 'recovery_code'])
+        expect(wrapper.find('[data-testid="mfa-use-totp"]').exists()).toBe(true)
+        expect(wrapper.find('[data-testid="mfa-use-recovery"]').exists()).toBe(true)
+        await submit(wrapper)
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+        expect(wrapper.find('[data-testid="mfa-use-totp"]').exists()).toBe(false)
+        expect(wrapper.find('[data-testid="mfa-use-recovery"]').exists()).toBe(false)
+
+        // A final answer ends the pending state: the other factors come back.
+        mfaVerifyMock.mockReset()
+        mfaVerifyMock.mockResolvedValueOnce(failure('mfa_attempt_expired'))
+        await submit(wrapper)
+        expect(wrapper.find('[data-testid="mfa-use-totp"]').exists()).toBe(true)
+        expect(wrapper.find('[data-testid="mfa-use-recovery"]').exists()).toBe(true)
     })
 
     it('a TOTP continuation repeats the same code until it signs in', async () => {

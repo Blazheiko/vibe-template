@@ -15,7 +15,11 @@ import { getErrorReason } from '@/utils/response-normalizer'
 // when the pauses run out, by the "Try again" button, until the server gives a final answer. A
 // passkey answer is not replaced by a new ceremony meanwhile: the server finishes the one it
 // confirmed. A 401 `mfa_attempt_expired` to a passkey answer (its challenge lapsed or was spent
-// by an attempt that rolled back) asks for a new ceremony; nothing was counted.
+// by an attempt that rolled back) asks for a new ceremony; nothing was counted. When the options
+// answer `mfa_completion_pending` (the answer of a confirmed passkey was lost, or the page was
+// reloaded), the form keeps no request to repeat: it sends `{ method: 'continue' }`, which only
+// finishes what this browser's ticket confirmed, with the same pauses. While a completion is
+// pending the other factors are hidden: the retry sends the kept request, not a new one.
 type Method = 'webauthn' | 'totp' | 'recovery_code'
 const props = defineProps<{ methods: Method[] }>()
 const emit = defineEmits<{ 'signed-in': [user: SignedInUser]; restart: [message: string] }>()
@@ -49,8 +53,10 @@ const choose = (next: Method): void => {
     error.value = ''
 }
 
-/** The other ways this account offers, as links under the form. */
-const alternatives = computed(() => usable.value.filter((m) => m !== method.value))
+/** The other ways this account offers, as links under the form; none while one is finishing. */
+const alternatives = computed(() =>
+    pendingBody.value !== null ? [] : usable.value.filter((m) => m !== method.value),
+)
 
 async function send(body: MfaVerifyInput): Promise<void> {
     for (let attempt = 0; attempt <= PENDING_RETRIES; attempt++) {
@@ -83,13 +89,17 @@ async function send(body: MfaVerifyInput): Promise<void> {
             emit('restart', t('loginMfa.errorRestart'))
             return
         }
+        // `continue` carries no proof: the factor in view is the one asked for again.
+        const passkey =
+            body.method === 'webauthn' ||
+            (body.method === 'continue' && method.value === 'webauthn')
         error.value =
             reason === 'invalid_code'
-                ? body.method === 'webauthn'
+                ? passkey
                     ? t('loginMfa.errorPasskey')
                     : t('loginMfa.errorCode')
                 : reason === 'mfa_attempt_expired'
-                  ? body.method === 'webauthn'
+                  ? passkey
                       ? t('loginMfa.errorPasskeyRetry')
                       : t('loginMfa.errorRetry')
                   : reason === 'mfa_ticket_used'
@@ -138,7 +148,8 @@ async function withPasskey(): Promise<void> {
         if (data?.status !== 'success') {
             const reason = getErrorReason(data) ?? ''
             if (reason === 'mfa_ticket_invalid') emit('restart', t('loginMfa.errorRestart'))
-            else if (reason === 'mfa_completion_pending') error.value = t('loginMfa.errorPending')
+            // A confirmed attempt is finishing and this form lost its request: continue it.
+            else if (reason === 'mfa_completion_pending') await send({ method: 'continue' })
             else error.value = t('auth.errorServer')
             return
         }
