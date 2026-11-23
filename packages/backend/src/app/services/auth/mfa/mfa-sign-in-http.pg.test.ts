@@ -123,7 +123,8 @@ vi.mock('#app/services/auth/new-sign-in-notice.js', async (importActual) => {
     return { ...actual, notifyNewSignIn: newSignIn }
 })
 
-// Injected failures (Р4, «Збої»).
+// Injected failures (Р4, «Збої»). A Redis failure is what withRedis throws for an unreachable
+// Redis (RedisUnavailableError): the error handler answers it 503 (ADR 0004).
 interface Injected {
     prepare: boolean
     /** Runs this, then fails the activation as an unreachable Redis would. */
@@ -140,6 +141,8 @@ interface Injected {
     claim: boolean
     /** The recovery cleanup of the rotated token stops part-way (Redis), once. */
     cleanup: boolean
+    /** The activation fails with an error that is not an infrastructure failure (a bug), once. */
+    activateBug: boolean
 }
 const inject = vi.hoisted((): Injected => ({
     prepare: false,
@@ -151,33 +154,40 @@ const inject = vi.hoisted((): Injected => ({
     statusReads: 0,
     claim: false,
     cleanup: false,
+    activateBug: false,
 }))
 vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     const actual = await importActual<typeof SessionIndex>()
+    const { RedisUnavailableError } =
+        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     return {
         ...actual,
         preparePendingSession: (...args: Parameters<typeof actual.preparePendingSession>) => {
             if (inject.prepare) {
                 inject.prepare = false
-                return Promise.reject(new Error('Redis down (prepare)'))
+                return Promise.reject(new RedisUnavailableError('Redis down (prepare)'))
             }
             return actual.preparePendingSession(...args)
         },
         activatePendingSession: async (
             ...args: Parameters<typeof actual.activatePendingSession>
         ) => {
+            if (inject.activateBug) {
+                inject.activateBug = false
+                throw new TypeError('a bug (activate)')
+            }
             if (inject.activate !== false) {
                 const before = inject.activate
                 inject.activate = false
                 await before()
-                throw new Error('Redis down (activate)')
+                throw new RedisUnavailableError('Redis down (activate)')
             }
             return actual.activatePendingSession(...args)
         },
         claimActivationEffects: (...args: Parameters<typeof actual.claimActivationEffects>) => {
             if (inject.claim) {
                 inject.claim = false
-                return Promise.reject(new Error('Redis down (claim)'))
+                return Promise.reject(new RedisUnavailableError('Redis down (claim)'))
             }
             return actual.claimActivationEffects(...args)
         },
@@ -254,7 +264,10 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
     const { default: sessionConfig } = await import('#config/session.js')
     const { mfaTicketCookieName } = await import('#vendor/utils/session/request-session.js')
     const { getSession } = await import('#vendor/utils/session/redis-session-storage.js')
-    const { totpFactorRepository, withTransaction } = await import('#app/repositories/index.js')
+    const { totpFactorRepository, userRepository, withTransaction } =
+        await import('#app/repositories/index.js')
+    const { RedisUnavailableError } =
+        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     const { recoveryCodes } = await import('./recovery-codes.js')
     const { mfaSecretBox, totpSecretOwner } = await import('./mfa-secret-box.js')
     const { generateTotpSecret, hotp, totpStepAt } = await import('./totp.js')
@@ -275,6 +288,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         status: number
         body: Record<string, unknown>
         cookies: Map<string, string>
+        retryAfter: string | null
     }
 
     class Browser {
@@ -304,6 +318,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 status: response.status,
                 body: (text === '' ? {} : JSON.parse(text)) as Record<string, unknown>,
                 cookies,
+                retryAfter: response.headers.get('retry-after'),
             }
         }
 
@@ -408,6 +423,8 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         inject.statusReads = 0
         inject.claim = false
         inject.cleanup = false
+        inject.activateBug = false
+        vi.restoreAllMocks()
         proxy.disarm()
         security.mockClear()
         newSignIn.mockClear()
@@ -1229,6 +1246,143 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         })
     })
 
+    // ADR 0004: an infrastructure failure of the second step throws, and the error handler
+    // answers it (classifyError): 503 service_unavailable with Retry-After for Redis, 500 for
+    // anything else. The activation keeps 503 mfa_completion_pending for a failure the repeat can
+    // outlive (the client repeats `continue`), and answers anything else 500.
+    describe('failure answers of the second step (ADR 0004)', () => {
+        const redisDown = () => new RedisUnavailableError('Redis down (ticket read)')
+
+        it('a Redis failure of a ticket read: 503 service_unavailable with Retry-After', async () => {
+            const user = await mfaUser('mfa-read-redis')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+
+            vi.spyOn(mfaTicketStore, 'read').mockRejectedValueOnce(redisDown())
+            const state = await browser.request('POST', '/auth/mfa/state', {})
+            expect(state.status).toBe(503)
+            expect(state.body).toMatchObject({ code: 'service_unavailable' })
+            expect(state.retryAfter).toBe('1')
+
+            vi.spyOn(mfaTicketStore, 'read').mockRejectedValueOnce(redisDown())
+            const cont = await browser.request('POST', '/auth/mfa/verify', { method: 'continue' })
+            expect(cont.status).toBe(503)
+            expect(cont.body).toMatchObject({ code: 'service_unavailable' })
+            expect(cont.retryAfter).toBe('1')
+            // The ticket cookie stays: the browser goes on with the same ticket.
+            expect(cont.cookies.has(MFA_COOKIE)).toBe(false)
+
+            vi.restoreAllMocks()
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            })
+            expect(ok.status).toBe(200)
+        })
+
+        it('a Redis failure of the reservation: 503, nothing counted', async () => {
+            const user = await mfaUser('mfa-reserve-redis')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(mfaTicketStore, 'reserve').mockRejectedValueOnce(redisDown())
+            const failed = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: '000000',
+            })
+            expect(failed.status).toBe(503)
+            expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+            expect((await browser.ticket())?.failures).toBe(0)
+        })
+
+        it('a ticket read that fails with a bug: 500 internal_error', async () => {
+            const user = await mfaUser('mfa-read-bug')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(mfaTicketStore, 'read').mockRejectedValueOnce(new TypeError('a bug (read)'))
+            const state = await browser.request('POST', '/auth/mfa/state', {})
+            expect(state.status).toBe(500)
+            expect(state.body).toMatchObject({ code: 'internal_error' })
+            expect(state.retryAfter).toBeNull()
+        })
+
+        it('the session token read fails, PostgreSQL unreachable: 503 mfa_completion_pending; continue signs in', async () => {
+            const user = await mfaUser('mfa-token-read-pg')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(userRepository, 'findSessionToken').mockRejectedValueOnce(
+                Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), {
+                    code: 'ECONNREFUSED',
+                }),
+            )
+            const pending = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'totp',
+                    code: user.code(),
+                }),
+            )
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            const done = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(done.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('the session token read fails with a bug: 500, not a pending answer to repeat', async () => {
+            const user = await mfaUser('mfa-token-read-bug')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(userRepository, 'findSessionToken').mockRejectedValueOnce(
+                new TypeError('a bug (session token)'),
+            )
+            const failed = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'totp',
+                    code: user.code(),
+                }),
+            )
+            expect(failed.status).toBe(500)
+            expect(failed.body).toMatchObject({ code: 'internal_error' })
+            expect(failed.body).not.toHaveProperty('reason')
+            // The commit happened: the confirmed sign-in is still finished by the repeat.
+            const done = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(done.status).toBe(200)
+        })
+
+        it('the activation fails with Redis: 503 mfa_completion_pending; with a bug: 500', async () => {
+            const user = await mfaUser('mfa-activate-kinds')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            inject.activate = () => Promise.resolve()
+            const pending = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'totp',
+                    code: user.code(),
+                }),
+            )
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(pending.retryAfter).toBe('1')
+
+            inject.activateBug = true
+            const failed = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(failed.status).toBe(500)
+            expect(failed.body).toMatchObject({ code: 'internal_error' })
+            expect(failed.body).not.toHaveProperty('reason')
+
+            const done = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(done.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+    })
+
     it('an account without a second factor signs in with the password alone, as before', async () => {
         const [row] = await db
             .insert(users)
@@ -1327,6 +1481,29 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             expect(ok.status).toBe(200)
             const session = await getSession(browser.sessionId(), user.row.sessionToken)
             expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'webauthn'] })
+        })
+
+        it('a Redis failure taking the challenge: 503, the reservation given back, nothing counted', async () => {
+            const { passkeyTicketChallenges } = await import('./passkey-login-challenges.js')
+            const user = await mfaUser('mfa-passkey-take-redis')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const response = await answer(browser, authenticator)
+            vi.spyOn(passkeyTicketChallenges, 'take').mockRejectedValueOnce(
+                new RedisUnavailableError('Redis down (challenge)'),
+            )
+            const failed = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response,
+            })
+            expect(failed.status).toBe(503)
+            expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+            expect(failed.retryAfter).toBe('1')
+            const ticket = await browser.ticket()
+            expect(ticket?.failures).toBe(0)
+            expect(ticket?.reservations).toEqual([])
+            expect(ticket?.state).toBe('open')
         })
 
         it("another user's key is a failed attempt; a spent challenge answers nothing", async () => {

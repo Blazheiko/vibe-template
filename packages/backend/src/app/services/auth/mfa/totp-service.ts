@@ -19,7 +19,7 @@ import {
     type DbExecutor,
     type TotpFactorRow,
 } from '#app/repositories/index.js'
-import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import { auditService } from '#app/services/audit/audit-service.js'
 import { withProof, withRole, type UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { signInCapability } from '#app/services/auth/sign-in-methods-service.js'
@@ -247,79 +247,66 @@ export const totpService = {
         const sealed = box.seal(secret, totpSecretOwner(userId))
         const { actor } = request
 
-        let outcome: {
-            factor: TotpFactorRow
-            replaced: boolean
-            codes: string[] | null
-            events: RecordedAuditEvent[]
-        }
-        try {
-            const result = await withTransaction(async (tx) => {
-                const locked = await userRepository.lockById(userId, tx)
-                if (locked === undefined) return Result.err(notFound('User', 'User not found'))
-                if (locked.sessionToken !== request.presentedSessionToken) {
-                    return Result.err(sessionRevoked())
-                }
-                // Under the lock: a parallel confirmation of the same setup got here first.
-                const again = await totpFactorRepository.findByEnrollment(
+        const result = await withTransaction(async (tx) => {
+            const locked = await userRepository.lockById(userId, tx)
+            if (locked === undefined) return Result.err(notFound('User', 'User not found'))
+            if (locked.sessionToken !== request.presentedSessionToken) {
+                return Result.err(sessionRevoked())
+            }
+            // Under the lock: a parallel confirmation of the same setup got here first.
+            const again = await totpFactorRepository.findByEnrollment(
+                userId,
+                input.enrollmentId,
+                tx,
+            )
+            if (again !== undefined) {
+                return Result.ok({ factor: again, replaced: false, codes: null, events: [] })
+            }
+            const account = await loadMfaAccount(locked, tx)
+            if (!mfaEnabledOf(account) && !hasRecoveryContactOf(locked)) {
+                return Result.err(
+                    conflict(
+                        'Verify your email (or phone) before turning on two-step sign-in',
+                        MFA_REASONS.recoveryContactRequired,
+                    ),
+                )
+            }
+            const { created, replaced } = await totpFactorRepository.replace(
+                {
                     userId,
-                    input.enrollmentId,
-                    tx,
-                )
-                if (again !== undefined) {
-                    return Result.ok({ factor: again, replaced: false, codes: null, events: [] })
-                }
-                const account = await loadMfaAccount(locked, tx)
-                if (!mfaEnabledOf(account) && !hasRecoveryContactOf(locked)) {
-                    return Result.err(
-                        conflict(
-                            'Verify your email (or phone) before turning on two-step sign-in',
-                            MFA_REASONS.recoveryContactRequired,
-                        ),
-                    )
-                }
-                const { created, replaced } = await totpFactorRepository.replace(
-                    {
-                        userId,
-                        enrollmentId: input.enrollmentId,
-                        secretCiphertext: sealed.ciphertext,
-                        keyId: sealed.keyId,
-                        lastUsedStep: step,
-                        confirmedAt: new Date(now),
-                    },
-                    tx,
-                )
-                await retirePendingContactLinks(userId, tx)
-                const codes =
-                    account.recoveryCodesRemaining === 0
-                        ? await recoveryCodes.issue(userId, tx)
-                        : null
-                // Р14: the proof the setup accepted (the step-up of its first step), as it was then.
-                const proven = withProof(actor, setupProof)
-                const stamp = await auditService.stamp(tx)
-                const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
-                    replaced
-                        ? {
-                              action: 'auth.mfa.totp.replaced',
-                              targetId: String(userId),
-                              targetUserId: userId,
-                              input: {},
-                          }
-                        : {
-                              action: 'auth.mfa.totp.enabled',
-                              targetId: String(userId),
-                              targetUserId: userId,
-                              input: { recoveryCodesIssued: codes !== null },
-                          },
-                ])
-                return Result.ok({ factor: created, replaced, codes, events })
-            })
-            if (Result.isError(result)) return Result.err(result.error)
-            outcome = result.value
-        } catch (err) {
-            logger.error({ err, userId: String(userId) }, 'TOTP confirmation failed')
-            throw err
-        }
+                    enrollmentId: input.enrollmentId,
+                    secretCiphertext: sealed.ciphertext,
+                    keyId: sealed.keyId,
+                    lastUsedStep: step,
+                    confirmedAt: new Date(now),
+                },
+                tx,
+            )
+            await retirePendingContactLinks(userId, tx)
+            const codes =
+                account.recoveryCodesRemaining === 0 ? await recoveryCodes.issue(userId, tx) : null
+            // Р14: the proof the setup accepted (the step-up of its first step), as it was then.
+            const proven = withProof(actor, setupProof)
+            const stamp = await auditService.stamp(tx)
+            const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
+                replaced
+                    ? {
+                          action: 'auth.mfa.totp.replaced',
+                          targetId: String(userId),
+                          targetUserId: userId,
+                          input: {},
+                      }
+                    : {
+                          action: 'auth.mfa.totp.enabled',
+                          targetId: String(userId),
+                          targetUserId: userId,
+                          input: { recoveryCodesIssued: codes !== null },
+                      },
+            ])
+            return Result.ok({ factor: created, replaced, codes, events })
+        })
+        if (Result.isError(result)) return Result.err(result.error)
+        const outcome = result.value
         auditService.logCommitted(actor.logger, outcome.events)
         if (outcome.events.length > 0) {
             announceMfaChange(userId, outcome.replaced ? 'replaced' : 'enabled')

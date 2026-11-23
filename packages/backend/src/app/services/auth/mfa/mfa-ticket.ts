@@ -3,6 +3,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto'
 import redis, { withRedis } from '#database/redis.js'
 import appConfig from '#config/app.js'
 import type { LoginOrigin, LoginPlan } from '#vendor/types/types.js'
+import logger from '#vendor/utils/logger.js'
 import { sanitizeRedisKey } from '#vendor/utils/session/redis-session-storage.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the one-time ticket between the first factor and
@@ -204,7 +205,10 @@ const parseTicket = (raw: string): MfaTicket | null => {
             reservations: asArray(ticket.reservations),
             settled: asArray(ticket.settled),
         }
-    } catch {
+    } catch (err) {
+        // A ticket that does not parse is treated as gone (the sign-in starts again); the raw
+        // value stays out of the log, it carries the session plan.
+        logger.warn({ err }, 'MFA ticket JSON corrupt; treated as gone')
         return null
     }
 }

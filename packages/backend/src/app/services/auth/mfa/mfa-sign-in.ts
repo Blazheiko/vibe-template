@@ -33,7 +33,15 @@ import {
 } from '#app/services/shared/errors.js'
 import type { Auth, LoginOrigin, LoginPlan, Session } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
+import {
+    isRedisUnavailable,
+    RedisUnavailableError,
+} from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { destroyAllSessions, destroySession } from '#vendor/utils/session/redis-session-storage.js'
+import {
+    classifyLockFailure,
+    SessionDeletionDeferredError,
+} from '#vendor/utils/session/session-deletion-lock.js'
 import { loadMfaFactors } from './mfa-account.js'
 import {
     mfaBinding,
@@ -90,6 +98,51 @@ class Abort extends Error {
     }
 }
 
+/**
+ * ADR 0004 (best effort): a step whose failure changes nothing the request answers. It is logged
+ * and answered by its fallback; the ticket and the pending session lapse with their TTL.
+ */
+const bestEffort = <T>(
+    work: Promise<T>,
+    fallback: T,
+    message: string,
+    fields: Record<string, unknown>,
+): Promise<T> =>
+    work.catch((err: unknown) => {
+        logger.warn({ err, ...fields }, message)
+        return fallback
+    })
+
+const field = (value: unknown, key: string): unknown =>
+    typeof value === 'object' && value !== null && key in value
+        ? (value as Record<string, unknown>)[key]
+        : undefined
+
+/** pg's query_timeout: the query got no answer in time (Drizzle keeps it as the `cause`). */
+const isQueryTimeout = (err: unknown): boolean => {
+    let current: unknown = err
+    for (let depth = 0; depth < 5 && current !== undefined && current !== null; depth++) {
+        const message = field(current, 'message')
+        if (typeof message === 'string' && message.startsWith('Query read timeout')) return true
+        current = field(current, 'cause')
+    }
+    return false
+}
+
+/**
+ * Р4: a failure of the activation that the repeat of the same request can outlive, so it answers
+ * 503 `mfa_completion_pending` (the client repeats `continue`): Redis unavailable, the replaced
+ * session's record left by its lock (SessionDeletionDeferredError), and PostgreSQL that did not
+ * answer: no connection, a broken one, a cut wait (classifyLockFailure: busy, unreachable,
+ * connection_lost) or a query timeout. Anything else (a bug, a Lua reply error) is thrown: a 500
+ * instead of an answer the client would repeat for ever.
+ */
+const isRepeatableFailure = (err: unknown): boolean =>
+    isRedisUnavailable(err) ||
+    err instanceof SessionDeletionDeferredError ||
+    classifyLockFailure(err) !== 'other' ||
+    isQueryTimeout(err)
+
 const methodsOf = (account: { totp: unknown; passkeys: number }): SecondStepMethod[] => {
     const methods: SecondStepMethod[] = []
     // feat-246: a passkey first, it is the stronger and the quicker one.
@@ -129,12 +182,8 @@ export async function startSecondStepIfRequired(
         reservations: [],
         settled: [],
     }
-    try {
-        await mfaTicketStore.create(ticketId, ticket, mfaConfig.ticketTtlSeconds)
-    } catch (err) {
-        logger.error({ err }, 'Second-step ticket not created')
-        return Result.err(serviceUnavailable(err))
-    }
+    // ADR 0004: a Redis failure throws (503 by classifyError); no cookie was set before it.
+    await mfaTicketStore.create(ticketId, ticket, mfaConfig.ticketTtlSeconds)
     auth.setMfaTicketCookie(ticketId, mfaConfig.ticketTtlSeconds)
     return Result.ok({ status: 'mfa_required', methods: methodsOf(account) })
 }
@@ -156,12 +205,7 @@ export async function secondStepState(context: SignInContext): Promise<AppResult
     const ticketId = context.auth.getMfaTicketCookie()
     const cookieSession = context.auth.getCookieSessionId()
     if (ticketId === undefined || ticketId === '' || cookieSession === undefined) return none
-    let ticket: MfaTicket | null
-    try {
-        ticket = await mfaTicketStore.read(ticketId)
-    } catch (err) {
-        return Result.err(serviceUnavailable(err))
-    }
+    const ticket = await mfaTicketStore.read(ticketId)
     if (ticket?.binding !== mfaBinding(cookieSession)) return none
     const account = await loadMfaFactors(BigInt(ticket.userId))
     if (account.totp === undefined && account.passkeys === 0) return none
@@ -212,14 +256,8 @@ export async function secondStepPasskeyOptions(
     if (ticketId === undefined || ticketId === '' || cookieSession === undefined) {
         return Result.err(ticketInvalid())
     }
-    let ticket: MfaTicket | null
-    let ttl: number
-    try {
-        ticket = await mfaTicketStore.read(ticketId)
-        ttl = await mfaTicketStore.ttl(ticketId)
-    } catch (err) {
-        return Result.err(serviceUnavailable(err))
-    }
+    const ticket = await mfaTicketStore.read(ticketId)
+    const ttl = await mfaTicketStore.ttl(ticketId)
     if (ticket?.binding !== mfaBinding(cookieSession)) {
         return Result.err(ticketInvalid())
     }
@@ -231,11 +269,7 @@ export async function secondStepPasskeyOptions(
         return Result.err(badRequest('This account has no passkey', 'proof_unavailable'))
     }
     const options = await authenticationOptions(keys)
-    try {
-        await passkeyTicketChallenges.issue(ticketId, options.challenge, ttl)
-    } catch (err) {
-        return Result.err(serviceUnavailable(err))
-    }
+    await passkeyTicketChallenges.issue(ticketId, options.challenge, ttl)
     return Result.ok({ options })
 }
 
@@ -293,18 +327,13 @@ export async function completeSecondStep(
     const reservationId = nanoid()
     const reservationTtlMs = mfaConfig.reservationTtlSeconds * 1000
 
-    let reserved: ReserveOutcome
-    try {
-        reserved = await mfaTicketStore.reserve(
-            ticketId,
-            binding,
-            reservationId,
-            now,
-            reservationTtlMs,
-        )
-    } catch (err) {
-        return Result.err(serviceUnavailable(err))
-    }
+    const reserved: ReserveOutcome = await mfaTicketStore.reserve(
+        ticketId,
+        binding,
+        reservationId,
+        now,
+        reservationTtlMs,
+    )
     if (reserved.kind === 'invalid') {
         context.auth.setMfaTicketCookie(null, 0)
         return Result.err(ticketInvalid())
@@ -332,12 +361,7 @@ async function continueByRequest(
     request: AuditRequest,
     deps: SecondStepDeps,
 ): Promise<AppResult<AuthSuccessPayload>> {
-    let ticket: MfaTicket | null
-    try {
-        ticket = await mfaTicketStore.read(ticketId)
-    } catch (err) {
-        return Result.err(serviceUnavailable(err))
-    }
+    const ticket = await mfaTicketStore.read(ticketId)
     if (ticket?.binding !== binding) {
         context.auth.setMfaTicketCookie(null, 0)
         return Result.err(ticketInvalid())
@@ -393,7 +417,15 @@ async function attempt(
     // its counter, so a rollback gives it back.
     let passkey: { credentialId: bigint; newCounter: bigint } | null = null
     if (input.method === 'webauthn') {
-        const checked = await checkSecondStepPasskey(ticketId, ticket, input.response, request)
+        let checked: Awaited<ReturnType<typeof checkSecondStepPasskey>>
+        try {
+            checked = await checkSecondStepPasskey(ticketId, ticket, input.response, request)
+        } catch (err) {
+            // ADR 0004: the failure reaches the error handler (503 for Redis, else 500); the
+            // reservation is given back first, so it does not hold a place until it lapses.
+            await release()
+            throw err
+        }
         if (checked === 'stale') {
             // The challenge is gone or spent (an earlier attempt took it, then rolled back or
             // lapsed): not a wrong proof. Nothing counted; the browser runs a new ceremony.
@@ -409,10 +441,6 @@ async function attempt(
             }
             if (settled === 'deleted') context.auth.setMfaTicketCookie(null, 0)
             return Result.err(invalidCode())
-        }
-        if (checked === 'unavailable') {
-            await release()
-            return Result.err(serviceUnavailable())
         }
         passkey = checked
     }
@@ -523,13 +551,23 @@ async function attempt(
                     await release()
                     // A recovery sign-in of a parallel attempt rotated the token: that attempt
                     // won, and its ticket stays for its continuation.
-                    const current = await mfaTicketStore.read(ticketId).catch(() => null)
+                    const current = await bestEffort(
+                        mfaTicketStore.read(ticketId),
+                        null,
+                        'Ticket not read after a revoked attempt; treated as gone',
+                        { userId: ticket.userId },
+                    )
                     if (current !== null && current.state !== 'open') {
                         return Result.err(
                             unauthorized('Signed in already', MFA_REASONS.mfaTicketUsed),
                         )
                     }
-                    await mfaTicketStore.delete(ticketId).catch(() => undefined)
+                    await bestEffort(
+                        mfaTicketStore.delete(ticketId),
+                        undefined,
+                        'Revoked ticket not deleted; it lapses with its TTL',
+                        { userId: ticket.userId },
+                    )
                     context.auth.setMfaTicketCookie(null, 0)
                     return Result.err(sessionRevoked())
                 }
@@ -551,15 +589,16 @@ async function attempt(
             logger.warn({ err }, 'Second-step commit outcome unknown; reconciling')
             return reconcile(context, ticketId, ticket, plan, completionId, xid)
         }
-        // A known rollback: the proof was not spent; the same code can be sent again.
-        logger.warn({ err }, 'Second step rolled back')
+        // A known rollback: the proof was not spent; the same code can be sent again. The
+        // compensation runs here, then the failure reaches the error handler (ADR 0004: 503 for
+        // Redis, else 500), which logs it.
         if (progress.captured) {
             await discardPending(plan)
-            await mfaTicketStore.reopen(ticketId, completionId).catch(() => false)
+            await reopenQuietly(ticketId, completionId, ticket.userId)
         } else {
             await release()
         }
-        return Result.err(serviceUnavailable(err))
+        throw err
     }
 
     auditService.logCommitted(actor.logger, progress.events)
@@ -599,6 +638,19 @@ async function createPendingLink(
     ])
 }
 
+/**
+ * A known rollback takes the ticket back to `open`. A failure leaves it `completing`: the next
+ * request reads the transaction's status (aborted) and reopens it.
+ */
+function reopenQuietly(ticketId: string, completionId: string, userId: string): Promise<boolean> {
+    return bestEffort(
+        mfaTicketStore.reopen(ticketId, completionId),
+        false,
+        'Ticket not reopened after the rollback; the next request reopens it',
+        { userId },
+    )
+}
+
 async function discardPending(plan: LoginPlan | undefined): Promise<void> {
     if (plan === undefined) return
     try {
@@ -620,7 +672,7 @@ async function reconcile(
     if (status === 'committed') return activate(context, ticketId, ticket, plan, completionId)
     if (status === 'aborted') {
         await discardPending(plan)
-        await mfaTicketStore.reopen(ticketId, completionId).catch(() => false)
+        await reopenQuietly(ticketId, completionId, ticket.userId)
         return Result.err(serviceUnavailable())
     }
     return Result.err(completionPending())
@@ -650,7 +702,7 @@ async function continueCompletion(
         // without counting a failure, and the browser runs a new ceremony. A `continue` carries
         // no proof: it answers the same, and the browser gives one.
         await discardPending(plan)
-        const reopened = await mfaTicketStore.reopen(ticketId, completionId).catch(() => false)
+        const reopened = await reopenQuietly(ticketId, completionId, ticket.userId)
         if (!reopened) return Result.err(completionPending())
         if (input.method === 'continue') return Result.err(attemptExpired())
         return completeSecondStep(context, input, request, { ...deps })
@@ -675,18 +727,29 @@ async function activate(
     try {
         current = await userRepository.findSessionToken(userId)
     } catch (err) {
+        if (!isRepeatableFailure(err)) throw err
         logger.warn({ err }, 'Session token not read before the activation')
         return Result.err(completionPending())
     }
     if (current !== plan.expectedUserToken) {
         await discardPending(plan)
-        await mfaTicketStore.delete(ticketId).catch(() => undefined)
+        await bestEffort(
+            mfaTicketStore.delete(ticketId),
+            undefined,
+            'Ticket of a revoked sign-in not deleted; it lapses with its TTL',
+            { userId: plan.userId },
+        )
         context.auth.setMfaTicketCookie(null, 0)
         return Result.err(sessionRevoked())
     }
     const recoveryExpiry = plan.auth.recovery?.expiresAt
     if (recoveryExpiry !== undefined && Date.parse(recoveryExpiry) <= Date.now()) {
-        await mfaTicketStore.delete(ticketId).catch(() => undefined)
+        await bestEffort(
+            mfaTicketStore.delete(ticketId),
+            undefined,
+            'Ticket of an expired recovery sign-in not deleted; it lapses with its TTL',
+            { userId: plan.userId },
+        )
         context.auth.setMfaTicketCookie(null, 0)
         return Result.err(ticketInvalid())
     }
@@ -718,6 +781,7 @@ async function activate(
             },
         )
     } catch (err) {
+        if (!isRepeatableFailure(err)) throw err
         logger.warn({ err }, 'Activation failed; the same request finishes it')
         return Result.err(completionPending())
     }
@@ -752,7 +816,8 @@ async function endOtherSessions(
         keepSessionId: currentSessionId,
     })
     if (!cleanup.complete) {
-        throw new Error('Sessions of the rotated token not all deleted (Redis unavailable)')
+        // A Redis failure part-way: answered 503 mfa_completion_pending, the repeat runs it again.
+        throw new RedisUnavailableError('Sessions of the rotated token not all deleted')
     }
 }
 
@@ -780,14 +845,8 @@ async function checkSecondStepPasskey(
     ticket: MfaTicket,
     response: AuthenticationResponse,
     request: AuditRequest,
-): Promise<{ credentialId: bigint; newCounter: bigint } | 'wrong' | 'stale' | 'unavailable'> {
-    let challenge: string | null
-    try {
-        challenge = await passkeyTicketChallenges.take(ticketId)
-    } catch (err) {
-        logger.warn({ err }, 'Second-step passkey challenge not read')
-        return 'unavailable'
-    }
+): Promise<{ credentialId: bigint; newCounter: bigint } | 'wrong' | 'stale'> {
+    const challenge = await passkeyTicketChallenges.take(ticketId)
     if (challenge === null) return 'stale'
     const userId = BigInt(ticket.userId)
     const credential = await webauthnCredentialRepository.findByCredentialId(
