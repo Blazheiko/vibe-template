@@ -36,6 +36,7 @@ The browser draws the QR code (`qrcode`); the secret never goes to another servi
 - Five wrong codes close the ticket. The limit counts confirmed failures, not requests: an infrastructure failure gives the attempt back.
 - A TOTP code is spent for one version of the factor (`last_used_step`), so the same code is refused the second time.
 - The request that captured the ticket creates the session: first as `pending` before the commit, then in one Redis transition. A repeat of the same request (a lost answer, 503 `mfa_completion_pending`) finishes an already confirmed sign-in with the same session; an unknown `COMMIT` outcome is read with `pg_xact_status`.
+- An attempt holds a reservation of the ticket (`MFA_RESERVATION_TTL_SECONDS`), checked with the clock of the capture itself: a factor check or a row lock that outlasted it rolls the proof back and answers 401 `mfa_attempt_expired` (the TOTP step, the recovery code and the passkey counter stay unspent). While a confirmed attempt finishes, `POST /auth/mfa/webauthn/options` answers 503 `mfa_completion_pending` too: the browser repeats the same verify request, not a new ceremony. A passkey answer whose challenge is gone or spent (taken by an attempt that rolled back) is not a wrong proof: 401 `mfa_attempt_expired`, no failure counted, and the browser runs a new ceremony.
 - A new social sign-in linked to an account with MFA is stored only after the TOTP second step; a recovery-code sign-in does not store it.
 
 **What is guaranteed for the last recovery code.** The ticket lives in Redis. A failed activation, a briefly unreachable Redis and a lost answer do not lose the code. Losing the whole Redis together with the ticket (or the database or Redis being down for the whole 5 minutes of the ticket) after the commit leaves the code spent without a session; an administrator helps then. So Redis in production should persist (AOF).
@@ -78,7 +79,7 @@ The first factor needs a verified email (or a phone with `AUTH_PHONE_ENABLED`): 
 ## Recovery
 
 - An ordinary password reset does **not** turn MFA off. The owner of an unverified address taking the account over (`claimLocked`) removes the factors with everything else set up before the proof.
-- A recovery code (16 characters, 80 bits, one-time) opens a **recovery session**: level 1, an absolute lifetime `MFA_RECOVERY_WINDOW_SECONDS` (900 s by default), no WebSocket. The other sessions end. Only `main/init`, the `/account/mfa/*` routes, `recovery/finish` and `logout` are allowed; everything else answers `403 recovery_session`. Removing the old factor or new codes come only after the factor was replaced. After finishing, an ordinary sign-in with the new factor.
+- A recovery code (16 characters, 80 bits, one-time) opens a **recovery session**: level 1, an absolute lifetime `MFA_RECOVERY_WINDOW_SECONDS` (900 s by default), no WebSocket (`main/init` answers `wsToken: null`). The other sessions end. Only `main/init`, the `/account/mfa/*` routes, `recovery/finish` and `logout` are allowed; everything else answers `403 recovery_session`. Removing the old factor or new codes come only after the factor was replaced. After finishing, an ordinary sign-in with the new factor.
 
 ## Staff
 
