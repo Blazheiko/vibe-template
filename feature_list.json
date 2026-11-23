@@ -2501,7 +2501,7 @@
             "owner": "Blazheiko",
             "branch": "fix/mfa-review-3",
             "dependencies": ["feat-250"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
