@@ -15,7 +15,17 @@ vi.mock('vue-router', () => ({ useRouter: () => ({ push }), useRoute: () => rout
 
 const calls: string[] = []
 const setUser = vi.hoisted(() => vi.fn())
-vi.mock('@/stores/user', () => ({ useUserStore: () => ({ setUser }) }))
+const userState = vi.hoisted(() => ({
+    recovery: null as { expiresAt: string; replaced: boolean } | null,
+}))
+vi.mock('@/stores/user', () => ({
+    useUserStore: () => ({
+        setUser,
+        get recovery() {
+            return userState.recovery
+        },
+    }),
+}))
 const emit = vi.hoisted(() => vi.fn())
 vi.mock('@/utils/event-bus', () => ({ useEventBus: () => ({ emit }) }))
 
@@ -73,6 +83,7 @@ describe('useCompleteSignIn', () => {
         calls.length = 0
         vi.clearAllMocks()
         route.query = {}
+        userState.recovery = null
         sessionStorage.clear()
         setUser.mockImplementation(() => calls.push('setUser'))
         push.mockImplementation(() => {
@@ -99,6 +110,17 @@ describe('useCompleteSignIn', () => {
         await signIn()
 
         expect(push).toHaveBeenCalledWith('/support')
+    })
+
+    // Fourth review (M4): the recovery state is in the store before the navigation (the MFA form
+    // sets it from the answer); `?redirect=` to an admin page would show a 403 first.
+    it('a recovery sign-in opens the account page whatever ?redirect= says', async () => {
+        route.query = { redirect: '/admin/users' }
+        userState.recovery = { expiresAt: '2026-11-22T12:15:00.000Z', replaced: false }
+        await signIn()
+
+        expect(push).toHaveBeenCalledWith({ name: 'UserAccount' })
+        expect(push).not.toHaveBeenCalledWith('/admin/users')
     })
 
     it.each(['https://evil.example/', '//evil.example', '/\\evil.example', 'support', ''])(

@@ -177,6 +177,7 @@ export default {
         errorPasswordsMismatch: 'Passwords do not match',
         errorTooManyResetRequests: 'Too many reset attempts. Please wait a minute and try again.',
         errorServer: 'Server error. Please try again later.',
+        logoutUnfinished: 'Signing out did not finish. Please try again in a moment.',
         errorTerms: 'You must accept the terms of service to create an account',
         errorInvalidLogin:
             'Invalid login credentials. If you signed up with Google or Facebook, sign in with that button instead.',

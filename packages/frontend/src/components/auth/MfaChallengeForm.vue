@@ -18,7 +18,9 @@ import { getErrorReason } from '@/utils/response-normalizer'
 // by an attempt that rolled back) asks for a new ceremony; nothing was counted. When the options
 // answer `mfa_completion_pending` (the answer of a confirmed passkey was lost, or the page was
 // reloaded), the form keeps no request to repeat: it sends `{ method: 'continue' }`, which only
-// finishes what this browser's ticket confirmed, with the same pauses. While a completion is
+// finishes what this browser's ticket confirmed, with the same pauses. Every verify request (a
+// `continue` too) is kept as pending before it is sent and dropped only on a final answer, so one
+// whose answer the network lost is still the one "Try again" sends. While a completion is
 // pending the other factors are hidden: the retry sends the kept request, not a new one. Mounted
 // after a reload for a ticket that is finishing (`completing`, from POST /auth/mfa/state), the
 // form sends `continue` at once. A recovery sign-in's answer carries the recovery state (Р8): it
@@ -64,9 +66,19 @@ const alternatives = computed(() =>
     pendingBody.value !== null ? [] : usable.value.filter((m) => m !== method.value),
 )
 
+/**
+ * A final answer: the server refused this request (a reason of FINAL_REASONS, or any 4xx), so it
+ * confirmed nothing to finish. No answer (the network) or a 5xx is not one.
+ */
+const isFinal = (reason: string, status: number | undefined): boolean =>
+    FINAL_REASONS.has(reason) || (status !== undefined && status >= 400 && status < 500)
+
 async function send(body: MfaVerifyInput): Promise<void> {
+    // Kept BEFORE the request goes out: when its answer is lost (the network), the server may have
+    // confirmed it, and "Try again" must continue it rather than ask for the factor again.
+    pendingBody.value = body
     for (let attempt = 0; attempt <= PENDING_RETRIES; attempt++) {
-        const { data } = await authApi.mfaVerify(body)
+        const { data, error: failure } = await authApi.mfaVerify(body)
         if (data?.status === 'success' && data.user !== undefined) {
             pendingBody.value = null
             // Before the navigation: main/init says the same, but after the page mounted.
@@ -76,7 +88,6 @@ async function send(body: MfaVerifyInput): Promise<void> {
         }
         const reason = getErrorReason(data) ?? ''
         if (reason === 'mfa_completion_pending') {
-            pendingBody.value = body
             if (attempt < PENDING_RETRIES) {
                 await wait(PENDING_DELAY_MS)
                 continue
@@ -86,7 +97,8 @@ async function send(body: MfaVerifyInput): Promise<void> {
         }
         // A final answer ends the pending request; any other failure (the network, a 503
         // without a reason) keeps it, so the retry still continues the confirmed attempt.
-        if (FINAL_REASONS.has(reason)) pendingBody.value = null
+        const status = failure?.transportCode
+        if (isFinal(reason, status === 0 ? undefined : status)) pendingBody.value = null
         if (reason === 'mfa_ticket_invalid' || reason === 'session_revoked') {
             emit('restart', t('loginMfa.errorRestart'))
             return

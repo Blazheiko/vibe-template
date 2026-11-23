@@ -278,6 +278,57 @@ describe('MfaChallengeForm', () => {
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
+    // Fourth review (H3): the first `continue` after a reload had nothing kept to repeat when its
+    // answer was lost, and the form fell back to asking for the factor of a confirmed ticket.
+    it('mounted for a completing ticket: a continue whose answer is lost stays pending', async () => {
+        mfaVerifyMock.mockResolvedValueOnce({ data: null, error: { message: 'offline' } })
+        const wrapper = mountForm(['totp', 'recovery_code'], true)
+        for (let i = 0; i < 10; i++) {
+            await flushPromises()
+            await vi.runAllTimersAsync()
+        }
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+        expect(wrapper.find('[data-testid="mfa-use-recovery"]').exists()).toBe(false)
+
+        mfaVerifyMock.mockResolvedValueOnce(success)
+        await submit(wrapper)
+        expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
+        for (const [body] of mfaVerifyMock.mock.calls) expect(body).toEqual({ method: 'continue' })
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
+    it('a code request whose first answer is lost is kept: "Try again" sends the same code', async () => {
+        mfaVerifyMock.mockResolvedValueOnce({ data: null, error: { message: 'offline' } })
+        const wrapper = mountForm(['totp', 'recovery_code'])
+        await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+        await submit(wrapper)
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+
+        await wrapper.find('[data-testid="mfa-code"]').setValue('999999')
+        mfaVerifyMock.mockResolvedValueOnce(success)
+        await submit(wrapper)
+        expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'totp', code: '123456' })
+        expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+    })
+
+    it('a 5xx without a reason keeps the request; a 4xx refusal drops it', async () => {
+        mfaVerifyMock.mockResolvedValueOnce({
+            data: { status: 'error', code: 'internal_error', message: 'no' },
+            error: { code: 'internal_error', transportCode: 500, message: 'no' },
+        })
+        const wrapper = mountForm(['totp'])
+        await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+        await submit(wrapper)
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+
+        mfaVerifyMock.mockResolvedValueOnce({
+            data: { status: 'error', code: 'validation_error', message: 'no' },
+            error: { code: 'validation_error', transportCode: 422, message: 'no' },
+        })
+        await submit(wrapper)
+        expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.submit)
+    })
+
     it('mounted for an open ticket: nothing is sent until a proof is given', async () => {
         mountForm(['totp', 'recovery_code'])
         await flushPromises()

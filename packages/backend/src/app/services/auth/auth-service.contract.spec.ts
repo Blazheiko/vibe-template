@@ -1000,6 +1000,22 @@ const ROWS: readonly Row[] = [
         throws: true,
     },
     {
+        // Р13: the record was not deleted under the user's row lock; the session stays.
+        name: 'logout · the row lock was not taken: 503 logout_retry',
+        call: async (s) => {
+            const { SessionDeletionDeferredError } =
+                await import('#vendor/utils/session/session-deletion-lock.js')
+            authMock.logout.mockRejectedValue(new SessionDeletionDeferredError())
+            return s.logout(authMock as never, sessionMock as never)
+        },
+        error: err(
+            503,
+            'service_unavailable',
+            'Signing out is still finishing. Try again in a moment.',
+            'logout_retry',
+        ),
+    },
+    {
         name: 'logout · no rotated CSRF token',
         arrange: () => {
             authMock.logout.mockResolvedValue(true)

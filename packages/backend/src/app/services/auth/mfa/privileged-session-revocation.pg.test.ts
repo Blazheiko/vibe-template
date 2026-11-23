@@ -87,7 +87,8 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
     const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
     const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
     const { sessionHandler } = await import('#vendor/utils/session/session-handler.js')
-    const { registerSessionDeletionLock } = await import('#vendor/utils/session/request-session.js')
+    const { registerSessionDeletionLock, SessionDeletionDeferredError } =
+        await import('#vendor/utils/session/session-deletion-lock.js')
     const { registerSessionTokenChecker } =
         await import('#vendor/utils/session/session-token-check.js')
     const { createResponseData } = await import('#vendor/utils/network/response-data.js')
@@ -203,6 +204,44 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             /** POST /auth/logout of this session: `context.auth.logout()`. */
             logout: async () => (await requestWith(cookie)).context.auth.logout(),
         }
+    }
+
+    interface Newcomer {
+        id: bigint
+        sessionToken: string
+    }
+    /**
+     * Р13: sign-ins in a request that presents `cookie`: each replaces that session. The password
+     * sign-in (`auth.login`) and the activation of a second-step sign-in (`auth.activateLogin`,
+     * after its Lua transition) both delete the previous record. Answer: whether it signed in.
+     */
+    const signIns = {
+        'a password sign-in': async (cookie: string, user: Newcomer): Promise<boolean> => {
+            const { context } = await requestWith(cookie)
+            const device = await context.auth.login(String(user.id), user.sessionToken, {
+                method: 'password',
+            })
+            return device !== null
+        },
+        'an MFA activation': async (cookie: string, user: Newcomer): Promise<boolean> => {
+            const { context } = await requestWith(cookie)
+            const plan = context.auth.planLogin(
+                String(user.id),
+                { method: 'password' },
+                freshPassword(),
+                user.sessionToken,
+            )
+            const completionId = crypto.randomUUID()
+            const ticketKey = `mfa_ticket:${crypto.randomUUID()}`
+            expect(await context.auth.prepareLogin(plan, completionId, 300)).toBe('created')
+            await client.set(
+                storage.sanitizeRedisKey(ticketKey),
+                JSON.stringify({ completionId, state: 'completing' }),
+                'EX',
+                300,
+            )
+            return (await context.auth.activateLogin(plan, ticketKey, completionId)) === 'activated'
+        },
     }
 
     const freshPassword = () => {
@@ -452,6 +491,80 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
             })
         })
 
+        describe.each(Object.entries(signIns))(
+            '%s that replaces the session that sent the write',
+            (_label, signInOver) => {
+                beforeAll(() => {
+                    registerSessionDeletionLock(underUserRowLock)
+                })
+                afterAll(() => {
+                    registerSessionDeletionLock(null)
+                })
+
+                it('a sign-in that finishes first: 401 session_revoked, nothing written', async () => {
+                    const target = await write.target()
+                    const admin = await insertUser('admin')
+                    const newcomer = await insertUser('user')
+                    const requesting = await signInOverHttp(admin)
+
+                    let pending: ReturnType<typeof write.run> | undefined
+                    await db.transaction(async (tx) => {
+                        await tx.execute(
+                            sql`SELECT id FROM users WHERE id = ${target.id} FOR UPDATE`,
+                        )
+                        pending = write.run(admin, requesting.isStored, target.id)
+                        await waitForLockWaiters((q) => pool.query(q), 1)
+                        expect(await signInOver(requesting.cookie, newcomer)).toBe(true)
+                    })
+                    if (pending === undefined) throw new Error('not started')
+
+                    expect(payloadOf(await pending)).toMatchObject({
+                        code: 'unauthorized',
+                        reason: 'session_revoked',
+                    })
+                    await write.unchanged(target.id)
+                    expect(await requesting.isStored()).toBe(false)
+                })
+
+                it('a sign-in during the write (after its session check) waits for its commit', async () => {
+                    const target = await write.target()
+                    const admin = await insertUser('admin')
+                    // Another account: the lock is the PREVIOUS session's user's row.
+                    const newcomer = await insertUser('user')
+                    const requesting = await signInOverHttp(admin)
+
+                    let reached: () => void = () => undefined
+                    const atWrite = new Promise<void>((resolve) => {
+                        reached = resolve
+                    })
+                    let release: () => void = () => undefined
+                    const gate = new Promise<void>((resolve) => {
+                        release = resolve
+                    })
+                    write.hold(async () => {
+                        reached()
+                        await gate
+                    })
+
+                    const pending = write.run(admin, requesting.isStored, target.id)
+                    await atWrite
+                    let signInDone = false
+                    const signIn = signInOver(requesting.cookie, newcomer).finally(() => {
+                        signInDone = true
+                    })
+                    await waitForLockWaiters((q) => pool.query(q), 1)
+                    expect(signInDone).toBe(false)
+                    expect(await requesting.isStored()).toBe(true)
+
+                    release()
+                    expect((await pending).status).toBe('ok')
+                    expect(await signIn).toBe(true)
+                    expect(await requesting.isStored()).toBe(false)
+                    await write.written(target.id)
+                })
+            },
+        )
+
         it('a user actor without the session check is refused: 401 session_revoked', async () => {
             const target = await write.target()
             const admin = await insertUser('admin')
@@ -476,11 +589,33 @@ describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked sessi
         })
 
         it('a lock that cannot be taken (PostgreSQL down) does not keep the logout', async () => {
-            registerSessionDeletionLock(() => Promise.reject(new Error('PostgreSQL unreachable')))
+            // A write commits through the same database: it cannot commit either.
+            registerSessionDeletionLock(() =>
+                Promise.reject(
+                    Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+                ),
+            )
             const admin = await insertUser('admin')
             const session = await signInOverHttp(admin)
             expect(await session.logout()).toBe(true)
             expect(await session.isStored()).toBe(false)
+        })
+
+        it('a failure not known to be an outage keeps the record: the logout is refused', async () => {
+            registerSessionDeletionLock(() => Promise.reject(new Error('Query read timeout')))
+            const admin = await insertUser('admin')
+            const session = await signInOverHttp(admin)
+            await expect(session.logout()).rejects.toBeInstanceOf(SessionDeletionDeferredError)
+            expect(await session.isStored()).toBe(true)
+        })
+
+        it('an anonymous session replaced by a sign-in takes no lock', async () => {
+            const lock = vi.fn(() => Promise.reject(new Error('not expected')))
+            registerSessionDeletionLock(lock)
+            const user = await insertUser('user')
+            const session = await signInOverHttp(user)
+            expect(await session.isStored()).toBe(true)
+            expect(lock).not.toHaveBeenCalled()
         })
 
         it('a COMMIT that fails after the deletion does not fail the logout', async () => {

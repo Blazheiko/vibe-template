@@ -15,12 +15,14 @@ import { staffPolicy } from './staff-policy.js'
 // (logout everywhere, a password change, a reset of its own factors) or its role lowered. Under
 // the actor's row lock the caller asks this again, and only a user actor (the CLI is not asked).
 //
-// Ending one session from the session list, and a plain logout of the session itself, delete its
-// record without rotating users.session_token, so the token alone does not see it. Both delete
-// the record under the same row lock (session-list-service `underUserRowLock`; the logout through
-// the hook app/start registers for the session layer), and the record of the request's session
-// is read here while the caller holds the lock: either the deletion came first (401) or it waits
-// until the privileged write has committed.
+// Ending one session from the session list, a plain logout of the session itself, and a new
+// sign-in in the same browser that replaces it, delete its record without rotating
+// users.session_token, so the token alone does not see it. All delete the record under the same
+// row lock (session-list-service `underUserRowLock`; the logout and the sign-in through the hook
+// app/start registers for the session layer, vendor session-deletion-lock), and the record of the
+// request's session is read here while the caller holds the lock: either the deletion came first
+// (401) or it waits until the privileged write has committed. A deletion whose wait is cut never
+// deletes without the lock: it is refused as retryable.
 
 export interface PrivilegedActorCheck {
     /** The actor's row, locked FOR UPDATE in the caller's transaction (undefined: it is gone). */

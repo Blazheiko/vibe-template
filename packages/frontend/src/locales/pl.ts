@@ -186,6 +186,7 @@ const pl: typeof en = {
         errorTooManyResetRequests:
             'Zbyt wiele prób resetowania. Poczekaj minutę i spróbuj ponownie.',
         errorServer: 'Błąd serwera. Spróbuj ponownie później.',
+        logoutUnfinished: 'Wylogowanie nie zostało zakończone. Spróbuj ponownie za chwilę.',
         errorTerms: 'Aby utworzyć konto, musisz zaakceptować regulamin',
         errorInvalidLogin:
             'Nieprawidłowe dane logowania. Jeśli rejestrowałeś(-aś) się przez Google lub Facebook, użyj odpowiedniego przycisku.',

@@ -2,6 +2,7 @@ import type { ErrorCode } from 'shared/errors'
 import type { Result as ResultType } from 'better-result'
 import type { ProofMethod } from 'shared/mfa'
 import type { ErrorDetails, ReauthRequiredErrorDetails } from 'shared/errors'
+import { LOGOUT_RETRY_REASON } from 'shared/errors'
 
 export type AppError =
     | { _tag: 'BadRequest'; message: string; reason?: string }
@@ -160,6 +161,19 @@ export function completionPending(): AppError {
         message: 'Signing in is still finishing. Try again in a moment.',
         retryAfterSeconds: 1,
         reason: 'mfa_completion_pending',
+    }
+}
+
+/**
+ * Р13: the logout's session record was not deleted under the user's row lock (a privileged write
+ * holds it past the bounded wait); the session stays signed in, the same logout is sent again.
+ */
+export function logoutRetry(): AppError {
+    return {
+        _tag: 'ServiceUnavailable',
+        message: 'Signing out is still finishing. Try again in a moment.',
+        retryAfterSeconds: 1,
+        reason: LOGOUT_RETRY_REASON,
     }
 }
 
