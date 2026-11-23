@@ -2513,6 +2513,16 @@
             "dependencies": ["feat-251"],
             "status": "done",
             "evidence": "PR #796 (merge b3aea80), registry #795 (in_progress), #797 (review). Review of feat-251 fixed: a lost single PostgreSQL connection (connection_lost) asks the lock again on a new connection, only a connect-time failure deletes without the lock; the ticket cookie is cleared only when this ticket was retired or is absent; the post-activation effects run exactly once through a one-shot claim after the replacement; the MFA form keeps the pending request after 429/408; a kept logout re-registers the push subscription. CI on the branch head 2d7af9a: ci.yml run 45194336545, pg-tests.yml run 45194336578, redis-tests.yml run 45194336562, all success. Local: make check green (backend 3675, frontend 997, shared 147), test:pg 678, test:redis 198, test:e2e 133, docs verify."
+        },
+        {
+            "id": "feat-253",
+            "name": "MFA Review Fixes 5",
+            "description": "Review of feat-252 (2026-11-23, REQUEST CHANGES). (1) The whole SQLSTATE class 08 counts as an unreachable database: only 08001/08004 (and 57P03) are connect-time failures, the rest of class 08 (08000, 08003, 08006, 08007, 08P01) is connection_lost; (2) a Redis failure of the effects claim answers success and the ticket is retired, so the recovery cleanup (close the old sockets, destroy the rotated token's sessions) is lost: a failed claim answers mfa_completion_pending, and the recovery cleanup is idempotent, awaited on every finishing request and answered mfa_completion_pending when it fails; (3) restoring the push record after a kept logout creates an active subscription though the released one was inactive: restore keeps the previous is_active; (4) a slow push DELETE that outlives its bound finishes after a kept logout and leaves the user without push: the restore reconciles with the in-flight deletion's real result.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-5",
+            "dependencies": ["feat-252"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
