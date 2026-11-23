@@ -2533,6 +2533,16 @@
             "dependencies": ["feat-253"],
             "status": "done",
             "evidence": "PR #805 (merge c04813e), registry #804 (in_progress), #806 (review). Reviews of feat-253 and of the branch fixed: every fallible step of the MFA activation (recovery cleanup, effects claim and effects) runs before the replaced session is deleted, so a repeat keeps CSRF and the ticket binding (real-HTTP PG tests); the recovery cleanup closes only the rotated token's sockets; POST /auth/logout takes an optional pushEndpoint and the server deletes that record after the session was really deleted, replacing the client release/restore machinery. CI on the branch head 7d5e1e4: ci.yml run 45243263947, pg-tests.yml run 45243263902, redis-tests.yml run 45243263968, all success. Local: make check green (backend 3702, frontend 1001, shared 148), test:pg 696, test:redis 199, test:e2e 133, docs verify."
+        },
+        {
+            "id": "feat-255",
+            "name": "MFA Error Handling per ADR 0004",
+            "description": "Audit of try/catch in packages/backend/src/app/services/auth/mfa (2026-11-23) against ADR 0004 (Result only for expected outcomes, infrastructure failures throw). (1) Remove the wrappers that turn an infrastructure failure into Result.err(serviceUnavailable(err)) in mfa-sign-in.ts (ticket create/read/ttl/reserve, the passkey ticket challenge issue and take with its 'unavailable' branch); the known-rollback path keeps its compensation and rethrows; (2) narrow the catches that answer mfa_completion_pending (findSessionToken, activateLogin) to infrastructure failures and rethrow the rest; (3) log the silent best-effort .catch(() => ...) calls with warn and drop the duplicate log-and-rethrow in totp-service; (4) tests: rejects instead of Result.err for infrastructure failures, and an HTTP check that a Redis failure answers 503 and a bug answers 500.",
+            "owner": "Blazheiko",
+            "branch": "refactor/mfa-error-handling",
+            "dependencies": ["feat-254"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
