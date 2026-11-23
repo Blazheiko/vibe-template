@@ -2473,6 +2473,16 @@
             "dependencies": ["feat-246", "feat-247"],
             "status": "done",
             "evidence": "PR #780 (merge 2e4a9d3), registry #779 (in_progress), #781 (review). Staff passkey mode: staffMfaPolicy('passkey') (enrolled with a passkey, a passkey session, passkey step-up), MFA_STAFF_FACTOR=passkey with a runtime WebAuthn check; one policy for every consumer; 409 mfa_required_for_role on removing the factor a staff account needs (both modes, reset excepted); staffFactor in GET /account/mfa and a banner; branch B of Р12 for a passkey-only account; a passkey-mode live config; docs with the switching order. CI on the branch head 0ff2367: ci.yml run 45068959523 (quality, e2e, e2e-live incl. the passkey config, build), pg-tests.yml run 45068959497 (test-pg 616 passed), redis-tests.yml run 45068959644 (test-redis 198 passed), all success. Local: make check green (backend 3631, frontend 963, shared 144), test:e2e 132, docs:build + docs:verify."
+        },
+        {
+            "id": "feat-249",
+            "name": "MFA Review Fixes",
+            "description": "Review of feat-245…feat-248 (2026-11-22). Blockers: (1) a staff role assignment reads the target's factors before locking the target row, so a parallel removal of the last factor can win: lock the target with lockById before the factor check; (2) the second-step reservation is captured with the request's start time: check the expiry at the atomic capture (401 mfa_attempt_expired, the factor's use rolled back); (3) the passkey second step after a long failure: options refuse a completing ticket and a reconciled rollback re-checks the old assertion with its spent challenge (a counted failure): keep continuing the current request until the ticket ends, and after a confirmed rollback ask for a new challenge without counting a failure; (4) an accepted role change or MFA reset can write after the actor's token rotated or role/MFA state changed: re-check the actor's token, permission and proof under the lock at the write. Others: the staff policy accepts marks from the far future (apply the 60 s skew bound; passkey mode checks aal 2); the MFA reset deletes the sessions by the user id instead of the previous session token; the audit proof is the freshest mark instead of the proof that allowed the action; main/init answers wsToken '' instead of null in a recovery session. Acceptance gaps: a live TOTP step-up through ReauthDialog, a live WebAuthn step-up, a real connection drop during COMMIT of the second step.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review",
+            "dependencies": ["feat-248"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
