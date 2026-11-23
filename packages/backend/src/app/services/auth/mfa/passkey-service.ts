@@ -1,6 +1,11 @@
 import { Result } from 'better-result'
 import { nanoid } from 'nanoid'
-import { MFA_REASONS, withReplacementFactor, type SessionAuthState } from 'shared/mfa'
+import {
+    MFA_REASONS,
+    withReplacementFactor,
+    type AcceptedProof,
+    type SessionAuthState,
+} from 'shared/mfa'
 import type { RegistrationResponse } from 'shared/schemas'
 
 import webauthnConfig from '#config/webauthn.js'
@@ -27,7 +32,7 @@ import { retirePendingContactLinks } from './contact-links.js'
 import { hasRecoveryContactOf, loadMfaAccount, mfaEnabledOf } from './mfa-account.js'
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
-import { acceptedProofOf, requireProof } from './require-proof.js'
+import { isAcceptedProof, requireProof } from './require-proof.js'
 import { staffFactorLossError } from './staff-policy.js'
 import {
     ceremonyBinding,
@@ -47,6 +52,8 @@ export const PASSKEY_REGISTRATION_KEYS = {
     challenge: 'passkeyRegChallenge',
     enrollment: 'passkeyRegEnrollment',
     expiresAt: 'passkeyRegExpiresAt',
+    /** Р14: the proof `requireProof` accepted for the options, recorded by the registration. */
+    proof: 'passkeyRegProof',
 } as const
 const REGISTRATION_KEYS = Object.values(PASSKEY_REGISTRATION_KEYS)
 
@@ -102,6 +109,8 @@ interface PendingRegistration {
     challenge: string
     enrollmentId: string
     expiresAt: string
+    /** Absent in options stored before the proof was kept: such a registration starts again. */
+    proof: AcceptedProof | undefined
 }
 
 function pendingOf(session: Session): PendingRegistration | null {
@@ -109,6 +118,7 @@ function pendingOf(session: Session): PendingRegistration | null {
     const challenge = data?.[PASSKEY_REGISTRATION_KEYS.challenge]
     const enrollmentId = data?.[PASSKEY_REGISTRATION_KEYS.enrollment]
     const expiresAt = data?.[PASSKEY_REGISTRATION_KEYS.expiresAt]
+    const proof = data?.[PASSKEY_REGISTRATION_KEYS.proof]
     if (
         typeof challenge !== 'string' ||
         typeof enrollmentId !== 'string' ||
@@ -116,7 +126,7 @@ function pendingOf(session: Session): PendingRegistration | null {
     ) {
         return null
     }
-    return { challenge, enrollmentId, expiresAt }
+    return { challenge, enrollmentId, expiresAt, proof: isAcceptedProof(proof) ? proof : undefined }
 }
 
 export const passkeyService = {
@@ -166,6 +176,7 @@ export const passkeyService = {
             [PASSKEY_REGISTRATION_KEYS.challenge]: options.challenge,
             [PASSKEY_REGISTRATION_KEYS.enrollment]: enrollmentId,
             [PASSKEY_REGISTRATION_KEYS.expiresAt]: expiresAt,
+            [PASSKEY_REGISTRATION_KEYS.proof]: proof.value,
         })
         if (stored === null) return Result.err(sessionRevoked())
         return Result.ok({ enrollmentId, options })
@@ -203,11 +214,18 @@ export const passkeyService = {
             return Result.ok({ passkey: passkeyView(committed), recoveryCodes: null })
         }
 
-        if (current === null || Date.parse(current.expiresAt) <= now) {
+        // Р14: the audit records the proof the options accepted; options stored without it are
+        // not guessed at (the marks and the factors may have changed since), they start again.
+        if (
+            current === null ||
+            Date.parse(current.expiresAt) <= now ||
+            current.proof === undefined
+        ) {
             return Result.err(
                 badRequest('Start adding the passkey again', MFA_REASONS.enrollmentNotFound),
             )
         }
+        const optionsProof = current.proof
 
         const verified = await verifyWebAuthnCeremony({
             purpose: 'register',
@@ -270,11 +288,8 @@ export const passkeyService = {
             await retirePendingContactLinks(userId, tx)
             const codes =
                 account.recoveryCodesRemaining === 0 ? await recoveryCodes.issue(userId, tx) : null
-            // Р14: the proof the registration accepted (the step-up of its first step).
-            const proven = withProof(
-                actor,
-                acceptedProofOf({ action: 'mfa.add_factor', account, auth: authOf(session) }),
-            )
+            // Р14: the proof the options accepted (the step-up of the first step), as it was then.
+            const proven = withProof(actor, optionsProof)
             const stamp = await auditService.stamp(tx)
             const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
                 {

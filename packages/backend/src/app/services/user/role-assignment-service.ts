@@ -66,6 +66,12 @@ export const roleAssignmentService = {
         sessionAuth?: SessionAuthState | undefined
         /** The session token the request of a user actor presented; checked under the lock. */
         presentedSessionToken?: string | undefined
+        /**
+         * Whether the record of the request's session still exists (`context.session.isStored()`),
+         * read under the actor's row lock. Required for a user actor: without it the change is
+         * refused with 401 session_revoked. The CLI has no session.
+         */
+        sessionStored?: (() => Promise<boolean>) | undefined
         now?: number
     }): Promise<AppResult<RoleAssignment>> {
         const { targetUserId, role } = input
@@ -104,6 +110,7 @@ export const roleAssignmentService = {
                     const proof = await recheckPrivilegedActor({
                         actorRow,
                         presentedSessionToken: input.presentedSessionToken,
+                        sessionStored: input.sessionStored,
                         permission: 'users.roles.assign',
                         action: 'role.assign',
                         sessionAuth: input.sessionAuth,

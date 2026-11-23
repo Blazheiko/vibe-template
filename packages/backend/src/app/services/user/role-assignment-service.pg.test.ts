@@ -124,7 +124,10 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         roleAssignmentService.assign({
             sessionAuth: freshAuth(),
             ...(input.actor.kind === 'user'
-                ? { presentedSessionToken: await tokenOf(input.actor.userId) }
+                ? {
+                      presentedSessionToken: await tokenOf(input.actor.userId),
+                      sessionStored: () => Promise.resolve(true),
+                  }
                 : {}),
             ...input,
         })
@@ -571,6 +574,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                     role: 'kb_editor',
                     sessionAuth: freshAuth(),
                     presentedSessionToken: presented,
+                    sessionStored: () => Promise.resolve(true),
                 })
                 await new Promise((resolve) => setTimeout(resolve, 300))
                 // Logout everywhere of the admin meanwhile.

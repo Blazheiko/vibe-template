@@ -1,0 +1,358 @@
+import type { Redis } from 'ioredis'
+import { and, eq, sql } from 'drizzle-orm'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+
+import type { Role } from 'shared/access'
+
+import { hasPg } from '../../../../test-support/pg-test-db.js'
+import { testAdminActor } from '../../../../test-support/audit-actor.js'
+import { waitForLockWaiters } from '../../../../test-support/race-barrier.js'
+import {
+    cleanupTestRedis,
+    createTestRedis,
+    hasRedis,
+} from '../../../../test-support/redis-test-client.js'
+
+// docs/plan/passkeys-mfa-plan.md (Р13), on a real PostgreSQL and a real Redis: ending one session
+// of an administrator from the session list deletes its record without rotating
+// users.session_token. A role change or an MFA reset of another account requested from that
+// session reads the record under the administrator's row lock, and the revocation deletes it
+// under the same lock: a revocation that came first refuses the write (401 session_revoked,
+// nothing written); one that comes while the write holds the lock waits for its commit.
+
+const { PREFIX } = vi.hoisted(() => {
+    process.env['APP_KEY'] ??= 'k'.repeat(16) + '3f9a1c7e5b2d4f60'
+    process.env['AUTH_OTP_HMAC_KEY'] ??= 'o'.repeat(32)
+    return { PREFIX: `test:${crypto.randomUUID()}:` }
+})
+const silent = vi.hoisted(() => {
+    const logger = {
+        error: () => undefined,
+        warn: () => undefined,
+        info: () => undefined,
+        debug: () => undefined,
+        child: (): unknown => logger,
+    }
+    return logger
+})
+vi.mock('#logger', () => ({ default: silent }))
+vi.mock('#vendor/utils/logger.js', () => ({ default: silent }))
+vi.mock('#config/redis.js', async (importActual) => {
+    const actual = await importActual<{ default: object }>()
+    return { default: { ...actual.default, keyPrefix: PREFIX } }
+})
+vi.mock('#database/redis.js', async () => {
+    const { Redis: Client } = await import('ioredis')
+    const { mainRedisOptions } = await import('#database/redis-main-options.js')
+    const { createRedisHealth, createWithRedis } = await import('#database/redis-health.js')
+    const { host: _host, port: _port, ...contract } = mainRedisOptions
+    const client = new Client(process.env['REDIS_TEST_URL'] ?? 'redis://127.0.0.1:6379', {
+        ...contract,
+        keyPrefix: PREFIX,
+        lazyConnect: true,
+    })
+    const redisHealth = createRedisHealth(client, {
+        logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    })
+    return { default: client, redisHealth, withRedis: createWithRedis(client, redisHealth) }
+})
+vi.mock('#app/services/notifications/user-notification-service.js', () => ({
+    userNotificationService: { security: vi.fn(), supportReply: vi.fn() },
+}))
+vi.mock('#app/services/notifications/email-service.js', () => ({
+    emailService: { send: () => Promise.resolve({ status: 'ok', value: { id: 'm' } }) },
+}))
+vi.mock('#app/services/auth/ws-session-revocation.js', () => ({
+    wsSessionRevocation: { closeUserConnections: vi.fn(() => 0) },
+}))
+vi.mock('#app/services/communication/role-change-announcer.js', () => ({
+    announceRoleChanged: vi.fn(),
+}))
+
+describe.skipIf(!hasPg || !hasRedis)('a privileged write against a revoked session', async () => {
+    const { db, pool } = await import('#database/db.js')
+    const { users, auditEvents } = await import('#database/schema.js')
+    const { default: client, redisHealth } = (await import('#database/redis.js')) as unknown as {
+        default: Redis
+        redisHealth: { stop(): void }
+    }
+    const storage = await import('#vendor/utils/session/redis-session-storage.js')
+    const { sessionPublicId } = await import('#vendor/utils/session/session-public-id.js')
+    const { userRepository, totpFactorRepository, withTransaction } =
+        await import('#app/repositories/index.js')
+    const { roleAssignmentService } = await import('#app/services/user/role-assignment-service.js')
+    const { sessionListService } = await import('#app/services/user/session-list-service.js')
+    const { mfaResetService } = await import('./mfa-reset-service.js')
+    const { loadMfaFactors } = await import('./mfa-account.js')
+    const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
+
+    const redisAdmin = createTestRedis(PREFIX)
+    const created: bigint[] = []
+
+    beforeAll(async () => {
+        await redisAdmin.connect()
+        await client.connect()
+    })
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+    afterAll(async () => {
+        for (const id of created) {
+            await db.delete(auditEvents).where(eq(auditEvents.targetUserId, id))
+            await db.delete(users).where(eq(users.id, id))
+        }
+        await cleanupTestRedis(redisAdmin)
+        redisHealth.stop()
+        client.disconnect(false)
+        await redisAdmin.quit()
+        await pool.end()
+    })
+
+    const insertUser = async (role: Role) => {
+        const [row] = await db
+            .insert(users)
+            .values({
+                name: 'privileged-revocation',
+                email: `privileged-revocation-${crypto.randomUUID()}@example.test`,
+                emailVerifiedAt: new Date(),
+                password: 'hash',
+                role,
+            })
+            .returning()
+        if (row === undefined) throw new Error('user not inserted')
+        created.push(row.id)
+        return row
+    }
+    const withTotp = (userId: bigint) =>
+        withTransaction((tx) =>
+            totpFactorRepository.replace(
+                {
+                    userId,
+                    enrollmentId: crypto.randomUUID().slice(0, 32),
+                    secretCiphertext: Buffer.from([1]),
+                    keyId: 'k1',
+                    lastUsedStep: 0n,
+                    confirmedAt: new Date(),
+                },
+                tx,
+            ),
+        )
+
+    /** A signed-in session of `user` stored in Redis, with its index member (feat-233). */
+    const signIn = async (user: { id: bigint; sessionToken: string }) => {
+        const id = crypto.randomUUID().replaceAll('-', '')
+        const publicId = sessionPublicId(id)
+        const now = Date.now()
+        const info = {
+            id,
+            data: {
+                userId: String(user.id),
+                userToken: user.sessionToken,
+                csrfToken: 'c'.repeat(43),
+                device: {
+                    publicId,
+                    ip: '203.0.113.7',
+                    userAgent: 'Mozilla/5.0',
+                    method: 'password' as const,
+                    signedInAt: new Date(now).toISOString(),
+                },
+            },
+            createdAt: new Date(now).toISOString(),
+        }
+        await storage.createSignedInSession(info, user.sessionToken, publicId, now)
+        return {
+            info,
+            publicId,
+            /** What the controller passes: `context.session.isStored()`. */
+            isStored: () => storage.sessionExists(id, user.sessionToken),
+        }
+    }
+
+    const freshPassword = () => {
+        const at = new Date().toISOString()
+        return {
+            v: 1 as const,
+            amr: ['pwd' as const],
+            aal: 1 as const,
+            authenticatedAt: at,
+            verified: { pwd: at },
+        }
+    }
+    const actorOf = (admin: { id: bigint }) => ({
+        ...testAdminActor(admin.id),
+        role: 'admin' as const,
+    })
+    const payloadOf = (result: unknown) =>
+        appErrorToPayload((result as { error: Parameters<typeof appErrorToPayload>[0] }).error)
+    const roleOf = async (id: bigint) =>
+        (await db.select({ role: users.role }).from(users).where(eq(users.id, id)))[0]?.role
+    const roleEvents = (targetUserId: bigint) =>
+        db
+            .select()
+            .from(auditEvents)
+            .where(
+                and(
+                    eq(auditEvents.targetUserId, targetUserId),
+                    eq(auditEvents.action, 'user.role.changed'),
+                ),
+            )
+
+    /** Runs `pause` before every call of `method`, then the real method. */
+    const holdBefore = <T extends object>(
+        repository: T,
+        method: keyof T & string,
+        pause: () => Promise<void>,
+    ): void => {
+        const original = (repository[method] as (...args: unknown[]) => Promise<unknown>).bind(
+            repository,
+        )
+        vi.spyOn(repository, method as never).mockImplementation((async (...args: unknown[]) => {
+            await pause()
+            return original(...args)
+        }) as never)
+    }
+
+    type Admin = Awaited<ReturnType<typeof insertUser>>
+    type SessionStored = (() => Promise<boolean>) | undefined
+
+    const writes = {
+        'role change': {
+            target: () => insertUser('kb_editor'),
+            run: (admin: Admin, sessionStored: SessionStored, targetId: bigint) =>
+                roleAssignmentService.assign({
+                    actor: actorOf(admin),
+                    targetUserId: targetId,
+                    role: 'user',
+                    sessionAuth: freshPassword(),
+                    presentedSessionToken: admin.sessionToken,
+                    sessionStored,
+                }),
+            /** The write of the change, after the re-check under the lock. */
+            hold: (pause: () => Promise<void>) => {
+                holdBefore(userRepository, 'updateRole', pause)
+            },
+            unchanged: async (targetId: bigint) => {
+                expect(await roleOf(targetId)).toBe('kb_editor')
+                expect(await roleEvents(targetId)).toHaveLength(0)
+            },
+            written: async (targetId: bigint) => {
+                expect(await roleOf(targetId)).toBe('user')
+                expect(await roleEvents(targetId)).toHaveLength(1)
+            },
+        },
+        'MFA reset': {
+            target: async () => {
+                const target = await insertUser('user')
+                await withTotp(target.id)
+                return target
+            },
+            run: (admin: Admin, sessionStored: SessionStored, targetId: bigint) =>
+                mfaResetService.reset({
+                    actor: actorOf(admin),
+                    targetUserId: targetId,
+                    reason: 'lost phone',
+                    sessionAuth: freshPassword(),
+                    presentedSessionToken: admin.sessionToken,
+                    sessionStored,
+                }),
+            hold: (pause: () => Promise<void>) => {
+                holdBefore(totpFactorRepository, 'deleteByUserId', pause)
+            },
+            unchanged: async (targetId: bigint) => {
+                expect((await loadMfaFactors(targetId)).totp).toBeDefined()
+            },
+            written: async (targetId: bigint) => {
+                expect((await loadMfaFactors(targetId)).totp).toBeUndefined()
+            },
+        },
+    }
+
+    describe.each(Object.entries(writes))('%s', (_, write) => {
+        it('the session is ended while the write waits for its lock: 401 session_revoked, nothing written', async () => {
+            // The target first: its id is the lower one, so the write waits on the target's row
+            // (locked by the test) before it locks the admin's, and the revocation can go on.
+            const target = await write.target()
+            const admin = await insertUser('admin')
+            const requesting = await signIn(admin)
+            const other = await signIn(admin)
+
+            let pending: ReturnType<typeof write.run> | undefined
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`SELECT id FROM users WHERE id = ${target.id} FOR UPDATE`)
+                pending = write.run(admin, requesting.isStored, target.id)
+                await waitForLockWaiters((q) => pool.query(q), 1)
+                // From the other session: end the one that sent the write.
+                const revoked = await sessionListService.revoke({
+                    userId: String(admin.id),
+                    current: other.info,
+                    publicId: requesting.publicId,
+                    sessionStored: other.isStored,
+                })
+                expect(revoked.status).toBe('ok')
+            })
+            if (pending === undefined) throw new Error('not started')
+
+            const result = await pending
+            expect(payloadOf(result)).toMatchObject({
+                code: 'unauthorized',
+                reason: 'session_revoked',
+            })
+            await write.unchanged(target.id)
+            // The token did not rotate: the record is what the write saw gone.
+            expect(await userRepository.findSessionToken(admin.id)).toBe(admin.sessionToken)
+        })
+
+        it('a revocation during the write waits for its commit', async () => {
+            const target = await write.target()
+            const admin = await insertUser('admin')
+            const requesting = await signIn(admin)
+            const other = await signIn(admin)
+
+            // Hold the write after the re-check under the admin's row lock.
+            let reached: () => void = () => undefined
+            const atWrite = new Promise<void>((resolve) => {
+                reached = resolve
+            })
+            let release: () => void = () => undefined
+            const gate = new Promise<void>((resolve) => {
+                release = resolve
+            })
+            write.hold(async () => {
+                reached()
+                await gate
+            })
+
+            const pending = write.run(admin, requesting.isStored, target.id)
+            await atWrite
+            let revocationDone = false
+            const revocation = sessionListService
+                .revoke({
+                    userId: String(admin.id),
+                    current: other.info,
+                    publicId: requesting.publicId,
+                    sessionStored: other.isStored,
+                })
+                .finally(() => {
+                    revocationDone = true
+                })
+            await waitForLockWaiters((q) => pool.query(q), 1)
+            expect(revocationDone).toBe(false)
+            expect(await requesting.isStored()).toBe(true)
+
+            release()
+            expect((await pending).status).toBe('ok')
+            expect((await revocation).status).toBe('ok')
+            expect(await requesting.isStored()).toBe(false)
+            await write.written(target.id)
+        })
+
+        it('a user actor without the session check is refused: 401 session_revoked', async () => {
+            const target = await write.target()
+            const admin = await insertUser('admin')
+            await signIn(admin)
+            const result = await write.run(admin, undefined, target.id)
+            expect(payloadOf(result)).toMatchObject({ reason: 'session_revoked' })
+            await write.unchanged(target.id)
+        })
+    })
+})

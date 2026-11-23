@@ -152,7 +152,7 @@ No re-authentication: both actions only reduce access, and a victim whose sessio
 
 ### Ending one session
 
-As a logout of that session would (feat-210): its record goes with its index member, its sockets on this instance close at once (4001), those on other instances at the next re-check (≤ `WS_SESSION_RECHECK_INTERVAL_MS`). No token is rotated. An unknown id, an id of another user and a session ended already all answer `404`, without telling them apart; the frontend takes a `404` as done. The session that asks must still have its record (a logout in another tab deletes it): otherwise `401 session_revoked`. Every device gets the push `session_revoked`.
+As a logout of that session would (feat-210): its record goes with its index member, its sockets on this instance close at once (4001), those on other instances at the next re-check (≤ `WS_SESSION_RECHECK_INTERVAL_MS`). No token is rotated, so the record is deleted under the user's row lock (`FOR UPDATE`): a role change or an MFA reset of another account sent from the ended session reads its record under the same lock and either sees it gone (`401 session_revoked`, nothing written) or is committed before the record goes (see [MFA](/en/backend/mfa)). An unknown id, an id of another user and a session ended already all answer `404`, without telling them apart; the frontend takes a `404` as done. The session that asks must still have its record (a logout in another tab deletes it): otherwise `401 session_revoked`. Every device gets the push `session_revoked`.
 
 ### Ending all other sessions
 

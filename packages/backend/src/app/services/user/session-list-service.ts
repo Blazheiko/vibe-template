@@ -107,7 +107,8 @@ export const sessionListService = {
 
     /**
      * Ends one other session (Р8), as a logout of it would: its record goes, its sockets on this
-     * instance close at once, those on other instances at the next re-check. No token rotation.
+     * instance close at once, those on other instances at the next re-check. No token rotation,
+     * so the record is deleted under the user's row lock (see privileged-actor).
      * An unknown id, an id of another user and an already ended session are all 404.
      */
     async revoke(input: {
@@ -126,10 +127,17 @@ export const sessionListService = {
         }
         if (!(await input.sessionStored())) return Result.err(sessionRevoked())
 
-        const target = await findSessionByPublicId(userToken, publicId)
+        // The record goes under the user's row lock: a role change or an MFA reset of another
+        // account by this user reads its session record under the same lock (privileged-actor),
+        // so either this revocation is seen there or it waits for that write to commit.
+        const target = await withTransaction(async (tx) => {
+            await userRepository.lockById(BigInt(userId), tx)
+            const found = await findSessionByPublicId(userToken, publicId)
+            if (found === null) return null
+            const removed = await destroySession(found.sid, userToken, publicId)
+            return removed ? found : null
+        })
         if (target === null) return Result.err(notFound('Session', 'Session not found'))
-        const removed = await destroySession(target.sid, userToken, publicId)
-        if (!removed) return Result.err(notFound('Session', 'Session not found'))
 
         wsSessionRevocation.closeUserConnections(userId, { sessionId: target.sid })
         userNotificationService.security(BigInt(userId), 'session_revoked')

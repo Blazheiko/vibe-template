@@ -75,6 +75,7 @@ export default {
             role,
             sessionAuth: context.session.sessionInfo?.data.auth,
             presentedSessionToken: context.auth.getPresentedUserToken(),
+            sessionStored: () => context.session.isStored(),
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
@@ -99,6 +100,7 @@ export default {
             reason: getTypedPayload(context).reason,
             sessionAuth: context.session.sessionInfo?.data.auth,
             presentedSessionToken: context.auth.getPresentedUserToken(),
+            sessionStored: () => context.session.isStored(),
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,

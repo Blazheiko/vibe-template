@@ -161,6 +161,67 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         expect(unused).toHaveLength(10)
     })
 
+    // Р14: the confirmation records the proof the setup accepted, kept with the setup in the
+    // session, not one decided again from the marks and the factors of the confirmation.
+    it('the audit records the proof the setup accepted, though the account changed since', async () => {
+        const [user] = await db
+            .insert(users)
+            .values({
+                name: 'totp',
+                email: `${crypto.randomUUID()}@example.test`,
+                emailVerifiedAt: new Date(),
+                password: null,
+            })
+            .returning({ id: users.id, sessionToken: users.sessionToken })
+        if (user === undefined) throw new Error('user not inserted')
+        created.push(user.id)
+        // No password: a recent social sign-in is the proof of the setup.
+        const session = fakeSession({
+            auth: {
+                v: 1,
+                amr: ['oauth'],
+                aal: 1,
+                authenticatedAt: iso(-10),
+                verified: { oauth: iso(-10) },
+            },
+        })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        // Meanwhile a password appears: read again now, the proof would come out as `password`.
+        await db.update(users).set({ password: 'hash' }).where(eq(users.id, user.id))
+
+        const confirmed = await totpService.confirm(request(user, session), { enrollmentId, code })
+        expect(confirmed.status).toBe('ok')
+        const events = await db
+            .select()
+            .from(auditEvents)
+            .where(
+                and(
+                    eq(auditEvents.targetUserId, user.id),
+                    eq(auditEvents.action, 'auth.mfa.totp.enabled'),
+                ),
+            )
+        expect(events).toHaveLength(1)
+        expect(events[0]?.metadata).toMatchObject({ proof: 'recent_sign_in' })
+    })
+
+    it('a setup stored without its proof (before it was kept) is started again, nothing written', async () => {
+        const user = await newUser()
+        const session = fakeSession({ auth: freshPassword })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        const { proof: _proof, ...withoutProof } = session.sessionInfo?.data[
+            TOTP_ENROLLMENT_KEY
+        ] as Record<string, unknown>
+        await session.updateSessionData({ [TOTP_ENROLLMENT_KEY]: withoutProof })
+
+        const confirmed = await totpService.confirm(request(user, session), { enrollmentId, code })
+        expect(confirmed.status === 'error' && confirmed.error).toMatchObject({
+            reason: 'enrollment_not_found',
+        })
+        expect(
+            await db.select().from(totpFactors).where(eq(totpFactors.userId, user.id)),
+        ).toHaveLength(0)
+    })
+
     it('the code that confirmed the setup does not pass again as a second factor', async () => {
         const user = await newUser()
         const session = fakeSession({ auth: freshPassword })

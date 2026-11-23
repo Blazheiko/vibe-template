@@ -222,6 +222,50 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
         }
     })
 
+    // Р14: the registration records the proof the options accepted, kept with them in the
+    // session, not one decided again from the marks and the factors of the registration.
+    it('the audit records the proof the options accepted, though the account changed since', async () => {
+        const user = await newUser({ password: null })
+        // No password: a recent social sign-in is the proof of the options.
+        const session = fakeSession({
+            auth: {
+                v: 1,
+                amr: ['oauth'],
+                aal: 1,
+                authenticatedAt: iso(-10),
+                verified: { oauth: iso(-10) },
+            },
+        })
+        const { enrollmentId, response } = await optionsAndAnswer(user, session)
+        // Meanwhile a password appears: read again now, the proof would come out as `password`.
+        await db.update(users).set({ password: 'hash' }).where(eq(users.id, user.id))
+
+        const result = await passkeyService.register(request(user, session), {
+            enrollmentId,
+            response,
+        })
+        expect(result.status).toBe('ok')
+        const events = await eventsOf(user.id, 'auth.passkey.added')
+        expect(events).toHaveLength(1)
+        expect(events[0]?.metadata).toMatchObject({ proof: 'recent_sign_in' })
+    })
+
+    it('options stored without their proof (before it was kept) start again, nothing stored', async () => {
+        const user = await newUser()
+        const session = fakeSession(freshPassword())
+        const { enrollmentId, response } = await optionsAndAnswer(user, session)
+        await session.updateSessionData({ [PASSKEY_REGISTRATION_KEYS.proof]: undefined })
+
+        const result = await passkeyService.register(request(user, session), {
+            enrollmentId,
+            response,
+        })
+        expect(result.status === 'error' && result.error).toMatchObject({
+            reason: 'enrollment_not_found',
+        })
+        expect(await keysOf(user.id)).toHaveLength(0)
+    })
+
     it('a repeat after the commit (the session write failed) returns the same key; R+ in recovery', async () => {
         const user = await newUser()
         const session = fakeSession({

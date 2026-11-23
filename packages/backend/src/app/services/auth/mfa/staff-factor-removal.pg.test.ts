@@ -267,6 +267,7 @@ describe.skipIf(!hasPg)(
                     targetUserId: byAdmin.id,
                     reason: 'lost every factor',
                     presentedSessionToken: admin.sessionToken,
+                    sessionStored: () => Promise.resolve(true),
                     sessionAuth: {
                         v: 1,
                         amr: ['webauthn'],
@@ -352,6 +353,7 @@ describe.skipIf(!hasPg)(
                 targetUserId: target.id,
                 reason: 'lost the phone',
                 presentedSessionToken: admin.sessionToken,
+                sessionStored: () => Promise.resolve(true),
                 sessionAuth: {
                     v: 1,
                     amr: ['webauthn'],
