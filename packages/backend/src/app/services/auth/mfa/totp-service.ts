@@ -5,6 +5,7 @@ import {
     MFA_REASONS,
     stepUpProofsOf,
     withReplacementFactor,
+    type AcceptedProof,
     type SessionAuthState,
     type StaffFactorMode,
 } from 'shared/mfa'
@@ -45,7 +46,7 @@ import { mfaSecretBox, totpSecretOwner } from './mfa-secret-box.js'
 import { retirePendingContactLinks } from './contact-links.js'
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
-import { acceptedProofOf, requireProof } from './require-proof.js'
+import { isAcceptedProof, requireProof } from './require-proof.js'
 import { staffFactorFor, staffFactorLossError } from './staff-policy.js'
 import {
     base32Decode,
@@ -65,6 +66,11 @@ interface TotpEnrollment {
     /** base32 of the secret; the record lives in Redis for at most the setup's lifetime. */
     secret: string
     expiresAt: string
+    /**
+     * Р14: the proof `requireProof` accepted at the setup, recorded by the confirmation. Absent
+     * in a setup stored before it was kept: such a setup is started again.
+     */
+    proof?: AcceptedProof
 }
 
 const isEnrollment = (value: unknown): value is TotpEnrollment =>
@@ -177,6 +183,7 @@ export const totpService = {
             expiresAt: new Date(
                 (request.now ?? Date.now()) + mfaConfig.totpEnrollmentTtlSeconds * 1000,
             ).toISOString(),
+            proof: proof.value,
         }
         const stored = await request.session.updateSessionData({
             [TOTP_ENROLLMENT_KEY]: enrollment,
@@ -213,9 +220,16 @@ export const totpService = {
             return Result.ok({ recoveryCodes: null })
         }
 
-        if (enrollment === null || Date.parse(enrollment.expiresAt) <= now) {
+        // Р14: the audit records the proof the setup accepted; a setup stored without it is not
+        // guessed at (the marks and the factors may have changed since), it starts again.
+        if (
+            enrollment === null ||
+            Date.parse(enrollment.expiresAt) <= now ||
+            !isAcceptedProof(enrollment.proof)
+        ) {
             return Result.err(badRequest('Start the setup again', MFA_REASONS.enrollmentNotFound))
         }
+        const setupProof = enrollment.proof
 
         const throttle = await enforceThrottle(
             throttlePolicies.mfaVerifyUser,
@@ -280,11 +294,8 @@ export const totpService = {
                     account.recoveryCodesRemaining === 0
                         ? await recoveryCodes.issue(userId, tx)
                         : null
-                // Р14: the proof the setup accepted (the step-up of its first step).
-                const proven = withProof(
-                    actor,
-                    acceptedProofOf({ action: 'mfa.add_factor', account, auth: authOf(session) }),
-                )
+                // Р14: the proof the setup accepted (the step-up of its first step), as it was then.
+                const proven = withProof(actor, setupProof)
                 const stamp = await auditService.stamp(tx)
                 const events = await auditService.record(tx, stamp, withRole(proven, locked.role), [
                     replaced

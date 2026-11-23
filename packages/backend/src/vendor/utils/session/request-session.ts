@@ -110,6 +110,50 @@ export const runSignInCompletionHook = async (context: HttpContext): Promise<voi
     }
 }
 
+/**
+ * docs/plan/passkeys-mfa-plan.md (Р13): what the application does around the deletion of the
+ * current session's record by a logout. A role change or an MFA reset of another account reads
+ * the record of the request's session under the actor's row lock and writes under it; deleting
+ * the record under the same lock makes a logout either come first (the write answers 401
+ * `session_revoked`) or wait until that write has committed. Registered at start (app/start), so
+ * this module does not import the application's repositories; without it (tests, the CLI) the
+ * record is deleted as before.
+ */
+export type SessionDeletionLock = (userId: string, work: () => Promise<boolean>) => Promise<boolean>
+let sessionDeletionLock: SessionDeletionLock | null = null
+export const registerSessionDeletionLock = (lock: SessionDeletionLock | null): void => {
+    sessionDeletionLock = lock
+}
+
+/**
+ * Deletes a record under the registered lock. When the lock cannot be taken (PostgreSQL down, the
+ * wait cut by statement_timeout) the record is deleted without it: a logout is never refused or
+ * held longer than one bounded statement, and a privileged write needs the same database to
+ * commit. A failure of the deletion itself is the caller's, as without the lock; a failure after
+ * it (the COMMIT of a transaction that wrote nothing) is not.
+ */
+const deleteUnderLock = async (userId: unknown, work: () => Promise<boolean>): Promise<boolean> => {
+    const lock = sessionDeletionLock
+    if (lock === null || typeof userId !== 'string') return work()
+    const progress: { stage: 'waiting' | 'deleting' | 'deleted'; removed: boolean } = {
+        stage: 'waiting',
+        removed: false,
+    }
+    try {
+        return await lock(userId, async () => {
+            progress.stage = 'deleting'
+            progress.removed = await work()
+            progress.stage = 'deleted'
+            return progress.removed
+        })
+    } catch (err) {
+        if (progress.stage === 'deleted') return progress.removed
+        if (progress.stage === 'deleting') throw err
+        logger.warn({ err }, 'User row lock not taken; the session record is deleted without it')
+        return work()
+    }
+}
+
 const newAnonSessionInfo = (): SessionInfo => ({
     id: crypto.randomUUID(),
     data: withCsrfToken({}),
@@ -654,7 +698,11 @@ export class RequestSession {
     private async logout(): Promise<boolean> {
         const userToken = this.signedInUserToken()
         if (userToken !== undefined) {
-            await destroySession(this.info.id, userToken, this.info.data.device?.publicId)
+            const { id } = this.info
+            const publicId = this.info.data.device?.publicId
+            await deleteUnderLock(this.info.data.userId, () =>
+                destroySession(id, userToken, publicId),
+            )
             logger.info(
                 { userId: this.info.data.userId, sessionId: this.info.id },
                 `User logged out`,

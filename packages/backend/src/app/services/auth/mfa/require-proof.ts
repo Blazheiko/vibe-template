@@ -66,15 +66,18 @@ export function requireProof(gate: ProofGate): AppResult<AcceptedProof> {
     }
 }
 
-const UNBOUNDED_WINDOWS: ProofWindows = { reauthSeconds: Infinity, oauthRecentSeconds: Infinity }
+const ACCEPTED_PROOFS: Readonly<Record<AcceptedProof, true>> = {
+    password: true,
+    totp: true,
+    passkey: true,
+    recovery_code: true,
+    recent_sign_in: true,
+}
 
 /**
- * The audit proof of the second step of a two-step action (finishing a TOTP setup or a passkey
- * registration) whose first step passed `requireProof`: the proof the same row accepts, read
- * without the freshness windows, since the step-up may have aged out between the two steps.
+ * Р14: a proof read back from session data, where the first step of a two-step action (a TOTP
+ * setup, the options of a passkey) kept what `requireProof` accepted, so the second step records
+ * exactly that proof.
  */
-export function acceptedProofOf(gate: ProofGate): AcceptedProof {
-    if (gate.auth?.recovery !== undefined) return 'recovery_code'
-    const decision = decide(gate, UNBOUNDED_WINDOWS)
-    return decision.kind === 'ok' ? decision.proof : 'password'
-}
+export const isAcceptedProof = (value: unknown): value is AcceptedProof =>
+    typeof value === 'string' && Object.hasOwn(ACCEPTED_PROOFS, value)

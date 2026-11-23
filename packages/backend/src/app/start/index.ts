@@ -9,9 +9,13 @@ import { wsMessageValidator } from '#app/validate/ws-message-validator.js'
 import { websocketCoordinator } from '#app/websocket/ws-coordinator.js'
 import { wsSessionAuth } from '#app/websocket/ws-session-auth.js'
 import { registerSessionTokenChecker } from '#vendor/utils/session/session-token-check.js'
-import { registerSignInCompletionHook } from '#vendor/utils/session/request-session.js'
+import {
+    registerSessionDeletionLock,
+    registerSignInCompletionHook,
+} from '#vendor/utils/session/request-session.js'
 import { retireCompletedTicket } from '#app/services/auth/mfa/mfa-sign-in.js'
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
+import { underUserRowLock } from '#app/services/user/session-list-service.js'
 
 registerWsMessageValidator(wsMessageValidator)
 
@@ -29,3 +33,6 @@ registerSessionTokenChecker(checkSessionToken)
 registerSignInCompletionHook((context, completionId) =>
     retireCompletedTicket(context.auth, completionId),
 )
+// Р13: a logout deletes its session record under the user's row lock, as ending a session from
+// the session list does: a privileged write that checked the record under that lock commits first.
+registerSessionDeletionLock(underUserRowLock)

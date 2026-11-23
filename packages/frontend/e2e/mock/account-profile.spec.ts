@@ -81,11 +81,20 @@ test.describe('account profile form', () => {
         page,
         api,
     }) => {
-        await api.answer(
-            'account/profile',
-            200,
-            profile({ preferences: { ...NO_PREFERENCES, theme: 'dark' } }, '1'),
-        )
+        // Each save is answered with the state after it, as the server does: an answer with the
+        // previous theme would put the radio back before the click is checked.
+        const answer = profile({ preferences: { ...NO_PREFERENCES, theme: 'dark' } }, '1')
+        await api.answer('account/profile', 200, answer, {
+            onRequest: () => {
+                const saves = api.callsTo('account/profile').filter((c) => c.method === 'PATCH')
+                if (saves.length < 2) return
+                answer.profile = {
+                    ...answer.profile,
+                    preferences: { ...NO_PREFERENCES, theme: null },
+                    revision: '2',
+                }
+            },
+        })
 
         await page.goto('/account')
         const panel = page.getByTestId('preferences')

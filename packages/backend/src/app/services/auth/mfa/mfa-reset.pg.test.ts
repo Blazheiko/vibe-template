@@ -128,6 +128,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
             presentedSessionToken: admin.sessionToken,
+            sessionStored: () => Promise.resolve(true),
             targetUserId: target.id,
             reason: 'lost phone and codes',
             sessionAuth: freshAdminAuth(),
@@ -171,6 +172,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
             presentedSessionToken: admin.sessionToken,
+            sessionStored: () => Promise.resolve(true),
             targetUserId: admin.id,
             reason: 'my own factors',
             sessionAuth: freshAdminAuth(),
@@ -186,6 +188,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
             presentedSessionToken: admin.sessionToken,
+            sessionStored: () => Promise.resolve(true),
             targetUserId: target.id,
             reason: 'lost phone',
             sessionAuth: undefined,
@@ -209,6 +212,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         const result = await mfaResetService.reset({
             actor: actorOf(admin),
             presentedSessionToken: admin.sessionToken,
+            sessionStored: () => Promise.resolve(true),
             targetUserId: target.id,
             reason: 'lost the passkey',
             sessionAuth: freshAdminAuth(),
@@ -244,6 +248,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
             const result = await mfaResetService.reset({
                 actor: actorOf(admin),
                 presentedSessionToken: admin.sessionToken,
+                sessionStored: () => Promise.resolve(true),
                 targetUserId: target.id,
                 reason: 'lost phone',
                 sessionAuth: freshAdminAuth(),
@@ -265,6 +270,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
             const result = await mfaResetService.reset({
                 actor: actorOf(admin),
                 presentedSessionToken: admin.sessionToken,
+                sessionStored: () => Promise.resolve(true),
                 targetUserId: target.id,
                 reason: 'lost phone',
                 sessionAuth: freshAdminAuth(),
@@ -282,6 +288,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
                 mfaResetService.reset({
                     actor: actorOf(actor),
                     presentedSessionToken: actor.sessionToken,
+                    sessionStored: () => Promise.resolve(true),
                     targetUserId: target.id,
                     reason: 'crossed resets',
                     sessionAuth: freshTotpAuth(),

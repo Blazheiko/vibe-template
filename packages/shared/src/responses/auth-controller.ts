@@ -109,6 +109,12 @@ export const LoginResponseSchema = type.or(
         'wsUrl?': 'string',
         'wsToken?': 'string',
         'csrfToken?': 'string',
+        /**
+         * feat-245 (Р8): the created session is a recovery session (a recovery code, also when a
+         * `continue` finished it): the client shows only the recovery wizard from the start, as
+         * main/init says later. Absent for every other sign-in.
+         */
+        'recovery?': { expiresAt: 'string', replaced: 'boolean' },
     },
     // feat-245 (Р4): the first factor was right and the account has a second one; the second step
     // (POST /auth/mfa/verify) finishes the sign-in. The ticket travels in an HttpOnly cookie.
@@ -120,6 +126,23 @@ export const LoginResponseSchema = type.or(
     CanonicalErrorResponseSchema,
 )
 export type LoginResponse = typeof LoginResponseSchema.infer
+
+/**
+ * feat-245 (Р4): POST /auth/mfa/state. The sign-in page, before a new sign-in, asks whether this
+ * browser holds a second step (its ticket cookie, bound to this browser) that a reload took out of
+ * memory. `completing`: a confirmed attempt is finishing; `{ method: 'continue' }` finishes it.
+ * A missing, expired or foreign ticket is `none`, with nothing more.
+ */
+export const MfaStateResponseSchema = type.or(
+    {
+        status: "'mfa_required'",
+        methods: type.enumerated('totp', 'recovery_code', 'webauthn').array(),
+        'completing?': 'true',
+    },
+    { status: "'none'" },
+    CanonicalErrorResponseSchema,
+)
+export type MfaStateResponse = typeof MfaStateResponseSchema.infer
 
 export const LogoutResponseSchema = type.or(
     { status: "'success'", 'message?': 'string', csrfToken: 'string' },

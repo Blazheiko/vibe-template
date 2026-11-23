@@ -9,6 +9,7 @@ import type {
     DeleteAvatarResponse,
     InitResponse,
     LoginResponse,
+    MfaStateResponse,
     ChangePasswordResponse,
     ForgotPasswordResponse,
     LogoutAllResponse,
@@ -196,6 +197,10 @@ export const authApi = {
     // in an HttpOnly cookie; the session is still anonymous, so `public` recovery.
     mfaVerify: (body: MfaVerifyInput): Promise<ApiResponse<LoginResponse>> =>
         callApi(authContracts.mfaVerify, { body }, { csrfRecovery: 'public' }),
+
+    // feat-245 (Р4): whether this browser holds a second step a reload took out of memory.
+    mfaState: (): Promise<ApiResponse<MfaStateResponse>> =>
+        callApi(authContracts.mfaState, { body: {} }, { csrfRecovery: 'public' }),
 
     // feat-246 (Р6): a passkey as the second step (its challenge is bound to the ticket cookie).
     mfaWebauthnOptions: (): Promise<ApiResponse<PasskeyChallengeResponse>> =>

@@ -89,6 +89,12 @@ export default [
                     'Second sign-in step (feat-245): TOTP or recovery code against the ticket cookie',
             }),
             defineRoute({
+                contract: authContracts.mfaState,
+                handler: AuthController.mfaState.bind(AuthController),
+                description:
+                    'Whether this browser holds a second sign-in step (feat-245), after a reload',
+            }),
+            defineRoute({
                 contract: authContracts.mfaWebauthnOptions,
                 handler: AuthController.mfaWebauthnOptions.bind(AuthController),
                 description: 'Options of a passkey as the second sign-in step (feat-246)',

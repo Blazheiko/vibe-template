@@ -26,6 +26,7 @@ import { contractSchemas } from '#app/routing/contract-registry.js'
 export const authSchemas = contractSchemas(authContracts, {
     login: { body: LoginInputSchema, response: ResponseSchemas.LoginResponseSchema },
     mfaVerify: { body: MfaVerifyInputSchema, response: ResponseSchemas.LoginResponseSchema },
+    mfaState: { body: EmptyFormInputSchema, response: ResponseSchemas.MfaStateResponseSchema },
     passkeyOptions: {
         body: EmptyFormInputSchema,
         response: ResponseSchemas.PasskeyLoginOptionsResponseSchema,

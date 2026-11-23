@@ -137,6 +137,7 @@ watch(
         <LoginForm
             v-if="loginView === 'login'"
             :key="loginEpoch"
+            :active="props.showLogin"
             v-model:identifier="loginIdentifier"
             v-model:password="loginPassword"
             :notice="loginNotice"

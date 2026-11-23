@@ -50,6 +50,12 @@ export const mfaResetService = {
         sessionAuth?: SessionAuthState | undefined
         /** The session token the admin's request presented; checked under the lock. */
         presentedSessionToken?: string | undefined
+        /**
+         * Whether the record of the request's session still exists (`context.session.isStored()`),
+         * read under the actor's row lock. Required for a user actor: without it the change is
+         * refused with 401 session_revoked. The CLI has no session.
+         */
+        sessionStored?: (() => Promise<boolean>) | undefined
         now?: number
     }): Promise<AppResult<MfaResetOutcome>> {
         const { targetUserId } = input
@@ -94,6 +100,7 @@ export const mfaResetService = {
                     const proof = await recheckPrivilegedActor({
                         actorRow,
                         presentedSessionToken: input.presentedSessionToken,
+                        sessionStored: input.sessionStored,
                         permission: 'users.mfa.reset',
                         action: 'mfa.reset_other',
                         sessionAuth: input.sessionAuth,

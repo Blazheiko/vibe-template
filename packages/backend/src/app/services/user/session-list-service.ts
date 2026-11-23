@@ -36,6 +36,19 @@ import { sessionListChanged } from '#vendor/utils/session/session-list-events.js
 // all but the current one (Р9). The list lives in Redis next to the records (Р1, Р2); `online`
 // comes from the WebSocket registry of this instance (Р13).
 
+/**
+ * Р13: runs `work` (the deletion of a session record) in a transaction that holds the user's row
+ * lock, the lock a role change or an MFA reset of another account reads its session record under
+ * (privileged-actor). Ending one session here and a plain logout (registered for the session
+ * layer in app/start) both use it.
+ */
+export async function underUserRowLock<T>(userId: string, work: () => Promise<T>): Promise<T> {
+    return withTransaction(async (tx) => {
+        await userRepository.lockById(BigInt(userId), tx)
+        return work()
+    })
+}
+
 export interface SessionListPage {
     current: SessionView | null
     others: SessionView[]
@@ -107,7 +120,8 @@ export const sessionListService = {
 
     /**
      * Ends one other session (Р8), as a logout of it would: its record goes, its sockets on this
-     * instance close at once, those on other instances at the next re-check. No token rotation.
+     * instance close at once, those on other instances at the next re-check. No token rotation,
+     * so the record is deleted under the user's row lock (see privileged-actor).
      * An unknown id, an id of another user and an already ended session are all 404.
      */
     async revoke(input: {
@@ -126,10 +140,16 @@ export const sessionListService = {
         }
         if (!(await input.sessionStored())) return Result.err(sessionRevoked())
 
-        const target = await findSessionByPublicId(userToken, publicId)
+        // The record goes under the user's row lock: a role change or an MFA reset of another
+        // account by this user reads its session record under the same lock (privileged-actor),
+        // so either this revocation is seen there or it waits for that write to commit.
+        const target = await underUserRowLock(userId, async () => {
+            const found = await findSessionByPublicId(userToken, publicId)
+            if (found === null) return null
+            const removed = await destroySession(found.sid, userToken, publicId)
+            return removed ? found : null
+        })
         if (target === null) return Result.err(notFound('Session', 'Session not found'))
-        const removed = await destroySession(target.sid, userToken, publicId)
-        if (!removed) return Result.err(notFound('Session', 'Session not found'))
 
         wsSessionRevocation.closeUserConnections(userId, { sessionId: target.sid })
         userNotificationService.security(BigInt(userId), 'session_revoked')

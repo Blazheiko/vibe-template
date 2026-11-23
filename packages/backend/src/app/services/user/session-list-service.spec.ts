@@ -19,6 +19,7 @@ const storage = vi.hoisted(() => ({
 const repositories = vi.hoisted(() => ({
     updateIfSessionToken: vi.fn(),
     findSessionToken: vi.fn(),
+    lockById: vi.fn(),
 }))
 const retirePendingResets = vi.hoisted(() => vi.fn())
 const closeUserConnections = vi.hoisted(() => vi.fn())
@@ -142,6 +143,11 @@ describe('revoke (Р8)', () => {
         const result = await revoke('o'.repeat(22))
         expect(Result.isOk(result)).toBe(true)
         expect(storage.destroySession).toHaveBeenCalledWith('other-sid', 'tok', 'o'.repeat(22))
+        // Under the user's row lock (privileged-actor reads the record under the same lock).
+        expect(repositories.lockById).toHaveBeenCalledWith(7n, TX)
+        expect(repositories.lockById.mock.invocationCallOrder[0]).toBeLessThan(
+            storage.destroySession.mock.invocationCallOrder[0] ?? 0,
+        )
         expect(closeUserConnections).toHaveBeenCalledWith('7', { sessionId: 'other-sid' })
         expect(security).toHaveBeenCalledWith(7n, 'session_revoked')
         expect(sessionListChanged).toHaveBeenCalledWith('7')

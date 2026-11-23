@@ -1,5 +1,24 @@
+<script lang="ts">
+// A ticket can only be left over from an earlier page: the second step of a sign-in started on this
+// page lives in memory. So the sign-in page asks the server only when this page load opened the
+// sign-in page itself (a reload, a new tab), once — not when the app navigates here after a
+// sign-out, where there is no ticket and the stale session's request would only disturb the page.
+let pageLoadPath = typeof window === 'undefined' ? '' : window.location.pathname
+let askedThisPageLoad = false
+export function consumePageLoadAsk(): boolean {
+    if (askedThisPageLoad || !pageLoadPath.endsWith('/login')) return false
+    askedThisPageLoad = true
+    return true
+}
+/** Test seam: a new page load that opened `path`. */
+export function resetPageLoadAsk(path = '/login'): void {
+    pageLoadPath = path
+    askedThisPageLoad = false
+}
+</script>
+
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ErrorCode } from 'shared/errors'
 import { authApi } from '@/utils/api'
@@ -17,10 +36,15 @@ import { useRoute } from 'vue-router'
 // The sign-in step of the login modal. The typed identifier and password belong to the modal (the
 // forgot-password step starts from the identifier and coming back must not lose either), the rest
 // is this form's.
-const props = defineProps<{
-    /** A message to show at first, such as "password updated, sign in with the new one". */
-    notice: string
-}>()
+const props = withDefaults(
+    defineProps<{
+        /** A message to show at first, such as "password updated, sign in with the new one". */
+        notice: string
+        /** The modal is shown (both modals stay mounted): only then the second step is asked. */
+        active?: boolean
+    }>(),
+    { active: true },
+)
 
 const emit = defineEmits<{ forgot: []; register: []; 'signed-in': [] }>()
 
@@ -54,10 +78,36 @@ const methodsOfQuery = (): SecondStepMethod[] => {
 const secondStep = ref<SecondStepMethod[] | null>(
     route.query.mfa === 'required' ? methodsOfQuery() : null,
 )
+/** The ticket is finishing a confirmed attempt: the form continues it at once. */
+const secondStepCompleting = ref(false)
 const restartSignIn = (message: string): void => {
     secondStep.value = null
+    secondStepCompleting.value = false
     loginError.value = message
 }
+
+// Р4: the second step of a password sign-in lives only in memory. After a reload the ticket cookie
+// may still be there: ask before a new sign-in, so the password is not typed again (a new ticket)
+// and a confirmed attempt is finished by `continue`. Only `mfa_required` changes the form; any
+// other answer (none, an error, no network) leaves the password form.
+let secondStepAsked = false
+/** A sign-in started (or its second step shown) while the answer was on its way wins. */
+const signInUnderway = (): boolean => secondStep.value !== null || isLoginLoading.value
+async function restoreSecondStep(): Promise<void> {
+    if (secondStepAsked || signInUnderway() || !consumePageLoadAsk()) return
+    secondStepAsked = true
+    const { data } = await authApi.mfaState()
+    if (data?.status !== 'mfa_required' || signInUnderway()) return
+    secondStepCompleting.value = data.completing === true
+    secondStep.value = data.methods
+}
+watch(
+    () => props.active,
+    (active) => {
+        if (active) void restoreSecondStep()
+    },
+    { immediate: true },
+)
 
 function validateLoginIdentifier(): boolean {
     const value = loginIdentifier.value.trim()
@@ -191,6 +241,7 @@ async function handleLogin(): Promise<void> {
     <MfaChallengeForm
         v-if="secondStep !== null"
         :methods="secondStep"
+        :completing="secondStepCompleting"
         @signed-in="completeSignIn"
         @restart="restartSignIn"
     />

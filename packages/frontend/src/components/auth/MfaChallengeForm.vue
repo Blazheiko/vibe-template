@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MfaVerifyInput } from 'shared/schemas'
 import type { SignedInUser } from '@/composables/useCompleteSignIn'
@@ -15,9 +15,19 @@ import { getErrorReason } from '@/utils/response-normalizer'
 // when the pauses run out, by the "Try again" button, until the server gives a final answer. A
 // passkey answer is not replaced by a new ceremony meanwhile: the server finishes the one it
 // confirmed. A 401 `mfa_attempt_expired` to a passkey answer (its challenge lapsed or was spent
-// by an attempt that rolled back) asks for a new ceremony; nothing was counted.
+// by an attempt that rolled back) asks for a new ceremony; nothing was counted. When the options
+// answer `mfa_completion_pending` (the answer of a confirmed passkey was lost, or the page was
+// reloaded), the form keeps no request to repeat: it sends `{ method: 'continue' }`, which only
+// finishes what this browser's ticket confirmed, with the same pauses. While a completion is
+// pending the other factors are hidden: the retry sends the kept request, not a new one. Mounted
+// after a reload for a ticket that is finishing (`completing`, from POST /auth/mfa/state), the
+// form sends `continue` at once. A recovery sign-in's answer carries the recovery state (Р8): it
+// goes to the store before the account page opens, so that page never asks what a recovery
+// session is refused.
 type Method = 'webauthn' | 'totp' | 'recovery_code'
-const props = defineProps<{ methods: Method[] }>()
+const props = withDefaults(defineProps<{ methods: Method[]; completing?: boolean }>(), {
+    completing: false,
+})
 const emit = defineEmits<{ 'signed-in': [user: SignedInUser]; restart: [message: string] }>()
 
 const { t } = useI18n()
@@ -49,21 +59,19 @@ const choose = (next: Method): void => {
     error.value = ''
 }
 
-/** The other ways this account offers, as links under the form. */
-const alternatives = computed(() => usable.value.filter((m) => m !== method.value))
+/** The other ways this account offers, as links under the form; none while one is finishing. */
+const alternatives = computed(() =>
+    pendingBody.value !== null ? [] : usable.value.filter((m) => m !== method.value),
+)
 
 async function send(body: MfaVerifyInput): Promise<void> {
     for (let attempt = 0; attempt <= PENDING_RETRIES; attempt++) {
         const { data } = await authApi.mfaVerify(body)
         if (data?.status === 'success' && data.user !== undefined) {
             pendingBody.value = null
+            // Before the navigation: main/init says the same, but after the page mounted.
+            userStore.setRecovery(data.recovery ?? null)
             emit('signed-in', data.user)
-            // A recovery code opens a recovery session (Р8). main/init says so too, but it
-            // answers after the account page mounted; until then the page must not ask the
-            // routes a recovery session is refused.
-            if (body.method === 'recovery_code') {
-                userStore.setRecovery({ expiresAt: '', replaced: false })
-            }
             return
         }
         const reason = getErrorReason(data) ?? ''
@@ -83,13 +91,17 @@ async function send(body: MfaVerifyInput): Promise<void> {
             emit('restart', t('loginMfa.errorRestart'))
             return
         }
+        // `continue` carries no proof: the factor in view is the one asked for again.
+        const passkey =
+            body.method === 'webauthn' ||
+            (body.method === 'continue' && method.value === 'webauthn')
         error.value =
             reason === 'invalid_code'
-                ? body.method === 'webauthn'
+                ? passkey
                     ? t('loginMfa.errorPasskey')
                     : t('loginMfa.errorCode')
                 : reason === 'mfa_attempt_expired'
-                  ? body.method === 'webauthn'
+                  ? passkey
                       ? t('loginMfa.errorPasskeyRetry')
                       : t('loginMfa.errorRetry')
                   : reason === 'mfa_ticket_used'
@@ -129,6 +141,17 @@ async function submit(): Promise<void> {
     }
 }
 
+/** After a reload: a confirmed attempt is finishing and nothing is kept to repeat. */
+onMounted(async () => {
+    if (!props.completing) return
+    busy.value = true
+    try {
+        await send({ method: 'continue' })
+    } finally {
+        busy.value = false
+    }
+})
+
 /** feat-246: the options of the ticket, the passkey dialog, then the same verify request. */
 async function withPasskey(): Promise<void> {
     busy.value = true
@@ -138,7 +161,8 @@ async function withPasskey(): Promise<void> {
         if (data?.status !== 'success') {
             const reason = getErrorReason(data) ?? ''
             if (reason === 'mfa_ticket_invalid') emit('restart', t('loginMfa.errorRestart'))
-            else if (reason === 'mfa_completion_pending') error.value = t('loginMfa.errorPending')
+            // A confirmed attempt is finishing and this form lost its request: continue it.
+            else if (reason === 'mfa_completion_pending') await send({ method: 'continue' })
             else error.value = t('auth.errorServer')
             return
         }

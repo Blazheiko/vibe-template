@@ -1,5 +1,9 @@
 import { stepUpService } from '#app/services/auth/mfa/step-up.js'
-import { completeSecondStep, secondStepPasskeyOptions } from '#app/services/auth/mfa/mfa-sign-in.js'
+import {
+    completeSecondStep,
+    secondStepPasskeyOptions,
+    secondStepState,
+} from '#app/services/auth/mfa/mfa-sign-in.js'
 import { passkeySignIn } from '#app/services/auth/mfa/passkey-sign-in.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
@@ -12,6 +16,7 @@ import type {
     ChangePasswordResponse,
     ForgotPasswordResponse,
     LoginResponse,
+    MfaStateResponse,
     ReauthOptionsResponse,
     ReauthResponse,
     LogoutResponse,
@@ -152,6 +157,12 @@ export default {
             payload,
             { requestId: context.requestId, logger: context.logger },
         )
+        return respond(context, result)
+    },
+
+    /** feat-245 (Р4): whether this browser holds a second step (the sign-in page after a reload). */
+    async mfaState(context: HttpContext<EmptyFormInput>): Promise<MfaStateResponse> {
+        const result = await secondStepState({ auth: context.auth, session: context.session })
         return respond(context, result)
     },
 
