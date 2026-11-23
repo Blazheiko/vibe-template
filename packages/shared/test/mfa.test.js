@@ -260,6 +260,32 @@ test('staff policy passkey: a passkey, a passkey sign-in and a fresh passkey mar
     assert.equal(staffSessionOk(policy, undefined, NOW, 12), false)
 })
 
+test('staff policy: a mark from the far future does not extend the deadline', () => {
+    const anyPolicy = staffMfaPolicy('any')
+    const passkeyPolicy = staffMfaPolicy('passkey')
+    const future = session({ otp: later(3600) }, { aal: 2, amr: ['pwd', 'otp'] })
+    assert.equal(anyPolicy.sessionDeadline(future, NOW, 12), null)
+    const passkeyFuture = session({ webauthn: later(3600) }, { aal: 2, amr: ['webauthn'] })
+    assert.equal(passkeyPolicy.sessionDeadline(passkeyFuture, NOW, 12), null)
+    // Within the one-minute skew bound of isFresh a mark still counts.
+    const skewed = session({ webauthn: later(30) }, { aal: 2, amr: ['webauthn'] })
+    assert.equal(passkeyPolicy.sessionDeadline(skewed, NOW, 12), NOW + 30_000 + 12 * 3600_000)
+    assert.equal(anyPolicy.sessionDeadline(skewed, NOW, 12), NOW + 30_000 + 12 * 3600_000)
+    // A forged future mark does not hide a real one either: the real one decides.
+    const mixed = session(
+        { otp: later(24 * 3600), webauthn: ago(3600) },
+        { aal: 2, amr: ['pwd', 'webauthn'] },
+    )
+    assert.equal(anyPolicy.sessionDeadline(mixed, NOW, 12), NOW - 3600_000 + 12 * 3600_000)
+})
+
+test('staff policy passkey: level 2 is required even with a passkey in amr', () => {
+    const policy = staffMfaPolicy('passkey')
+    const level1 = session({ webauthn: ago(60) }, { aal: 1, amr: ['webauthn'] })
+    assert.equal(staffSessionOk(policy, level1, NOW, 12), false)
+    assert.equal(staffSessionOk(policy, { ...level1, aal: 2 }, NOW, 12), true)
+})
+
 test('staff policy: the table of both modes', () => {
     const totpSignIn = session({ pwd: ago(60), otp: ago(60) }, { aal: 2, amr: ['pwd', 'otp'] })
     const passkeySignIn = session({ webauthn: ago(60) }, { aal: 2, amr: ['webauthn'] })

@@ -61,6 +61,9 @@ const timeOf = (iso: string | undefined): number | null => {
     return Number.isFinite(ms) ? ms : null
 }
 
+/** How far ahead of `now` a mark may be and still count (clock skew between instances). */
+export const MARK_CLOCK_SKEW_MS = 60_000
+
 /**
  * Whether `method` was proven in this session within `windowSeconds` before `now`. A mark in the
  * future (clock skew between instances) counts as fresh only up to one minute ahead.
@@ -73,19 +76,25 @@ export function isFresh(
 ): boolean {
     const at = timeOf(auth.verified[method])
     if (at === null) return false
-    if (at > now + 60_000) return false
+    if (at > now + MARK_CLOCK_SKEW_MS) return false
     return now - at <= windowSeconds * 1000
 }
 
-/** The latest mark of any of `methods`, in ms, or null. */
+/**
+ * The latest mark of any of `methods`, in ms, or null. With `now`, a mark more than
+ * `MARK_CLOCK_SKEW_MS` in the future does not count (as in `isFresh`).
+ */
 export function latestMark(
     auth: SessionAuthState,
     methods: readonly VerifiedMethodRef[],
+    now?: number,
 ): number | null {
     let latest: number | null = null
     for (const method of methods) {
         const at = timeOf(auth.verified[method])
-        if (at !== null && (latest === null || at > latest)) latest = at
+        if (at === null) continue
+        if (now !== undefined && at > now + MARK_CLOCK_SKEW_MS) continue
+        if (latest === null || at > latest) latest = at
     }
     return latest
 }
