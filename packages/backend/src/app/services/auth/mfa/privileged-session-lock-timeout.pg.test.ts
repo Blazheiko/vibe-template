@@ -1,4 +1,6 @@
 import type { Redis } from 'ioredis'
+import type * as SessionIndex from '#vendor/utils/session/session-index.js'
+import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import { and, eq } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -83,6 +85,41 @@ vi.mock('#app/services/auth/mfa/mfa-notice.js', async (importActual) => ({
 vi.mock('#app/services/communication/role-change-announcer.js', () => ({
     announceRoleChanged: vi.fn(),
 }))
+// Injected Redis failures of the activation's tail (Р4, Р8): the effects claim fails before it
+// runs (`throw`) or after it ran, its answer lost (`lost`); the recovery cleanup stops part-way.
+const failures = vi.hoisted((): { claim: 'none' | 'throw' | 'lost'; cleanup: boolean } => ({
+    claim: 'none',
+    cleanup: false,
+}))
+vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
+    const actual = await importActual<typeof SessionIndex>()
+    return {
+        ...actual,
+        claimActivationEffects: async (
+            ...args: Parameters<typeof actual.claimActivationEffects>
+        ) => {
+            const mode = failures.claim
+            failures.claim = 'none'
+            if (mode === 'throw') throw new Error('Redis down (claim)')
+            const claimed = await actual.claimActivationEffects(...args)
+            if (mode === 'lost') throw new Error('Redis answer lost (claim)')
+            return claimed
+        },
+    }
+})
+vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) => {
+    const actual = await importActual<typeof SessionStorage>()
+    return {
+        ...actual,
+        destroyAllSessions: (...args: Parameters<typeof actual.destroyAllSessions>) => {
+            if (failures.cleanup) {
+                failures.cleanup = false
+                return Promise.resolve({ deleted: 0, complete: false })
+            }
+            return actual.destroyAllSessions(...args)
+        },
+    }
+})
 
 describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -136,6 +173,8 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         effects.announceMfaChange.mockClear()
         attempts = 0
         onAttempt = () => undefined
+        failures.claim = 'none'
+        failures.cleanup = false
     })
     afterAll(async () => {
         registerSessionDeletionLock(null)
@@ -490,12 +529,19 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             },
             300,
         )
+        let lastResponse: ReturnType<typeof createResponseData> | undefined
         return {
             plan,
             ticket: () => mfaTicketStore.read(ticketId),
             continue: async () => {
-                const { context } = await requestWith(cookie, ticketId)
+                const { context, responseData } = await requestWith(cookie, ticketId)
+                lastResponse = responseData
                 return completeSecondStep(context, { method: 'continue' }, testRequest())
+            },
+            /** Whether the answer of the last `continue` carried the new session's cookie. */
+            issuedNewSession: () => {
+                const value = lastResponse?.cookies.get(sessionConfig.cookieName)?.value ?? ''
+                return Buffer.from(value, 'base64').toString('utf8').includes(plan.sessionId)
             },
         }
     }
@@ -584,6 +630,129 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             // The answer was lost: the browser repeats with the cookie it still has.
             expect((await step.continue()).status).toBe('ok')
             expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('a Redis failure after the replacement (Р4, Р8): retried, never lost or doubled', () => {
+        /** A recovery sign-in of `newcomer` and a stored session of the token it rotated away. */
+        const recoverySetup = async () => {
+            const admin = await insertUser('admin')
+            const newcomer = await insertUser('user')
+            const rotatedToken = crypto.randomUUID().replaceAll('-', '').slice(0, 24)
+            const stale = await signInOverHttp({ id: newcomer.id, sessionToken: rotatedToken })
+            expect(await stale.isStored()).toBe(true)
+            const session = await signInOverHttp(admin)
+            const step = await confirmedSecondStep(session.cookie, newcomer, {
+                recovery: { userTokenAtStart: rotatedToken },
+            })
+            return { newcomer, rotatedToken, stale, session, step }
+        }
+
+        it('a claim that fails: mfa_completion_pending without the cookie; the repeat sends the notice once and signs in', async () => {
+            const admin = await insertUser('admin')
+            const newcomer = await insertUser('user')
+            const session = await signInOverHttp(admin)
+            const step = await confirmedSecondStep(session.cookie, newcomer)
+
+            failures.claim = 'throw'
+            expect(payloadOf(await step.continue())).toMatchObject({
+                reason: 'mfa_completion_pending',
+            })
+            expect(step.issuedNewSession()).toBe(false)
+            expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
+            // Not retired: the effects wait for the repeat.
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'pending' })
+
+            expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
+            expect(await session.isStored()).toBe(false)
+
+            // A later repeat (a lost answer) sends nothing again.
+            expect((await step.continue()).status).toBe('ok')
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('a claim whose answer was lost: the repeat signs in and sends no notice twice', async () => {
+            const admin = await insertUser('admin')
+            const newcomer = await insertUser('user')
+            const session = await signInOverHttp(admin)
+            const step = await confirmedSecondStep(session.cookie, newcomer)
+
+            failures.claim = 'lost'
+            expect(payloadOf(await step.continue())).toMatchObject({
+                reason: 'mfa_completion_pending',
+            })
+            expect(step.issuedNewSession()).toBe(false)
+            // The claim ran: the effects are `done`, at most once means none now.
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'done' })
+
+            expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
+            expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
+        })
+
+        it('a recovery cleanup that fails: mfa_completion_pending; the repeat closes the sockets, ends the rotated sessions, signs in', async () => {
+            const { newcomer, rotatedToken, stale, step } = await recoverySetup()
+
+            failures.cleanup = true
+            expect(payloadOf(await step.continue())).toMatchObject({
+                reason: 'mfa_completion_pending',
+            })
+            expect(step.issuedNewSession()).toBe(false)
+            expect(await stale.isStored()).toBe(true)
+            expect(effects.notifyNewSignIn).not.toHaveBeenCalled()
+            expect(effects.announceMfaChange).not.toHaveBeenCalled()
+            expect(await step.ticket()).toMatchObject({ state: 'activated', effects: 'pending' })
+
+            expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
+            expect(await stale.isStored()).toBe(false)
+            expect(
+                (await storage.listSessions(rotatedToken, { after: null })).sessions,
+            ).toHaveLength(0)
+            for (const call of effects.closeUserConnections.mock.calls as unknown[][]) {
+                expect(call).toEqual([
+                    String(newcomer.id),
+                    { exceptSessionId: step.plan.sessionId },
+                ])
+            }
+            expect(effects.closeUserConnections).toHaveBeenCalledTimes(2)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledWith(
+                newcomer.id,
+                'recovery_code_used',
+            )
+        })
+
+        it('a recovery sign-in without failures: cleaned up before the answer; a lost answer repeated is harmless', async () => {
+            const { newcomer, rotatedToken, stale, step } = await recoverySetup()
+
+            expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
+            // Awaited before the success answer.
+            expect(await stale.isStored()).toBe(false)
+            expect(effects.closeUserConnections).toHaveBeenCalledTimes(1)
+            expect(effects.closeUserConnections).toHaveBeenCalledWith(String(newcomer.id), {
+                exceptSessionId: step.plan.sessionId,
+            })
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)
+
+            // The answer was lost: the repeat cleans up again (nothing left) and sends nothing.
+            expect((await step.continue()).status).toBe('ok')
+            expect(step.issuedNewSession()).toBe(true)
+            expect(effects.closeUserConnections).toHaveBeenCalledTimes(2)
+            expect(effects.notifyNewSignIn).toHaveBeenCalledTimes(1)
+            expect(effects.announceMfaChange).toHaveBeenCalledTimes(1)
+            expect(
+                (await storage.listSessions(rotatedToken, { after: null })).sessions,
+            ).toHaveLength(0)
+            expect(await storage.sessionExists(step.plan.sessionId, newcomer.sessionToken)).toBe(
+                true,
+            )
         })
     })
 })

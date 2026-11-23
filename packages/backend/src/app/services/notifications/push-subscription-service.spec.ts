@@ -153,6 +153,60 @@ describe('pushSubscriptionService', () => {
         expect(pushSubscriptionRepositoryMock.update).not.toHaveBeenCalled()
     })
 
+    // feat-252: a sign-out the server refused puts the record back in the state it had.
+    describe('the state a record is written in', () => {
+        const endpoint = 'https://fcm.googleapis.com/fcm/send/state'
+
+        it.each([
+            ['active without isActive', {}, true],
+            ['disabled with isActive: false', { isActive: false }, false],
+            ['active with isActive: true', { isActive: true }, true],
+        ])('creates a new record %s', async (_name, extra, isActive) => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(undefined)
+            pushSubscriptionRepositoryMock.create.mockResolvedValue({ id: 2n })
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            await pushSubscriptionService.createSubscription(
+                7n,
+                { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
+                'token-7',
+            )
+
+            expect(pushSubscriptionRepositoryMock.create).toHaveBeenCalledWith(
+                expect.objectContaining({ isActive }),
+                TX,
+            )
+        })
+
+        it.each([
+            ['active without isActive', {}, true],
+            ['disabled with isActive: false', { isActive: false }, false],
+        ])('writes an existing record %s', async (_name, extra, isActive) => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
+                id: 1n,
+                userId: 7n,
+                endpoint,
+                p256dhKey: 'k',
+                authKey: 'a',
+            })
+            pushSubscriptionRepositoryMock.updateByEndpoint.mockResolvedValue({ id: 1n })
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            await pushSubscriptionService.createSubscription(
+                7n,
+                { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
+                'token-7',
+            )
+
+            expect(pushSubscriptionRepositoryMock.updateByEndpoint).toHaveBeenCalledWith(
+                endpoint,
+                7n,
+                expect.objectContaining({ isActive }),
+                TX,
+            )
+        })
+    })
+
     describe('endpoint owned by another user', () => {
         const existing = {
             id: 1n,

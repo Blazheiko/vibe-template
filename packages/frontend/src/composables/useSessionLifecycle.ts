@@ -79,7 +79,11 @@ export const useSessionLifecycle = () => {
     const logout = async (): Promise<boolean> => {
         await quietly(() => pushStore.releaseServerSubscription())
         if ((await sendLogout()) === 'kept') {
-            await quietly(() => pushStore.restoreServerSubscription())
+            // A record whose removal outlives the restore's bound is put back later, while this
+            // account is still the signed-in one.
+            const userId = userStore.user?.id ?? null
+            const isSignedIn = () => userId !== null && userStore.user?.id === userId
+            await quietly(() => pushStore.restoreServerSubscription(isSignedIn))
             return false
         }
         await quietly(() => pushStore.unsubscribeBrowser())

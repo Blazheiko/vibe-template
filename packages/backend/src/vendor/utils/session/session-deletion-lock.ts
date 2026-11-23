@@ -30,24 +30,33 @@ export const LOCK_WAIT_ATTEMPTS = 2
  *   40P01 a deadlock) or the pool had no free connection in time. A privileged write can still
  *   commit: the record is never deleted without the lock.
  * - `unreachable`: no connection to PostgreSQL could be opened (refused, an unknown or unreachable
- *   host, class 08, 57P03 the server starting). A privileged write commits through the same
- *   database, so it cannot commit either; the record is deleted without the lock, so a logout is
- *   not refused in an outage.
+ *   host, 08001 sqlclient_unable_to_establish_sqlconnection, 08004
+ *   sqlserver_rejected_establishment_of_sqlconnection, 57P03 the server starting). A privileged
+ *   write commits through the same database, so it cannot commit either; the record is deleted
+ *   without the lock, so a logout is not refused in an outage.
  * - `connection_lost`: the one connection of the attempt broke (a reset, a broken pipe, a socket
- *   timeout, `Connection terminated`, 57P01/57P02 the backend killed). That also happens to a
- *   single pooled connection (pg_terminate_backend, a pgbouncer restart, a dead idle socket)
- *   while the other connections of the pool still commit a privileged write, so it proves no
- *   outage: the lock is asked for again on a new connection (the pool discards the broken one),
- *   and that attempt decides.
+ *   timeout, `Connection terminated`, 57P01/57P02 the backend killed, and the rest of class 08:
+ *   08000, 08003, 08006 connection_failure, 08007 transaction_resolution_unknown, 08P01
+ *   protocol_violation, any other 08xxx). That concerns one connection or one transaction and
+ *   also happens to a single pooled connection (pg_terminate_backend, a pgbouncer restart, a dead
+ *   idle socket) while the other connections of the pool still commit a privileged write, so it
+ *   proves no outage: the lock is asked for again on a new connection (the pool discards the
+ *   broken one), and that attempt decides.
  * - `other`: anything else (a query that got no answer in time, a bug). Not known to be safe: the
  *   record stays, as for `busy`, without another wait.
  */
 export type LockFailure = 'busy' | 'unreachable' | 'connection_lost' | 'other'
 
 const BUSY_SQLSTATES = new Set(['57014', '55P03', '40P01'])
-/** cannot_connect_now; class 08 (connection exception) is checked by its prefix. */
-const UNREACHABLE_SQLSTATES = new Set(['57P03'])
-/** admin_shutdown (pg_terminate_backend too), crash_shutdown: this backend went away. */
+/**
+ * A connection could not be established: 08001 sqlclient_unable_to_establish_sqlconnection, 08004
+ * sqlserver_rejected_establishment_of_sqlconnection, 57P03 cannot_connect_now.
+ */
+const UNREACHABLE_SQLSTATES = new Set(['08001', '08004', '57P03'])
+/**
+ * admin_shutdown (pg_terminate_backend too), crash_shutdown: this backend went away. The rest of
+ * class 08 (connection exception) is checked by its prefix after UNREACHABLE_SQLSTATES.
+ */
 const LOST_SQLSTATES = new Set(['57P01', '57P02'])
 /** A connection could not be opened. */
 const CONNECT_ERROR_CODES = new Set([
@@ -75,8 +84,8 @@ const classifyOne = (value: unknown): LockFailure | null => {
         typeof field(value, 'severity') === 'string'
     ) {
         if (BUSY_SQLSTATES.has(code)) return 'busy'
-        if (LOST_SQLSTATES.has(code)) return 'connection_lost'
-        if (UNREACHABLE_SQLSTATES.has(code) || code.startsWith('08')) return 'unreachable'
+        if (UNREACHABLE_SQLSTATES.has(code)) return 'unreachable'
+        if (LOST_SQLSTATES.has(code) || code.startsWith('08')) return 'connection_lost'
         return 'other'
     }
     if (typeof code === 'string' && CONNECT_ERROR_CODES.has(code)) return 'unreachable'

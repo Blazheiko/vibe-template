@@ -40,8 +40,9 @@ describe('classifyLockFailure', () => {
         ['an unreachable host', Object.assign(new Error('c'), { code: 'EHOSTUNREACH' })],
         ['an unreachable network', Object.assign(new Error('c'), { code: 'ENETUNREACH' })],
         ['the server starting (57P03)', pgError('57P03')],
-        ['a connection exception (08006)', pgError('08006')],
+        ['a connection not established (08001)', pgError('08001')],
         ['a connection refused by the server (08004)', pgError('08004')],
+        ['08001 wrapped by Drizzle', wrapped(pgError('08001'))],
         [
             'ECONNREFUSED wrapped by Drizzle',
             wrapped(Object.assign(new Error('c'), { code: 'ECONNREFUSED' })),
@@ -59,6 +60,14 @@ describe('classifyLockFailure', () => {
         ['the backend terminated (57P01)', pgError('57P01')],
         ['the server crashed (57P02)', pgError('57P02')],
         ['57P01 wrapped by Drizzle', wrapped(pgError('57P01'))],
+        // The rest of class 08: one connection or transaction, the pool may still commit.
+        ['a connection exception (08000)', pgError('08000')],
+        ['no such connection (08003)', pgError('08003')],
+        ['a connection failure (08006)', pgError('08006')],
+        ['a transaction resolution unknown (08007)', pgError('08007')],
+        ['a protocol violation (08P01)', pgError('08P01')],
+        ['an unknown class 08 code (08ZZZ)', pgError('08ZZZ')],
+        ['08006 wrapped by Drizzle', wrapped(pgError('08006'))],
         [
             'ECONNRESET wrapped by Drizzle',
             wrapped(Object.assign(new Error('r'), { code: 'ECONNRESET' })),
@@ -151,6 +160,32 @@ describe('deleteUnderLock', () => {
             expect(await deleteUnderLock('7', work)).toBe(true)
             expect(lock).toHaveBeenCalledTimes(2)
             expect(work).toHaveBeenCalledTimes(1)
+        })
+
+        it.each([
+            ['08006', pgError('08006')],
+            ['08P01', pgError('08P01')],
+        ])(
+            'a class 08 failure (%s) is asked again, not deleted without the lock',
+            async (_, err) => {
+                const lock = vi.fn().mockRejectedValueOnce(err).mockImplementation(underLock)
+                registerSessionDeletionLock(lock)
+                const work = vi.fn(() => Promise.resolve(true))
+                expect(await deleteUnderLock('7', work)).toBe(true)
+                expect(lock).toHaveBeenCalledTimes(2)
+                expect(work).toHaveBeenCalledTimes(1)
+            },
+        )
+
+        it('a class 08 failure on both attempts: deferred, nothing deleted', async () => {
+            const lock = vi.fn(() => Promise.reject(pgError('08006')))
+            registerSessionDeletionLock(lock)
+            const work = vi.fn(() => Promise.resolve(true))
+            await expect(deleteUnderLock('7', work)).rejects.toBeInstanceOf(
+                SessionDeletionDeferredError,
+            )
+            expect(lock).toHaveBeenCalledTimes(LOCK_WAIT_ATTEMPTS)
+            expect(work).not.toHaveBeenCalled()
         })
 
         it('the repeat cannot connect: unreachable, deleted without the lock', async () => {

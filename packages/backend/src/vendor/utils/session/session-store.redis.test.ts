@@ -655,8 +655,8 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
         const second = await anonymousRequest()
         const onEffects = vi.fn()
         const outcomes = await Promise.all([
-            first.context.auth.activateLogin(plan, TICKET, 'c2', onEffects),
-            second.context.auth.activateLogin(plan, TICKET, 'c2', onEffects),
+            first.context.auth.activateLogin(plan, TICKET, 'c2', { onEffects }),
+            second.context.auth.activateLogin(plan, TICKET, 'c2', { onEffects }),
         ])
         expect(outcomes.sort()).toEqual(['activated', 'already'])
         // The sign-in's effects are claimed by exactly one of them.
@@ -678,7 +678,7 @@ describe.skipIf(!hasRedis)('pending sign-in and its activation (feat-245)', () =
         expect(ticket.effects).toBe('done')
         // A later repeat claims nothing.
         const third = await anonymousRequest()
-        expect(await third.context.auth.activateLogin(plan, TICKET, 'c2', onEffects)).toBe(
+        expect(await third.context.auth.activateLogin(plan, TICKET, 'c2', { onEffects })).toBe(
             'already',
         )
         expect(onEffects).toHaveBeenCalledTimes(1)
