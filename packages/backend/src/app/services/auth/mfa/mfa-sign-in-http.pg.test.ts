@@ -18,7 +18,9 @@ import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.j
 // with the real routes and session layer, a real PostgreSQL and Redis. The password sign-in of an
 // account with TOTP opens a ticket; POST /auth/mfa/verify finishes it once, and a repeat finishes
 // what an earlier request confirmed. Failures are injected where the plan names them: Redis during
-// the preparation and the activation, the answer of COMMIT, a rollback after the work.
+// the preparation and the activation, the answer of COMMIT, a rollback after the work. The pool
+// reaches PostgreSQL through a TCP proxy (test-support/pg-commit-drop-proxy.ts) that can also
+// drop the connection for real while COMMIT is answered.
 
 const getFreePort = () =>
     new Promise<number>((resolve, reject) => {
@@ -31,6 +33,19 @@ const getFreePort = () =>
             })
         })
     })
+
+// Before #database/db.js is imported: the pools connect to the throwaway database of
+// pg-global-setup.ts through the proxy.
+const proxy = await vi.hoisted(async () => {
+    const { CommitDropProxy } = await import('../../../../test-support/pg-commit-drop-proxy.js')
+    const commitDrop = new CommitDropProxy({
+        host: process.env['PGSQL_HOST'] ?? '127.0.0.1',
+        port: Number(process.env['PGSQL_PORT'] ?? 5432),
+    })
+    process.env['PGSQL_HOST'] = '127.0.0.1'
+    process.env['PGSQL_PORT'] = String(await commitDrop.start())
+    return commitDrop
+})
 
 const PORT = await getFreePort()
 const ORIGIN = `http://localhost:${String(PORT)}`
@@ -118,6 +133,8 @@ interface Injected {
     clockJumpMs: number
     /** pg_xact_status reads that fail (the outcome stays undetermined). */
     statusUnknown: number
+    /** pg_xact_status reads made (counted, not injected). */
+    statusReads: number
 }
 const inject = vi.hoisted((): Injected => ({
     prepare: false,
@@ -126,6 +143,7 @@ const inject = vi.hoisted((): Injected => ({
     rollbackAfterWork: false,
     clockJumpMs: 0,
     statusUnknown: 0,
+    statusReads: 0,
 }))
 vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     const actual = await importActual<typeof SessionIndex>()
@@ -156,6 +174,7 @@ vi.mock('#app/repositories/transaction.js', async (importActual) => {
     return {
         ...actual,
         transactionStatus: (...args: Parameters<typeof actual.transactionStatus>) => {
+            inject.statusReads += 1
             if (inject.statusUnknown > 0) {
                 inject.statusUnknown -= 1
                 return Promise.reject(new Error('PostgreSQL unreachable (status)'))
@@ -359,6 +378,8 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         inject.rollbackAfterWork = false
         inject.clockJumpMs = 0
         inject.statusUnknown = 0
+        inject.statusReads = 0
+        proxy.disarm()
         security.mockClear()
         newSignIn.mockClear()
     })
@@ -372,6 +393,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         await admin.quit()
         await sessionCheckPool.end()
         await pool.end()
+        await proxy.stop()
     })
 
     it('the password opens a ticket, not a session; the right code signs in at level 2', async () => {
@@ -600,6 +622,62 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         )
         expect(reply.status).toBe(200)
         expect((await browser.request('GET', '/main/init')).status).toBe(200)
+    })
+
+    // Р4 with a real failure: the connection drops while COMMIT is answered (the proxy forwards
+    // the COMMIT, the server commits, the answer never reaches the pool).
+    it('a connection dropped during COMMIT: reconciled by pg_xact_status, the repeat gives the same session', async () => {
+        const user = await mfaUser('mfa-commit-drop')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'totp', code: user.code() }
+        const dropped = proxy.dropped
+        proxy.arm()
+        // The answer of the first request never reaches the browser either (not kept).
+        const first = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(proxy.dropped).toBe(dropped + 1)
+        expect(inject.statusReads).toBeGreaterThan(0)
+        expect(first.status).toBe(200)
+        const firstCookie = first.cookies.get(sessionConfig.cookieName)
+        expect(firstCookie).toEqual(expect.any(String))
+
+        const repeat = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(repeat.status).toBe(200)
+        expect(browser.cookies.get(sessionConfig.cookieName)).toBe(firstCookie)
+        expect(browser.keep(await browser.request('GET', '/main/init')).status).toBe(200)
+        const session = await getSession(browser.sessionId(), user.row.sessionToken)
+        expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'otp'] })
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('a connection dropped during COMMIT of a recovery code: the code spent once, one session', async () => {
+        const user = await mfaUser('mfa-commit-drop-recovery')
+        const tokenBefore = await tokenOf(user.row.id)
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const body = { method: 'recovery_code', code: user.codes[3] ?? '' }
+        const dropped = proxy.dropped
+        proxy.arm()
+        const first = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(proxy.dropped).toBe(dropped + 1)
+        expect(inject.statusReads).toBeGreaterThan(0)
+        expect(first.status).toBe(200)
+        expect(await unusedCodes(user.row.id)).toBe(9)
+
+        const repeat = browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        expect(repeat.status).toBe(200)
+        expect(browser.cookies.get(sessionConfig.cookieName)).toBe(
+            first.cookies.get(sessionConfig.cookieName),
+        )
+        expect(await unusedCodes(user.row.id)).toBe(9)
+        const rotated = await tokenOf(user.row.id)
+        expect(rotated).not.toBe(tokenBefore)
+        const session = await getSession(browser.sessionId(), rotated)
+        expect(session?.data.auth).toMatchObject({ aal: 1, amr: ['pwd', 'recovery'] })
+        expect(
+            security.mock.calls.filter(([, kind]) => kind === 'recovery_code_used'),
+        ).toHaveLength(1)
+        expect(newSignIn).toHaveBeenCalledTimes(1)
     })
 
     it('work done and rolled back without an answer: aborted, the same code works again', async () => {

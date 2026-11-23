@@ -94,7 +94,8 @@ test('after the two-step sign-in a password change needs no other proof', async 
     }
 
     // The TOTP of the second step is a fresh proof: the change goes without the dialog. (The
-    // dialog for a stale proof is covered by e2e/mfa.spec.ts with a mocked 403.)
+    // dialog for a stale proof: reauth-step-up.spec.ts, under the 30 s window of
+    // playwright.live-passkey.config.ts.)
     const { page, context } = await newBrowser(browser)
     try {
         await signInPassword(page, account)

@@ -83,6 +83,37 @@ export async function newBrowser(
     return { context, page }
 }
 
+/**
+ * A Chrome virtual authenticator (CDP) in this page's browser: a platform authenticator with user
+ * verification. With the user present it answers at once, the autofill of the sign-in field
+ * included (conditional UI); `present(false)` makes it wait, so a page can be used with the
+ * password while a conditional request is pending.
+ */
+export async function withAuthenticator(
+    page: Page,
+): Promise<{ present: (on: boolean) => Promise<void> }> {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('WebAuthn.enable')
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+            protocol: 'ctap2',
+            transport: 'internal',
+            hasResidentKey: true,
+            hasUserVerification: true,
+            isUserVerified: true,
+            automaticPresenceSimulation: true,
+        },
+    })
+    return {
+        present: async (on) => {
+            await cdp.send('WebAuthn.setAutomaticPresenceSimulation', {
+                authenticatorId,
+                enabled: on,
+            })
+        },
+    }
+}
+
 /** The text of the first link in a mail whose path is `path`, as the user would click it. */
 export function linkIn(text: string, path: string): string {
     const match = new RegExp(

@@ -22,8 +22,9 @@ vapid.generateKeys()
 
 export default defineConfig({
     testDir: './e2e-live',
-    // feat-248: runs only under playwright.live-passkey.config.ts (MFA_STAFF_FACTOR=passkey).
-    testIgnore: 'staff-passkey-mode.spec.ts',
+    // feat-248: run only under playwright.live-passkey.config.ts (MFA_STAFF_FACTOR=passkey and a
+    // step-up window of 30 s).
+    testIgnore: ['staff-passkey-mode.spec.ts', 'reauth-step-up.spec.ts'],
     timeout: 60 * 1000,
     expect: { timeout: 10 * 1000 },
     forbidOnly: !!process.env.CI,

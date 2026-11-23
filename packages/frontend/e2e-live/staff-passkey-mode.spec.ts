@@ -1,37 +1,13 @@
 import type { Page } from '@playwright/test'
 
 import { ORIGIN, USER_2 } from './fixtures'
-import { expect, newBrowser, nextTotp, session, test } from './support'
+import { expect, newBrowser, nextTotp, session, test, withAuthenticator } from './support'
 
 // feat-248 (docs/plan/passkeys-mfa-plan.md, Р10, Д11; tasks X2) against the real backend started
 // with MFA_STAFF_FACTOR=passkey (playwright.live-passkey.config.ts, a database of its own), with
 // a Chrome virtual authenticator (CDP): the seeded admin signed in with the authenticator app adds
 // a passkey, and that TOTP session is still refused by the admin area (mfa_session_required, the
 // security section asks for the passkey); signed in again with the passkey, the admin area opens.
-
-/** A platform authenticator with user verification; `present(false)` makes it wait. */
-async function withAuthenticator(page: Page): Promise<{ present: (on: boolean) => Promise<void> }> {
-    const cdp = await page.context().newCDPSession(page)
-    await cdp.send('WebAuthn.enable')
-    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-            protocol: 'ctap2',
-            transport: 'internal',
-            hasResidentKey: true,
-            hasUserVerification: true,
-            isUserVerified: true,
-            automaticPresenceSimulation: true,
-        },
-    })
-    return {
-        present: async (on) => {
-            await cdp.send('WebAuthn.setAutomaticPresenceSimulation', {
-                authenticatorId,
-                enabled: on,
-            })
-        },
-    }
-}
 
 async function signInPassword(page: Page): Promise<void> {
     await page.goto('/login')
