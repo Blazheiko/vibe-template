@@ -143,8 +143,13 @@ export const authApi = {
     ): Promise<ApiResponse<RegisterPhoneCompleteResponse>> =>
         callApi(authContracts.registerPhoneComplete, { body }, { csrfRecovery: 'public' }),
 
-    logout: (): Promise<ApiResponse<LogoutResponse>> =>
-        callApi(authContracts.logout, { body: {} }, { sessionAfter: 'anonymous' }),
+    /** `pushEndpoint` (feat-254): this browser's push subscription, deleted with the session. */
+    logout: (pushEndpoint: string | null = null): Promise<ApiResponse<LogoutResponse>> =>
+        callApi(
+            authContracts.logout,
+            { body: pushEndpoint === null ? {} : { pushEndpoint } },
+            { sessionAfter: 'anonymous' },
+        ),
 
     logoutAll: (): Promise<ApiResponse<LogoutAllResponse>> =>
         callApi(authContracts.logoutAll, { body: {} }, { sessionAfter: 'anonymous' }),

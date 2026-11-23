@@ -21,7 +21,7 @@ const quietly = async (step: () => Promise<void>): Promise<void> => {
     try {
         await step()
     } catch (error) {
-        console.error('Push release error:', error)
+        console.error('Push sign-out step error:', error)
     }
 }
 
@@ -49,12 +49,13 @@ export const useSessionLifecycle = () => {
 
     /**
      * Whether the server kept the session through every repeat of the logout (`logout_retry`).
-     * Any other failure is logged and the browser leaves as before.
+     * Any other failure is logged and the browser leaves as before. `pushEndpoint` (feat-254):
+     * the server deletes this browser's push record with the session, only when it really ended.
      */
-    const sendLogout = async (): Promise<'kept' | 'left'> => {
+    const sendLogout = async (pushEndpoint: string | null): Promise<'kept' | 'left'> => {
         for (let attempt = 0; ; attempt++) {
             try {
-                const { data, error } = await authApi.logout()
+                const { data, error } = await authApi.logout(pushEndpoint)
                 if (!error) return 'left'
                 if (getErrorReason(data) !== LOGOUT_RETRY_REASON) {
                     console.error(error)
@@ -72,20 +73,17 @@ export const useSessionLifecycle = () => {
     /**
      * Signs out and opens /login. Answers false when the server kept the session through every
      * repeat (Р13): the browser stays signed in and the caller tells the user the sign-out did
-     * not finish. Push (feat-148) is best effort and bounded at every step: the server record
-     * goes while the session still exists, the browser's subscription only once the sign-out went
-     * through; a kept session gets its record back, so push keeps working.
+     * not finish. Push (feat-148, feat-254) is best effort and bounded at every step: the request
+     * names this browser's endpoint and the server deletes its record only with the session; the
+     * browser's subscription goes once the sign-out went through. A kept session keeps both, so
+     * push keeps working and nothing has to be put back.
      */
     const logout = async (): Promise<boolean> => {
-        await quietly(() => pushStore.releaseServerSubscription())
-        if ((await sendLogout()) === 'kept') {
-            // A record whose removal outlives the restore's bound is put back later, while this
-            // account is still the signed-in one.
-            const userId = userStore.user?.id ?? null
-            const isSignedIn = () => userId !== null && userStore.user?.id === userId
-            await quietly(() => pushStore.restoreServerSubscription(isSignedIn))
-            return false
-        }
+        let pushEndpoint: string | null = null
+        await quietly(async () => {
+            pushEndpoint = await pushStore.currentPushEndpoint()
+        })
+        if ((await sendLogout(pushEndpoint)) === 'kept') return false
         await quietly(() => pushStore.unsubscribeBrowser())
         await redirectToLogin()
         return true

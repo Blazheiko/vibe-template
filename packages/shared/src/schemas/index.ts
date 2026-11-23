@@ -32,6 +32,7 @@ export { LoginInputSchema, type LoginInput } from './auth/login.js'
 export { ForgotPasswordInputSchema, type ForgotPasswordInput } from './auth/forgot-password.js'
 export { ResetPasswordInputSchema, type ResetPasswordInput } from './auth/reset-password.js'
 export { VerifyEmailInputSchema, type VerifyEmailInput } from './auth/verify-email.js'
+export { LogoutInputSchema, type LogoutInput } from './auth/logout.js'
 export {
     OAuthLinkConfirmInputSchema,
     type OAuthLinkConfirmInput,

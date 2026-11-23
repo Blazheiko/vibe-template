@@ -409,6 +409,26 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         await conn.close()
     })
 
+    // Р8: a recovery sign-in marks only the connections being opened with the rotated token.
+    it('marks a connection being opened only when its session carries the given token', async () => {
+        const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
+        const conn = connection('9115')
+
+        const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
+        expect(wsConnectionRegistry.revokeConnecting('9115', undefined, undefined, 'other')).toBe(0)
+        wsSessionRevocation.closeUserConnections('9115', { userToken: 'rotated-token' })
+        resolveAccess({ role: 'user', sessionToken: 'u1' })
+        await connected
+
+        expect(conn.endedWith).toEqual([])
+        expect(wsConnectionRegistry.isUserOnline('9115')).toBe(true)
+
+        // Registered now: a close by its own token reaches it.
+        expect(wsSessionRevocation.closeUserConnections('9115', { userToken: 'u1' })).toBe(1)
+        expect(conn.endedWith).toEqual([4001])
+        await conn.close()
+    })
+
     it('forgets the mark once the connection is settled: the next one is not closed by it', async () => {
         const { wsSessionRevocation } = await import('#app/services/auth/ws-session-revocation.js')
         const first = connection('9113')

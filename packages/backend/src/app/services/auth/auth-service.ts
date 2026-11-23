@@ -74,6 +74,7 @@ import { SessionDeletionDeferredError } from '#vendor/utils/session/session-dele
 import { destroyAllSessions } from '#vendor/utils/session/redis-session-storage.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { wsSessionRevocation } from '#app/services/auth/ws-session-revocation.js'
+import { pushSubscriptionService } from '#app/services/notifications/push-subscription-service.js'
 import { authSuccessPayload, type AuthSuccessPayload } from '#app/services/auth/auth-success.js'
 import {
     startSecondStepIfRequired,
@@ -411,6 +412,23 @@ async function registerEmailFlow(
     }
 
     return await answerStrict()
+}
+
+/**
+ * feat-254: the push record of the browser that signed out, removed once its session is gone, so
+ * the account's notifications stop arriving there. After the deletion, not before it: a logout the
+ * row lock defers (`logout_retry`, Р13) keeps the session, and a record removed ahead of it would
+ * leave a signed-in browser without push and the client to put the record back, which raced with
+ * the next sign-out. Not inside the lock either: the lock guards the session record only, and
+ * push work there would hold the user's row lock longer and tie the logout to the push table.
+ * Best effort: a failure is logged and the logout still answers success (the session is gone).
+ */
+async function releasePushRecord(userId: bigint, pushEndpoint: string): Promise<void> {
+    try {
+        await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(userId, pushEndpoint)
+    } catch (err) {
+        logger.warn({ err, userId: String(userId) }, 'Logout: removing the push record failed')
+    }
 }
 
 export const authService = {
@@ -1049,14 +1067,24 @@ export const authService = {
         return success
     },
 
+    /**
+     * `pushEndpoint` (feat-254): this browser's push subscription; its record of the user goes
+     * with the session (releasePushRecord).
+     */
     async logout(
         auth: Auth,
         session: Session,
+        options: { pushEndpoint?: string | undefined } = {},
     ): Promise<AppResult<{ status: 'success'; csrfToken: string }>> {
         // feat-195: the WebSocket connections opened from this session close with it; the
         // other sessions of the user keep theirs.
         const userId = auth.getUserId()
         const sessionId = session.sessionInfo?.id
+        // Read before the logout replaces the session with an anonymous one.
+        const signedInUserId =
+            userId !== null && typeof session.sessionInfo?.data.userToken === 'string'
+                ? userId
+                : null
         let result: boolean
         try {
             result = await auth.logout()
@@ -1072,6 +1100,9 @@ export const authService = {
 
         if (!result) {
             return Result.err(internalMessage('Failed to log out user'))
+        }
+        if (signedInUserId !== null && options.pushEndpoint !== undefined) {
+            await releasePushRecord(BigInt(signedInUserId), options.pushEndpoint)
         }
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)

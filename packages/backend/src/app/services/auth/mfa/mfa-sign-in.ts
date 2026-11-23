@@ -692,7 +692,6 @@ async function activate(
     }
 
     let outcome: 'activated' | 'already' | 'gone'
-    const effects = { claimed: false }
     const recovery = plan.auth.recovery !== undefined
     try {
         outcome = await context.auth.activateLogin(
@@ -704,10 +703,17 @@ async function activate(
                 // one: a cleanup that failed (Redis) answers mfa_completion_pending and the
                 // repeat runs it again, before the success answer.
                 ...(recovery
-                    ? { afterReplacement: (): Promise<void> => endOtherSessions(ticket, plan) }
+                    ? {
+                          cleanup: (currentSessionId: string): Promise<void> =>
+                              endOtherSessions(ticket, plan, currentSessionId),
+                      }
                     : {}),
+                // At most once per completion: only the request that claims the effects sends
+                // these (the activating one, or the repeat of one whose cleanup or claim failed
+                // and answered mfa_completion_pending), before the previous session is deleted.
                 onEffects: () => {
-                    effects.claimed = true
+                    notifyNewSignIn(userId, plan.device, { mail: true })
+                    if (recovery) announceMfaChange(userId, 'recovery_code_used')
                 },
             },
         )
@@ -720,13 +726,6 @@ async function activate(
         return Result.err(ticketInvalid())
     }
 
-    if (effects.claimed) {
-        // At most once per completion: only the request that claimed the effects after its
-        // replacement went through sends these (the activating one, or the repeat of one whose
-        // replacement or claim failed and answered mfa_completion_pending).
-        notifyNewSignIn(userId, plan.device, { mail: true })
-        if (recovery) announceMfaChange(userId, 'recovery_code_used')
-    }
     const user = await userRepository.findById(userId)
     if (user === undefined) return Result.err(sessionRevoked())
     return Result.ok(await authSuccessPayload(user, context.session))
@@ -734,12 +733,24 @@ async function activate(
 
 /**
  * Р8: the sockets and the sessions of the token a recovery sign-in rotated. Idempotent: a repeat
- * closes what connected since (never the new session's sockets) and finds no records left. A
- * cleanup that Redis stopped part-way throws, so the request does not answer success.
+ * closes what connected since with that token and finds no records left. Only the rotated token:
+ * a session signed in with the new one between two attempts keeps its sockets. The browser's own
+ * session is spared even when it carries the rotated token: the activation deletes it under the
+ * lock, last, so a repeat still finds it. A cleanup that Redis stopped part-way throws, so the
+ * request does not answer success.
  */
-async function endOtherSessions(ticket: MfaTicket, plan: LoginPlan): Promise<void> {
-    wsSessionRevocation.closeUserConnections(plan.userId, { exceptSessionId: plan.sessionId })
-    const cleanup = await destroyAllSessions(ticket.userTokenAtStart)
+async function endOtherSessions(
+    ticket: MfaTicket,
+    plan: LoginPlan,
+    currentSessionId: string,
+): Promise<void> {
+    wsSessionRevocation.closeUserConnections(plan.userId, {
+        exceptSessionId: plan.sessionId,
+        userToken: ticket.userTokenAtStart,
+    })
+    const cleanup = await destroyAllSessions(ticket.userTokenAtStart, {
+        keepSessionId: currentSessionId,
+    })
     if (!cleanup.complete) {
         throw new Error('Sessions of the rotated token not all deleted (Redis unavailable)')
     }

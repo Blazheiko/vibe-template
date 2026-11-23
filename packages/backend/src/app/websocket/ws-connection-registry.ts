@@ -55,6 +55,8 @@ function summarizeAppType(connections: Iterable<StoredConnection>): 'web' | 'pwa
 interface ConnectingEntry {
     userId: string
     sessionId: string
+    /** The users.session_token the connection's session carries (a recovery's close, Р8). */
+    userToken: string | undefined
     revoked: boolean
     // feat-243 (review 2026-11-21): a role change was signalled while the connection was being
     // opened; the role it read may predate it, so it reads the role again before registering.
@@ -66,8 +68,19 @@ const connecting = new Map<string, ConnectingEntry>()
  * Notes a connection that is being opened. The returned function ends the wait and answers
  * whether the session was revoked meanwhile; it must be called exactly once.
  */
-const beginConnecting = (userId: string, uuid: string, sessionId: string): (() => boolean) => {
-    const entry: ConnectingEntry = { userId, sessionId, revoked: false, roleStale: false }
+const beginConnecting = (
+    userId: string,
+    uuid: string,
+    sessionId: string,
+    userToken?: string,
+): (() => boolean) => {
+    const entry: ConnectingEntry = {
+        userId,
+        sessionId,
+        userToken,
+        revoked: false,
+        roleStale: false,
+    }
     connecting.set(uuid, entry)
     return () => {
         connecting.delete(uuid)
@@ -75,18 +88,24 @@ const beginConnecting = (userId: string, uuid: string, sessionId: string): (() =
     }
 }
 
-/** Marks the user's connections that are being opened: all, or those of one session. */
+/**
+ * Marks the user's connections that are being opened: all, those of one session, or those whose
+ * session carries one users.session_token.
+ */
 const revokeConnecting = (
     userId: string,
     sessionId?: string,
     // feat-221: a password change spares the session that asked for it.
     exceptSessionId?: string,
+    // Р8: a recovery sign-in closes only the sessions of the token it rotated.
+    userToken?: string,
 ): number => {
     let marked = 0
     for (const entry of connecting.values()) {
         if (entry.userId !== userId) continue
         if (sessionId !== undefined && entry.sessionId !== sessionId) continue
         if (exceptSessionId !== undefined && entry.sessionId === exceptSessionId) continue
+        if (userToken !== undefined && entry.userToken !== userToken) continue
         entry.revoked = true
         marked += 1
     }

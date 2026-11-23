@@ -207,6 +207,44 @@ describe('pushSubscriptionService', () => {
         })
     })
 
+    // feat-254: a sign-out that went through removes this browser's record of the user.
+    describe('deleteOwnSubscriptionByEndpoint', () => {
+        const EP = 'https://FCM.googleapis.com/fcm/send/a%2fb'
+
+        it('deletes the record of the user, found by the canonical endpoint', async () => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({ id: 3n, userId: 7n })
+            pushSubscriptionRepositoryMock.delete.mockResolvedValue(true)
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(7n, EP)).toBe(true)
+            expect(pushSubscriptionRepositoryMock.findByEndpoint).toHaveBeenCalledWith(
+                'https://fcm.googleapis.com/fcm/send/a%2Fb',
+            )
+            expect(pushSubscriptionRepositoryMock.delete).toHaveBeenCalledWith(3n, 7n)
+        })
+
+        it("never deletes another user's record with that endpoint", async () => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({ id: 3n, userId: 8n })
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(7n, EP)).toBe(
+                false,
+            )
+            expect(pushSubscriptionRepositoryMock.delete).not.toHaveBeenCalled()
+        })
+
+        it('matches nothing for an endpoint the policy does not allow', async () => {
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            expect(
+                await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(
+                    7n,
+                    'https://evil.example/x',
+                ),
+            ).toBe(false)
+            expect(pushSubscriptionRepositoryMock.findByEndpoint).not.toHaveBeenCalled()
+        })
+    })
+
     describe('endpoint owned by another user', () => {
         const existing = {
             id: 1n,
