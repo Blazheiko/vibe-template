@@ -13,6 +13,13 @@ export const DB_NAME_PASSKEY = 'vibe_e2e_live_passkey'
 // The step-up window of that run (AUTH_REAUTH_WINDOW_SECONDS, the smallest the backend accepts):
 // reauth-step-up.spec.ts waits it out so a sensitive action asks for a step-up (ReauthDialog).
 export const REAUTH_WINDOW_SECONDS_SHORT = 30
+// feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 2): the API path of the run. The default
+// run serves `/api`; playwright.live-prefix.config.ts builds and starts one with another prefix
+// (API_PATH_PREFIX), so the MFA cookies are shown to work whatever the prefix.
+export const API_PREFIX = process.env.E2E_API_PREFIX ?? 'api'
+export const API = `/${API_PREFIX}`
+// That run's database.
+export const DB_NAME_PREFIX = 'vibe_e2e_live_prefix'
 
 // Verified accounts, seeded by global-setup.ts (pnpm --filter backend db:seed --demo).
 export const USER_1 = { email: 'live-e2e-user@example.test', password: 'live-e2e-pass-1' }

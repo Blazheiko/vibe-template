@@ -30,7 +30,8 @@ vi.mock('@/composables/usePasskeys', () => ({
 }))
 vi.mock('@/composables/useCompleteSignIn', () => ({ useCompleteSignIn: () => vi.fn() }))
 vi.mock('@/stores/user', () => ({ useUserStore: () => ({ setRecovery: vi.fn() }) }))
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+const route = vi.hoisted(() => ({ query: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => route }))
 
 const mountForm = (active = true) =>
     mount(LoginForm, {
@@ -41,6 +42,7 @@ const mountForm = (active = true) =>
 beforeEach(() => {
     // Each test is a new page load of the sign-in page.
     resetPageLoadAsk('/login')
+    route.query = {}
 })
 
 afterEach(() => {
@@ -117,5 +119,42 @@ describe('LoginForm after a sign-out within the app', () => {
         mountForm()
         await flushPromises()
         expect(mfaStateMock).toHaveBeenCalledOnce()
+    })
+})
+
+// feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 2): an OAuth return shows the second step
+// from the query at once; after a reload of that page (or the reload of `account_changed`) the
+// ticket may be finishing, and the page-load answer makes the form continue it.
+describe('LoginForm on an OAuth return (?mfa=required)', () => {
+    it('a reload while the ticket is finishing: the form continues it', async () => {
+        route.query = { mfa: 'required', methods: 'totp,recovery_code' }
+        mfaStateMock.mockResolvedValue({
+            data: { status: 'mfa_required', methods: ['totp', 'recovery_code'], completing: true },
+            error: null,
+        })
+        mfaVerifyMock.mockResolvedValue({
+            data: { status: 'success', user: { id: '1', name: 'U', email: 'u@example.test' } },
+            error: null,
+        })
+        const wrapper = mountForm()
+        // The form is up from the query before the answer.
+        expect(wrapper.find('[data-testid="mfa-challenge"]').exists()).toBe(true)
+        await flushPromises()
+        expect(mfaStateMock).toHaveBeenCalledTimes(1)
+        expect(mfaVerifyMock).toHaveBeenCalledTimes(1)
+        expect(mfaVerifyMock).toHaveBeenCalledWith({ method: 'continue' })
+    })
+
+    it('an open ticket: the form stays, nothing is sent until a proof is given', async () => {
+        route.query = { mfa: 'required', methods: 'totp,recovery_code' }
+        mfaStateMock.mockResolvedValue({
+            data: { status: 'mfa_required', methods: ['totp', 'recovery_code'] },
+            error: null,
+        })
+        const wrapper = mountForm()
+        await flushPromises()
+        expect(mfaStateMock).toHaveBeenCalledTimes(1)
+        expect(mfaVerifyMock).not.toHaveBeenCalled()
+        expect(wrapper.find('[data-testid="mfa-challenge"]').exists()).toBe(true)
     })
 })

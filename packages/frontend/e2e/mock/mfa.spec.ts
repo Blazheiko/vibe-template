@@ -74,6 +74,55 @@ test.describe('second sign-in step', () => {
         expect(attempts).toBe(2)
     })
 
+    // feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 7): a WebSocket token Redis could not
+    // issue after the activation leaves it empty; main/init brings it, and a main/init that
+    // fails too keeps the signed-in session.
+    test('a sign-in answered without a WebSocket token, then a failing main/init: still signed in', async ({
+        page,
+        api,
+    }) => {
+        await api.answer('auth/login', 200, {
+            status: 'mfa_required',
+            methods: ['totp', 'recovery_code'],
+        })
+        let signedIn = false
+        let initsAfter = 0
+        await page.route('**/api/auth/mfa/verify', async (route) => {
+            api.setSession(USER)
+            signedIn = true
+            await json(route, 200, { ...SIGNED_IN, wsUrl: '', wsToken: '' })
+        })
+        await page.route('**/api/main/init', async (route) => {
+            if (!signedIn) return route.fallback()
+            initsAfter += 1
+            if (initsAfter === 1) {
+                await json(route, 503, {
+                    status: 'error',
+                    code: 'service_unavailable',
+                    message: 'Redis down',
+                })
+                return
+            }
+            return route.fallback()
+        })
+        api.ignoreOtherRequests()
+
+        const modal = await openLogin(page)
+        await modal.locator('#login-identifier').fill('jane@example.com')
+        await modal.locator('#login-password').fill('correct-horse')
+        await modal.getByRole('button', { name: 'Sign In' }).click()
+        const form = page.getByTestId('mfa-challenge')
+        await form.getByTestId('mfa-code').fill('222222')
+        await form.getByTestId('mfa-submit').click()
+
+        await expect(page).toHaveURL(/\/account$/)
+        await expect.poll(() => initsAfter).toBeGreaterThanOrEqual(1)
+        // The failed main/init did not sign the user out: the account page stays.
+        await page.waitForLoadState('networkidle')
+        await expect(page).toHaveURL(/\/account$/)
+        await expect(page.locator('#login-identifier')).toHaveCount(0)
+    })
+
     test('a server finishing the sign-in (503 mfa_completion_pending) is asked again', async ({
         page,
         api,

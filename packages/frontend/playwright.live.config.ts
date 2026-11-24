@@ -91,6 +91,11 @@ export default defineConfig({
             // Not left to a developer's .env: the production default, and the SPA is built without phone.
             AUTH_STRICT_REGISTRATION: 'true',
             AUTH_PHONE_ENABLED: 'false',
+            // feat-257: mfa-continuation.spec.ts starts an OAuth sign-in (its state moves the
+            // anonymous session to Redis) and never follows it to the provider.
+            GOOGLE_CLIENT_ID: 'live-e2e-client',
+            GOOGLE_CLIENT_SECRET: 'live-e2e-secret',
+            GOOGLE_REDIRECT_URI: `${ORIGIN}/api/auth/oauth/google/callback`,
         },
         url: `${ORIGIN}/`,
         // Never reuse: a server started with other settings would hide failures.
