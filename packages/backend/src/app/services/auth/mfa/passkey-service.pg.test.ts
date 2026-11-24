@@ -224,7 +224,9 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
 
     // Р14: the registration records the proof the options accepted, kept with them in the
     // session, not one decided again from the marks and the factors of the registration.
-    it('the audit records the proof the options accepted, though the account changed since', async () => {
+    // feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 3): the proof the options kept is
+    // checked again under the lock, against the account as it is when the key is written.
+    it('a password set since the options: the kept recent sign-in no longer admits the key', async () => {
         const user = await newUser({ password: null })
         // No password: a recent social sign-in is the proof of the options.
         const session = fakeSession({
@@ -237,17 +239,32 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
             },
         })
         const { enrollmentId, response } = await optionsAndAnswer(user, session)
-        // Meanwhile a password appears: read again now, the proof would come out as `password`.
         await db.update(users).set({ password: 'hash' }).where(eq(users.id, user.id))
 
         const result = await passkeyService.register(request(user, session), {
             enrollmentId,
             response,
         })
-        expect(result.status).toBe('ok')
-        const events = await eventsOf(user.id, 'auth.passkey.added')
-        expect(events).toHaveLength(1)
-        expect(events[0]?.metadata).toMatchObject({ proof: 'recent_sign_in' })
+        expect(result.status === 'error' && result.error).toMatchObject({
+            reason: 'reauth_required',
+        })
+        expect(await keysOf(user.id)).toHaveLength(0)
+    })
+
+    it('a passkey added in another session since password options: no second key by the password', async () => {
+        const user = await newUser()
+        const first = fakeSession(freshPassword())
+        const pending = await optionsAndAnswer(user, first)
+        const second = fakeSession(freshPassword())
+        const other = await optionsAndAnswer(user, second)
+        expect((await passkeyService.register(request(user, second), other)).status).toBe('ok')
+
+        // With MFA on, only a factor proves the owner: the password options add nothing.
+        const result = await passkeyService.register(request(user, first), pending)
+        expect(result.status === 'error' && result.error).toMatchObject({
+            reason: 'reauth_required',
+        })
+        expect(await keysOf(user.id)).toHaveLength(1)
     })
 
     it('options stored without their proof (before it was kept) start again, nothing stored', async () => {

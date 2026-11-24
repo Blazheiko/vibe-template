@@ -47,8 +47,10 @@ import {
     mfaBinding,
     mfaTicketStore,
     newTicketId,
+    type CheckedChallenge,
     type MfaTicket,
     type PendingOAuthLink,
+    type ReopenOutcome,
     type ReserveOutcome,
 } from './mfa-ticket.js'
 import { announceMfaChange } from './mfa-notice.js'
@@ -90,7 +92,7 @@ const attemptExpired = (): AppError =>
 /** Thrown inside the transaction to roll it back with a decided answer. */
 class Abort extends Error {
     constructor(
-        readonly kind: 'wrong' | 'revoked' | 'used' | 'expired' | 'gone' | 'error',
+        readonly kind: 'wrong' | 'revoked' | 'used' | 'expired' | 'stale' | 'gone' | 'error',
         readonly error?: AppError,
     ) {
         super(kind)
@@ -285,9 +287,14 @@ export async function readTransactionStatus(
     }
 }
 
+/**
+ * `attemptId` (feat-256, item 6): the browser's id of this logical attempt, sent again only with a
+ * repeat of the same request. A wrong proof is counted once per attempt; without it every request
+ * is an attempt of its own.
+ */
 type ProofInput =
-    | { method: 'totp' | 'recovery_code'; code: string }
-    | { method: 'webauthn'; response: AuthenticationResponse }
+    | { method: 'totp' | 'recovery_code'; code: string; attemptId?: string }
+    | { method: 'webauthn'; response: AuthenticationResponse; attemptId?: string }
 
 /** A proof, or `continue`: finish the sign-in this browser's ticket already confirmed. */
 export type SecondStepInput = ProofInput | { method: 'continue' }
@@ -325,6 +332,7 @@ export async function completeSecondStep(
         return continueByRequest(context, ticketId, binding, input, request, deps)
     }
     const reservationId = nanoid()
+    const attemptId = input.attemptId ?? reservationId
     const reservationTtlMs = mfaConfig.reservationTtlSeconds * 1000
 
     const reserved: ReserveOutcome = await mfaTicketStore.reserve(
@@ -333,16 +341,29 @@ export async function completeSecondStep(
         reservationId,
         now,
         reservationTtlMs,
+        attemptId,
     )
     if (reserved.kind === 'invalid') {
         context.auth.setMfaTicketCookie(null, 0)
         return Result.err(ticketInvalid())
     }
     if (reserved.kind === 'busy') return Result.err(ticketInvalid())
+    // feat-256: a repeat of an attempt whose wrong proof was counted (its answer was lost): the
+    // same answer, nothing counted again and nothing checked again.
+    if (reserved.kind === 'failed') return Result.err(invalidCode())
     if (reserved.kind === 'completing' || reserved.kind === 'activated') {
         return continueCompletion(context, ticketId, reserved.ticket, input, request, deps)
     }
-    return attempt(context, ticketId, reserved.ticket, reservationId, input, request, deps, now)
+    return attempt(
+        context,
+        ticketId,
+        reserved.ticket,
+        { reservationId, attemptId },
+        input,
+        request,
+        deps,
+        now,
+    )
 }
 
 /**
@@ -374,12 +395,13 @@ async function attempt(
     context: SignInContext,
     ticketId: string,
     ticket: MfaTicket,
-    reservationId: string,
+    ids: { reservationId: string; attemptId: string },
     input: ProofInput,
     request: AuditRequest,
     deps: SecondStepDeps,
     now: number,
 ): Promise<AppResult<AuthSuccessPayload>> {
+    const { reservationId, attemptId } = ids
     const userId = BigInt(ticket.userId)
     const release = async (): Promise<void> => {
         try {
@@ -415,7 +437,25 @@ async function attempt(
 
     // feat-246: a passkey is checked before the transaction (no writes); the transaction spends
     // its counter, so a rollback gives it back.
-    let passkey: { credentialId: bigint; newCounter: bigint } | null = null
+    let passkey: { credentialId: bigint; newCounter: bigint; challenge: CheckedChallenge } | null =
+        null
+    /**
+     * feat-256 (item 6): a wrong proof counted once per logical attempt. A Redis failure is not a
+     * refusal (ADR 0004): it reaches the error handler (503), and the repeat with the same
+     * `attemptId` counts it, or finds it counted. A passkey whose challenge was spent or replaced
+     * meanwhile counts nothing (`stale`): the browser runs a new ceremony.
+     */
+    const countFailure = async (
+        challenge: CheckedChallenge | null,
+    ): Promise<AppResult<AuthSuccessPayload>> => {
+        const settled = await mfaTicketStore.settle(ticketId, reservationId, 'failure', {
+            attemptId,
+            challenge,
+        })
+        if (settled === 'stale') return Result.err(attemptExpired())
+        if (settled === 'deleted') context.auth.setMfaTicketCookie(null, 0)
+        return Result.err(invalidCode())
+    }
     if (input.method === 'webauthn') {
         let checked: Awaited<ReturnType<typeof checkSecondStepPasskey>>
         try {
@@ -426,23 +466,14 @@ async function attempt(
             await release()
             throw err
         }
-        if (checked === 'stale') {
+        if (checked.kind === 'stale') {
             // The challenge is gone or spent (an earlier attempt took it, then rolled back or
             // lapsed): not a wrong proof. Nothing counted; the browser runs a new ceremony.
             await release()
             return Result.err(attemptExpired())
         }
-        if (checked === 'wrong') {
-            let settled = 'ok'
-            try {
-                settled = await mfaTicketStore.settle(ticketId, reservationId, 'failure')
-            } catch (settleErr) {
-                logger.warn({ err: settleErr }, 'Failure not counted on the ticket')
-            }
-            if (settled === 'deleted') context.auth.setMfaTicketCookie(null, 0)
-            return Result.err(invalidCode())
-        }
-        passkey = checked
+        if (checked.kind === 'wrong') return countFailure(checked.challenge)
+        passkey = { ...checked.assertion, challenge: checked.challenge }
     }
 
     try {
@@ -491,6 +522,7 @@ async function attempt(
                 deps.now?.() ?? Date.now(),
                 mfaConfig.reservationTtlSeconds * 1000,
                 { completionId, xid, plan },
+                passkey?.challenge ?? null,
             )
             if (capture !== 'ok') throw new Abort(capture)
             progress.captured = true
@@ -537,43 +569,35 @@ async function attempt(
         deps.commitSeen?.('failed')
         if (err instanceof Abort) {
             switch (err.kind) {
-                case 'wrong': {
-                    let settled = 'ok'
-                    try {
-                        settled = await mfaTicketStore.settle(ticketId, reservationId, 'failure')
-                    } catch (settleErr) {
-                        logger.warn({ err: settleErr }, 'Failure not counted on the ticket')
-                    }
-                    if (settled === 'deleted') context.auth.setMfaTicketCookie(null, 0)
-                    return Result.err(invalidCode())
-                }
+                case 'wrong':
+                    return countFailure(passkey?.challenge ?? null)
                 case 'revoked': {
                     await release()
                     // A recovery sign-in of a parallel attempt rotated the token: that attempt
-                    // won, and its ticket stays for its continuation.
-                    const current = await bestEffort(
-                        mfaTicketStore.read(ticketId),
-                        null,
-                        'Ticket not read after a revoked attempt; treated as gone',
+                    // won, and its ticket stays for its continuation. feat-256: one atomic step
+                    // (DELETE_IF_OPEN_LUA), so an attempt that captures it between a read and a
+                    // delete keeps it.
+                    const deleted = await bestEffort(
+                        mfaTicketStore.deleteIfOpen(ticketId, ticket.binding),
+                        'absent' as const,
+                        'Revoked ticket not deleted; it lapses with its TTL',
                         { userId: ticket.userId },
                     )
-                    if (current !== null && current.state !== 'open') {
+                    if (deleted === 'completing' || deleted === 'activated') {
                         return Result.err(
                             unauthorized('Signed in already', MFA_REASONS.mfaTicketUsed),
                         )
                     }
-                    await bestEffort(
-                        mfaTicketStore.delete(ticketId),
-                        undefined,
-                        'Revoked ticket not deleted; it lapses with its TTL',
-                        { userId: ticket.userId },
-                    )
                     context.auth.setMfaTicketCookie(null, 0)
                     return Result.err(sessionRevoked())
                 }
                 case 'used':
                     return Result.err(unauthorized('Signed in already', MFA_REASONS.mfaTicketUsed))
                 case 'expired':
+                case 'stale':
+                    // A lapsed reservation, or a passkey challenge spent or replaced meanwhile:
+                    // nothing was counted, the proof was not spent.
+                    await release()
                     return Result.err(attemptExpired())
                 case 'gone':
                     context.auth.setMfaTicketCookie(null, 0)
@@ -594,7 +618,15 @@ async function attempt(
         // Redis, else 500), which logs it.
         if (progress.captured) {
             await discardPending(plan)
-            await reopenQuietly(ticketId, completionId, ticket.userId)
+            const reopened = await reopenQuietly(ticketId, completionId, ticket.userId)
+            if (reopened === 'deleted') {
+                // feat-256 (item 1): late failures brought the ticket to the limit while this
+                // attempt held it; the rollback deleted it. Answered, not thrown: an error
+                // answer carries the session cookie only, and the ticket cookie must be cleared.
+                logger.error({ err, userId: ticket.userId }, 'Second step rolled back')
+                context.auth.setMfaTicketCookie(null, 0)
+                return Result.err(ticketInvalid())
+            }
         } else {
             await release()
         }
@@ -642,10 +674,14 @@ async function createPendingLink(
  * A known rollback takes the ticket back to `open`. A failure leaves it `completing`: the next
  * request reads the transaction's status (aborted) and reopens it.
  */
-function reopenQuietly(ticketId: string, completionId: string, userId: string): Promise<boolean> {
+function reopenQuietly(
+    ticketId: string,
+    completionId: string,
+    userId: string,
+): Promise<ReopenOutcome> {
     return bestEffort(
         mfaTicketStore.reopen(ticketId, completionId),
-        false,
+        'no' as const,
         'Ticket not reopened after the rollback; the next request reopens it',
         { userId },
     )
@@ -672,7 +708,11 @@ async function reconcile(
     if (status === 'committed') return activate(context, ticketId, ticket, plan, completionId)
     if (status === 'aborted') {
         await discardPending(plan)
-        await reopenQuietly(ticketId, completionId, ticket.userId)
+        const reopened = await reopenQuietly(ticketId, completionId, ticket.userId)
+        if (reopened === 'deleted') {
+            context.auth.setMfaTicketCookie(null, 0)
+            return Result.err(ticketInvalid())
+        }
         return Result.err(serviceUnavailable())
     }
     return Result.err(completionPending())
@@ -703,7 +743,12 @@ async function continueCompletion(
         // no proof: it answers the same, and the browser gives one.
         await discardPending(plan)
         const reopened = await reopenQuietly(ticketId, completionId, ticket.userId)
-        if (!reopened) return Result.err(completionPending())
+        if (reopened === 'deleted') {
+            // feat-256 (item 1): late failures reached the limit while it was captured.
+            context.auth.setMfaTicketCookie(null, 0)
+            return Result.err(ticketInvalid())
+        }
+        if (reopened === 'no') return Result.err(completionPending())
         if (input.method === 'continue') return Result.err(attemptExpired())
         return completeSecondStep(context, input, request, { ...deps })
     }
@@ -845,18 +890,30 @@ async function checkSecondStepPasskey(
     ticket: MfaTicket,
     response: AuthenticationResponse,
     request: AuditRequest,
-): Promise<{ credentialId: bigint; newCounter: bigint } | 'wrong' | 'stale'> {
-    const challenge = await passkeyTicketChallenges.take(ticketId)
-    if (challenge === null) return 'stale'
+): Promise<
+    | {
+          kind: 'ok'
+          assertion: { credentialId: bigint; newCounter: bigint }
+          challenge: CheckedChallenge
+      }
+    | { kind: 'wrong'; challenge: CheckedChallenge }
+    | { kind: 'stale' }
+> {
+    // feat-256 (item 6): read, not taken. The failure count or the capture spends it, atomically
+    // and only while it is still this value: a count whose answer was lost is not repeated.
+    const value = await passkeyTicketChallenges.peek(ticketId)
+    if (value === null) return { kind: 'stale' }
+    const challenge: CheckedChallenge = { key: passkeyTicketChallenges.keyOf(ticketId), value }
+    const wrong = { kind: 'wrong' as const, challenge }
     const userId = BigInt(ticket.userId)
     const credential = await webauthnCredentialRepository.findByCredentialId(
         fromBase64Url(response.id),
     )
-    if (credential === undefined) return 'wrong'
+    if (credential === undefined) return wrong
     const binding = ceremonyBinding('mfa', ticketHash(ticketId))
     const verified = await verifyWebAuthnCeremony({
         purpose: 'mfa',
-        stored: { challenge, binding },
+        stored: { challenge: value, binding },
         expectedBinding: binding,
         response,
         credential,
@@ -867,7 +924,9 @@ async function checkSecondStepPasskey(
         if (verified.failure === 'counter_regressed') {
             await recordCounterRegression(credential, 'mfa', request)
         }
-        return 'wrong'
+        return wrong
     }
-    return 'assertion' in verified ? verified.assertion : 'wrong'
+    return 'assertion' in verified
+        ? { kind: 'ok', assertion: verified.assertion, challenge }
+        : wrong
 }

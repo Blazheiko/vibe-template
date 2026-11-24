@@ -245,6 +245,11 @@ export default {
             errorCode: 'The code is incorrect. Check the time on your phone and try again.',
             errorSetupExpired: 'The setup expired. Start again.',
             errorRecoveryOrder: 'Set up the new app first.',
+            errorSetupRestart: 'Your sign-in factors changed meanwhile. Start the setup again.',
+            errorRecoveryFinishKept:
+                'The sign-out has not finished yet: you are still signed in. Try again in a moment.',
+            errorRecoveryFinishUnknown:
+                'We could not confirm the sign-out: you may still be signed in. Try again.',
             errorGeneric: 'Something went wrong. Try again.',
             errorStaffFactor:
                 'Your role needs this second factor. Add another one it accepts first (on a passkey-only deployment, another passkey).',
@@ -280,6 +285,9 @@ export default {
             errorExists: 'This device holds a passkey of this account already.',
             errorLast: 'This is the only way to sign in. Add a password or another passkey first.',
             errorRejected: 'The passkey was not accepted. Try again.',
+            retry: 'Try again',
+            errorRetry:
+                'We could not confirm the passkey was saved. Try again: the same passkey is sent, no new one is made.',
         },
         reauth: {
             passkeyHint: 'Use the passkey of this device or your phone.',

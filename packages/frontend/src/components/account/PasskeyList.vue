@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Passkey } from 'shared/responses'
+import type { PasskeyRegisterInput } from 'shared/schemas'
 import { createPasskey, passkeysSupported } from '@/composables/usePasskeys'
 import { withReauth } from '@/composables/useReauth'
 import { passkeyApi } from '@/utils/api'
@@ -11,7 +12,12 @@ import ConfirmDialog from './ConfirmDialog.vue'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6, Р12, Р15): the passkeys of the account in the
 // sign-in security section. Adding and removing go through the step-up dialog; a first passkey
-// brings the recovery codes, which the section shows once.
+// brings the recovery codes, which the section shows once. feat-256 (docs/plan/
+// mfa-review-fixes-7-plan.md, item 4): a registration is kept from before it is sent until a final
+// answer. After a failure whose outcome is unknown (no answer, a 5xx, 408, 429) the key may be
+// stored already while the session write failed (R+ of the recovery wizard): "Try again" sends
+// the same request, which the server finishes by its enrollment id, instead of a new
+// registration that would replace the enrollment.
 const props = defineProps<{
     /** A first factor needs a verified contact (Р12); the server says it again anyway. */
     canAdd: boolean
@@ -30,6 +36,12 @@ const busy = ref(false)
 const message = ref('')
 const renaming = ref<{ id: string; name: string } | null>(null)
 const removing = ref<Passkey | null>(null)
+/** The registration whose outcome is unknown: "Try again" sends exactly this one. */
+const pendingRegistration = ref<PasskeyRegisterInput | null>(null)
+
+/** No answer (0), a 5xx, a timeout (408) or the rate limit (429): the outcome is unknown. */
+const outcomeUnknown = (status: number | undefined): boolean =>
+    status === undefined || status === 0 || status >= 500 || status === 408 || status === 429
 
 const REASONS = new Map<string, string>([
     ['recovery_contact_required', 'account.mfa.errorContact'],
@@ -82,18 +94,36 @@ async function add(): Promise<void> {
                       : t('account.passkeys.errorRejected')
             return
         }
-        const stored = await passkeyApi.register({
-            enrollmentId: data.enrollmentId,
-            response: created.value,
-        })
-        if (stored.data?.status !== 'success') {
-            message.value = explain(stored.data)
-            return
-        }
-        message.value = t('account.passkeys.added')
-        if (stored.data.recoveryCodes !== null) emit('codes', stored.data.recoveryCodes)
-        await load()
-        emit('changed')
+        await register({ enrollmentId: data.enrollmentId, response: created.value })
+    } finally {
+        busy.value = false
+    }
+}
+
+/** Sends a registration, kept until its final answer. */
+async function register(body: PasskeyRegisterInput): Promise<void> {
+    pendingRegistration.value = body
+    const stored = await passkeyApi.register(body)
+    if (stored.data?.status !== 'success') {
+        const unknown = stored.data === null || outcomeUnknown(stored.error?.transportCode)
+        if (!unknown) pendingRegistration.value = null
+        message.value = unknown ? t('account.passkeys.errorRetry') : explain(stored.data)
+        return
+    }
+    pendingRegistration.value = null
+    message.value = t('account.passkeys.added')
+    if (stored.data.recoveryCodes !== null) emit('codes', stored.data.recoveryCodes)
+    await load()
+    emit('changed')
+}
+
+async function retryRegistration(): Promise<void> {
+    const pending = pendingRegistration.value
+    if (pending === null) return
+    message.value = ''
+    busy.value = true
+    try {
+        await register(pending)
     } finally {
         busy.value = false
     }
@@ -210,7 +240,17 @@ defineExpose({ load })
             {{ t('account.passkeys.empty') }}
         </p>
         <button
-            v-if="supported"
+            v-if="supported && pendingRegistration !== null"
+            class="secondary-button"
+            type="button"
+            :disabled="busy"
+            data-testid="passkey-retry"
+            @click="retryRegistration"
+        >
+            {{ t('account.passkeys.retry') }}
+        </button>
+        <button
+            v-else-if="supported"
             class="secondary-button"
             type="button"
             :disabled="busy || (!props.canAdd && passkeys.length === 0)"
@@ -219,7 +259,7 @@ defineExpose({ load })
         >
             {{ t('account.passkeys.add') }}
         </button>
-        <p v-else class="form-message" data-testid="passkeys-unsupported">
+        <p v-if="!supported" class="form-message" data-testid="passkeys-unsupported">
             {{ t('account.passkeys.unsupported') }}
         </p>
         <p v-if="message" class="form-message" role="status" data-testid="passkey-message">

@@ -126,7 +126,8 @@ vi.mock('#app/services/auth/new-sign-in-notice.js', async (importActual) => {
 // Injected failures (Р4, «Збої»). A Redis failure is what withRedis throws for an unreachable
 // Redis (RedisUnavailableError): the error handler answers it 503 (ADR 0004).
 interface Injected {
-    prepare: boolean
+    /** The pending record's write fails (Redis), once; a function runs first (feat-256). */
+    prepare: boolean | (() => Promise<void>)
     /** Runs this, then fails the activation as an unreachable Redis would. */
     activate: false | (() => Promise<void>)
     lostCommitAnswer: boolean
@@ -163,9 +164,13 @@ vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     return {
         ...actual,
         preparePendingSession: (...args: Parameters<typeof actual.preparePendingSession>) => {
-            if (inject.prepare) {
+            if (inject.prepare !== false) {
+                const before = inject.prepare
                 inject.prepare = false
-                return Promise.reject(new RedisUnavailableError('Redis down (prepare)'))
+                const run = typeof before === 'function' ? before() : Promise.resolve()
+                return run.then(() =>
+                    Promise.reject(new RedisUnavailableError('Redis down (prepare)')),
+                )
             }
             return actual.preparePendingSession(...args)
         },
@@ -1404,6 +1409,91 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
     })
 
     // feat-246 (Р4, Р6; tasks P4): a passkey as the second step, through the same ticket.
+    // feat-256 (docs/plan/mfa-review-fixes-7-plan.md, items 1 and 6).
+    describe('the failure count of the second step (feat-256)', () => {
+        const redisDown = () => new RedisUnavailableError('Redis down (settle)')
+        const WRONG = '000000'
+        const ATTEMPT = 'attempt-feat256-aaaa'
+
+        it('a Redis failure before the count applied: 503; the repeat of the attempt counts it once', async () => {
+            const user = await mfaUser('mfa-count-before')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const body = { method: 'totp', code: WRONG, attemptId: ATTEMPT }
+            vi.spyOn(mfaTicketStore, 'settle').mockRejectedValueOnce(redisDown())
+            const failed = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(failed.status).toBe(503)
+            expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+            expect((await browser.ticket())?.failures).toBe(0)
+
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.status).toBe(401)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect(await browser.ticket()).toMatchObject({
+                failures: 1,
+                failedAttempts: [ATTEMPT],
+                reservations: [],
+            })
+        })
+
+        it('a count whose answer was lost: the repeat counts nothing; a new submission counts', async () => {
+            const user = await mfaUser('mfa-count-after')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const body = { method: 'totp', code: WRONG, attemptId: ATTEMPT }
+            const settle = mfaTicketStore.settle.bind(mfaTicketStore)
+            vi.spyOn(mfaTicketStore, 'settle').mockImplementationOnce(async (...args) => {
+                await settle(...args)
+                throw redisDown()
+            })
+            expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+            expect((await browser.ticket())?.failures).toBe(1)
+
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.status).toBe(401)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(1)
+
+            // The same code typed again is a new attempt: counted on its own.
+            const again = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: WRONG,
+                attemptId: 'attempt-feat256-bbbb',
+            })
+            expect(again.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(2)
+            // The right code still signs in.
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            })
+            expect(ok.status).toBe(200)
+        })
+
+        it('a known rollback at the limit (late failures meanwhile): 401, the ticket cookie cleared', async () => {
+            const user = await mfaUser('mfa-rollback-limit')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const ticketId = browser.cookies.get(MFA_COOKIE) ?? ''
+            // While this attempt holds the ticket, late results of lapsed attempts reach the limit.
+            inject.prepare = async () => {
+                const current = await mfaTicketStore.read(ticketId)
+                if (current === null) throw new Error('no ticket')
+                await mfaTicketStore.create(ticketId, { ...current, failures: 5 }, 300)
+            }
+            const reply = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            })
+            expect(reply.status).toBe(401)
+            expect(reply.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
+            // The clearing cookie reaches the browser: an answer, not a thrown error.
+            expect(reply.cookies.get(MFA_COOKIE)).toBe('')
+            expect(await mfaTicketStore.read(ticketId)).toBeNull()
+            expect(newSignIn).not.toHaveBeenCalled()
+        })
+    })
+
     describe('a passkey as the second step (feat-246 P4)', async () => {
         const { default: webauthnConfig } = await import('#config/webauthn.js')
         const { webauthnCredentialRepository } = await import('#app/repositories/index.js')
@@ -1490,7 +1580,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             const browser = new Browser()
             await browser.firstFactor(user.email)
             const response = await answer(browser, authenticator)
-            vi.spyOn(passkeyTicketChallenges, 'take').mockRejectedValueOnce(
+            vi.spyOn(passkeyTicketChallenges, 'peek').mockRejectedValueOnce(
                 new RedisUnavailableError('Redis down (challenge)'),
             )
             const failed = await browser.request('POST', '/auth/mfa/verify', {
@@ -1578,19 +1668,15 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             expect(late.body).toMatchObject({ reason: 'mfa_attempt_expired' })
             expect(await countOf(key.id)).toBe(4n)
             expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
-            // Its challenge was spent: the same answer asks for a new ceremony, counts nothing.
+            // feat-256: the challenge is spent only by a count or a capture, both atomic with the
+            // ticket; the lapsed attempt rolled back without either, so the same answer, like the
+            // same TOTP code, signs in.
             const again = await browser.request('POST', '/auth/mfa/verify', {
                 method: 'webauthn',
                 response,
             })
-            expect(again.body).toMatchObject({ reason: 'mfa_attempt_expired' })
-            expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
-            const ok = await browser.request('POST', '/auth/mfa/verify', {
-                method: 'webauthn',
-                response: await answer(browser, authenticator),
-            })
-            expect(ok.status).toBe(200)
-            expect(await countOf(key.id)).toBe(6n)
+            expect(again.status).toBe(200)
+            expect(await countOf(key.id)).toBe(5n)
         })
 
         it('a pending completion: options answer pending, the same answer finishes it', async () => {
@@ -1760,6 +1846,50 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             const ok = await browser.request('POST', '/auth/mfa/verify', CONTINUE)
             expect(ok.status).toBe(200)
             expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+        // feat-256 (item 6): the challenge is spent with the count, atomically.
+        it('a passkey count whose answer was lost: the same answer counts nothing again', async () => {
+            const user = await mfaUser('mfa-passkey-count-lost')
+            await addPasskey(user.row.id)
+            const other = await mfaUser('mfa-passkey-count-other')
+            const theirs = await addPasskey(other.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const foreign = await answer(browser, theirs.authenticator)
+            const body = {
+                method: 'webauthn',
+                response: foreign,
+                attemptId: 'attempt-feat256-pkey',
+            }
+            const settle = mfaTicketStore.settle.bind(mfaTicketStore)
+            vi.spyOn(mfaTicketStore, 'settle').mockImplementationOnce(async (...args) => {
+                await settle(...args)
+                throw new RedisUnavailableError('Redis down (settle)')
+            })
+            expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+            expect((await browser.ticket())?.failures).toBe(1)
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(1)
+        })
+
+        it('a Redis failure before a passkey count applied: the repeat counts it', async () => {
+            const user = await mfaUser('mfa-passkey-count-before')
+            await addPasskey(user.row.id)
+            const other = await mfaUser('mfa-passkey-count-before-other')
+            const theirs = await addPasskey(other.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const foreign = await answer(browser, theirs.authenticator)
+            const body = { method: 'webauthn', response: foreign, attemptId: 'attempt-feat256-pkb' }
+            vi.spyOn(mfaTicketStore, 'settle').mockRejectedValueOnce(
+                new RedisUnavailableError('Redis down (settle)'),
+            )
+            expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+            expect((await browser.ticket())?.failures).toBe(0)
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(1)
         })
     })
 })

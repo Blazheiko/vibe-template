@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { withReauth } from '@/composables/useReauth'
+import { useSessionLifecycle } from '@/composables/useSessionLifecycle'
 import { useUserStore } from '@/stores/user'
-import { authApi, mfaApi } from '@/utils/api'
+import { mfaApi } from '@/utils/api'
 import { useEventBus } from '@/utils/event-bus'
 import { getErrorReason } from '@/utils/response-normalizer'
 import type { StaffMfaReason } from '@/utils/staff-mfa'
@@ -25,9 +25,9 @@ const props = withDefaults(
     { staff: false, staffReason: null },
 )
 const { t } = useI18n()
-const router = useRouter()
 const userStore = useUserStore()
 const eventBus = useEventBus()
+const sessionLifecycle = useSessionLifecycle()
 
 interface Status {
     totp: { enabled: boolean; createdAt: string | null }
@@ -85,6 +85,9 @@ const REASONS = new Map<string, string>([
     ['invalid_code', 'account.mfa.errorCode'],
     ['enrollment_not_found', 'account.mfa.errorSetupExpired'],
     ['recovery_session', 'account.mfa.errorRecoveryOrder'],
+    // feat-256: the factors changed since the setup (another session turned MFA on).
+    ['reauth_required', 'account.mfa.errorSetupRestart'],
+    ['sign_in_again_required', 'account.mfa.errorSetupRestart'],
     // feat-248 (Р12): the factor a staff role needs stays.
     ['mfa_required_for_role', 'account.mfa.errorStaffFactor'],
 ])
@@ -138,6 +141,20 @@ async function startSetup(): Promise<void> {
     }
 }
 
+/**
+ * feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 3): refusals after which this setup can
+ * never be confirmed (its kept proof no longer admits a factor, it lapsed, the session ended):
+ * the form goes back to "Set up", which asks for the proof the account needs now. A wrong code or
+ * a failure with an unknown outcome keeps the setup and the code, so the same request goes again.
+ */
+const SETUP_RESTART_REASONS = new Set([
+    'reauth_required',
+    'sign_in_again_required',
+    'enrollment_not_found',
+    'recovery_session',
+    'session_revoked',
+])
+
 async function confirmSetup(): Promise<void> {
     if (setup.value === null) return
     message.value = ''
@@ -149,6 +166,7 @@ async function confirmSetup(): Promise<void> {
         })
         if (data?.status !== 'success') {
             message.value = explain(data)
+            if (SETUP_RESTART_REASONS.has(getErrorReason(data) ?? '')) setup.value = null
             return
         }
         setup.value = null
@@ -215,12 +233,18 @@ const codesFile = computed(() =>
         : `data:text/plain;charset=utf-8,${encodeURIComponent(codes.value.join('\n') + '\n')}`,
 )
 
+/**
+ * feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 5): /login only once the end of the
+ * recovery session is confirmed; a session the server kept, or an outcome it could not confirm,
+ * stays here, signed in, and says so.
+ */
 async function finishRecovery(): Promise<void> {
+    message.value = ''
     busy.value = true
     try {
-        await authApi.recoveryFinish()
-        userStore.clearUser()
-        await router.push('/login')
+        const outcome = await sessionLifecycle.finishRecovery()
+        if (outcome === 'kept') message.value = t('account.mfa.errorRecoveryFinishKept')
+        else if (outcome === 'unknown') message.value = t('account.mfa.errorRecoveryFinishUnknown')
     } finally {
         busy.value = false
     }

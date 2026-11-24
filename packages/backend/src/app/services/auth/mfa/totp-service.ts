@@ -46,7 +46,7 @@ import { mfaSecretBox, totpSecretOwner } from './mfa-secret-box.js'
 import { retirePendingContactLinks } from './contact-links.js'
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
-import { isAcceptedProof, requireProof } from './require-proof.js'
+import { isAcceptedProof, keptProofRefusal, requireProof } from './require-proof.js'
 import { staffFactorFor, staffFactorLossError } from './staff-policy.js'
 import {
     base32Decode,
@@ -263,6 +263,17 @@ export const totpService = {
                 return Result.ok({ factor: again, replaced: false, codes: null, events: [] })
             }
             const account = await loadMfaAccount(locked, tx)
+            // feat-256 (item 3): the proof the setup kept, against the factors as they are now
+            // (another session may have turned MFA on since). The setup itself stays stored: it
+            // fails the same way again, and a new setup replaces it.
+            const refusal = keptProofRefusal({
+                action: 'mfa.add_factor',
+                account,
+                auth: authOf(session),
+                proof: setupProof,
+                now: request.now ?? Date.now(),
+            })
+            if (refusal !== null) return Result.err(refusal)
             if (!mfaEnabledOf(account) && !hasRecoveryContactOf(locked)) {
                 return Result.err(
                     conflict(

@@ -1,5 +1,6 @@
 import { Result } from 'better-result'
 import {
+    isProofAdmissible,
     MFA_REASONS,
     proofDecision,
     type AcceptedProof,
@@ -11,7 +12,13 @@ import {
 } from 'shared/mfa'
 
 import mfaConfig from '#config/mfa.js'
-import { forbidden, reauthRequired, type AppResult } from '#app/services/shared/errors.js'
+import {
+    badRequest,
+    forbidden,
+    reauthRequired,
+    type AppError,
+    type AppResult,
+} from '#app/services/shared/errors.js'
 import { proofAccountOf, type MfaAccount } from './mfa-account.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р3): the gate of every action of the proof matrix.
@@ -81,3 +88,28 @@ const ACCEPTED_PROOFS: Readonly<Record<AcceptedProof, true>> = {
  */
 export const isAcceptedProof = (value: unknown): value is AcceptedProof =>
     typeof value === 'string' && Object.hasOwn(ACCEPTED_PROOFS, value)
+
+/**
+ * feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 3): the second step of adding a factor (a
+ * TOTP confirmation, a passkey registration), under the user's row lock, before it writes. The
+ * proof its first step kept must still be one the matrix accepts for the factors as they are now
+ * (another session may have turned MFA on since): null when it is; otherwise the refusal, the 403
+ * the matrix answers now, or "start again" when the session could give a proof now (the kept one
+ * stays the audited one, so the first step is asked again).
+ */
+export function keptProofRefusal(gate: ProofGate & { proof: AcceptedProof }): AppError | null {
+    const admissible = isProofAdmissible({
+        action: gate.action,
+        account: proofAccountOf(gate.account),
+        proof: gate.proof,
+        auth: gate.auth,
+        now: gate.now ?? Date.now(),
+        ...(gate.staffStepUpProofs !== undefined
+            ? { staffStepUpProofs: gate.staffStepUpProofs }
+            : {}),
+    })
+    if (admissible) return null
+    const now = requireProof(gate)
+    if (Result.isError(now)) return now.error
+    return badRequest('Start again', MFA_REASONS.enrollmentNotFound)
+}
