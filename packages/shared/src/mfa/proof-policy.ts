@@ -167,6 +167,46 @@ export function proofDecision(input: ProofInput): ProofDecision {
         : { kind: 'reauth_required', proofs }
 }
 
+export interface ProofAdmissibilityInput {
+    action: ProofAction
+    account: ProofAccount
+    /** The proof `proofDecision` accepted earlier (kept by the first step of a two-step action). */
+    proof: AcceptedProof
+    auth: SessionAuthState | undefined | null
+    now: number
+    staffStepUpProofs?: readonly ProofMethod[]
+}
+
+/**
+ * feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 3): whether a proof accepted earlier still
+ * allows row `action` for the account as it is now. The first step of a two-step action (a TOTP
+ * setup, the options of a passkey) keeps what the matrix accepted then; before the second step
+ * writes, the factors may have changed in another session, so the kind of proof is checked again
+ * against the same matrix. Its freshness is not: the first step checked it, and the enrollment's
+ * own lifetime bounds it. A recovery code needs a recovery session still active at `now`.
+ */
+export function isProofAdmissible(input: ProofAdmissibilityInput): boolean {
+    const { action, account, proof, now } = input
+    const auth = sessionAuthOf(input.auth)
+
+    if (auth.recovery !== undefined) {
+        const needs = ROWS_ALLOWED_IN_RECOVERY[action]
+        if (proof !== 'recovery_code' || needs === undefined) return false
+        if (!isActiveRecovery(auth, now)) return false
+        return needs === 'R' || auth.recovery.replacementFactor !== undefined
+    }
+    if (proof === 'recovery_code') return false
+
+    if (!mfaEnabled(account)) {
+        if (!ROWS_WITHOUT_MFA.has(action)) return false
+        return account.hasPassword ? proof === 'password' : proof === 'recent_sign_in'
+    }
+
+    const staffRow = action === 'role.assign' || action === 'mfa.reset_other'
+    const proofs = factorProofs(account, staffRow ? input.staffStepUpProofs : undefined)
+    return proofs.some((method) => ACCEPTED_PROOF_OF[method] === proof)
+}
+
 /** The proofs a step-up (POST /auth/reauth) of this account may use at all. */
 export function stepUpProofsOf(account: ProofAccount): ProofMethod[] {
     if (mfaEnabled(account)) return factorProofs(account)

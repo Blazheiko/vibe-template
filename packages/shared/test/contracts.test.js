@@ -234,6 +234,19 @@ test('the page limit of the query schemas is MAX_PAGE_LIMIT', async () => {
     assert.deepEqual(parsed, { cursor: '42', limit: 100 })
 })
 
+// feat-254: the logout takes this browser's push endpoint, bounded like the push subscription's.
+test('the logout body is empty or a push endpoint bounded like the push subscription', async () => {
+    const { LogoutInputSchema } = await import('../dist/schemas/index.js')
+    const rejected = (value) => LogoutInputSchema(value) instanceof type.errors
+    assert.deepEqual(LogoutInputSchema({}), {})
+    assert.ok(!rejected({ pushEndpoint: 'x' }))
+    assert.ok(!rejected({ pushEndpoint: 'x'.repeat(500) }))
+    assert.ok(rejected({ pushEndpoint: 'x'.repeat(501) }))
+    assert.ok(rejected({ pushEndpoint: '' }))
+    assert.ok(rejected({ pushEndpoint: 42 }))
+    assert.ok(rejected({ pushEndpoint: 'x', other: 1 }))
+})
+
 // feat-156: the bounds of a push subscription are the columns it is stored in.
 test('the push subscription schemas bound every string and take no address from the client', async () => {
     const { CreateSubscriptionInputSchema, UpdateSubscriptionInputSchema } =
@@ -263,6 +276,9 @@ test('the push subscription schemas bound every string and take no address from 
             `${field} of ${String(max + 1)} characters is rejected`,
         )
     }
+    // feat-252: the state of the record is optional and a boolean.
+    assert.ok(!rejected(CreateSubscriptionInputSchema, { ...base, isActive: false }))
+    assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, isActive: 'false' }))
     assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, endpoint: '' }))
     assert.ok(rejected(CreateSubscriptionInputSchema, { ...base, ipAddress: '203.0.113.9' }))
     assert.ok(

@@ -42,6 +42,7 @@ import type {
     EmptyFormInput,
     ForgotPasswordInput,
     LoginInput,
+    LogoutInput,
     MfaVerifyInput,
     PasskeyLoginInput,
     ReauthInput,
@@ -200,8 +201,10 @@ export default {
         return respond(context, result)
     },
 
-    async logout(context: HttpContext<EmptyFormInput>): Promise<LogoutResponse> {
-        const result = await authService.logout(context.auth, context.session)
+    async logout(context: HttpContext<LogoutInput>): Promise<LogoutResponse> {
+        // feat-254: without `pushEndpoint` the logout leaves the push records alone.
+        const pushEndpoint = context.httpData.payload?.pushEndpoint
+        const result = await authService.logout(context.auth, context.session, { pushEndpoint })
         return respond(context, result)
     },
 

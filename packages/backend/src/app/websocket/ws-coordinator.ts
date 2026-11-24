@@ -60,7 +60,12 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     // feat-210: until the reads below answer, the connection is in no list a revocation closes.
     // It is noted as "being opened" first, so a logout or a rotation that runs meanwhile marks
     // it; one that ran before this line is seen by the reads themselves.
-    const settle = wsConnectionRegistry.beginConnecting(userId, userData.uuid, sessionId)
+    const settle = wsConnectionRegistry.beginConnecting(
+        userId,
+        userData.uuid,
+        sessionId,
+        userData.userToken,
+    )
     let access: Awaited<ReturnType<typeof userRoleService.findAccess>>
     let sessionStored: boolean
     let revokedMeanwhile: boolean

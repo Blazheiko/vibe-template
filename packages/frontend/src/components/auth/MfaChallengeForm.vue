@@ -26,7 +26,9 @@ import { getErrorReason } from '@/utils/response-normalizer'
 // after a reload for a ticket that is finishing (`completing`, from POST /auth/mfa/state), the
 // form sends `continue` at once. A recovery sign-in's answer carries the recovery state (Р8): it
 // goes to the store before the account page opens, so that page never asks what a recovery
-// session is refused.
+// session is refused. feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 6): every proof
+// carries a new `attemptId`, kept in the pending request, so a repeat of that request is the same
+// attempt (a wrong proof counted once) while a new submission, even of the same code, is a new one.
 type Method = 'webauthn' | 'totp' | 'recovery_code'
 const props = withDefaults(defineProps<{ methods: Method[]; completing?: boolean }>(), {
     completing: false,
@@ -48,6 +50,8 @@ const pendingBody = ref<MfaVerifyInput | null>(null)
 const PENDING_RETRIES = 5
 const PENDING_DELAY_MS = 1000
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+/** A new logical attempt for each submission of a proof (feat-256). */
+const newAttemptId = (): string => crypto.randomUUID()
 const FINAL_REASONS = new Set([
     'invalid_code',
     'mfa_attempt_expired',
@@ -158,7 +162,7 @@ async function submit(): Promise<void> {
     busy.value = true
     error.value = ''
     try {
-        await send({ method: method.value, code: code.value.trim() })
+        await send({ method: method.value, code: code.value.trim(), attemptId: newAttemptId() })
     } finally {
         busy.value = false
     }
@@ -197,7 +201,7 @@ async function withPasskey(): Promise<void> {
                     : t('loginMfa.errorPasskey')
             return
         }
-        await send({ method: 'webauthn', response: signed.value })
+        await send({ method: 'webauthn', response: signed.value, attemptId: newAttemptId() })
     } finally {
         busy.value = false
     }

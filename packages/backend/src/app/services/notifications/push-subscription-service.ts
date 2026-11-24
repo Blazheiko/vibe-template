@@ -132,6 +132,21 @@ export const pushSubscriptionService = {
         return Result.ok({ message: 'Subscription deleted successfully' })
     },
 
+    /**
+     * feat-254: a sign-out that went through removes the record of the browser it came from. Only
+     * a record of this user: the endpoint is unique across users, and one that belongs to another
+     * account (it moved there on an account switch) stays. Answers whether a record was removed;
+     * an endpoint the policy does not allow matches none.
+     */
+    async deleteOwnSubscriptionByEndpoint(userId: bigint, endpoint: string): Promise<boolean> {
+        const canonical = canonicalPushEndpoint(endpoint)
+        if (canonical === null) return false
+        const record = await pushSubscriptionRepository.findByEndpoint(canonical)
+        if (record?.userId !== userId) return false
+        // Owner-scoped again: a record that moved to another account meanwhile is not deleted.
+        return await pushSubscriptionRepository.delete(record.id, userId)
+    },
+
     async getSubscriptionLogs(
         userId: bigint,
         subscriptionId: bigint,
@@ -241,7 +256,7 @@ async function upsertSubscription(
                 osName: payload.osName,
                 osVersion: payload.osVersion,
                 timezone: payload.timezone,
-                isActive: true,
+                isActive: payload.isActive ?? true,
             },
             tx,
         )
@@ -270,6 +285,7 @@ async function upsertSubscription(
             osName: payload.osName ?? null,
             osVersion: payload.osVersion ?? null,
             timezone: payload.timezone ?? null,
+            isActive: payload.isActive ?? true,
             userId,
         },
         tx,

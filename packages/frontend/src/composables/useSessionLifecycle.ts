@@ -1,7 +1,8 @@
 import { useRouter } from 'vue-router'
 import { LOGOUT_RETRY_REASON } from 'shared/errors'
-import { authApi } from '@/utils/api'
-import { getErrorReason } from '@/utils/response-normalizer'
+import { authApi, mainApi } from '@/utils/api'
+import type { ApiResponse } from '@/utils/api-error'
+import { getErrorReason, isUnauthorizedError } from '@/utils/response-normalizer'
 import { useSupportStore } from '@/stores/support'
 import { usePushStore } from '@/stores/push'
 import { useUserStore } from '@/stores/user'
@@ -21,7 +22,7 @@ const quietly = async (step: () => Promise<void>): Promise<void> => {
     try {
         await step()
     } catch (error) {
-        console.error('Push release error:', error)
+        console.error('Push sign-out step error:', error)
     }
 }
 
@@ -48,21 +49,24 @@ export const useSessionLifecycle = () => {
     }
 
     /**
-     * Whether the server kept the session through every repeat of the logout (`logout_retry`).
-     * Any other failure is logged and the browser leaves as before.
+     * A sign-out request repeated while the server answers `logout_retry`: `left` (the server
+     * ended the session), `kept` (it kept the session through every repeat) or `unknown` (any other
+     * failure, a lost answer included: the session may or may not have ended). Logged.
      */
-    const sendLogout = async (): Promise<'kept' | 'left'> => {
+    const sendSignOut = async (
+        send: () => Promise<ApiResponse<unknown>>,
+    ): Promise<'left' | 'kept' | 'unknown'> => {
         for (let attempt = 0; ; attempt++) {
             try {
-                const { data, error } = await authApi.logout()
+                const { data, error } = await send()
                 if (!error) return 'left'
                 if (getErrorReason(data) !== LOGOUT_RETRY_REASON) {
                     console.error(error)
-                    return 'left'
+                    return 'unknown'
                 }
             } catch (error) {
                 console.error('Logout error:', error)
-                return 'left'
+                return 'unknown'
             }
             if (attempt >= LOGOUT_RETRIES) return 'kept'
             await wait(LOGOUT_RETRY_DELAY_MS)
@@ -70,26 +74,61 @@ export const useSessionLifecycle = () => {
     }
 
     /**
-     * Signs out and opens /login. Answers false when the server kept the session through every
-     * repeat (Р13): the browser stays signed in and the caller tells the user the sign-out did
-     * not finish. Push (feat-148) is best effort and bounded at every step: the server record
-     * goes while the session still exists, the browser's subscription only once the sign-out went
-     * through; a kept session gets its record back, so push keeps working.
+     * Whether the server kept the session through every repeat of the logout (`logout_retry`).
+     * Any other failure leaves as before (feat-256 keeps this for the plain logout). `pushEndpoint`
+     * (feat-254): the server deletes this browser's push record with the session, only when it
+     * really ended.
      */
-    const logout = async (): Promise<boolean> => {
-        await quietly(() => pushStore.releaseServerSubscription())
-        if ((await sendLogout()) === 'kept') {
-            await quietly(() => pushStore.restoreServerSubscription())
+    const sendLogout = async (pushEndpoint: string | null): Promise<'kept' | 'left'> =>
+        (await sendSignOut(() => authApi.logout(pushEndpoint))) === 'kept' ? 'kept' : 'left'
+
+    /** Whether main/init sees no signed-in session any more (a 401); false when it cannot tell. */
+    const sessionEnded = async (): Promise<boolean> => {
+        try {
+            const { data, error } = await mainApi.init()
+            return error !== null && isUnauthorizedError(data, error.transportCode)
+        } catch (error) {
+            console.error('Session check error:', error)
             return false
         }
+    }
+
+    /**
+     * Signs out and opens /login. Answers false when the server kept the session through every
+     * repeat (Р13): the browser stays signed in and the caller tells the user the sign-out did
+     * not finish. Push (feat-148, feat-254) is best effort and bounded at every step: the request
+     * names this browser's endpoint and the server deletes its record only with the session; the
+     * browser's subscription goes once the sign-out went through. A kept session keeps both, so
+     * push keeps working and nothing has to be put back.
+     */
+    const logout = async (): Promise<boolean> => {
+        let pushEndpoint: string | null = null
+        await quietly(async () => {
+            pushEndpoint = await pushStore.currentPushEndpoint()
+        })
+        if ((await sendLogout(pushEndpoint)) === 'kept') return false
         await quietly(() => pushStore.unsubscribeBrowser())
         await redirectToLogin()
         return true
+    }
+
+    /**
+     * feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 5): ends a recovery session (Р8). The
+     * browser leaves for /login only once the end is confirmed: the server answered it, or, after
+     * an unknown outcome (a lost answer, a 5xx), main/init sees no session any more. `kept` and
+     * `unknown` leave the user where they are, signed in, for the caller to say so.
+     */
+    const finishRecovery = async (): Promise<'left' | 'kept' | 'unknown'> => {
+        let outcome = await sendSignOut(() => authApi.recoveryFinish())
+        if (outcome === 'unknown' && (await sessionEnded())) outcome = 'left'
+        if (outcome === 'left') await redirectToLogin()
+        return outcome
     }
 
     return {
         resetSessionScopedState,
         redirectToLogin,
         logout,
+        finishRecovery,
     }
 }

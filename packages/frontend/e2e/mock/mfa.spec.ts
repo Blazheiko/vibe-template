@@ -104,11 +104,12 @@ test.describe('second sign-in step', () => {
         await page.getByTestId('mfa-submit').click()
 
         await expect(page).toHaveURL(/\/account$/)
-        // The same request twice: the repeat finishes the sign-in the server confirmed.
-        expect(bodies).toEqual([
-            { method: 'totp', code: '123456' },
-            { method: 'totp', code: '123456' },
-        ])
+        // The same request twice: the repeat finishes the sign-in the server confirmed. feat-256:
+        // one logical attempt, so the same attemptId.
+        const attempt = { method: 'totp', code: '123456', attemptId: expect.any(String) }
+        expect(bodies).toEqual([attempt, attempt])
+        const ids = (bodies as { attemptId: string }[]).map((body) => body.attemptId)
+        expect(new Set(ids).size).toBe(1)
     })
 
     test('a reload during the second step shows the code form again, no new password', async ({
@@ -152,7 +153,7 @@ test.describe('second sign-in step', () => {
         await page.getByTestId('mfa-submit').click()
 
         await expect(page).toHaveURL(/\/account$/)
-        expect(bodies).toEqual([{ method: 'totp', code: '123456' }])
+        expect(bodies).toEqual([{ method: 'totp', code: '123456', attemptId: expect.any(String) }])
         // The password was sent once: the reload did not start a new sign-in.
         expect(api.callsTo('auth/login')).toHaveLength(1)
     })

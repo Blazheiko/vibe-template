@@ -129,6 +129,9 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         now: NOW,
     })
 
+    const factorsOf = (userId: bigint) =>
+        db.select().from(totpFactors).where(eq(totpFactors.userId, userId))
+
     const setupAndCode = async (
         user: { id: bigint; sessionToken: string },
         session: Session,
@@ -163,7 +166,9 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
 
     // Р14: the confirmation records the proof the setup accepted, kept with the setup in the
     // session, not one decided again from the marks and the factors of the confirmation.
-    it('the audit records the proof the setup accepted, though the account changed since', async () => {
+    // feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 3): the proof the setup kept is
+    // checked again under the lock, against the account as it is when the factor is written.
+    it('a password set since the setup: the kept recent sign-in no longer admits the factor', async () => {
         const [user] = await db
             .insert(users)
             .values({
@@ -186,22 +191,57 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
             },
         })
         const { enrollmentId, code } = await setupAndCode(user, session)
-        // Meanwhile a password appears: read again now, the proof would come out as `password`.
+        // Meanwhile a password appears: the matrix now asks for it.
         await db.update(users).set({ password: 'hash' }).where(eq(users.id, user.id))
 
         const confirmed = await totpService.confirm(request(user, session), { enrollmentId, code })
-        expect(confirmed.status).toBe('ok')
-        const events = await db
-            .select()
-            .from(auditEvents)
-            .where(
-                and(
-                    eq(auditEvents.targetUserId, user.id),
-                    eq(auditEvents.action, 'auth.mfa.totp.enabled'),
-                ),
-            )
-        expect(events).toHaveLength(1)
-        expect(events[0]?.metadata).toMatchObject({ proof: 'recent_sign_in' })
+        expect(confirmed.status === 'error' && confirmed.error).toMatchObject({
+            reason: 'reauth_required',
+        })
+        expect(await factorsOf(user.id)).toHaveLength(0)
+    })
+
+    it('TOTP turned on in another session since a password setup: the setup replaces nothing', async () => {
+        const user = await newUser()
+        const first = fakeSession({ auth: freshPassword })
+        const pending = await setupAndCode(user, first)
+        // Another session of the same user turns TOTP on (a password proof, no MFA yet).
+        const second = fakeSession({ auth: freshPassword })
+        const other = await setupAndCode(user, second, 1n)
+        const enabled = await totpService.confirm(request(user, second), other)
+        expect(enabled.status).toBe('ok')
+
+        // The first setup was allowed by a password; with TOTP on, only a factor proves the owner.
+        const replaced = await totpService.confirm(request(user, first), pending)
+        expect(replaced.status === 'error' && replaced.error).toMatchObject({
+            reason: 'reauth_required',
+        })
+        const factors = await factorsOf(user.id)
+        expect(factors.map((factor) => factor.enrollmentId)).toEqual([other.enrollmentId])
+    })
+
+    it('a recovery session that ended between the setup and the confirmation: refused', async () => {
+        const user = await newUser()
+        const session = fakeSession({
+            auth: {
+                v: 1,
+                amr: ['pwd', 'recovery'],
+                aal: 1,
+                authenticatedAt: iso(-60),
+                verified: { pwd: iso(-60) },
+                recovery: { startedAt: iso(-60), expiresAt: iso(60) },
+            },
+        })
+        // Two minutes later (four TOTP steps): the recovery window closed meanwhile.
+        const { enrollmentId, code } = await setupAndCode(user, session, 4n)
+        const confirmed = await totpService.confirm(
+            { ...request(user, session), now: NOW + 120_000 },
+            { enrollmentId, code },
+        )
+        expect(confirmed.status === 'error' && confirmed.error).toMatchObject({
+            reason: 'recovery_session',
+        })
+        expect(await factorsOf(user.id)).toHaveLength(0)
     })
 
     it('a setup stored without its proof (before it was kept) is started again, nothing written', async () => {

@@ -27,12 +27,13 @@ import {
     type AppResult,
 } from '#app/services/shared/errors.js'
 import type { Session } from '#vendor/types/types.js'
+import logger from '#vendor/utils/logger.js'
 import { isUniqueViolation } from '#app/repositories/db-errors.js'
 import { retirePendingContactLinks } from './contact-links.js'
 import { hasRecoveryContactOf, loadMfaAccount, mfaEnabledOf } from './mfa-account.js'
 import { announceMfaChange } from './mfa-notice.js'
 import { recoveryCodes } from './recovery-codes.js'
-import { isAcceptedProof, requireProof } from './require-proof.js'
+import { isAcceptedProof, keptProofRefusal, requireProof } from './require-proof.js'
 import { staffFactorLossError } from './staff-policy.js'
 import {
     ceremonyBinding,
@@ -243,6 +244,8 @@ export const passkeyService = {
         const name = (input.name ?? '').trim() === '' ? defaultName(input.response) : input.name
         const { actor } = request
 
+        // Set inside the transaction callback, read after it (an object: not narrowed to false).
+        const refused = { keptProof: false }
         const result = await withTransaction(async (tx) => {
             const locked = await userRepository.lockById(userId, tx)
             if (locked === undefined) return Result.err(notFound('User', 'User not found'))
@@ -266,6 +269,19 @@ export const passkeyService = {
                       )
             }
             const account = await loadMfaAccount(locked, tx)
+            // feat-256 (item 3): the proof the options kept, against the factors as they are now
+            // (another session may have turned MFA on since).
+            const refusal = keptProofRefusal({
+                action: 'mfa.add_factor',
+                account,
+                auth: authOf(session),
+                proof: optionsProof,
+                now: request.now ?? Date.now(),
+            })
+            if (refusal !== null) {
+                refused.keptProof = true
+                return Result.err(refusal)
+            }
             if (!mfaEnabledOf(account) && !hasRecoveryContactOf(locked)) {
                 return Result.err(contactRequired())
             }
@@ -309,7 +325,21 @@ export const passkeyService = {
             }
             throw err
         })
-        if (Result.isError(result)) return Result.err(result.error)
+        if (Result.isError(result)) {
+            if (refused.keptProof) {
+                // These options are of no use any more: only they go (a newer pair of another tab
+                // stays), so the form starts the addition again.
+                await session
+                    .consumeSessionData(
+                        { [PASSKEY_REGISTRATION_KEYS.enrollment]: input.enrollmentId },
+                        REGISTRATION_KEYS,
+                    )
+                    .catch((err: unknown) => {
+                        logger.warn({ err }, 'Refused passkey options not removed; they lapse')
+                    })
+            }
+            return Result.err(result.error)
+        }
         const { row, codes, events } = result.value
         auditService.logCommitted(actor.logger, events)
         if (events.length > 0) announceMfaChange(userId, 'passkey_added')

@@ -30,6 +30,12 @@ vi.mock('@/utils/api', () => ({ mfaApi: mfa, authApi: auth, passkeyApi: passkeys
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('@/stores/user', () => ({ useUserStore: () => store }))
 vi.mock('qrcode', () => ({ toDataURL: () => Promise.resolve('data:image/png;base64,QR') }))
+// feat-256: the end of a recovery session goes through the session lifecycle (item 5).
+const lifecycle = vi.hoisted(() => ({ finishRecovery: vi.fn() }))
+vi.mock('@/composables/useSessionLifecycle', () => ({ useSessionLifecycle: () => lifecycle }))
+// feat-256: the browser's passkey support and ceremony (item 4); unsupported unless a test says.
+const webauthn = vi.hoisted(() => ({ passkeysSupported: vi.fn(), createPasskey: vi.fn() }))
+vi.mock('@/composables/usePasskeys', () => webauthn)
 
 const { default: SignInSecurity } = await import('../SignInSecurity.vue')
 const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
@@ -58,6 +64,8 @@ const mountSection = async (props: Record<string, unknown> = {}) => {
 beforeEach(() => {
     vi.clearAllMocks()
     passkeys.list.mockResolvedValue({ data: { status: 'success', passkeys: [] }, error: null })
+    webauthn.passkeysSupported.mockResolvedValue(false)
+    lifecycle.finishRecovery.mockResolvedValue('left')
 })
 
 describe('SignInSecurity (feat-245)', () => {
@@ -124,7 +132,6 @@ describe('SignInSecurity (feat-245)', () => {
     it('a recovery session: the steps, no turn-off, new codes only after the replacement, finish', async () => {
         const recovery = { expiresAt: '2030-01-01T00:00:00.000Z', replaced: false }
         mfa.status.mockResolvedValue(status({ totp: { enabled: true, createdAt: 'x' }, recovery }))
-        auth.recoveryFinish.mockResolvedValue({ data: { status: 'success' }, error: null })
         const wrapper = await mountSection()
         expect(wrapper.find('[data-testid="mfa-recovery"]').exists()).toBe(true)
         expect(wrapper.find('[data-testid="mfa-disable"]').exists()).toBe(false)
@@ -133,9 +140,8 @@ describe('SignInSecurity (feat-245)', () => {
 
         await wrapper.get('[data-testid="mfa-recovery-finish"]').trigger('click')
         await flushPromises()
-        expect(auth.recoveryFinish).toHaveBeenCalledOnce()
-        expect(store.clearUser).toHaveBeenCalled()
-        expect(push).toHaveBeenCalledWith('/login')
+        expect(lifecycle.finishRecovery).toHaveBeenCalledOnce()
+        expect(wrapper.find('[data-testid="mfa-message"]').exists()).toBe(false)
     })
 
     it('a passkey counts as a factor: listed, with codes left and new codes (feat-246)', async () => {
@@ -260,5 +266,128 @@ describe('SignInSecurity: the staff passkey mode (feat-248)', () => {
     it('the any mode keeps the TOTP-only staff account without a banner', async () => {
         mfa.status.mockResolvedValue(status({ ...TOTP_ONLY, staffFactor: 'any' }))
         expect(notice(await mountSection({ staff: true })).exists()).toBe(false)
+    })
+
+    describe('feat-256 (docs/plan/mfa-review-fixes-7-plan.md)', () => {
+        const startedSetup = async () => {
+            mfa.status.mockResolvedValue(status())
+            mfa.totpSetup.mockResolvedValue({
+                data: {
+                    status: 'success',
+                    enrollmentId: 'e1',
+                    secret: 'JBSWY3DPEHPK3PXP',
+                    otpauthUri: 'otpauth://totp/x',
+                },
+                error: null,
+            })
+            const wrapper = await mountSection()
+            await wrapper.get('[data-testid="mfa-setup-start"]').trigger('click')
+            await flushPromises()
+            await wrapper.get('[data-testid="mfa-setup-code"]').setValue('123456')
+            return wrapper
+        }
+        const refused = (reason: string, transportCode: number) => ({
+            data: { status: 'error', code: 'x', message: 'no', reason },
+            error: { code: 'x', transportCode, message: 'no' },
+        })
+
+        it('item 3: a setup its kept proof no longer admits goes back to "Set up"', async () => {
+            const wrapper = await startedSetup()
+            mfa.totpConfirm.mockResolvedValue(refused('reauth_required', 403))
+            await wrapper.get('[data-testid="mfa-setup-confirm"]').trigger('click')
+            await flushPromises()
+            expect(wrapper.find('[data-testid="mfa-setup"]').exists()).toBe(false)
+            expect(wrapper.find('[data-testid="mfa-setup-start"]').exists()).toBe(true)
+            expect(wrapper.text()).toContain(en.account.mfa.errorSetupRestart)
+        })
+
+        it('item 4: a TOTP confirmation with an unknown outcome keeps the setup and the code', async () => {
+            const wrapper = await startedSetup()
+            mfa.totpConfirm.mockResolvedValueOnce({
+                data: null,
+                error: { code: 'network', transportCode: 0, message: 'offline' },
+            })
+            await wrapper.get('[data-testid="mfa-setup-confirm"]').trigger('click')
+            await flushPromises()
+            expect(wrapper.find('[data-testid="mfa-setup"]').exists()).toBe(true)
+            mfa.totpConfirm.mockResolvedValueOnce({
+                data: { status: 'success', recoveryCodes: null },
+                error: null,
+            })
+            await wrapper.get('[data-testid="mfa-setup-confirm"]').trigger('click')
+            await flushPromises()
+            expect(mfa.totpConfirm).toHaveBeenNthCalledWith(2, {
+                enrollmentId: 'e1',
+                code: '123456',
+            })
+        })
+
+        it('item 4: a passkey registration with an unknown outcome is sent again as it is', async () => {
+            mfa.status.mockResolvedValue(status())
+            webauthn.passkeysSupported.mockResolvedValue(true)
+            passkeys.registerOptions.mockResolvedValue({
+                data: { status: 'success', enrollmentId: 'pe1', options: { challenge: 'c' } },
+                error: null,
+            })
+            const registration = { id: 'cred', response: {} }
+            webauthn.createPasskey.mockResolvedValue({ ok: true, value: registration })
+            passkeys.register
+                .mockResolvedValueOnce(refused('', 503))
+                .mockResolvedValueOnce(refused('', 500))
+                .mockResolvedValueOnce({
+                    data: { status: 'success', passkey: {}, recoveryCodes: null },
+                    error: null,
+                })
+            const wrapper = await mountSection()
+            await wrapper.get('[data-testid="passkey-add"]').trigger('click')
+            await flushPromises()
+            // No new registration meanwhile: only "Try again".
+            expect(wrapper.find('[data-testid="passkey-add"]').exists()).toBe(false)
+            await wrapper.get('[data-testid="passkey-retry"]').trigger('click')
+            await flushPromises()
+            await wrapper.get('[data-testid="passkey-retry"]').trigger('click')
+            await flushPromises()
+            const body = { enrollmentId: 'pe1', response: registration }
+            expect(passkeys.register.mock.calls).toEqual([[body], [body], [body]])
+            expect(webauthn.createPasskey).toHaveBeenCalledOnce()
+            expect(passkeys.registerOptions).toHaveBeenCalledOnce()
+            expect(wrapper.find('[data-testid="passkey-add"]').exists()).toBe(true)
+            expect(wrapper.get('[data-testid="passkey-message"]').text()).toBe(
+                en.account.passkeys.added,
+            )
+        })
+
+        it('item 4: a final refusal of a registration ends it: "Add" again', async () => {
+            mfa.status.mockResolvedValue(status())
+            webauthn.passkeysSupported.mockResolvedValue(true)
+            passkeys.registerOptions.mockResolvedValue({
+                data: { status: 'success', enrollmentId: 'pe1', options: { challenge: 'c' } },
+                error: null,
+            })
+            webauthn.createPasskey.mockResolvedValue({ ok: true, value: { id: 'c', response: {} } })
+            passkeys.register.mockResolvedValue(refused('passkey_exists', 409))
+            const wrapper = await mountSection()
+            await wrapper.get('[data-testid="passkey-add"]').trigger('click')
+            await flushPromises()
+            expect(wrapper.find('[data-testid="passkey-retry"]').exists()).toBe(false)
+            expect(wrapper.find('[data-testid="passkey-add"]').exists()).toBe(true)
+        })
+
+        it.each([
+            ['kept', en.account.mfa.errorRecoveryFinishKept],
+            ['unknown', en.account.mfa.errorRecoveryFinishUnknown],
+        ] as const)('item 5: a recovery end %s stays and says so', async (outcome, text) => {
+            const recovery = { expiresAt: '2030-01-01T00:00:00.000Z', replaced: true }
+            mfa.status.mockResolvedValue(
+                status({ totp: { enabled: true, createdAt: 'x' }, recovery }),
+            )
+            lifecycle.finishRecovery.mockResolvedValue(outcome)
+            const wrapper = await mountSection()
+            await wrapper.get('[data-testid="mfa-recovery-finish"]').trigger('click')
+            await flushPromises()
+            expect(wrapper.text()).toContain(text)
+            expect(push).not.toHaveBeenCalled()
+            expect(store.clearUser).not.toHaveBeenCalled()
+        })
     })
 })

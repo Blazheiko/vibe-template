@@ -110,7 +110,32 @@ describe('closeUserConnections', () => {
             expect(spared.end).not.toHaveBeenCalled()
             expect(spared.send).not.toHaveBeenCalled()
         }
-        expect(revokeConnecting).toHaveBeenCalledWith('1', undefined, 's1')
+        expect(revokeConnecting).toHaveBeenCalledWith('1', undefined, 's1', undefined)
+    })
+
+    // Р8: a recovery sign-in closes the sockets of the token it rotated, not those of a session
+    // signed in with the new token meanwhile.
+    it('closes only the connections whose session carries the given user token', () => {
+        const rotated = connection('1', 'a', 's1', 'old')
+        const rotatedOtherSession = connection('1', 'b', 's2', 'old')
+        const fresh = connection('1', 'c', 's3', 'new')
+        const unknownToken = connection('1', 'd', 's4', undefined)
+        listUserConnections.mockReturnValue([rotated, rotatedOtherSession, fresh, unknownToken])
+
+        expect(
+            wsSessionRevocation.closeUserConnections('1', {
+                exceptSessionId: 's9',
+                userToken: 'old',
+            }),
+        ).toBe(2)
+
+        expect(rotated.end).toHaveBeenCalledWith(4001)
+        expect(rotatedOtherSession.end).toHaveBeenCalledWith(4001)
+        for (const spared of [fresh, unknownToken]) {
+            expect(spared.end).not.toHaveBeenCalled()
+            expect(spared.send).not.toHaveBeenCalled()
+        }
+        expect(revokeConnecting).toHaveBeenCalledWith('1', undefined, 's9', 'old')
     })
 
     it('skips a connection that has closed already and closes the rest', () => {
@@ -213,8 +238,8 @@ describe('closeUserConnections: connections being opened (feat-210)', () => {
         wsSessionRevocation.closeUserConnections('1')
 
         expect(revokeConnecting.mock.calls).toEqual([
-            ['1', 's1', undefined],
-            ['1', undefined, undefined],
+            ['1', 's1', undefined, undefined],
+            ['1', undefined, undefined, undefined],
         ])
         expect(revokeConnecting.mock.invocationCallOrder[0]).toBeLessThan(
             listUserConnections.mock.invocationCallOrder[0] ?? 0,

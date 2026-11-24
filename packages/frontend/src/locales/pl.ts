@@ -255,6 +255,12 @@ const pl: typeof en = {
             errorCode: 'Kod jest nieprawidłowy. Sprawdź czas w telefonie i spróbuj ponownie.',
             errorSetupExpired: 'Konfiguracja wygasła. Zacznij od nowa.',
             errorRecoveryOrder: 'Najpierw skonfiguruj nową aplikację.',
+            errorSetupRestart:
+                'W międzyczasie zmieniły się metody logowania. Zacznij konfigurację od nowa.',
+            errorRecoveryFinishKept:
+                'Wylogowanie jeszcze się nie zakończyło: nadal jesteś zalogowany. Spróbuj za chwilę.',
+            errorRecoveryFinishUnknown:
+                'Nie udało się potwierdzić wylogowania: możesz być nadal zalogowany. Spróbuj ponownie.',
             errorGeneric: 'Coś poszło nie tak. Spróbuj ponownie.',
             errorStaffFactor:
                 'Twoja rola wymaga tego drugiego składnika. Najpierw dodaj inny, który akceptuje (jeśli wdrożenie wymaga klucza dostępu — inny klucz dostępu).',
@@ -290,6 +296,9 @@ const pl: typeof en = {
             errorExists: 'To urządzenie ma już klucz dostępu tego konta.',
             errorLast: 'To jedyny sposób logowania. Najpierw dodaj hasło lub inny klucz.',
             errorRejected: 'Klucz dostępu nie został przyjęty. Spróbuj ponownie.',
+            retry: 'Spróbuj ponownie',
+            errorRetry:
+                'Nie udało się potwierdzić zapisania klucza dostępu. Spróbuj ponownie: zostanie wysłany ten sam klucz, nowy nie jest tworzony.',
         },
         reauth: {
             passkeyHint: 'Użyj klucza dostępu z tego urządzenia lub telefonu.',

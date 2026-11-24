@@ -460,10 +460,23 @@ const withTimer = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
  * users.session_token, so every record left is rejected anyway and expires by TTL. Hence an
  * unavailable Redis or the deadline does not reject: the result says `complete: false` and
  * a warning is logged. Any other error (a bug) is rethrown.
+ *
+ * `keepSessionId` spares one record (and, when it is found, the token's index and meta, which its
+ * own deletion updates): a recovery sign-in (Р8) cleans the rotated token before it deletes, under
+ * the lock, the browser's session it replaces, which may carry that token.
  */
-export const destroyAllSessions = async (userToken: string): Promise<DestroyAllSessionsResult> => {
+export const destroyAllSessions = async (
+    userToken: string,
+    options: { keepSessionId?: string } = {},
+): Promise<DestroyAllSessionsResult> => {
     const prefix = redisConfig.keyPrefix
     const pattern = sanitizeRedisKey(`${prefix}session:${userToken}:*`)
+    const keptKey =
+        options.keepSessionId === undefined
+            ? undefined
+            : sanitizeRedisKey(`session:${userToken}:${options.keepSessionId}`)
+    // An object: a flag set inside the filter callback is not narrowed to its initial value.
+    const kept = { found: false }
     logger.info({ userToken: maskTokenForLogs(userToken) }, 'Destroying all sessions for userToken')
     const deadline = Date.now() + redisConfig.logoutAllDeadlineMs
     // Each await gets what is left of the budget, capped by the command timeout,
@@ -487,16 +500,25 @@ export const destroyAllSessions = async (userToken: string): Promise<DestroyAllS
                 redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100),
             )
             // Remove the prefix from keys since redis.del will add it automatically
-            const keys = removePrefixFromKeys(foundKeys, prefix)
+            const keys = removePrefixFromKeys(foundKeys, prefix).filter((key) => {
+                if (key !== keptKey) return true
+                kept.found = true
+                return false
+            })
             if (keys.length > 0) {
                 deleted += await step(() => redis.del(...keys))
             }
             cursor = nextCursor
         } while (cursor !== '0')
         // feat-233: the list of a rotated token goes with its records.
-        await step(() =>
-            redis.del(sanitizeRedisKey(indexKey(userToken)), sanitizeRedisKey(metaKey(userToken))),
-        )
+        if (!kept.found) {
+            await step(() =>
+                redis.del(
+                    sanitizeRedisKey(indexKey(userToken)),
+                    sanitizeRedisKey(metaKey(userToken)),
+                ),
+            )
+        }
     } catch (err: unknown) {
         if (!(err instanceof RedisUnavailableError)) throw err
         logger.warn(

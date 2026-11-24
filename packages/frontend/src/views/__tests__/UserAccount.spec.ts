@@ -53,6 +53,12 @@ vi.mock('@/composables/useProfileSave', async () => {
 })
 
 // feat-233: the session list has its own spec (ActiveSessions.spec.ts).
+// feat-256: the sign-in security section ends a recovery session through the session lifecycle
+// (tested in SignInSecurity.spec.ts and useSessionLifecycle.spec.ts).
+vi.mock('@/composables/useSessionLifecycle', () => ({
+    useSessionLifecycle: () => ({ finishRecovery: vi.fn() }),
+}))
+
 vi.mock('@/components/account/ActiveSessions.vue', () => ({
     default: { name: 'ActiveSessions', template: '<section id="sessions" />' },
 }))

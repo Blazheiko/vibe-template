@@ -175,18 +175,37 @@ export interface Auth {
      * feat-245 (Р4): after the commit, makes the planned session active in one Redis transition
      * with the ticket. `activated`: this request did it; `already`: an earlier request did, and the
      * cookie of that same session is issued again while its record exists; `gone`: nothing to
-     * activate. The previous session is replaced only when a cookie is issued; a signed-in one's
-     * record is deleted under its user's row lock after the transition (Р13), and a deletion that
-     * could not take the lock throws with the activation done. `onEffects` runs in the one request
-     * (`activated` or `already`) that claims the sign-in's effects after a successful replacement:
-     * the caller sends its notices there, never twice.
+     * activate. After the transition, in this order: the cleanup hook, the effects' claim (and,
+     * when claimed, the effects), the deletion of the previous session (a signed-in one's under its
+     * user's row lock, Р13: SessionDeletionDeferredError when the lock is not taken, nothing
+     * deleted), then the cookie. Anything that throws leaves the activation done, issues no cookie
+     * and, except a deletion that failed half-way, keeps the browser's previous session: the
+     * caller answers 503 and the repeat, with the cookie the browser holds, finds it `already`.
      */
     activateLogin: (
         plan: LoginPlan,
         ticketKey: string,
         completionId: string,
-        onEffects?: () => void,
+        hooks?: ActivationHooks,
     ) => Promise<'activated' | 'already' | 'gone'>
+}
+
+/** feat-245 (Р4, Р8): what the caller of `activateLogin` runs before the previous session goes. */
+export interface ActivationHooks {
+    /**
+     * Run by every request that gets past the transition (`activated` and `already`), before the
+     * effects are claimed and the previous session is deleted; it must be harmless to repeat. It
+     * gets the id of the request's own session, which it must leave alone (the activation deletes
+     * it under the lock). A throw ends the request without the cookie, the effects unclaimed and
+     * the previous session intact.
+     */
+    cleanup?: (currentSessionId: string) => Promise<void>
+    /**
+     * Run in the one request that claims the sign-in's effects, before the previous session is
+     * deleted and the cookie issued: the caller sends its notices there, never twice. It must not
+     * throw (the notices are fire-and-forget). A claim that fails (Redis) throws instead.
+     */
+    onEffects?: () => void
 }
 
 /** feat-245 (Р4): a second-step sign-in planned once, stored in the ticket. */

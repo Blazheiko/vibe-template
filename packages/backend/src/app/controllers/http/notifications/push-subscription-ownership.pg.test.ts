@@ -723,4 +723,63 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
             expect((await stored('to-update'))?.deviceType).toBeNull()
         })
     })
+
+    // feat-252: a sign-out the server refused puts back the record it removed as it was, so the
+    // create takes the state; without it a record is active, as before.
+    describe('POST /push-subscriptions with isActive', () => {
+        let user = 0n
+        const body = (tag: string, extra: Record<string, unknown> = {}) => ({
+            endpoint: `https://fcm.googleapis.com/fcm/send/active-${tag}-${String(now)}`,
+            p256dhKey: 'p'.repeat(87),
+            authKey: 'a'.repeat(22),
+            ...extra,
+        })
+        const activeOf = async (tag: string): Promise<boolean | undefined> => {
+            const [row] = await db
+                .select({ isActive: pushSubscriptions.isActive })
+                .from(pushSubscriptions)
+                .where(eq(pushSubscriptions.endpoint, body(tag).endpoint))
+            return row?.isActive
+        }
+
+        beforeAll(async () => {
+            user = await insertUser('push-active')
+        })
+
+        it('stores a new record disabled when isActive is false', async () => {
+            const result = await call('POST', '', { user, body: body('off', { isActive: false }) })
+
+            expect(result.status).toBe(200)
+            expect(result.body).toMatchObject({ subscription: { isActive: false } })
+            expect(await activeOf('off')).toBe(false)
+        })
+
+        it('stores a new record active without isActive', async () => {
+            const result = await call('POST', '', { user, body: body('default') })
+
+            expect(result.status).toBe(200)
+            expect(await activeOf('default')).toBe(true)
+        })
+
+        it('writes the state into a record the endpoint already has, and active without it', async () => {
+            await call('POST', '', { user, body: body('existing') })
+            expect(await activeOf('existing')).toBe(true)
+
+            await call('POST', '', { user, body: body('existing', { isActive: false }) })
+            expect(await activeOf('existing')).toBe(false)
+
+            await call('POST', '', { user, body: body('existing') })
+            expect(await activeOf('existing')).toBe(true)
+        })
+
+        it('answers 422 for an isActive that is not a boolean and stores nothing', async () => {
+            const result = await call('POST', '', {
+                user,
+                body: body('string', { isActive: 'false' }),
+            })
+
+            expect(result.status).toBe(422)
+            expect(await activeOf('string')).toBeUndefined()
+        })
+    })
 })

@@ -153,6 +153,98 @@ describe('pushSubscriptionService', () => {
         expect(pushSubscriptionRepositoryMock.update).not.toHaveBeenCalled()
     })
 
+    // feat-252: a sign-out the server refused puts the record back in the state it had.
+    describe('the state a record is written in', () => {
+        const endpoint = 'https://fcm.googleapis.com/fcm/send/state'
+
+        it.each([
+            ['active without isActive', {}, true],
+            ['disabled with isActive: false', { isActive: false }, false],
+            ['active with isActive: true', { isActive: true }, true],
+        ])('creates a new record %s', async (_name, extra, isActive) => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(undefined)
+            pushSubscriptionRepositoryMock.create.mockResolvedValue({ id: 2n })
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            await pushSubscriptionService.createSubscription(
+                7n,
+                { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
+                'token-7',
+            )
+
+            expect(pushSubscriptionRepositoryMock.create).toHaveBeenCalledWith(
+                expect.objectContaining({ isActive }),
+                TX,
+            )
+        })
+
+        it.each([
+            ['active without isActive', {}, true],
+            ['disabled with isActive: false', { isActive: false }, false],
+        ])('writes an existing record %s', async (_name, extra, isActive) => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
+                id: 1n,
+                userId: 7n,
+                endpoint,
+                p256dhKey: 'k',
+                authKey: 'a',
+            })
+            pushSubscriptionRepositoryMock.updateByEndpoint.mockResolvedValue({ id: 1n })
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            await pushSubscriptionService.createSubscription(
+                7n,
+                { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
+                'token-7',
+            )
+
+            expect(pushSubscriptionRepositoryMock.updateByEndpoint).toHaveBeenCalledWith(
+                endpoint,
+                7n,
+                expect.objectContaining({ isActive }),
+                TX,
+            )
+        })
+    })
+
+    // feat-254: a sign-out that went through removes this browser's record of the user.
+    describe('deleteOwnSubscriptionByEndpoint', () => {
+        const EP = 'https://FCM.googleapis.com/fcm/send/a%2fb'
+
+        it('deletes the record of the user, found by the canonical endpoint', async () => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({ id: 3n, userId: 7n })
+            pushSubscriptionRepositoryMock.delete.mockResolvedValue(true)
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(7n, EP)).toBe(true)
+            expect(pushSubscriptionRepositoryMock.findByEndpoint).toHaveBeenCalledWith(
+                'https://fcm.googleapis.com/fcm/send/a%2Fb',
+            )
+            expect(pushSubscriptionRepositoryMock.delete).toHaveBeenCalledWith(3n, 7n)
+        })
+
+        it("never deletes another user's record with that endpoint", async () => {
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({ id: 3n, userId: 8n })
+
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(7n, EP)).toBe(
+                false,
+            )
+            expect(pushSubscriptionRepositoryMock.delete).not.toHaveBeenCalled()
+        })
+
+        it('matches nothing for an endpoint the policy does not allow', async () => {
+            const { pushSubscriptionService } = await loadPushSubscriptionService()
+            expect(
+                await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(
+                    7n,
+                    'https://evil.example/x',
+                ),
+            ).toBe(false)
+            expect(pushSubscriptionRepositoryMock.findByEndpoint).not.toHaveBeenCalled()
+        })
+    })
+
     describe('endpoint owned by another user', () => {
         const existing = {
             id: 1n,

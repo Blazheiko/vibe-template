@@ -3,6 +3,7 @@ import { createServer } from 'node:net'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
 import type * as SessionIndex from '#vendor/utils/session/session-index.js'
+import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import type * as Transaction from '#app/repositories/transaction.js'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -122,9 +123,11 @@ vi.mock('#app/services/auth/new-sign-in-notice.js', async (importActual) => {
     return { ...actual, notifyNewSignIn: newSignIn }
 })
 
-// Injected failures (Р4, «Збої»).
+// Injected failures (Р4, «Збої»). A Redis failure is what withRedis throws for an unreachable
+// Redis (RedisUnavailableError): the error handler answers it 503 (ADR 0004).
 interface Injected {
-    prepare: boolean
+    /** The pending record's write fails (Redis), once; a function runs first (feat-256). */
+    prepare: boolean | (() => Promise<void>)
     /** Runs this, then fails the activation as an unreachable Redis would. */
     activate: false | (() => Promise<void>)
     lostCommitAnswer: boolean
@@ -135,6 +138,12 @@ interface Injected {
     statusUnknown: number
     /** pg_xact_status reads made (counted, not injected). */
     statusReads: number
+    /** The claim of the activation's effects fails (Redis), once. */
+    claim: boolean
+    /** The recovery cleanup of the rotated token stops part-way (Redis), once. */
+    cleanup: boolean
+    /** The activation fails with an error that is not an infrastructure failure (a bug), once. */
+    activateBug: boolean
 }
 const inject = vi.hoisted((): Injected => ({
     prepare: false,
@@ -144,28 +153,61 @@ const inject = vi.hoisted((): Injected => ({
     clockJumpMs: 0,
     statusUnknown: 0,
     statusReads: 0,
+    claim: false,
+    cleanup: false,
+    activateBug: false,
 }))
 vi.mock('#vendor/utils/session/session-index.js', async (importActual) => {
     const actual = await importActual<typeof SessionIndex>()
+    const { RedisUnavailableError } =
+        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     return {
         ...actual,
         preparePendingSession: (...args: Parameters<typeof actual.preparePendingSession>) => {
-            if (inject.prepare) {
+            if (inject.prepare !== false) {
+                const before = inject.prepare
                 inject.prepare = false
-                return Promise.reject(new Error('Redis down (prepare)'))
+                const run = typeof before === 'function' ? before() : Promise.resolve()
+                return run.then(() =>
+                    Promise.reject(new RedisUnavailableError('Redis down (prepare)')),
+                )
             }
             return actual.preparePendingSession(...args)
         },
         activatePendingSession: async (
             ...args: Parameters<typeof actual.activatePendingSession>
         ) => {
+            if (inject.activateBug) {
+                inject.activateBug = false
+                throw new TypeError('a bug (activate)')
+            }
             if (inject.activate !== false) {
                 const before = inject.activate
                 inject.activate = false
                 await before()
-                throw new Error('Redis down (activate)')
+                throw new RedisUnavailableError('Redis down (activate)')
             }
             return actual.activatePendingSession(...args)
+        },
+        claimActivationEffects: (...args: Parameters<typeof actual.claimActivationEffects>) => {
+            if (inject.claim) {
+                inject.claim = false
+                return Promise.reject(new RedisUnavailableError('Redis down (claim)'))
+            }
+            return actual.claimActivationEffects(...args)
+        },
+    }
+})
+vi.mock('#vendor/utils/session/redis-session-storage.js', async (importActual) => {
+    const actual = await importActual<typeof SessionStorage>()
+    return {
+        ...actual,
+        destroyAllSessions: (...args: Parameters<typeof actual.destroyAllSessions>) => {
+            if (inject.cleanup) {
+                inject.cleanup = false
+                return Promise.resolve({ deleted: 0, complete: false })
+            }
+            return actual.destroyAllSessions(...args)
         },
     }
 })
@@ -227,7 +269,10 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
     const { default: sessionConfig } = await import('#config/session.js')
     const { mfaTicketCookieName } = await import('#vendor/utils/session/request-session.js')
     const { getSession } = await import('#vendor/utils/session/redis-session-storage.js')
-    const { totpFactorRepository, withTransaction } = await import('#app/repositories/index.js')
+    const { totpFactorRepository, userRepository, withTransaction } =
+        await import('#app/repositories/index.js')
+    const { RedisUnavailableError } =
+        await import('#vendor/utils/network/errors/redis-unavailable-error.js')
     const { recoveryCodes } = await import('./recovery-codes.js')
     const { mfaSecretBox, totpSecretOwner } = await import('./mfa-secret-box.js')
     const { generateTotpSecret, hotp, totpStepAt } = await import('./totp.js')
@@ -248,6 +293,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         status: number
         body: Record<string, unknown>
         cookies: Map<string, string>
+        retryAfter: string | null
     }
 
     class Browser {
@@ -277,6 +323,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 status: response.status,
                 body: (text === '' ? {} : JSON.parse(text)) as Record<string, unknown>,
                 cookies,
+                retryAfter: response.headers.get('retry-after'),
             }
         }
 
@@ -379,6 +426,10 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         inject.clockJumpMs = 0
         inject.statusUnknown = 0
         inject.statusReads = 0
+        inject.claim = false
+        inject.cleanup = false
+        inject.activateBug = false
+        vi.restoreAllMocks()
         proxy.disarm()
         security.mockClear()
         newSignIn.mockClear()
@@ -999,6 +1050,344 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         })
     })
 
+    // Р4, Р8, Р13 (review of feat-253): a failure of the activation's tail answers 503
+    // `mfa_completion_pending`, and the browser repeats with the cookies and the CSRF token it
+    // actually holds. Everything that can fail runs before its previous session is deleted, so
+    // that session (the CSRF token, the ticket's binding) is still there for the repeat.
+    describe('a failed activation tail repeated by the browser itself (Р4, Р8, Р13)', async () => {
+        const { wsConnectionRegistry } = await import('#app/websocket/ws-connection-registry.js')
+        const { registerSessionDeletionLock } =
+            await import('#vendor/utils/session/session-deletion-lock.js')
+        const { underUserRowLock } = await import('#app/services/user/session-list-service.js')
+        const { sessionExists } = await import('#vendor/utils/session/redis-session-storage.js')
+
+        afterEach(() => {
+            registerSessionDeletionLock(underUserRowLock)
+        })
+
+        /** POST /auth/mfa/verify, its answer kept as a browser keeps it. */
+        const verify = async (browser: Browser, body: unknown) =>
+            browser.keep(await browser.request('POST', '/auth/mfa/verify', body))
+        const CONTINUE = { method: 'continue' }
+
+        /** The repeat signs in: the browser holds the new session, and it opens the app. */
+        const expectSignedIn = async (browser: Browser, reply: Reply, userId: bigint) => {
+            expect(reply.status).toBe(200)
+            expect(reply.body).toMatchObject({ status: 'success', user: { id: String(userId) } })
+            const init = browser.keep(await browser.request('GET', '/main/init'))
+            expect(init.status).toBe(200)
+            expect(await getSession(browser.sessionId(), await tokenOf(userId))).not.toBeNull()
+        }
+
+        /**
+         * A browser signed in (password) to an account without a second factor: its session has a
+         * stored record, which the next sign-in in it replaces. (A cookie-held anonymous session
+         * has none to lose.)
+         */
+        const signedInBrowser = async () => {
+            const [row] = await db
+                .insert(users)
+                .values({
+                    name: 'mfa-tail-plain',
+                    email: `mfa-tail-plain-${crypto.randomUUID()}@example.test`,
+                    password: await hashPassword(PASSWORD),
+                    emailVerifiedAt: new Date(),
+                })
+                .returning()
+            if (row === undefined) throw new Error('user not inserted')
+            createdUserIds.push(row.id)
+            const browser = new Browser()
+            expect((await browser.firstFactor(row.email ?? '')).body).toMatchObject({
+                status: 'success',
+            })
+            browser.keep(await browser.request('GET', '/main/init'))
+            const sessionId = browser.sessionId()
+            expect(await sessionExists(sessionId, row.sessionToken)).toBe(true)
+            // Its own sign-in notice is not the one counted below.
+            newSignIn.mockClear()
+            return {
+                browser,
+                /** Whether the record of that signed-in session is still stored. */
+                stored: () => sessionExists(sessionId, row.sessionToken),
+            }
+        }
+
+        /** A fake socket of `userId` registered on this instance; `ended` tells its close. */
+        const fakeSocket = (userId: bigint, sessionId: string, userToken: string) => {
+            const ended: number[] = []
+            const ws = {
+                cork: (fn: () => void): void => {
+                    fn()
+                },
+                send: (): void => undefined,
+                end: (code: number): void => {
+                    ended.push(code)
+                },
+            }
+            const uuid = crypto.randomUUID()
+            wsConnectionRegistry.registerConnection(String(userId), uuid, ws as never, {
+                ip: '203.0.113.9',
+                userAgent: 'test',
+                appType: 'web',
+                sessionId,
+                userToken,
+            })
+            return {
+                ended,
+                remove: () => wsConnectionRegistry.unregisterConnection(String(userId), uuid),
+            }
+        }
+
+        it('(a) a claim that fails: the browser’s continue with its own cookies signs in, one notice', async () => {
+            const user = await mfaUser('mfa-tail-claim')
+            const { browser, stored } = await signedInBrowser()
+            await browser.firstFactor(user.email)
+            const before = browser.sessionId()
+            const csrfBefore = browser.csrf
+
+            inject.claim = true
+            const pending = await verify(browser, { method: 'totp', code: user.code() })
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            // No new cookie: the browser still holds its session and its CSRF token.
+            expect(browser.sessionId()).toBe(before)
+            expect(browser.csrf).toBe(csrfBefore)
+            expect(await stored()).toBe(true)
+            expect(newSignIn).not.toHaveBeenCalled()
+
+            const done = await verify(browser, CONTINUE)
+            await expectSignedIn(browser, done, user.row.id)
+            expect(browser.sessionId()).not.toBe(before)
+            expect(await stored()).toBe(false)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('(b) a recovery cleanup that fails: the browser’s continue signs in; the rotated token’s sessions are gone, a new-token socket survives', async () => {
+            const user = await mfaUser('mfa-tail-cleanup')
+            // A session of the token the recovery sign-in rotates away (the lost device).
+            const lost = new Browser()
+            await lost.firstFactor(user.email)
+            expect((await verify(lost, { method: 'totp', code: user.code() })).status).toBe(200)
+            const oldToken = await tokenOf(user.row.id)
+            const lostSession = lost.sessionId()
+            expect(await sessionExists(lostSession, oldToken)).toBe(true)
+            newSignIn.mockClear()
+
+            const { browser, stored } = await signedInBrowser()
+            await browser.firstFactor(user.email)
+            const before = browser.sessionId()
+            inject.cleanup = true
+            const pending = await verify(browser, {
+                method: 'recovery_code',
+                code: user.codes[0] ?? '',
+            })
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(browser.sessionId()).toBe(before)
+            expect(await stored()).toBe(true)
+            expect(newSignIn).not.toHaveBeenCalled()
+            const newToken = await tokenOf(user.row.id)
+            expect(newToken).not.toBe(oldToken)
+
+            // Between the attempts: a socket of the lost device's token and one of a session
+            // signed in with the new token (another tab of the recovery, say).
+            const stale = fakeSocket(user.row.id, lostSession, oldToken)
+            const fresh = fakeSocket(user.row.id, crypto.randomUUID(), newToken)
+            try {
+                const done = await verify(browser, CONTINUE)
+                expect(done.status).toBe(200)
+                expect(stale.ended).toEqual([4001])
+                expect(fresh.ended).toEqual([])
+            } finally {
+                stale.remove()
+                fresh.remove()
+            }
+            expect(await sessionExists(lostSession, oldToken)).toBe(false)
+            expect(await getSession(browser.sessionId(), newToken)).not.toBeNull()
+            expect(browser.sessionId()).not.toBe(before)
+            expect(await stored()).toBe(false)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+            expect(security).toHaveBeenCalledWith(user.row.id, 'recovery_code_used')
+            expect(
+                security.mock.calls.filter((call) => call[1] === 'recovery_code_used'),
+            ).toHaveLength(1)
+        })
+
+        it('(c) the replaced session’s lock not taken: the browser’s continue replaces it and signs in, one notice', async () => {
+            const earlier = await mfaUser('mfa-tail-lock-earlier')
+            const later = await mfaUser('mfa-tail-lock-later')
+            const browser = new Browser()
+            await browser.firstFactor(earlier.email)
+            expect((await verify(browser, { method: 'totp', code: earlier.code() })).status).toBe(
+                200,
+            )
+            browser.keep(await browser.request('GET', '/main/init'))
+            const earlierSession = browser.sessionId()
+            const earlierToken = await tokenOf(earlier.row.id)
+            newSignIn.mockClear()
+
+            // A sign-in of another account in the same browser; the signed-in session it replaces
+            // is deleted under its user's row lock, which is not taken (Р13).
+            await browser.firstFactor(later.email)
+            let refusals = 0
+            registerSessionDeletionLock(() => {
+                refusals += 1
+                return Promise.reject(new Error('lock held'))
+            })
+            const pending = await verify(browser, { method: 'totp', code: later.code() })
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(refusals).toBe(1)
+            expect(browser.sessionId()).toBe(earlierSession)
+            expect(await sessionExists(earlierSession, earlierToken)).toBe(true)
+            // The claim ran before the deletion: the notice is out, once.
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+
+            registerSessionDeletionLock(underUserRowLock)
+            const done = await verify(browser, CONTINUE)
+            await expectSignedIn(browser, done, later.row.id)
+            expect(await sessionExists(earlierSession, earlierToken)).toBe(false)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    // ADR 0004: an infrastructure failure of the second step throws, and the error handler
+    // answers it (classifyError): 503 service_unavailable with Retry-After for Redis, 500 for
+    // anything else. The activation keeps 503 mfa_completion_pending for a failure the repeat can
+    // outlive (the client repeats `continue`), and answers anything else 500.
+    describe('failure answers of the second step (ADR 0004)', () => {
+        const redisDown = () => new RedisUnavailableError('Redis down (ticket read)')
+
+        it('a Redis failure of a ticket read: 503 service_unavailable with Retry-After', async () => {
+            const user = await mfaUser('mfa-read-redis')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+
+            vi.spyOn(mfaTicketStore, 'read').mockRejectedValueOnce(redisDown())
+            const state = await browser.request('POST', '/auth/mfa/state', {})
+            expect(state.status).toBe(503)
+            expect(state.body).toMatchObject({ code: 'service_unavailable' })
+            expect(state.retryAfter).toBe('1')
+
+            vi.spyOn(mfaTicketStore, 'read').mockRejectedValueOnce(redisDown())
+            const cont = await browser.request('POST', '/auth/mfa/verify', { method: 'continue' })
+            expect(cont.status).toBe(503)
+            expect(cont.body).toMatchObject({ code: 'service_unavailable' })
+            expect(cont.retryAfter).toBe('1')
+            // The ticket cookie stays: the browser goes on with the same ticket.
+            expect(cont.cookies.has(MFA_COOKIE)).toBe(false)
+
+            vi.restoreAllMocks()
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            })
+            expect(ok.status).toBe(200)
+        })
+
+        it('a Redis failure of the reservation: 503, nothing counted', async () => {
+            const user = await mfaUser('mfa-reserve-redis')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(mfaTicketStore, 'reserve').mockRejectedValueOnce(redisDown())
+            const failed = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: '000000',
+            })
+            expect(failed.status).toBe(503)
+            expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+            expect((await browser.ticket())?.failures).toBe(0)
+        })
+
+        it('a ticket read that fails with a bug: 500 internal_error', async () => {
+            const user = await mfaUser('mfa-read-bug')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(mfaTicketStore, 'read').mockRejectedValueOnce(new TypeError('a bug (read)'))
+            const state = await browser.request('POST', '/auth/mfa/state', {})
+            expect(state.status).toBe(500)
+            expect(state.body).toMatchObject({ code: 'internal_error' })
+            expect(state.retryAfter).toBeNull()
+        })
+
+        it('the session token read fails, PostgreSQL unreachable: 503 mfa_completion_pending; continue signs in', async () => {
+            const user = await mfaUser('mfa-token-read-pg')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(userRepository, 'findSessionToken').mockRejectedValueOnce(
+                Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), {
+                    code: 'ECONNREFUSED',
+                }),
+            )
+            const pending = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'totp',
+                    code: user.code(),
+                }),
+            )
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            const done = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(done.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+
+        it('the session token read fails with a bug: 500, not a pending answer to repeat', async () => {
+            const user = await mfaUser('mfa-token-read-bug')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            vi.spyOn(userRepository, 'findSessionToken').mockRejectedValueOnce(
+                new TypeError('a bug (session token)'),
+            )
+            const failed = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'totp',
+                    code: user.code(),
+                }),
+            )
+            expect(failed.status).toBe(500)
+            expect(failed.body).toMatchObject({ code: 'internal_error' })
+            expect(failed.body).not.toHaveProperty('reason')
+            // The commit happened: the confirmed sign-in is still finished by the repeat.
+            const done = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(done.status).toBe(200)
+        })
+
+        it('the activation fails with Redis: 503 mfa_completion_pending; with a bug: 500', async () => {
+            const user = await mfaUser('mfa-activate-kinds')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            inject.activate = () => Promise.resolve()
+            const pending = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', {
+                    method: 'totp',
+                    code: user.code(),
+                }),
+            )
+            expect(pending.status).toBe(503)
+            expect(pending.body).toMatchObject({ reason: 'mfa_completion_pending' })
+            expect(pending.retryAfter).toBe('1')
+
+            inject.activateBug = true
+            const failed = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(failed.status).toBe(500)
+            expect(failed.body).toMatchObject({ code: 'internal_error' })
+            expect(failed.body).not.toHaveProperty('reason')
+
+            const done = browser.keep(
+                await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+            )
+            expect(done.status).toBe(200)
+            expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+    })
+
     it('an account without a second factor signs in with the password alone, as before', async () => {
         const [row] = await db
             .insert(users)
@@ -1020,6 +1409,91 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
     })
 
     // feat-246 (Р4, Р6; tasks P4): a passkey as the second step, through the same ticket.
+    // feat-256 (docs/plan/mfa-review-fixes-7-plan.md, items 1 and 6).
+    describe('the failure count of the second step (feat-256)', () => {
+        const redisDown = () => new RedisUnavailableError('Redis down (settle)')
+        const WRONG = '000000'
+        const ATTEMPT = 'attempt-feat256-aaaa'
+
+        it('a Redis failure before the count applied: 503; the repeat of the attempt counts it once', async () => {
+            const user = await mfaUser('mfa-count-before')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const body = { method: 'totp', code: WRONG, attemptId: ATTEMPT }
+            vi.spyOn(mfaTicketStore, 'settle').mockRejectedValueOnce(redisDown())
+            const failed = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(failed.status).toBe(503)
+            expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+            expect((await browser.ticket())?.failures).toBe(0)
+
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.status).toBe(401)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect(await browser.ticket()).toMatchObject({
+                failures: 1,
+                failedAttempts: [ATTEMPT],
+                reservations: [],
+            })
+        })
+
+        it('a count whose answer was lost: the repeat counts nothing; a new submission counts', async () => {
+            const user = await mfaUser('mfa-count-after')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const body = { method: 'totp', code: WRONG, attemptId: ATTEMPT }
+            const settle = mfaTicketStore.settle.bind(mfaTicketStore)
+            vi.spyOn(mfaTicketStore, 'settle').mockImplementationOnce(async (...args) => {
+                await settle(...args)
+                throw redisDown()
+            })
+            expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+            expect((await browser.ticket())?.failures).toBe(1)
+
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.status).toBe(401)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(1)
+
+            // The same code typed again is a new attempt: counted on its own.
+            const again = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: WRONG,
+                attemptId: 'attempt-feat256-bbbb',
+            })
+            expect(again.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(2)
+            // The right code still signs in.
+            const ok = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            })
+            expect(ok.status).toBe(200)
+        })
+
+        it('a known rollback at the limit (late failures meanwhile): 401, the ticket cookie cleared', async () => {
+            const user = await mfaUser('mfa-rollback-limit')
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const ticketId = browser.cookies.get(MFA_COOKIE) ?? ''
+            // While this attempt holds the ticket, late results of lapsed attempts reach the limit.
+            inject.prepare = async () => {
+                const current = await mfaTicketStore.read(ticketId)
+                if (current === null) throw new Error('no ticket')
+                await mfaTicketStore.create(ticketId, { ...current, failures: 5 }, 300)
+            }
+            const reply = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'totp',
+                code: user.code(),
+            })
+            expect(reply.status).toBe(401)
+            expect(reply.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
+            // The clearing cookie reaches the browser: an answer, not a thrown error.
+            expect(reply.cookies.get(MFA_COOKIE)).toBe('')
+            expect(await mfaTicketStore.read(ticketId)).toBeNull()
+            expect(newSignIn).not.toHaveBeenCalled()
+        })
+    })
+
     describe('a passkey as the second step (feat-246 P4)', async () => {
         const { default: webauthnConfig } = await import('#config/webauthn.js')
         const { webauthnCredentialRepository } = await import('#app/repositories/index.js')
@@ -1099,6 +1573,29 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             expect(session?.data.auth).toMatchObject({ aal: 2, amr: ['pwd', 'webauthn'] })
         })
 
+        it('a Redis failure taking the challenge: 503, the reservation given back, nothing counted', async () => {
+            const { passkeyTicketChallenges } = await import('./passkey-login-challenges.js')
+            const user = await mfaUser('mfa-passkey-take-redis')
+            const { authenticator } = await addPasskey(user.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const response = await answer(browser, authenticator)
+            vi.spyOn(passkeyTicketChallenges, 'peek').mockRejectedValueOnce(
+                new RedisUnavailableError('Redis down (challenge)'),
+            )
+            const failed = await browser.request('POST', '/auth/mfa/verify', {
+                method: 'webauthn',
+                response,
+            })
+            expect(failed.status).toBe(503)
+            expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+            expect(failed.retryAfter).toBe('1')
+            const ticket = await browser.ticket()
+            expect(ticket?.failures).toBe(0)
+            expect(ticket?.reservations).toEqual([])
+            expect(ticket?.state).toBe('open')
+        })
+
         it("another user's key is a failed attempt; a spent challenge answers nothing", async () => {
             const user = await mfaUser('mfa-passkey-foreign')
             const mine = await addPasskey(user.row.id)
@@ -1171,19 +1668,15 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             expect(late.body).toMatchObject({ reason: 'mfa_attempt_expired' })
             expect(await countOf(key.id)).toBe(4n)
             expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
-            // Its challenge was spent: the same answer asks for a new ceremony, counts nothing.
+            // feat-256: the challenge is spent only by a count or a capture, both atomic with the
+            // ticket; the lapsed attempt rolled back without either, so the same answer, like the
+            // same TOTP code, signs in.
             const again = await browser.request('POST', '/auth/mfa/verify', {
                 method: 'webauthn',
                 response,
             })
-            expect(again.body).toMatchObject({ reason: 'mfa_attempt_expired' })
-            expect(await browser.ticket()).toMatchObject({ state: 'open', failures: 0 })
-            const ok = await browser.request('POST', '/auth/mfa/verify', {
-                method: 'webauthn',
-                response: await answer(browser, authenticator),
-            })
-            expect(ok.status).toBe(200)
-            expect(await countOf(key.id)).toBe(6n)
+            expect(again.status).toBe(200)
+            expect(await countOf(key.id)).toBe(5n)
         })
 
         it('a pending completion: options answer pending, the same answer finishes it', async () => {
@@ -1353,6 +1846,50 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             const ok = await browser.request('POST', '/auth/mfa/verify', CONTINUE)
             expect(ok.status).toBe(200)
             expect(newSignIn).toHaveBeenCalledTimes(1)
+        })
+        // feat-256 (item 6): the challenge is spent with the count, atomically.
+        it('a passkey count whose answer was lost: the same answer counts nothing again', async () => {
+            const user = await mfaUser('mfa-passkey-count-lost')
+            await addPasskey(user.row.id)
+            const other = await mfaUser('mfa-passkey-count-other')
+            const theirs = await addPasskey(other.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const foreign = await answer(browser, theirs.authenticator)
+            const body = {
+                method: 'webauthn',
+                response: foreign,
+                attemptId: 'attempt-feat256-pkey',
+            }
+            const settle = mfaTicketStore.settle.bind(mfaTicketStore)
+            vi.spyOn(mfaTicketStore, 'settle').mockImplementationOnce(async (...args) => {
+                await settle(...args)
+                throw new RedisUnavailableError('Redis down (settle)')
+            })
+            expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+            expect((await browser.ticket())?.failures).toBe(1)
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(1)
+        })
+
+        it('a Redis failure before a passkey count applied: the repeat counts it', async () => {
+            const user = await mfaUser('mfa-passkey-count-before')
+            await addPasskey(user.row.id)
+            const other = await mfaUser('mfa-passkey-count-before-other')
+            const theirs = await addPasskey(other.row.id)
+            const browser = new Browser()
+            await browser.firstFactor(user.email)
+            const foreign = await answer(browser, theirs.authenticator)
+            const body = { method: 'webauthn', response: foreign, attemptId: 'attempt-feat256-pkb' }
+            vi.spyOn(mfaTicketStore, 'settle').mockRejectedValueOnce(
+                new RedisUnavailableError('Redis down (settle)'),
+            )
+            expect((await browser.request('POST', '/auth/mfa/verify', body)).status).toBe(503)
+            expect((await browser.ticket())?.failures).toBe(0)
+            const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+            expect(repeat.body).toMatchObject({ reason: 'invalid_code' })
+            expect((await browser.ticket())?.failures).toBe(1)
         })
     })
 })
