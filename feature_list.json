@@ -2561,7 +2561,7 @@
             "owner": "Blazheiko",
             "branch": "fix/mfa-continuation-binding",
             "dependencies": ["feat-256"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
