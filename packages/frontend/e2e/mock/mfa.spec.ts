@@ -113,12 +113,16 @@ test.describe('second sign-in step', () => {
         await modal.getByRole('button', { name: 'Sign In' }).click()
         const form = page.getByTestId('mfa-challenge')
         await form.getByTestId('mfa-code').fill('222222')
+        const failedInit = page.waitForResponse(
+            (response) =>
+                new URL(response.url()).pathname === '/api/main/init' && response.status() === 503,
+        )
         await form.getByTestId('mfa-submit').click()
 
         await expect(page).toHaveURL(/\/account$/)
-        await expect.poll(() => initsAfter).toBeGreaterThanOrEqual(1)
+        await failedInit
+        expect(initsAfter).toBeGreaterThanOrEqual(1)
         // The failed main/init did not sign the user out: the account page stays.
-        await page.waitForLoadState('networkidle')
         await expect(page).toHaveURL(/\/account$/)
         await expect(page.locator('#login-identifier')).toHaveCount(0)
     })
