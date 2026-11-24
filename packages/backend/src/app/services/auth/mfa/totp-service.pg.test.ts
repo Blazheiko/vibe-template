@@ -93,7 +93,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
                     return Promise.resolve('mismatch' as const)
                 }
                 for (const key of keys) delete data[key]
-                session.sessionInfo = { ...session.sessionInfo, data: data as SessionData }
+                session.sessionInfo = { ...session.sessionInfo, data: data }
                 return Promise.resolve('consumed' as const)
             },
             isStored: () => Promise.resolve(true),
