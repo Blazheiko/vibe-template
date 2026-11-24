@@ -47,6 +47,7 @@ const { default: client, redisHealth } = (await import('#database/redis.js')) as
     redisHealth: { stop(): void }
 }
 const { mfaTicketStore, MFA_MAX_FAILURES, newTicketId } = await import('./mfa-ticket.js')
+const { passkeyTicketChallenges } = await import('./passkey-login-challenges.js')
 
 const admin = createTestRedis(PREFIX)
 const TTL_MS = 30_000
@@ -208,8 +209,8 @@ describe.skipIf(!hasRedis)('MFA ticket store (feat-245 M8)', () => {
         ])
         expect(results.sort()).toEqual(['ok', 'used'])
         const winner = (await mfaTicketStore.read(id))?.completionId ?? ''
-        expect(await mfaTicketStore.reopen(id, 'not-this-one')).toBe(false)
-        expect(await mfaTicketStore.reopen(id, winner)).toBe(true)
+        expect(await mfaTicketStore.reopen(id, 'not-this-one')).toBe('no')
+        expect(await mfaTicketStore.reopen(id, winner)).toBe('reopened')
         const reopened = await mfaTicketStore.read(id)
         expect(reopened?.state).toBe('open')
         expect(reopened?.plan).toBeUndefined()
@@ -229,5 +230,134 @@ describe.skipIf(!hasRedis)('MFA ticket store (feat-245 M8)', () => {
         expect(await mfaTicketStore.retire(id, 'c')).toBe('retired')
         expect(await mfaTicketStore.read(id)).toBeNull()
         expect(await mfaTicketStore.retire(id, 'c')).toBe('absent')
+    })
+
+    // feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 1): a late failure never removes a
+    // ticket an attempt captured; a confirmed rollback deletes it at the limit.
+    it('a late fifth failure on a captured ticket counts but keeps it; the rollback deletes it', async () => {
+        const id = await open()
+        for (const r of ['r1', 'r2', 'r3', 'r4']) {
+            await mfaTicketStore.reserve(id, 'browser-a', r, NOW, TTL_MS)
+            await mfaTicketStore.settle(id, r, 'failure')
+        }
+        // r5 reserved, then abandoned (lapsed); w wins later.
+        await mfaTicketStore.reserve(id, 'browser-a', 'r5', NOW, TTL_MS)
+        const later = NOW + TTL_MS + 1
+        expect((await mfaTicketStore.reserve(id, 'browser-a', 'w', later, TTL_MS)).kind).toBe('ok')
+        expect(
+            await mfaTicketStore.capture(id, 'w', later, TTL_MS, {
+                completionId: 'cw',
+                xid: '5',
+                plan,
+            }),
+        ).toBe('ok')
+        // The late result of r5: counted, the captured ticket stays for its activation.
+        expect(await mfaTicketStore.settle(id, 'r5', 'failure')).toBe('ok')
+        const kept = await mfaTicketStore.read(id)
+        expect(kept?.state).toBe('completing')
+        expect(kept?.failures).toBe(MFA_MAX_FAILURES)
+        // Its transaction rolled back after all: back to open would be at the limit, so it goes.
+        expect(await mfaTicketStore.reopen(id, 'cw')).toBe('deleted')
+        expect(await mfaTicketStore.read(id)).toBeNull()
+    })
+
+    it('deleteIfOpen deletes an open ticket of this browser only', async () => {
+        const id = await open()
+        expect(await mfaTicketStore.deleteIfOpen(id, 'browser-b')).toBe('absent')
+        await mfaTicketStore.reserve(id, 'browser-a', 'a', NOW, TTL_MS)
+        await mfaTicketStore.capture(id, 'a', NOW, TTL_MS, { completionId: 'c', xid: '1', plan })
+        expect(await mfaTicketStore.deleteIfOpen(id, 'browser-a')).toBe('completing')
+        expect((await mfaTicketStore.read(id))?.state).toBe('completing')
+        const other = await open()
+        expect(await mfaTicketStore.deleteIfOpen(other, 'browser-a')).toBe('deleted')
+        expect(await mfaTicketStore.read(other)).toBeNull()
+        expect(await mfaTicketStore.deleteIfOpen(other, 'browser-a')).toBe('absent')
+    })
+
+    // feat-256 (item 6): a failure counted once per logical attempt.
+    it('a repeat of a counted attempt counts nothing and is refused before a reservation', async () => {
+        const id = await open()
+        await mfaTicketStore.reserve(id, 'browser-a', 'r1', NOW, TTL_MS, 'attempt-1')
+        expect(await mfaTicketStore.settle(id, 'r1', 'failure', { attemptId: 'attempt-1' })).toBe(
+            'ok',
+        )
+        // The answer was lost; the browser repeats the same request (the same attempt).
+        expect(
+            (await mfaTicketStore.reserve(id, 'browser-a', 'r2', NOW, TTL_MS, 'attempt-1')).kind,
+        ).toBe('failed')
+        // A request of that attempt still running settles its own reservation, counted once.
+        await mfaTicketStore.reserve(id, 'browser-a', 'r3', NOW, TTL_MS, 'attempt-2')
+        expect(await mfaTicketStore.settle(id, 'r3', 'failure', { attemptId: 'attempt-1' })).toBe(
+            'ok',
+        )
+        const after = await mfaTicketStore.read(id)
+        expect(after?.failures).toBe(1)
+        expect(after?.failedAttempts).toEqual(['attempt-1'])
+        expect(after?.reservations).toEqual([])
+    })
+
+    it('an attempt not counted yet (its settle never ran) counts on the repeat; a release does not block it', async () => {
+        const id = await open()
+        // The first request reserved; its count failed before it applied (no settle ran).
+        await mfaTicketStore.reserve(id, 'browser-a', 'r1', NOW, TTL_MS, 'attempt-1')
+        // The repeat replaces the live reservation of the same attempt: one place per attempt.
+        await mfaTicketStore.reserve(id, 'browser-a', 'r2', NOW, TTL_MS, 'attempt-1')
+        expect((await mfaTicketStore.read(id))?.reservations.map((r) => r.id)).toEqual(['r2'])
+        // The repeat was throttled: a release, nothing counted, the attempt may come again.
+        expect(await mfaTicketStore.settle(id, 'r2', 'release', { attemptId: 'attempt-1' })).toBe(
+            'ok',
+        )
+        await mfaTicketStore.reserve(id, 'browser-a', 'r3', NOW, TTL_MS, 'attempt-1')
+        expect(await mfaTicketStore.settle(id, 'r3', 'failure', { attemptId: 'attempt-1' })).toBe(
+            'ok',
+        )
+        // A new submission of the same code is a new attempt: counted on its own.
+        await mfaTicketStore.reserve(id, 'browser-a', 'r4', NOW, TTL_MS, 'attempt-2')
+        await mfaTicketStore.settle(id, 'r4', 'failure', { attemptId: 'attempt-2' })
+        expect((await mfaTicketStore.read(id))?.failures).toBe(2)
+    })
+
+    it('a passkey failure spends the checked challenge only while it is current; a replaced one is stale', async () => {
+        const id = await open()
+        const challenge = (value: string) => ({ key: passkeyTicketChallenges.keyOf(id), value })
+        await passkeyTicketChallenges.issue(id, 'challenge-1', 300)
+        await mfaTicketStore.reserve(id, 'browser-a', 'r1', NOW, TTL_MS, 'a1')
+        // New options replaced the challenge between the check and the count: nothing counted.
+        await passkeyTicketChallenges.issue(id, 'challenge-2', 300)
+        expect(
+            await mfaTicketStore.settle(id, 'r1', 'failure', {
+                attemptId: 'a1',
+                challenge: challenge('challenge-1'),
+            }),
+        ).toBe('stale')
+        expect((await mfaTicketStore.read(id))?.failures).toBe(0)
+        expect(await passkeyTicketChallenges.peek(id)).toBe('challenge-2')
+        // The current one: counted and spent in the same step.
+        await mfaTicketStore.reserve(id, 'browser-a', 'r2', NOW, TTL_MS, 'a2')
+        expect(
+            await mfaTicketStore.settle(id, 'r2', 'failure', {
+                attemptId: 'a2',
+                challenge: challenge('challenge-2'),
+            }),
+        ).toBe('ok')
+        expect(await passkeyTicketChallenges.peek(id)).toBeNull()
+        expect((await mfaTicketStore.read(id))?.failures).toBe(1)
+    })
+
+    it('a passkey capture needs the checked challenge and spends it', async () => {
+        const id = await open()
+        const challenge = (value: string) => ({ key: passkeyTicketChallenges.keyOf(id), value })
+        await passkeyTicketChallenges.issue(id, 'c-1', 300)
+        await mfaTicketStore.reserve(id, 'browser-a', 'a', NOW, TTL_MS)
+        await mfaTicketStore.reserve(id, 'browser-a', 'b', NOW, TTL_MS)
+        const completion = { completionId: 'cb', xid: '1', plan }
+        expect(
+            await mfaTicketStore.capture(id, 'a', NOW, TTL_MS, completion, challenge('other')),
+        ).toBe('stale')
+        expect((await mfaTicketStore.read(id))?.state).toBe('open')
+        expect(
+            await mfaTicketStore.capture(id, 'b', NOW, TTL_MS, completion, challenge('c-1')),
+        ).toBe('ok')
+        expect(await passkeyTicketChallenges.peek(id)).toBeNull()
     })
 })

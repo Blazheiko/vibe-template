@@ -48,4 +48,19 @@ export const passkeyTicketChallenges = {
     async take(ticketId: string): Promise<string | null> {
         return withRedis(() => redis.getdel(`${MFA}${ticketHash(ticketId)}`))
     },
+
+    /**
+     * feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 6): the challenge read without taking
+     * it. The second step checks an answer against it, then the ticket's failure count or capture
+     * spends it atomically, and only while it is still this value (mfa-ticket.ts): of two answers
+     * to one challenge one is counted or wins, and a count lost with its answer is not repeated.
+     */
+    async peek(ticketId: string): Promise<string | null> {
+        return withRedis(() => redis.get(`${MFA}${ticketHash(ticketId)}`))
+    },
+
+    /** The Redis key of the ticket's challenge (the client's key prefix is added by Redis). */
+    keyOf(ticketId: string): string {
+        return `${MFA}${ticketHash(ticketId)}`
+    },
 }

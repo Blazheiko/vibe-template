@@ -6,6 +6,7 @@ import assert from 'node:assert/strict'
 const {
     PROOF_ACTIONS,
     proofDecision,
+    isProofAdmissible,
     stepUpProofsOf,
     mergeSessionAuth,
     withVerified,
@@ -370,4 +371,33 @@ test('MFA reasons are unique snake_case strings', () => {
     const values = Object.values(MFA_REASONS)
     assert.equal(new Set(values).size, values.length)
     for (const value of values) assert.match(value, /^[a-z][a-z_]*$/)
+})
+
+// feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 3): a proof kept by the first step of adding
+// a factor, checked again against the factors as they are when the second step writes.
+test('isProofAdmissible: the kept proof against the account as it is now', () => {
+    const admissible = (proof, account, auth = session()) =>
+        isProofAdmissible({ action: 'mfa.add_factor', account, proof, auth, now: NOW })
+    // Without MFA: the password of an account with one, a recent sign-in of one without.
+    assert.equal(admissible('password', NO_MFA_PASSWORD), true)
+    assert.equal(admissible('recent_sign_in', NO_MFA_PASSWORD), false)
+    assert.equal(admissible('recent_sign_in', NO_MFA_OAUTH_ONLY), true)
+    assert.equal(admissible('password', NO_MFA_OAUTH_ONLY), false)
+    // MFA turned on in another session since: the password (or a recent sign-in) proves nothing.
+    assert.equal(admissible('password', TOTP), false)
+    assert.equal(admissible('recent_sign_in', PASSKEY_ONLY), false)
+    // A factor proof: only a factor the account still has.
+    assert.equal(admissible('totp', TOTP), true)
+    assert.equal(admissible('passkey', TOTP), false)
+    assert.equal(admissible('passkey', PASSKEY_ONLY), true)
+    assert.equal(admissible('totp', PASSKEY_ONLY), false)
+    // Freshness is not asked again: an old mark of the kept proof still admits it.
+    assert.equal(admissible('totp', TOTP, session({ otp: ago(86400) })), true)
+    // A recovery code: only in a recovery session still active now.
+    const recovery = (expiresAt) =>
+        session({}, { amr: ['pwd', 'recovery'], recovery: { startedAt: ago(60), expiresAt } })
+    assert.equal(admissible('recovery_code', TOTP, recovery(later(600))), true)
+    assert.equal(admissible('recovery_code', TOTP, recovery(ago(1))), false)
+    assert.equal(admissible('recovery_code', TOTP), false)
+    assert.equal(admissible('totp', TOTP, recovery(later(600))), false)
 })
