@@ -108,8 +108,8 @@ test.describe('second sign-in step', () => {
         // one logical attempt, so the same attemptId.
         const attempt = { method: 'totp', code: '123456', attemptId: expect.any(String) }
         expect(bodies).toEqual([attempt, attempt])
-        const [first, second] = bodies as { attemptId: string }[]
-        expect(second?.attemptId).toBe(first?.attemptId)
+        const ids = (bodies as { attemptId: string }[]).map((body) => body.attemptId)
+        expect(new Set(ids).size).toBe(1)
     })
 
     test('a reload during the second step shows the code form again, no new password', async ({
