@@ -35,6 +35,8 @@ const pending = failure('mfa_completion_pending')
 const OPTIONS = { data: { status: 'success', options: { challenge: 'c' } }, error: null }
 const ASSERTION = { id: 'cred', response: {} }
 const SECOND_ASSERTION = { id: 'cred', response: { second: true } }
+/** feat-256: a submission's attemptId (a UUID). */
+const ATTEMPT: unknown = expect.stringMatching(/^[\w-]{16,64}$/)
 
 const mountForm = (methods: ('webauthn' | 'totp' | 'recovery_code')[], completing = false) =>
     mount(MfaChallengeForm, {
@@ -73,7 +75,7 @@ describe('MfaChallengeForm', () => {
         await submit(wrapper)
         expect(mfaVerifyMock).toHaveBeenCalledTimes(3)
         for (const [body] of mfaVerifyMock.mock.calls) {
-            expect(body).toEqual({ method: 'webauthn', response: ASSERTION })
+            expect(body).toEqual({ method: 'webauthn', response: ASSERTION, attemptId: ATTEMPT })
         }
         expect(usePasskeyMock).toHaveBeenCalledTimes(1)
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
@@ -96,7 +98,11 @@ describe('MfaChallengeForm', () => {
         await submit(wrapper)
         expect(mfaWebauthnOptionsMock).toHaveBeenCalledTimes(1)
         expect(usePasskeyMock).toHaveBeenCalledTimes(1)
-        expect(mfaVerifyMock).toHaveBeenCalledWith({ method: 'webauthn', response: ASSERTION })
+        expect(mfaVerifyMock).toHaveBeenCalledWith({
+            method: 'webauthn',
+            response: ASSERTION,
+            attemptId: ATTEMPT,
+        })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
@@ -115,7 +121,11 @@ describe('MfaChallengeForm', () => {
         mfaVerifyMock.mockResolvedValueOnce(success)
         await submit(wrapper)
         expect(usePasskeyMock).toHaveBeenCalledTimes(1)
-        expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'webauthn', response: ASSERTION })
+        expect(mfaVerifyMock).toHaveBeenLastCalledWith({
+            method: 'webauthn',
+            response: ASSERTION,
+            attemptId: ATTEMPT,
+        })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
@@ -139,6 +149,7 @@ describe('MfaChallengeForm', () => {
         expect(mfaVerifyMock).toHaveBeenLastCalledWith({
             method: 'webauthn',
             response: SECOND_ASSERTION,
+            attemptId: ATTEMPT,
         })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
@@ -186,7 +197,11 @@ describe('MfaChallengeForm', () => {
         mfaVerifyMock.mockResolvedValueOnce(success)
         await submit(wrapper)
         expect(usePasskeyMock).toHaveBeenCalledTimes(1)
-        expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'webauthn', response: ASSERTION })
+        expect(mfaVerifyMock).toHaveBeenLastCalledWith({
+            method: 'webauthn',
+            response: ASSERTION,
+            attemptId: ATTEMPT,
+        })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
@@ -222,7 +237,11 @@ describe('MfaChallengeForm', () => {
         mfaVerifyMock.mockReset()
         mfaVerifyMock.mockResolvedValueOnce(success)
         await submit(wrapper)
-        expect(mfaVerifyMock).toHaveBeenCalledWith({ method: 'totp', code: '123456' })
+        expect(mfaVerifyMock).toHaveBeenCalledWith({
+            method: 'totp',
+            code: '123456',
+            attemptId: ATTEMPT,
+        })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
@@ -307,7 +326,11 @@ describe('MfaChallengeForm', () => {
         await wrapper.find('[data-testid="mfa-code"]').setValue('999999')
         mfaVerifyMock.mockResolvedValueOnce(success)
         await submit(wrapper)
-        expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'totp', code: '123456' })
+        expect(mfaVerifyMock).toHaveBeenLastCalledWith({
+            method: 'totp',
+            code: '123456',
+            attemptId: ATTEMPT,
+        })
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
 
@@ -352,7 +375,11 @@ describe('MfaChallengeForm', () => {
             mfaVerifyMock.mockResolvedValueOnce(success)
             await submit(wrapper)
             expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
-            expect(mfaVerifyMock).toHaveBeenLastCalledWith({ method: 'totp', code: '123456' })
+            expect(mfaVerifyMock).toHaveBeenLastCalledWith({
+                method: 'totp',
+                code: '123456',
+                attemptId: ATTEMPT,
+            })
             expect(wrapper.emitted('signed-in')).toEqual([[USER]])
         },
     )
@@ -373,7 +400,7 @@ describe('MfaChallengeForm', () => {
         expect(usePasskeyMock).toHaveBeenCalledTimes(1)
         expect(mfaVerifyMock).toHaveBeenCalledTimes(2)
         for (const [body] of mfaVerifyMock.mock.calls) {
-            expect(body).toEqual({ method: 'webauthn', response: ASSERTION })
+            expect(body).toEqual({ method: 'webauthn', response: ASSERTION, attemptId: ATTEMPT })
         }
         expect(wrapper.emitted('signed-in')).toEqual([[USER]])
     })
@@ -391,5 +418,31 @@ describe('MfaChallengeForm', () => {
         await submit(wrapper)
         expect(wrapper.find('[role="alert"]').text()).toBe(en.loginMfa.errorCode)
         expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.submit)
+    })
+
+    // feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 6).
+    it('a repeat after a 503 is the same attempt; a new submission of the same code is a new one', async () => {
+        const unavailable = {
+            data: { status: 'error', code: 'service_unavailable', message: 'down' },
+            error: { code: 'service_unavailable', transportCode: 503, message: 'down' },
+        }
+        mfaVerifyMock
+            .mockResolvedValueOnce(unavailable)
+            .mockResolvedValueOnce(failure('invalid_code'))
+            .mockResolvedValueOnce(failure('invalid_code'))
+        const wrapper = mountForm(['totp', 'recovery_code'])
+        await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+        await submit(wrapper)
+        // "Try again" after the 503 sends the kept request: the same attempt.
+        await submit(wrapper)
+        // The same code typed and sent again: a new attempt.
+        await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+        await submit(wrapper)
+        const ids = mfaVerifyMock.mock.calls.map(
+            ([body]) => (body as { attemptId: string }).attemptId,
+        )
+        expect(ids).toHaveLength(3)
+        expect(ids[1]).toBe(ids[0])
+        expect(ids[2]).not.toBe(ids[0])
     })
 })

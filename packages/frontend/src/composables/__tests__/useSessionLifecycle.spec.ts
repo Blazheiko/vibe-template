@@ -12,14 +12,15 @@ const order: string[] = []
 const push = vi.hoisted(() => vi.fn())
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
-const authApi = vi.hoisted(() => ({ logout: vi.fn() }))
+const authApi = vi.hoisted(() => ({ logout: vi.fn(), recoveryFinish: vi.fn() }))
+const mainApi = vi.hoisted(() => ({ init: vi.fn() }))
 // Any push-subscription request of a sign-out would show here.
 const pushSubscriptionApi = vi.hoisted(() => ({
     getSubscriptions: vi.fn(),
     createSubscription: vi.fn(),
     deleteSubscription: vi.fn(),
 }))
-vi.mock('@/utils/api', () => ({ authApi, pushSubscriptionApi }))
+vi.mock('@/utils/api', () => ({ authApi, mainApi, pushSubscriptionApi }))
 
 const pushStore = vi.hoisted(() => ({
     currentPushEndpoint: vi.fn(),
@@ -185,5 +186,89 @@ describe('useSessionLifecycle: a logout the server asks to repeat', () => {
         expect(await useSessionLifecycle().logout()).toBe(true)
         expect(authApi.logout).toHaveBeenCalledTimes(1)
         expect(push).toHaveBeenCalledWith('/login')
+    })
+})
+
+// feat-256 (docs/plan/mfa-review-fixes-7-plan.md, item 5): a recovery session ends only once the
+// end is confirmed: by the answer, or by main/init after an outcome the browser cannot tell.
+describe('useSessionLifecycle: finishing a recovery session', () => {
+    const retryAnswer = () =>
+        Promise.resolve({
+            data: {
+                status: 'error',
+                code: 'service_unavailable',
+                message: 'x',
+                reason: 'logout_retry',
+            },
+            error: { code: 'service_unavailable', transportCode: 503, message: 'x' },
+        })
+    const lostAnswer = () =>
+        Promise.resolve({
+            data: null,
+            error: { code: 'network', transportCode: 0, message: 'offline' },
+        })
+    const stillSignedIn = {
+        data: { status: 'ok', user: { id: '7' }, recovery: { expiresAt: 'x', replaced: true } },
+        error: null,
+    }
+    const anonymous = {
+        data: { status: 'error', code: 'unauthorized', message: 'Unauthorized' },
+        error: { code: 'unauthorized', transportCode: 401, message: 'Unauthorized' },
+    }
+
+    beforeEach(() => {
+        vi.useFakeTimers()
+    })
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    it('an answered end leaves for /login without asking main/init', async () => {
+        authApi.recoveryFinish.mockResolvedValue({ data: { status: 'success' }, error: null })
+        const { useSessionLifecycle } = await import('../useSessionLifecycle')
+        expect(await useSessionLifecycle().finishRecovery()).toBe('left')
+        expect(mainApi.init).not.toHaveBeenCalled()
+        expect(userStore.clearUser).toHaveBeenCalledTimes(1)
+        expect(push).toHaveBeenCalledWith('/login')
+    })
+
+    it('a kept session (logout_retry through every repeat) stays: kept', async () => {
+        authApi.recoveryFinish.mockImplementation(retryAnswer)
+        const { useSessionLifecycle, LOGOUT_RETRIES } = await import('../useSessionLifecycle')
+        const done = useSessionLifecycle().finishRecovery()
+        await vi.runAllTimersAsync()
+        expect(await done).toBe('kept')
+        expect(authApi.recoveryFinish).toHaveBeenCalledTimes(LOGOUT_RETRIES + 1)
+        expect(userStore.clearUser).not.toHaveBeenCalled()
+        expect(push).not.toHaveBeenCalled()
+    })
+
+    it('a lost answer while main/init still sees the recovery session: unknown, stays', async () => {
+        authApi.recoveryFinish.mockImplementation(lostAnswer)
+        mainApi.init.mockResolvedValue(stillSignedIn)
+        const { useSessionLifecycle } = await import('../useSessionLifecycle')
+        expect(await useSessionLifecycle().finishRecovery()).toBe('unknown')
+        expect(mainApi.init).toHaveBeenCalledTimes(1)
+        expect(userStore.clearUser).not.toHaveBeenCalled()
+        expect(push).not.toHaveBeenCalled()
+    })
+
+    it('a lost answer while main/init sees no session: left', async () => {
+        authApi.recoveryFinish.mockImplementation(lostAnswer)
+        mainApi.init.mockResolvedValue(anonymous)
+        const { useSessionLifecycle } = await import('../useSessionLifecycle')
+        expect(await useSessionLifecycle().finishRecovery()).toBe('left')
+        expect(push).toHaveBeenCalledWith('/login')
+    })
+
+    it('a 5xx, then main/init that cannot answer: unknown, stays', async () => {
+        authApi.recoveryFinish.mockResolvedValue({
+            data: { status: 'error', code: 'internal_error', message: 'x' },
+            error: { code: 'internal_error', transportCode: 500, message: 'x' },
+        })
+        mainApi.init.mockRejectedValue(new Error('offline'))
+        const { useSessionLifecycle } = await import('../useSessionLifecycle')
+        expect(await useSessionLifecycle().finishRecovery()).toBe('unknown')
+        expect(push).not.toHaveBeenCalled()
     })
 })
