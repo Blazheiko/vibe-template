@@ -3,6 +3,7 @@ import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
 import { userTransformer } from '#app/transformers/index.js'
 import type { Session } from '#vendor/types/types.js'
+import logger from '#vendor/utils/logger.js'
 
 // feat-245: the answer of every sign-in (password, OAuth link, second step), in its own module so
 // the second-step service and the auth service both use it without importing each other.
@@ -25,13 +26,22 @@ export interface AuthSuccessPayload {
 export async function authSuccessPayload(
     user: Parameters<typeof userTransformer.serialize>[0],
     session: Session,
+    /**
+     * feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 7): `optional` for an answer built after
+     * the session cookie was issued (the MFA activation): a token that cannot be issued is left
+     * empty, main/init brings it. Every other sign-in keeps a failure a failure.
+     */
+    options: { wsToken?: 'required' | 'optional' } = {},
 ): Promise<AuthSuccessPayload> {
     const sessionInfo = session.sessionInfo
     let wsToken = ''
     if (sessionInfo !== null) {
-        const wsTokenResult = await generateWsToken(sessionInfo, String(user.id))
-
-        wsToken = wsTokenResult
+        try {
+            wsToken = await generateWsToken(sessionInfo, String(user.id))
+        } catch (err) {
+            if (options.wsToken !== 'optional') throw err
+            logger.warn({ err, userId: String(user.id) }, 'WebSocket token not issued; main/init')
+        }
     }
 
     const csrfToken = getSessionCsrfToken(sessionInfo)

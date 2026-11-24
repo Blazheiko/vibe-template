@@ -1044,12 +1044,7 @@ export const authService = {
         await resetThrottleQuietly(throttlePolicies.loginIdentifier, loginKey.value, 'Login')
 
         // feat-245 (Р4): an account with a second factor gets a ticket, not a session.
-        const second = await startSecondStepIfRequired(
-            auth,
-            session.sessionInfo?.id ?? null,
-            user,
-            { method: 'password' },
-        )
+        const second = await startSecondStepIfRequired(auth, user, { method: 'password' })
         if (Result.isError(second)) return Result.err(second.error)
         if (second.value !== null) {
             const csrfToken = getSessionCsrfToken(session.sessionInfo)

@@ -8,7 +8,8 @@ import { sanitizeRedisKey } from '#vendor/utils/session/redis-session-storage.js
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the one-time ticket between the first factor and
 // the second. It lives in Redis under the hash of a random id that only the browser holds (an
-// HttpOnly cookie), and is bound to that browser's session cookie.
+// HttpOnly cookie), and is bound to that browser by a second cookie (feat-257: `mfa_bind`, a
+// random value of its own, which outlives a replaced or deleted session).
 //
 // States: `open` (attempts may run) → `completing` (one attempt won; the plan of the session and
 // the transaction id are stored) → `activated` (the session exists) → deleted. A known rollback
@@ -67,11 +68,17 @@ export const mfaTicketKey = (ticketId: string): string =>
 
 export const newTicketId = (): string => randomBytes(32).toString('base64url')
 
-/** The browser binding (Р4): a keyed hash of the session id the browser's cookie names. */
-export const mfaBinding = (sessionId: string): string =>
+/**
+ * The browser binding (Р4): a keyed hash of the value of the ticket's binding cookie (feat-257,
+ * `mfa_bind`; before it, the session id, which a replaced session took away).
+ */
+export const mfaBinding = (bindValue: string): string =>
     createHmac('sha256', appConfig.key ?? '')
-        .update(`mfa-binding:${sessionId}`)
+        .update(`mfa-bind:${bindValue}`)
         .digest('base64url')
+
+/** feat-257: a new value of the binding cookie, one per ticket. */
+export const newBindValue = (): string => randomBytes(32).toString('base64url')
 
 // Lua: cjson turns an empty array into an empty object; the TS side normalizes both.
 const LUA_COMMON = `

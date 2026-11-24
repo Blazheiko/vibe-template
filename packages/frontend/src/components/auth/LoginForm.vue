@@ -75,13 +75,17 @@ const methodsOfQuery = (): SecondStepMethod[] => {
     const methods = SECOND_STEP_METHODS.filter((method) => raw.includes(method))
     return methods.length > 0 ? methods : ['totp', 'recovery_code']
 }
-const secondStep = ref<SecondStepMethod[] | null>(
-    route.query.mfa === 'required' ? methodsOfQuery() : null,
-)
+/**
+ * The second step shown from the query of an OAuth return, not by a sign-in on this page; false
+ * once this page restarts the sign-in or opens a second step of its own.
+ */
+let secondStepFromQuery = route.query.mfa === 'required'
+const secondStep = ref<SecondStepMethod[] | null>(secondStepFromQuery ? methodsOfQuery() : null)
 /** The ticket is finishing a confirmed attempt: the form continues it at once. */
 const secondStepCompleting = ref(false)
 const restartSignIn = (message: string): void => {
     secondStep.value = null
+    secondStepFromQuery = false
     secondStepCompleting.value = false
     loginError.value = message
 }
@@ -91,8 +95,14 @@ const restartSignIn = (message: string): void => {
 // and a confirmed attempt is finished by `continue`. Only `mfa_required` changes the form; any
 // other answer (none, an error, no network) leaves the password form.
 let secondStepAsked = false
-/** A sign-in started (or its second step shown) while the answer was on its way wins. */
-const signInUnderway = (): boolean => secondStep.value !== null || isLoginLoading.value
+/**
+ * A sign-in started (or its second step shown) while the answer was on its way wins. feat-257
+ * (docs/plan/mfa-review-fixes-7-plan.md, item 2): a second step shown from the query of an OAuth
+ * return is no sign-in of this page: after a reload (or the reload of `account_changed`) the ticket
+ * may be finishing, and the answer tells the form to continue it.
+ */
+const signInUnderway = (): boolean =>
+    (secondStep.value !== null && !secondStepFromQuery) || isLoginLoading.value
 async function restoreSecondStep(): Promise<void> {
     if (secondStepAsked || signInUnderway() || !consumePageLoadAsk()) return
     secondStepAsked = true
@@ -223,6 +233,7 @@ async function handleLogin(): Promise<void> {
 
         if (data?.status === 'mfa_required') {
             loginPassword.value = ''
+            secondStepFromQuery = false
             secondStep.value = data.methods
             return
         }

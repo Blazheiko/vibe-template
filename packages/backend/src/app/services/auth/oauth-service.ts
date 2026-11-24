@@ -634,7 +634,6 @@ export const oauthService = {
         if (linked.secondStep) {
             const second = await startSecondStepIfRequired(
                 auth,
-                sessionId,
                 { id: verification.userId, sessionToken: linked.sessionToken },
                 { method: 'oauth', provider: verification.provider },
                 {
@@ -758,14 +757,11 @@ async function finishSignIn(
     sessionToken: string,
     provider: string,
     notice: SignInNotice,
-    /** feat-245 (Р4): the browser session a second step would be bound to. */
-    sessionId: string | null,
     pendingOAuthLink?: PendingOAuthLink,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     // feat-245 (Р4): an account with a second factor gets a ticket, not a session.
     const second = await startSecondStepIfRequired(
         auth,
-        sessionId,
         { id: userId, sessionToken },
         { method: 'oauth', provider },
         pendingOAuthLink !== undefined ? { pendingOAuthLink } : {},
@@ -791,7 +787,6 @@ async function linkTrusted(
     userId: bigint,
     identity: OAuthIdentity,
     request: AuditRequest,
-    sessionId: string | null,
 ): Promise<AppResult<{ redirectUrl: string }>> {
     // feat-235: nobody is signed in; the provider's proof of the address allows the link.
     const actor = proofHolderOf('oauth_provider_email', request)
@@ -839,15 +834,10 @@ async function linkTrusted(
     if (linked.kind === 'missing') return Result.err(notFound('User', 'User not found'))
     if (linked.kind === 'changed') return Result.err(emailChanged())
     if (linked.kind === 'second_step') {
-        return await finishSignIn(
-            auth,
-            userId,
-            linked.sessionToken,
-            identity.provider,
-            'none',
-            sessionId,
-            { ...identity, proof: 'oauth_provider_email' },
-        )
+        return await finishSignIn(auth, userId, linked.sessionToken, identity.provider, 'none', {
+            ...identity,
+            proof: 'oauth_provider_email',
+        })
     }
     auditService.logCommitted(actor.logger, linked.events)
 
@@ -864,7 +854,6 @@ async function linkTrusted(
         linked.sessionToken,
         identity.provider,
         linked.claimed ? 'push' : 'none',
-        sessionId,
     )
 }
 
@@ -997,14 +986,7 @@ async function signInWithIdentity(
                 badRequest('This sign-in method was removed from the account', OAUTH_LINK_REVOKED),
             )
         }
-        return await finishSignIn(
-            auth,
-            existingOAuth.userId,
-            signIn.sessionToken,
-            provider,
-            'full',
-            sessionId,
-        )
+        return await finishSignIn(auth, existingOAuth.userId, signIn.sessionToken, provider, 'full')
     }
 
     const existingUser = await userRepository.findByEmail(providerEmail)
@@ -1019,7 +1001,7 @@ async function signInWithIdentity(
 
     if (existingUser !== undefined) {
         if (emailTrust === 'authoritative') {
-            return await linkTrusted(auth, existingUser.id, identity, request, sessionId)
+            return await linkTrusted(auth, existingUser.id, identity, request)
         }
         // Any other provider: the account's owner confirms the link by mail, from this
         // browser session (feat-097).
@@ -1063,14 +1045,7 @@ async function signInWithIdentity(
     }
 
     // A registration: nobody else could have signed in to this new account (Р11).
-    const signedIn = await finishSignIn(
-        auth,
-        newUser.id,
-        newUser.sessionToken,
-        provider,
-        'none',
-        sessionId,
-    )
+    const signedIn = await finishSignIn(auth, newUser.id, newUser.sessionToken, provider, 'none')
     if (Result.isOk(signedIn) && !authoritative) {
         await sendFirstEmailLinkQuietly(newUser.id, providerEmail, newUser.sessionToken)
     }

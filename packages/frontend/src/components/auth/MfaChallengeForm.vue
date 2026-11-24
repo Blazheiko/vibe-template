@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MfaVerifyInput } from 'shared/schemas'
 import type { SignedInUser } from '@/composables/useCompleteSignIn'
@@ -169,15 +169,25 @@ async function submit(): Promise<void> {
 }
 
 /** After a reload: a confirmed attempt is finishing and nothing is kept to repeat. */
-onMounted(async () => {
-    if (!props.completing) return
+async function continueCompleting(): Promise<void> {
+    if (!props.completing || busy.value || pendingBody.value !== null) return
     busy.value = true
     try {
         await send({ method: 'continue' })
     } finally {
         busy.value = false
     }
-})
+}
+onMounted(continueCompleting)
+// feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 2): the form may be up before the page
+// load's POST /auth/mfa/state says the ticket is finishing (an OAuth return shows it from the
+// query at once): it continues as soon as that answer arrives.
+watch(
+    () => props.completing,
+    (completing) => {
+        if (completing) void continueCompleting()
+    },
+)
 
 /** feat-246: the options of the ticket, the passkey dialog, then the same verify request. */
 async function withPasskey(): Promise<void> {

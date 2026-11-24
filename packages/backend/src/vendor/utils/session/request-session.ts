@@ -92,6 +92,14 @@ export const mfaTicketCookieName = (): string =>
     sessionConfig.useHostPrefix ? '__Host-mfa' : 'mfa'
 
 /**
+ * feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 2): the cookie the ticket is bound to, a
+ * random value of its own for each ticket, set and cleared with the ticket cookie. It outlives a
+ * replaced or deleted session, so a sign-in confirmed before a lost answer can still be finished.
+ */
+export const mfaBindCookieName = (): string =>
+    sessionConfig.useHostPrefix ? '__Host-mfa_bind' : 'mfa_bind'
+
+/**
  * feat-245 (Р4): what the application does when a request comes with the session a second-step
  * sign-in created and with the ticket cookie (the browser got the answer): it retires the ticket.
  * Registered at start (app/start), so this module does not import the application.
@@ -233,7 +241,6 @@ export class RequestSession {
      * feat-245 (Р4): the session id the request's cookie named, verified by its signature, whatever
      * became of that session (an anonymous one replaced by a sign-in whose answer was lost).
      */
-    private readonly cookieSessionId: string | undefined
 
     private constructor(
         private readonly context: HttpContext,
@@ -242,14 +249,12 @@ export class RequestSession {
             cookieHeld: boolean
             storageToken: string
             presentedUserToken?: string
-            cookieSessionId?: string
         },
     ) {
         this.info = info
         this.cookieHeld = state.cookieHeld
         this.storageToken = state.storageToken
         this.presentedUserToken = state.presentedUserToken
-        this.cookieSessionId = state.cookieSessionId
     }
 
     /**
@@ -346,12 +351,10 @@ export class RequestSession {
             presentedUserToken !== undefined && typeof info.data.userId === 'string'
                 ? presentedUserToken
                 : undefined
-        const cookieSessionId = incoming.kind === 'none' ? undefined : incoming.sessionId
         const session = new RequestSession(context, info, {
             cookieHeld,
             storageToken: userToken ?? ANON_TOKEN,
             ...(signedInToken !== undefined ? { presentedUserToken: signedInToken } : {}),
-            ...(cookieSessionId !== undefined ? { cookieSessionId } : {}),
         })
 
         if (startsNew) {
@@ -404,9 +407,10 @@ export class RequestSession {
         auth.logout = this.logout.bind(this)
         auth.logoutAll = this.logoutAll.bind(this)
         auth.planLogin = this.planLogin.bind(this)
-        auth.getCookieSessionId = (): string | undefined => this.cookieSessionId ?? this.info.id
         auth.getMfaTicketCookie = (): string | undefined =>
             this.context.httpData.cookies.get(mfaTicketCookieName()) ?? undefined
+        auth.getMfaBindCookie = (): string | undefined =>
+            this.context.httpData.cookies.get(mfaBindCookieName()) ?? undefined
         auth.setMfaTicketCookie = this.setMfaTicketCookie.bind(this)
         auth.prepareLogin = this.prepareLogin.bind(this)
         auth.activateLogin = this.activateLogin.bind(this)
@@ -771,17 +775,33 @@ export class RequestSession {
         })
     }
 
-    /** feat-245 (Р4): the second-step ticket id, or null to clear it. */
-    private setMfaTicketCookie(ticketId: string | null, maxAgeSeconds: number): void {
+    /**
+     * feat-245 (Р4): the second-step ticket id, or null to clear it. feat-257: with its binding
+     * cookie (`bind`, required with a ticket), set and cleared together, with the same attributes.
+     */
+    private setMfaTicketCookie(
+        ticketId: string | null,
+        maxAgeSeconds: number,
+        bind?: string,
+    ): void {
+        if (ticketId !== null && (bind === undefined || bind === '')) {
+            throw new Error('A second-step ticket cookie needs its binding cookie')
+        }
         const maxAge = ticketId === null ? 0 : maxAgeSeconds
-        this.context.responseData.setCookie(mfaTicketCookieName(), ticketId ?? '', {
+        const attributes = {
             path: '/',
             httpOnly: true,
             secure: sessionConfig.cookie.secure,
             maxAge,
-            sameSite: 'Strict',
+            sameSite: 'Strict' as const,
             expires: new Date(Date.now() + maxAge * 1000),
-        })
+        }
+        this.context.responseData.setCookie(mfaTicketCookieName(), ticketId ?? '', attributes)
+        this.context.responseData.setCookie(
+            mfaBindCookieName(),
+            ticketId === null ? '' : (bind ?? ''),
+            attributes,
+        )
     }
 
     /** The signed cookie of a stored session: `<userToken | anon_session>.<sessionId>`. */

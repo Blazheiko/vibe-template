@@ -6,7 +6,7 @@ import type { APIRequestContext, Browser, BrowserContext, Page } from '@playwrig
 
 import { randomUUID } from 'node:crypto'
 
-import { ORIGIN, SMTP_PORT } from './fixtures'
+import { API, ORIGIN, SMTP_PORT } from './fixtures'
 import { MailSink } from './mail-sink'
 import { stepNow, totpAt } from './totp'
 
@@ -136,7 +136,7 @@ export async function loginInUi(page: Page, account: Account): Promise<void> {
     await page.locator('#login-password').fill(account.password)
     const signedIn = page.waitForResponse(
         (response) =>
-            new URL(response.url()).pathname === '/api/auth/login' &&
+            new URL(response.url()).pathname === `${API}/auth/login` &&
             response.request().method() === 'POST',
     )
     await page
@@ -160,7 +160,7 @@ async function answerSecondStep(page: Page, account: Account): Promise<void> {
     for (let attempt = 0; ; attempt += 1) {
         const verified = page.waitForResponse(
             (response) =>
-                new URL(response.url()).pathname === '/api/auth/mfa/verify' &&
+                new URL(response.url()).pathname === `${API}/auth/mfa/verify` &&
                 response.request().method() === 'POST',
         )
         await page.getByTestId('mfa-code').fill(await nextTotp(secret))
@@ -180,13 +180,13 @@ async function answerSecondStep(page: Page, account: Account): Promise<void> {
  */
 export async function enrollTotp(request: APIRequestContext): Promise<string> {
     const tab = session(request)
-    const setup = await tab.post('/api/account/mfa/totp/setup', {})
+    const setup = await tab.post(`${API}/account/mfa/totp/setup`, {})
     expect(setup.status()).toBe(200)
     const { enrollmentId, secret } = (await setup.json()) as {
         enrollmentId: string
         secret: string
     }
-    const confirmed = await tab.post('/api/account/mfa/totp/confirm', {
+    const confirmed = await tab.post(`${API}/account/mfa/totp/confirm`, {
         enrollmentId,
         code: await nextTotp(secret),
     })
@@ -199,7 +199,7 @@ export async function enrollTotp(request: APIRequestContext): Promise<string> {
  */
 export const session = (request: APIRequestContext) => ({
     async token(): Promise<string> {
-        const response = await request.get('/api/main/init')
+        const response = await request.get(`${API}/main/init`)
         const body = (await response.json()) as { csrfToken: string }
         return body.csrfToken
     },
@@ -209,7 +209,7 @@ export const session = (request: APIRequestContext) => ({
     },
     /** The e-mail of the signed-in user, or null when the session is not valid. */
     async whoAmI(): Promise<string | null> {
-        const response = await request.get('/api/main/init')
+        const response = await request.get(`${API}/main/init`)
         if (response.status() === 401) return null
         const body = (await response.json()) as { user: { email: string } }
         return body.user.email
@@ -259,7 +259,7 @@ export async function createVerifiedAccount(
     const { context } = await newBrowser(browser)
     try {
         const tab = session(context.request)
-        const registered = await tab.post('/api/auth/register/email', {
+        const registered = await tab.post(`${API}/auth/register/email`, {
             name: 'Live E2E',
             email: account.email,
             password: account.password,
@@ -270,7 +270,7 @@ export async function createVerifiedAccount(
             await linkFromMail(sink, account.email, '/verify-email'),
         ).searchParams.get('token')
         // feat-097: from a signed-out browser the registration link needs the password.
-        const verified = await tab.post('/api/auth/verify-email', {
+        const verified = await tab.post(`${API}/auth/verify-email`, {
             token,
             password: account.password,
         })
