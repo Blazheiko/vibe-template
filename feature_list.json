@@ -2563,6 +2563,16 @@
             "dependencies": ["feat-256"],
             "status": "done",
             "evidence": "PR #817 (merge 1973aa3), registry #816 (in_progress), #818 (review). Items 2 and 7 of docs/plan/mfa-review-fixes-7-plan.md: the second-step ticket is bound to its own cookie mfa_bind (a random value per ticket, set and cleared with the ticket cookie, Path=/, HttpOnly, SameSite=Strict, the same lifetime) instead of the session id, so a lost activation answer is finished after the previous session was deleted (csrf_guard and the account_changed reload kept); the sign-in page asks mfa/state on page load also on an OAuth return and the form continues a completing ticket; the activation reads the user before the cookie, and a WebSocket token Redis cannot issue after an MFA activation is left empty for main/init. Plan revision 8 of Р4. Browser tests e2e-live/mfa-continuation.spec.ts (an OAuth-start anonymous session in Redis, a signed-in session of another account), also with API_PATH_PREFIX=v2/api (playwright.live-prefix.config.ts). CI on the branch head 8ab0df3: ci.yml run 45361950165 (e2e-live: 44 + 3 + prefix 2 passed), pg-tests.yml run 45361950017, redis-tests.yml run 45361950115, all success. Local: make check green (backend 3702, frontend 1015, shared 149), test:pg 717, test:redis 205, test:e2e 134, docs verify."
+        },
+        {
+            "id": "feat-258",
+            "name": "MFA Review Fixes 8",
+            "description": "Review of feat-256 and feat-257 (2026-11-24, REQUEST CHANGES); plan docs/plan/mfa-review-fixes-7-plan.md, section feat-258. (8.1, P1) a Redis failure of deleteIfOpen in the revoked branch counts as absent and clears both MFA cookies though a parallel attempt may have confirmed the sign-in: let it reach the error handler (503) with the cookies kept, clear them only after a confirmed deleted or absent; (8.2) tickets without mfa_bind from before feat-257 cannot continue: a deployment warning (drain the 5-minute tickets), no transition layer (template, no backward compatibility); (8.3) a 403 with clientCode session_unverified (or account_changed) clears the MFA form's kept request: keep it; a live two-tab test of the automatic account_changed reload (nothing spent, the ticket stays open); (8.4) a TOTP setup refused by keptProofRefusal stays in the session: keep its id in a string key and remove it atomically for that enrollmentId, as the passkey branch does.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-8",
+            "dependencies": ["feat-257"],
+            "status": "in_progress",
+            "evidence": ""
         }
     ]
 }
