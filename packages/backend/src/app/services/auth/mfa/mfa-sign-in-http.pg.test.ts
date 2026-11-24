@@ -570,6 +570,90 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         expect(await browser.ticket()).toBeNull()
     })
 
+    // feat-259 (docs/plan/mfa-review-fixes-7-plan.md, 9.1): the whole scenario of 8.1. Attempt B
+    // (TOTP) holds a reservation of the open ticket and waits for the user's row lock; meanwhile
+    // attempt A (a recovery code) captures the ticket, rotates the token and commits, its
+    // activation stopped by a Redis failure. B then finds the token rotated (the revoked branch):
+    // the ticket is A's, and the browser still finishes A's sign-in by `continue` with the same
+    // cookies, whether deleting B's ticket failed (503) or found it captured (401 mfa_ticket_used).
+    const confirmedParallelSignIn = async (name: string, deleteFails: boolean) => {
+        const { RedisUnavailableError } =
+            await import('#vendor/utils/network/errors/redis-unavailable-error.js')
+        const user = await mfaUser(name)
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        const codesBefore = await unusedCodes(user.row.id)
+
+        let reachedLock: () => void = () => undefined
+        const atLock = new Promise<void>((resolve) => {
+            reachedLock = resolve
+        })
+        let openLock: () => void = () => undefined
+        const lockOpen = new Promise<void>((resolve) => {
+            openLock = resolve
+        })
+        const lockById = userRepository.lockById.bind(userRepository)
+        vi.spyOn(userRepository, 'lockById').mockImplementationOnce(async (...args) => {
+            reachedLock()
+            await lockOpen
+            return lockById(...args)
+        })
+        const attemptB = browser.request('POST', '/auth/mfa/verify', {
+            method: 'totp',
+            code: user.code(),
+        })
+        await atLock
+
+        // A: the recovery code wins and commits; its activation is stopped.
+        inject.activate = () => Promise.resolve()
+        const attemptA = await browser.request('POST', '/auth/mfa/verify', {
+            method: 'recovery_code',
+            code: user.codes[0] ?? '',
+        })
+        expect(attemptA.body).toMatchObject({ reason: 'mfa_completion_pending' })
+        expect(await unusedCodes(user.row.id)).toBe(codesBefore - 1)
+        expect((await browser.ticket())?.state).not.toBe('open')
+
+        if (deleteFails) {
+            vi.spyOn(mfaTicketStore, 'deleteIfOpen').mockRejectedValueOnce(
+                new RedisUnavailableError('Redis down (delete)'),
+            )
+        }
+        openLock()
+        const revoked = await attemptB
+        if (deleteFails) {
+            expect(revoked.status).toBe(503)
+            expect(revoked.body).toMatchObject({ code: 'service_unavailable' })
+        } else {
+            expect(revoked.status).toBe(401)
+            expect(revoked.body).toMatchObject({ reason: 'mfa_ticket_used' })
+        }
+        // Neither answer clears the cookies A's sign-in needs.
+        expect(revoked.cookies.has(MFA_COOKIE)).toBe(false)
+        expect(revoked.cookies.has(mfaBindCookieName())).toBe(false)
+
+        // The browser finishes the confirmed sign-in with the same cookies.
+        const done = browser.keep(
+            await browser.request('POST', '/auth/mfa/verify', { method: 'continue' }),
+        )
+        expect(done.status).toBe(200)
+        expect(done.body).toMatchObject({
+            status: 'success',
+            user: { id: String(user.row.id) },
+            recovery: { replaced: false },
+        })
+        expect(await unusedCodes(user.row.id)).toBe(codesBefore - 1)
+        expect(newSignIn).toHaveBeenCalledTimes(1)
+    }
+
+    it("a confirmed parallel sign-in survives a Redis failure deleting the revoked attempt's ticket: continue finishes it", async () => {
+        await confirmedParallelSignIn('mfa-parallel-delete-down', true)
+    })
+
+    it('a confirmed parallel sign-in: the revoked attempt gets mfa_ticket_used, continue finishes it', async () => {
+        await confirmedParallelSignIn('mfa-parallel-revoked', false)
+    })
+
     it('two right proofs at once: one session; the proof of the other is given back', async () => {
         const user = await mfaUser('mfa-race')
         const browser = new Browser()

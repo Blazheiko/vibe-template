@@ -214,14 +214,22 @@ export const totpService = {
     ): Promise<AppResult<{ recoveryCodes: string[] | null }>> {
         const { userId, session } = request
         const now = request.now ?? Date.now()
-        const pending = session.sessionInfo?.data[TOTP_ENROLLMENT_KEY]
-        const enrollment =
+        const data = session.sessionInfo?.data
+        const pending = data?.[TOTP_ENROLLMENT_KEY]
+        // feat-259 (docs/plan/mfa-review-fixes-7-plan.md, 9.2): a setup not written yet is taken
+        // only with its id key too, so a refusal can always remove it for that id; one stored
+        // without it (before feat-258) is set up again. A committed enrollment is finished below
+        // whatever the session holds.
+        const held =
             isEnrollment(pending) && pending.enrollmentId === input.enrollmentId ? pending : null
+        const enrollment =
+            held !== null && data?.[TOTP_ENROLLMENT_ID_KEY] === held.enrollmentId ? held : null
 
-        // A repeat of a confirmation that committed: finish the session write only.
+        // A repeat of a confirmation that committed: finish the session write only (the setup this
+        // session holds for it, with or without its id key).
         const committed = await totpFactorRepository.findByEnrollment(userId, input.enrollmentId)
         if (committed !== undefined) {
-            if (enrollment === null) return Result.ok({ recoveryCodes: null })
+            if (held === null) return Result.ok({ recoveryCodes: null })
             const finished = await finishInSession(session, committed, now)
             if (Result.isError(finished)) return Result.err(finished.error)
             return Result.ok({ recoveryCodes: null })

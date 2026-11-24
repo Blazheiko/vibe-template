@@ -347,6 +347,52 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         expect(events[0]?.metadata).toMatchObject({ proof: 'password' })
     })
 
+    // feat-259 (docs/plan/mfa-review-fixes-7-plan.md, 9.2): a setup stored without its id key
+    // (before feat-258) cannot be removed for its id after a refusal, so it is set up again.
+    it('a setup without its id key is set up again; nothing is written', async () => {
+        const user = await newUser()
+        const session = fakeSession({ auth: freshPassword })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        await session.updateSessionData({ totpEnrollmentId: undefined })
+        const confirmed = await totpService.confirm(request(user, session), { enrollmentId, code })
+        expect(confirmed.status === 'error' && confirmed.error).toMatchObject({
+            reason: 'enrollment_not_found',
+        })
+        expect(await factorsOf(user.id)).toHaveLength(0)
+    })
+
+    it('a committed setup without its id key still finishes its session write (R+)', async () => {
+        const user = await newUser()
+        const first = fakeSession({ auth: freshPassword })
+        const initial = await setupAndCode(user, first)
+        await totpService.confirm(request(user, first), initial)
+        const recovery = fakeSession({
+            auth: {
+                v: 1,
+                amr: ['pwd', 'recovery'],
+                aal: 1,
+                authenticatedAt: iso(-30),
+                verified: { pwd: iso(-30) },
+                recovery: { startedAt: iso(-30), expiresAt: iso(870) },
+            },
+        })
+        const { enrollmentId, code } = await setupAndCode(user, recovery, 1n)
+        recovery.failNextAuthWrite()
+        await expect(
+            totpService.confirm(request(user, recovery), { enrollmentId, code }),
+        ).rejects.toThrow(/Redis down/)
+        // The session lost the id key meanwhile (a setup stored the old way).
+        await recovery.updateSessionData({ totpEnrollmentId: undefined })
+        const repeated = await totpService.confirm(request(user, recovery), {
+            enrollmentId,
+            code: '000000',
+        })
+        expect(repeated.status).toBe('ok')
+        expect(recovery.sessionInfo?.data.auth?.recovery?.replacementFactor).toMatchObject({
+            kind: 'totp',
+        })
+    })
+
     it('a repeat after a commit whose session write failed records R+ without a second version', async () => {
         const user = await newUser()
         // A recovery session: TOTP already on (the lost phone), replaced here.
