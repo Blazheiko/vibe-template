@@ -2543,6 +2543,26 @@
             "dependencies": ["feat-254"],
             "status": "done",
             "evidence": "PR #809 (merge 3380374), registry #808 (in_progress), #810 (review). ADR 0004 applied to services/auth/mfa: infrastructure failures of the ticket store and the passkey ticket challenges throw (503 for Redis via classifyError, 500 for a bug); the known rollback compensates and rethrows; mfa_completion_pending only for failures a repeat can outlive (isRepeatableFailure); silent best-effort catches log a warn. CI on the branch head cddb1c6: ci.yml run 45252594355, pg-tests.yml run 45252594374, redis-tests.yml run 45252594397, all success. Local: make check green (backend 3702, frontend 1001, shared 148), test:pg 703, test:redis 199, test:e2e 133, docs verify."
+        },
+        {
+            "id": "feat-256",
+            "name": "MFA Review Fixes 7",
+            "description": "Review of the passkeys-MFA plan revision 7 and feat-245…feat-255 (2026-11-23, REQUEST CHANGES); plan docs/plan/mfa-review-fixes-7-plan.md, items 1, 3, 4, 5, 6. (1) A late failure must not delete a captured ticket: SETTLE counts but never deletes outside `open`; a confirmed rollback deletes a ticket at the limit and answers ticketInvalid with the cookie cleared; the revoked branch deletes only an `open` ticket atomically; (3) the proof kept by the TOTP setup / passkey options is checked under the lock against the current factors before a new factor is written (isProofAdmissible), the TOTP form restarts the setup on reauth_required; (4) the passkey list keeps the register request for a repeat after an unknown outcome; (5) finishing a recovery leaves only after a confirmed logout (logout_retry repeats, an unknown outcome is checked through main/init); (6) a Redis failure while counting a wrong proof answers 503, and the count is idempotent per logical attempt (attemptId, failedAttempts; the passkey challenge is spent atomically with the count).",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-review-7",
+            "dependencies": ["feat-255"],
+            "status": "in_progress",
+            "evidence": ""
+        },
+        {
+            "id": "feat-257",
+            "name": "MFA Continuation Binding",
+            "description": "Plan docs/plan/mfa-review-fixes-7-plan.md, items 2 and 7. (2) The MFA ticket is bound to its own browser cookie mfa_bind (Path=/, per ticket, cleared with it) instead of the session id, so a lost activation answer can be finished after the previous session was deleted; csrf_guard and the account_changed reload stay, the form finishes through mfa/state and continue (after the reload for another account); (7) nothing throws after the session cookie is issued: the user is read before the activation, a WS token failure of an MFA activation answers success with an empty token and main/init brings it. Browser tests: OAuth, a previous session of another account, a custom API prefix; plan revision 8 of Р4.",
+            "owner": "Blazheiko",
+            "branch": "fix/mfa-continuation-binding",
+            "dependencies": ["feat-256"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
