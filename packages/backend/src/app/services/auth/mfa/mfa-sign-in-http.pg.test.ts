@@ -538,6 +538,38 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         expect(after.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
     })
 
+    // feat-258 (docs/plan/mfa-review-fixes-7-plan.md, 8.1): an unknown outcome of deleting the
+    // ticket of a revoked attempt keeps both MFA cookies; a parallel attempt may have confirmed it.
+    it("a Redis failure deleting a revoked attempt's ticket: 503, both MFA cookies and the ticket kept", async () => {
+        const { RedisUnavailableError } =
+            await import('#vendor/utils/network/errors/redis-unavailable-error.js')
+        const user = await mfaUser('mfa-revoked-delete-down')
+        const browser = new Browser()
+        await browser.firstFactor(user.email)
+        await db
+            .update(users)
+            .set({ sessionToken: crypto.randomUUID().slice(0, 24) })
+            .where(eq(users.id, user.row.id))
+        vi.spyOn(mfaTicketStore, 'deleteIfOpen').mockRejectedValueOnce(
+            new RedisUnavailableError('Redis down (delete)'),
+        )
+        const body = { method: 'totp', code: user.code() }
+        const failed = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(failed.status).toBe(503)
+        expect(failed.body).toMatchObject({ code: 'service_unavailable' })
+        expect(failed.cookies.has(MFA_COOKIE)).toBe(false)
+        expect(failed.cookies.has(mfaBindCookieName())).toBe(false)
+        expect((await browser.ticket())?.state).toBe('open')
+
+        // Redis back: the repeat finds the ticket open and deletes it, then the cookies go.
+        const repeat = await browser.request('POST', '/auth/mfa/verify', body)
+        expect(repeat.status).toBe(401)
+        expect(repeat.body).toMatchObject({ reason: 'session_revoked' })
+        expect(repeat.cookies.get(MFA_COOKIE)).toBe('')
+        expect(repeat.cookies.get(mfaBindCookieName())).toBe('')
+        expect(await browser.ticket()).toBeNull()
+    })
+
     it('two right proofs at once: one session; the proof of the other is given back', async () => {
         const user = await mfaUser('mfa-race')
         const browser = new Browser()

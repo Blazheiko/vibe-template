@@ -110,8 +110,17 @@ async function send(body: MfaVerifyInput): Promise<void> {
         }
         // A final answer ends the pending request; any other failure (the network, a 503
         // without a reason) keeps it, so the retry still continues the confirmed attempt.
+        // feat-258 (docs/plan/mfa-review-fixes-7-plan.md, 8.3): a 403 the client could not repeat
+        // (its CSRF refresh failed, or the session belongs to another account now) is no answer
+        // to this request: csrf_guard refused it before the proof was looked at, and the server
+        // may have confirmed an earlier send of it, so it stays for "Try again".
         const status = failure?.transportCode
-        if (isFinal(reason, status === 0 ? undefined : status)) pendingBody.value = null
+        const unanswered =
+            failure?.clientCode === 'session_unverified' ||
+            failure?.clientCode === 'account_changed'
+        if (!unanswered && isFinal(reason, status === 0 ? undefined : status)) {
+            pendingBody.value = null
+        }
         if (reason === 'mfa_ticket_invalid' || reason === 'session_revoked') {
             emit('restart', t('loginMfa.errorRestart'))
             return

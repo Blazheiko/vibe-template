@@ -581,13 +581,11 @@ async function attempt(
                     // A recovery sign-in of a parallel attempt rotated the token: that attempt
                     // won, and its ticket stays for its continuation. feat-256: one atomic step
                     // (DELETE_IF_OPEN_LUA), so an attempt that captures it between a read and a
-                    // delete keeps it.
-                    const deleted = await bestEffort(
-                        mfaTicketStore.deleteIfOpen(ticketId, ticket.binding),
-                        'absent' as const,
-                        'Revoked ticket not deleted; it lapses with its TTL',
-                        { userId: ticket.userId },
-                    )
+                    // delete keeps it. feat-258 (8.1): a Redis failure here is an unknown outcome,
+                    // not `absent`: it reaches the error handler (503, ADR 0004) with both MFA
+                    // cookies kept, so the repeat still finishes a sign-in the parallel attempt
+                    // confirmed. The cookies go only once the ticket is known deleted or absent.
+                    const deleted = await mfaTicketStore.deleteIfOpen(ticketId, ticket.binding)
                     if (deleted === 'completing' || deleted === 'activated') {
                         return Result.err(
                             unauthorized('Signed in already', MFA_REASONS.mfaTicketUsed),

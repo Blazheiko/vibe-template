@@ -86,7 +86,16 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
                 return Promise.resolve(session.sessionInfo)
             },
             changeSessionData: () => Promise.resolve(null),
-            consumeSessionData: () => Promise.resolve('gone' as const),
+            // feat-258: as the store does it: the keys go only while every expected value is held.
+            consumeSessionData: (expected: Record<string, string>, keys: readonly string[]) => {
+                const data = { ...session.sessionInfo.data } as Record<string, unknown>
+                if (!Object.entries(expected).every(([key, value]) => data[key] === value)) {
+                    return Promise.resolve('mismatch' as const)
+                }
+                for (const key of keys) delete data[key]
+                session.sessionInfo = { ...session.sessionInfo, data: data }
+                return Promise.resolve('consumed' as const)
+            },
             isStored: () => Promise.resolve(true),
             destroySession: () => Promise.resolve(),
             updateSessionAuth: (
@@ -197,6 +206,49 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         const confirmed = await totpService.confirm(request(user, session), { enrollmentId, code })
         expect(confirmed.status === 'error' && confirmed.error).toMatchObject({
             reason: 'reauth_required',
+        })
+        expect(await factorsOf(user.id)).toHaveLength(0)
+    })
+
+    // feat-258 (docs/plan/mfa-review-fixes-7-plan.md, 8.4): a refused setup is removed for its
+    // enrollment id, so it cannot pass later when the factors allow its kept proof again.
+    it('a refused setup is removed: it does not pass once the factors allow its proof again', async () => {
+        const [user] = await db
+            .insert(users)
+            .values({
+                name: 'totp',
+                email: `${crypto.randomUUID()}@example.test`,
+                emailVerifiedAt: new Date(),
+                password: null,
+            })
+            .returning({ id: users.id, sessionToken: users.sessionToken })
+        if (user === undefined) throw new Error('user not inserted')
+        created.push(user.id)
+        const session = fakeSession({
+            auth: {
+                v: 1,
+                amr: ['oauth'],
+                aal: 1,
+                authenticatedAt: iso(-10),
+                verified: { oauth: iso(-10) },
+            },
+        })
+        const { enrollmentId, code } = await setupAndCode(user, session)
+        expect(session.sessionInfo?.data['totpEnrollmentId']).toBe(enrollmentId)
+        await db.update(users).set({ password: 'hash' }).where(eq(users.id, user.id))
+        const refused = await totpService.confirm(request(user, session), { enrollmentId, code })
+        expect(refused.status === 'error' && refused.error).toMatchObject({
+            reason: 'reauth_required',
+        })
+        // Gone with its id, both keys.
+        expect(session.sessionInfo?.data['totpEnrollment']).toBeUndefined()
+        expect(session.sessionInfo?.data['totpEnrollmentId']).toBeUndefined()
+
+        // The password goes again: the kept recent sign-in would admit it now, but the setup is gone.
+        await db.update(users).set({ password: null }).where(eq(users.id, user.id))
+        const again = await totpService.confirm(request(user, session), { enrollmentId, code })
+        expect(again.status === 'error' && again.error).toMatchObject({
+            reason: 'enrollment_not_found',
         })
         expect(await factorsOf(user.id)).toHaveLength(0)
     })
