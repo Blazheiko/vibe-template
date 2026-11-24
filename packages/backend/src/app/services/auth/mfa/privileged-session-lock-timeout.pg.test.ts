@@ -150,7 +150,9 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     const { mfaBinding, mfaTicketStore, newTicketId } =
         await import('#app/services/auth/mfa/mfa-ticket.js')
     const { currentTransactionId, withTransaction } = await import('#app/repositories/index.js')
-    const { mfaTicketCookieName } = await import('#vendor/utils/session/request-session.js')
+    const { mfaBindCookieName, mfaTicketCookieName } =
+        await import('#vendor/utils/session/request-session.js')
+    const BIND_VALUE = 'bind-value-of-this-browser'
     const { testRequest } = await import('../../../../test-support/audit-actor.js')
 
     registerSessionTokenChecker(() => Promise.resolve('ok'))
@@ -212,7 +214,11 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     const requestWith = async (cookie: string | undefined, ticketCookie?: string) => {
         const responseData = createResponseData()
         const cookies = new Map<string, string>()
-        if (ticketCookie !== undefined) cookies.set(mfaTicketCookieName(), ticketCookie)
+        if (ticketCookie !== undefined) {
+            cookies.set(mfaTicketCookieName(), ticketCookie)
+            // feat-257: the ticket's binding cookie travels with it.
+            cookies.set(mfaBindCookieName(), BIND_VALUE)
+        }
         const context = createContext(
             { method: 'post', headers: new Map(), cookies } as never,
             responseData,
@@ -521,7 +527,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
                 state: 'completing',
                 userId: String(newcomer.id),
                 userTokenAtStart: options.recovery?.userTokenAtStart ?? newcomer.sessionToken,
-                binding: mfaBinding(context.auth.getCookieSessionId() ?? ''),
+                binding: mfaBinding(BIND_VALUE),
                 origin: { method: 'password' },
                 firstFactor: 'pwd',
                 failures: 0,

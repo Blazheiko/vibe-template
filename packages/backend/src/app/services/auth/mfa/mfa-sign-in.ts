@@ -46,6 +46,7 @@ import { loadMfaFactors } from './mfa-account.js'
 import {
     mfaBinding,
     mfaTicketStore,
+    newBindValue,
     newTicketId,
     type CheckedChallenge,
     type MfaTicket,
@@ -160,21 +161,24 @@ const methodsOf = (account: { totp: unknown; passkeys: number }): SecondStepMeth
  */
 export async function startSecondStepIfRequired(
     auth: Auth,
-    browserSession: string | null,
     user: { id: bigint; sessionToken: string },
     origin: Exclude<LoginOrigin, { inherit: unknown }>,
     extras: { pendingOAuthLink?: PendingOAuthLink } = {},
 ): Promise<AppResult<SecondStepRequired | null>> {
     const account = await loadMfaFactors(user.id)
     if (account.totp === undefined && account.passkeys === 0) return Result.ok(null)
-    if (browserSession === null) return Result.err(serviceUnavailable())
     const ticketId = newTicketId()
+    // feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 2): bound to a cookie of its own, not
+    // to the session: the activation deletes the previous session, and a repeat after a lost
+    // answer comes with that session's cookie (or a new anonymous one) and must still be this
+    // browser's.
+    const bindValue = newBindValue()
     const ticket: MfaTicket = {
         v: 1,
         state: 'open',
         userId: String(user.id),
         userTokenAtStart: user.sessionToken,
-        binding: mfaBinding(browserSession),
+        binding: mfaBinding(bindValue),
         origin,
         firstFactor: origin.method === 'oauth' ? 'oauth' : 'pwd',
         ...(extras.pendingOAuthLink !== undefined
@@ -186,7 +190,7 @@ export async function startSecondStepIfRequired(
     }
     // ADR 0004: a Redis failure throws (503 by classifyError); no cookie was set before it.
     await mfaTicketStore.create(ticketId, ticket, mfaConfig.ticketTtlSeconds)
-    auth.setMfaTicketCookie(ticketId, mfaConfig.ticketTtlSeconds)
+    auth.setMfaTicketCookie(ticketId, mfaConfig.ticketTtlSeconds, bindValue)
     return Result.ok({ status: 'mfa_required', methods: methodsOf(account) })
 }
 
@@ -205,10 +209,11 @@ export type SecondStepState =
 export async function secondStepState(context: SignInContext): Promise<AppResult<SecondStepState>> {
     const none = Result.ok<SecondStepState>({ status: 'none' })
     const ticketId = context.auth.getMfaTicketCookie()
-    const cookieSession = context.auth.getCookieSessionId()
-    if (ticketId === undefined || ticketId === '' || cookieSession === undefined) return none
+    const bindValue = context.auth.getMfaBindCookie()
+    if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '')
+        return none
     const ticket = await mfaTicketStore.read(ticketId)
-    if (ticket?.binding !== mfaBinding(cookieSession)) return none
+    if (ticket?.binding !== mfaBinding(bindValue)) return none
     const account = await loadMfaFactors(BigInt(ticket.userId))
     if (account.totp === undefined && account.passkeys === 0) return none
     return Result.ok({
@@ -254,13 +259,13 @@ export async function secondStepPasskeyOptions(
     context: SignInContext,
 ): Promise<AppResult<{ options: object }>> {
     const ticketId = context.auth.getMfaTicketCookie()
-    const cookieSession = context.auth.getCookieSessionId()
-    if (ticketId === undefined || ticketId === '' || cookieSession === undefined) {
+    const bindValue = context.auth.getMfaBindCookie()
+    if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '') {
         return Result.err(ticketInvalid())
     }
     const ticket = await mfaTicketStore.read(ticketId)
     const ttl = await mfaTicketStore.ttl(ticketId)
-    if (ticket?.binding !== mfaBinding(cookieSession)) {
+    if (ticket?.binding !== mfaBinding(bindValue)) {
         return Result.err(ticketInvalid())
     }
     // Р4: an attempt of this ticket was confirmed and is finishing. A new challenge would not
@@ -323,11 +328,11 @@ export async function completeSecondStep(
 ): Promise<AppResult<AuthSuccessPayload>> {
     const now = deps.now?.() ?? Date.now()
     const ticketId = context.auth.getMfaTicketCookie()
-    const cookieSession = context.auth.getCookieSessionId()
-    if (ticketId === undefined || ticketId === '' || cookieSession === undefined) {
+    const bindValue = context.auth.getMfaBindCookie()
+    if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '') {
         return Result.err(ticketInvalid())
     }
-    const binding = mfaBinding(cookieSession)
+    const binding = mfaBinding(bindValue)
     if (input.method === 'continue') {
         return continueByRequest(context, ticketId, binding, input, request, deps)
     }
@@ -798,6 +803,18 @@ async function activate(
         context.auth.setMfaTicketCookie(null, 0)
         return Result.err(ticketInvalid())
     }
+    // feat-257 (docs/plan/mfa-review-fixes-7-plan.md, item 7): what the answer needs is read
+    // before the activation issues the new session's cookie. Nothing after that cookie may fail
+    // the request: a 5xx carrying a working cookie would tell the form the sign-in failed.
+    let user: Awaited<ReturnType<typeof userRepository.findById>>
+    try {
+        user = await userRepository.findById(userId)
+    } catch (err) {
+        if (!isRepeatableFailure(err)) throw err
+        logger.warn({ err }, 'User not read before the activation')
+        return Result.err(completionPending())
+    }
+    if (user === undefined) return Result.err(sessionRevoked())
 
     let outcome: 'activated' | 'already' | 'gone'
     const recovery = plan.auth.recovery !== undefined
@@ -835,9 +852,9 @@ async function activate(
         return Result.err(ticketInvalid())
     }
 
-    const user = await userRepository.findById(userId)
-    if (user === undefined) return Result.err(sessionRevoked())
-    return Result.ok(await authSuccessPayload(user, context.session))
+    // A WebSocket token Redis could not issue is left empty: main/init, which the client sends
+    // right after the sign-in, issues it.
+    return Result.ok(await authSuccessPayload(user, context.session, { wsToken: 'optional' }))
 }
 
 /**
