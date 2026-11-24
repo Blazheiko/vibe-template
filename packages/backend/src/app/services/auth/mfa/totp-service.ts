@@ -60,6 +60,12 @@ import {
 
 /** The pending setup, in the data of the session that started it (not shared with others). */
 export const TOTP_ENROLLMENT_KEY = 'totpEnrollment'
+/**
+ * feat-258 (docs/plan/mfa-review-fixes-7-plan.md, 8.4): the id of the stored setup as a string of
+ * its own, so a refused setup is removed for its enrollment id only, atomically
+ * (consumeSessionData compares strings): a newer setup of another tab stays.
+ */
+export const TOTP_ENROLLMENT_ID_KEY = 'totpEnrollmentId'
 
 interface TotpEnrollment {
     enrollmentId: string
@@ -187,6 +193,7 @@ export const totpService = {
         }
         const stored = await request.session.updateSessionData({
             [TOTP_ENROLLMENT_KEY]: enrollment,
+            [TOTP_ENROLLMENT_ID_KEY]: enrollment.enrollmentId,
         })
         if (stored === null) return Result.err(sessionRevoked())
         const accountName = user.email ?? user.phone ?? user.name
@@ -247,6 +254,8 @@ export const totpService = {
         const sealed = box.seal(secret, totpSecretOwner(userId))
         const { actor } = request
 
+        // Set inside the transaction callback, read after it (an object: not narrowed to false).
+        const refused = { keptProof: false }
         const result = await withTransaction(async (tx) => {
             const locked = await userRepository.lockById(userId, tx)
             if (locked === undefined) return Result.err(notFound('User', 'User not found'))
@@ -264,8 +273,8 @@ export const totpService = {
             }
             const account = await loadMfaAccount(locked, tx)
             // feat-256 (item 3): the proof the setup kept, against the factors as they are now
-            // (another session may have turned MFA on since). The setup itself stays stored: it
-            // fails the same way again, and a new setup replaces it.
+            // (another session may have turned MFA on since). feat-258 (8.4): a refused setup is
+            // removed after the transaction, so it cannot pass later when the factors change back.
             const refusal = keptProofRefusal({
                 action: 'mfa.add_factor',
                 account,
@@ -273,7 +282,10 @@ export const totpService = {
                 proof: setupProof,
                 now: request.now ?? Date.now(),
             })
-            if (refusal !== null) return Result.err(refusal)
+            if (refusal !== null) {
+                refused.keptProof = true
+                return Result.err(refusal)
+            }
             if (!mfaEnabledOf(account) && !hasRecoveryContactOf(locked)) {
                 return Result.err(
                     conflict(
@@ -316,7 +328,19 @@ export const totpService = {
             ])
             return Result.ok({ factor: created, replaced, codes, events })
         })
-        if (Result.isError(result)) return Result.err(result.error)
+        if (Result.isError(result)) {
+            if (refused.keptProof) {
+                await session
+                    .consumeSessionData({ [TOTP_ENROLLMENT_ID_KEY]: input.enrollmentId }, [
+                        TOTP_ENROLLMENT_KEY,
+                        TOTP_ENROLLMENT_ID_KEY,
+                    ])
+                    .catch((err: unknown) => {
+                        logger.warn({ err }, 'Refused TOTP setup not removed; it expires by itself')
+                    })
+            }
+            return Result.err(result.error)
+        }
         const outcome = result.value
         auditService.logCommitted(actor.logger, outcome.events)
         if (outcome.events.length > 0) {
@@ -487,7 +511,7 @@ async function finishInSession(
                       id: String(factor.id),
                       at: new Date(now).toISOString(),
                   }),
-        { removeKeys: [TOTP_ENROLLMENT_KEY] },
+        { removeKeys: [TOTP_ENROLLMENT_KEY, TOTP_ENROLLMENT_ID_KEY] },
     )
     if (updated === null) return Result.err(sessionRevoked())
     return Result.ok(undefined)
