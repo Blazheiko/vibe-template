@@ -2561,8 +2561,8 @@
             "owner": "Blazheiko",
             "branch": "fix/mfa-continuation-binding",
             "dependencies": ["feat-256"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #817 (merge 1973aa3), registry #816 (in_progress), #818 (review). Items 2 and 7 of docs/plan/mfa-review-fixes-7-plan.md: the second-step ticket is bound to its own cookie mfa_bind (a random value per ticket, set and cleared with the ticket cookie, Path=/, HttpOnly, SameSite=Strict, the same lifetime) instead of the session id, so a lost activation answer is finished after the previous session was deleted (csrf_guard and the account_changed reload kept); the sign-in page asks mfa/state on page load also on an OAuth return and the form continues a completing ticket; the activation reads the user before the cookie, and a WebSocket token Redis cannot issue after an MFA activation is left empty for main/init. Plan revision 8 of Р4. Browser tests e2e-live/mfa-continuation.spec.ts (an OAuth-start anonymous session in Redis, a signed-in session of another account), also with API_PATH_PREFIX=v2/api (playwright.live-prefix.config.ts). CI on the branch head 8ab0df3: ci.yml run 45361950165 (e2e-live: 44 + 3 + prefix 2 passed), pg-tests.yml run 45361950017, redis-tests.yml run 45361950115, all success. Local: make check green (backend 3702, frontend 1015, shared 149), test:pg 717, test:redis 205, test:e2e 134, docs verify."
         }
     ]
 }
