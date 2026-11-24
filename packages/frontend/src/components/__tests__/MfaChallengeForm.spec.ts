@@ -445,4 +445,29 @@ describe('MfaChallengeForm', () => {
         expect(ids[1]).toBe(ids[0])
         expect(ids[2]).not.toBe(ids[0])
     })
+
+    // feat-258 (docs/plan/mfa-review-fixes-7-plan.md, 8.3).
+    it.each(['session_unverified', 'account_changed'] as const)(
+        'a 403 the client could not repeat (%s) keeps the request: "Try again" sends the same one',
+        async (clientCode) => {
+            const unanswered = {
+                data: {
+                    status: 'error',
+                    code: 'csrf_invalid',
+                    message: 'CSRF token mismatch',
+                    reason: 'token_mismatch',
+                },
+                error: { code: 'csrf_invalid', transportCode: 403, message: 'x', clientCode },
+            }
+            mfaVerifyMock.mockResolvedValueOnce(unanswered).mockResolvedValueOnce(success)
+            const wrapper = mountForm(['totp', 'recovery_code'])
+            await wrapper.find('[data-testid="mfa-code"]').setValue('123456')
+            await submit(wrapper)
+            expect(wrapper.find('[data-testid="mfa-submit"]').text()).toBe(en.loginMfa.retryPending)
+            await submit(wrapper)
+            const [first, second] = mfaVerifyMock.mock.calls.map(([body]) => body as unknown)
+            expect(second).toEqual(first)
+            expect(wrapper.emitted('signed-in')).toEqual([[USER]])
+        },
+    )
 })

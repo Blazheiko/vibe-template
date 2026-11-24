@@ -159,3 +159,46 @@ test('a signed-in session of another account: the reloaded OAuth return page fin
         await context.close()
     }
 })
+
+// feat-258 (docs/plan/mfa-review-fixes-7-plan.md, 8.3): the automatic `account_changed` reload. The
+// MFA form shows only on /login, which the app leaves for a signed-in user, so its tab always holds
+// an anonymous session's CSRF token; when another tab signs another account in meanwhile, the
+// verify is refused by csrf_guard before its proof is looked at: nothing is spent, the ticket stays
+// open, and the reloaded tab shows the account the browser is signed in to.
+test('another tab signs another account in during the second step: the reload spends nothing', async ({
+    browser,
+    sink,
+}) => {
+    const other = await createVerifiedAccount(browser, sink)
+    const account = await accountWithApp(browser, sink)
+    const { page, context } = await newBrowser(browser)
+    try {
+        await page.goto('/login')
+        await expect(page.locator('#login-identifier')).toBeVisible()
+        await passwordStep(page, account)
+
+        // Another tab of the same browser signs the other account in.
+        const tab = session(context.request)
+        const signedIn = await tab.post(`${API}/auth/login`, {
+            identifier: other.email,
+            password: other.password,
+        })
+        expect(signedIn.status()).toBe(200)
+
+        const reloaded = page.waitForEvent('framenavigated', (frame) => frame === page.mainFrame())
+        await page.getByTestId('mfa-code').fill(await nextTotp(account.secret))
+        await page.getByTestId('mfa-submit').click()
+        // account_changed: the page reloads and shows the account the browser is signed in to.
+        await reloaded
+        await expect(page).toHaveURL(/\/account/)
+        await expect(page.getByText(other.email)).toBeVisible()
+        expect(await tab.whoAmI()).toBe(other.email)
+
+        // The second step was never looked at: its ticket is still open, nothing captured.
+        const state = await tab.post(`${API}/auth/mfa/state`, {})
+        expect(await state.json()).toMatchObject({ status: 'mfa_required' })
+        expect(await state.json()).not.toHaveProperty('completing')
+    } finally {
+        await context.close()
+    }
+})
