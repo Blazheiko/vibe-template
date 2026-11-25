@@ -247,7 +247,7 @@ There is no workflow that builds and publishes the Docker image or deploys the a
 - [ ] The healthcheck matches your `PORT` / `API_PATH_PREFIX`.
 - [ ] `CSRF_ALLOWED_ORIGINS` with the frontend origin: the image sets `APP_ENV=production`, and without this variable the server does not start ([CSRF](/en/backend/security#csrf)).
 - [ ] `APP_ENV=production`, `APP_KEY` and the remaining items from the [security checklist](/en/backend/security#production-checklist).
-- [ ] MFA: `MFA_ENCRYPTION_KEYS`, `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` are set (the RP ID never changes after the launch); staff have a second factor; `MFA_STAFF_FACTOR=passkey` is recommended, in the [switching order](/en/backend/mfa#staff).
+- [ ] MFA: `MFA_ENCRYPTION_KEYS` (generated in a checkout of the repository with `pnpm --filter backend mfa:keys` or in a container of the image with `node dist/scripts/mfa-keys.js`, kept in the environment's secrets; [encryption keys](/en/backend/mfa#encryption-keys)), `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGINS` are set (the RP ID never changes after the launch); staff have a second factor; `MFA_STAFF_FACTOR=passkey` is recommended, in the [switching order](/en/backend/mfa#staff).
 - [ ] TLS on the proxy, `TRUST_PROXY` and `TRUSTED_PROXY_CIDRS` configured (on a unix socket — `TRUST_UNIX_SOCKET_PROXY=true`).
 - [ ] It is decided who serves the frontend: `SERVE_STATIC=true` or separate hosting/CDN.
 - [ ] `VITE_SENTRY_*` passed as build-args, `SENTRY_*` as runtime env.

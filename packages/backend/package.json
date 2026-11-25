@@ -26,6 +26,7 @@
         "db:seed:prod": "node dist/db/seed.js",
         "mail:test": "tsx src/scripts/send-test-email.ts",
         "push:vapid": "tsx src/scripts/generate-vapid-keys.ts",
+        "mfa:keys": "tsx src/scripts/mfa-keys.ts",
         "llm:purge-prompts": "tsx src/scripts/purge-llm-prompts.ts",
         "job:run": "tsx src/scripts/run-job.ts",
         "user:set-role": "tsx src/scripts/user-set-role.ts",
