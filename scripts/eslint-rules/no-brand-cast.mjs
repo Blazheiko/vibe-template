@@ -50,7 +50,10 @@ const rule = {
                 context.report({
                     node,
                     messageId: 'brandCast',
-                    data: { type: checker.typeToString(type) },
+                    // The text of the annotation, not checker.typeToString(): printing a type
+                    // from another module asks TypeScript for a module specifier, which throws
+                    // for some programs (seen in CI on the RuleTester fixtures).
+                    data: { type: context.sourceCode.getText(annotation) },
                 })
             }
         }
