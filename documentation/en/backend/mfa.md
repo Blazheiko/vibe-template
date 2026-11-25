@@ -131,6 +131,20 @@ Staff accounts without a factor that existed before the switch-on, and the `db:s
 
 The TOTP secret is stored encrypted (AES-256-GCM, the owner as associated data). The first key of the list encrypts, the others read, so keys rotate without re-encrypting everything. Without `MFA_ENCRYPTION_KEYS` outside production a key is derived from `APP_KEY` (with a warning in the log). Losing every key makes every TOTP factor unusable.
 
+### Encryption keys
+
+The value of `MFA_ENCRYPTION_KEYS` is generated, rotated and checked by the script [`mfa-keys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/scripts/mfa-keys.ts) (`make mfa-keys ARGS=…`):
+
+```sh
+pnpm --filter backend mfa:keys                   # prints a new value: one key, k1
+pnpm --filter backend mfa:keys --write           # writes it to packages/backend/.env
+pnpm --filter backend mfa:keys --rotate          # prints the current value with a new key first
+pnpm --filter backend mfa:keys --rotate --write  # the same in packages/backend/.env
+pnpm --filter backend mfa:keys --check           # checks the current value
+```
+
+A key is 32 random bytes. The current value comes from `MFA_ENCRYPTION_KEYS` of the shell when it is set, else from `packages/backend/.env`; with `--write`, always from `.env`. `--write` without `--rotate` never replaces a key that is already set: that would make every TOTP secret unreadable. `--rotate` adds a key with the next free id (`k2`, `k3`, …) first and keeps every current key in the same order; the new key encrypts new secrets, the old ones still read what they wrote. There is no re-encryption, so an old key is removed only once no TOTP factor is encrypted with it; otherwise the owners of those factors have to set TOTP up again. `--check` validates the value with the same parsing a production-like start uses (`parseMfaEncryptionKeys`) and prints only the key ids. For a deployment the generated value goes into the environment's secrets, not into the image.
+
 ## Audit log and notifications
 
 The events `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed`, `auth.mfa.reset` go to the [audit log](./audit-log) with their proof (`metadata.proof`). Every change of the factors sends a security notification and a mail to the account's address.

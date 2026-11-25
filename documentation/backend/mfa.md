@@ -131,6 +131,20 @@ Admin-канал WebSocket тримає підписників у порядку
 
 Секрет TOTP зберігається зашифрованим (AES-256-GCM, власник як associated data). Перший ключ списку шифрує, решта читають — так ключі обертаються без перешифрування. Без `MFA_ENCRYPTION_KEYS` поза продакшеном ключ виводиться з `APP_KEY` (з попередженням у лозі). Втрата всіх ключів робить недійсними всі TOTP-фактори.
 
+### Ключі шифрування
+
+Значення `MFA_ENCRYPTION_KEYS` створює, обертає й перевіряє скрипт [`mfa-keys.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/scripts/mfa-keys.ts) (`make mfa-keys ARGS=…`):
+
+```sh
+pnpm --filter backend mfa:keys                   # друкує нове значення: один ключ k1
+pnpm --filter backend mfa:keys --write           # записує його в packages/backend/.env
+pnpm --filter backend mfa:keys --rotate          # друкує поточне значення з новим ключем першим
+pnpm --filter backend mfa:keys --rotate --write  # те саме в packages/backend/.env
+pnpm --filter backend mfa:keys --check           # перевіряє поточне значення
+```
+
+Ключ — 32 випадкові байти. Поточне значення береться з `MFA_ENCRYPTION_KEYS` оболонки, якщо його задано, інакше з `packages/backend/.env`; з `--write` — завжди з `.env`. `--write` без `--rotate` не замінює вже заданий ключ: заміна зробила б нечитними всі секрети TOTP. `--rotate` додає ключ із наступним вільним id (`k2`, `k3`, …) першим і зберігає всі наявні в тому ж порядку; новий ключ шифрує нові секрети, старі й далі читають записане ними. Перешифрування немає, тож старий ключ прибирають лише тоді, коли жоден фактор TOTP ним уже не зашифровано; інакше власникам таких факторів доведеться налаштувати TOTP заново. `--check` перевіряє значення тим самим розбором, що й старт у production-like (`parseMfaEncryptionKeys`), і друкує лише id ключів. Для деплою згенероване значення кладуть у секрети середовища, а не в образ.
+
 ## Журнал і сповіщення
 
 Події `auth.mfa.totp.enabled|replaced|disabled`, `auth.mfa.recovery_codes.regenerated`, `auth.mfa.recovery_code.used`, `auth.passkey.added|removed|counter_regressed`, `auth.mfa.reset` пишуться в [журнал дій](./audit-log) з доказом (`metadata.proof`). Кожна зміна факторів надсилає сповіщення безпеки й лист на адресу акаунта.
