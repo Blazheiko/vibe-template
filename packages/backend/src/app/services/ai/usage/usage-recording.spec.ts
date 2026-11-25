@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../../test-support/ids.js'
 
 // feat-028 (code-issues item 53): every AI call produces a usage row; unknown
 // counts are NULL, not 0.
@@ -51,7 +52,7 @@ describe('llmUsageService.recordText: what is kept of the prompt', () => {
     const PROMPT = '[system]\nBe kind.\n\n[user]\nMy email is jane@example.com'
     const usage = { promptTokens: 3, completionTokens: 4, totalTokens: 7 }
     const record = (): void => {
-        llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n)(usage, 'gpt-test', PROMPT)
+        llmUsageService.textUsageRecorder('SUPPORT_CHAT', uid(5))(usage, 'gpt-test', PROMPT)
     }
     const sha256 = async (text: string): Promise<string> =>
         (await import('node:crypto')).createHash('sha256').update(text, 'utf8').digest('hex')
@@ -115,7 +116,7 @@ describe('llmUsageService.recordText: what is kept of the prompt', () => {
 describe('llmUsageService.textUsageRecorder: the budget hook (feat-063, D2)', () => {
     it('hands the reported usage to onUsage as well as writing the row', () => {
         const onUsage = vi.fn()
-        const record = llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n, null, onUsage)
+        const record = llmUsageService.textUsageRecorder('SUPPORT_CHAT', uid(5), null, onUsage)
         const usage = { promptTokens: 3, completionTokens: 4, totalTokens: 7 }
 
         record(usage, 'gpt-test', 'final')
@@ -125,7 +126,7 @@ describe('llmUsageService.textUsageRecorder: the budget hook (feat-063, D2)', ()
     })
 
     it('still writes the row when onUsage throws', () => {
-        const record = llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n, null, () => {
+        const record = llmUsageService.textUsageRecorder('SUPPORT_CHAT', uid(5), null, () => {
             throw new Error('budget bookkeeping failed')
         })
 
@@ -138,11 +139,11 @@ describe('llmUsageService.textUsageRecorder: the budget hook (feat-063, D2)', ()
 
 describe('llmUsageService.textUsageRecorder', () => {
     it('writes one row with the feature, user, prompt and the reported counts', () => {
-        const record = llmUsageService.textUsageRecorder('PROMPT_TEST', 5n, 9n)
+        const record = llmUsageService.textUsageRecorder('PROMPT_TEST', uid(5), 9n)
         record({ promptTokens: 3, completionTokens: 4, totalTokens: 7 }, 'gpt-test', 'final')
         expect(insertText).toHaveBeenCalledWith(
             expect.objectContaining({
-                userId: 5n,
+                userId: uid(5),
                 llmSystemPromptId: 9n,
                 feature: 'PROMPT_TEST',
                 model: 'gpt-test',
@@ -267,7 +268,7 @@ describe('adapters report usage, known or not', () => {
 
         for await (const chunk of audited.streamText(
             { systemPrompt: 's', userPrompt: 'u' },
-            llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n),
+            llmUsageService.textUsageRecorder('SUPPORT_CHAT', uid(5)),
         )) {
             if (chunk === 'llo') break
         }
@@ -289,7 +290,7 @@ describe('adapters report usage, known or not', () => {
         const consume = async (): Promise<void> => {
             for await (const chunk of withUsageAudit(mistralaiTextAdapter).streamText(
                 { systemPrompt: 's', userPrompt: 'u' },
-                llmUsageService.textUsageRecorder('SUPPORT_CHAT', 5n),
+                llmUsageService.textUsageRecorder('SUPPORT_CHAT', uid(5)),
             ))
                 expect(chunk).toBeDefined()
         }

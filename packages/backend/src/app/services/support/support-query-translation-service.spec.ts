@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 const adapter = { isConfigured: vi.fn(() => true), streamText: vi.fn() }
 vi.mock('#app/services/ai/ai-provider.js', () => ({ getTextAdapterForModel: () => adapter }))
@@ -35,7 +36,7 @@ describe('supportQueryTranslationService.translateToEnglish', () => {
         const controller = new AbortController()
 
         const result = await supportQueryTranslationService.translateToEnglish('Привіт', {
-            userId: 7n,
+            userId: uid(7),
             signal: controller.signal,
         })
 

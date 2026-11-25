@@ -1,8 +1,10 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { createHmac } from 'node:crypto'
 import { PENDING_SMS_CODE_HASH_PLACEHOLDER } from './sms-auth-challenge-constants.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { testProofHolder } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 const userRepositoryMock = {
     findByEmail: vi.fn(),
@@ -228,7 +230,7 @@ describe('passwordResetService', () => {
         })
         passwordResetRepositoryMock.invalidatePendingByUserId.mockResolvedValue(1)
         passwordResetRepositoryMock.create.mockImplementation(
-            async (data: { userId: bigint; tokenHash: string; expiresAt: Date }) => ({
+            async (data: { userId: UserId; tokenHash: string; expiresAt: Date }) => ({
                 id: 11n,
                 usedAt: null,
                 createdAt: new Date(),
@@ -245,7 +247,7 @@ describe('passwordResetService', () => {
         )
 
         const { passwordResetService } = await loadPasswordResetService()
-        const result = await passwordResetService.sendPasswordResetEmail(7n)
+        const result = await passwordResetService.sendPasswordResetEmail(uid(7))
 
         expect(Result.isOk(result)).toBe(true)
         // feat-096: issued under the user lock, in one transaction.
@@ -270,7 +272,7 @@ describe('passwordResetService', () => {
     it('rejects expired reset tokens', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() - 1000),
@@ -304,7 +306,7 @@ describe('passwordResetService', () => {
     it('rejects already used reset tokens', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
@@ -358,7 +360,7 @@ describe('passwordResetService', () => {
     it('updates password, rotates session token, and clears redis sessions', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
@@ -379,7 +381,7 @@ describe('passwordResetService', () => {
         })
         passwordResetRepositoryMock.markUsed.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             usedAt: new Date(),
         })
 
@@ -574,7 +576,7 @@ describe('passwordResetService', () => {
     it('does not change the password when another request already claimed the token', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
@@ -620,7 +622,7 @@ describe('passwordResetService', () => {
         passwordResetRepositoryMock.findByTokenHash.mockImplementation(() =>
             Promise.resolve({
                 id: 11n,
-                userId: 7n,
+                userId: uid(7),
                 tokenHash: 'hash',
                 targetEmail: 'jane@example.com',
                 expiresAt: new Date(Date.now() + 5),
@@ -664,7 +666,7 @@ describe('passwordResetService', () => {
     it('answers not found when the user is gone by the time the lock is taken', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
@@ -691,7 +693,7 @@ describe('passwordResetService', () => {
     it('still marks the token used when the Redis cleanup fails', async () => {
         passwordResetRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             targetEmail: 'jane@example.com',
             expiresAt: new Date(Date.now() + 60_000),
@@ -712,7 +714,7 @@ describe('passwordResetService', () => {
         })
         passwordResetRepositoryMock.markUsed.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             usedAt: new Date(),
         })
 

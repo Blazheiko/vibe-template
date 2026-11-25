@@ -2,12 +2,13 @@ import { db } from '#database/db.js'
 import { supportChatHistory } from '#database/schema.js'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 
 export type SupportChatRow = InferSelectModel<typeof supportChatHistory>
 
 export const supportRepository = {
     async addChatMessage(
-        userId: bigint,
+        userId: UserId,
         role: 'user' | 'assistant',
         content: string,
         screenshots?: string[],
@@ -35,7 +36,7 @@ export const supportRepository = {
      * means the message was already there. Without an id every call stores a new row.
      */
     async addUserMessageOnce(
-        userId: bigint,
+        userId: UserId,
         content: string,
         clientMessageId: string | undefined,
     ): Promise<{ stored: boolean; id: bigint | null }> {
@@ -56,7 +57,7 @@ export const supportRepository = {
      * rows inserted in the same millisecond share a timestamp, an id is unique and increasing.
      */
     async findChatHistoryPage(
-        userId: bigint,
+        userId: UserId,
         options: { before?: bigint | undefined; limit: number },
     ): Promise<{ rows: SupportChatRow[]; hasMore: boolean }> {
         const where =
@@ -79,7 +80,7 @@ export const supportRepository = {
     },
 
     /** The last `limit` messages, oldest-first: the conversation the model is shown. */
-    async findRecentForContext(userId: bigint, limit: number): Promise<SupportChatRow[]> {
+    async findRecentForContext(userId: UserId, limit: number): Promise<SupportChatRow[]> {
         const rows = await db
             .select()
             .from(supportChatHistory)
@@ -89,7 +90,7 @@ export const supportRepository = {
         return rows.reverse()
     },
 
-    async hasChatHistory(userId: bigint): Promise<boolean> {
+    async hasChatHistory(userId: UserId): Promise<boolean> {
         const [row] = await db
             .select({ id: supportChatHistory.id })
             .from(supportChatHistory)
@@ -98,7 +99,7 @@ export const supportRepository = {
         return row !== undefined
     },
 
-    async deleteAllChatHistory(userId: bigint): Promise<number> {
+    async deleteAllChatHistory(userId: UserId): Promise<number> {
         const deleted = await db
             .delete(supportChatHistory)
             .where(eq(supportChatHistory.userId, userId))

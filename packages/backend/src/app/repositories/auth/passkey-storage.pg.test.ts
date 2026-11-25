@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -15,13 +16,13 @@ describe.skipIf(!hasPg)('passkey storage on PostgreSQL', async () => {
     const { webauthnCredentialRepository: repo } = await import('#app/repositories/index.js')
     const { withTransaction } = await import('#app/repositories/transaction.js')
 
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()
     })
 
-    const newUser = async (): Promise<bigint> => {
+    const newUser = async (): Promise<UserId> => {
         const [user] = await db
             .insert(users)
             .values({ name: 'passkey-storage', email: `${crypto.randomUUID()}@example.test` })
@@ -31,7 +32,7 @@ describe.skipIf(!hasPg)('passkey storage on PostgreSQL', async () => {
         return user.id
     }
 
-    const key = (userId: bigint, signCount = 0n) => ({
+    const key = (userId: UserId, signCount = 0n) => ({
         userId,
         credentialId: Buffer.from(crypto.randomUUID()),
         publicKey: Buffer.from([1, 2, 3]),

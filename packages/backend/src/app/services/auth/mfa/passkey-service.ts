@@ -42,6 +42,7 @@ import {
     registrationOptions,
     verifyWebAuthnCeremony,
 } from './webauthn-ceremony.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р3 rows 1–3, Р6, Р12): the passkeys of the signed-in
 // user. A registration is two requests: the options put a challenge and an enrollment id into the
@@ -59,7 +60,7 @@ export const PASSKEY_REGISTRATION_KEYS = {
 const REGISTRATION_KEYS = Object.values(PASSKEY_REGISTRATION_KEYS)
 
 export interface PasskeyRequest {
-    userId: bigint
+    userId: UserId
     session: Session
     presentedSessionToken: string | undefined
     actor: UserAuditActor
@@ -131,7 +132,7 @@ function pendingOf(session: Session): PendingRegistration | null {
 }
 
 export const passkeyService = {
-    async list(userId: bigint): Promise<AppResult<PasskeyView[]>> {
+    async list(userId: UserId): Promise<AppResult<PasskeyView[]>> {
         const rows = await webauthnCredentialRepository.listByUserId(userId)
         return Result.ok(rows.map(passkeyView))
     },
@@ -349,7 +350,7 @@ export const passkeyService = {
         return Result.ok({ passkey: passkeyView(row), recoveryCodes: codes })
     },
 
-    async rename(userId: bigint, id: bigint, name: string): Promise<AppResult<PasskeyView>> {
+    async rename(userId: UserId, id: bigint, name: string): Promise<AppResult<PasskeyView>> {
         const renamed = await webauthnCredentialRepository.rename(id, userId, name.trim())
         if (!renamed) return Result.err(notFound('Passkey', 'Passkey not found'))
         const rows = await webauthnCredentialRepository.listByUserId(userId)

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { JPEG_BYTES, PNG_BYTES } from '../../../test-support/image-fixtures.js'
@@ -45,7 +46,7 @@ vi.mock('#app/services/audit/audit-service.js', () => ({
         logCommitted: vi.fn(),
     },
 }))
-const actor = { kind: 'user', userId: 1n, logger: { info: vi.fn() } } as never
+const actor = { kind: 'user', userId: uid(1), logger: { info: vi.fn() } } as never
 
 vi.mock('#app/services/support/support-embedding-service.js', () => ({
     supportEmbeddingService: supportEmbeddingServiceMock,

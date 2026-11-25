@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-233 (Р11): the push of a new sign-in names its device; the mail goes only to a confirmed
@@ -73,7 +74,7 @@ beforeEach(() => {
 
 describe('the mail rules (Р11)', () => {
     it('a confirmed address and a new device: mailed', async () => {
-        expect(await mailNewSignIn(7n, device())).toBe('sent')
+        expect(await mailNewSignIn(uid(7), device())).toBe('sent')
         expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: 'jane@example.com' }))
         expect(listSessions).toHaveBeenCalledWith('userToken', {
             after: null,
@@ -83,20 +84,20 @@ describe('the mail rules (Р11)', () => {
 
     it('an account without an address: no mail', async () => {
         findById.mockResolvedValue(user({ email: null }))
-        expect(await mailNewSignIn(7n, device())).toBe('no_address')
+        expect(await mailNewSignIn(uid(7), device())).toBe('no_address')
         expect(send).not.toHaveBeenCalled()
     })
 
     it('an unconfirmed address: no mail, it may be somebody else’s', async () => {
         findById.mockResolvedValue(user({ emailVerifiedAt: null }))
-        expect(await mailNewSignIn(7n, device())).toBe('unverified')
+        expect(await mailNewSignIn(uid(7), device())).toBe('unverified')
         expect(send).not.toHaveBeenCalled()
         expect(consume).not.toHaveBeenCalled()
     })
 
     it('a familiar device (same browser, system and IP in another live session): no mail', async () => {
         listSessions.mockResolvedValue({ sessions: [otherSession()], next: null })
-        expect(await mailNewSignIn(7n, device())).toBe('familiar')
+        expect(await mailNewSignIn(uid(7), device())).toBe('familiar')
         expect(send).not.toHaveBeenCalled()
         expect(consume).not.toHaveBeenCalled()
     })
@@ -110,7 +111,7 @@ describe('the mail rules (Р11)', () => {
                 next: { createdAtMs: 4, publicId: 'q'.repeat(22) },
             })
             .mockResolvedValueOnce({ sessions: [otherSession()], next: null })
-        expect(await mailNewSignIn(7n, device())).toBe('familiar')
+        expect(await mailNewSignIn(uid(7), device())).toBe('familiar')
         expect(listSessions).toHaveBeenCalledTimes(3)
         expect(listSessions).toHaveBeenNthCalledWith(2, 'userToken', {
             after: next,
@@ -126,7 +127,7 @@ describe('the mail rules (Р11)', () => {
                 next: { createdAtMs: 5, publicId: 'p'.repeat(22) },
             })
             .mockResolvedValueOnce({ sessions: [], next: null })
-        expect(await mailNewSignIn(7n, device())).toBe('sent')
+        expect(await mailNewSignIn(uid(7), device())).toBe('sent')
         expect(listSessions).toHaveBeenCalledTimes(2)
     })
 
@@ -135,7 +136,7 @@ describe('the mail rules (Р11)', () => {
         ['another browser', { userAgent: FIREFOX_LINUX }],
     ])('not familiar with %s: mailed', async (_, over) => {
         listSessions.mockResolvedValue({ sessions: [otherSession(over)], next: null })
-        expect(await mailNewSignIn(7n, device())).toBe('sent')
+        expect(await mailNewSignIn(uid(7), device())).toBe('sent')
     })
 
     it('an unknown User-Agent is never familiar, even on the same IP', async () => {
@@ -143,25 +144,25 @@ describe('the mail rules (Р11)', () => {
             sessions: [otherSession({ userAgent: 'curl/8' })],
             next: null,
         })
-        expect(await mailNewSignIn(7n, device({ userAgent: 'curl/8' }))).toBe('sent')
+        expect(await mailNewSignIn(uid(7), device({ userAgent: 'curl/8' }))).toBe('sent')
         expect(listSessions).not.toHaveBeenCalled()
     })
 
     it('over the hourly budget: no mail', async () => {
         consume.mockResolvedValue({ allowed: false, count: 6 })
-        expect(await mailNewSignIn(7n, device())).toBe('throttled')
+        expect(await mailNewSignIn(uid(7), device())).toBe('throttled')
         expect(send).not.toHaveBeenCalled()
     })
 
     it('a mail service error is an outcome, not an exception', async () => {
         send.mockResolvedValue(Result.err({ _tag: 'EmailSendFailed' }))
-        expect(await mailNewSignIn(7n, device())).toBe('failed')
+        expect(await mailNewSignIn(uid(7), device())).toBe('failed')
     })
 })
 
 describe('notifyNewSignIn', () => {
     it('pushes the device and links the session list; the mail follows its rules', async () => {
-        notifyNewSignIn(7n, device(), { mail: true })
+        notifyNewSignIn(uid(7), device(), { mail: true })
         expect(security).toHaveBeenCalledWith(7n, 'new_sign_in', { device: 'Chrome on macOS' })
         await vi.waitFor(() => {
             expect(send).toHaveBeenCalledOnce()
@@ -169,7 +170,7 @@ describe('notifyNewSignIn', () => {
     })
 
     it('without mail only the push goes (a claim)', async () => {
-        notifyNewSignIn(7n, device(), { mail: false })
+        notifyNewSignIn(uid(7), device(), { mail: false })
         expect(security).toHaveBeenCalledOnce()
         await new Promise((resolve) => setTimeout(resolve, 10))
         expect(findById).not.toHaveBeenCalled()
@@ -179,7 +180,7 @@ describe('notifyNewSignIn', () => {
     it('a failure of the mail part is logged and never thrown', async () => {
         findById.mockRejectedValue(new Error('db down'))
         expect(() => {
-            notifyNewSignIn(7n, device(), { mail: true })
+            notifyNewSignIn(uid(7), device(), { mail: true })
         }).not.toThrow()
         await vi.waitFor(() => {
             expect(log.warn).toHaveBeenCalledOnce()
@@ -187,7 +188,7 @@ describe('notifyNewSignIn', () => {
     })
 
     it('an unknown device is named neutrally', () => {
-        notifyNewSignIn(7n, device({ userAgent: '' }), { mail: false })
+        notifyNewSignIn(uid(7), device({ userAgent: '' }), { mail: false })
         expect(security).toHaveBeenCalledWith(7n, 'new_sign_in', { device: 'an unknown device' })
     })
 })

@@ -11,6 +11,7 @@ import {
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
 import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6, tasks P3) over HTTP: a real uWebSockets.js server
 // with the real routes and session layer, a real PostgreSQL and Redis, and real WebAuthn answers
@@ -125,7 +126,7 @@ describe.skipIf(!hasPg || !hasRedis)('passwordless sign-in over HTTP (feat-246 P
     await import('#app/start/index.js')
 
     const admin = createTestRedis(PREFIX)
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     const RP = webauthnConfig.rpId
     const WEB_ORIGIN = webauthnConfig.origins[0] ?? ''

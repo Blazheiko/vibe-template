@@ -5,7 +5,7 @@ import type { HttpContext } from '#vendor/types/types.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { adminContracts } from 'shared/contracts'
 import type { AdminOnlineUserDetailResponse, AdminOnlineUserListResponse } from 'shared/responses'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseUserId } from '#app/domain/ids.js'
 
 export default {
     async list(_context: HttpContext): Promise<AdminOnlineUserListResponse> {
@@ -20,7 +20,7 @@ export default {
     async getById(
         context: HttpContext<unknown, null, ParamsOf<typeof adminContracts.onlineUser>>,
     ): Promise<AdminOnlineUserDetailResponse> {
-        const id = parseEntityId(context.httpData.params.id)
+        const id = parseUserId(context.httpData.params.id)
         if (id === null) {
             return mapControllerError(context, badRequest('Invalid user id'))
         }

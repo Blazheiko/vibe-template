@@ -1,5 +1,7 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { UserId } from '#app/domain/ids.js'
 
 const pushSubscriptionRepositoryMock = {
     findByUserIdWithLogs: vi.fn(),
@@ -28,7 +30,7 @@ vi.mock('#app/repositories/index.js', () => ({
 }))
 
 const withCurrentSessionMock = vi.fn(
-    (_userId: bigint, _token: string | undefined, work: (tx: unknown) => Promise<unknown>) =>
+    (_userId: UserId, _token: string | undefined, work: (tx: unknown) => Promise<unknown>) =>
         work(TX),
 )
 const TX = { tx: true }
@@ -59,7 +61,7 @@ describe('pushSubscriptionService', () => {
         pushSubscriptionRepositoryMock.findByUserIdWithLogs.mockResolvedValue([{ id: 1n }])
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
-        const result = await pushSubscriptionService.getSubscriptions(7n)
+        const result = await pushSubscriptionService.getSubscriptions(uid(7))
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -72,7 +74,7 @@ describe('pushSubscriptionService', () => {
     it('updates an existing subscription', async () => {
         pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
             id: 1n,
-            userId: 7n,
+            userId: uid(7),
             endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
             p256dhKey: 'old-key',
             authKey: 'old-auth',
@@ -84,7 +86,7 @@ describe('pushSubscriptionService', () => {
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
         const result = await pushSubscriptionService.createSubscription(
-            7n,
+            uid(7),
             {
                 endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
                 p256dhKey: 'key',
@@ -109,7 +111,7 @@ describe('pushSubscriptionService', () => {
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
         await pushSubscriptionService.createSubscription(
-            7n,
+            uid(7),
             { endpoint: 'https://fcm.googleapis.com/fcm/send/new', p256dhKey: 'k', authKey: 'a' },
             'token-7',
         )
@@ -120,7 +122,7 @@ describe('pushSubscriptionService', () => {
             TX,
         )
         expect(pushSubscriptionRepositoryMock.create).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: 7n }),
+            expect.objectContaining({ userId: uid(7) }),
             TX,
         )
     })
@@ -132,7 +134,7 @@ describe('pushSubscriptionService', () => {
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
         const created = await pushSubscriptionService.createSubscription(
-            7n,
+            uid(7),
             { endpoint: 'https://fcm.googleapis.com/fcm/send/new', p256dhKey: 'k', authKey: 'a' },
             'stale-token',
         )
@@ -140,7 +142,7 @@ describe('pushSubscriptionService', () => {
             Result.err({ _tag: 'Unauthorized', reason: 'session_revoked' }),
         )
         const updated = await pushSubscriptionService.updateSubscription(
-            7n,
+            uid(7),
             1n,
             { isActive: true },
             'stale-token',
@@ -167,7 +169,7 @@ describe('pushSubscriptionService', () => {
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
             await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
                 'token-7',
             )
@@ -184,7 +186,7 @@ describe('pushSubscriptionService', () => {
         ])('writes an existing record %s', async (_name, extra, isActive) => {
             pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
                 id: 1n,
-                userId: 7n,
+                userId: uid(7),
                 endpoint,
                 p256dhKey: 'k',
                 authKey: 'a',
@@ -193,7 +195,7 @@ describe('pushSubscriptionService', () => {
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
             await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
                 'token-7',
             )
@@ -212,11 +214,16 @@ describe('pushSubscriptionService', () => {
         const EP = 'https://FCM.googleapis.com/fcm/send/a%2fb'
 
         it('deletes the record of the user, found by the canonical endpoint', async () => {
-            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({ id: 3n, userId: 7n })
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
+                id: 3n,
+                userId: uid(7),
+            })
             pushSubscriptionRepositoryMock.delete.mockResolvedValue(true)
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
-            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(7n, EP)).toBe(true)
+            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(uid(7), EP)).toBe(
+                true,
+            )
             expect(pushSubscriptionRepositoryMock.findByEndpoint).toHaveBeenCalledWith(
                 'https://fcm.googleapis.com/fcm/send/a%2Fb',
             )
@@ -224,10 +231,13 @@ describe('pushSubscriptionService', () => {
         })
 
         it("never deletes another user's record with that endpoint", async () => {
-            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({ id: 3n, userId: 8n })
+            pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
+                id: 3n,
+                userId: uid(8),
+            })
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
-            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(7n, EP)).toBe(
+            expect(await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(uid(7), EP)).toBe(
                 false,
             )
             expect(pushSubscriptionRepositoryMock.delete).not.toHaveBeenCalled()
@@ -237,7 +247,7 @@ describe('pushSubscriptionService', () => {
             const { pushSubscriptionService } = await loadPushSubscriptionService()
             expect(
                 await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(
-                    7n,
+                    uid(7),
                     'https://evil.example/x',
                 ),
             ).toBe(false)
@@ -248,7 +258,7 @@ describe('pushSubscriptionService', () => {
     describe('endpoint owned by another user', () => {
         const existing = {
             id: 1n,
-            userId: 3n,
+            userId: uid(3),
             endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
             p256dhKey: 'key',
             authKey: 'auth',
@@ -258,12 +268,12 @@ describe('pushSubscriptionService', () => {
             pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue(existing)
             pushSubscriptionRepositoryMock.updateByEndpoint.mockResolvedValue({
                 ...existing,
-                userId: 7n,
+                userId: uid(7),
             })
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
             const result = await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 {
                     endpoint: existing.endpoint,
                     p256dhKey: 'key',
@@ -289,7 +299,7 @@ describe('pushSubscriptionService', () => {
 
             const { pushSubscriptionService } = await loadPushSubscriptionService()
             const result = await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 {
                     endpoint: existing.endpoint,
                     ...keys,
@@ -310,7 +320,7 @@ describe('pushSubscriptionService', () => {
         getPushSubscriptionStatisticsMock.mockResolvedValue(undefined)
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
-        const result = await pushSubscriptionService.getSubscriptionStatistics(7n, 1n)
+        const result = await pushSubscriptionService.getSubscriptionStatistics(uid(7), 1n)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -334,7 +344,7 @@ describe('pushSubscriptionService', () => {
         ])('rejects %s before touching the database', async (endpoint) => {
             const { pushSubscriptionService } = await loadPushSubscriptionService()
             const result = await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 payload(endpoint),
                 'token',
             )
@@ -355,7 +365,7 @@ describe('pushSubscriptionService', () => {
             expect(endpoint.length).toBeLessThan(500)
 
             const result = await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 payload(endpoint),
                 'token',
             )
@@ -375,7 +385,7 @@ describe('pushSubscriptionService', () => {
             const { pushSubscriptionService } = await loadPushSubscriptionService()
 
             const result = await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 payload('https://fcm.googleapis.com/fcm/send/new'),
                 'token',
             )
@@ -392,7 +402,7 @@ describe('pushSubscriptionService', () => {
         it('counts a subscription moved from another user, not one the user already has', async () => {
             pushSubscriptionRepositoryMock.findByEndpoint.mockResolvedValue({
                 id: 1n,
-                userId: 7n,
+                userId: uid(7),
                 endpoint: 'https://fcm.googleapis.com/fcm/send/ep',
                 p256dhKey: 'k',
                 authKey: 'a',
@@ -402,14 +412,14 @@ describe('pushSubscriptionService', () => {
             const { pushSubscriptionService } = await loadPushSubscriptionService()
 
             const own = await pushSubscriptionService.createSubscription(
-                7n,
+                uid(7),
                 payload('https://fcm.googleapis.com/fcm/send/ep'),
                 'token',
             )
             expect(Result.isOk(own)).toBe(true)
 
             const moved = await pushSubscriptionService.createSubscription(
-                8n,
+                uid(8),
                 payload('https://fcm.googleapis.com/fcm/send/ep'),
                 'token',
             )

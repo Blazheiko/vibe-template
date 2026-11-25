@@ -18,6 +18,7 @@ import {
 import { userEventBus } from '#app/services/communication/user-event-bus.js'
 import { badRequest, notFound, type AppError, type AppResult } from '#app/services/shared/errors.js'
 import { notificationTransformer } from '#app/transformers/index.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-236 (Р4, Р6): what the notification center answers. Every call is bound to the user of the
 // session; a notification of somebody else is answered like a missing one.
@@ -26,7 +27,7 @@ const notificationNotFound = (): AppError => notFound('Notification', 'Notificat
 
 /** Tells the user's other tabs and devices to read again (Р8). Best effort, never awaited. */
 const signal = (
-    userId: bigint,
+    userId: UserId,
     event: 'notifications_changed' | 'notification_preferences_changed',
 ): void => {
     userEventBus.publishToUser(String(userId), event, {}).catch((err: unknown) => {
@@ -42,7 +43,7 @@ export interface NotificationsPage {
 
 export const notificationCenterService = {
     async list(
-        userId: bigint,
+        userId: UserId,
         options: { unread: boolean; before: bigint | null; limit: number },
     ): Promise<AppResult<NotificationsPage>> {
         const page = await notificationRepository.page(userId, options)
@@ -54,13 +55,13 @@ export const notificationCenterService = {
         })
     },
 
-    async unreadCount(userId: bigint): Promise<AppResult<{ unreadCount: number }>> {
+    async unreadCount(userId: UserId): Promise<AppResult<{ unreadCount: number }>> {
         return Result.ok({ unreadCount: await notificationRepository.countUnread(userId) })
     },
 
     /** Idempotent: a notification read already answers its link again (Р6). */
     async markRead(
-        userId: bigint,
+        userId: UserId,
         id: bigint,
     ): Promise<AppResult<{ link: string | null; unreadCount: number }>> {
         const read = await notificationRepository.markRead(userId, id)
@@ -73,20 +74,20 @@ export const notificationCenterService = {
     },
 
     /** Every notification with `id <= upTo`, older pages included (Р6). */
-    async readAll(userId: bigint, upTo: bigint): Promise<AppResult<{ unreadCount: number }>> {
+    async readAll(userId: UserId, upTo: bigint): Promise<AppResult<{ unreadCount: number }>> {
         await notificationRepository.markAllUpTo(userId, upTo)
         signal(userId, 'notifications_changed')
         return Result.ok({ unreadCount: await notificationRepository.countUnread(userId) })
     },
 
-    async getPreferences(userId: bigint): Promise<AppResult<NotificationPreference[]>> {
+    async getPreferences(userId: UserId): Promise<AppResult<NotificationPreference[]>> {
         const rows = await notificationPreferenceRepository.findByUserId(userId)
         return Result.ok(resolveNotificationPreferences(rows))
     },
 
     /** One cell of the matrix (Р4); a locked or absent channel is refused. */
     async updatePreference(
-        userId: bigint,
+        userId: UserId,
         input: { category: NotificationCategory; channel: NotificationChannel; enabled: boolean },
     ): Promise<AppResult<NotificationPreference[]>> {
         const policy = channelPolicyOf(input.category, input.channel)

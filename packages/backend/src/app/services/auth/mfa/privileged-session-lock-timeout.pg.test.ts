@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import type { UserId } from '#app/domain/ids.js'
 import type * as SessionIndex from '#vendor/utils/session/session-index.js'
 import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import { and, eq } from 'drizzle-orm'
@@ -158,7 +159,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     registerSessionTokenChecker(() => Promise.resolve('ok'))
 
     const redisAdmin = createTestRedis(PREFIX)
-    const created: bigint[] = []
+    const created: UserId[] = []
     /** Lock attempts of the current test; `onAttempt` sees each one before it waits. */
     let attempts = 0
     let onAttempt: (n: number) => void = () => undefined
@@ -227,7 +228,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
         return { context, responseData }
     }
 
-    const signInOverHttp = async (user: { id: bigint; sessionToken: string }) => {
+    const signInOverHttp = async (user: { id: UserId; sessionToken: string }) => {
         const { context, responseData } = await requestWith(undefined)
         await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
         const cookie = responseData.cookies.get(sessionConfig.cookieName)?.value

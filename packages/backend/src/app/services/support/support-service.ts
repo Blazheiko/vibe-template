@@ -32,6 +32,7 @@ import {
     acquireSupportLock,
     type SupportLease,
 } from '#app/services/support/support-inflight-lock.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export interface SupportChatHistoryItem {
     id: string
@@ -136,7 +137,7 @@ export interface SupportAdmission {
  * budget reservation.
  */
 async function admit(
-    userId: bigint,
+    userId: UserId,
     policy: ThrottlePolicy,
     message: string | null,
 ): Promise<AppResult<SupportAdmission>> {
@@ -267,7 +268,7 @@ export const supportService = {
      * history is never read in one go.
      */
     async getChatHistory(
-        userId: bigint,
+        userId: UserId,
         page: { before?: string | undefined; limit: number },
     ): Promise<AppResult<{ data: SupportChatHistoryItem[]; hasMore: boolean }>> {
         const { rows, hasMore } = await supportRepository.findChatHistoryPage(userId, {
@@ -287,13 +288,13 @@ export const supportService = {
         })
     },
 
-    async deleteChatHistory(userId: bigint): Promise<AppResult<void>> {
+    async deleteChatHistory(userId: UserId): Promise<AppResult<void>> {
         await supportRepository.deleteAllChatHistory(userId)
         return Result.ok(undefined)
     },
 
     /** Admits the greeting: the per-user limit for opening the chat, then the user's lock. */
-    admitOpenChat(userId: bigint): Promise<AppResult<SupportAdmission>> {
+    admitOpenChat(userId: UserId): Promise<AppResult<SupportAdmission>> {
         return admit(userId, throttlePolicies.supportOpenChatUser, null)
     },
 
@@ -301,7 +302,7 @@ export const supportService = {
      * Admits a message: the per-user limit, the user's lock (one answer at a time), then the
      * daily token budget.
      */
-    admitChat(userId: bigint, message: string): Promise<AppResult<SupportAdmission>> {
+    admitChat(userId: UserId, message: string): Promise<AppResult<SupportAdmission>> {
         return admit(userId, throttlePolicies.supportChatUser, message)
     },
 
@@ -312,7 +313,7 @@ export const supportService = {
      */
     async runOpenChat(
         admission: SupportAdmission,
-        userId: bigint,
+        userId: UserId,
         targetUuid?: string,
         signal?: AbortSignal,
         language?: string,
@@ -383,7 +384,7 @@ export const supportService = {
     /** The answer to an admitted message; the lock is released as in `runOpenChat`. */
     async runChat(
         admission: SupportAdmission,
-        userId: bigint,
+        userId: UserId,
         message: string,
         targetUuid?: string,
         signal?: AbortSignal,

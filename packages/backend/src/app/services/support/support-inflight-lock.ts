@@ -1,4 +1,5 @@
 import { acquireLease, type HeldLease, type Lease } from '#app/services/shared/redis-lease.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // One support answer at a time per user. Every answer is several language-model calls,
 // so a second message (or a greeting) while the first is being written is refused.
@@ -10,7 +11,7 @@ import { acquireLease, type HeldLease, type Lease } from '#app/services/shared/r
 export type SupportLease = Lease
 export type SupportInflightLock = HeldLease
 
-const lockKey = (userId: bigint): string => `support:inflight:${String(userId)}`
+const lockKey = (userId: UserId): string => `support:inflight:${String(userId)}`
 
 export class SupportLockLostError extends Error {
     override readonly name = 'SupportLockLostError'
@@ -25,7 +26,7 @@ export class SupportLockLostError extends Error {
  * itself until it is released, lost or past its maximum lifetime.
  */
 export function acquireSupportLock(
-    userId: bigint,
+    userId: UserId,
     lease: SupportLease,
 ): Promise<SupportInflightLock | null> {
     return acquireLease(lockKey(userId), lease, (reason) => new SupportLockLostError(reason))

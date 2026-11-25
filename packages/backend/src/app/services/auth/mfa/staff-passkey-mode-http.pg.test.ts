@@ -16,6 +16,7 @@ import {
 } from '../../../../test-support/redis-test-client.js'
 import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
 import { enrollTestTotp, type TestTotp } from '../../../../test-support/test-totp.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-248 (docs/plan/passkeys-mfa-plan.md, Р10, Р12, Р13, Д11; tasks X2) over HTTP with the real
 // route table, session_web, csrf_guard, auth_guard and can:, a real PostgreSQL and Redis, and real
@@ -161,7 +162,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
     await import('#app/start/index.js')
 
     const redisAdmin = createTestRedis(PREFIX)
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     const RP = webauthnConfig.rpId
     const WEB_ORIGIN = webauthnConfig.origins[0] ?? ''
@@ -227,7 +228,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
     const insertUser = async (
         role: Role,
         fields: { password?: boolean; name?: string } = {},
-    ): Promise<{ id: bigint; email: string }> => {
+    ): Promise<{ id: UserId; email: string }> => {
         const [row] = await db
             .insert(users)
             .values({
@@ -244,7 +245,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
     }
 
     /** A passkey registered for real (the ceremony of the service), stored without codes. */
-    const addPasskey = async (user: { id: bigint; email: string }) => {
+    const addPasskey = async (user: { id: UserId; email: string }) => {
         const authenticator = new SoftAuthenticator({ counter: 1 })
         const handle = await withTransaction((tx) =>
             webauthnCredentialRepository.ensureUserHandle(user.id, randomBytes(32), tx),
@@ -328,7 +329,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
         await pool.end()
     })
 
-    const roleOf = async (id: bigint): Promise<Role | undefined> =>
+    const roleOf = async (id: UserId): Promise<Role | undefined> =>
         (await db.select({ role: users.role }).from(users).where(eq(users.id, id)))[0]?.role
 
     describe('a staff role over HTTP in both modes', () => {
@@ -382,7 +383,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
     })
 
     /** Branch B of Р12 up to the reset: returns the account and an open session of it. */
-    type Reset = (user: { id: bigint; email: string }) => Promise<{ ok: boolean; reason?: string }>
+    type Reset = (user: { id: UserId; email: string }) => Promise<{ ok: boolean; reason?: string }>
     const branchBUntilReset = async (reset: Reset) => {
         // P4 without codes: a verified email and nothing but a passkey.
         const user = await insertUser('user', { password: false, name: 'passkey only' })
@@ -430,7 +431,7 @@ describe.skipIf(!hasPg || !hasRedis)('staff passkey mode over HTTP (feat-248 X2)
 
     /** Branch B of Р12 after a successful reset. */
     const branchBAfterReset = async (
-        user: { id: bigint; email: string },
+        user: { id: UserId; email: string },
         open: Browser,
     ): Promise<void> => {
         expect(await loadMfaFactors(user.id)).toEqual({ totp: undefined, passkeys: 0 })

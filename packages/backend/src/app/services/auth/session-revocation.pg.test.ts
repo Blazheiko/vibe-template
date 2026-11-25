@@ -12,6 +12,7 @@ import {
 } from '../../../test-support/redis-test-client.js'
 import type { SessionAuthState } from 'shared/mfa'
 import { testProofHolder, testUserActor } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -118,7 +119,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
     const OLD_PASSWORD = 'old-secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
 
     const insertUser = async (name: string) => {
         const [row] = await db
@@ -150,7 +151,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     }
 
     // What authService.login ends with: a signed-in session under the user's token.
-    const signIn = async (user: { id: bigint; sessionToken: string }) => {
+    const signIn = async (user: { id: UserId; sessionToken: string }) => {
         const { context, responseData } = newContext()
         await sessionHandler(context, undefined, undefined)
         await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
@@ -165,7 +166,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
         return { context, responseData }
     }
 
-    const dbToken = async (id: bigint): Promise<string | undefined> =>
+    const dbToken = async (id: UserId): Promise<string | undefined> =>
         userRepository.findSessionToken(id)
 
     beforeAll(async () => {
@@ -411,7 +412,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     // The revocation here is what a claim does to the row (password NULL, token rotated);
     // the claim itself comes with feat-097.
     describe('a change of credentials let in before a revocation', () => {
-        const revokeLikeAClaim = async (id: bigint): Promise<string> => {
+        const revokeLikeAClaim = async (id: UserId): Promise<string> => {
             const rotated = `claim${String(Date.now())}${String(id)}`.slice(0, 24)
             await userRepository.update(id, { password: null, sessionToken: rotated })
             return rotated
@@ -546,7 +547,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
         const opened: { userId: string; uuid: string }[] = []
 
         // A connection opened from a signed-in session, as handleConnected registers it.
-        const openSocket = (userId: bigint, sessionId: string, userToken: string) => {
+        const openSocket = (userId: UserId, sessionId: string, userToken: string) => {
             socketCounter += 1
             const uuid = `rev-socket-${String(socketCounter)}`
             const closedWith: number[] = []

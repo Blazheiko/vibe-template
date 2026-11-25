@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 
@@ -191,7 +192,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.getChatHistory(11n, { limit: 50 })
+            const result = await supportService.getChatHistory(uid(11), { limit: 50 })
 
             expect(Result.isOk(result) && result.value).toEqual({
                 data: [
@@ -214,8 +215,8 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.getChatHistory(11n, { before: '812', limit: 20 })
-            await supportService.getChatHistory(11n, { limit: 50 })
+            await supportService.getChatHistory(uid(11), { before: '812', limit: 20 })
+            await supportService.getChatHistory(uid(11), { limit: 50 })
 
             expect(supportRepositoryMock.findChatHistoryPage.mock.calls).toEqual([
                 [11n, { before: 812n, limit: 20 }],
@@ -230,7 +231,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.getChatHistory(11n, { limit: 50 })
+            await supportService.getChatHistory(uid(11), { limit: 50 })
 
             expect(supportRepositoryMock.findRecentForContext).not.toHaveBeenCalled()
         })
@@ -242,7 +243,9 @@ describe('supportService', () => {
 
             const { supportService } = await loadSupportService()
 
-            await expect(supportService.getChatHistory(11n, { limit: 50 })).rejects.toBe(dbError)
+            await expect(supportService.getChatHistory(uid(11), { limit: 50 })).rejects.toBe(
+                dbError,
+            )
         })
     })
 
@@ -257,7 +260,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admissionOf(), 7n, 'hello', 'conn-1')
+            await supportService.runChat(admissionOf(), uid(7), 'hello', 'conn-1')
 
             expect(supportRepositoryMock.findRecentForContext).toHaveBeenCalledWith(7n, 20)
             expect(supportRepositoryMock.findChatHistoryPage).not.toHaveBeenCalled()
@@ -270,7 +273,7 @@ describe('supportService', () => {
 
         const { supportService } = await loadSupportService()
 
-        await expect(supportService.deleteChatHistory(11n)).rejects.toBe(dbError)
+        await expect(supportService.deleteChatHistory(uid(11))).rejects.toBe(dbError)
     })
 
     describe('cancellation when the WS connection closes (code-issues item 51)', () => {
@@ -288,7 +291,13 @@ describe('supportService', () => {
             const controller = new AbortController()
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admissionOf(), 7n, 'hello', 'conn-1', controller.signal)
+            await supportService.runChat(
+                admissionOf(),
+                uid(7),
+                'hello',
+                'conn-1',
+                controller.signal,
+            )
 
             // Not the same object any more (it is combined with the lock's), but it follows it.
             const passed = supportLlmServiceMock.chatStream.mock.calls[0]?.at(-1) as AbortSignal
@@ -313,7 +322,7 @@ describe('supportService', () => {
             const controller = new AbortController()
 
             const { supportService } = await loadSupportService()
-            await supportService.runOpenChat(admissionOf(), 7n, 'conn-1', controller.signal)
+            await supportService.runOpenChat(admissionOf(), uid(7), 'conn-1', controller.signal)
 
             const passed = supportLlmServiceMock.openChatStream.mock.calls[0]?.at(-1) as AbortSignal
             expect(passed.aborted).toBe(false)
@@ -357,7 +366,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admissionOf(order, undefined, { trackBegin: true }),
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
             )
@@ -384,7 +393,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admissionOf(order, undefined, { trackBegin: true }),
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
             )
@@ -398,7 +407,7 @@ describe('supportService', () => {
             happyPath()
             const row = (id: bigint, role: 'user' | 'assistant', content: string) => ({
                 id,
-                userId: 7n,
+                userId: uid(7),
                 role,
                 content,
             })
@@ -410,7 +419,7 @@ describe('supportService', () => {
             ])
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admissionOf(), 7n, 'yes', 'conn-1')
+            await supportService.runChat(admissionOf(), uid(7), 'yes', 'conn-1')
 
             const history = supportLlmServiceMock.chatStream.mock.calls[0]?.[2] as { id: bigint }[]
             expect(history.map((message) => message.id)).toEqual([897n, 898n, 899n])
@@ -421,7 +430,7 @@ describe('supportService', () => {
             const admission = admissionOf()
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+            await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
             const translation = supportQueryTranslationServiceMock.translateToEnglish.mock
                 .calls[0]?.[1] as { onUsage: (u: unknown) => void }
@@ -450,7 +459,7 @@ describe('supportService', () => {
             const admission = admissionOf([], lostLease())
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+            await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
             expect(admission.budget.begin).not.toHaveBeenCalled()
         })
@@ -462,7 +471,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admission,
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
                 undefined,
@@ -483,7 +492,7 @@ describe('supportService', () => {
 
             const { supportService } = await loadSupportService()
             const admission = admissionOf([], lost)
-            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+            await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
             // The translation was already running next to the history read; nothing after it.
             expect(admission.budget.begin.mock.calls).toEqual([['translation']])
@@ -505,7 +514,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admissionOf(order, undefined, { trackBegin: true }),
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
             )
@@ -526,7 +535,7 @@ describe('supportService', () => {
             const admission = admissionOf()
 
             const { supportService } = await loadSupportService()
-            await supportService.runOpenChat(admission, 7n, 'conn-1')
+            await supportService.runOpenChat(admission, uid(7), 'conn-1')
 
             expect(supportLlmServiceMock.isConfigured).toHaveBeenCalledWith('SUPPORT_FIRST_CHAT')
             expect(admission.budget.begin).not.toHaveBeenCalled()
@@ -541,7 +550,7 @@ describe('supportService', () => {
             const admission = admissionOf()
 
             const { supportService } = await loadSupportService()
-            await supportService.runOpenChat(admission, 7n, 'conn-1')
+            await supportService.runOpenChat(admission, uid(7), 'conn-1')
 
             expect(admission.budget.begin.mock.calls).toEqual([['chat']])
             const onUsage = llmUsageServiceMock.textUsageRecorder.mock.calls.find(
@@ -576,7 +585,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admissionOf(),
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
                 undefined,
@@ -606,7 +615,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admission,
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
                 undefined,
@@ -637,7 +646,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
             await supportService.runChat(
                 admissionOf(),
-                7n,
+                uid(7),
                 'hello',
                 'conn-1',
                 undefined,
@@ -662,7 +671,7 @@ describe('supportService', () => {
             const events = tellOrder()
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admissionOf(), 7n, 'hello', 'conn-1')
+            await supportService.runChat(admissionOf(), uid(7), 'hello', 'conn-1')
 
             for (const { payload } of events) expect(payload).not.toHaveProperty('clientMessageId')
         })
@@ -687,7 +696,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.runOpenChat(admissionOf(), 7n, 'conn-1', undefined, 'uk')
+            await supportService.runOpenChat(admissionOf(), uid(7), 'conn-1', undefined, 'uk')
 
             expect(supportLlmServiceMock.openChatStream.mock.calls[0]?.[0]).toBe('uk')
         })
@@ -702,7 +711,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n, 'hello')
+            const result = await supportService.admitChat(uid(7), 'hello')
 
             expect(Result.isOk(result)).toBe(true)
             expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
@@ -734,7 +743,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.admitOpenChat(7n)
+            await supportService.admitOpenChat(uid(7))
 
             expect(consumeAuthThrottleMock).toHaveBeenCalledWith(
                 throttlePolicies.supportOpenChatUser,
@@ -746,7 +755,7 @@ describe('supportService', () => {
             consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 21 })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n, 'hello')
+            const result = await supportService.admitChat(uid(7), 'hello')
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) {
@@ -764,7 +773,7 @@ describe('supportService', () => {
             acquireSupportLockMock.mockResolvedValue(null)
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n, 'hello')
+            const result = await supportService.admitChat(uid(7), 'hello')
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) {
@@ -782,7 +791,7 @@ describe('supportService', () => {
 
             const { supportService } = await loadSupportService()
 
-            await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
+            await expect(supportService.admitChat(uid(7), 'hello')).rejects.toBe(redisError)
             expect(acquireSupportLockMock).not.toHaveBeenCalled()
         })
 
@@ -796,7 +805,7 @@ describe('supportService', () => {
 
                 const { supportService } = await loadSupportService()
 
-                await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
+                await expect(supportService.admitChat(uid(7), 'hello')).rejects.toBe(redisError)
                 expect(classifyError(redisError).code).toBe('service_unavailable')
                 expect(acquireSupportLockMock).not.toHaveBeenCalled()
             },
@@ -809,7 +818,7 @@ describe('supportService', () => {
 
             const { supportService } = await loadSupportService()
 
-            await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
+            await expect(supportService.admitChat(uid(7), 'hello')).rejects.toBe(redisError)
         })
 
         describe('the daily token budget (feat-063, D2)', () => {
@@ -838,7 +847,7 @@ describe('supportService', () => {
                 })
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'a'.repeat(1000))
+                const result = await supportService.admitChat(uid(7), 'a'.repeat(1000))
 
                 expect(Result.isOk(result)).toBe(true)
                 expect(order).toEqual(['throttle', 'lock', 'reserve'])
@@ -855,7 +864,7 @@ describe('supportService', () => {
                 lockOk()
 
                 const { supportService } = await loadSupportService()
-                await supportService.admitOpenChat(7n)
+                await supportService.admitOpenChat(uid(7))
 
                 expect(reserveDailyTokensMock).toHaveBeenCalledWith(
                     7n,
@@ -874,7 +883,7 @@ describe('supportService', () => {
                 })
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'hello')
+                const result = await supportService.admitChat(uid(7), 'hello')
 
                 expect(Result.isError(result) && result.error).toMatchObject({
                     _tag: 'RateLimited',
@@ -892,18 +901,18 @@ describe('supportService', () => {
 
                 const { supportService } = await loadSupportService()
 
-                await expect(supportService.admitChat(7n, 'hello')).rejects.toBe(redisError)
+                await expect(supportService.admitChat(uid(7), 'hello')).rejects.toBe(redisError)
                 expect(unlock).toHaveBeenCalledTimes(1)
             })
 
             it('does not touch the budget when the limit or the lock already refused', async () => {
                 consumeAuthThrottleMock.mockResolvedValue({ allowed: false, count: 21 })
                 const { supportService } = await loadSupportService()
-                await supportService.admitChat(7n, 'hello')
+                await supportService.admitChat(uid(7), 'hello')
 
                 consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
                 acquireSupportLockMock.mockResolvedValue(null)
-                await supportService.admitChat(7n, 'hello')
+                await supportService.admitChat(uid(7), 'hello')
 
                 expect(reserveDailyTokensMock).not.toHaveBeenCalled()
             })
@@ -918,7 +927,7 @@ describe('supportService', () => {
                 })
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'hello')
+                const result = await supportService.admitChat(uid(7), 'hello')
                 if (!Result.isOk(result)) throw new Error('not admitted')
                 order.length = 0
                 await result.value.release()
@@ -938,7 +947,7 @@ describe('supportService', () => {
                 })
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'hello')
+                const result = await supportService.admitChat(uid(7), 'hello')
                 if (!Result.isOk(result)) throw new Error('not admitted')
 
                 await expect(result.value.release()).resolves.toBeUndefined()
@@ -952,7 +961,7 @@ describe('supportService', () => {
                 reserveDailyTokensMock.mockResolvedValue({ allowed: true, reservation })
 
                 const { supportService } = await loadSupportService()
-                const result = await supportService.admitChat(7n, 'hello')
+                const result = await supportService.admitChat(uid(7), 'hello')
                 if (!Result.isOk(result)) throw new Error('not admitted')
 
                 result.value.budget.begin('chat')
@@ -972,7 +981,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            const result = await supportService.admitChat(7n, 'hello')
+            const result = await supportService.admitChat(uid(7), 'hello')
             if (!Result.isOk(result)) throw new Error('not admitted')
 
             await expect(result.value.release()).resolves.toBeUndefined()
@@ -1006,7 +1015,7 @@ describe('supportService', () => {
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+            await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
             expect(order).toEqual([
                 'support_chat_token',
@@ -1032,7 +1041,7 @@ describe('supportService', () => {
             })
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admissionOf([]), 7n, 'hello', 'conn-1')
+            await supportService.runChat(admissionOf([]), uid(7), 'hello', 'conn-1')
 
             const toConnection = broadcastServiceMock.broadcastMessageToUserConnection.mock.calls
             const toAll = broadcastServiceMock.broadcastMessageToUser.mock.calls
@@ -1059,7 +1068,7 @@ describe('supportService', () => {
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+            await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
             expect(order).toEqual(['release', 'support_chat_error'])
             expect(broadcastServiceMock.broadcastMessageToUserConnection).toHaveBeenCalledWith(
@@ -1077,7 +1086,7 @@ describe('supportService', () => {
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
-            await supportService.runOpenChat(admission, 7n, 'conn-1')
+            await supportService.runOpenChat(admission, uid(7), 'conn-1')
 
             expect(order).toEqual(['release', 'support_chat_error'])
             expect(broadcastServiceMock.broadcastMessageToUserConnection).toHaveBeenCalledWith(
@@ -1099,7 +1108,7 @@ describe('supportService', () => {
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
-            await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+            await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
             expect(order).toEqual(['release'])
             expect(admission.release).toHaveBeenCalledTimes(1)
@@ -1123,7 +1132,7 @@ describe('supportService', () => {
                 const admission = admissionOf(order, lost)
 
                 const { supportService } = await loadSupportService()
-                await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+                await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
                 expect(supportEmbeddingServiceMock.search).not.toHaveBeenCalled()
                 expect(supportLlmServiceMock.chatStream).not.toHaveBeenCalled()
@@ -1145,7 +1154,7 @@ describe('supportService', () => {
                 const admission = admissionOf([], lostLease())
 
                 const { supportService } = await loadSupportService()
-                await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+                await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
                 expect(supportRepositoryMock.addUserMessageOnce).not.toHaveBeenCalled()
                 expect(supportQueryTranslationServiceMock.translateToEnglish).not.toHaveBeenCalled()
@@ -1169,7 +1178,7 @@ describe('supportService', () => {
                 const admission = admissionOf([], lost)
 
                 const { supportService } = await loadSupportService()
-                await supportService.runChat(admission, 7n, 'hello', 'conn-1')
+                await supportService.runChat(admission, uid(7), 'hello', 'conn-1')
 
                 expect(streamSignal?.aborted).toBe(true)
                 // Not saved: the answer was cut off by the lock, not completed.
@@ -1189,7 +1198,7 @@ describe('supportService', () => {
                 const { supportService } = await loadSupportService()
                 await supportService.runChat(
                     admissionOf(),
-                    7n,
+                    uid(7),
                     'hello',
                     'conn-1',
                     controller.signal,
@@ -1216,7 +1225,7 @@ describe('supportService', () => {
                 tellOrder(order)
 
                 const { supportService } = await loadSupportService()
-                await supportService.runChat(admissionOf(order, lost), 7n, 'hello', 'conn-1')
+                await supportService.runChat(admissionOf(order, lost), uid(7), 'hello', 'conn-1')
 
                 expect(order).toEqual(['support_chat_token', 'release', 'support_chat_error'])
             })
@@ -1238,7 +1247,7 @@ describe('supportService', () => {
                 tellOrder(order)
 
                 const { supportService } = await loadSupportService()
-                await supportService.runChat(admissionOf(order, lost), 7n, 'hello', 'conn-1')
+                await supportService.runChat(admissionOf(order, lost), uid(7), 'hello', 'conn-1')
 
                 expect(userNotificationServiceMock.supportReply).not.toHaveBeenCalled()
                 expect(order).not.toContain('support_chat_complete')
@@ -1257,7 +1266,7 @@ describe('supportService', () => {
                 tellOrder(order)
 
                 const { supportService } = await loadSupportService()
-                await supportService.runOpenChat(admissionOf(order, lost), 7n, 'conn-1')
+                await supportService.runOpenChat(admissionOf(order, lost), uid(7), 'conn-1')
 
                 expect(order).toEqual(['support_chat_token', 'release', 'support_chat_error'])
                 expect(supportRepositoryMock.addChatMessage).not.toHaveBeenCalled()
@@ -1274,7 +1283,7 @@ describe('supportService', () => {
                 const admission = admissionOf(order, lost)
 
                 const { supportService } = await loadSupportService()
-                await supportService.runOpenChat(admission, 7n, 'conn-1')
+                await supportService.runOpenChat(admission, uid(7), 'conn-1')
 
                 expect(supportLlmServiceMock.openChatStream).not.toHaveBeenCalled()
                 expect(order).toEqual(['release', 'support_chat_error'])
@@ -1288,7 +1297,7 @@ describe('supportService', () => {
             const admission = admissionOf(order)
 
             const { supportService } = await loadSupportService()
-            await supportService.runOpenChat(admission, 7n, 'conn-1')
+            await supportService.runOpenChat(admission, uid(7), 'conn-1')
 
             expect(order).toEqual(['release'])
             expect(supportLlmServiceMock.openChatStream).not.toHaveBeenCalled()
@@ -1307,7 +1316,7 @@ describe('supportService', () => {
             const { supportService } = await loadSupportService()
 
             await expect(
-                supportService.runOpenChat(admission, 7n, 'conn-1'),
+                supportService.runOpenChat(admission, uid(7), 'conn-1'),
             ).resolves.toBeUndefined()
             expect(admission.release).toHaveBeenCalledTimes(1)
         })

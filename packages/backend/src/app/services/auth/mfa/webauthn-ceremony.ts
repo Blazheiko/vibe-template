@@ -13,6 +13,7 @@ import type { AuthenticationResponse, RegistrationResponse } from 'shared/schema
 import webauthnConfig from '#config/webauthn.js'
 import type { WebAuthnCredentialRow } from '#app/repositories/index.js'
 import logger from '#vendor/utils/logger.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р5, Р6): the one place that checks a WebAuthn answer.
 // Registration, passwordless sign-in, the second sign-in step and step-up all call
@@ -116,7 +117,7 @@ export type CeremonyInput =
           /** The stored key the answer names (found by its credential id). */
           credential: WebAuthnCredentialRow
           /** The user the key must belong to; for a passwordless sign-in, its owner. */
-          expectedUserId: bigint
+          expectedUserId: UserId
           /** The owner's user handle; the answer's userHandle must equal it when given. */
           expectedUserHandle: Buffer | null
       })

@@ -1,9 +1,11 @@
 import { createServer } from 'node:net'
+import { uid } from '../../../../test-support/ids.js'
 
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // The session token handler (loaded with the real route table) refuses to import
 // without a key of at least 32 characters; this one signs nothing here.
@@ -94,11 +96,11 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     const { pushNotificationLogs, pushSubscriptions, users } = await import('#database/schema.js')
 
     const now = Date.now()
-    const ids = { owner: 0n, other: 0n, ownerSub: 0n, otherSub: 0n, missing: 0n }
+    const ids = { owner: uid(0), other: uid(0), ownerSub: 0n, otherSub: 0n, missing: 0n }
     let stopServer: ((type?: string) => Promise<void>) | undefined
     const sessionTokens = new Map<string, string>()
 
-    const insertUser = async (name: string): Promise<bigint> => {
+    const insertUser = async (name: string): Promise<UserId> => {
         const [row] = await db
             .insert(users)
             .values({ name, email: `${name}-${String(now)}@example.test` })
@@ -108,7 +110,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
         return row.id
     }
 
-    const insertSubscription = async (userId: bigint, tag: string): Promise<bigint> => {
+    const insertSubscription = async (userId: UserId, tag: string): Promise<bigint> => {
         const [row] = await db
             .insert(pushSubscriptions)
             .values({
@@ -139,7 +141,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     const call = async (
         method: 'GET' | 'POST' | 'PUT' | 'DELETE',
         path: string,
-        options: { user?: bigint; body?: unknown } = {},
+        options: { user?: UserId; body?: unknown } = {},
     ): Promise<HttpResult> => {
         const headers: Record<string, string> = {}
         if (options.user !== undefined) {
@@ -455,7 +457,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     // feat-104 (R03): the server POSTs to the stored endpoint, so only allowed push services are
     // stored, the number of devices is capped, and the transport error text stays in the database.
     describe('push endpoint SSRF (feat-104)', () => {
-        const countFor = async (userId: bigint): Promise<number> =>
+        const countFor = async (userId: UserId): Promise<number> =>
             (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId)))
                 .length
 
@@ -567,7 +569,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     // string: a long value reached the INSERT and came back as a 500. And the stored address was
     // whatever the client wrote into `ipAddress`.
     describe('input bounds of a subscription', () => {
-        let user = 0n
+        let user = uid(0)
         const endpoint = (tag: string): string =>
             `https://fcm.googleapis.com/fcm/send/bounds-${tag}-${String(now)}`
         const valid = (tag: string): Record<string, unknown> => ({
@@ -727,7 +729,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     // feat-252: a sign-out the server refused puts back the record it removed as it was, so the
     // create takes the state; without it a record is active, as before.
     describe('POST /push-subscriptions with isActive', () => {
-        let user = 0n
+        let user = uid(0)
         const body = (tag: string, extra: Record<string, unknown> = {}) => ({
             endpoint: `https://fcm.googleapis.com/fcm/send/active-${tag}-${String(now)}`,
             p256dhKey: 'p'.repeat(87),

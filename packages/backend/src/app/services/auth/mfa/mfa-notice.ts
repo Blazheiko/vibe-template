@@ -7,6 +7,7 @@ import { emailService } from '#app/services/notifications/email-service.js'
 import { renderBrandedEmail } from '#app/services/notifications/email-templates.js'
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import logger from '#vendor/utils/logger.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р14): a change of the second factors is a change of
 // who can get into the account, so it is told by the notification center and by mail to the
@@ -100,7 +101,7 @@ const NOTIFICATION = {
     reset: 'mfa_reset',
 } as const satisfies Record<MfaNoticeKind, string>
 
-async function mail(userId: bigint, kind: MfaNoticeKind): Promise<void> {
+async function mail(userId: UserId, kind: MfaNoticeKind): Promise<void> {
     const user = await userRepository.findById(userId)
     if (user?.email === null || user?.email === undefined || user.email === '') return
     const content = renderMfaNoticeEmail(kind, user.name)
@@ -119,7 +120,7 @@ async function mail(userId: bigint, kind: MfaNoticeKind): Promise<void> {
 }
 
 /** The notification and the mail of a committed change of the second factors. */
-export function announceMfaChange(userId: bigint, kind: MfaNoticeKind): void {
+export function announceMfaChange(userId: UserId, kind: MfaNoticeKind): void {
     userNotificationService.security(userId, NOTIFICATION[kind])
     mail(userId, kind).catch((err: unknown) => {
         logger.warn({ err, userId: String(userId), kind }, 'MFA notice not mailed')

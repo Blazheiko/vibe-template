@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -68,7 +69,7 @@ describe('avatarService', () => {
 
         const { avatarService } = await loadAvatarService()
         const result = await avatarService.uploadAvatar(
-            7n,
+            uid(7),
             {
                 filename: 'avatar',
                 type: 'image/webp',
@@ -110,7 +111,7 @@ describe('avatarService', () => {
 
             const { avatarService } = await loadAvatarService()
             const result = await avatarService.uploadAvatar(
-                7n,
+                uid(7),
                 {
                     filename: 'evil.exe',
                     type: 'image/png',
@@ -136,7 +137,7 @@ describe('avatarService', () => {
 
             const { avatarService } = await loadAvatarService()
             const result = await avatarService.uploadAvatar(
-                7n,
+                uid(7),
                 {
                     filename: 'a.png',
                     type,
@@ -166,7 +167,7 @@ describe('avatarService', () => {
 
             const { avatarService } = await loadAvatarService()
             await avatarService.uploadAvatar(
-                7n,
+                uid(7),
                 {
                     filename: 'a.webp',
                     type: 'image/webp',
@@ -201,7 +202,7 @@ describe('avatarService', () => {
 
         const { avatarService } = await loadAvatarService()
         const result = await avatarService.uploadAvatar(
-            7n,
+            uid(7),
             {
                 filename: 'avatar.webp',
                 type: 'image/webp',
@@ -221,7 +222,7 @@ describe('avatarService', () => {
         userRepositoryMock.findById.mockResolvedValue(undefined)
 
         const { avatarService } = await loadAvatarService()
-        const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
+        const result = await avatarService.deleteAvatar(uid(7), SESSION_TOKEN)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -255,7 +256,7 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.uploadAvatar(7n, webp, presented)
+            const result = await avatarService.uploadAvatar(uid(7), webp, presented)
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
@@ -272,7 +273,7 @@ describe('avatarService', () => {
             userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue(undefined)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
+            const result = await avatarService.uploadAvatar(uid(7), webp, SESSION_TOKEN)
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
@@ -301,7 +302,7 @@ describe('avatarService', () => {
             })
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
+            const result = await avatarService.uploadAvatar(uid(7), webp, SESSION_TOKEN)
 
             expect(Result.isOk(result)).toBe(true)
             expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/old.webp')
@@ -314,7 +315,7 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.deleteAvatar(7n, undefined)
+            const result = await avatarService.deleteAvatar(uid(7), undefined)
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
@@ -328,7 +329,7 @@ describe('avatarService', () => {
             userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue(undefined)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.deleteAvatar(7n, 'stale-token')
+            const result = await avatarService.deleteAvatar(uid(7), 'stale-token')
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
@@ -349,7 +350,7 @@ describe('avatarService', () => {
             })
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
+            const result = await avatarService.deleteAvatar(uid(7), SESSION_TOKEN)
 
             expect(Result.isOk(result)).toBe(true)
             expect(userRepositoryMock.replaceAvatarIfSessionToken).toHaveBeenCalledWith(
@@ -375,7 +376,7 @@ describe('avatarService', () => {
                 })
 
                 const { avatarService } = await loadAvatarService()
-                const result = await avatarService.deleteAvatar(7n, SESSION_TOKEN)
+                const result = await avatarService.deleteAvatar(uid(7), SESSION_TOKEN)
 
                 expect(Result.isOk(result)).toBe(true)
                 expect(deleteFromS3Mock).not.toHaveBeenCalled()
@@ -394,7 +395,7 @@ describe('avatarService', () => {
             })
 
             const { avatarService } = await loadAvatarService()
-            await avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)
+            await avatarService.uploadAvatar(uid(7), webp, SESSION_TOKEN)
 
             expect(deleteFromS3Mock).toHaveBeenCalledTimes(1)
             expect(deleteFromS3Mock).toHaveBeenCalledWith('avatars/7/concurrent.webp')
@@ -413,7 +414,7 @@ describe('avatarService', () => {
             )
 
             const { avatarService } = await loadAvatarService()
-            await expect(avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)).rejects.toThrow(
+            await expect(avatarService.uploadAvatar(uid(7), webp, SESSION_TOKEN)).rejects.toThrow(
                 'could not serialize access',
             )
 
@@ -431,7 +432,7 @@ describe('avatarService', () => {
             )
 
             const { avatarService } = await loadAvatarService()
-            await expect(avatarService.uploadAvatar(7n, webp, SESSION_TOKEN)).rejects.toThrow(
+            await expect(avatarService.uploadAvatar(uid(7), webp, SESSION_TOKEN)).rejects.toThrow(
                 'Query read timeout',
             )
 

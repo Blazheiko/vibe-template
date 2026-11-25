@@ -1,4 +1,5 @@
 import type { AuditProof } from 'shared/audit'
+import { asUserId } from '#app/domain/ids.js'
 
 import type { HttpContext } from '#vendor/types/types.js'
 import {
@@ -40,7 +41,7 @@ export function auditActorFrom(
     if (userId === null) throw new Error('auditActorFrom: no signed-in user')
     return {
         kind: 'user',
-        userId: BigInt(userId),
+        userId: asUserId(userId),
         role: guardedRoles.get(context) ?? role,
         requestId: context.requestId,
         proof: null,

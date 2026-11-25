@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -14,7 +15,7 @@ describe.skipIf(!hasPg)('oauth_accounts on PostgreSQL', async () => {
     const { users } = await import('#database/schema.js')
     const { oauthAccountRepository } = await import('#app/repositories/index.js')
 
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()

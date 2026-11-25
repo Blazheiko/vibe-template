@@ -1,9 +1,10 @@
 import { userOnlineRepository, userRepository } from '#app/repositories/index.js'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
 import logger from '#vendor/utils/logger.js'
+import type { UserId } from '#app/domain/ids.js'
 
 interface AdminOnlineHistoryFilters {
-    userId?: bigint
+    userId?: UserId
     dateFrom?: Date
     dateTo?: Date
     cursor?: bigint

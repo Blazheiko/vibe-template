@@ -3,6 +3,7 @@ import { userPreferences, users } from '#database/schema.js'
 import { eq, sql } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type UserPreferencesRow = InferSelectModel<typeof userPreferences>
 
@@ -32,14 +33,14 @@ export interface ProfileRow {
 }
 
 export interface IUserPreferencesRepository {
-    findByUserId(userId: bigint, executor?: DbExecutor): Promise<UserPreferencesRow | undefined>
+    findByUserId(userId: UserId, executor?: DbExecutor): Promise<UserPreferencesRow | undefined>
     /**
      * The name (users) and the preferences (user_preferences) in one statement: a statement
      * sees one snapshot, so the name and the revision always belong to the same committed state.
      * Two reads, even in one READ COMMITTED transaction, could see a PATCH commit between them.
      * Undefined when the user does not exist.
      */
-    findProfileByUserId(userId: bigint, executor?: DbExecutor): Promise<ProfileRow | undefined>
+    findProfileByUserId(userId: UserId, executor?: DbExecutor): Promise<ProfileRow | undefined>
     /**
      * One upsert (Р12): the first change inserts the row with `revision = 1` and the passed
      * fields; a later one updates only the passed fields and adds one to `revision`. The row
@@ -47,7 +48,7 @@ export interface IUserPreferencesRepository {
      * both stay, of the same field the later commit wins, and each adds one.
      */
     applyPatch(
-        userId: bigint,
+        userId: UserId,
         patch: UserPreferencesPatch,
         tx: DbExecutor,
     ): Promise<UserPreferencesRow>

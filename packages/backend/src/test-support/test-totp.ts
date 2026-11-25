@@ -1,3 +1,4 @@
+import type { UserId } from '#app/domain/ids.js'
 // feat-247 (docs/plan/passkeys-mfa-plan.md, Р10): MFA_REQUIRED_FOR_STAFF is on by default, so a
 // staff account of a test has a second factor. This gives an account a confirmed TOTP factor with
 // a known secret, sealed as the service seals it, and answers its current code. The modules are
@@ -8,7 +9,7 @@ export interface TestTotp {
     code(offset?: bigint): string
 }
 
-export async function enrollTestTotp(userId: bigint): Promise<TestTotp> {
+export async function enrollTestTotp(userId: UserId): Promise<TestTotp> {
     const { totpFactorRepository, withTransaction } = await import('#app/repositories/index.js')
     const { mfaSecretBox, totpSecretOwner } =
         await import('#app/services/auth/mfa/mfa-secret-box.js')

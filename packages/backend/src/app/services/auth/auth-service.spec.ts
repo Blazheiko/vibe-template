@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionAuthState } from 'shared/mfa'
@@ -528,7 +529,7 @@ describe('authService', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
-            9n,
+            uid(9),
             {
                 email: 'phone-only@example.com',
             },
@@ -592,7 +593,7 @@ describe('authService', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
-            9n,
+            uid(9),
             {
                 email: 'victim@example.com',
             },
@@ -626,7 +627,7 @@ describe('authService', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
-            9n,
+            uid(9),
             {
                 email: 'victim@example.com',
             },
@@ -1252,7 +1253,7 @@ describe('authService', () => {
 
             const { authService } = await loadAuthService()
             const result = await authService.changePassword(
-                7n,
+                uid(7),
                 { newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
@@ -1282,7 +1283,7 @@ describe('authService', () => {
 
             const { authService } = await loadAuthService()
             await authService.changePassword(
-                7n,
+                uid(7),
                 { newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
@@ -1306,7 +1307,7 @@ describe('authService', () => {
 
             const { authService } = await loadAuthService()
             const result = await authService.changePassword(
-                7n,
+                uid(7),
                 { newPassword: 'new-secret' },
                 'previous-session-token',
                 sessionStillStored,
@@ -1354,7 +1355,7 @@ describe('authService', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.changePassword(
-            7n,
+            uid(7),
             { newPassword: 'new-secret' },
             PRESENTED_TOKEN,
             sessionStillStored,
@@ -1395,7 +1396,7 @@ describe('authService', () => {
             const sessionAuth = args.length < 2 ? FRESH_PASSWORD : args[1]
             const { authService } = await loadAuthService()
             return authService.changePassword(
-                7n,
+                uid(7),
                 { newPassword: 'new-secret' },
                 presented,
                 sessionStillStored,
@@ -1589,7 +1590,7 @@ describe('startEmailLink session guard (feat-096)', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startEmailLink(
-            9n,
+            uid(9),
             { email: 'phone-only@example.com' },
             presented,
             sessionStillStored,
@@ -1619,7 +1620,7 @@ describe('auth throttle fail-closed (email link)', () => {
         const { authService } = await loadAuthService()
         await expect(
             authService.startEmailLink(
-                9n,
+                uid(9),
                 {
                     email: 'phone-only@example.com',
                 },

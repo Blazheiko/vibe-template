@@ -11,6 +11,7 @@ import { asNotificationProvider } from '#app/services/notifications/notification
 import { userNotificationService } from '#app/services/notifications/user-notification-service.js'
 import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import logger from '#vendor/utils/logger.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-198 (security review 2026-11-12, M-2): linking an identity of another provider to an
 // account adds a way to sign in that outlives a password change, a password reset and "log out
@@ -19,7 +20,7 @@ import logger from '#vendor/utils/logger.js'
 // The notice says what happened, by push and by mail to the account's address.
 
 export interface SignInMethodAdded {
-    userId: bigint
+    userId: UserId
     /** The account's address; null for an account without one (nothing is mailed). */
     email: string | null
     name: string

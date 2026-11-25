@@ -1,4 +1,7 @@
 import { Result } from 'better-result'
+import type { OAuthAccountId } from '#app/domain/ids.js'
+import type { UserId } from '#app/domain/ids.js'
+import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
@@ -9,7 +12,7 @@ import { testUserActor } from '../../../test-support/audit-actor.js'
 const TX = { transaction: true }
 const mocks = vi.hoisted(() => ({
     userRepository: { findById: vi.fn(), lockById: vi.fn() },
-    oauthAccountRepository: { findByUserId: vi.fn(), deleteByIdForUser: vi.fn() },
+    oauthAccountRepository: { findByUserId: vi.fn(), deleteForUser: vi.fn() },
     totpFactorRepository: { findByUserId: vi.fn() },
     webauthnCredentialRepository: { countByUserId: vi.fn(() => Promise.resolve(0)) },
     recoveryCodeRepository: { countUnused: vi.fn() },
@@ -64,9 +67,9 @@ const user = (over: Record<string, unknown> = {}) => ({
     ...over,
 })
 
-const link = (id: bigint, over: Record<string, unknown> = {}) => ({
+const link = (id: UserId, over: Record<string, unknown> = {}) => ({
     id,
-    userId: 5n,
+    userId: uid(5),
     provider: 'github',
     providerUserId: `gh-${String(id)}`,
     providerEmail: 'owner@example.com',
@@ -78,7 +81,7 @@ const link = (id: bigint, over: Record<string, unknown> = {}) => ({
 })
 
 const request = (over: Record<string, unknown> = {}) => ({
-    linkId: 31n,
+    linkId: 31n as OAuthAccountId,
     presentedSessionToken: TOKEN as string | undefined,
     sessionAuth: freshPassword as SessionAuthState | undefined,
     sessionStored: vi.fn(() => Promise.resolve(true)),
@@ -100,7 +103,7 @@ const expectError = (result: unknown, expected: Record<string, unknown>): void =
 }
 
 const expectNothingRemoved = (): void => {
-    expect(mocks.oauthAccountRepository.deleteByIdForUser).not.toHaveBeenCalled()
+    expect(mocks.oauthAccountRepository.deleteForUser).not.toHaveBeenCalled()
     expect(mocks.security).not.toHaveBeenCalled()
 }
 
@@ -108,17 +111,17 @@ beforeEach(() => {
     vi.clearAllMocks()
     mocks.totpFactorRepository.findByUserId.mockResolvedValue(undefined)
     mocks.recoveryCodeRepository.countUnused.mockResolvedValue(0)
-    mocks.oauthAccountRepository.deleteByIdForUser.mockResolvedValue(true)
+    mocks.oauthAccountRepository.deleteForUser.mockResolvedValue(true)
 })
 
 describe('signInMethodsService.list', () => {
     it('lists the links of the account, oldest first, without provider ids or addresses', async () => {
         given(user(), [
-            link(32n, { provider: 'google', createdAt: new Date('2026-11-05T10:00:00Z') }),
-            link(31n),
+            link(uid(32), { provider: 'google', createdAt: new Date('2026-11-05T10:00:00Z') }),
+            link(uid(31)),
         ])
 
-        const result = await signInMethodsService.list(5n)
+        const result = await signInMethodsService.list(uid(5))
 
         expect(mocks.oauthAccountRepository.findByUserId).toHaveBeenCalledWith(5n)
         expect(Result.isOk(result) && result.value).toEqual({
@@ -141,20 +144,20 @@ describe('signInMethodsService.list', () => {
     })
 
     it.each([null, ''])('says an account with password %j has none', async (password) => {
-        given(user({ password }), [link(31n)])
+        given(user({ password }), [link(uid(31))])
 
-        const result = await signInMethodsService.list(5n)
+        const result = await signInMethodsService.list(uid(5))
 
         expect(Result.isOk(result) && result.value.hasPassword).toBe(false)
     })
 
     it('does not show a profile name that carries a link, or none at all', async () => {
         given(user(), [
-            link(31n, { providerName: 'Sign in at https://evil.example/x' }),
-            link(32n, { providerName: null }),
+            link(uid(31), { providerName: 'Sign in at https://evil.example/x' }),
+            link(uid(32), { providerName: null }),
         ])
 
-        const result = await signInMethodsService.list(5n)
+        const result = await signInMethodsService.list(uid(5))
 
         expect(Result.isOk(result) && result.value.methods.map((m) => m.name)).toEqual([null, null])
     })
@@ -162,39 +165,39 @@ describe('signInMethodsService.list', () => {
     it('answers not found for a user that no longer exists', async () => {
         mocks.userRepository.findById.mockResolvedValue(undefined)
 
-        expectError(await signInMethodsService.list(5n), { _tag: 'NotFound' })
+        expectError(await signInMethodsService.list(uid(5)), { _tag: 'NotFound' })
     })
 })
 
 describe('signInMethodsService.unlink: an account with a password', () => {
     it('removes the link after a fresh password, under the row lock, and tells the owner', async () => {
-        given(user(), [link(31n), link(32n, { provider: 'google' })])
+        given(user(), [link(uid(31)), link(uid(32), { provider: 'google' })])
 
-        const result = await signInMethodsService.unlink(5n, request())
+        const result = await signInMethodsService.unlink(uid(5), request())
 
         expect(Result.isOk(result) && result.value).toEqual({ provider: 'github' })
         expect(mocks.userRepository.lockById).toHaveBeenCalledWith(5n, TX)
         expect(mocks.oauthAccountRepository.findByUserId).toHaveBeenCalledWith(5n, TX)
-        expect(mocks.oauthAccountRepository.deleteByIdForUser).toHaveBeenCalledWith(31n, 5n, TX)
+        expect(mocks.oauthAccountRepository.deleteForUser).toHaveBeenCalledWith(5n, 31n, TX)
         expect(mocks.security).toHaveBeenCalledWith(5n, 'sign_in_method_removed', {
             provider: 'github',
         })
     })
 
     it('removes the only link: the password still signs in', async () => {
-        given(user(), [link(31n)])
+        given(user(), [link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request())
+        const result = await signInMethodsService.unlink(uid(5), request())
 
         expect(Result.isOk(result)).toBe(true)
-        expect(mocks.oauthAccountRepository.deleteByIdForUser).toHaveBeenCalledTimes(1)
+        expect(mocks.oauthAccountRepository.deleteForUser).toHaveBeenCalledTimes(1)
     })
 
     it('accepts a password proven exactly as long ago as the window', async () => {
-        given(user(), [link(31n)])
+        given(user(), [link(uid(31))])
 
         const result = await signInMethodsService.unlink(
-            5n,
+            uid(5),
             request({
                 sessionAuth: authWith({ pwd: new Date(NOW - REAUTH_WINDOW_MS).toISOString() }),
             }),
@@ -212,9 +215,9 @@ describe('signInMethodsService.unlink: an account with a password', () => {
         ],
         ['only a recent OAuth sign-in', recentOAuth],
     ])('asks for the password again with %s', async (_, sessionAuth) => {
-        given(user(), [link(31n)])
+        given(user(), [link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request({ sessionAuth }))
+        const result = await signInMethodsService.unlink(uid(5), request({ sessionAuth }))
 
         expectError(result, {
             _tag: 'Forbidden',
@@ -226,10 +229,10 @@ describe('signInMethodsService.unlink: an account with a password', () => {
     })
 
     it('with MFA on, a fresh password is not enough: the second factor is asked', async () => {
-        given(user(), [link(31n)])
-        mocks.totpFactorRepository.findByUserId.mockResolvedValue({ userId: 5n })
+        given(user(), [link(uid(31))])
+        mocks.totpFactorRepository.findByUserId.mockResolvedValue({ userId: uid(5) })
 
-        const result = await signInMethodsService.unlink(5n, request())
+        const result = await signInMethodsService.unlink(uid(5), request())
 
         expectError(result, {
             _tag: 'Forbidden',
@@ -240,11 +243,11 @@ describe('signInMethodsService.unlink: an account with a password', () => {
     })
 
     it('with MFA on, a fresh TOTP mark removes the link', async () => {
-        given(user(), [link(31n)])
-        mocks.totpFactorRepository.findByUserId.mockResolvedValue({ userId: 5n })
+        given(user(), [link(uid(31))])
+        mocks.totpFactorRepository.findByUserId.mockResolvedValue({ userId: uid(5) })
 
         const result = await signInMethodsService.unlink(
-            5n,
+            uid(5),
             request({ sessionAuth: authWith({ otp: new Date(NOW - 60_000).toISOString() }) }),
         )
 
@@ -256,19 +259,22 @@ describe('signInMethodsService.unlink: an account without a password', () => {
     const noPassword = user({ password: null })
 
     it('removes one of several links after a recent OAuth sign-in, with no password asked', async () => {
-        given(noPassword, [link(31n), link(32n, { provider: 'google' })])
+        given(noPassword, [link(uid(31)), link(uid(32), { provider: 'google' })])
 
-        const result = await signInMethodsService.unlink(5n, request({ sessionAuth: recentOAuth }))
+        const result = await signInMethodsService.unlink(
+            uid(5),
+            request({ sessionAuth: recentOAuth }),
+        )
 
         expect(Result.isOk(result)).toBe(true)
-        expect(mocks.oauthAccountRepository.deleteByIdForUser).toHaveBeenCalledWith(31n, 5n, TX)
+        expect(mocks.oauthAccountRepository.deleteForUser).toHaveBeenCalledWith(5n, 31n, TX)
     })
 
     it('accepts an OAuth sign-in exactly as old as the limit', async () => {
-        given(noPassword, [link(31n), link(32n)])
+        given(noPassword, [link(uid(31)), link(uid(32))])
 
         const result = await signInMethodsService.unlink(
-            5n,
+            uid(5),
             request({
                 sessionAuth: authWith({ oauth: new Date(NOW - OAUTH_RECENT_MS).toISOString() }),
             }),
@@ -287,9 +293,9 @@ describe('signInMethodsService.unlink: an account without a password', () => {
         ['missing', authWith({})],
         ['missing with no auth state', undefined],
     ])('refuses a session whose OAuth sign-in is %s', async (_, sessionAuth) => {
-        given(noPassword, [link(31n), link(32n)])
+        given(noPassword, [link(uid(31)), link(uid(32))])
 
-        const result = await signInMethodsService.unlink(5n, request({ sessionAuth }))
+        const result = await signInMethodsService.unlink(uid(5), request({ sessionAuth }))
 
         expectError(result, { _tag: 'Forbidden', reason: 'sign_in_again_required' })
         expect(mocks.userRepository.lockById).not.toHaveBeenCalled()
@@ -297,9 +303,12 @@ describe('signInMethodsService.unlink: an account without a password', () => {
     })
 
     it('never removes the last way in', async () => {
-        given(noPassword, [link(31n)])
+        given(noPassword, [link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request({ sessionAuth: recentOAuth }))
+        const result = await signInMethodsService.unlink(
+            uid(5),
+            request({ sessionAuth: recentOAuth }),
+        )
 
         expectError(result, { _tag: 'Conflict', reason: 'last_sign_in_method' })
         expectNothingRemoved()
@@ -309,9 +318,9 @@ describe('signInMethodsService.unlink: an account without a password', () => {
         // The password was there when the request was let in and was removed meanwhile (a claim).
         mocks.userRepository.findById.mockResolvedValue(user())
         mocks.userRepository.lockById.mockResolvedValue(noPassword)
-        mocks.oauthAccountRepository.findByUserId.mockResolvedValue([link(31n)])
+        mocks.oauthAccountRepository.findByUserId.mockResolvedValue([link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request())
+        const result = await signInMethodsService.unlink(uid(5), request())
 
         expectError(result, { _tag: 'Conflict', reason: 'last_sign_in_method' })
         expectNothingRemoved()
@@ -321,19 +330,22 @@ describe('signInMethodsService.unlink: an account without a password', () => {
 describe('signInMethodsService.unlink: what it refuses for every account', () => {
     it("answers not found for another account's link, and removes nothing", async () => {
         // The links of the caller; id 99 belongs to somebody else.
-        given(user(), [link(31n)])
+        given(user(), [link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request({ linkId: 99n }))
+        const result = await signInMethodsService.unlink(
+            uid(5),
+            request({ linkId: 99n as OAuthAccountId }),
+        )
 
         expectError(result, { _tag: 'NotFound', message: 'Sign-in method not found' })
         expectNothingRemoved()
     })
 
     it('answers not found when the link went away between the read and the delete', async () => {
-        given(user(), [link(31n)])
-        mocks.oauthAccountRepository.deleteByIdForUser.mockResolvedValue(false)
+        given(user(), [link(uid(31))])
+        mocks.oauthAccountRepository.deleteForUser.mockResolvedValue(false)
 
-        const result = await signInMethodsService.unlink(5n, request())
+        const result = await signInMethodsService.unlink(uid(5), request())
 
         expectError(result, { _tag: 'NotFound' })
         expect(mocks.security).not.toHaveBeenCalled()
@@ -343,9 +355,9 @@ describe('signInMethodsService.unlink: what it refuses for every account', () =>
         ['no token was presented', undefined],
         ['the token was rotated', 'older-token'],
     ])('refuses a revoked session: %s', async (_, presentedSessionToken) => {
-        given(user(), [link(31n)])
+        given(user(), [link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request({ presentedSessionToken }))
+        const result = await signInMethodsService.unlink(uid(5), request({ presentedSessionToken }))
 
         expectError(result, { _tag: 'Unauthorized', reason: 'session_revoked' })
         expect(mocks.totpFactorRepository.findByUserId).not.toHaveBeenCalled()
@@ -353,10 +365,10 @@ describe('signInMethodsService.unlink: what it refuses for every account', () =>
     })
 
     it('refuses when the session record is gone (a logout in another tab)', async () => {
-        given(user(), [link(31n)])
+        given(user(), [link(uid(31))])
 
         const result = await signInMethodsService.unlink(
-            5n,
+            uid(5),
             request({ sessionStored: vi.fn(() => Promise.resolve(false)) }),
         )
 
@@ -368,9 +380,9 @@ describe('signInMethodsService.unlink: what it refuses for every account', () =>
     it('refuses when the token was rotated while the proof was checked', async () => {
         mocks.userRepository.findById.mockResolvedValue(user())
         mocks.userRepository.lockById.mockResolvedValue(user({ sessionToken: 'rotated' }))
-        mocks.oauthAccountRepository.findByUserId.mockResolvedValue([link(31n)])
+        mocks.oauthAccountRepository.findByUserId.mockResolvedValue([link(uid(31))])
 
-        const result = await signInMethodsService.unlink(5n, request())
+        const result = await signInMethodsService.unlink(uid(5), request())
 
         expectError(result, { _tag: 'Unauthorized', reason: 'session_revoked' })
         expectNothingRemoved()
@@ -379,7 +391,7 @@ describe('signInMethodsService.unlink: what it refuses for every account', () =>
     it('answers not found for a user that no longer exists', async () => {
         mocks.userRepository.findById.mockResolvedValue(undefined)
 
-        expectError(await signInMethodsService.unlink(5n, request()), { _tag: 'NotFound' })
+        expectError(await signInMethodsService.unlink(uid(5), request()), { _tag: 'NotFound' })
         expectNothingRemoved()
     })
 })

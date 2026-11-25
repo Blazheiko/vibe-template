@@ -4,6 +4,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { auditEvents } from '#database/schema.js'
 import type { DbExecutor } from '#app/repositories/transaction.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type AuditEventRow = InferSelectModel<typeof auditEvents>
 export type AuditEventInsert = Omit<InferInsertModel<typeof auditEvents>, 'id' | 'occurredAt'> & {
@@ -18,8 +19,8 @@ export interface AuditEventListRow extends Omit<AuditEventRow, 'occurredAt'> {
 
 export interface AuditEventFilters {
     actions?: readonly string[]
-    actorUserId?: bigint
-    targetUserId?: bigint
+    actorUserId?: UserId
+    targetUserId?: UserId
     targetType?: string
     targetId?: string
     requestId?: string

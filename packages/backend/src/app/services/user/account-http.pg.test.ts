@@ -10,6 +10,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-232 T7: GET/PATCH /account/profile and GET /main/init over HTTP: a real uWebSockets.js
 // server with the real route table and the real session_web, csrf_guard and auth_guard, against
@@ -114,7 +115,7 @@ describe.skipIf(!hasPg || !hasRedis)('account profile over HTTP', async () => {
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
     const PASSWORD = 'profile-secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
     const insertUser = async (name: string) => {
@@ -207,9 +208,9 @@ describe.skipIf(!hasPg || !hasRedis)('account profile over HTTP', async () => {
         return browser
     }
 
-    const nameOf = async (id: bigint) =>
+    const nameOf = async (id: UserId) =>
         (await db.select({ name: users.name }).from(users).where(eq(users.id, id))).at(0)?.name
-    const preferencesOf = async (id: bigint) =>
+    const preferencesOf = async (id: UserId) =>
         (await db.select().from(userPreferences).where(eq(userPreferences.userId, id))).at(0)
 
     const NULL_PREFERENCES = {

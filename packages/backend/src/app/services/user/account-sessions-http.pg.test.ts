@@ -12,6 +12,7 @@ import {
     sleep,
 } from '../../../test-support/redis-test-client.js'
 import { WsTestClient } from '../../../test-support/ws-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-233 T4: GET /account/sessions, DELETE /account/sessions/:id and POST
 // /account/sessions/revoke-others over HTTP and WebSocket: a real uWebSockets.js server with the
@@ -129,7 +130,7 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
     const PASSWORD = 'sessions-secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     const sockets: WebSocket[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
@@ -268,7 +269,7 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
         current: reply.body['current'] as View | null,
         others: reply.body['others'] as View[],
     })
-    const tokenOf = async (id: bigint) =>
+    const tokenOf = async (id: UserId) =>
         (await db.select({ t: users.sessionToken }).from(users).where(eq(users.id, id))).at(0)?.t
 
     // The server says the session is gone and closes with 4001 (endSessionExpired). The Node

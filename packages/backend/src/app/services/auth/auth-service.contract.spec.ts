@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -268,7 +269,7 @@ const confirmLink =
     (code = '123456', sessionId: string | null = 'sess-1') =>
     (s: Service) =>
         s.confirmPhoneLink(
-            7n,
+            uid(7),
             { challengeId: 'ch-1', code },
             { ...IP, sessionId, presentedSessionToken: TOKEN, sessionStored: sessionStillStored },
             testUserActor(),
@@ -276,7 +277,7 @@ const confirmLink =
 // feat-096: the same calls as a session presenting `presented` (undefined: none at all).
 const confirmLinkAs = (presented: string | undefined) => (s: Service) =>
     s.confirmPhoneLink(
-        7n,
+        uid(7),
         { challengeId: 'ch-1', code: '123456' },
         {
             ...IP,
@@ -290,7 +291,7 @@ const startLinkAs =
     (presented: string | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
     (s: Service) =>
         s.startPhoneLink(
-            7n,
+            uid(7),
             { phone: '+380501234567' },
             {
                 ...IP,
@@ -305,7 +306,7 @@ const startEmailAs =
     (presented: string | undefined, sessionAuth: SessionAuthState | null = FRESH_PASSWORD) =>
     (s: Service) =>
         s.startEmailLink(
-            7n,
+            uid(7),
             { email: 'new@example.com' },
             presented,
             sessionStillStored,
@@ -321,7 +322,7 @@ const changeAs =
     ) =>
     (s: Service) =>
         s.changePassword(
-            7n,
+            uid(7),
             payload as never,
             presented,
             sessionStillStored,
@@ -659,7 +660,7 @@ const ROWS: readonly Row[] = [
         name: 'startPhoneLink · no session',
         call: (s) =>
             s.startPhoneLink(
-                7n,
+                uid(7),
                 { phone: '+380501234567' },
                 {
                     ...IP,
@@ -742,7 +743,7 @@ const ROWS: readonly Row[] = [
         },
         call: (s) =>
             s.startPhoneLink(
-                7n,
+                uid(7),
                 { phone: 'nope' },
                 {
                     ...IP,
@@ -1322,7 +1323,7 @@ const ROWS: readonly Row[] = [
         },
         call: (s) =>
             s.changePassword(
-                7n,
+                uid(7),
                 { newPassword: 'new-password' },
                 TOKEN,
                 () => Promise.resolve(false),
@@ -1541,7 +1542,7 @@ describe('authService · success payloads', () => {
         destroyAllSessionsMock.mockResolvedValue({ deleted: 0, complete: true })
         const { authService } = await import('./auth-service.js')
         const result = await authService.changePassword(
-            7n,
+            uid(7),
             { newPassword: 'new-password' },
             TOKEN,
             sessionStillStored,
@@ -1579,7 +1580,7 @@ describe('authService · success payloads', () => {
         userRepositoryMock.update.mockResolvedValue(account({ phone: '+380501234567' }))
         const { authService } = await import('./auth-service.js')
         const result = await authService.confirmPhoneLink(
-            7n,
+            uid(7),
             { challengeId: 'ch-1', code: '123456' },
             {
                 ...IP,

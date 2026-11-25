@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionAuthState } from 'shared/mfa'
@@ -680,7 +681,7 @@ describe('authService phone foundation', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(
-            7n,
+            uid(7),
             {
                 phone: '+1 415 555 0123',
             },
@@ -762,7 +763,7 @@ describe('authService phone foundation', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(
-            7n,
+            uid(7),
             {
                 phone: '+1 415 555 0123',
             },
@@ -786,7 +787,7 @@ describe('authService phone foundation', () => {
     it('requires an active session to start phone linking', async () => {
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(
-            7n,
+            uid(7),
             {
                 phone: '+1 415 555 0123',
             },
@@ -849,7 +850,7 @@ describe('authService phone foundation', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.confirmPhoneLink(
-            7n,
+            uid(7),
             {
                 challengeId: 'link-challenge-1',
                 code: '123456',
@@ -927,7 +928,7 @@ describe('authService phone foundation', () => {
         consumeAuthThrottleMock.mockResolvedValue({ allowed: true, count: 1 })
 
         const result = await authService.confirmPhoneLink(
-            7n,
+            uid(7),
             {
                 challengeId: 'link-challenge-1',
                 code: '123456',
@@ -976,7 +977,7 @@ describe('authService phone foundation', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.confirmPhoneLink(
-            7n,
+            uid(7),
             {
                 challengeId: 'link-challenge-1',
                 code: '123456',
@@ -1014,7 +1015,7 @@ describe('authService phone foundation', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.confirmPhoneLink(
-            7n,
+            uid(7),
             {
                 challengeId: 'link-challenge-1',
                 code: '123456',
@@ -1067,7 +1068,7 @@ describe('authService phone foundation', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(
-            7n,
+            uid(7),
             {
                 phone: '+1 415 555 0123',
             },
@@ -1126,7 +1127,7 @@ describe('phone linking session guard (feat-096)', () => {
     const confirm = async (presentedSessionToken: string | undefined) => {
         const { authService } = await loadAuthService()
         return authService.confirmPhoneLink(
-            7n,
+            uid(7),
             { challengeId: 'link-challenge-1', code: '123456' },
             {
                 ipAddress: '127.0.0.1',
@@ -1147,7 +1148,7 @@ describe('phone linking session guard (feat-096)', () => {
 
         const { authService } = await loadAuthService()
         const result = await authService.startPhoneLink(
-            7n,
+            uid(7),
             { phone: '+1 415 555 0123' },
             {
                 ipAddress: '127.0.0.1',
@@ -1244,7 +1245,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
         // ADR 0004: the Redis failure propagates; nothing downstream runs.
         await expect(
             authService.startPhoneLink(
-                7n,
+                uid(7),
                 { phone: '+1 415 555 0123' },
                 {
                     ipAddress: '127.0.0.1',
@@ -1266,7 +1267,7 @@ describe('auth throttle fail-closed (phone flows)', () => {
         // ADR 0004: the Redis failure propagates; nothing downstream runs.
         await expect(
             authService.confirmPhoneLink(
-                7n,
+                uid(7),
                 { challengeId: 'link-challenge-1', code: '123456' },
                 {
                     ipAddress: '127.0.0.1',
@@ -1496,7 +1497,7 @@ describe('phone writes losing the race to the unique index', () => {
 
         const { authService } = await loadAuthService()
         return await authService.confirmPhoneLink(
-            7n,
+            uid(7),
             { challengeId: 'link-challenge-1', code: '123456' },
             {
                 ipAddress: '127.0.0.1',

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { uid } from '../../../test-support/ids.js'
 
 import { Result } from 'better-result'
 import { eq } from 'drizzle-orm'
@@ -38,7 +39,7 @@ describe.skipIf(!hasPg)('accountService on PostgreSQL', async () => {
     const { userPreferencesRepository } = await import('#app/repositories/index.js')
 
     const stored = () => Promise.resolve(true)
-    let userId = 0n
+    let userId = uid(0)
     let token = ''
 
     const nameOf = async (): Promise<string | undefined> =>

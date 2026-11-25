@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { uid } from '../../test-support/ids.js'
 
 import { pushSubscriptionTransformer } from './push-subscription-transformer.js'
 
 const row = {
     id: 3n,
-    userId: 7n,
+    userId: uid(7),
     endpoint: 'https://push.example/1',
     p256dhKey: 'p256dh',
     authKey: 'auth',

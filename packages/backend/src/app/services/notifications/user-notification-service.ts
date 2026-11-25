@@ -1,6 +1,7 @@
 import type { NotificationKind, NotificationParams } from 'shared/notifications'
 
 import { notificationService } from '#app/services/notifications/notification-service.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // Business events that notify the user (code-issues item 72, feat-236). Each one is stored in the
 // notification center and pushed under the user's preferences (notification-service.ts). Never
@@ -39,14 +40,14 @@ type SecurityArgs<E extends SecurityEvent> =
 
 export const userNotificationService = {
     /** Security notices go to every device, online or not (Р5). */
-    security<E extends SecurityEvent>(userId: bigint, event: E, ...args: SecurityArgs<E>): void {
+    security<E extends SecurityEvent>(userId: UserId, event: E, ...args: SecurityArgs<E>): void {
         const kind: SecurityKindOf<E> = SECURITY_KINDS[event]
         const params = (args[0] ?? {}) as NotificationParams<SecurityKindOf<E>>
         notificationService.notify(userId, kind, params)
     },
 
     /** A support reply is pushed only when no device has the app open on this instance. */
-    supportReply(userId: bigint): void {
+    supportReply(userId: UserId): void {
         notificationService.notify(userId, 'support.reply', {})
     },
 }

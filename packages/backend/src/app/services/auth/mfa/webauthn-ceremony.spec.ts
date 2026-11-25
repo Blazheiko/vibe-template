@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../../test-support/ids.js'
 
 import webauthnConfig from '#config/webauthn.js'
 import type { WebAuthnCredentialRow } from '#app/repositories/index.js'
@@ -11,6 +12,7 @@ import {
     verifyWebAuthnCeremony,
     type CeremonyPurpose,
 } from './webauthn-ceremony.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#vendor/utils/logger.js', () => ({
     default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -22,7 +24,7 @@ vi.mock('#vendor/utils/logger.js', () => ({
 
 const RP = webauthnConfig.rpId
 const ORIGIN = webauthnConfig.origins[0] ?? ''
-const USER_ID = 7n
+const USER_ID = uid(7)
 const HANDLE = Buffer.alloc(32, 4)
 const SUBJECT = 'session-1'
 
@@ -82,7 +84,7 @@ async function signWith(
         rpId?: string
         userVerified?: boolean
         storedBinding?: string
-        expectedUserId?: bigint
+        expectedUserId?: UserId
         userHandle?: Buffer | null
         expectedUserHandle?: Buffer | null
         counter?: number
@@ -191,7 +193,7 @@ describe.each(SIGN_PURPOSES)('a signature for %s (Р6)', (purpose) => {
             'wrong_purpose',
         ],
         ['to another challenge', { challengeAnswered: 'b3RoZXI' }, 'invalid'],
-        ['with a key of another user', { expectedUserId: 8n }, 'wrong_user'],
+        ['with a key of another user', { expectedUserId: uid(8) }, 'wrong_user'],
         [
             'with the user handle of another account',
             { userHandle: Buffer.alloc(32, 9) },

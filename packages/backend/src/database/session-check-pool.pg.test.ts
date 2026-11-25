@@ -1,4 +1,5 @@
 import { createServer, connect, type Server, type Socket } from 'node:net'
+import { uid } from '../test-support/ids.js'
 
 import { eq } from 'drizzle-orm'
 import pg from 'pg'
@@ -38,7 +39,7 @@ describe.skipIf(!hasPg)('session-check pool on PostgreSQL', async () => {
     const { checkSessionToken } = await import('#app/services/auth/session-token-check.js')
 
     const now = Date.now()
-    let userId = 0n
+    let userId = uid(0)
     let userToken = ''
     const extraPools: pg.Pool[] = []
 

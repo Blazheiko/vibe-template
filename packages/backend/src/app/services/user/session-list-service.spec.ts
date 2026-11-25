@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { testUserActor } from '../../../test-support/audit-actor.js'
 
@@ -188,7 +189,7 @@ describe('revokeOthers (Р9)', () => {
     const revokeOthers = (sessionStored = stored, presented: string | null = 'tok') =>
         sessionListService.revokeOthers({
             actor: testUserActor(),
-            userId: 7n,
+            userId: uid(7),
             presentedSessionToken: presented ?? undefined,
             requestingSessionId: 'current-sid',
             sessionStored,

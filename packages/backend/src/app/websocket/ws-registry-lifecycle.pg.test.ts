@@ -12,6 +12,7 @@ import {
     sleep,
 } from '../../test-support/redis-test-client.js'
 import { WsTestClient } from '../../test-support/ws-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-107 (R04) over real WebSocket connections: a real uWebSockets.js server with the real
 // route tables, real sessions in Redis and real users in PostgreSQL. A page reload closes the old
@@ -112,7 +113,7 @@ describe.skipIf(!hasPg || !hasRedis)('WebSocket registry across a page reload', 
 
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     const clients: WebSocket[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 

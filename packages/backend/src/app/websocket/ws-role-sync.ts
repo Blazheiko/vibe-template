@@ -1,4 +1,5 @@
 import { roleHasPermission, type Role } from 'shared/access'
+import { asUserId } from '#app/domain/ids.js'
 
 import { userRoleService } from '#app/services/user/user-role-service.js'
 import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-service.js'
@@ -169,7 +170,7 @@ export const wsRoleSync = {
 
         let roles: Map<string, Role>
         try {
-            roles = await userRoleService.findRoles(ids.map((id) => BigInt(id)))
+            roles = await userRoleService.findRoles(ids.map((id) => asUserId(id)))
         } catch (err) {
             logger.error({ err, users: ids.length }, 'WS role read failed: admin channel paused')
             for (const userId of ids) {

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 const sendNotification = vi.fn()
 vi.mock('web-push', () => ({
@@ -40,7 +41,7 @@ const { pushNotificationSenderService, PUSH_SEND_CONCURRENCY } =
 
 const subscription = (id: number, extra: Record<string, unknown> = {}) => ({
     id: BigInt(id),
-    userId: 7n,
+    userId: uid(7),
     endpoint: `https://fcm.googleapis.com/fcm/send/${String(id)}`,
     p256dhKey: `p${String(id)}`,
     authKey: `a${String(id)}`,
@@ -76,7 +77,7 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
             return { statusCode: 201 }
         })
 
-        const result = await pushNotificationSenderService.sendToUser(7n, payload)
+        const result = await pushNotificationSenderService.sendToUser(uid(7), payload)
 
         expect(PUSH_SEND_CONCURRENCY).toBe(5)
         expect(result).toEqual({ sent: 12, failed: 0 })
@@ -98,7 +99,7 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
             return { statusCode: 201 }
         })
 
-        const result = await pushNotificationSenderService.sendToUser(7n, payload)
+        const result = await pushNotificationSenderService.sendToUser(uid(7), payload)
 
         expect(result).toEqual({ sent: 2, failed: 1 })
         expect(pushNotificationLogRepository.insertMany).toHaveBeenCalledOnce()
@@ -133,7 +134,7 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
         sendNotification.mockResolvedValue({ statusCode: 201 })
         pushNotificationLogRepository.insertMany.mockRejectedValue(new Error('db down'))
 
-        await expect(pushNotificationSenderService.sendToUser(7n, payload)).resolves.toEqual({
+        await expect(pushNotificationSenderService.sendToUser(uid(7), payload)).resolves.toEqual({
             sent: 1,
             failed: 0,
         })
@@ -151,7 +152,7 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
         )
         pushSubscriptionRepository.deactivate.mockRejectedValue(new Error('db down'))
 
-        await expect(pushNotificationSenderService.sendToUser(7n, payload)).resolves.toEqual({
+        await expect(pushNotificationSenderService.sendToUser(uid(7), payload)).resolves.toEqual({
             sent: 1,
             failed: 1,
         })
@@ -163,7 +164,7 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
     it('does not write logs when nothing was sent', async () => {
         pushSubscriptionRepository.findByUserId.mockResolvedValue([])
 
-        await expect(pushNotificationSenderService.sendToUser(7n, payload)).resolves.toEqual({
+        await expect(pushNotificationSenderService.sendToUser(uid(7), payload)).resolves.toEqual({
             sent: 0,
             failed: 0,
         })
@@ -186,7 +187,7 @@ describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
             subscription(2, { endpoint: 'https://10.0.0.5/admin' }),
         ])
 
-        const result = await pushNotificationSenderService.sendToUser(7n, {
+        const result = await pushNotificationSenderService.sendToUser(uid(7), {
             title: 't',
             body: 'b',
         })
@@ -203,7 +204,7 @@ describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
         pushSubscriptionRepository.findByUserId.mockResolvedValue([subscription(1)])
         const { PUSH_SEND_TIMEOUT_MS } = await import('./push-notification-sender-service.js')
 
-        await pushNotificationSenderService.sendToUser(7n, { title: 't', body: 'b' })
+        await pushNotificationSenderService.sendToUser(uid(7), { title: 't', body: 'b' })
 
         expect(sendNotification.mock.calls[0]?.[2]).toEqual({ deadlineMs: PUSH_SEND_TIMEOUT_MS })
         expect(PUSH_SEND_TIMEOUT_MS).toBeGreaterThan(0)
@@ -215,7 +216,7 @@ describe('pushNotificationSenderService.sendToUser endpoint policy', () => {
             Object.assign(new Error('Received unexpected response code'), { statusCode: 302 }),
         )
 
-        const result = await pushNotificationSenderService.sendToUser(7n, {
+        const result = await pushNotificationSenderService.sendToUser(uid(7), {
             title: 't',
             body: 'b',
         })
@@ -246,7 +247,7 @@ describe('pushNotificationSenderService.sendToUser: what a failed send logs', ()
             }),
         )
 
-        await pushNotificationSenderService.sendToUser(7n, payload)
+        await pushNotificationSenderService.sendToUser(uid(7), payload)
 
         expect(logger.error).toHaveBeenCalledTimes(1)
         const logged = JSON.stringify(vi.mocked(logger.error).mock.calls)
@@ -273,7 +274,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
 
     it('no stored row: the default of the category applies and the push goes', async () => {
         await expect(
-            pushNotificationSenderService.sendToUser(7n, payload, { category: 'support' }),
+            pushNotificationSenderService.sendToUser(uid(7), payload, { category: 'support' }),
         ).resolves.toEqual({ sent: 2, failed: 0 })
         expect(notificationPreferenceRepository.findByUserId).toHaveBeenCalledWith(7n)
     })
@@ -284,7 +285,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
         ])
 
         await expect(
-            pushNotificationSenderService.sendToUser(7n, payload, { category: 'support' }),
+            pushNotificationSenderService.sendToUser(uid(7), payload, { category: 'support' }),
         ).resolves.toEqual({ sent: 0, failed: 0 })
         expect(sendNotification).not.toHaveBeenCalled()
         expect(pushSubscriptionRepository.findByUserId).not.toHaveBeenCalled()
@@ -296,7 +297,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
         ])
 
         await expect(
-            pushNotificationSenderService.sendToUser(7n, payload, { category: 'security' }),
+            pushNotificationSenderService.sendToUser(uid(7), payload, { category: 'security' }),
         ).resolves.toEqual({ sent: 2, failed: 0 })
     })
 
@@ -304,7 +305,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
         notificationPreferenceRepository.findByUserId.mockRejectedValue(new Error('db down'))
 
         await expect(
-            pushNotificationSenderService.sendToUser(7n, payload, { category: 'support' }),
+            pushNotificationSenderService.sendToUser(uid(7), payload, { category: 'support' }),
         ).resolves.toEqual({ sent: 0, failed: 0 })
         expect(sendNotification).not.toHaveBeenCalled()
         expect(logger.warn).toHaveBeenCalledWith(
@@ -314,7 +315,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
     })
 
     it('without a category (the test push) the preferences are not read', async () => {
-        await pushNotificationSenderService.sendToUser(7n, payload)
+        await pushNotificationSenderService.sendToUser(uid(7), payload)
         expect(notificationPreferenceRepository.findByUserId).not.toHaveBeenCalled()
         expect(sendNotification).toHaveBeenCalledTimes(2)
     })
@@ -322,7 +323,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
     it('skipIfOnline: online on this instance, nothing; offline, the push', async () => {
         vi.mocked(wsConnectionRegistry.isUserOnline).mockReturnValueOnce(true)
         await expect(
-            pushNotificationSenderService.sendToUser(7n, payload, {
+            pushNotificationSenderService.sendToUser(uid(7), payload, {
                 category: 'support',
                 skipIfOnline: true,
             }),
@@ -330,7 +331,7 @@ describe('pushNotificationSenderService.sendToUser by category', () => {
         expect(sendNotification).not.toHaveBeenCalled()
 
         await expect(
-            pushNotificationSenderService.sendToUser(7n, payload, {
+            pushNotificationSenderService.sendToUser(uid(7), payload, {
                 category: 'support',
                 skipIfOnline: true,
             }),

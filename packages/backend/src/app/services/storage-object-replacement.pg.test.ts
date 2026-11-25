@@ -4,6 +4,7 @@ import { testAdminActor } from '../../test-support/audit-actor.js'
 
 import { hasPg } from '../../test-support/pg-test-db.js'
 import { PNG_BYTES } from '../../test-support/image-fixtures.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-116 (R11d) on real PostgreSQL with an in-memory S3: a KB screenshot and an avatar are
 // replaced in one order - upload the new object, swap the key in the locked row (which returns
@@ -75,7 +76,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
     const run = `${String(Date.now())}-${String(process.pid)}`
     const articleIds: bigint[] = []
-    const userIds: bigint[] = []
+    const userIds: UserId[] = []
     let counter = 0
 
     afterEach(() => {
@@ -274,11 +275,11 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
         userIds.push(row.id)
         return row
     }
-    const avatarKey = async (id: bigint): Promise<string | null> => {
+    const avatarKey = async (id: UserId): Promise<string | null> => {
         const [row] = await db.select({ key: users.avatar }).from(users).where(eq(users.id, id))
         return row?.key ?? null
     }
-    const expectAvatarConsistent = async (id: bigint): Promise<void> => {
+    const expectAvatarConsistent = async (id: UserId): Promise<void> => {
         const key = await avatarKey(id)
         expect(objectsUnder(`avatars/${String(id)}/`)).toEqual(key === null ? [] : [key])
     }

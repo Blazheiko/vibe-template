@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import type { OAuthAccountId } from '#app/domain/ids.js'
 
 import { Result } from 'better-result'
 import { asc, eq } from 'drizzle-orm'
@@ -7,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import type { SessionAuthState } from 'shared/mfa'
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { auditLogLines, testAdminActor, testRequest } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-235 (Р3, Р4, Р6, Р13) on a real PostgreSQL: every change of the ways into an account and
 // every mass revocation of its sessions writes exactly its events, with the right kind of actor
@@ -117,7 +119,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     }
 
     const now = Date.now()
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let counter = 0
     let passwordHash = ''
 
@@ -151,23 +153,23 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         createdUserIds.push(row.id)
         return row
     }
-    const userRow = async (id: bigint) => {
+    const userRow = async (id: UserId) => {
         const [row] = await db.select().from(users).where(eq(users.id, id))
         if (row === undefined) throw new Error('user gone')
         return row
     }
-    const eventsOf = (userId: bigint) =>
+    const eventsOf = (userId: UserId) =>
         db
             .select()
             .from(auditEvents)
             .where(eq(auditEvents.targetUserId, userId))
             .orderBy(asc(auditEvents.id))
-    const linksOf = (userId: bigint) =>
+    const linksOf = (userId: UserId) =>
         db.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId))
     const failAudit = () =>
         vi.spyOn(auditService, 'record').mockRejectedValueOnce(new Error('audit insert failed'))
 
-    const insertResetLink = async (userId: bigint, targetEmail: string | null) => {
+    const insertResetLink = async (userId: UserId, targetEmail: string | null) => {
         const raw = `reset-${randomUUID()}`
         const [row] = await db
             .insert(passwordResetTokens)
@@ -261,7 +263,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     // ─── mass revocation of sessions ─────────────────────────────────────────────────────────
 
     const logoutAll = (
-        user: { id: bigint; sessionToken: string },
+        user: { id: UserId; sessionToken: string },
         actor = testAdminActor(user.id),
     ) =>
         authService.logoutAll(
@@ -334,7 +336,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
 
     describe('end the other sessions', () => {
         const revokeOthers = (
-            user: { id: bigint; sessionToken: string },
+            user: { id: UserId; sessionToken: string },
             actor = testAdminActor(),
         ) =>
             sessionListService.revokeOthers({
@@ -369,7 +371,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     })
 
     describe('change password', () => {
-        const change = (user: { id: bigint; sessionToken: string }, actor = testAdminActor()) =>
+        const change = (user: { id: UserId; sessionToken: string }, actor = testAdminActor()) =>
             authService.changePassword(
                 user.id,
                 { newPassword: 'another-password-456' },
@@ -719,7 +721,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             })
             return { user, raw }
         }
-        const open = (user: { id: bigint; sessionToken: string }, raw: string, req = request()) =>
+        const open = (user: { id: UserId; sessionToken: string }, raw: string, req = request()) =>
             emailVerificationService.verifyEmail(
                 raw,
                 { ipAddress: '127.0.0.1' },
@@ -774,8 +776,8 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             return { user, link }
         }
         const unlink = (
-            user: { id: bigint; sessionToken: string },
-            linkId: bigint,
+            user: { id: UserId; sessionToken: string },
+            linkId: OAuthAccountId,
             actor = testAdminActor(user.id),
         ) =>
             signInMethodsService.unlink(user.id, {

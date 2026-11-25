@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р14): every change of the second factors is told by
@@ -42,7 +43,7 @@ describe('MFA notices (feat-245 Р14)', () => {
         '%s: a notification of its kind and a mail to the address',
         async (kind, event) => {
             mocks.findById.mockResolvedValue({ id: 7n, name: 'Ann', email: 'ann@example.test' })
-            announceMfaChange(7n, kind)
+            announceMfaChange(uid(7), kind)
             await vi.waitFor(() => {
                 expect(mocks.send).toHaveBeenCalledOnce()
             })
@@ -60,7 +61,7 @@ describe('MFA notices (feat-245 Р14)', () => {
 
     it('an account without an address gets the notification only', async () => {
         mocks.findById.mockResolvedValue({ id: 8n, name: 'Phone', email: null })
-        announceMfaChange(8n, 'disabled')
+        announceMfaChange(uid(8), 'disabled')
         await new Promise((resolve) => setTimeout(resolve, 0))
         expect(mocks.security).toHaveBeenCalledWith(8n, 'mfa_disabled')
         expect(mocks.send).not.toHaveBeenCalled()
@@ -69,7 +70,7 @@ describe('MFA notices (feat-245 Р14)', () => {
     it('a failed mail is logged, never thrown', async () => {
         mocks.findById.mockResolvedValue({ id: 9n, name: 'Ann', email: 'ann@example.test' })
         mocks.send.mockResolvedValue(Result.err({ _tag: 'Internal' }))
-        announceMfaChange(9n, 'enabled')
+        announceMfaChange(uid(9), 'enabled')
         await vi.waitFor(() => {
             expect(mocks.warn).toHaveBeenCalled()
         })

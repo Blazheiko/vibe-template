@@ -4,6 +4,7 @@ import { and, eq, isNull, sql, type InferInsertModel, type InferSelectModel } fr
 import type { DbExecutor } from '../transaction.js'
 import type { ExpiredRowsRepository } from './expired-rows.js'
 import { createTokenRepository, type ITokenRepository } from './token-repository.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type OAuthLinkVerificationRow = InferSelectModel<typeof oauthLinkVerifications>
 export type OAuthLinkVerificationInsert = InferInsertModel<typeof oauthLinkVerifications>
@@ -17,7 +18,7 @@ export interface IOAuthLinkVerificationRepository
      * cancel a pending GitLab one (feat-097).
      */
     invalidatePendingByUserIdAndProvider(
-        userId: bigint,
+        userId: UserId,
         provider: string,
         executor?: DbExecutor,
     ): Promise<number>

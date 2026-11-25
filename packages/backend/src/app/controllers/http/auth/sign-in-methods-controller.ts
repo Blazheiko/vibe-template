@@ -5,7 +5,7 @@ import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { signInMethodsService } from '#app/services/auth/sign-in-methods-service.js'
 import { notFound, unauthorized, type AppError } from '#app/services/shared/errors.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseOAuthAccountId } from '#app/domain/ids.js'
 import type { UnlinkSignInMethodInput } from 'shared/schemas'
 import type { GetSignInMethodsResponse, UnlinkSignInMethodResponse } from 'shared/responses'
 
@@ -29,7 +29,7 @@ export default {
 
         // The schema has refused anything that is not an id (422); parsing again keeps the bigint
         // bound here too, so the service never sees a value PostgreSQL cannot hold (feat-262).
-        const linkId = parseEntityId(getTypedPayload(context).id)
+        const linkId = parseOAuthAccountId(getTypedPayload(context).id)
         if (linkId === null) return mapControllerError(context, signInMethodNotFound())
         const result = await signInMethodsService.unlink(userId, {
             linkId,

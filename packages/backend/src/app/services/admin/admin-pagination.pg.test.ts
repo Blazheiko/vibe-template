@@ -1,7 +1,9 @@
 import { inArray } from 'drizzle-orm'
+import { uid } from '../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -20,9 +22,9 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
     const { adminUserService } = await import('./admin-user-service.js')
 
     const stamp = String(Date.now())
-    const created: bigint[] = []
+    const created: UserId[] = []
 
-    const insertUsers = async (count: number, tag: string): Promise<bigint[]> => {
+    const insertUsers = async (count: number, tag: string): Promise<UserId[]> => {
         const rows = await db
             .insert(users)
             .values(
@@ -37,7 +39,7 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
         return ids
     }
 
-    const insertConnections = async (userId: bigint, count: number): Promise<void> => {
+    const insertConnections = async (userId: UserId, count: number): Promise<void> => {
         if (count === 0) return
         await db.insert(userOnline).values(
             Array.from({ length: count }, (_, n) => ({
@@ -54,13 +56,13 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
     })
 
     describe('online history, a page of 100', () => {
-        const owners = { rows99: 0n, rows100: 0n, rows101: 0n }
+        const owners = { rows99: uid(0), rows100: uid(0), rows101: uid(0) }
 
         beforeAll(async () => {
             const [a, b, c] = await insertUsers(3, 'history')
-            owners.rows99 = a ?? 0n
-            owners.rows100 = b ?? 0n
-            owners.rows101 = c ?? 0n
+            owners.rows99 = a ?? uid(0)
+            owners.rows100 = b ?? uid(0)
+            owners.rows101 = c ?? uid(0)
             await insertConnections(owners.rows99, 99)
             await insertConnections(owners.rows100, 100)
             await insertConnections(owners.rows101, 101)
@@ -96,7 +98,7 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
             const second = await adminOnlineHistoryService.listHistory({
                 userId: owners.rows101,
                 limit: 100,
-                cursor: BigInt(first.nextCursor ?? '0'),
+                cursor: uid(BigInt(first.nextCursor ?? '0')),
             })
             expect(second.items).toHaveLength(1)
             expect(second).toMatchObject({ total: 101, hasMore: false, nextCursor: null })
@@ -136,7 +138,7 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
             const second = await adminUserService.listUsers({
                 ...window,
                 limit: 100,
-                cursor: BigInt(first.nextCursor ?? '0'),
+                cursor: uid(BigInt(first.nextCursor ?? '0')),
             })
             expect(second.items).toHaveLength(1)
             expect(second).toMatchObject({ total: 101, hasMore: false, nextCursor: null })

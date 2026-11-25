@@ -18,6 +18,7 @@ import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 import logger from '#vendor/utils/logger.js'
 import type { UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
+import type { OAuthAccountId, UserId } from '#app/domain/ids.js'
 
 // feat-199 (security review 2026-11-12, M-2): an identity of an OAuth provider linked to an
 // account signs in to it whatever happens to the password, and the owner could neither see the
@@ -81,7 +82,7 @@ export async function signInCapability(
 }
 
 export interface UnlinkRequest {
-    linkId: bigint
+    linkId: OAuthAccountId
     /** `Auth.getPresentedUserToken()`: refused once the session was revoked meanwhile. */
     presentedSessionToken: string | undefined
     /** feat-245 (row 8 of Р3): how the session was authenticated. */
@@ -95,7 +96,7 @@ export interface UnlinkRequest {
 
 export const signInMethodsService = {
     async list(
-        userId: bigint,
+        userId: UserId,
     ): Promise<AppResult<{ hasPassword: boolean; methods: SignInMethod[] }>> {
         const user = await userRepository.findById(userId)
         if (user === undefined) return Result.err(notFound('User', 'User not found'))
@@ -109,7 +110,7 @@ export const signInMethodsService = {
         })
     },
 
-    async unlink(userId: bigint, request: UnlinkRequest): Promise<AppResult<{ provider: string }>> {
+    async unlink(userId: UserId, request: UnlinkRequest): Promise<AppResult<{ provider: string }>> {
         const user = await userRepository.findById(userId)
         if (user === undefined) return Result.err(notFound('User', 'User not found'))
         if (
@@ -154,7 +155,7 @@ export const signInMethodsService = {
                         ),
                     )
                 }
-                const deleted = await oauthAccountRepository.deleteByIdForUser(link.id, userId, tx)
+                const deleted = await oauthAccountRepository.deleteForUser(userId, link.id, tx)
                 if (!deleted) {
                     return Result.err(notFound('SignInMethod', 'Sign-in method not found'))
                 }

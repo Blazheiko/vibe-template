@@ -10,6 +10,7 @@ import {
 } from '#app/services/shared/errors.js'
 import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
 import logger from '#logger'
+import type { UserId } from '#app/domain/ids.js'
 
 // Admin "test this prompt" call (code-issues item 23): goes through the
 // configured text adapter only — no own fetch, no fallback to raw OpenAI — and
@@ -19,7 +20,7 @@ export const promptTestService = {
         systemPrompt: string,
         message: string,
         signal?: AbortSignal,
-        usage?: { userId: bigint | null; llmSystemPromptId: bigint | null },
+        usage?: { userId: UserId | null; llmSystemPromptId: bigint | null },
     ): Promise<AppResult<string>> {
         if (!textAdapter.isConfigured()) {
             return Result.err({

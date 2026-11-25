@@ -1,4 +1,5 @@
 import { userRepository } from '#app/repositories/index.js'
+import { asUserId } from '#app/domain/ids.js'
 import logger from '#logger'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import type { SessionTokenStatus } from '#vendor/utils/session/session-token-check.js'
@@ -19,7 +20,7 @@ export const checkSessionToken = async (
 ): Promise<SessionTokenStatus> => {
     if (!/^[1-9]\d*$/.test(userId)) return 'mismatch'
     try {
-        const current = await userRepository.findSessionToken(BigInt(userId))
+        const current = await userRepository.findSessionToken(asUserId(userId))
         if (current === undefined) return 'mismatch'
         return safeEqual(current, userToken) ? 'ok' : 'mismatch'
     } catch (err) {

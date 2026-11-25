@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { testRequest } from '../../../test-support/audit-actor.js'
 
@@ -74,8 +75,8 @@ vi.mock('metautil', () => ({ validatePassword: validatePasswordMock }))
 
 // feat-097: who opens the link. The registration link's owner signed in to that account; the
 // email link's requester is the session of the account that asked for it.
-const OWN_SESSION_7 = { userId: 7n, presentedSessionToken: 'session-7' }
-const OWN_SESSION_8 = { userId: 8n, presentedSessionToken: 'session-8' }
+const OWN_SESSION_7 = { userId: uid(7), presentedSessionToken: 'session-7' }
+const OWN_SESSION_8 = { userId: uid(8), presentedSessionToken: 'session-8' }
 const ANONYMOUS = { userId: null, presentedSessionToken: undefined }
 type Requester = Parameters<
     Awaited<
@@ -121,7 +122,7 @@ describe('emailVerificationService', () => {
         emailVerificationRepositoryMock.invalidatePendingByUserId.mockResolvedValue(1)
         emailVerificationRepositoryMock.create.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
         })
         emailServiceMock.send.mockResolvedValue(
             Result.ok({
@@ -133,7 +134,7 @@ describe('emailVerificationService', () => {
         )
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.sendVerificationEmail(7n)
+        const result = await emailVerificationService.sendVerificationEmail(uid(7))
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -147,7 +148,7 @@ describe('emailVerificationService', () => {
         )
         expect(emailVerificationRepositoryMock.create).toHaveBeenCalledTimes(1)
         expect(emailVerificationRepositoryMock.create).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: 7n }),
+            expect.objectContaining({ userId: uid(7) }),
             TX,
         )
         expect(emailServiceMock.send).toHaveBeenCalledWith(
@@ -165,7 +166,10 @@ describe('emailVerificationService', () => {
         })
 
         const { emailVerificationService } = await loadEmailVerificationService()
-        const result = await emailVerificationService.queueVerificationEmail(7n, sessionStillStored)
+        const result = await emailVerificationService.queueVerificationEmail(
+            uid(7),
+            sessionStillStored,
+        )
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -176,7 +180,7 @@ describe('emailVerificationService', () => {
     it('rejects expired verification links', async () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() - 1000),
             usedAt: null,
@@ -207,7 +211,7 @@ describe('emailVerificationService', () => {
     it('verifies an unverified user and marks the token used', async () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: null,
@@ -269,7 +273,7 @@ describe('emailVerificationService', () => {
 
         const { emailVerificationService } = await loadEmailVerificationService()
 
-        await emailVerificationService.sendVerificationEmailInBackground(7n, 'manual resend')
+        await emailVerificationService.sendVerificationEmailInBackground(uid(7), 'manual resend')
 
         expect(loggerMock.error).toHaveBeenCalledTimes(1)
         expect(loggerMock.error).toHaveBeenCalledWith(
@@ -289,7 +293,7 @@ describe('emailVerificationService', () => {
         emailLinkVerificationRepositoryMock.invalidatePendingByUserId.mockResolvedValue(0)
         emailLinkVerificationRepositoryMock.create.mockResolvedValue({
             id: 12n,
-            userId: 8n,
+            userId: uid(8),
         })
         emailServiceMock.send.mockResolvedValue(
             Result.ok({
@@ -302,7 +306,7 @@ describe('emailVerificationService', () => {
 
         const { emailVerificationService } = await loadEmailVerificationService()
         const result = await emailVerificationService.sendLinkVerificationEmail(
-            8n,
+            uid(8),
             'new@example.com',
             'session-8',
         )
@@ -311,7 +315,7 @@ describe('emailVerificationService', () => {
         expect(userRepositoryMock.lockById).toHaveBeenCalledWith(8n, TX)
         expect(emailLinkVerificationRepositoryMock.create).toHaveBeenCalledTimes(1)
         expect(emailLinkVerificationRepositoryMock.create).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: 8n, targetEmail: 'new@example.com' }),
+            expect.objectContaining({ userId: uid(8), targetEmail: 'new@example.com' }),
             TX,
         )
         expect(emailServiceMock.send).toHaveBeenCalledWith(
@@ -326,7 +330,7 @@ describe('emailVerificationService', () => {
     it('does not confirm the email when another request already claimed the token', async () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() + 60_000),
             usedAt: null,
@@ -362,7 +366,7 @@ describe('emailVerificationService', () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 15n,
-            userId: 8n,
+            userId: uid(8),
             targetEmail: 'new@example.com',
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() + 60_000),
@@ -399,7 +403,7 @@ describe('emailVerificationService', () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 15n,
-            userId: 8n,
+            userId: uid(8),
             targetEmail: 'new@example.com',
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() + 60_000),
@@ -453,7 +457,7 @@ describe('emailVerificationService', () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 15n,
-            userId: 8n,
+            userId: uid(8),
             targetEmail: 'new@example.com',
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() + 60_000),
@@ -510,7 +514,7 @@ describe('sendLinkVerificationEmail session guard (feat-096)', () => {
 
             const { emailVerificationService } = await loadEmailVerificationService()
             const result = await emailVerificationService.sendLinkVerificationEmail(
-                8n,
+                uid(8),
                 'new@example.com',
                 presented,
             )
@@ -543,7 +547,7 @@ describe('sendLinkVerificationEmail session guard (feat-096)', () => {
 
         const { emailVerificationService } = await loadEmailVerificationService()
         const result = await emailVerificationService.sendLinkVerificationEmail(
-            8n,
+            uid(8),
             'new@example.com',
             'session-8',
         )
@@ -565,7 +569,7 @@ it('maps a unique email race during link verification to a conflict', async () =
     emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
     emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
         id: 16n,
-        userId: 8n,
+        userId: uid(8),
         targetEmail: 'new@example.com',
         tokenHash: 'hash',
         expiresAt: new Date(Date.now() + 60_000),
@@ -637,7 +641,7 @@ describe('verification throttles', () => {
         const { emailVerificationService } = await loadEmailVerificationService()
         // A spent budget answers Result.err; a Redis failure rejects (ADR 0004). Both refuse.
         const refused = await emailVerificationService
-            .queueVerificationEmail(7n, sessionStillStored)
+            .queueVerificationEmail(uid(7), sessionStillStored)
             .then(
                 (result) => Result.isError(result),
                 () => true,
@@ -658,7 +662,7 @@ describe('verification throttles', () => {
 describe('verifyEmail · the owner of a registration link', () => {
     const registrationToken = () => ({
         id: 11n,
-        userId: 7n,
+        userId: uid(7),
         tokenHash: 'hash',
         expiresAt: new Date(Date.now() + 60_000),
         usedAt: null,
@@ -714,9 +718,15 @@ describe('verifyEmail · the owner of a registration link', () => {
 
     it.each([
         ['nobody signed in', ANONYMOUS],
-        ['another account', { userId: 9n, presentedSessionToken: 'session-7' }],
-        ['a revoked session of the account', { userId: 7n, presentedSessionToken: 'old-session' }],
-        ['the account without a presented token', { userId: 7n, presentedSessionToken: undefined }],
+        ['another account', { userId: uid(9), presentedSessionToken: 'session-7' }],
+        [
+            'a revoked session of the account',
+            { userId: uid(7), presentedSessionToken: 'old-session' },
+        ],
+        [
+            'the account without a presented token',
+            { userId: uid(7), presentedSessionToken: undefined },
+        ],
     ])('%s without a password: 403 password_required, the link is not used', async (_n, who) => {
         arrange()
 
@@ -838,7 +848,7 @@ describe('verifyEmail · the session of an email link', () => {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 15n,
-            userId: 8n,
+            userId: uid(8),
             targetEmail: 'new@example.com',
             tokenHash: 'hash',
             expiresAt: new Date(Date.now() + 60_000),
@@ -866,7 +876,7 @@ describe('verifyEmail · the session of an email link', () => {
 
     it.each([
         ['nobody signed in', ANONYMOUS],
-        ['another account', { userId: 9n, presentedSessionToken: 'session-9' }],
+        ['another account', { userId: uid(9), presentedSessionToken: 'session-9' }],
     ])('%s: 403 email_link_wrong_session, the link is not used', async (_n, who) => {
         arrange()
 
@@ -896,7 +906,7 @@ describe('verifyEmail · the session of an email link', () => {
     it('a revoked session of the account: 401 session_revoked, nothing linked', async () => {
         arrange()
 
-        const result = await verify({ userId: 8n, presentedSessionToken: 'session-old' })
+        const result = await verify({ userId: uid(8), presentedSessionToken: 'session-old' })
 
         expect(Result.isError(result) && result.error).toEqual({
             _tag: 'Unauthorized',

@@ -5,6 +5,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
 
 import { pushNotificationLogRepository } from './push-notification-log-repository.js'
+import type { UserId } from '#app/domain/ids.js'
 
 const LOGS_PER_SUBSCRIPTION = 5
 
@@ -41,35 +42,35 @@ export type PushSubscriptionWithLogs = PushSubscriptionRow & {
 export interface IPushSubscriptionRepository {
     create(data: PushSubscriptionInsert, executor?: DbExecutor): Promise<PushSubscriptionRow>
     findById(id: bigint): Promise<PushSubscriptionRow | undefined>
-    findByIdAndUserId(id: bigint, userId: bigint): Promise<PushSubscriptionRow | undefined>
+    findByIdAndUserId(id: bigint, userId: UserId): Promise<PushSubscriptionRow | undefined>
     findByEndpoint(
         endpoint: string,
         executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
-    findByUserId(userId: bigint): Promise<PushSubscriptionRow[]>
+    findByUserId(userId: UserId): Promise<PushSubscriptionRow[]>
     /** How many subscriptions the user has, active or not. */
-    countByUserId(userId: bigint, executor?: DbExecutor): Promise<number>
-    findByUserIdWithLogs(userId: bigint): Promise<PushSubscriptionWithLogs[]>
+    countByUserId(userId: UserId, executor?: DbExecutor): Promise<number>
+    findByUserIdWithLogs(userId: UserId): Promise<PushSubscriptionWithLogs[]>
     update(
         id: bigint,
-        userId: bigint,
+        userId: UserId,
         data: PushSubscriptionUpdate,
         executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
     updateByEndpoint(
         endpoint: string,
-        userId: bigint,
+        userId: UserId,
         data: PushSubscriptionUpdate,
         executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
-    deactivate(id: bigint, userId: bigint): Promise<PushSubscriptionRow | undefined>
-    touchLastUsed(ids: bigint[], userId: bigint): Promise<void>
-    delete(id: bigint, userId: bigint): Promise<boolean>
+    deactivate(id: bigint, userId: UserId): Promise<PushSubscriptionRow | undefined>
+    touchLastUsed(ids: bigint[], userId: UserId): Promise<void>
+    delete(id: bigint, userId: UserId): Promise<boolean>
     /** Removes every subscription of the user: the devices of a claimed account (feat-097). */
-    deleteByUserId(userId: bigint, executor: DbExecutor): Promise<number>
+    deleteByUserId(userId: UserId, executor: DbExecutor): Promise<number>
     getLogsBySubscriptionId(
         subscriptionId: bigint,
-        userId: bigint,
+        userId: UserId,
         limit?: number,
     ): Promise<PushNotificationLogRow[]>
 }

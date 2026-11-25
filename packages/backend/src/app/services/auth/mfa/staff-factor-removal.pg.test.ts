@@ -8,6 +8,7 @@ import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testAdminActor, testUserActor } from '../../../../test-support/audit-actor.js'
 import { waitForLockWaiters } from '../../../../test-support/race-barrier.js'
 import type { Session, SessionData, SessionInfo } from '#vendor/types/types.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-248 (docs/plan/passkeys-mfa-plan.md, Р12; tasks X2) on a real PostgreSQL: removing a
 // factor of a staff account while MFA_REQUIRED_FOR_STAFF is on keeps the factor its role needs,
@@ -74,7 +75,7 @@ describe.skipIf(!hasPg)(
             default: { requiredForStaff: boolean; staffFactor: StaffFactorMode }
         }
 
-        const created: bigint[] = []
+        const created: UserId[] = []
         afterEach(() => {
             mfaConfig.requiredForStaff = true
             mfaConfig.staffFactor = 'any'
@@ -89,7 +90,7 @@ describe.skipIf(!hasPg)(
             new Date(NOW + offsetSeconds * 1000).toISOString()
 
         interface TestUser {
-            id: bigint
+            id: UserId
             sessionToken: string
         }
 
@@ -185,7 +186,7 @@ describe.skipIf(!hasPg)(
                           .error,
                   ).reason
 
-        const factorsOf = async (userId: bigint) => {
+        const factorsOf = async (userId: UserId) => {
             const factors = await loadMfaFactors(userId)
             return { totp: factors.totp !== undefined, passkeys: factors.passkeys }
         }

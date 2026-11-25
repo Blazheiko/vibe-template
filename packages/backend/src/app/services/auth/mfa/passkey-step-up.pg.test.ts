@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import type { UserId } from '#app/domain/ids.js'
 
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
@@ -37,7 +38,7 @@ describe.skipIf(!hasPg)('passkey step-up on PostgreSQL (feat-246 P4)', async () 
 
     const RP = webauthnConfig.rpId
     const ORIGIN = webauthnConfig.origins[0] ?? ''
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()
@@ -142,13 +143,13 @@ describe.skipIf(!hasPg)('passkey step-up on PostgreSQL (feat-246 P4)', async () 
         },
     })
 
-    const request = (row: { id: bigint; sessionToken: string }, session: Session) => ({
+    const request = (row: { id: UserId; sessionToken: string }, session: Session) => ({
         userId: row.id,
         session,
         presentedSessionToken: row.sessionToken,
     })
 
-    const optionsFor = async (row: { id: bigint; sessionToken: string }, session: Session) => {
+    const optionsFor = async (row: { id: UserId; sessionToken: string }, session: Session) => {
         const options = await stepUpService.passkeyOptions(request(row, session))
         if (options.status !== 'ok') throw new Error('no options')
         return (options.value.options as { challenge: string }).challenge

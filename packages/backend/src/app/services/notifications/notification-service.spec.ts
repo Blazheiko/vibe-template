@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 // feat-236 (Р5): the steps of a notification in order — checks, row, signal, push — and what a
 // failure of each one leaves. `notify` never throws; `deliver` is the same work, awaited.
@@ -30,13 +31,13 @@ afterEach(() => {
 
 describe('notificationService.deliver', () => {
     it('stores, signals and pushes with the open path of the stored row', async () => {
-        const outcome = await notificationService.deliver(7n, 'security.new_sign_in', {
+        const outcome = await notificationService.deliver(uid(7), 'security.new_sign_in', {
             device: 'Chrome on macOS',
         })
 
         expect(outcome).toEqual({ valid: true, id: 41n, signalled: true, pushed: true })
         expect(insert).toHaveBeenCalledWith({
-            userId: 7n,
+            userId: uid(7),
             category: 'security',
             kind: 'security.new_sign_in',
             params: { device: 'Chrome on macOS' },
@@ -64,7 +65,7 @@ describe('notificationService.deliver', () => {
         ['a string over 128 characters', 'security.new_sign_in', { device: 'x'.repeat(129) }],
     ])('refuses %s: nothing stored, signalled or pushed', async (_label, kind, params) => {
         const outcome = await notificationService.deliver(
-            7n,
+            uid(7),
             kind as 'security.new_sign_in',
             params as { device: string },
         )
@@ -82,7 +83,7 @@ describe('notificationService.deliver', () => {
     it('a failed insert: no signal, the push goes to the link of the kind without an id', async () => {
         insert.mockRejectedValue(new Error('db down'))
 
-        const outcome = await notificationService.deliver(7n, 'security.password_changed', {})
+        const outcome = await notificationService.deliver(uid(7), 'security.password_changed', {})
 
         expect(outcome).toEqual({ valid: true, id: null, signalled: false, pushed: true })
         expect(publishToUser).not.toHaveBeenCalled()
@@ -98,7 +99,7 @@ describe('notificationService.deliver', () => {
     it('a failed signal: the push still goes', async () => {
         publishToUser.mockRejectedValue(new Error('redis down'))
 
-        const outcome = await notificationService.deliver(7n, 'security.logout_all', {})
+        const outcome = await notificationService.deliver(uid(7), 'security.logout_all', {})
 
         expect(outcome).toEqual({ valid: true, id: 41n, signalled: false, pushed: true })
         expect(sendToUser).toHaveBeenCalledOnce()
@@ -107,7 +108,7 @@ describe('notificationService.deliver', () => {
     it('a failed push: the row and the signal are there already', async () => {
         sendToUser.mockRejectedValue(new Error('push down'))
 
-        const outcome = await notificationService.deliver(7n, 'security.logout_all', {})
+        const outcome = await notificationService.deliver(uid(7), 'security.logout_all', {})
 
         expect(outcome).toEqual({ valid: true, id: 41n, signalled: true, pushed: false })
         expect(insert).toHaveBeenCalledOnce()
@@ -115,7 +116,7 @@ describe('notificationService.deliver', () => {
     })
 
     it('a support reply is pushed only while the user is offline on this instance', async () => {
-        await notificationService.deliver(7n, 'support.reply', {})
+        await notificationService.deliver(uid(7), 'support.reply', {})
 
         expect(sendToUser).toHaveBeenCalledWith(
             7n,
@@ -135,8 +136,8 @@ describe('notificationService.notify', () => {
         sendToUser.mockRejectedValue(new Error('push down'))
 
         expect(() => {
-            notificationService.notify(7n, 'security.logout_all', {})
-            notificationService.notify(7n, 'security.new_sign_in', { device: '' })
+            notificationService.notify(uid(7), 'security.logout_all', {})
+            notificationService.notify(uid(7), 'security.new_sign_in', { device: '' })
         }).not.toThrow()
 
         await vi.waitFor(() => {

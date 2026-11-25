@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
 import {
@@ -96,7 +97,7 @@ const ROWS: readonly Row[] = [
     },
     {
         method: 'queueVerificationEmail · user',
-        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
+        call: (s) => s.queueVerificationEmail(uid(7), sessionStillStored),
         consumed: [['resend_verification_user', '7']],
         blocked: {
             status: 429,
@@ -108,7 +109,7 @@ const ROWS: readonly Row[] = [
     // mail a sign-in to an unverified account sends.
     {
         method: 'queueVerificationEmail · user per day',
-        call: (s) => s.queueVerificationEmail(7n, sessionStillStored),
+        call: (s) => s.queueVerificationEmail(uid(7), sessionStillStored),
         consumed: [
             ['resend_verification_user', '7'],
             ['verification_mail_user_daily', '7'],
@@ -202,7 +203,7 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
     function arrangeToken(): void {
         emailVerificationRepositoryMock.findByTokenHash.mockResolvedValue({
             id: 11n,
-            userId: 7n,
+            userId: uid(7),
             usedAt: null,
             expiresAt: new Date(Date.now() + 600_000),
         })
@@ -268,7 +269,7 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
             'token',
             IP,
             {
-                userId: 7n,
+                userId: uid(7),
                 presentedSessionToken: 'session-7',
             },
             testRequest(),

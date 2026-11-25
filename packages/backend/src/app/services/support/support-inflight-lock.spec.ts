@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 import type { SupportLease } from './support-inflight-lock.js'
 
 // The lease when Redis stops answering: the holder must learn that it lost the lock BEFORE
@@ -17,7 +18,7 @@ const lease = { ttlMs: 4_000, renewEveryMs: 1_000, maxLifetimeMs: 60_000 }
 async function acquire(with_: SupportLease = lease) {
     const { acquireSupportLock } = await import('./support-inflight-lock.js')
     redisMock.set.mockResolvedValue('OK')
-    return acquireSupportLock(1n, with_)
+    return acquireSupportLock(uid(1), with_)
 }
 
 beforeEach(() => {

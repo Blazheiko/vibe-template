@@ -11,6 +11,7 @@ import { resolveNotificationPreferences, type NotificationCategory } from 'share
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
 import { sendPush } from './push-transport.js'
+import type { UserId } from '#app/domain/ids.js'
 
 /** feat-138: the longest one push request may take before it is abandoned and logged as failed. */
 export const PUSH_SEND_TIMEOUT_MS = 10_000
@@ -70,7 +71,7 @@ function isUserOnline(userId: string): boolean {
     return wsConnectionRegistry.isUserOnline(userId)
 }
 
-async function pushAllowed(userId: bigint, category: NotificationCategory): Promise<boolean> {
+async function pushAllowed(userId: UserId, category: NotificationCategory): Promise<boolean> {
     let rows
     try {
         rows = await notificationPreferenceRepository.findByUserId(userId)
@@ -97,7 +98,7 @@ export const pushNotificationSenderService = {
     },
 
     async sendToUser(
-        userId: bigint,
+        userId: UserId,
         payload: PushNotificationPayload,
         options: { skipIfOnline?: boolean; category?: NotificationCategory } = {},
     ): Promise<{ sent: number; failed: number }> {

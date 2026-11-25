@@ -3,6 +3,7 @@ import { Result } from 'better-result'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-214 (security review 2026-11-12 follow-ups, item 8): register/phone/start and
 // link-phone/start spent the hourly SMS budget of the number before the resend cooldown was
@@ -62,7 +63,7 @@ describe.skipIf(!hasPg)('SMS budget of register and link phone starts on Postgre
     }
 
     const phones: string[] = []
-    const userIds: bigint[] = []
+    const userIds: UserId[] = []
     let counter = 0
     const newPhone = (): string => {
         counter += 1
@@ -88,7 +89,7 @@ describe.skipIf(!hasPg)('SMS budget of register and link phone starts on Postgre
         await pool.end()
     })
 
-    const newUser = async (): Promise<{ id: bigint; sessionToken: string }> => {
+    const newUser = async (): Promise<{ id: UserId; sessionToken: string }> => {
         const [row] = await db
             .insert(users)
             .values({ name: 'Budget Test', password: 'stored-hash' })

@@ -1,4 +1,5 @@
 import { stepUpService } from '#app/services/auth/mfa/step-up.js'
+import { asUserId } from '#app/domain/ids.js'
 import {
     completeSecondStep,
     secondStepPasskeyOptions,
@@ -336,7 +337,7 @@ export default {
             payload.token,
             { ipAddress: context.httpData.ip ?? '' },
             {
-                userId: userId === null ? null : BigInt(userId),
+                userId: userId === null ? null : asUserId(userId),
                 presentedSessionToken: context.auth.getPresentedUserToken(),
                 ...(payload.password !== undefined ? { password: payload.password } : {}),
             },

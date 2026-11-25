@@ -13,10 +13,11 @@ import type {
     TotpDisableResponse,
     TotpSetupResponse,
 } from 'shared/responses'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8): the second factors of the signed-in account.
 
-const requestOf = (context: HttpContext, userId: bigint): TotpRequest => ({
+const requestOf = (context: HttpContext, userId: UserId): TotpRequest => ({
     userId,
     session: context.session,
     presentedSessionToken: context.auth.getPresentedUserToken(),

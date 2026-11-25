@@ -1,4 +1,5 @@
 import { passwordResetRepository, smsAuthChallengeRepository } from '#app/repositories/index.js'
+import type { UserId } from '#app/domain/ids.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import { LINK_PHONE_FLOW, RESET_PHONE_FLOW } from '#app/services/auth/auth-normalize.js'
 
@@ -27,7 +28,7 @@ export async function invalidatePendingPhoneChallenges(
  * cannot finish after.
  */
 export async function retirePendingResets(
-    user: { id: bigint; phone: string | null },
+    user: { id: UserId; phone: string | null },
     tx: DbTransaction,
 ): Promise<void> {
     await passwordResetRepository.invalidatePendingByUserId(user.id, tx)

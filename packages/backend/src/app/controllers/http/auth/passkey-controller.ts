@@ -15,10 +15,11 @@ import type {
     PasskeyRenameResponse,
     WebAuthnCreationOptions,
 } from 'shared/responses'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6): the passkeys of the signed-in account.
 
-const requestOf = (context: HttpContext, userId: bigint): PasskeyRequest => ({
+const requestOf = (context: HttpContext, userId: UserId): PasskeyRequest => ({
     userId,
     session: context.session,
     presentedSessionToken: context.auth.getPresentedUserToken(),

@@ -1,10 +1,12 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { uid } from '../../../test-support/ids.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { Role } from 'shared/access'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { auditLogLines, testAdminActor } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-240 (Р6, Р7, T5) on a real PostgreSQL: a role change and its audit event commit together
 // under one advisory lock; the delegation, verified-email and last-admin rules; a CLI change; the
@@ -44,10 +46,10 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
     }
 
     const stamp = String(Date.now())
-    const userIds: bigint[] = []
+    const userIds: UserId[] = []
     let counter = 0
 
-    const insertUser = async (role: Role, verified = true): Promise<bigint> => {
+    const insertUser = async (role: Role, verified = true): Promise<UserId> => {
         counter += 1
         const [row] = await db
             .insert(users)
@@ -67,7 +69,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
      * feat-247 (Р10): a confirmed TOTP factor, so the account may get a staff role. The secret is
      * never read here, so a placeholder stands for its ciphertext.
      */
-    const addFactor = async (userId: bigint): Promise<bigint> => {
+    const addFactor = async (userId: UserId): Promise<UserId> => {
         await withTransaction((tx) =>
             totpFactorRepository.replace(
                 {
@@ -84,14 +86,14 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         return userId
     }
     /** A user that may be given a staff role: verified, with a second factor. */
-    const insertEnrolled = async (role: Role): Promise<bigint> => addFactor(await insertUser(role))
+    const insertEnrolled = async (role: Role): Promise<UserId> => addFactor(await insertUser(role))
 
-    const roleOf = async (id: bigint): Promise<Role | undefined> => {
+    const roleOf = async (id: UserId): Promise<Role | undefined> => {
         const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, id))
         return row?.role
     }
 
-    const eventsFor = (targetUserId: bigint) =>
+    const eventsFor = (targetUserId: UserId) =>
         db
             .select()
             .from(auditEvents)
@@ -116,7 +118,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             verified: { oauth: at },
         }
     }
-    const tokenOf = async (id: bigint): Promise<string | undefined> =>
+    const tokenOf = async (id: UserId): Promise<string | undefined> =>
         (await db.select({ token: users.sessionToken }).from(users).where(eq(users.id, id)))[0]
             ?.token
     /** As the HTTP layer calls it: a fresh proof and the session token of a user actor. */
@@ -133,7 +135,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         })
 
     /** An actor as the HTTP layer builds it: the guard's role, a request of its own. */
-    const actorFor = (userId: bigint, role: Role) => ({ ...testAdminActor(userId), role })
+    const actorFor = (userId: UserId, role: Role) => ({ ...testAdminActor(userId), role })
 
     const payloadOf = (result: { isErr(): boolean; error?: unknown }) =>
         appErrorToPayload(
@@ -354,7 +356,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
         const admin = await insertUser('admin')
         const result = await assign({
             actor: actorFor(admin, 'admin'),
-            targetUserId: 9_000_000_000_000n,
+            targetUserId: uid(9_000_000_000_000),
             role: 'kb_editor',
         })
         expect(result.isErr() && payloadOf(result).code).toBe('not_found')
@@ -492,11 +494,11 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
 
     describe('races', () => {
         /** Runs `work` with every admin but `keep` lowered to user, then gives them back. */
-        const withOnlyAdmins = async (keep: bigint[], work: () => Promise<void>) => {
+        const withOnlyAdmins = async (keep: UserId[], work: () => Promise<void>) => {
             const others = await db
                 .select({ id: users.id })
                 .from(users)
-                .where(and(eq(users.role, 'admin'), ne(users.id, keep[0] ?? 0n)))
+                .where(and(eq(users.role, 'admin'), ne(users.id, keep[0] ?? uid(0))))
             const lowered = others.map((row) => row.id).filter((id) => !keep.includes(id))
             if (lowered.length > 0) {
                 await db.update(users).set({ role: 'user' }).where(inArray(users.id, lowered))

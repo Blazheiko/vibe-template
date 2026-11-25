@@ -4,6 +4,7 @@ import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import type { InferInsertModel } from 'drizzle-orm'
 
 import type { PushSubscriptionLogSummary } from './push-subscription-repository.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type PushNotificationLogInsert = InferInsertModel<typeof pushNotificationLogs>
 
@@ -25,12 +26,12 @@ export interface IPushNotificationLogRepository {
     // account, and the log rows of the previous owner stay theirs.
     countsBySubscription(
         subscriptionId: bigint,
-        userId: bigint,
+        userId: UserId,
         since: Date,
     ): Promise<PushNotificationLogCounts>
     latestBySubscriptionIds(
         subscriptionIds: bigint[],
-        userId: bigint,
+        userId: UserId,
         limit: number,
     ): Promise<PushSubscriptionLogSummaryRow[]>
 }

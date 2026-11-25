@@ -9,6 +9,7 @@ import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testAdminActor } from '../../../../test-support/audit-actor.js'
 import { waitForLockWaiters } from '../../../../test-support/race-barrier.js'
 import { REDIS_TEST_URL } from '../../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-247 (docs/plan/passkeys-mfa-plan.md, Р12, Р13; tasks S2) on a real PostgreSQL: an
 // administrator resets the factors of an account with a password and TOTP: the factor and the
@@ -61,7 +62,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
     const { loadMfaFactors } = await import('./mfa-account.js')
     const { appErrorToPayload } = await import('#app/services/shared/app-error-payload.js')
 
-    const created: bigint[] = []
+    const created: UserId[] = []
     afterAll(async () => {
         for (const id of created) await db.delete(users).where(eq(users.id, id))
         await pool.end()
@@ -83,7 +84,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
         return row
     }
 
-    const withTotp = async (userId: bigint) => {
+    const withTotp = async (userId: UserId) => {
         await withTransaction(async (tx) => {
             await totpFactorRepository.replace(
                 {
@@ -110,13 +111,13 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
             verified: { pwd: at },
         }
     }
-    const actorOf = (admin: { id: bigint }) => ({
+    const actorOf = (admin: { id: UserId }) => ({
         ...testAdminActor(admin.id),
         role: 'admin' as const,
     })
     const payloadOf = (result: unknown) =>
         appErrorToPayload((result as { error: Parameters<typeof appErrorToPayload>[0] }).error)
-    const tokenOf = async (id: bigint) =>
+    const tokenOf = async (id: UserId) =>
         (await db.select().from(users).where(eq(users.id, id)))[0]?.sessionToken
 
     it('removes TOTP and the codes, rotates the token, ends the sessions; no second step after', async () => {

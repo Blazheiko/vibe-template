@@ -11,6 +11,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-254 over HTTP: POST /auth/logout with `pushEndpoint` deletes this browser's push record of
 // the signed-in user together with the session, and only when the session really ended. A real
@@ -119,7 +120,7 @@ describe.skipIf(!hasPg || !hasRedis)('POST /auth/logout and the push record', as
 
     const admin = createTestRedis(PREFIX)
     const PASSWORD = 'push-logout-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
     const insertUser = async (name: string) => {
@@ -138,7 +139,7 @@ describe.skipIf(!hasPg || !hasRedis)('POST /auth/logout and the push record', as
     }
 
     /** A push record of the user, stored in its canonical form. */
-    const insertRecord = async (userId: bigint) => {
+    const insertRecord = async (userId: UserId) => {
         const endpoint = `https://fcm.googleapis.com/fcm/send/${crypto.randomUUID()}`
         const [row] = await db
             .insert(pushSubscriptions)

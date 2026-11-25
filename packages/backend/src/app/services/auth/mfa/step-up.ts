@@ -42,6 +42,7 @@ import {
     fromBase64Url,
     verifyWebAuthnCeremony,
 } from './webauthn-ceremony.js'
+import type { UserId } from '#app/domain/ids.js'
 
 /** feat-246: the pending passkey step-up, in the data of the session that asked for it. */
 export const PASSKEY_REAUTH_KEYS = {
@@ -54,7 +55,7 @@ export const PASSKEY_REAUTH_KEYS = {
 // recorded for an account with MFA too, but no row of the matrix accepts it there.
 
 export interface StepUpRequest {
-    userId: bigint
+    userId: UserId
     session: Session
     presentedSessionToken: string | undefined
     now?: number

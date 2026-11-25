@@ -1,7 +1,7 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { llmUsageService, type TextFilter } from '#app/services/ai/usage/llm-usage-service.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseUserId } from '#app/domain/ids.js'
 import { badRequest } from '#app/services/shared/errors.js'
 import type { LlmTextUsageQuery } from 'shared/schemas'
 import type { GetTextUsageResponse, GetUsageStatsResponse } from 'shared'
@@ -14,7 +14,7 @@ import type { GetTextUsageResponse, GetUsageStatsResponse } from 'shared'
 function buildTextFilter(query: LlmTextUsageQuery): TextFilter | null {
     const filter: TextFilter = {}
     if (query.userId !== undefined && query.userId !== '') {
-        const userId = parseEntityId(query.userId)
+        const userId = parseUserId(query.userId)
         if (userId === null) return null
         filter.userId = userId
     }

@@ -80,6 +80,7 @@ import {
     startSecondStepIfRequired,
     type SecondStepRequired,
 } from '#app/services/auth/mfa/mfa-sign-in.js'
+import { asUserId, type UserId } from '#app/domain/ids.js'
 
 interface GenericAcceptedPayload {
     status: 'success'
@@ -178,7 +179,7 @@ async function requireSessionStored(sessionStored: SessionStillStored): Promise<
  * proof that let it through (Р14).
  */
 async function requireStepUp(
-    userId: bigint,
+    userId: UserId,
     presentedSessionToken: string | undefined,
     sessionAuth: SessionAuthState | undefined,
     action: 'password.change' | 'contact.link',
@@ -300,7 +301,7 @@ async function finalizeRegistration(
  * account. Nothing here may change the answer of the login or delay it, and a failure (Redis
  * down, no mail transport) is only logged.
  */
-async function resendVerificationAfterUnverifiedLogin(userId: bigint): Promise<void> {
+async function resendVerificationAfterUnverifiedLogin(userId: UserId): Promise<void> {
     try {
         const throttle = await consumeAuthThrottle(
             throttlePolicies.loginUnverifiedResend,
@@ -423,7 +424,7 @@ async function registerEmailFlow(
  * push work there would hold the user's row lock longer and tie the logout to the push table.
  * Best effort: a failure is logged and the logout still answers success (the session is gone).
  */
-async function releasePushRecord(userId: bigint, pushEndpoint: string): Promise<void> {
+async function releasePushRecord(userId: UserId, pushEndpoint: string): Promise<void> {
     try {
         await pushSubscriptionService.deleteOwnSubscriptionByEndpoint(userId, pushEndpoint)
     } catch (err) {
@@ -644,7 +645,7 @@ export const authService = {
     },
 
     async startPhoneLink(
-        userId: bigint,
+        userId: UserId,
         payload: LinkPhoneStartInput,
         requestMeta: {
             ipAddress: string
@@ -756,7 +757,7 @@ export const authService = {
     },
 
     async confirmPhoneLink(
-        userId: bigint,
+        userId: UserId,
         payload: LinkPhoneConfirmInput,
         requestMeta: {
             ipAddress: string
@@ -916,7 +917,7 @@ export const authService = {
     },
 
     async startEmailLink(
-        userId: bigint,
+        userId: UserId,
         payload: LinkEmailStartInput,
         presentedSessionToken: string | undefined,
         sessionStored: SessionStillStored,
@@ -1097,7 +1098,7 @@ export const authService = {
             return Result.err(internalMessage('Failed to log out user'))
         }
         if (signedInUserId !== null && options.pushEndpoint !== undefined) {
-            await releasePushRecord(BigInt(signedInUserId), options.pushEndpoint)
+            await releasePushRecord(asUserId(signedInUserId), options.pushEndpoint)
         }
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
@@ -1173,7 +1174,7 @@ export const authService = {
                     ? undefined
                     : await withTransaction(async (tx) => {
                           const done = await userRepository.updateIfSessionToken(
-                              BigInt(userId),
+                              asUserId(userId),
                               presented,
                               { sessionToken: nanoid() },
                               tx,
@@ -1201,7 +1202,7 @@ export const authService = {
                           return { done, events }
                       })
             if (rotated === undefined) {
-                const current = await userRepository.findSessionToken(BigInt(userId))
+                const current = await userRepository.findSessionToken(asUserId(userId))
                 return Result.err(
                     current === undefined ? notFound('User', 'User not found') : sessionRevoked(),
                 )
@@ -1227,7 +1228,7 @@ export const authService = {
             // from the logger transport.
             logger.error({ err, userId }, 'Logout-all: deleting the session records failed')
         }
-        if (userId !== null) userNotificationService.security(BigInt(userId), 'logout_all')
+        if (userId !== null) userNotificationService.security(asUserId(userId), 'logout_all')
 
         const csrfToken = getSessionCsrfToken(session.sessionInfo)
         if (csrfToken === undefined) {
@@ -1242,7 +1243,7 @@ export const authService = {
     },
 
     async changePassword(
-        userId: bigint,
+        userId: UserId,
         payload: ChangePasswordInput,
         presentedSessionToken: string | undefined,
         /**

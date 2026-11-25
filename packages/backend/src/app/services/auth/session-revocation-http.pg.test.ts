@@ -13,6 +13,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // ADR 0002 over HTTP: a real uWebSockets.js server with the real route table and the
 // real session_web, csrf_guard and auth_guard, against a real PostgreSQL and Redis.
@@ -135,7 +136,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
     const admin = createTestRedis(PREFIX)
     const now = Date.now()
     const OLD_PASSWORD = 'old-secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
 
     const insertUser = async (name: string) => {
@@ -230,7 +231,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation over HTTP', async () =>
         return browser
     }
 
-    const rowOf = async (id: bigint) => {
+    const rowOf = async (id: UserId) => {
         const [row] = await db.select().from(users).where(eq(users.id, id))
         return row
     }

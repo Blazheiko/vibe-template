@@ -7,6 +7,7 @@ import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import { renderBrandedEmail } from '#app/services/notifications/email-templates.js'
 import logger from '#vendor/utils/logger.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-199 (decision Д2 of the security review 2026-11-12 plan): a password reset does not
 // remove the identities of OAuth providers linked to the account, and they keep signing in.
@@ -38,7 +39,7 @@ export function renderPasswordResetNoticeEmail(notice: {
 }
 
 const sendMail = async (
-    userId: bigint,
+    userId: UserId,
     to: string,
     name: string,
     providers: readonly string[],
@@ -64,7 +65,7 @@ const sendMail = async (
  * an empty list, a mail that fails is logged.
  */
 export async function announcePasswordReset(account: {
-    userId: bigint
+    userId: UserId
     email: string | null
     name: string
 }): Promise<string[]> {

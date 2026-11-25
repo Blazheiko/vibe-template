@@ -1,4 +1,5 @@
 import { userRepository } from '#app/repositories/index.js'
+import { asUserId } from '#app/domain/ids.js'
 import {
     wsConnectionRegistry,
     type ListedConnection,
@@ -124,7 +125,7 @@ export const wsSessionRevocation = {
         for (let from = 0; from < userIds.length; from += RECHECK_BATCH_SIZE) {
             const batch = userIds.slice(from, from + RECHECK_BATCH_SIZE)
             const tokens = await userRepository.findSessionTokensByIds(
-                batch.map((id) => BigInt(id)),
+                batch.map((id) => asUserId(id)),
             )
             for (const [id, token] of tokens) current.set(id, token)
         }

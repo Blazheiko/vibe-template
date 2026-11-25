@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import { uid } from '../../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
@@ -14,14 +15,14 @@ describe.skipIf(!hasPg)('llm_text_usage on PostgreSQL', async () => {
     const { llmTextUsage, users } = await import('#database/schema.js')
     const { llmUsageRepository } = await import('#app/repositories/index.js')
     const model = `usage-test-${String(Date.now())}`
-    let userId = 0n
+    let userId = uid(0)
 
     beforeAll(async () => {
         const [user] = await db
             .insert(users)
             .values({ name: 'usage', email: `usage-${String(Date.now())}@example.test` })
             .returning({ id: users.id })
-        userId = user?.id ?? 0n
+        userId = user?.id ?? uid(0)
         const base = { model, finalPrompt: 'p', createdAt: new Date() }
         await llmUsageRepository.insertText({
             ...base,

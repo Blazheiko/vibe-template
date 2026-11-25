@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import { uid } from '../../../test-support/ids.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -98,7 +99,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
     })
 
     it('create, update and delete each write one event', async () => {
-        const actor = testAdminActor(3n)
+        const actor = testAdminActor(uid(3))
         const created = await knowledgeBaseService.create(
             { title: 'Created', content: 'created body', category: null, isActive: true },
             actor,
@@ -111,7 +112,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
         expect(createdEvent).toMatchObject({
             action: 'kb.article.created',
             actorKind: 'user',
-            actorUserId: 3n,
+            actorUserId: uid(3),
             targetType: 'kb_article',
             targetId: String(id),
         })
@@ -121,7 +122,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
             content: { changed: true, sha256Before: null, charsAfter: 'created body'.length },
         })
 
-        const editor = testAdminActor(4n)
+        const editor = testAdminActor(uid(4))
         await knowledgeBaseService.update(id, { title: 'Renamed', content: 'new body' }, editor)
         const updatedEvents = await eventsOf(editor.requestId)
         expect(updatedEvents).toHaveLength(1)
@@ -138,7 +139,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
         })
         expect(JSON.stringify(updatedEvents[0]?.changes)).not.toContain('new body')
 
-        const remover = testAdminActor(5n)
+        const remover = testAdminActor(uid(5))
         expect((await knowledgeBaseService.delete(id, remover)).isOk()).toBe(true)
         const deletedEvents = await eventsOf(remover.requestId)
         expect(deletedEvents).toHaveLength(1)
@@ -233,8 +234,8 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
             await new Promise((resolve) => setTimeout(resolve, 50))
             return row
         })
-        const first = testAdminActor(1n)
-        const second = testAdminActor(2n)
+        const first = testAdminActor(uid(1))
+        const second = testAdminActor(uid(2))
 
         const a = knowledgeBaseService.update(id, { title: 'From first' }, first)
         await new Promise((resolve) => setTimeout(resolve, 10))

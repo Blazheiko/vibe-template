@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { uid } from '../../test-support/ids.js'
 
 import { userTransformer } from './user-transformer.js'
 
 // Internal fields never leave the server: the password hash and the per-user
 // session namespace (users.session_token, also part of the signed cookie).
 const row = {
-    id: 7n,
+    id: uid(7),
     name: 'Jane',
     email: 'jane@example.test',
     phone: null,

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -10,6 +11,7 @@ import {
 } from '#app/services/shared/errors.js'
 import type { passwordResetService } from './password-reset-service.js'
 import { testProofHolder } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-069 (G1): passwordResetService, state -> answer, before it is split (H2-H5). Every row
 // names a state of the repositories and what the caller is told (status, code, message,
@@ -99,7 +101,7 @@ vi.mock('#app/services/notifications/user-notification-service.js', () => ({
 }))
 // feat-199: what the reset says about the sign-in methods still linked (own spec).
 const announcePasswordResetMock = vi.hoisted(() =>
-    vi.fn((_account: { userId: bigint }) => Promise.resolve(['github'])),
+    vi.fn((_account: { userId: UserId }) => Promise.resolve(['github'])),
 )
 vi.mock('#app/services/auth/password-reset-notice.js', () => ({
     announcePasswordReset: announcePasswordResetMock,
@@ -222,7 +224,7 @@ const phoneOnlyUser = (over: Record<string, unknown> = {}) =>
     user({ email: null, phone: PHONE, ...over })
 const token = (over: Record<string, unknown> = {}) => ({
     id: 11n,
-    userId: 7n,
+    userId: uid(7),
     // feat-097: the address the link was mailed to.
     targetEmail: 'jane@example.com',
     usedAt: null,
@@ -324,7 +326,7 @@ const ROWS: readonly Row[] = [
     {
         name: 'sendPasswordResetEmail · unknown user',
         arrange: () => userRepositoryMock.lockById.mockResolvedValue(undefined),
-        call: (s) => s.sendPasswordResetEmail(7n),
+        call: (s) => s.sendPasswordResetEmail(uid(7)),
         error: err(404, 'not_found', 'User not found'),
     },
     {
@@ -333,7 +335,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.invalidatePendingByUserId.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendPasswordResetEmail(7n),
+        call: (s) => s.sendPasswordResetEmail(uid(7)),
         throws: true,
         after: () => {
             expect(resetRepositoryMock.create).not.toHaveBeenCalled()
@@ -345,7 +347,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user())
             resetRepositoryMock.create.mockRejectedValue(new Error('db'))
         },
-        call: (s) => s.sendPasswordResetEmail(7n),
+        call: (s) => s.sendPasswordResetEmail(uid(7)),
         throws: true,
         after: () => {
             expect(emailServiceMock.send).not.toHaveBeenCalled()
@@ -359,7 +361,7 @@ const ROWS: readonly Row[] = [
             userRepositoryMock.lockById.mockResolvedValue(user({ email: null }))
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
         },
-        call: (s) => s.sendPasswordResetEmail(7n),
+        call: (s) => s.sendPasswordResetEmail(uid(7)),
         ok: { message: GENERIC_EMAIL },
         after: () => {
             expect(resetRepositoryMock.invalidatePendingByUserId).not.toHaveBeenCalled()
@@ -374,7 +376,7 @@ const ROWS: readonly Row[] = [
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockRejectedValue(new Error('smtp'))
         },
-        call: (s) => s.sendPasswordResetEmail(7n),
+        call: (s) => s.sendPasswordResetEmail(uid(7)),
         throws: true,
     },
     {
@@ -384,11 +386,11 @@ const ROWS: readonly Row[] = [
             resetRepositoryMock.create.mockResolvedValue({ id: 1n })
             emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         },
-        call: (s) => s.sendPasswordResetEmail(7n),
+        call: (s) => s.sendPasswordResetEmail(uid(7)),
         ok: { message: 'Password reset email sent' },
         after: () => {
             const created = resetRepositoryMock.create.mock.calls[0]![0] as {
-                userId: bigint
+                userId: UserId
                 tokenHash: string
                 expiresAt: Date
             }
@@ -718,7 +720,7 @@ const ROWS: readonly Row[] = [
             expect(securityNotice).toHaveBeenCalledWith(7n, 'account_claimed')
             // feat-236 (Р5): the claim branch mails the reset notice too, apart from the push.
             expect(announcePasswordResetMock).toHaveBeenCalledOnce()
-            expect(announcePasswordResetMock.mock.calls[0]?.[0]).toMatchObject({ userId: 7n })
+            expect(announcePasswordResetMock.mock.calls[0]?.[0]).toMatchObject({ userId: uid(7) })
         },
     },
     {
@@ -1332,7 +1334,7 @@ describe('passwordResetService · sendPasswordResetEmailInBackground', () => {
         userRepositoryMock.lockById.mockResolvedValue(undefined)
         const { passwordResetService } = await import('./password-reset-service.js')
         await expect(
-            passwordResetService.sendPasswordResetEmailInBackground(7n, 'manual request'),
+            passwordResetService.sendPasswordResetEmailInBackground(uid(7), 'manual request'),
         ).resolves.toBeUndefined()
         expect(loggerMock.warn).toHaveBeenCalledWith(
             { userId: '7', reason: 'User not found', trigger: 'manual request' },
@@ -1345,7 +1347,7 @@ describe('passwordResetService · sendPasswordResetEmailInBackground', () => {
         const { passwordResetService } = await import('./password-reset-service.js')
         vi.spyOn(passwordResetService, 'sendPasswordResetEmail').mockRejectedValue(boom)
         await expect(
-            passwordResetService.sendPasswordResetEmailInBackground(7n, 'manual request'),
+            passwordResetService.sendPasswordResetEmailInBackground(uid(7), 'manual request'),
         ).resolves.toBeUndefined()
         expect(loggerMock.error).toHaveBeenCalledWith(
             { err: boom, userId: '7', trigger: 'manual request' },
@@ -1358,7 +1360,7 @@ describe('passwordResetService · sendPasswordResetEmailInBackground', () => {
         resetRepositoryMock.create.mockResolvedValue({ id: 1n })
         emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
         const { passwordResetService } = await import('./password-reset-service.js')
-        await passwordResetService.sendPasswordResetEmailInBackground(7n, 'manual request')
+        await passwordResetService.sendPasswordResetEmailInBackground(uid(7), 'manual request')
         expect(loggerMock.warn).not.toHaveBeenCalled()
         expect(loggerMock.error).not.toHaveBeenCalled()
     })

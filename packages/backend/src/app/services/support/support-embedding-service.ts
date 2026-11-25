@@ -5,6 +5,7 @@ import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
 import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // The version read with the text goes with its vector: a newer text in the meantime wins.
 async function storeVector(
@@ -121,7 +122,7 @@ export const supportEmbeddingService = {
         query: string,
         limit = 5,
         options: {
-            userId?: bigint
+            userId?: UserId
             signal?: AbortSignal
             /** Receives the usage the provider reported (the daily budget settles with it). */
             onUsage?: (usage: TokenUsage) => void

@@ -1,4 +1,5 @@
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
+import { asUserId } from '#app/domain/ids.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
 import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
@@ -71,7 +72,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     let revokedMeanwhile: boolean
     try {
         ;[access, sessionStored] = await Promise.all([
-            userRoleService.findAccess(BigInt(userId)),
+            userRoleService.findAccess(asUserId(userId)),
             // A logout of one session deletes its stored record and rotates nothing.
             userData.userToken === undefined
                 ? Promise.resolve(false)
@@ -85,7 +86,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
             access !== undefined &&
             wsConnectionRegistry.takeConnectingRoleStale(userData.uuid)
         ) {
-            access = await userRoleService.findAccess(BigInt(userId))
+            access = await userRoleService.findAccess(asUserId(userId))
         }
     } finally {
         revokedMeanwhile = settle()
@@ -135,7 +136,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     void touchSessionFromWs(userData)
     const connectSettled = userOnlineService
         .trackConnected({
-            userId: BigInt(userId),
+            userId: asUserId(userId),
             sessionId,
             socketUuid: userData.uuid,
             role: userData.role,

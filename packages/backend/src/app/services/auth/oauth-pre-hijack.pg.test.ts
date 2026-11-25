@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { uid } from '../../../test-support/ids.js'
 
 import { Result } from 'better-result'
 import { and, eq, isNull } from 'drizzle-orm'
@@ -7,6 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 import { testProofHolder, testRequest } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-097: account pre-hijacking through OAuth, against a real PostgreSQL. The paths are
 // those of docs/plan/archive/oauth-pre-hijack-plan.md («Шляхи атаки»): an attacker prepares an
@@ -100,7 +102,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
 
     const now = Date.now()
     const ATTACKER_PASSWORD = 'attacker-secret-1'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let counter = 0
 
     const address = (label: string, domain = 'gmail.com'): string => {
@@ -133,11 +135,11 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
         return row
     }
 
-    const userRow = async (id: bigint) => {
+    const userRow = async (id: UserId) => {
         const [row] = await db.select().from(users).where(eq(users.id, id))
         return row
     }
-    const linksOf = async (userId: bigint) =>
+    const linksOf = async (userId: UserId) =>
         db.select().from(oauthAccounts).where(eq(oauthAccounts.userId, userId))
 
     /** The provider's profile, answered by the stubbed provider APIs. */
@@ -170,7 +172,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
     }
 
     /** A stand-in for `context.auth`: records the sign-in a callback performs. */
-    const fakeAuth = (presented?: { userId: bigint; token: string }) => {
+    const fakeAuth = (presented?: { userId: UserId; token: string }) => {
         const state = { login: undefined as { userId: string; token: string } | undefined }
         return {
             state,
@@ -339,7 +341,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             const result = await callback('facebook', auth)
 
             expect(Result.isOk(result)).toBe(true)
-            const userId = BigInt(state.login?.userId ?? '0')
+            const userId = uid(BigInt(state.login?.userId ?? '0'))
             createdUserIds.push(userId)
             expect((await userRow(userId))?.email).toBeNull()
             const [link] = await linksOf(userId)
@@ -551,7 +553,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             p256dhKey: 'attacker-key',
             authKey: 'attacker-auth',
         })
-        const devicesOf = async (userId: bigint) =>
+        const devicesOf = async (userId: UserId) =>
             db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId))
 
         it('is refused after the claim, and nothing is inserted', async () => {

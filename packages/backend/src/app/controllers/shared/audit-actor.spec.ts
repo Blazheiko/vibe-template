@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 import { auditActorFrom, proofHolderActor, rememberActorRole, systemActor } from './audit-actor.js'
 
@@ -20,7 +21,7 @@ describe('audit actors', () => {
     it('a signed-in request is a user actor with its id, request id and logger', () => {
         expect(auditActorFrom(contextOf('42'))).toEqual({
             kind: 'user',
-            userId: 42n,
+            userId: uid(42),
             role: null,
             requestId: '0f8fad5b-d9cb-469f-a165-70867728950e',
             proof: null,

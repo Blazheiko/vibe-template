@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as SharedNotifications from 'shared/notifications'
 
@@ -92,7 +93,7 @@ describe.each(FAILURES)('notify fails at %s', (failure) => {
     it('the new sign-in mail still goes', async () => {
         arrange(failure)
         notifyNewSignIn(
-            7n,
+            uid(7),
             {
                 publicId: 'n'.repeat(22),
                 ip: '203.0.113.7',
@@ -112,7 +113,7 @@ describe.each(FAILURES)('notify fails at %s', (failure) => {
     it('the sign-in method mail still goes', async () => {
         arrange(failure)
         notifySignInMethodAdded({
-            userId: 7n,
+            userId: uid(7),
             email: 'jane@example.com',
             name: 'Jane',
             provider: 'github',
@@ -128,8 +129,8 @@ describe.each(FAILURES)('notify fails at %s', (failure) => {
         async (event) => {
             arrange(failure)
             // As password-reset-service.ts does: the notice, then the reset mail in both branches.
-            userNotificationService.security(7n, event)
-            await announcePasswordReset({ userId: 7n, email: 'jane@example.com', name: 'Jane' })
+            userNotificationService.security(uid(7), event)
+            await announcePasswordReset({ userId: uid(7), email: 'jane@example.com', name: 'Jane' })
             await vi.waitFor(() => {
                 expect(send).toHaveBeenCalledOnce()
             })
@@ -138,7 +139,7 @@ describe.each(FAILURES)('notify fails at %s', (failure) => {
 
     it('the failure is the one arranged', async () => {
         arrange(failure)
-        userNotificationService.security(7n, 'logout_all')
+        userNotificationService.security(uid(7), 'logout_all')
         await settle()
         if (failure === 'checks') {
             expect(insert).not.toHaveBeenCalled()

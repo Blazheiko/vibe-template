@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type * as SharedProduct from 'shared/product'
 
@@ -144,7 +145,7 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
         arrange(name, { emailVerifiedAt: new Date('2026-01-01T00:00:00Z') })
         configure()
         const { passwordResetService } = await import('./password-reset-service.js')
-        const result = await passwordResetService.sendPasswordResetEmail(7n)
+        const result = await passwordResetService.sendPasswordResetEmail(uid(7))
         expect(Result.isOk(result)).toBe(true)
         await expect(render(sentMail())).toMatchFileSnapshot(
             `./__snapshots__/password-reset.${slug}.txt`,
@@ -155,7 +156,7 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
         arrange(name)
         configure()
         const { emailVerificationService } = await import('./email-verification-service.js')
-        const result = await emailVerificationService.sendVerificationEmail(7n)
+        const result = await emailVerificationService.sendVerificationEmail(uid(7))
         expect(Result.isOk(result)).toBe(true)
         await expect(render(sentMail())).toMatchFileSnapshot(
             `./__snapshots__/email-verification.${slug}.txt`,
@@ -168,7 +169,7 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
         configure()
         const { emailVerificationService } = await import('./email-verification-service.js')
         const result = await emailVerificationService.sendLinkVerificationEmail(
-            7n,
+            uid(7),
             'new@example.com',
             SESSION,
         )
@@ -197,7 +198,7 @@ describe('a name is not mailed to an address that is not confirmed', () => {
         configure()
         const { emailVerificationService } = await import('./email-verification-service.js')
 
-        await emailVerificationService.sendVerificationEmail(7n)
+        await emailVerificationService.sendVerificationEmail(uid(7))
 
         expectNoName()
     })
@@ -207,7 +208,7 @@ describe('a name is not mailed to an address that is not confirmed', () => {
         configure()
         const { emailVerificationService } = await import('./email-verification-service.js')
 
-        await emailVerificationService.sendLinkVerificationEmail(7n, 'new@example.com', SESSION)
+        await emailVerificationService.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION)
 
         expectNoName()
     })
@@ -217,7 +218,7 @@ describe('a name is not mailed to an address that is not confirmed', () => {
         configure()
         const { passwordResetService } = await import('./password-reset-service.js')
 
-        await passwordResetService.sendPasswordResetEmail(7n)
+        await passwordResetService.sendPasswordResetEmail(uid(7))
 
         expectNoName()
     })
@@ -227,7 +228,7 @@ describe('a name is not mailed to an address that is not confirmed', () => {
         configure()
         const { passwordResetService } = await import('./password-reset-service.js')
 
-        await passwordResetService.sendPasswordResetEmail(7n)
+        await passwordResetService.sendPasswordResetEmail(uid(7))
 
         expect(sentMail().text.startsWith('Hello, Jane Doe.')).toBe(true)
     })
@@ -240,16 +241,16 @@ describe('auth mails with another product name', () => {
     const send = {
         'password reset': async () => {
             const { passwordResetService } = await import('./password-reset-service.js')
-            return passwordResetService.sendPasswordResetEmail(7n)
+            return passwordResetService.sendPasswordResetEmail(uid(7))
         },
         'email verification': async () => {
             const { emailVerificationService } = await import('./email-verification-service.js')
-            return emailVerificationService.sendVerificationEmail(7n)
+            return emailVerificationService.sendVerificationEmail(uid(7))
         },
         'email linking': async () => {
             const { emailVerificationService } = await import('./email-verification-service.js')
             return emailVerificationService.sendLinkVerificationEmail(
-                7n,
+                uid(7),
                 'new@example.com',
                 SESSION,
             )

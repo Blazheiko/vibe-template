@@ -31,6 +31,7 @@ import {
     encodeSessionCursor,
 } from '#vendor/utils/session/session-page-cursor.js'
 import { sessionListChanged } from '#vendor/utils/session/session-list-events.js'
+import { asUserId, type UserId } from '#app/domain/ids.js'
 
 // feat-233: the account page's list of active sessions (Р7), ending one of them (Р8) and ending
 // all but the current one (Р9). The list lives in Redis next to the records (Р1, Р2); `online`
@@ -44,7 +45,7 @@ import { sessionListChanged } from '#vendor/utils/session/session-list-events.js
  */
 export async function underUserRowLock<T>(userId: string, work: () => Promise<T>): Promise<T> {
     return withTransaction(async (tx) => {
-        await userRepository.lockById(BigInt(userId), tx)
+        await userRepository.lockById(asUserId(userId), tx)
         return work()
     })
 }
@@ -152,7 +153,7 @@ export const sessionListService = {
         if (target === null) return Result.err(notFound('Session', 'Session not found'))
 
         wsSessionRevocation.closeUserConnections(userId, { sessionId: target.sid })
-        userNotificationService.security(BigInt(userId), 'session_revoked')
+        userNotificationService.security(asUserId(userId), 'session_revoked')
         sessionListChanged(userId)
         logger.info({ userId, sessionId: target.sid }, 'Session ended from the session list')
         return Result.ok(undefined)
@@ -165,7 +166,7 @@ export const sessionListService = {
      * Answers the rotated token: the controller renews the session under it.
      */
     async revokeOthers(input: {
-        userId: bigint
+        userId: UserId
         presentedSessionToken: string | undefined
         requestingSessionId: string | undefined
         sessionStored: SessionStillStored

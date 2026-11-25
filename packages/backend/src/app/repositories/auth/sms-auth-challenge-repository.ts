@@ -4,6 +4,7 @@ import { smsAuthChallenges } from '#database/schema.js'
 import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type SmsAuthChallengeRow = InferSelectModel<typeof smsAuthChallenges>
 export type SmsAuthChallengeInsert = InferInsertModel<typeof smsAuthChallenges>
@@ -29,7 +30,7 @@ export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
      * feat-245 (row 7 of Р3): the pending phone links a user started (`metadata.userId`); a change
      * of the account's MFA ends them, so a link allowed before it cannot finish after it.
      */
-    invalidatePendingLinksOfUser(userId: bigint, executor?: DbExecutor): Promise<number>
+    invalidatePendingLinksOfUser(userId: UserId, executor?: DbExecutor): Promise<number>
     /**
      * feat-134 (L2): a transaction-scoped advisory lock on this phone and flow. Two starts that
      * both passed the cooldown check take it one at a time, and the second sees the first one's

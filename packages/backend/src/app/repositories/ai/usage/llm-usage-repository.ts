@@ -4,6 +4,7 @@ import { eq, sql, desc, and, gte, lte } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { noCheckpoint, type Checkpoint } from '#app/services/shared/checkpoint.js'
 import type { PurgeCounts } from '#app/services/shared/purge-counts.js'
+import type { UserId } from '#app/domain/ids.js'
 
 export type LlmTextUsageRow = InferSelectModel<typeof llmTextUsage>
 export type LlmTextUsageInsert = InferInsertModel<typeof llmTextUsage>
@@ -26,7 +27,7 @@ export interface TextStatRow {
 }
 
 export interface TextFilter {
-    userId?: bigint
+    userId?: UserId
     dateFrom?: Date
     dateTo?: Date
     feature?: TextFeature

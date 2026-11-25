@@ -5,6 +5,7 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 import type * as OtpHash from './otp-verification-hash.js'
 import { testProofHolder, testUserActor } from '../../../test-support/audit-actor.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -68,7 +69,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
     }
     const run = `${String(Date.now())}-${String(process.pid)}`
     const challengeIds: string[] = []
-    const userIds: bigint[] = []
+    const userIds: UserId[] = []
     let counter = 0
     const nextPhone = (): string => {
         counter += 1

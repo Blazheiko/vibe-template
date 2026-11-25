@@ -3,6 +3,7 @@ import { userRepository, withTransaction } from '#app/repositories/index.js'
 import type { DbTransaction, UserRow } from '#app/repositories/index.js'
 import { sessionRevoked, type AppResult } from '#app/services/shared/errors.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
+import type { UserId } from '#app/domain/ids.js'
 
 /**
  * Runs `work` in one transaction under the user's row lock, and only while the session
@@ -13,7 +14,7 @@ import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
  * not a single `updateIfSessionToken` statement, such as inserts into other tables.
  */
 export async function withCurrentSession<T>(
-    userId: bigint,
+    userId: UserId,
     presentedSessionToken: string | undefined,
     work: (tx: DbTransaction, user: UserRow) => Promise<AppResult<T>>,
 ): Promise<AppResult<T>> {

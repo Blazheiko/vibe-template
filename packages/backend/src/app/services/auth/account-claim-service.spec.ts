@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 // feat-097: the claim of an account whose address was never verified. Here: what it writes and
 // retires, on the transaction the caller hands it. Atomicity and the row lock are proved
@@ -162,7 +163,7 @@ describe('claimLocked', () => {
             {
                 action: 'auth.account.claimed',
                 targetId: '5',
-                targetUserId: 5n,
+                targetUserId: uid(5),
                 input: outcome.effects,
             },
         ])
@@ -269,7 +270,7 @@ describe('invalidatePendingPhoneChallenges', () => {
 
 describe('destroySessionsQuietly', () => {
     it('deletes the sessions of the previous token', async () => {
-        await destroySessionsQuietly('old-token', 5n)
+        await destroySessionsQuietly('old-token', uid(5))
 
         expect(mocks.destroyAllSessions).toHaveBeenCalledWith('old-token')
         expect(mocks.logger.warn).not.toHaveBeenCalled()
@@ -287,7 +288,7 @@ describe('destroySessionsQuietly', () => {
             return Promise.resolve({ deleted: 1, complete: true })
         })
 
-        await destroySessionsQuietly('old-token', 5n)
+        await destroySessionsQuietly('old-token', uid(5))
 
         expect(mocks.closeUserConnections).toHaveBeenCalledWith('5')
         expect(order).toEqual(['close sockets', 'delete records'])
@@ -296,7 +297,7 @@ describe('destroySessionsQuietly', () => {
     it('closes the connections even when the records cannot be deleted', async () => {
         mocks.destroyAllSessions.mockRejectedValue(new Error('redis down'))
 
-        await destroySessionsQuietly('old-token', 5n)
+        await destroySessionsQuietly('old-token', uid(5))
 
         expect(mocks.closeUserConnections).toHaveBeenCalledWith('5')
     })
@@ -305,7 +306,7 @@ describe('destroySessionsQuietly', () => {
         const failure = new Error('redis down')
         mocks.destroyAllSessions.mockRejectedValue(failure)
 
-        await expect(destroySessionsQuietly('old-token', 5n)).resolves.toBeUndefined()
+        await expect(destroySessionsQuietly('old-token', uid(5))).resolves.toBeUndefined()
         expect(mocks.logger.warn).toHaveBeenCalledWith(
             { err: failure, userId: '5' },
             'Previous sessions not deleted after a password reset',

@@ -1,4 +1,5 @@
 import type { ResponseData, SessionInfo } from '#vendor/types/types.js'
+import { asUserId } from '#app/domain/ids.js'
 import { userRepository } from '#app/repositories/index.js'
 import { generateWsToken } from '#app/services/auth/generate-ws-token-service.js'
 import { getWsUrl } from '#app/services/communication/get-ws-url-service.js'
@@ -80,7 +81,7 @@ export const mainService = {
             return Result.err(unauthorized('Session expired'))
         }
 
-        const user = await userRepository.findById(BigInt(userId))
+        const user = await userRepository.findById(asUserId(userId))
         if (user === undefined) {
             return Result.err(unauthorized('Session expired'))
         }

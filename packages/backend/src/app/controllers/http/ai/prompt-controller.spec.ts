@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { HttpContext } from '#vendor/types/types.js'
@@ -35,7 +36,7 @@ describe('PromptController.testPrompt', () => {
         const response = await PromptController.testPrompt(context(controller.signal))
 
         expect(run).toHaveBeenCalledWith('system prompt', 'hi', controller.signal, {
-            userId: 1n,
+            userId: uid(1),
             llmSystemPromptId: 3n,
         })
         expect(response).toEqual({ status: 'success', result: 'answer' })

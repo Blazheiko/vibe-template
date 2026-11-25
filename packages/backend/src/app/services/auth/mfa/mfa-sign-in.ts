@@ -65,6 +65,7 @@ import {
     fromBase64Url,
     verifyWebAuthnCeremony,
 } from './webauthn-ceremony.js'
+import { asUserId, type UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the second sign-in step. The first factor
 // (password or OAuth) of an account with MFA opens a ticket instead of a session; the session is
@@ -161,7 +162,7 @@ const methodsOf = (account: { totp: unknown; passkeys: number }): SecondStepMeth
  */
 export async function startSecondStepIfRequired(
     auth: Auth,
-    user: { id: bigint; sessionToken: string },
+    user: { id: UserId; sessionToken: string },
     origin: Exclude<LoginOrigin, { inherit: unknown }>,
     extras: { pendingOAuthLink?: PendingOAuthLink } = {},
 ): Promise<AppResult<SecondStepRequired | null>> {
@@ -214,7 +215,7 @@ export async function secondStepState(context: SignInContext): Promise<AppResult
         return none
     const ticket = await mfaTicketStore.read(ticketId)
     if (ticket?.binding !== mfaBinding(bindValue)) return none
-    const account = await loadMfaFactors(BigInt(ticket.userId))
+    const account = await loadMfaFactors(asUserId(ticket.userId))
     if (account.totp === undefined && account.passkeys === 0) return none
     return Result.ok({
         status: 'mfa_required',
@@ -271,7 +272,7 @@ export async function secondStepPasskeyOptions(
     // Р4: an attempt of this ticket was confirmed and is finishing. A new challenge would not
     // help: the browser repeats the same verify request, which continues the confirmed one.
     if (ticket.state !== 'open') return Result.err(completionPending())
-    const keys = await webauthnCredentialRepository.listByUserId(BigInt(ticket.userId))
+    const keys = await webauthnCredentialRepository.listByUserId(asUserId(ticket.userId))
     if (keys.length === 0) {
         return Result.err(badRequest('This account has no passkey', 'proof_unavailable'))
     }
@@ -407,7 +408,7 @@ async function attempt(
     now: number,
 ): Promise<AppResult<AuthSuccessPayload>> {
     const { reservationId, attemptId } = ids
-    const userId = BigInt(ticket.userId)
+    const userId = asUserId(ticket.userId)
     const release = async (): Promise<void> => {
         try {
             await mfaTicketStore.settle(ticketId, reservationId, 'release')
@@ -648,7 +649,7 @@ async function attempt(
  */
 async function createPendingLink(
     tx: DbTransaction,
-    userId: bigint,
+    userId: UserId,
     link: PendingOAuthLink,
     request: AuditRequest,
 ): Promise<RecordedAuditEvent[]> {
@@ -770,7 +771,7 @@ async function activate(
     plan: LoginPlan,
     completionId: string,
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const userId = BigInt(plan.userId)
+    const userId = asUserId(plan.userId)
     let current: string | undefined
     try {
         current = await userRepository.findSessionToken(userId)
@@ -920,7 +921,7 @@ async function checkSecondStepPasskey(
     if (value === null) return { kind: 'stale' }
     const challenge: CheckedChallenge = { key: passkeyTicketChallenges.keyOf(ticketId), value }
     const wrong = { kind: 'wrong' as const, challenge }
-    const userId = BigInt(ticket.userId)
+    const userId = asUserId(ticket.userId)
     const credential = await webauthnCredentialRepository.findByCredentialId(
         fromBase64Url(response.id),
     )

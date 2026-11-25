@@ -15,6 +15,7 @@ import {
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
 import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
+import type { UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, tasks M8) over HTTP: a real uWebSockets.js server
 // with the real routes and session layer, a real PostgreSQL and Redis. The password sign-in of an
@@ -305,7 +306,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
 
     const admin = createTestRedis(PREFIX)
     const PASSWORD = 'mfa-secret-123'
-    const createdUserIds: bigint[] = []
+    const createdUserIds: UserId[] = []
     let stopServer: ((type?: string) => Promise<void>) | undefined
     const MFA_COOKIE = mfaTicketCookieName()
 
@@ -417,7 +418,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         return { row, email: row.email ?? '', code, codes }
     }
 
-    const unusedCodes = async (userId: bigint) =>
+    const unusedCodes = async (userId: UserId) =>
         (
             await db
                 .select()
@@ -425,7 +426,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 .where(and(eq(mfaRecoveryCodes.userId, userId), isNull(mfaRecoveryCodes.usedAt)))
         ).length
 
-    const tokenOf = async (userId: bigint) =>
+    const tokenOf = async (userId: UserId) =>
         (await db.select().from(users).where(eq(users.id, userId)))[0]?.sessionToken ?? ''
 
     beforeAll(async () => {
@@ -1213,7 +1214,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         const CONTINUE = { method: 'continue' }
 
         /** The repeat signs in: the browser holds the new session, and it opens the app. */
-        const expectSignedIn = async (browser: Browser, reply: Reply, userId: bigint) => {
+        const expectSignedIn = async (browser: Browser, reply: Reply, userId: UserId) => {
             expect(reply.status).toBe(200)
             expect(reply.body).toMatchObject({ status: 'success', user: { id: String(userId) } })
             const init = browser.keep(await browser.request('GET', '/main/init'))
@@ -1255,7 +1256,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         }
 
         /** A fake socket of `userId` registered on this instance; `ended` tells its close. */
-        const fakeSocket = (userId: bigint, sessionId: string, userToken: string) => {
+        const fakeSocket = (userId: UserId, sessionId: string, userToken: string) => {
             const ended: number[] = []
             const ws = {
                 cork: (fn: () => void): void => {
@@ -1845,7 +1846,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         const WEB_ORIGIN = webauthnConfig.origins[0] ?? ''
 
         /** Adds a passkey to `userId` through the real registration ceremony. */
-        const addPasskey = async (userId: bigint, counter = 0) => {
+        const addPasskey = async (userId: UserId, counter = 0) => {
             const authenticator = new SoftAuthenticator({ counter })
             const handle = await withTransaction((tx) =>
                 webauthnCredentialRepository.ensureUserHandle(userId, randomBytes(32), tx),

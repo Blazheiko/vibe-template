@@ -5,6 +5,7 @@ import type { AdminOnlineHistoryListQuery } from 'shared/schemas'
 import type { HttpContext } from '#vendor/types/types.js'
 import type { AdminOnlineHistoryListResponse } from 'shared/responses'
 import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseUserId, type UserId } from '#app/domain/ids.js'
 
 export default {
     async list(
@@ -12,9 +13,9 @@ export default {
     ): Promise<AdminOnlineHistoryListResponse> {
         const query = context.httpData.query
 
-        let userId: bigint | undefined
+        let userId: UserId | undefined
         if (query.userId !== undefined && query.userId !== '') {
-            const parsed = parseEntityId(query.userId)
+            const parsed = parseUserId(query.userId)
             if (parsed === null) {
                 return mapControllerError(context, badRequest('userId must be a numeric string'))
             }

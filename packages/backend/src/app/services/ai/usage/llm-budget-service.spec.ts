@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../../test-support/ids.js'
 
 // What the budget does when Redis fails: the reservation fails closed (the caller answers
 // 503), the settlement never throws (the answer was already given; the reserve stays).
@@ -21,12 +22,12 @@ describe('reserveDailyTokens without a working Redis', () => {
         redisMock.eval.mockRejectedValue(new Error('Command timed out'))
 
         await expect(
-            reserveDailyTokens(7n, { chat: 100 }, { limit: 1_000, now: NOW }),
+            reserveDailyTokens(uid(7), { chat: 100 }, { limit: 1_000, now: NOW }),
         ).rejects.toThrow('Command timed out')
     })
 
     it('does not touch Redis when the budget is switched off', async () => {
-        const result = await reserveDailyTokens(7n, { chat: 100 }, { limit: 0, now: NOW })
+        const result = await reserveDailyTokens(uid(7), { chat: 100 }, { limit: 0, now: NOW })
 
         expect(result.allowed).toBe(true)
         expect(redisMock.eval).not.toHaveBeenCalled()
@@ -35,7 +36,7 @@ describe('reserveDailyTokens without a working Redis', () => {
     it('refuses nothing it cannot afford to refuse: an empty estimate is allowed at once', async () => {
         redisMock.eval.mockResolvedValue(0)
 
-        const result = await reserveDailyTokens(7n, {}, { limit: 1_000, now: NOW })
+        const result = await reserveDailyTokens(uid(7), {}, { limit: 1_000, now: NOW })
 
         expect(result.allowed).toBe(true)
     })
@@ -44,7 +45,7 @@ describe('reserveDailyTokens without a working Redis', () => {
 describe('a settlement that cannot reach Redis', () => {
     it('does not throw, logs, and may be tried again', async () => {
         redisMock.eval.mockResolvedValueOnce(100) // the reservation
-        const result = await reserveDailyTokens(7n, { chat: 100 }, { limit: 1_000, now: NOW })
+        const result = await reserveDailyTokens(uid(7), { chat: 100 }, { limit: 1_000, now: NOW })
         if (!result.allowed) throw new Error('expected allowed')
 
         redisMock.eval.mockRejectedValueOnce(new Error('Connection is closed.'))

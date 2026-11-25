@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 import {
     AUDIT_ACTION_NAMES,
     AUDIT_ACTIONS,
@@ -26,7 +27,7 @@ const tx = {} as never
 const log = { info: vi.fn() }
 const userActor = {
     kind: 'user',
-    userId: 5n,
+    userId: uid(5),
     role: 'admin',
     requestId: '0f8fad5b-d9cb-469f-a165-70867728950e',
     proof: null,
@@ -211,7 +212,7 @@ describe('auditService.record', () => {
             {
                 action: 'auth.password.reset',
                 targetId: '9',
-                targetUserId: 9n,
+                targetUserId: uid(9),
                 input: { claimed: false },
             },
         ])
@@ -229,7 +230,7 @@ describe('auditService.record', () => {
                     action: 'auth.password.reset',
                     targetType: 'user',
                     targetId: '9',
-                    targetUserId: 9n,
+                    targetUserId: uid(9),
                     requestId: '0f8fad5b-d9cb-469f-a165-70867728950e',
                     changes: null,
                     metadata: { claimed: false, proof: 'email_link' },
@@ -245,13 +246,13 @@ describe('auditService.record', () => {
             {
                 action: 'auth.password.reset',
                 targetId: '9',
-                targetUserId: 9n,
+                targetUserId: uid(9),
                 input: { claimed: true },
             },
             {
                 action: 'auth.account.claimed',
                 targetId: '9',
-                targetUserId: 9n,
+                targetUserId: uid(9),
                 input: {
                     passwordCleared: false,
                     phoneRemoved: true,

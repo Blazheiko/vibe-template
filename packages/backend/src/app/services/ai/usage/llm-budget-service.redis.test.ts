@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../../test-support/ids.js'
+import type { UserId } from '#app/domain/ids.js'
 
 import {
     cleanupTestRedis,
@@ -24,18 +26,18 @@ redis.client = client
 const { reserveDailyTokens } = await import('./llm-budget-service.js')
 
 const DAY = new Date('2026-03-05T10:00:00.000Z')
-const keyOf = (user: bigint, day = '2026-03-05'): string => `llm:budget:${String(user)}:${day}`
-const used = async (user: bigint, day?: string): Promise<number> =>
+const keyOf = (user: UserId, day = '2026-03-05'): string => `llm:budget:${String(user)}:${day}`
+const used = async (user: UserId, day?: string): Promise<number> =>
     Number((await client.get(keyOf(user, day))) ?? 0)
 
 let nextUser = 100n
-const freshUser = (): bigint => {
+const freshUser = (): UserId => {
     nextUser += 1n
-    return nextUser
+    return uid(nextUser)
 }
 const PARTS = { translation: 300, embedding: 100, chat: 1_000 } // 1400 in all
 
-const reserve = async (user: bigint, limit: number, parts = PARTS, now = DAY) => {
+const reserve = async (user: UserId, limit: number, parts = PARTS, now = DAY) => {
     const result = await reserveDailyTokens(user, parts, { limit, now })
     if (!result.allowed) throw new Error('expected the reservation to be allowed')
     return result.reservation

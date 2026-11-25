@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // feat-199 (decision Д2): a password reset keeps the linked sign-in methods; the reset says
@@ -15,7 +16,7 @@ const { announcePasswordReset, renderPasswordResetNoticeEmail } =
     await import('./password-reset-notice.js')
 
 const account = (over: Record<string, unknown> = {}) => ({
-    userId: 5n,
+    userId: uid(5),
     email: 'owner@example.com' as string | null,
     name: 'Account Owner',
     ...over,

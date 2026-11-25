@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { uid } from '../../../test-support/ids.js'
 import type * as Arctic from 'arctic'
 import { Result } from 'better-result'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -335,12 +336,12 @@ const account = (over: Record<string, unknown> = {}) => ({
 function givenExistingLink(user: Record<string, unknown> | null = { id: 7n }): void {
     oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue({
         id: 21n,
-        userId: 7n,
+        userId: uid(7),
     })
     userRepositoryMock.lockById.mockResolvedValue(
         user === null ? undefined : { sessionToken: 'session-token', ...user },
     )
-    oauthAccountRepositoryMock.findLinkForUser.mockResolvedValue({ id: 21n, userId: 7n })
+    oauthAccountRepositoryMock.findLinkForUser.mockResolvedValue({ id: 21n, userId: uid(7) })
     authMock.login.mockResolvedValue(DEVICE)
 }
 
@@ -349,7 +350,7 @@ function givenExistingUserByEmail(over: Record<string, unknown> = {}): void {
     oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue(undefined)
     userRepositoryMock.findByEmail.mockResolvedValue(account())
     userRepositoryMock.lockById.mockResolvedValue(account(over))
-    oauthAccountRepositoryMock.create.mockResolvedValue({ id: 30n, userId: 5n })
+    oauthAccountRepositoryMock.create.mockResolvedValue({ id: 30n, userId: uid(5) })
     oauthLinkVerificationRepositoryMock.invalidatePendingByUserIdAndProvider.mockResolvedValue(0)
     oauthLinkVerificationRepositoryMock.create.mockResolvedValue({ id: 40n })
     emailServiceMock.send.mockResolvedValue(Result.ok(undefined))
@@ -360,7 +361,7 @@ function givenNewUser(): void {
     oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue(undefined)
     userRepositoryMock.findByEmail.mockResolvedValue(undefined)
     userRepositoryMock.create.mockResolvedValue({ id: 8n, sessionToken: 'new-session-token' })
-    oauthAccountRepositoryMock.create.mockResolvedValue({ id: 22n, userId: 8n })
+    oauthAccountRepositoryMock.create.mockResolvedValue({ id: 22n, userId: uid(8) })
     sendLinkVerificationEmailMock.mockResolvedValue(Result.ok({ message: 'sent' }))
     authMock.login.mockResolvedValue(DEVICE)
 }
@@ -620,7 +621,7 @@ describe('oauthService.handleCallback', () => {
             expect(claimLockedMock).toHaveBeenCalledWith(TX, expect.objectContaining({ id: 5n }))
             expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
                 {
-                    userId: 5n,
+                    userId: uid(5),
                     provider: 'google',
                     providerUserId: 'g-1',
                     providerEmail: 'user@gmail.com',
@@ -682,7 +683,7 @@ describe('oauthService.handleCallback', () => {
 
             expect(Result.isOk(result)).toBe(true)
             expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
-                expect.objectContaining({ userId: 5n, provider: 'google' }),
+                expect.objectContaining({ userId: uid(5), provider: 'google' }),
                 TX,
             )
             expect(authMock.login).toHaveBeenCalledWith(
@@ -705,7 +706,7 @@ describe('oauthService.handleCallback', () => {
                 expect.objectContaining({ id: 5n, emailVerifiedAt: null }),
             )
             expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
-                expect.objectContaining({ userId: 5n, provider: 'google' }),
+                expect.objectContaining({ userId: uid(5), provider: 'google' }),
                 TX,
             )
             expect(destroySessionsQuietlyMock).toHaveBeenCalledWith('existing-token', 5n)
@@ -895,7 +896,7 @@ describe('oauthService.handleCallback', () => {
                 .calls[0] as [Record<string, unknown>, unknown]
             expect(executor).toBe(TX)
             expect(created).toEqual({
-                userId: 5n,
+                userId: uid(5),
                 provider: 'github',
                 providerUserId: 'provider-user-1',
                 providerEmail: 'user@example.com',
@@ -1129,7 +1130,7 @@ describe('oauthService.handleCallback', () => {
             // feat-098: the user and its first link are one transaction.
             expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
                 {
-                    userId: 8n,
+                    userId: uid(8),
                     provider: 'google',
                     providerUserId: 'g-1',
                     providerEmail: 'jane@gmail.com',
@@ -1170,7 +1171,7 @@ describe('oauthService.handleCallback', () => {
             // The address stays with the OAuth account until its owner confirms it.
             expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
                 {
-                    userId: 8n,
+                    userId: uid(8),
                     provider: 'github',
                     providerUserId: 'provider-user-1',
                     providerEmail: 'user@example.com',
@@ -1210,9 +1211,12 @@ describe('oauthService.handleCallback', () => {
             )
             oauthAccountRepositoryMock.findByProviderAndProviderId
                 .mockResolvedValueOnce(undefined)
-                .mockResolvedValueOnce({ id: 21n, userId: 7n })
+                .mockResolvedValueOnce({ id: 21n, userId: uid(7) })
             userRepositoryMock.lockById.mockResolvedValue({ id: 7n, sessionToken: 'winner-token' })
-            oauthAccountRepositoryMock.findLinkForUser.mockResolvedValue({ id: 21n, userId: 7n })
+            oauthAccountRepositoryMock.findLinkForUser.mockResolvedValue({
+                id: 21n,
+                userId: uid(7),
+            })
 
             const result = await callback('github')
 
@@ -1537,7 +1541,7 @@ describe('oauthService.confirmLink', () => {
 
     const linkRow = (over: Record<string, unknown> = {}) => ({
         id: 40n,
-        userId: 5n,
+        userId: uid(5),
         provider: 'github',
         providerUserId: 'gh-1',
         providerEmail: 'user@example.com',
@@ -1556,7 +1560,7 @@ describe('oauthService.confirmLink', () => {
         oauthLinkVerificationRepositoryMock.findByTokenHash.mockResolvedValue(linkRow())
         userRepositoryMock.lockById.mockResolvedValue(account(over))
         oauthLinkVerificationRepositoryMock.markUsed.mockResolvedValue(linkRow())
-        oauthAccountRepositoryMock.create.mockResolvedValue({ id: 31n, userId: 5n })
+        oauthAccountRepositoryMock.create.mockResolvedValue({ id: 31n, userId: uid(5) })
         authMock.login.mockResolvedValue(DEVICE)
     }
 
@@ -1586,7 +1590,7 @@ describe('oauthService.confirmLink', () => {
         expect(claimLockedMock).toHaveBeenCalledWith(TX, expect.objectContaining({ id: 5n }))
         expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
             {
-                userId: 5n,
+                userId: uid(5),
                 provider: 'github',
                 providerUserId: 'gh-1',
                 providerEmail: 'user@example.com',
@@ -1672,7 +1676,7 @@ describe('oauthService.confirmLink', () => {
             expect.objectContaining({ id: 5n, emailVerifiedAt: null }),
         )
         expect(oauthAccountRepositoryMock.create).toHaveBeenCalledWith(
-            expect.objectContaining({ userId: 5n, provider: 'github' }),
+            expect.objectContaining({ userId: uid(5), provider: 'github' }),
             TX,
         )
         expect(destroySessionsQuietlyMock).toHaveBeenCalledWith('existing-token', 5n)
@@ -1835,7 +1839,7 @@ describe('oauthService.confirmLink', () => {
 describe('oauthService.resendFirstEmailLink', () => {
     const resend = async (presented: string | undefined) => {
         const { oauthService } = await loadOauthService()
-        return oauthService.resendFirstEmailLink(7n, presented, sessionStillStored)
+        return oauthService.resendFirstEmailLink(uid(7), presented, sessionStillStored)
     }
 
     it.each([
