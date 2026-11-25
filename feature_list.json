@@ -2603,6 +2603,76 @@
             "dependencies": [],
             "status": "done",
             "evidence": "PR #834 (merge d6e27ab), registry #833 (in_progress). Added documentation/reference/implemented-features.md (uk + en): account scenarios with status, feat id and doc page (implemented: profile, sessions, audit log, notification center, roles, MFA/passkeys; partial: retention; not implemented: data export and account deletion, durable deferred operations, metrics), the admin area (5 pages with permissions, API-only prompts and AI usage, roles). Sidebar, KEY_PAGES and EN_KEY_PAGES of both locales; the 'Що вже реалізовано' section of index.md (uk + en) describes the new features and links to the page. Local: make check exit 0 (backend 3742 tests), pnpm docs:build + docs:verify passed, 8 of 8 anchors checked in dist. CI on PR #834 head: ci.yml quality, e2e, e2e-live, build all success (an earlier e2e-live failure in session-revocation.spec.ts 'changing the password' did not reproduce on rerun; the first quality failure was progress.md formatting, fixed). Documentation only: test-pg, test-redis and UI e2e not applicable."
+        },
+        {
+            "id": "feat-262",
+            "name": "Single Entity Id Validator",
+            "description": "One id validator for the whole backend (plan Р4, no brands yet): ENTITY_ID_PATTERN / EntityIdSchema get the PostgreSQL bigint upper bound, local duplicate id regexes in shared are removed, isCanonicalEntityId is dropped; sign-in-methods-controller (BigInt over EntityIdSchema) and llm-usage-controller (BigInt with try/catch accepting 0x10 and -5) go through parseEntityId. PG tests: out-of-range, hex, negative, zero and leading-zero ids answer 400/404, not 500. Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "fix/single-entity-id-validator",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-263",
+            "name": "Branded Ids Foundation And Auth",
+            "description": "ADR 0007 Branded types (Р1–Р4, Р10, Р11), shared Brand<T, Id> compatible with arktype .brand() plus a type test, backend app/domain/ids.ts (per-entity bigint brands, parseId, toEntityId), Drizzle .$type<…>() on every PK and FK, branded signatures in users, sessions, auth, oauth, mfa, passkeys, permission-guard, ws-coordinator and SessionData; argument order (userId, id) on every layer (Р11) for the auth repositories; ESLint rule against `as Brand` outside constructors; adding-a-feature tutorial (uk + en) and the backend-feature skill updated. Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/branded-ids-auth",
+            "dependencies": ["feat-262"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-264",
+            "name": "Branded Ids Remaining Domains",
+            "description": "Per-entity id brands for notifications, push, support, AI, admin and audit; argument order (userId, id) (Р11) for push-subscription-repository (findForUser, deactivate, delete) and push-subscription-statistics-service. Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/branded-ids-domains",
+            "dependencies": ["feat-263"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-265",
+            "name": "Branded Secret States",
+            "description": "Secrets typed by state (Р5): RawToken / TokenHash for one-time tokens, raw / normalized / hashed recovery codes, OtpCode / OtpHash, SessionToken, and string ids of sessions and MFA tickets (SessionId, TicketId, CompletionId, ReservationId, AttemptId); hash functions accept only the raw state, repositories look up only by hash; @ts-expect-error type tests. Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/branded-secrets",
+            "dependencies": ["feat-263"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-266",
+            "name": "Normalized Email Brand",
+            "description": "NormalizedEmail (Р6) produced only by normalizeEmail; findByEmail, user creation and the OAuth link lookup accept it; EmailInputSchema in shared replaces the three copies of 'string.email & string <= 255'. Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/normalized-email",
+            "dependencies": ["feat-263"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-267",
+            "name": "Branded Time Units",
+            "description": "Milliseconds, Seconds and UnixMs brands with constructors (Р7); Redis TTL helpers typed by unit (EX seconds vs PX milliseconds), branded config values in config/session.ts and throttle-policies.ts, unit suffixes for ambiguous now/age names. Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/branded-time-units",
+            "dependencies": [],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-268",
+            "name": "Shared And Frontend Brands",
+            "description": "Optional (Р8): SessionPublicId, IsoDateTime, Cursor and EntityId in response schemas; ws-payload-guards narrow to brands; frontend stores take their types from shared/responses; asEntityId() test helper; brands/primitives cleanup (Р9: PriceInCents removed, Timestamp becomes UnixMs, PositiveInt / NonNegativeInt / NonEmptyString kept with tests). Plan: docs/plan/branded-types-plan.md.",
+            "owner": "Blazheiko",
+            "branch": "feat/shared-frontend-brands",
+            "dependencies": ["feat-263"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
