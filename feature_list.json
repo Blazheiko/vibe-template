@@ -2601,8 +2601,8 @@
             "owner": "Blazheiko",
             "branch": "docs/implemented-features",
             "dependencies": [],
-            "status": "in_progress",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #834 (merge d6e27ab), registry #833 (in_progress). Added documentation/reference/implemented-features.md (uk + en): account scenarios with status, feat id and doc page (implemented: profile, sessions, audit log, notification center, roles, MFA/passkeys; partial: retention; not implemented: data export and account deletion, durable deferred operations, metrics), the admin area (5 pages with permissions, API-only prompts and AI usage, roles). Sidebar, KEY_PAGES and EN_KEY_PAGES of both locales; the 'Що вже реалізовано' section of index.md (uk + en) describes the new features and links to the page. Local: make check exit 0 (backend 3742 tests), pnpm docs:build + docs:verify passed, 8 of 8 anchors checked in dist. CI on PR #834 head: ci.yml quality, e2e, e2e-live, build all success (an earlier e2e-live failure in session-revocation.spec.ts 'changing the password' did not reproduce on rerun; the first quality failure was progress.md formatting, fixed). Documentation only: test-pg, test-redis and UI e2e not applicable."
         }
     ]
 }
