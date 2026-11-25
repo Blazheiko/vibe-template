@@ -2607,7 +2607,7 @@
         {
             "id": "feat-262",
             "name": "Single Entity Id Validator",
-            "description": "One id validator for the whole backend (plan Р4, no brands yet): ENTITY_ID_PATTERN / EntityIdSchema get the PostgreSQL bigint upper bound, local duplicate id regexes in shared are removed, isCanonicalEntityId is dropped; sign-in-methods-controller (BigInt over EntityIdSchema) and llm-usage-controller (BigInt with try/catch accepting 0x10 and -5) go through parseEntityId. PG tests: out-of-range, hex, negative, zero and leading-zero ids answer 400/404, not 500. Plan: docs/plan/branded-types-plan.md.",
+            "description": "One id validator (plan Р2, Р4; no id brands yet). New ArkType-free subpath shared/brand with Brand<T, Id> (two-way equality type test against EntityIdSchema.infer) and isValidEntityId (ENTITY_ID_PATTERN /^[1-9]\\d{0,18}$/ plus the PostgreSQL bigint bound as a string comparison); EntityIdSchema narrows with it, the contracts.test.js parity test compares it with the schema, parseEntityId and frontend ws-payload-guards use it, so '0' and '007' are no longer ids (parse-id.spec.ts updated). Local id regex duplicates removed (NOTIFICATION_ID_PATTERN, the notifications response IdSchema, support before?); ProfileRevisionSchema / REVISION_PATTERN stay (a revision may be '0'); isCanonicalEntityId dropped. sign-in-methods-controller goes through parseEntityId; llm-usage-controller answers 400 for an invalid userId instead of silently dropping the filter. PG tests: out-of-range, hex, negative, zero, leading-zero and non-numeric ids answer 400/404, never 500 or an unfiltered 200. Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "fix/single-entity-id-validator",
             "dependencies": [],
@@ -2617,7 +2617,7 @@
         {
             "id": "feat-263",
             "name": "Branded Ids Foundation And Auth",
-            "description": "ADR 0007 Branded types (Р1–Р4, Р10, Р11), shared Brand<T, Id> compatible with arktype .brand() plus a type test, backend app/domain/ids.ts (per-entity bigint brands, parseId, toEntityId), Drizzle .$type<…>() on every PK and FK, branded signatures in users, sessions, auth, oauth, mfa, passkeys, permission-guard, ws-coordinator and SessionData; argument order (userId, id) on every layer (Р11) for the auth repositories; ESLint rule against `as Brand` outside constructors; adding-a-feature tutorial (uk + en) and the backend-feature skill updated. Plan: docs/plan/branded-types-plan.md.",
+            "description": "ADR 0007 Branded types (Р1–Р4, Р10, Р11). First step: check .$type<Brand<bigint, …>>() in Drizzle 1.0.0-rc.5 (eq, inArray, insert, defineRelations in the transitional state). Id brands declared as types in database/ids.ts (imported by schema.ts with a relative import type, since drizzle-kit has no # aliases), re-exported with parseId and toEntityId from app/domain/ids.ts. $type only on the tables of this feature's domains (users, user_preferences, user_online, oauth_*, email_*, one-time token tables via one shared OneTimeTokenRowId, totp_factors, mfa_recovery_codes, webauthn_credentials, sms_auth_challenges as SmsChallengeId string brand); branded signatures in users, sessions, auth, oauth, mfa, passkeys, requireUserId (parseId instead of BigInt), permission-guard, ws-coordinator, SessionData; argument order (userId, id) (Р11) in webauthn-credential, oauth-account and totp-factor repositories; ESLint rule against as / type assertions to brand types (one list of brand names); adding-a-feature tutorial (uk + en) and the backend-feature skill updated. DoD adds make test-redis and db:generate with no diff. Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "feat/branded-ids-auth",
             "dependencies": ["feat-262"],
@@ -2627,7 +2627,7 @@
         {
             "id": "feat-264",
             "name": "Branded Ids Remaining Domains",
-            "description": "Per-entity id brands for notifications, push, support, AI, admin and audit; argument order (userId, id) (Р11) for push-subscription-repository (findForUser, deactivate, delete) and push-subscription-statistics-service. Plan: docs/plan/branded-types-plan.md.",
+            "description": "$type and per-entity id brands for notifications, push, support, AI, admin and audit together with their signatures; argument order (userId, key, data) (Р11) for every method of push-subscription-repository (findForUser, update, updateByEndpoint, deactivate, touchLastUsed, delete, getLogsBySubscriptionId) and push-notification-log-repository (countsBySubscription, latestBySubscriptionIds), and push-subscription-statistics-service. DoD adds db:generate with no diff. Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "feat/branded-ids-domains",
             "dependencies": ["feat-263"],
@@ -2637,7 +2637,7 @@
         {
             "id": "feat-265",
             "name": "Branded Secret States",
-            "description": "Secrets typed by state (Р5): RawToken / TokenHash for one-time tokens, raw / normalized / hashed recovery codes, OtpCode / OtpHash, SessionToken, and string ids of sessions and MFA tickets (SessionId, TicketId, CompletionId, ReservationId, AttemptId); hash functions accept only the raw state, repositories look up only by hash; @ts-expect-error type tests. Plan: docs/plan/branded-types-plan.md.",
+            "description": "Secrets typed by state (Р5): RawToken / TokenHash for one-time tokens, raw / normalized / hashed recovery codes, OtpCode / OtpHash, MfaBindValue / MfaBinding (mfa_bind cookie and its HMAC), SessionToken (users.session_token with $defaultFn(newSessionToken)), and string ids of sessions and MFA tickets (SessionId, TicketId, CompletionId, ReservationId, AttemptId); hash functions accept only the raw state, repositories look up only by hash; @ts-expect-error type tests; make test-redis. Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "feat/branded-secrets",
             "dependencies": ["feat-263"],
@@ -2647,7 +2647,7 @@
         {
             "id": "feat-266",
             "name": "Normalized Email Brand",
-            "description": "NormalizedEmail (Р6) produced only by normalizeEmail; findByEmail, user creation and the OAuth link lookup accept it; EmailInputSchema in shared replaces the three copies of 'string.email & string <= 255'. Plan: docs/plan/branded-types-plan.md.",
+            "description": "NormalizedEmail (Р6) produced only by normalizeEmail; findByEmail, user creation and the OAuth link lookup accept it; EmailInputSchema in shared replaces the three copies of 'string.email & string <= 255' and the unnormalized Email / EmailSchema brand is removed; $type<NormalizedEmail> on oauth_accounts.provider_email only after every write path is checked to normalize. Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "feat/normalized-email",
             "dependencies": ["feat-263"],
@@ -2657,17 +2657,17 @@
         {
             "id": "feat-267",
             "name": "Branded Time Units",
-            "description": "Milliseconds, Seconds and UnixMs brands with constructors (Р7); Redis TTL helpers typed by unit (EX seconds vs PX milliseconds), branded config values in config/session.ts and throttle-policies.ts, unit suffixes for ambiguous now/age names. Plan: docs/plan/branded-types-plan.md.",
+            "description": "Milliseconds, Seconds and UnixMs in shared/brand (Р7) with operations nowUnixMs, ms, seconds, addMs, diffMs, toMs, toSecondsFloor, toSecondsCeil (Redis TTL and Retry-After round up); Redis TTL helpers typed by unit (EX seconds vs PX milliseconds), branded config values in config/session.ts and throttle-policies.ts, unit suffixes for ambiguous now/age names; Timestamp / TimestampSchema removed; make test-redis. Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "feat/branded-time-units",
-            "dependencies": [],
+            "dependencies": ["feat-262"],
             "status": "not-started",
             "evidence": ""
         },
         {
             "id": "feat-268",
             "name": "Shared And Frontend Brands",
-            "description": "Optional (Р8): SessionPublicId, IsoDateTime, Cursor and EntityId in response schemas; ws-payload-guards narrow to brands; frontend stores take their types from shared/responses; asEntityId() test helper; brands/primitives cleanup (Р9: PriceInCents removed, Timestamp becomes UnixMs, PositiveInt / NonNegativeInt / NonEmptyString kept with tests). Plan: docs/plan/branded-types-plan.md.",
+            "description": "Optional (Р8): SessionPublicId, IsoDateTime, Cursor and EntityId in response schemas; ws-payload-guards narrow to brands; frontend stores take their types from shared/responses; asEntityId() test helper; the Р10 ESLint rule in packages/frontend/eslint.config.ts; option: QueryWireValue strips brands; PriceInCents removed, PositiveInt / NonNegativeInt / NonEmptyString kept with accept/reject tests (Р9). Plan: docs/plan/branded-types-plan.md.",
             "owner": "Blazheiko",
             "branch": "feat/shared-frontend-brands",
             "dependencies": ["feat-263"],
