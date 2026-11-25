@@ -1,7 +1,8 @@
 # План: branded types і value objects
 
 **Статус: погоджено власником** (2026-11-25): Р1–Р13 (редакція 5). Р9 уточнено: `PositiveInt`, `NonNegativeInt`, `NonEmptyString`
-лишаються. Р11: спершу власник, `(userId, id)`, на всіх шарах. Фічі: `feat-262`…`feat-268`.
+лишаються. Р11: спершу власник, `(userId, id)`, на всіх шарах. Фічі: `feat-262`…`feat-268`. Покроковий task list:
+[`branded-types-tasks.md`](./branded-types-tasks.md).
 
 **Редакція 2** (2026-11-25, за рев'ю плану):
 
@@ -32,6 +33,14 @@
 - Округлення: тривалість округлюється вгору, момент часу вниз. Тест перевіряє фактичний `TTL`/`PTTL` у Redis (Р7).
 - У Р8 записано межу спільного `EntityId` на фронтенді.
 
+**Редакція 4** (2026-11-25, третє рев'ю плану):
+
+- Небрендована `EntityIdStringSchema` для query-, request- і response-схем. Інакше заміна локальних regex на голий
+  `ENTITY_ID_PATTERN` пропустила б `2^63` у `support` `before` і дала б 500 (Р4).
+- Відмову схеми в таблиці feat-262 виправлено на 422 (`ValidationError`), додано `?before` і `upTo` notifications.
+  llm-usage: без `.trim()`, як у `admin-user-controller`.
+- Р13 охоплює обидва записи з Redis у `ws-session-auth.ts`: WS-токен `auth:ws:*` і `SessionInfo`.
+
 **Редакція 5** (2026-11-25, четверте рев'ю плану):
 
 - Таблиця контракту feat-262 має дві колонки, «зараз» і «після», і правило: `0` не є допустимим курсором чи `before`
@@ -41,14 +50,8 @@
 - Р10: замість `no-restricted-syntax` за іменами — локальне type-aware правило ESLint, яке дивиться на кінцевий тип
   приведення (аліаси й перейменовані імпорти не обходять його).
 - feat-262 названо «спільний валідатор id»; у її DoD явно додано `check-bundle-graph` і frontend-тест `isValidEntityId`.
-
-**Редакція 4** (2026-11-25, третє рев'ю плану):
-
-- Небрендована `EntityIdStringSchema` для query-, request- і response-схем. Інакше заміна локальних regex на голий
-  `ENTITY_ID_PATTERN` пропустила б `2^63` у `support` `before` і дала б 500 (Р4).
-- Відмову схеми в таблиці feat-262 виправлено на 422 (`ValidationError`), додано `?before` і `upTo` notifications.
-  llm-usage: без `.trim()`, як у `admin-user-controller`.
-- Р13 охоплює обидва записи з Redis у `ws-session-auth.ts`: WS-токен `auth:ws:*` і `SessionInfo`.
+- Р10: межа `no-brand-cast` — тип приведення і члени union / intersection, без рекурсії в поля об'єктів.
+- Покроковий task list: [`branded-types-tasks.md`](./branded-types-tasks.md).
 
 ## Задача
 
@@ -291,6 +294,11 @@
       приведення і перевіряє, чи є серед його складових тип із властивістю `' brand'` (форма `Brand` з Р2). Тому
       ловляться аліаси, перейменовані імпорти, `as unknown as UserId`, а також `as UserId | null`. Списку імен брендів
       немає, і новий бренд не може випасти з перевірки.
+    - Межа перевірки: правило дивиться на сам тип приведення і на члени його union / intersection (`UserId`,
+      `UserId | null`), але **не спускається рекурсивно в поля об'єктів**. Інакше спрацювали б службові приведення на
+      кшталт `table as unknown as typeof passwordResetTokens` і `created as Row` у
+      `repositories/auth/token-repository.ts:59-83`, де поля рядка вже брендовані. Тест RuleTester фіксує, що такі
+      приведення не є помилкою.
     - Typed linting уже ввімкнено: кореневий `eslint.config.ts:32-38` (`strictTypeChecked` + `projectService`),
       `packages/frontend/eslint.config.ts:71`.
     - Винятки за шляхом файлу: модулі-конструктори (`shared/src/brand/**`, `database/ids.ts`, `app/domain/**`) і тести.
