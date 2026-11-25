@@ -1,13 +1,11 @@
 import { type } from '@arktype/type'
+import { EntityIdStringSchema } from '../../brands/ids.js'
 import { NOTIFICATION_CATEGORIES, NOTIFICATION_CHANNELS } from '../../notifications/catalog.js'
 
-/** A notification id as a client sends it: a positive decimal that may fit a bigint (Р6). */
-export const NOTIFICATION_ID_PATTERN = /^[1-9]\d{0,18}$/
-
-// POST /notifications/read-all (Р6): every notification with `id <= upTo`. The backend also
-// checks that `upTo` fits a PostgreSQL bigint before the query.
+// POST /notifications/read-all (Р6): every notification with `id <= upTo`, an id PostgreSQL's
+// bigint holds (feat-262).
 export const ReadAllNotificationsInputSchema = type({
-    upTo: NOTIFICATION_ID_PATTERN,
+    upTo: EntityIdStringSchema,
     '+': 'reject',
 })
 export type ReadAllNotificationsInput = typeof ReadAllNotificationsInputSchema.infer

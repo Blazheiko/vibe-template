@@ -2,8 +2,9 @@ import { type } from '@arktype/type'
 import { NOTIFICATION_CATEGORIES, NOTIFICATION_CHANNELS } from '../notifications/catalog.js'
 import { NotificationParamsSchemas } from '../schemas/notifications/params.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
+import { EntityIdStringSchema } from '../brands/ids.js'
 
-const IdSchema = type(/^[1-9]\d{0,18}$/)
+const IdSchema = EntityIdStringSchema
 const UnreadCountSchema = 'number.integer >= 0'
 
 const ItemBase = type({

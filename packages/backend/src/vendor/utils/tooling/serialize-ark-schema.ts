@@ -43,7 +43,9 @@ export function serializeArkSchema(schema: Type): SerializedArkSchema {
     let jsonSchema: unknown
 
     try {
-        jsonSchema = schema.toJsonSchema()
+        // A `.narrow()` predicate (the bigint bound of an id, the rules of a profile name) has no
+        // JSON Schema form: the docs show the shape it narrows and leave the predicate out.
+        jsonSchema = schema.toJsonSchema({ fallback: { predicate: (ctx) => ctx.base } })
     } catch {
         jsonSchema = undefined
     }

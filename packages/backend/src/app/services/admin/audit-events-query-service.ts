@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { isValidEntityId } from 'shared/brand'
 import {
     AUDIT_ACTIONS,
     auditActionsOfGroup,
@@ -21,14 +22,11 @@ import { auditEventTransformer } from '#app/transformers/index.js'
 export const AUDIT_EVENTS_PAGE_SIZE = 50
 
 const OCCURRED_AT_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/
-const ID_TEXT = /^[1-9]\d{0,18}$/
 
 /** The cursor of the next page: base64url of `occurred_at` as PostgreSQL printed it, and the id. */
 export function encodeAuditCursor(cursor: AuditEventCursor): string {
     return Buffer.from(`${cursor.occurredAt}|${String(cursor.id)}`, 'utf8').toString('base64url')
 }
-
-const MAX_POSTGRES_BIGINT = 9223372036854775807n
 
 /** Whether `text` (`YYYY-MM-DD HH:MM:SS[.ffffff]`) names a real instant, not one Date would roll over. */
 function isCalendarTimestamp(text: string): boolean {
@@ -56,12 +54,10 @@ export function decodeAuditCursor(text: string): AuditEventCursor | null {
     const decoded = Buffer.from(text, 'base64url').toString('utf8')
     const [occurredAt, id, ...rest] = decoded.split('|')
     if (rest.length > 0 || occurredAt === undefined || id === undefined) return null
-    if (!OCCURRED_AT_TEXT.test(occurredAt) || !ID_TEXT.test(id)) return null
+    if (!OCCURRED_AT_TEXT.test(occurredAt) || !isValidEntityId(id)) return null
     // A real timestamp and an id PostgreSQL can hold: anything else would come back as a 500.
     if (!isCalendarTimestamp(occurredAt)) return null
-    const value = BigInt(id)
-    if (value > MAX_POSTGRES_BIGINT) return null
-    return { occurredAt, id: value }
+    return { occurredAt, id: BigInt(id) }
 }
 
 export interface AuditEventsQuery {

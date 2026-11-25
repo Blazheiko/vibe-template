@@ -72,7 +72,7 @@ All routes are in a group with `session_web`, `csrf_guard` and `auth_guard`; eac
 | `PUT /notifications/preferences`  | `{ category, channel, enabled }` → the matrix                                                      |
 
 - A notification of another user, a missing one, a malformed id and one past the PostgreSQL `bigint` range are the same `404`: existence is not revealed.
-- A `before` or `upTo` past `bigint` is `400` (`invalid_cursor`, `invalid_up_to`); a `limit` outside 1–50 is the `422` of validation. Ids are checked before any query.
+- A `before` or `upTo` that is not a row id (`0`, `007`, past `bigint`) is the `422` of validation, as is a `limit` outside 1–50 (feat-262). The controller checks the id again (`400` `invalid_cursor`, `invalid_up_to`), so neither reaches a query.
 - A locked channel or one the category does not have is `400` with `reason` `channel_locked` or `channel_unavailable`.
 - `read-all` guarantees `id <= upTo`, not "only the ones shown": `bigserial` orders ids by allocation, not by commit, so a concurrent insert with a smaller id committed later is marked too.
 - The count is `COUNT(*)` over a subquery with `LIMIT 100` on the partial index.

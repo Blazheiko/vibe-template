@@ -1,4 +1,5 @@
 import { type } from '@arktype/type'
+import { EntityIdStringSchema } from '../../brands/ids.js'
 import {
     SUPPORT_HISTORY_DEFAULT_PAGE_SIZE,
     SUPPORT_HISTORY_MAX_PAGE_SIZE,
@@ -10,8 +11,8 @@ const historyLimitFromString = type('string.integer.parse').pipe(
 )
 
 export const SupportChatHistoryQuerySchema = type({
-    // A row id that fits a bigint column: at most 18 digits, no leading zero.
-    'before?': /^[1-9]\d{0,17}$/,
+    // A row id that fits a bigint column (feat-262): the service reads it without parsing it again.
+    'before?': EntityIdStringSchema,
     limit: historyLimitFromString.default(String(SUPPORT_HISTORY_DEFAULT_PAGE_SIZE)),
 })
 

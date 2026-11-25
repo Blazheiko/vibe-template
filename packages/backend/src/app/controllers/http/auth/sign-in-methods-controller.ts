@@ -4,11 +4,14 @@ import { mapControllerError, respond } from '#app/controllers/shared/controller-
 import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { signInMethodsService } from '#app/services/auth/sign-in-methods-service.js'
-import { unauthorized } from '#app/services/shared/errors.js'
+import { notFound, unauthorized, type AppError } from '#app/services/shared/errors.js'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 import type { UnlinkSignInMethodInput } from 'shared/schemas'
 import type { GetSignInMethodsResponse, UnlinkSignInMethodResponse } from 'shared/responses'
 
 // feat-199: the sign-in methods linked to the signed-in account.
+const signInMethodNotFound = (): AppError => notFound('SignInMethod', 'Sign-in method not found')
+
 export default {
     async list(context: HttpContext): Promise<GetSignInMethodsResponse> {
         const userId = requireUserId(context)
@@ -24,9 +27,12 @@ export default {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
 
-        const payload = getTypedPayload(context)
+        // The schema has refused anything that is not an id (422); parsing again keeps the bigint
+        // bound here too, so the service never sees a value PostgreSQL cannot hold (feat-262).
+        const linkId = parseEntityId(getTypedPayload(context).id)
+        if (linkId === null) return mapControllerError(context, signInMethodNotFound())
         const result = await signInMethodsService.unlink(userId, {
-            linkId: BigInt(payload.id),
+            linkId,
             presentedSessionToken: context.auth.getPresentedUserToken(),
             sessionAuth: context.session.sessionInfo?.data.auth,
             sessionStored: () => context.session.isStored(),

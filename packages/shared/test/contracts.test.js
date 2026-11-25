@@ -5,7 +5,8 @@ import { type } from '@arktype/type'
 
 import { CsrfRejectReason, ErrorCode, ErrorCodeValues } from '../dist/errors/index.js'
 import { ErrorCodeSchema } from '../dist/responses/error-code-schema.js'
-import { EntityIdSchema } from '../dist/brands/index.js'
+import { EntityIdSchema, EntityIdStringSchema } from '../dist/brands/index.js'
+import { MAX_ENTITY_ID, isValidEntityId } from '../dist/brand/index.js'
 import {
     SUPPORT_HISTORY_DEFAULT_PAGE_SIZE,
     SUPPORT_HISTORY_MAX_PAGE_SIZE,
@@ -37,10 +38,43 @@ test('every CsrfRejectReason is a distinct snake_case word', () => {
     for (const reason of reasons) assert.match(reason, /^[a-z]+(_[a-z]+)*$/)
 })
 
-test('EntityIdSchema accepts canonical positive integer ids only', () => {
+// feat-262: the ids PostgreSQL's bigint holds, and the strings around the bound and the shape.
+const VALID_IDS = ['1', '42', '9007199254740993', '999999999999999999', MAX_ENTITY_ID]
+const INVALID_IDS = [
+    '9223372036854775808',
+    '9999999999999999999',
+    '10000000000000000000',
+    '0',
+    '007',
+    '-1',
+    '-5',
+    '0x10',
+    '1.5',
+    '1e3',
+    '',
+    'abc',
+    ' 1',
+    '1 ',
+    '  ',
+]
+
+test('isValidEntityId takes canonical ids up to the bigint bound only', () => {
+    assert.equal(MAX_ENTITY_ID, String(2n ** 63n - 1n))
+    for (const value of VALID_IDS) assert.ok(isValidEntityId(value), value)
+    for (const value of INVALID_IDS) assert.ok(!isValidEntityId(value), JSON.stringify(value))
+})
+
+test('EntityIdSchema and EntityIdStringSchema accept what isValidEntityId accepts', () => {
     assert.equal(EntityIdSchema('42'), '42')
-    for (const value of ['0', '007', '-1', '1.5', '', 'abc', ' 1']) {
-        assert.ok(EntityIdSchema(value) instanceof type.errors, JSON.stringify(value))
+    assert.equal(EntityIdStringSchema('42'), '42')
+    for (const value of [...VALID_IDS, ...INVALID_IDS]) {
+        const valid = isValidEntityId(value)
+        assert.equal(!(EntityIdSchema(value) instanceof type.errors), valid, JSON.stringify(value))
+        assert.equal(
+            !(EntityIdStringSchema(value) instanceof type.errors),
+            valid,
+            JSON.stringify(value),
+        )
     }
 })
 
@@ -166,14 +200,13 @@ test('the password limits are what every auth schema enforces', async () => {
     assert.ok(verify(ok(PASSWORD_MAX_LENGTH + 1)) instanceof type.errors, 'verify-email: max + 1')
 })
 
-test('ENTITY_ID_PATTERN is what EntityIdSchema takes, and looksLikePhoneNumber what the phone check reads', async () => {
+test('ENTITY_ID_PATTERN is the shape of an id (not its bound), and looksLikePhoneNumber what the phone check reads', async () => {
     const { ENTITY_ID_PATTERN, looksLikePhoneNumber } = await import('../dist/patterns/index.js')
-    for (const value of ['1', '42', '9007199254740993', '0', '007', '-1', '1.5', '', 'abc', ' 1']) {
-        assert.equal(
-            ENTITY_ID_PATTERN.test(value),
-            !(EntityIdSchema(value) instanceof type.errors),
-            JSON.stringify(value),
-        )
+    for (const value of VALID_IDS) assert.ok(ENTITY_ID_PATTERN.test(value), value)
+    // 19 digits above the bound fit the pattern; isValidEntityId refuses them.
+    assert.ok(ENTITY_ID_PATTERN.test('9999999999999999999'))
+    for (const value of ['10000000000000000000', '0', '007', '-1', '1.5', '', 'abc', ' 1']) {
+        assert.ok(!ENTITY_ID_PATTERN.test(value), JSON.stringify(value))
     }
     assert.equal(root.looksLikePhoneNumber, looksLikePhoneNumber)
     for (const value of ['+380501234567', ' 050 123 45 67 ', '(555) 123-4567']) {
