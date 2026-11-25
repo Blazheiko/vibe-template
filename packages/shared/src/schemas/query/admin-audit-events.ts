@@ -1,6 +1,6 @@
 import { type } from '@arktype/type'
 import { AUDIT_ACTION_NAMES, AUDIT_GROUPS, AUDIT_TARGET_TYPES } from '../../audit/audit-actions.js'
-import { ENTITY_ID_PATTERN } from '../../patterns/index.js'
+import { EntityIdStringSchema } from '../../brands/ids.js'
 import type { QueryInputOf } from './types.js'
 
 /** Longest `cursor` the audit-log list accepts; its form is checked by the backend (Р7). */
@@ -21,8 +21,8 @@ export const AdminAuditEventsQuerySchema = type({
         .atLeastLength(1)
         .atMostLength(AUDIT_ACTION_FILTER_MAX),
     'group?': type.enumerated(...AUDIT_GROUPS),
-    'actorUserId?': ENTITY_ID_PATTERN,
-    'targetUserId?': ENTITY_ID_PATTERN,
+    'actorUserId?': EntityIdStringSchema,
+    'targetUserId?': EntityIdStringSchema,
     'targetType?': type.enumerated(...AUDIT_TARGET_TYPES),
     'targetId?': '1 <= string <= 64',
     'requestId?': 'string.uuid',

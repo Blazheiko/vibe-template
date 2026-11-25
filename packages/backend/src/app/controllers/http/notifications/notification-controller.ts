@@ -23,11 +23,6 @@ import { badRequest, notFound, unauthorized } from '#app/services/shared/errors.
 // PostgreSQL can hold before any query (parseEntityId): a path id outside it is answered like a
 // missing notification, a cursor or bound outside it is a bad request.
 
-const positiveId = (raw: string | undefined): bigint | null => {
-    const id = parseEntityId(raw)
-    return id !== null && id > 0n ? id : null
-}
-
 export default {
     async list(
         context: HttpContext<unknown, ListNotificationsQuery>,
@@ -37,7 +32,7 @@ export default {
         const { unread, before, limit } = context.httpData.query
         let beforeId: bigint | null = null
         if (before !== undefined) {
-            beforeId = positiveId(before)
+            beforeId = parseEntityId(before)
             if (beforeId === null) {
                 return mapControllerError(context, badRequest('Invalid cursor', 'invalid_cursor'))
             }
@@ -62,7 +57,7 @@ export default {
     ): Promise<MarkNotificationReadResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const id = positiveId(context.httpData.params.id)
+        const id = parseEntityId(context.httpData.params.id)
         // Not an id of anything: the same answer as a notification of another user.
         if (id === null) {
             return mapControllerError(context, notFound('Notification', 'Notification not found'))
@@ -76,7 +71,7 @@ export default {
     ): Promise<ReadAllNotificationsResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const upTo = positiveId(getTypedPayload(context).upTo)
+        const upTo = parseEntityId(getTypedPayload(context).upTo)
         if (upTo === null) {
             return mapControllerError(context, badRequest('Invalid upTo', 'invalid_up_to'))
         }

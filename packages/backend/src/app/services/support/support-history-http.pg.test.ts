@@ -282,6 +282,8 @@ describe.skipIf(!hasPg || !hasRedis)('support chat history over HTTP', async () 
         ['?before=007'],
         ['?before=1e3'],
         [`?before=${'9'.repeat(19)}`],
+        // feat-262: one past the bigint bound, which the service would not parse again.
+        ['?before=9223372036854775808'],
     ])('refuses the cursor %s with 422', async (query) => {
         const { browser } = await userWith(2)
 

@@ -1,8 +1,12 @@
 // Shapes of values the frontend and the backend both recognise. A module of its own, with no
 // library behind it (the phone library of `shared/utils` is large): the browser can import it.
 
-/** The canonical id of a database row as a string: digits, no leading zero, not zero. */
-export const ENTITY_ID_PATTERN = /^[1-9]\d*$/
+/**
+ * The canonical id of a database row as a string: digits, no leading zero, not zero, at most 19
+ * digits. The pattern alone does not bound the value (`9999999999999999999` fits it); the whole
+ * check is `isValidEntityId` of `shared/brand`.
+ */
+export const ENTITY_ID_PATTERN = /^[1-9]\d{0,18}$/
 
 /**
  * Whether a string looks like a phone number, without saying it is valid: enough digits and

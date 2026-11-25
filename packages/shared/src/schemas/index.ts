@@ -134,7 +134,6 @@ export {
 } from './query/notifications.js'
 export { NotificationParamsSchemas } from './notifications/params.js'
 export {
-    NOTIFICATION_ID_PATTERN,
     ReadAllNotificationsInputSchema,
     UpdateNotificationPreferenceInputSchema,
     type ReadAllNotificationsInput,

@@ -25,13 +25,8 @@ const requestOf = (context: HttpContext, userId: bigint): PasskeyRequest => ({
     actor: auditActorFrom(context),
 })
 
+/** Also the answer to a path id that is not an id (parseEntityId): like a passkey of another user. */
 const passkeyNotFound = (): AppError => notFound('Passkey', 'Passkey not found')
-
-/** A path id that is not a stored id answers like a passkey of another user. */
-const positiveId = (raw: string | undefined): bigint | null => {
-    const id = parseEntityId(raw)
-    return id !== null && id > 0n ? id : null
-}
 
 export default {
     async list(context: HttpContext): Promise<PasskeyListResponse> {
@@ -70,7 +65,7 @@ export default {
     ): Promise<PasskeyRenameResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const id = positiveId(context.httpData.params.id)
+        const id = parseEntityId(context.httpData.params.id)
         if (id === null) return mapControllerError(context, passkeyNotFound())
         const result = await passkeyService.rename(userId, id, getTypedPayload(context).name)
         return respond(context, result, (passkey) => ({ status: 'success' as const, passkey }))
@@ -81,7 +76,7 @@ export default {
     ): Promise<PasskeyDeleteResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const id = positiveId(context.httpData.params.id)
+        const id = parseEntityId(context.httpData.params.id)
         if (id === null) return mapControllerError(context, passkeyNotFound())
         const result = await passkeyService.remove(requestOf(context, userId), id)
         return respond(context, result, (value) => ({ status: 'success' as const, ...value }))

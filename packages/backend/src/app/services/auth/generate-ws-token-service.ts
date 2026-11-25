@@ -2,10 +2,10 @@ import { generateKey } from 'metautil'
 import redis, { withRedis } from '#database/redis.js'
 import type { SessionInfo } from '#vendor/types/types.js'
 import configApp from '#config/app.js'
-import { isCanonicalEntityId } from '#vendor/utils/helpers/entity-id.js'
+import { isValidEntityId } from 'shared/brand'
 
 export async function generateWsToken(sessionInfo: SessionInfo, userId: string): Promise<string> {
-    if (!isCanonicalEntityId(userId)) {
+    if (!isValidEntityId(userId)) {
         return ''
     }
 

@@ -462,8 +462,8 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             // February 30th: Date.parse rolls it over to March 2nd.
             `cursor=${cursorOf('2026-02-30 10:00:00|1')}`,
             `cursor=${cursorOf('2026-11-20 10:00:00|9223372036854775808')}`,
-            'actorUserId=9223372036854775808',
-            'targetUserId=99999999999999999999',
+            `cursor=${cursorOf('2026-11-20 10:00:00|0')}`,
+            `cursor=${cursorOf('2026-11-20 10:00:00|007')}`,
             'from=2026-10-02T00:00:00Z&to=2026-10-01T00:00:00Z',
         ]) {
             const reply = await browser.list(query)
@@ -478,6 +478,11 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             'action=kb.article.unknown',
             'group=nope',
             'actorUserId=abc',
+            // feat-262: an id past bigint, zero or a leading zero is refused by the schema.
+            'actorUserId=9223372036854775808',
+            'targetUserId=99999999999999999999',
+            'actorUserId=0',
+            'targetUserId=007',
             'unknown=1',
         ]) {
             const reply = await browser.list(query)

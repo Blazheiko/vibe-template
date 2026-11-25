@@ -1,17 +1,22 @@
 import type { HttpContext } from '#vendor/types/types.js'
 import { llmUsageService, type TextFilter } from '#app/services/ai/usage/llm-usage-service.js'
+import { mapControllerError } from '#app/controllers/shared/controller-error.js'
+import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { badRequest } from '#app/services/shared/errors.js'
 import type { LlmTextUsageQuery } from 'shared/schemas'
 import type { GetTextUsageResponse, GetUsageStatsResponse } from 'shared'
 
-function buildTextFilter(query: LlmTextUsageQuery): TextFilter {
+/**
+ * The filter of the query, or null when `userId` is given and is not an id (feat-262). An empty
+ * `userId` means no filter, as in the admin user list; anything else that is not the canonical id
+ * of a row (`abc`, ` 1`, `0x10`) is a bad request instead of a silently dropped filter.
+ */
+function buildTextFilter(query: LlmTextUsageQuery): TextFilter | null {
     const filter: TextFilter = {}
-    if (query.userId !== undefined && query.userId.trim().length > 0) {
-        const userId = query.userId.trim()
-        try {
-            filter.userId = BigInt(userId.trim())
-        } catch {
-            /* ignore invalid */
-        }
+    if (query.userId !== undefined && query.userId !== '') {
+        const userId = parseEntityId(query.userId)
+        if (userId === null) return null
+        filter.userId = userId
     }
     if (query.dateFrom !== undefined) {
         filter.dateFrom = query.dateFrom
@@ -32,6 +37,9 @@ export default {
         const { page, limit } = context.httpData.query
         const offset = (page - 1) * limit
         const filter = buildTextFilter(context.httpData.query)
+        if (filter === null) {
+            return mapControllerError(context, badRequest('userId must be a numeric string'))
+        }
 
         const { rows, total } = await llmUsageService.getTextUsage({ limit, offset, filter })
 

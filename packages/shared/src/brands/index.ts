@@ -1,4 +1,4 @@
-export { EntityIdSchema, type EntityId } from './ids.js'
+export { EntityIdSchema, EntityIdStringSchema, type EntityId } from './ids.js'
 
 export {
     EmailSchema,

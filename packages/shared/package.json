@@ -16,6 +16,11 @@
             "types": "./dist/brands/index.d.ts",
             "import": "./dist/brands/index.js"
         },
+        "./brand": {
+            "shared-source": "./src/brand/index.ts",
+            "types": "./dist/brand/index.d.ts",
+            "import": "./dist/brand/index.js"
+        },
         "./schemas": {
             "shared-source": "./src/schemas/index.ts",
             "types": "./dist/schemas/index.d.ts",

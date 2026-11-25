@@ -1,6 +1,6 @@
 import { type } from '@arktype/type'
 import { NOTIFICATIONS_PAGE_DEFAULT, NOTIFICATIONS_PAGE_MAX } from '../../notifications/catalog.js'
-import { NOTIFICATION_ID_PATTERN } from '../notifications/requests.js'
+import { EntityIdStringSchema } from '../../brands/ids.js'
 import type { QueryInputOf } from './types.js'
 
 const pageLimit = type('string.integer.parse').pipe(
@@ -11,7 +11,7 @@ const pageLimit = type('string.integer.parse').pipe(
 // previous page. `unread=1` lists only the unread ones.
 export const ListNotificationsQuerySchema = type({
     'unread?': "'1'",
-    'before?': NOTIFICATION_ID_PATTERN,
+    'before?': EntityIdStringSchema,
     limit: pageLimit.default(String(NOTIFICATIONS_PAGE_DEFAULT)),
     '+': 'reject',
 })

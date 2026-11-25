@@ -358,12 +358,15 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
         const user = await insertUser(`notif-bounds-${String(now)}`)
         const browser = await signedIn(user.email ?? '')
 
-        const cursor = await browser.request('GET', `/notifications?before=${OUT_OF_RANGE}`)
-        expect(cursor.status).toBe(400)
-        const upTo = await browser.request('POST', '/notifications/read-all', {
-            body: { upTo: OUT_OF_RANGE },
-        })
-        expect(upTo.status).toBe(400)
+        // feat-262: the schema refuses an id past bigint (and 0, a leading zero) with 422.
+        for (const value of [OUT_OF_RANGE, '0', '007']) {
+            const cursor = await browser.request('GET', `/notifications?before=${value}`)
+            expect(cursor.status, value).toBe(422)
+            const upTo = await browser.request('POST', '/notifications/read-all', {
+                body: { upTo: value },
+            })
+            expect(upTo.status, value).toBe(422)
+        }
         for (const limit of ['0', '51', 'x']) {
             expect((await browser.request('GET', `/notifications?limit=${limit}`)).status).toBe(422)
         }

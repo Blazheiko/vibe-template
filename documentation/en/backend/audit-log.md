@@ -85,7 +85,7 @@ The scope depends on the role ([`audit-events-query-service.ts`](https://github.
 | `from`, `to`             | ISO 8601; `occurred_at >= from`, `occurred_at < to`                        |
 | `cursor`                 | the `nextCursor` of the previous page                                      |
 
-Pages of 50, newest first by `(occurred_at, id)`; no total is counted. The cursor carries `occurred_at` as PostgreSQL prints it, so microseconds are not lost in a JS `Date`; an invalid cursor answers `400`, as do a user id PostgreSQL's `bigint` cannot hold and a cursor with a date that does not exist (a malformed query is `422`). `from` and `to` have millisecond precision: `from` includes its whole millisecond, `to` excludes its own. The actor and the account get their names from one read of `users`; a deleted account comes as `deleted: true` with its id. No e-mail is returned.
+Pages of 50, newest first by `(occurred_at, id)`; no total is counted. The cursor carries `occurred_at` as PostgreSQL prints it, so microseconds are not lost in a JS `Date`; an invalid cursor answers `400`, as does a cursor with a date that does not exist or an id PostgreSQL's `bigint` cannot hold. A malformed query is `422`, including an `actorUserId` / `targetUserId` that is not a row id (`0`, `007`, past `bigint`; feat-262). `from` and `to` have millisecond precision: `from` includes its whole millisecond, `to` excludes its own. The actor and the account get their names from one read of `users`; a deleted account comes as `deleted: true` with its id. No e-mail is returned.
 
 ## Retention
 
