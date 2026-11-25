@@ -17,7 +17,17 @@ export interface MfaEncryptionKey {
 
 const KEY_ID_PATTERN = /^[A-Za-z0-9_-]{1,16}$/
 const KEY_BYTES = 32
-const DEV_KEY_ID = 'dev'
+/** The id of the key derived from APP_KEY outside production (no MFA_ENCRYPTION_KEYS). */
+export const DEV_KEY_ID = 'dev'
+
+/**
+ * The key a non-production start derives from APP_KEY when MFA_ENCRYPTION_KEYS is empty. mfa:keys
+ * (feat-260) keeps it as a reading key when it writes a first value, so the TOTP secrets sealed
+ * with it stay readable.
+ */
+export function deriveDevMfaKey(appKey: string): Buffer {
+    return Buffer.from(hkdfSync('sha256', appKey, '', 'mfa-encryption-key-v1', KEY_BYTES))
+}
 
 export interface ParsedMfaKeys {
     keys: MfaEncryptionKey[]
@@ -49,10 +59,11 @@ export function parseMfaEncryptionKeys(
         if (context.appKey === undefined || context.appKey === '') {
             return { keys: [], derived: false, error: null }
         }
-        const key = Buffer.from(
-            hkdfSync('sha256', context.appKey, '', 'mfa-encryption-key-v1', KEY_BYTES),
-        )
-        return { keys: [{ id: DEV_KEY_ID, key }], derived: true, error: null }
+        return {
+            keys: [{ id: DEV_KEY_ID, key: deriveDevMfaKey(context.appKey) }],
+            derived: true,
+            error: null,
+        }
     }
 
     const keys: MfaEncryptionKey[] = []
