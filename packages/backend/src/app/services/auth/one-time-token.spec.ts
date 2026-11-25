@@ -3,7 +3,7 @@ import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserRow } from '#app/repositories/index.js'
 import { badRequest, conflict } from '#app/services/shared/errors.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { OneTimeTokenRowId, UserId } from '#app/domain/ids.js'
 
 // feat-073 (H4): the part the three token flows share. What each flow does with a token is in
 // their own specs and, against a real PostgreSQL, in one-time-token-race.pg.test.ts.
@@ -248,7 +248,7 @@ describe('findUsableToken', () => {
 
 describe('runTokenTransaction', () => {
     const token = (over: Record<string, unknown> = {}) => ({
-        id: 11n,
+        id: 11n as OneTimeTokenRowId,
         userId: uid(7),
         usedAt: null,
         expiresAt: new Date(Date.now() + 60_000),

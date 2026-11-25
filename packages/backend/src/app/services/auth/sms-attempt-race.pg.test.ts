@@ -5,7 +5,7 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 import type * as OtpHash from './otp-verification-hash.js'
 import { testProofHolder, testUserActor } from '../../../test-support/audit-actor.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -68,7 +68,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
         smsMaxInvalidAttempts: authConfig.smsMaxInvalidAttempts,
     }
     const run = `${String(Date.now())}-${String(process.pid)}`
-    const challengeIds: string[] = []
+    const challengeIds: SmsChallengeId[] = []
     const userIds: UserId[] = []
     let counter = 0
     const nextPhone = (): string => {
@@ -119,7 +119,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
         return row
     }
 
-    const challengeRow = async (id: string) => {
+    const challengeRow = async (id: SmsChallengeId) => {
         const [row] = await db.select().from(smsAuthChallenges).where(eq(smsAuthChallenges.id, id))
         if (row === undefined) throw new Error('challenge gone')
         return row
@@ -248,7 +248,7 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
     })
 
     describe('through each flow, all requests past the flow checks first', () => {
-        const expectBudgetHeld = async (challengeId: string) => {
+        const expectBudgetHeld = async (challengeId: SmsChallengeId) => {
             expect(comparisons.count).toBe(MAX)
             const row = await challengeRow(challengeId)
             expect(row.attemptCount).toBe(MAX)

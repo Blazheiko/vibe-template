@@ -19,6 +19,7 @@ import { emailService } from '#app/services/notifications/email-service.js'
 import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-throttle-service.js'
 import { enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import {
+    findSmsChallenge,
     confirmChallenge,
     deliverChallenge,
     findPendingChallenge,
@@ -488,7 +489,7 @@ export const passwordResetService = {
 
         // Intentional: phone reset completion is not bound to the current browser session.
         // Users may request the SMS on one device and complete the reset from another.
-        const challenge = await smsAuthChallengeRepository.findById(challengeId)
+        const challenge = await findSmsChallenge(challengeId)
         if (challenge?.flow !== RESET_PHONE_FLOW) {
             return Result.err(badRequest('Phone reset challenge is invalid'))
         }

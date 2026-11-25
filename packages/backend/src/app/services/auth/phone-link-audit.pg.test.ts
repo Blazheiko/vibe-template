@@ -5,7 +5,7 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { auditLogLines, testAdminActor } from '../../../test-support/audit-actor.js'
 import { appErrorMessage } from '../shared/errors.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-235 (Р3, T5.5) on a real PostgreSQL: linking a phone confirms its SMS code in the
 // transaction that writes the number and the `auth.phone.linked` event, under the user's row
@@ -127,7 +127,7 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
             },
             actor,
         )
-    const challengeRow = async (id: string) => {
+    const challengeRow = async (id: SmsChallengeId) => {
         const [row] = await db.select().from(smsAuthChallenges).where(eq(smsAuthChallenges.id, id))
         if (row === undefined) throw new Error('challenge gone')
         return row

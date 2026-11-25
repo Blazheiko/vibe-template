@@ -7,7 +7,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { testProofHolder, testRequest } from '../../../test-support/audit-actor.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { OneTimeTokenRowId, UserId } from '#app/domain/ids.js'
 
 // feat-060: the reset, email-verification and email-link tokens are single-use. They
 // used to be read, checked, applied and only then marked used, with `UPDATE ... WHERE
@@ -130,7 +130,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     const usedAt = async (
         table:
             typeof passwordResetTokens | typeof emailVerifications | typeof emailLinkVerifications,
-        id: bigint,
+        id: OneTimeTokenRowId,
     ): Promise<Date | null | undefined> => {
         const [row] = await db.select({ usedAt: table.usedAt }).from(table).where(eq(table.id, id))
         return row?.usedAt
@@ -404,7 +404,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         it("retires the other tables' pending tokens even when their id equals the consumed one", async () => {
             const user = await insertUser()
             // The same id in two tables: an exception by id would keep the reset token alive.
-            const sharedId = 900_000_000n + BigInt(counter)
+            const sharedId = (900_000_000n + BigInt(counter)) as OneTimeTokenRowId
             const [verification] = await db
                 .insert(emailVerifications)
                 .values({

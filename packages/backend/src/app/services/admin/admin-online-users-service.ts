@@ -1,7 +1,7 @@
 import type { Role } from 'shared/access'
 import { userRepository } from '#app/repositories/index.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
-import { asUserId, type UserId } from '#app/domain/ids.js'
+import { toEntityId, asUserId, type UserId } from '#app/domain/ids.js'
 
 export interface AdminOnlineUserItem {
     id: string
@@ -45,7 +45,7 @@ export const adminOnlineUsersService = {
                 const meta = metaById.get(String(user.id))
                 if (meta === undefined) return null
                 return {
-                    id: String(user.id),
+                    id: toEntityId(user.id),
                     name: user.name,
                     email: user.email ?? '',
                     appType: meta.appType,
@@ -63,7 +63,7 @@ export const adminOnlineUsersService = {
         const meta = wsConnectionRegistry.getOnlineUserMeta(String(userId))
 
         return {
-            id: String(user.id),
+            id: toEntityId(user.id),
             name: user.name,
             email: user.email ?? '',
             phone: user.phone,
@@ -85,7 +85,7 @@ export const adminOnlineUsersService = {
         if (user === undefined) return null
 
         return {
-            id: String(user.id),
+            id: toEntityId(user.id),
             name: user.name,
             email: user.email ?? '',
             appType: meta.appType,

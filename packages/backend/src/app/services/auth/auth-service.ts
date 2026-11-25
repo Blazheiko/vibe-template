@@ -39,6 +39,7 @@ import { consumeAuthThrottle, resetAuthThrottle } from '#app/services/auth/auth-
 import { enforceEmailLinkThrottles, enforceThrottle } from '#app/services/auth/enforce-throttle.js'
 import { retirePendingResets } from '#app/services/auth/phone-challenges.js'
 import {
+    findSmsChallenge,
     confirmChallenge,
     findPendingChallenge,
     issueSmsChallenge,
@@ -80,7 +81,7 @@ import {
     startSecondStepIfRequired,
     type SecondStepRequired,
 } from '#app/services/auth/mfa/mfa-sign-in.js'
-import { asUserId, type UserId } from '#app/domain/ids.js'
+import { toEntityId, asUserId, type UserId, type SmsChallengeId } from '#app/domain/ids.js'
 
 interface GenericAcceptedPayload {
     status: 'success'
@@ -203,7 +204,7 @@ async function buildAuthSuccess(
     origin: LoginOrigin,
     loginFailureMessage = 'Failed to log in user',
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const loggedInResult = await auth.login(String(user.id), user.sessionToken, origin)
+    const loggedInResult = await auth.login(toEntityId(user.id), user.sessionToken, origin)
 
     if (loggedInResult === null) {
         return Result.err(internalMessage(loginFailureMessage))
@@ -221,7 +222,7 @@ async function persistRegisteredUser(
     },
     options: {
         sendEmailVerification: boolean
-        challengeIdToInvalidate?: string
+        challengeIdToInvalidate?: SmsChallengeId
     },
 ): Promise<AppResult<Awaited<ReturnType<typeof userRepository.create>>>> {
     let userCreated: Awaited<ReturnType<typeof userRepository.create>>
@@ -266,13 +267,13 @@ async function finalizeRegistration(
     session: Session,
     options: {
         sendEmailVerification: boolean
-        challengeIdToInvalidate?: string
+        challengeIdToInvalidate?: SmsChallengeId
         loginFailureMessage?: string
     },
 ): Promise<AppResult<AuthSuccessPayload>> {
     const persistOptions: {
         sendEmailVerification: boolean
-        challengeIdToInvalidate?: string
+        challengeIdToInvalidate?: SmsChallengeId
     } = {
         sendEmailVerification: options.sendEmailVerification,
     }
@@ -542,7 +543,7 @@ export const authService = {
         if (Result.isError(ipThrottle)) {
             return Result.err(ipThrottle.error)
         }
-        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
+        const challenge = await findSmsChallenge(payload.challengeId)
         if (challenge?.flow !== REGISTER_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone registration challenge not found'))
         }
@@ -588,7 +589,7 @@ export const authService = {
             return gateResult
         }
 
-        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
+        const challenge = await findSmsChallenge(payload.challengeId)
         if (challenge?.flow !== REGISTER_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone registration challenge not found'))
         }
@@ -789,7 +790,7 @@ export const authService = {
             return Result.err(ipThrottle.error)
         }
 
-        const challenge = await smsAuthChallengeRepository.findById(payload.challengeId)
+        const challenge = await findSmsChallenge(payload.challengeId)
         if (challenge?.flow !== LINK_PHONE_FLOW) {
             return Result.err(notFound('Challenge', 'Phone linking challenge not found'))
         }

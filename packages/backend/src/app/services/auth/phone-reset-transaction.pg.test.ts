@@ -5,7 +5,7 @@ import { hasPg } from '../../../test-support/pg-test-db.js'
 import { bothReadBeforeEitherWrites } from '../../../test-support/race-barrier.js'
 import { appErrorMessage } from '../shared/errors.js'
 import { testProofHolder } from '../../../test-support/audit-actor.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-106 (R06a): the phone password reset locks the user, re-checks the account on the locked
 // row and confirms the challenge, retires the challenges and reset links and rotates the password
@@ -58,7 +58,7 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
     }
     const run = `${String(Date.now())}-${String(process.pid)}`
     const userIds: UserId[] = []
-    const challengeIds: string[] = []
+    const challengeIds: SmsChallengeId[] = []
     let counter = 0
 
     beforeEach(() => {
@@ -124,7 +124,7 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
         if (row === undefined) throw new Error('user gone')
         return row
     }
-    const challengeRow = async (id: string) => {
+    const challengeRow = async (id: SmsChallengeId) => {
         const [row] = await db.select().from(smsAuthChallenges).where(eq(smsAuthChallenges.id, id))
         if (row === undefined) throw new Error('challenge gone')
         return row

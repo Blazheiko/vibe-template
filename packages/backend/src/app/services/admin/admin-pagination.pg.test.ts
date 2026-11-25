@@ -3,7 +3,7 @@ import { uid } from '../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, UserOnlineId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -98,7 +98,7 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
             const second = await adminOnlineHistoryService.listHistory({
                 userId: owners.rows101,
                 limit: 100,
-                cursor: uid(BigInt(first.nextCursor ?? '0')),
+                cursor: BigInt(first.nextCursor ?? '0') as UserOnlineId,
             })
             expect(second.items).toHaveLength(1)
             expect(second).toMatchObject({ total: 101, hasMore: false, nextCursor: null })

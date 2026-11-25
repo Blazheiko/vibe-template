@@ -75,27 +75,27 @@ describe.skipIf(!hasPg)('MFA storage on PostgreSQL', async () => {
         )
         const results = await Promise.all(
             Array.from({ length: 5 }, () =>
-                totpFactorRepository.consumeStep(created.id, userId, 101n),
+                totpFactorRepository.consumeStep(userId, created.id, 101n),
             ),
         )
         expect(results.filter(Boolean)).toHaveLength(1)
         // The same or an earlier step again: refused.
-        expect(await totpFactorRepository.consumeStep(created.id, userId, 101n)).toBe(false)
-        expect(await totpFactorRepository.consumeStep(created.id, userId, 100n)).toBe(false)
-        expect(await totpFactorRepository.consumeStep(created.id, userId, 102n)).toBe(true)
+        expect(await totpFactorRepository.consumeStep(userId, created.id, 101n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, created.id, 100n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, created.id, 102n)).toBe(true)
     })
 
     it('a step of a replaced version is refused (the check named another secret)', async () => {
         const userId = await newUser()
         const old = await withTransaction((tx) => totpFactorRepository.replace(factor(userId), tx))
         await withTransaction((tx) => totpFactorRepository.replace(factor(userId), tx))
-        expect(await totpFactorRepository.consumeStep(old.created.id, userId, 500n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, old.created.id, 500n)).toBe(false)
         // And the id of another user's version spends nothing.
         const other = await newUser()
         const foreign = await withTransaction((tx) =>
             totpFactorRepository.replace(factor(other), tx),
         )
-        expect(await totpFactorRepository.consumeStep(foreign.created.id, userId, 500n)).toBe(false)
+        expect(await totpFactorRepository.consumeStep(userId, foreign.created.id, 500n)).toBe(false)
     })
 
     it('a recovery code is spent once under a race; a new batch voids the old one', async () => {

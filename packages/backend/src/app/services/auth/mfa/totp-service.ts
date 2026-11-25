@@ -387,8 +387,8 @@ export const totpService = {
         const step = matchTotpStep(secret, code, options.now ?? Date.now())
         if (step === null) return Result.err(badRequest('Invalid code', MFA_REASONS.invalidCode))
         const spent = await totpFactorRepository.consumeStep(
-            factor.id,
             userId,
+            factor.id,
             step,
             options.executor,
         )

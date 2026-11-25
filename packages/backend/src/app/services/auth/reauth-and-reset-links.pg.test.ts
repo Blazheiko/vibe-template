@@ -11,7 +11,7 @@ import {
 import { appErrorMessage } from '../shared/errors.js'
 import type { SessionAuthState } from 'shared/mfa'
 import { testUserActor } from '../../../test-support/audit-actor.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { OneTimeTokenRowId, SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 // feat-129: the session-still-stored guard is required; these cases keep the session.
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
@@ -125,7 +125,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return row
     }
 
-    const linkUsedAt = async (id: bigint) => {
+    const linkUsedAt = async (id: OneTimeTokenRowId) => {
         const [row] = await db
             .select({ usedAt: passwordResetTokens.usedAt })
             .from(passwordResetTokens)
@@ -371,7 +371,7 @@ describe.skipIf(!hasPg || !hasRedis)('re-check budget and reset links (feat-109)
         return row
     }
 
-    const challengeInvalidatedAt = async (id: string) => {
+    const challengeInvalidatedAt = async (id: SmsChallengeId) => {
         const [row] = await db
             .select({ invalidatedAt: smsAuthChallenges.invalidatedAt })
             .from(smsAuthChallenges)

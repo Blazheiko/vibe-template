@@ -1,4 +1,5 @@
 import type { UserRow } from '#app/repositories/index.js'
+import { toEntityId } from '#app/domain/ids.js'
 
 export type SerializedUser = Omit<
     UserRow,
@@ -34,7 +35,7 @@ export const userTransformer = {
         } = user
         return {
             ...rest,
-            id: String(id),
+            id: toEntityId(id),
             created_at: createdAt.toISOString(),
             updated_at: updatedAt.toISOString(),
             emailVerified: emailVerifiedAt !== null,

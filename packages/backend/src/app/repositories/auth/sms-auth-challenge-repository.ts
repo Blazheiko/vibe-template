@@ -4,7 +4,7 @@ import { smsAuthChallenges } from '#database/schema.js'
 import { and, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { SmsChallengeId, UserId } from '#app/domain/ids.js'
 
 export type SmsAuthChallengeRow = InferSelectModel<typeof smsAuthChallenges>
 export type SmsAuthChallengeInsert = InferInsertModel<typeof smsAuthChallenges>
@@ -12,7 +12,7 @@ export type SmsAuthChallengeFlow = SmsAuthChallengeInsert['flow']
 
 export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
     create(data: SmsAuthChallengeInsert, executor?: DbExecutor): Promise<SmsAuthChallengeRow>
-    findById(id: string): Promise<SmsAuthChallengeRow | undefined>
+    findById(id: SmsChallengeId): Promise<SmsAuthChallengeRow | undefined>
     findLatestPendingForPhoneFlow(
         phone: string,
         flow: SmsAuthChallengeFlow,
@@ -25,7 +25,7 @@ export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
         executor?: DbExecutor,
     ): Promise<SmsAuthChallengeRow[]>
     /** Invalidates these challenges where they are still waiting (feat-204). */
-    invalidatePendingByIds(ids: readonly string[], executor?: DbExecutor): Promise<number>
+    invalidatePendingByIds(ids: readonly SmsChallengeId[], executor?: DbExecutor): Promise<number>
     /**
      * feat-245 (row 7 of Р3): the pending phone links a user started (`metadata.userId`); a change
      * of the account's MFA ends them, so a link allowed before it cannot finish after it.
@@ -43,7 +43,7 @@ export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
         executor?: DbExecutor,
     ): Promise<number>
     markIssued(
-        id: string,
+        id: SmsChallengeId,
         data: Pick<SmsAuthChallengeInsert, 'codeHash' | 'providerRequestId' | 'metadata'>,
     ): Promise<SmsAuthChallengeRow | undefined>
     /**
@@ -52,15 +52,18 @@ export interface SmsAuthChallengeRepository extends ExpiredRowsRepository {
      * `maxAttempts` tries. Every comparison of a code must be preceded by a spent try.
      */
     consumeAttempt(
-        id: string,
+        id: SmsChallengeId,
         maxAttempts: number,
         executor?: DbExecutor,
     ): Promise<SmsAuthChallengeRow | undefined>
-    markConfirmed(id: string, executor?: DbExecutor): Promise<SmsAuthChallengeRow | undefined>
-    markInvalidated(id: string): Promise<SmsAuthChallengeRow | undefined>
+    markConfirmed(
+        id: SmsChallengeId,
+        executor?: DbExecutor,
+    ): Promise<SmsAuthChallengeRow | undefined>
+    markInvalidated(id: SmsChallengeId): Promise<SmsAuthChallengeRow | undefined>
     /** Invalidates a challenge that is not confirmed yet; a confirmed one stays as it is. */
     markInvalidatedIfPending(
-        id: string,
+        id: SmsChallengeId,
         executor?: DbExecutor,
     ): Promise<SmsAuthChallengeRow | undefined>
 }

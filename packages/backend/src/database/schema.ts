@@ -22,7 +22,16 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
-import type { OAuthAccountId, UserId } from './ids.js'
+import type {
+    MfaRecoveryCodeId,
+    OAuthAccountId,
+    OneTimeTokenRowId,
+    PasskeyId,
+    SmsChallengeId,
+    TotpFactorId,
+    UserId,
+    UserOnlineId,
+} from './ids.js'
 import { sql, type SQL } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { COLOR_THEMES, FONT_SIZE_MAX, FONT_SIZE_MIN, THEMES } from 'shared/enums'
@@ -152,7 +161,7 @@ export const userPreferences = pgTable(
 export const userOnline = pgTable(
     'user_online',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<UserOnlineId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -305,7 +314,7 @@ export const notificationPreferences = pgTable(
 export const emailVerifications = pgTable(
     'email_verifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -325,7 +334,7 @@ export const emailVerifications = pgTable(
 export const emailLinkVerifications = pgTable(
     'email_link_verifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -346,7 +355,7 @@ export const emailLinkVerifications = pgTable(
 export const passwordResetTokens = pgTable(
     'password_reset_tokens',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -370,6 +379,7 @@ export const smsAuthChallenges = pgTable(
     'sms_auth_challenges',
     {
         id: varchar('id', { length: 24 })
+            .$type<SmsChallengeId>()
             .primaryKey()
             .$defaultFn(() => nanoid()),
         flow: smsAuthChallengeFlowEnum('flow').notNull(),
@@ -431,7 +441,7 @@ export const oauthAccounts = pgTable(
 export const oauthLinkVerifications = pgTable(
     'oauth_link_verifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<OneTimeTokenRowId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -641,7 +651,7 @@ export const auditEvents = pgTable(
 export const totpFactors = pgTable(
     'totp_factors',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<TotpFactorId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -665,7 +675,7 @@ export const totpFactors = pgTable(
 export const mfaRecoveryCodes = pgTable(
     'mfa_recovery_codes',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<MfaRecoveryCodeId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -689,7 +699,7 @@ export const mfaRecoveryCodes = pgTable(
 export const webauthnCredentials = pgTable(
     'webauthn_credentials',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<PasskeyId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()

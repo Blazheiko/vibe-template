@@ -12,7 +12,7 @@ import {
     verifyWebAuthnCeremony,
     type CeremonyPurpose,
 } from './webauthn-ceremony.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 vi.mock('#vendor/utils/logger.js', () => ({
     default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -59,7 +59,7 @@ async function enrolled(counter = 0): Promise<{
     return {
         authenticator,
         row: {
-            id: 1n,
+            id: 1n as PasskeyId,
             userId: USER_ID,
             credentialId: key.credentialId,
             publicKey: key.publicKey,

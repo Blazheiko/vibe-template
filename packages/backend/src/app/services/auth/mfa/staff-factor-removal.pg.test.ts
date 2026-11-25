@@ -8,7 +8,7 @@ import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testAdminActor, testUserActor } from '../../../../test-support/audit-actor.js'
 import { waitForLockWaiters } from '../../../../test-support/race-barrier.js'
 import type { Session, SessionData, SessionInfo } from '#vendor/types/types.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 // feat-248 (docs/plan/passkeys-mfa-plan.md, Р12; tasks X2) on a real PostgreSQL: removing a
 // factor of a staff account while MFA_REQUIRED_FOR_STAFF is on keeps the factor its role needs,
@@ -98,7 +98,7 @@ describe.skipIf(!hasPg)(
         const account = async (
             role: Role,
             factors: { totp?: boolean; passkeys?: number },
-        ): Promise<TestUser & { keys: bigint[] }> => {
+        ): Promise<TestUser & { keys: PasskeyId[] }> => {
             const [user] = await db
                 .insert(users)
                 .values({
@@ -126,7 +126,7 @@ describe.skipIf(!hasPg)(
                         tx,
                     )
                 }
-                const ids: bigint[] = []
+                const ids: PasskeyId[] = []
                 for (let index = 0; index < (factors.passkeys ?? 0); index += 1) {
                     const row = await webauthnCredentialRepository.insert(
                         {
@@ -194,7 +194,10 @@ describe.skipIf(!hasPg)(
         describe('MFA_STAFF_FACTOR=any', () => {
             it('a passkey may go while TOTP stays; the last factor may not', async () => {
                 const staff = await account('admin', { totp: true, passkeys: 1 })
-                const removed = await passkeyService.remove(request(staff), staff.keys[0] ?? 0n)
+                const removed = await passkeyService.remove(
+                    request(staff),
+                    staff.keys[0] ?? (0n as PasskeyId),
+                )
                 expect(removed.status).toBe('ok')
 
                 const disabled = await totpService.disable(request(staff))
@@ -206,7 +209,10 @@ describe.skipIf(!hasPg)(
                 const staff = await account('support_operator', { totp: true, passkeys: 1 })
                 expect((await totpService.disable(request(staff))).status).toBe('ok')
 
-                const removed = await passkeyService.remove(request(staff), staff.keys[0] ?? 0n)
+                const removed = await passkeyService.remove(
+                    request(staff),
+                    staff.keys[0] ?? (0n as PasskeyId),
+                )
                 expect(reasonOf(removed)).toBe('mfa_required_for_role')
                 expect(await factorsOf(staff.id)).toEqual({ totp: false, passkeys: 1 })
             })
@@ -224,9 +230,17 @@ describe.skipIf(!hasPg)(
                 mfaConfig.staffFactor = 'passkey'
                 const staff = await account('kb_editor', { totp: true, passkeys: 2 })
                 expect(
-                    (await passkeyService.remove(request(staff), staff.keys[0] ?? 0n)).status,
+                    (
+                        await passkeyService.remove(
+                            request(staff),
+                            staff.keys[0] ?? (0n as PasskeyId),
+                        )
+                    ).status,
                 ).toBe('ok')
-                const last = await passkeyService.remove(request(staff), staff.keys[1] ?? 0n)
+                const last = await passkeyService.remove(
+                    request(staff),
+                    staff.keys[1] ?? (0n as PasskeyId),
+                )
                 expect(reasonOf(last)).toBe('mfa_required_for_role')
                 expect(await factorsOf(staff.id)).toEqual({ totp: true, passkeys: 1 })
             })
@@ -247,7 +261,8 @@ describe.skipIf(!hasPg)(
                 mfaConfig.staffFactor = mode
                 const user = await account('user', { passkeys: 1 })
                 expect(
-                    (await passkeyService.remove(request(user), user.keys[0] ?? 0n)).status,
+                    (await passkeyService.remove(request(user), user.keys[0] ?? (0n as PasskeyId)))
+                        .status,
                 ).toBe('ok')
 
                 mfaConfig.requiredForStaff = false

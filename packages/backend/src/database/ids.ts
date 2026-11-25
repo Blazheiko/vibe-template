@@ -8,3 +8,15 @@ import type { Brand } from 'shared/brand'
 
 export type UserId = Brand<bigint, 'UserId'>
 export type OAuthAccountId = Brand<bigint, 'OAuthAccountId'>
+export type UserOnlineId = Brand<bigint, 'UserOnlineId'>
+/**
+ * The id of a row of any of the four one-time token tables (email verifications, email link
+ * verifications, password resets, OAuth link verifications): one brand for all four, since the
+ * ids never leave one-time-token.ts and the token repository is shared (plan Р3).
+ */
+export type OneTimeTokenRowId = Brand<bigint, 'OneTimeTokenRowId'>
+export type TotpFactorId = Brand<bigint, 'TotpFactorId'>
+export type MfaRecoveryCodeId = Brand<bigint, 'MfaRecoveryCodeId'>
+export type PasskeyId = Brand<bigint, 'PasskeyId'>
+/** sms_auth_challenges.id is a nanoid of 24 characters, not a bigserial. */
+export type SmsChallengeId = Brand<string, 'SmsChallengeId'>

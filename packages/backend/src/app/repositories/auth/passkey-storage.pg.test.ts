@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -89,7 +89,7 @@ describe.skipIf(!hasPg)('passkey storage on PostgreSQL', async () => {
             .where(eq(webauthnCredentials.id, zero.id))
         expect(stored?.signCount).toBe(6n)
         expect(stored?.lastUsedAt).not.toBeNull()
-        expect(await repo.recordUse(-1n, 1n)).toBe('gone')
+        expect(await repo.recordUse(-1n as PasskeyId, 1n)).toBe('gone')
     })
 
     it('the user handle is made once; a second candidate keeps the first', async () => {
@@ -110,10 +110,10 @@ describe.skipIf(!hasPg)('passkey storage on PostgreSQL', async () => {
     it('rename and delete touch only a key of that user', async () => {
         const [owner, other] = [await newUser(), await newUser()]
         const row = await withTransaction((tx) => repo.insert(key(owner), tx))
-        expect(await repo.rename(row.id, other, 'Stolen')).toBe(false)
-        expect(await repo.rename(row.id, owner, 'Phone')).toBe(true)
-        expect(await withTransaction((tx) => repo.deleteOne(row.id, other, tx))).toBe(false)
-        expect(await withTransaction((tx) => repo.deleteOne(row.id, owner, tx))).toBe(true)
+        expect(await repo.rename(other, row.id, 'Stolen')).toBe(false)
+        expect(await repo.rename(owner, row.id, 'Phone')).toBe(true)
+        expect(await withTransaction((tx) => repo.deleteOne(other, row.id, tx))).toBe(false)
+        expect(await withTransaction((tx) => repo.deleteOne(owner, row.id, tx))).toBe(true)
         expect(await repo.countByUserId(owner)).toBe(0)
     })
 

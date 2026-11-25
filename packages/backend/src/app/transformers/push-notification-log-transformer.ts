@@ -1,4 +1,5 @@
 import type { PushNotificationLogRow, PushSubscriptionLogSummary } from '#app/repositories/index.js'
+import { toEntityId } from '#app/domain/ids.js'
 
 // Wire shape of push_notifications_log rows (feat-047): ids as strings, sentAt as an ISO
 // string, as makeJson / JSON.stringify would send them anyway. feat-104: the transport error
@@ -47,7 +48,7 @@ export const pushNotificationLogTransformer = {
         return {
             ...rest,
             id: String(id),
-            userId: userId === null ? null : String(userId),
+            userId: userId === null ? null : toEntityId(userId),
             subscriptionId: subscriptionId === null ? null : String(subscriptionId),
             sentAt: sentAt.toISOString(),
             statusCode,

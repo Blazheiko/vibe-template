@@ -42,7 +42,7 @@ import {
     registrationOptions,
     verifyWebAuthnCeremony,
 } from './webauthn-ceremony.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, PasskeyId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р3 rows 1–3, Р6, Р12): the passkeys of the signed-in
 // user. A registration is two requests: the options put a challenge and an enrollment id into the
@@ -350,8 +350,8 @@ export const passkeyService = {
         return Result.ok({ passkey: passkeyView(row), recoveryCodes: codes })
     },
 
-    async rename(userId: UserId, id: bigint, name: string): Promise<AppResult<PasskeyView>> {
-        const renamed = await webauthnCredentialRepository.rename(id, userId, name.trim())
+    async rename(userId: UserId, id: PasskeyId, name: string): Promise<AppResult<PasskeyView>> {
+        const renamed = await webauthnCredentialRepository.rename(userId, id, name.trim())
         if (!renamed) return Result.err(notFound('Passkey', 'Passkey not found'))
         const rows = await webauthnCredentialRepository.listByUserId(userId)
         const row = rows.find((item) => item.id === id)
@@ -362,7 +362,7 @@ export const passkeyService = {
     /** Row 3: removes a passkey; the last factor takes the recovery codes with it (Р12). */
     async remove(
         request: PasskeyRequest,
-        id: bigint,
+        id: PasskeyId,
     ): Promise<AppResult<{ mfaDisabled: boolean }>> {
         const { userId, session } = request
         const user = await userRepository.findById(userId)
@@ -408,7 +408,7 @@ export const passkeyService = {
             const staffLoss = staffFactorLossError(locked.role, capability)
             if (staffLoss !== null) return Result.err(staffLoss)
             const current = await loadMfaAccount(locked, tx)
-            await webauthnCredentialRepository.deleteOne(id, userId, tx)
+            await webauthnCredentialRepository.deleteOne(userId, id, tx)
             await retirePendingContactLinks(userId, tx)
             const mfaDisabled = current.totp === undefined && current.passkeys <= 1
             if (mfaDisabled) await recoveryCodes.removeAll(userId, tx)

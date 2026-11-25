@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import type { OAuthAccountId } from '#app/domain/ids.js'
+import type { OAuthAccountId, OneTimeTokenRowId } from '#app/domain/ids.js'
 
 import { Result } from 'better-result'
 import { asc, eq } from 'drizzle-orm'
@@ -183,7 +183,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         if (row === undefined) throw new Error('reset link not inserted')
         return { raw, row }
     }
-    const resetLinkUsedAt = async (id: bigint) => {
+    const resetLinkUsedAt = async (id: OneTimeTokenRowId) => {
         const [row] = await db
             .select({ usedAt: passwordResetTokens.usedAt })
             .from(passwordResetTokens)

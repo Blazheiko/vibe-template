@@ -2,6 +2,8 @@ import eslint from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
 
+import noBrandCast from './scripts/eslint-rules/no-brand-cast.mjs'
+
 // packages/frontend, packages/api-playground and packages/landing have their own eslint.config.ts: ESLint 10
 // lints each file with the nearest config, so blocks for those packages do not belong here.
 export default tseslint.config(
@@ -24,6 +26,8 @@ export default tseslint.config(
             'packages/backend/vitest.redis.config.ts',
             'packages/backend/vitest.pg.config.ts',
             'packages/backend/drizzle.config.ts',
+            // typed fixtures of the tests of the local rules (their own tsconfig)
+            'scripts/eslint-rules/fixtures/**',
         ],
     },
 
@@ -70,6 +74,22 @@ export default tseslint.config(
                 { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
             ],
         },
+    },
+    {
+        // ADR 0007 (feat-263): a branded type (UserId, PasskeyId, EntityId…) comes from its
+        // constructor module or a schema, never from a cast in the code that uses it. The
+        // constructor modules and the tests are the places that may cast.
+        files: ['packages/backend/src/**/*.ts', 'packages/shared/src/**/*.ts'],
+        ignores: [
+            'packages/shared/src/brand/**',
+            'packages/backend/src/database/ids.ts',
+            'packages/backend/src/app/domain/**',
+            'packages/backend/src/test-support/**',
+            'packages/backend/**/*.spec.ts',
+            'packages/backend/**/*.test.ts',
+        ],
+        plugins: { local: { rules: { 'no-brand-cast': noBrandCast } } },
+        rules: { 'local/no-brand-cast': 'error' },
     },
     {
         // Plain JS (tests of `shared`, scripts, tool configs): the recommended rules, no type

@@ -15,7 +15,7 @@ import {
     hasRedis,
 } from '../../../../test-support/redis-test-client.js'
 import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4, tasks M8) over HTTP: a real uWebSockets.js server
 // with the real routes and session layer, a real PostgreSQL and Redis. The password sign-in of an
@@ -1893,7 +1893,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         }
 
         const { webauthnCredentials } = await import('#database/schema.js')
-        const countOf = async (id: bigint) =>
+        const countOf = async (id: PasskeyId) =>
             (await db.select().from(webauthnCredentials).where(eq(webauthnCredentials.id, id)))[0]
                 ?.signCount
 

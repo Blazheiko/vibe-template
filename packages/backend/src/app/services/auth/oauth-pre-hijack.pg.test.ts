@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { hasPg } from '../../../test-support/pg-test-db.js'
 import { appErrorMessage } from '../shared/errors.js'
 import { testProofHolder, testRequest } from '../../../test-support/audit-actor.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { OneTimeTokenRowId, UserId } from '#app/domain/ids.js'
 
 // feat-097: account pre-hijacking through OAuth, against a real PostgreSQL. The paths are
 // those of docs/plan/archive/oauth-pre-hijack-plan.md («Шляхи атаки»): an attacker prepares an
@@ -293,7 +293,7 @@ describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
             const [link] = await db
                 .select()
                 .from(emailLinkVerifications)
-                .where(eq(emailLinkVerifications.id, pendingLink?.id ?? 0n))
+                .where(eq(emailLinkVerifications.id, pendingLink?.id ?? (0n as OneTimeTokenRowId)))
             expect(link?.usedAt).not.toBeNull()
             expect(destroyed.tokens).toContain(attacker.sessionToken)
             expect(state.login).toEqual({ userId: String(attacker.id), token: row?.sessionToken })

@@ -4,8 +4,7 @@ import { badRequest } from '#app/services/shared/errors.js'
 import type { AdminOnlineHistoryListQuery } from 'shared/schemas'
 import type { HttpContext } from '#vendor/types/types.js'
 import type { AdminOnlineHistoryListResponse } from 'shared/responses'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
-import { parseUserId, type UserId } from '#app/domain/ids.js'
+import { parseUserId, type UserId, parseUserOnlineId, type UserOnlineId } from '#app/domain/ids.js'
 
 export default {
     async list(
@@ -22,9 +21,9 @@ export default {
             userId = parsed
         }
 
-        let cursor: bigint | undefined
+        let cursor: UserOnlineId | undefined
         if (query.cursor !== undefined && query.cursor !== '') {
-            const parsed = parseEntityId(query.cursor)
+            const parsed = parseUserOnlineId(query.cursor)
             if (parsed === null) {
                 return mapControllerError(context, badRequest('cursor must be a numeric string'))
             }

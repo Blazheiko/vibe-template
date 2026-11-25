@@ -14,7 +14,7 @@ import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 import { respond } from '#app/controllers/shared/controller-error.js'
 import { roleAssignmentService } from '#app/services/user/role-assignment-service.js'
-import { parseUserId, type UserId } from '#app/domain/ids.js'
+import { toEntityId, parseUserId, type UserId } from '#app/domain/ids.js'
 
 export default {
     async list(context: HttpContext<unknown, AdminUserListQuery>): Promise<AdminUserListResponse> {
@@ -79,7 +79,7 @@ export default {
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
-            user: { id: String(value.userId), role: value.role },
+            user: { id: toEntityId(value.userId), role: value.role },
             changed: value.changed,
         }))
     },
@@ -104,7 +104,7 @@ export default {
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,
-            user: { id: String(value.userId) },
+            user: { id: toEntityId(value.userId) },
             removed: value.removed,
         }))
     },

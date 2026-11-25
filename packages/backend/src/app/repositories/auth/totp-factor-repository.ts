@@ -4,7 +4,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { totpFactors } from '#database/schema.js'
 import type { DbExecutor } from '../transaction.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { TotpFactorId, UserId } from '#app/domain/ids.js'
 
 export type TotpFactorRow = InferSelectModel<typeof totpFactors>
 
@@ -40,7 +40,12 @@ export interface ITotpFactorRepository {
      * version is still the user's and no later or equal step was spent. Of two requests with one
      * code one gets true; a replacement in between makes both false.
      */
-    consumeStep(id: bigint, userId: UserId, step: bigint, executor?: DbExecutor): Promise<boolean>
+    consumeStep(
+        userId: UserId,
+        id: TotpFactorId,
+        step: bigint,
+        executor?: DbExecutor,
+    ): Promise<boolean>
     /** Removes the factor of the user; true when there was one. */
     deleteByUserId(userId: UserId, executor: DbExecutor): Promise<boolean>
 }
@@ -77,7 +82,7 @@ export const totpFactorRepository: ITotpFactorRepository = {
         return { created, replaced: removed.length > 0 }
     },
 
-    async consumeStep(id, userId, step, executor = db) {
+    async consumeStep(userId, id, step, executor = db) {
         const updated = await executor
             .update(totpFactors)
             .set({ lastUsedStep: step })

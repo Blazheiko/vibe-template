@@ -4,7 +4,7 @@ import { userRepository, withTransaction, type ITokenRepository } from '#app/rep
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import type { UserRow } from '#app/repositories/index.js'
 import { notFound, type AppError, type AppResult } from '#app/services/shared/errors.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, OneTimeTokenRowId } from '#app/domain/ids.js'
 
 // The password reset, e-mail verification and e-mail linking tokens are one kind of thing: a
 // random secret mailed to the user, kept as its hash, valid until it expires, used once. What
@@ -19,7 +19,7 @@ export function createToken(): string {
 }
 
 interface TokenRow {
-    id: bigint
+    id: OneTimeTokenRowId
     userId: UserId
     usedAt: Date | null
     expiresAt: Date

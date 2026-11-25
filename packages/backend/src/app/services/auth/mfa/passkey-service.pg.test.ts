@@ -5,7 +5,7 @@ import { hasPg } from '../../../../test-support/pg-test-db.js'
 import { testUserActor } from '../../../../test-support/audit-actor.js'
 import { SoftAuthenticator } from '../../../../test-support/soft-authenticator.js'
 import type { Session, SessionData, SessionInfo } from '#vendor/types/types.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р6, Р12, tasks P2) against a real PostgreSQL and real
 // WebAuthn answers (a software authenticator): the registration is idempotent by its enrollment
@@ -168,11 +168,11 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
     }
 
     /** Keys stored directly, for the tests about removal. */
-    async function storeKeys(userId: UserId, names: string[]): Promise<bigint[]> {
+    async function storeKeys(userId: UserId, names: string[]): Promise<PasskeyId[]> {
         const { webauthnCredentialRepository, withTransaction } =
             await import('#app/repositories/index.js')
         return withTransaction(async (tx) => {
-            const ids: bigint[] = []
+            const ids: PasskeyId[] = []
             for (const name of names) {
                 const row = await webauthnCredentialRepository.insert(
                     {
@@ -417,7 +417,7 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
         const user = await newUser({ password: null })
         // Two keys stored directly: this test is about the removal.
         const ids = await storeKeys(user.id, ['A', 'B'])
-        const [a, b] = ids as [bigint, bigint]
+        const [a, b] = ids as [PasskeyId, PasskeyId]
         const results = await Promise.all([
             passkeyService.remove(request(user, fakeSession(freshPasskey())), a),
             passkeyService.remove(request(user, fakeSession(freshPasskey())), b),

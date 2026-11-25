@@ -13,7 +13,7 @@ import type { AuthenticationResponse, RegistrationResponse } from 'shared/schema
 import webauthnConfig from '#config/webauthn.js'
 import type { WebAuthnCredentialRow } from '#app/repositories/index.js'
 import logger from '#vendor/utils/logger.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 // feat-246 (docs/plan/passkeys-mfa-plan.md, Р5, Р6): the one place that checks a WebAuthn answer.
 // Registration, passwordless sign-in, the second sign-in step and step-up all call
@@ -55,7 +55,7 @@ export interface VerifiedRegistration {
 }
 
 export interface VerifiedAssertion {
-    credentialId: bigint
+    credentialId: PasskeyId
     newCounter: bigint
 }
 

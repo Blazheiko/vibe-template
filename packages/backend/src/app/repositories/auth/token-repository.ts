@@ -1,4 +1,5 @@
 import { db } from '#database/db.js'
+import type { OneTimeTokenRowId } from '#app/domain/ids.js'
 import type { DbExecutor } from '../transaction.js'
 import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
 import type {
@@ -42,9 +43,9 @@ export interface ITokenRepository<TRow, TInsert> {
      * token exactly one gets the row back. Undefined: used or expired. Pass the transaction
      * in which the token's effect is applied.
      */
-    markUsed(id: bigint, executor?: DbExecutor): Promise<TRow | undefined>
+    markUsed(id: OneTimeTokenRowId, executor?: DbExecutor): Promise<TRow | undefined>
     /** Marks an expired token used, so it is gone for good. No expiry condition. */
-    burn(id: bigint): Promise<void>
+    burn(id: OneTimeTokenRowId): Promise<void>
 }
 
 /**

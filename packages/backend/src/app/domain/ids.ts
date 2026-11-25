@@ -8,9 +8,25 @@
 
 import { isValidEntityId } from 'shared/brand'
 
-import type { OAuthAccountId, UserId } from '../../database/ids.js'
+import type {
+    OAuthAccountId,
+    PasskeyId,
+    SmsChallengeId,
+    TotpFactorId,
+    UserId,
+    UserOnlineId,
+} from '../../database/ids.js'
 
-export type { OAuthAccountId, UserId } from '../../database/ids.js'
+export type {
+    MfaRecoveryCodeId,
+    OAuthAccountId,
+    OneTimeTokenRowId,
+    PasskeyId,
+    SmsChallengeId,
+    TotpFactorId,
+    UserId,
+    UserOnlineId,
+} from '../../database/ids.js'
 
 const parse = (raw: string | null | undefined): bigint | null =>
     typeof raw === 'string' && isValidEntityId(raw) ? BigInt(raw) : null
@@ -33,6 +49,25 @@ export const asUserId = (raw: string): UserId => {
 /** The id of an OAuth link from its decimal text, or null when the text is not a row id. */
 export const parseOAuthAccountId = (raw: string | null | undefined): OAuthAccountId | null =>
     parse(raw) as OAuthAccountId | null
+
+/** The id of a passkey from its decimal text (a path parameter), or null. */
+export const parsePasskeyId = (raw: string | null | undefined): PasskeyId | null =>
+    parse(raw) as PasskeyId | null
+
+/** The id of a TOTP factor from its decimal text, or null. */
+export const parseTotpFactorId = (raw: string | null | undefined): TotpFactorId | null =>
+    parse(raw) as TotpFactorId | null
+
+/** The id of a row of the online history (a cursor), or null. */
+export const parseUserOnlineId = (raw: string | null | undefined): UserOnlineId | null =>
+    parse(raw) as UserOnlineId | null
+
+/**
+ * The id of an SMS challenge as a client sends it back, or null. The ids are nanoids of up to 24
+ * characters (sms_auth_challenges.id is varchar(24)): any other text names no challenge.
+ */
+export const parseSmsChallengeId = (raw: string | null | undefined): SmsChallengeId | null =>
+    typeof raw === 'string' && /^[\w-]{1,24}$/.test(raw) ? (raw as SmsChallengeId) : null
 
 /** The decimal text of a row id, as it goes into a response, a session or a WS payload. */
 export const toEntityId = (id: bigint): string => String(id)

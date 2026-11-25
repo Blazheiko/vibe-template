@@ -12,7 +12,7 @@ import {
     sleep,
 } from '../../../test-support/redis-test-client.js'
 import { WsTestClient } from '../../../test-support/ws-test-client.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { OneTimeTokenRowId, UserId } from '#app/domain/ids.js'
 
 // feat-233 T4: GET /account/sessions, DELETE /account/sessions/:id and POST
 // /account/sessions/revoke-others over HTTP and WebSocket: a real uWebSockets.js server with the
@@ -451,7 +451,7 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
         const retired = await db
             .select({ usedAt: passwordResetTokens.usedAt })
             .from(passwordResetTokens)
-            .where(eq(passwordResetTokens.id, reset?.id ?? 0n))
+            .where(eq(passwordResetTokens.id, reset?.id ?? (0n as OneTimeTokenRowId)))
         expect(retired[0]?.usedAt).not.toBeNull()
         expect(await tokenOf(user.id)).not.toBe(user.sessionToken)
         expect(security).toHaveBeenCalledWith(user.id, 'logout_all')

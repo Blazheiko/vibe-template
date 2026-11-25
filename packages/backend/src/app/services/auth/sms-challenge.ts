@@ -6,6 +6,7 @@ import {
     type SmsAuthChallengeRow,
 } from '#app/repositories/index.js'
 import type { DbExecutor } from '#app/repositories/transaction.js'
+import { parseSmsChallengeId } from '#app/domain/ids.js'
 import { smsVerificationProvider } from '#app/services/auth/sms-verification-provider.js'
 import { badRequest, type AppResult } from '#app/services/shared/errors.js'
 import { hashOtpVerificationCode, verifyOtpVerificationCode } from './otp-verification-hash.js'
@@ -307,4 +308,14 @@ export async function confirmChallenge(
     }
 
     return Result.ok(undefined)
+}
+
+/**
+ * The SMS challenge a client names by its id, or undefined (feat-263). Text that is not a challenge
+ * id (sms_auth_challenges.id is a nanoid of up to 24 characters) names no challenge, as an unknown
+ * id does.
+ */
+export async function findSmsChallenge(raw: string): Promise<SmsAuthChallengeRow | undefined> {
+    const id = parseSmsChallengeId(raw)
+    return id === null ? undefined : smsAuthChallengeRepository.findById(id)
 }

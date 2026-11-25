@@ -332,10 +332,7 @@ describe('signInMethodsService.unlink: what it refuses for every account', () =>
         // The links of the caller; id 99 belongs to somebody else.
         given(user(), [link(uid(31))])
 
-        const result = await signInMethodsService.unlink(
-            uid(5),
-            request({ linkId: 99n as OAuthAccountId }),
-        )
+        const result = await signInMethodsService.unlink(uid(5), request({ linkId: 99n }))
 
         expectError(result, { _tag: 'NotFound', message: 'Sign-in method not found' })
         expectNothingRemoved()

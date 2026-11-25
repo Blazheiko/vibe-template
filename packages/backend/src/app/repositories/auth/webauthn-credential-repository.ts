@@ -4,7 +4,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { users, webauthnCredentials } from '#database/schema.js'
 import type { DbExecutor } from '../transaction.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PasskeyId, UserId } from '#app/domain/ids.js'
 
 export type WebAuthnCredentialRow = InferSelectModel<typeof webauthnCredentials>
 
@@ -41,9 +41,9 @@ export interface IWebAuthnCredentialRepository {
     ): Promise<WebAuthnCredentialRow | undefined>
     insert(credential: NewWebAuthnCredential, tx: DbExecutor): Promise<WebAuthnCredentialRow>
     /** Renames a key of the user; false when it is not the user's (or gone). */
-    rename(id: bigint, userId: UserId, name: string, executor?: DbExecutor): Promise<boolean>
+    rename(userId: UserId, id: PasskeyId, name: string, executor?: DbExecutor): Promise<boolean>
     /** Removes a key of the user; false when it is not the user's (or gone). */
-    deleteOne(id: bigint, userId: UserId, tx: DbExecutor): Promise<boolean>
+    deleteOne(userId: UserId, id: PasskeyId, tx: DbExecutor): Promise<boolean>
     /** Removes every key of the user and the user handle (claimLocked); the number removed. */
     deleteAllOfUser(userId: UserId, tx: DbExecutor): Promise<number>
     /**
@@ -51,7 +51,7 @@ export interface IWebAuthnCredentialRepository {
      * without a counter, a synced passkey); otherwise the stored counter only grows:
      * `sign_count < new`. 'regressed' when the key exists and the counter did not grow.
      */
-    recordUse(id: bigint, newCount: bigint, executor?: DbExecutor): Promise<CounterOutcome>
+    recordUse(id: PasskeyId, newCount: bigint, executor?: DbExecutor): Promise<CounterOutcome>
     /** The WebAuthn user.id of the account, made from `candidate` when it has none yet. */
     ensureUserHandle(userId: UserId, candidate: Buffer, tx: DbExecutor): Promise<Buffer>
     userHandleOf(userId: UserId, executor?: DbExecutor): Promise<Buffer | null>
@@ -106,7 +106,7 @@ export const webauthnCredentialRepository: IWebAuthnCredentialRepository = {
         return created
     },
 
-    async rename(id, userId, name, executor = db) {
+    async rename(userId, id, name, executor = db) {
         const updated = await executor
             .update(webauthnCredentials)
             .set({ name })
@@ -115,7 +115,7 @@ export const webauthnCredentialRepository: IWebAuthnCredentialRepository = {
         return updated.length > 0
     },
 
-    async deleteOne(id, userId, tx) {
+    async deleteOne(userId, id, tx) {
         const removed = await tx
             .delete(webauthnCredentials)
             .where(and(eq(webauthnCredentials.id, id), eq(webauthnCredentials.userId, userId)))

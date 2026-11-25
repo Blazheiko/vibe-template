@@ -3,7 +3,7 @@ import { userOnline } from '#database/schema.js'
 import { and, count, desc, eq, gte, lt } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, UserOnlineId } from '#app/domain/ids.js'
 
 export type UserOnlineRow = InferSelectModel<typeof userOnline>
 export type UserOnlineInsert = InferInsertModel<typeof userOnline>
@@ -13,7 +13,7 @@ export interface UserOnlineHistoryFilters {
     userId?: UserId
     dateFrom?: Date
     dateTo?: Date
-    cursor?: bigint
+    cursor?: UserOnlineId
     limit?: number
 }
 

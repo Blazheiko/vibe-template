@@ -65,7 +65,7 @@ import {
     fromBase64Url,
     verifyWebAuthnCeremony,
 } from './webauthn-ceremony.js'
-import { asUserId, type UserId } from '#app/domain/ids.js'
+import { asUserId, type UserId, type PasskeyId } from '#app/domain/ids.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р4): the second sign-in step. The first factor
 // (password or OAuth) of an account with MFA opens a ticket instead of a session; the session is
@@ -443,8 +443,11 @@ async function attempt(
 
     // feat-246: a passkey is checked before the transaction (no writes); the transaction spends
     // its counter, so a rollback gives it back.
-    let passkey: { credentialId: bigint; newCounter: bigint; challenge: CheckedChallenge } | null =
-        null
+    let passkey: {
+        credentialId: PasskeyId
+        newCounter: bigint
+        challenge: CheckedChallenge
+    } | null = null
     /**
      * feat-256 (item 6): a wrong proof counted once per logical attempt. A Redis failure is not a
      * refusal (ADR 0004): it reaches the error handler (503), and the repeat with the same
@@ -909,7 +912,7 @@ async function checkSecondStepPasskey(
 ): Promise<
     | {
           kind: 'ok'
-          assertion: { credentialId: bigint; newCounter: bigint }
+          assertion: { credentialId: PasskeyId; newCounter: bigint }
           challenge: CheckedChallenge
       }
     | { kind: 'wrong'; challenge: CheckedChallenge }

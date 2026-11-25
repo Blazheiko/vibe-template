@@ -65,7 +65,7 @@ import { notifySignInMethodAdded } from '#app/services/auth/sign-in-method-notic
 import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import { providerTitle } from '#app/services/auth/oauth-provider-titles.js'
 import { PRODUCT } from 'shared/product'
-import type { UserId } from '#app/domain/ids.js'
+import { toEntityId, type UserId } from '#app/domain/ids.js'
 
 type JsonObject = Record<string, unknown>
 
@@ -658,7 +658,7 @@ export const oauthService = {
         }
         // The link is committed: announced whatever the sign-in below answers.
         announceLink(verification.userId, linked, verification.provider, verification.providerName)
-        const loggedIn = await auth.login(String(verification.userId), linked.sessionToken, {
+        const loggedIn = await auth.login(toEntityId(verification.userId), linked.sessionToken, {
             method: 'oauth',
             provider: verification.provider,
         })
@@ -772,7 +772,7 @@ async function finishSignIn(
         return Result.ok({ redirectUrl: secondStepUrl(second.value.methods) })
     }
 
-    const device = await auth.login(String(userId), sessionToken, { method: 'oauth', provider })
+    const device = await auth.login(toEntityId(userId), sessionToken, { method: 'oauth', provider })
     if (device === null) return Result.err(badRequest('Failed to sign in'))
     if (notice !== 'none') notifyNewSignIn(userId, device, { mail: notice === 'full' })
     return Result.ok({ redirectUrl: oauthConfig.frontendSuccessUrl })

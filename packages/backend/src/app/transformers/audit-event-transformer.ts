@@ -1,4 +1,5 @@
 import { AUDIT_ACTIONS, isAuditAction, type AuditProof, type AuditSystemSource } from 'shared/audit'
+import { toEntityId } from '#app/domain/ids.js'
 import type { AuditEvent } from 'shared/responses'
 
 import type { AuditEventListRow } from '#app/repositories/index.js'
@@ -20,8 +21,8 @@ export const auditEventTransformer = {
             throw new Error(`audit_events row ${String(row.id)} has an unknown action`)
         }
         const metadata = asRecord(row.metadata)
-        const actorId = row.actorUserId === null ? null : String(row.actorUserId)
-        const targetUserId = row.targetUserId === null ? null : String(row.targetUserId)
+        const actorId = row.actorUserId === null ? null : toEntityId(row.actorUserId)
+        const targetUserId = row.targetUserId === null ? null : toEntityId(row.targetUserId)
         const proof = metadata?.['proof']
         const source = metadata?.['source']
         return {
