@@ -1,6 +1,6 @@
 # План: branded types і value objects
 
-**Статус: погоджено власником** (2026-11-25): Р1–Р12. Р9 уточнено: `PositiveInt`, `NonNegativeInt`, `NonEmptyString`
+**Статус: погоджено власником** (2026-11-25): Р1–Р13 (редакція 3). Р9 уточнено: `PositiveInt`, `NonNegativeInt`, `NonEmptyString`
 лишаються. Р11: спершу власник, `(userId, id)`, на всіх шарах. Фічі: `feat-262`…`feat-268`.
 
 **Редакція 2** (2026-11-25, за рев'ю плану):
@@ -18,6 +18,19 @@
 - `EmailSchema` прибирається у feat-266, `Timestamp` у feat-267.
 - Додано арифметику часу, правило округлення TTL, точніше ESLint-правило.
 - У DoD додано `make test-redis`.
+
+**Редакція 3** (2026-11-25, друге рев'ю плану):
+
+- Виправлено опис unlink: завеликий `linkId` дає 404, а не 500. Це прогалина валідації на вході.
+- feat-262 отримала таблицю контракту для кожного входу з id, тест AI usage без фільтра, пробіли в тестах і курсор
+  аудиту (`decodeAuditCursor`) як четвертий дублікат валідатора.
+- feat-263 починається з наскрізного сценарію unlink (`UserId` + `OAuthAccountId`) з явними критеріями успіху.
+- `parseId<B>` замінено конструкторами для кожного бренду (`parseUserId`, `parseOAuthAccountId`, …), бо generic
+  дозволяв викликачеві самому вибрати бренд (Р4).
+- Сесія з Redis отримує `UserId` лише після перевірки під час відновлення, а в JSON id лишається рядком (Р13).
+- Ланцюжок recovery code: хеш приймає `NormalizedRecoveryCode` (Р5).
+- Округлення: тривалість округлюється вгору, момент часу вниз. Тест перевіряє фактичний `TTL`/`PTTL` у Redis (Р7).
+- У Р8 записано межу спільного `EntityId` на фронтенді.
 
 ## Задача
 
@@ -72,22 +85,26 @@
     - `ws-coordinator.ts:74,88,138`
     - `auth-service.ts:1100,1176,1204,1230`
     - `mfa-sign-in.ts`
-- **Валідаторів id три, і вони розходяться:**
+- **Валідаторів id чотири, і вони розходяться:**
     - `parseEntityId` (`controllers/shared/parse-id.ts`): `/^\d{1,19}$/` плюс межа PG. Він **приймає `'0'` і `'007'`**,
       і `parse-id.spec.ts:10` вважає `['0', 0n]` валідним.
     - `ENTITY_ID_PATTERN` (`shared/src/patterns/index.ts:5`): `/^[1-9]\d*$/` **без верхньої межі**. Його використовують
       `EntityIdSchema` (паритет перевіряє `shared/test/contracts.test.js:169-174`), query-схеми й
       `frontend/src/utils/ws-payload-guards.ts:25`.
     - `isCanonicalEntityId` (`vendor/utils/helpers/entity-id.ts`).
+    - `decodeAuditCursor` (`services/admin/audit-events-query-service.ts:55-64`): власні `ID_TEXT` і
+      `MAX_POSTGRES_BIGINT` для id, декодованого з курсора.
 
     Локальні regex, що дублюють id: `NOTIFICATION_ID_PATTERN` (`schemas/notifications/requests.ts:5`), `IdSchema` у
     `responses/notifications-controller.ts:6`, `before?` у `query/support.ts:14`. `ProfileRevisionSchema` і
     `REVISION_PATTERN` (`ws-payload-guards.ts:90`) **не є дублікатами**: ревізія спеціально дозволяє `'0'`, коли
     `user_preferences` ще не створено.
 
-- **Два баги на межі `bigint`:**
+- **Дві прогалини на межі `bigint`:**
     - `controllers/http/auth/sign-in-methods-controller.ts:29` робить `BigInt(payload.id)` над `EntityIdSchema`, де немає
-      верхньої межі: `9223372036854775808` дає 500 (клас feat-161).
+      верхньої межі. `BigInt` не падає на великих числах, а `sign-in-methods-service.ts:144` порівнює `linkId` з уже
+      прочитаними зв'язками в пам'яті, тому `9223372036854775808` дає 404, а не 500. Помилки немає, але це прогалина
+      валідації на вході: невалідний id доходить до сервісу.
     - `controllers/http/ai/usage/llm-usage-controller.ts:8-15` робить `BigInt(userId.trim())` у
       `catch { /* ignore invalid */ }`. Помилка тиха: невалідний `userId` (`abc`, а також `0x10` і `-5`, які `BigInt`
       приймає) знімає фільтр, і відповідь 200 повертає всі рядки.
@@ -97,12 +114,14 @@
 - Сирий токен і його хеш мають той самий тип: `hashToken(token): string`, `findUsableToken(repo, secret)`,
   `ITokenRepository.findByTokenHash(tokenHash: string)`. Сирий токен, переданий у `findByTokenHash`, компілюється.
 - Код відновлення проходить три стани в одному `string`: сирий, нормалізований (`normalizeRecoveryCode`) і хеш
-  (`hashRecoveryCode`). Те саме з OTP (`verifyOtpVerificationCode(code, expectedHash)`).
+  (`hashRecoveryCode(normalized)`, `recovery-codes.ts:47`, тобто хеш бере вже нормалізований код). Те саме з OTP (`verifyOtpVerificationCode(code, expectedHash)`).
 - `mfa-ticket.ts:75-81` має `mfaBinding(bindValue)`, тобто HMAC сирого значення cookie `mfa_bind`. Сире значення і
   прив'язка обидва мають тип `string`.
 - `checkSessionToken(userId: string, userToken: string)` і `isSessionStored(sessionId: string, userToken: string)`
   приймають по два рядки. Ключ Redis `session:${userToken}:${sessionId}` залежить від порядку аргументів.
 - `users.session_token` (`schema.ts:89`) має `.$defaultFn(() => nanoid())`.
+- Сесія читається з Redis як `JSON.parse(sessionData) as SessionInfo` (`websocket/ws-session-auth.ts:63`), і
+  `SessionData.userId` має тип `string`. Брендований `userId` у цьому типі з'явився б через `as`, без перевірки.
 
 **Email.**
 
@@ -119,6 +138,9 @@
 - У Redis змішано `EX` (секунди: `mfa-ticket.ts:329`, `passkey-login-challenges.ts`) і `PX`/`PEXPIRE` (мс:
   `redis-lease.ts:123`, `llm-budget-service.ts:25`).
 - Є 93 ручні `* 1000` / `/ 1000`.
+- Округлення вже різне: момент часу `issuedAt` округлюється вниз (`vendor/utils/session/request-session.ts:65`,
+  `Math.floor`), а тривалості вгору (`rate-limit-store.ts:214`, `llm-budget-service.ts:65`,
+  `sms-auth-challenge-metadata.ts:34`, `Math.ceil`).
 
 **Shared і frontend.**
 
@@ -174,17 +196,26 @@
     - `EntityIdSchema` перевіряє те саме через `.narrow(isValidEntityId)`, а `parseEntityId` і `ws-payload-guards` викликають
       цю ж функцію. Паритетний тест у `contracts.test.js` порівнює `isValidEntityId` зі схемою, а не regex зі схемою.
     - `'0'` і `'007'` не є id.
-    - У feat-263 `parseId<B>(raw): B | null` замінює `parseEntityId`, `isCanonicalEntityId` і всі `BigInt(x)` над
-      зовнішніми даними, зокрема `requireUserId`.
-    - На дроті бренд лишається один — `EntityId` (рядок). Перетворення `EntityId ↔ UserId` роблять лише `parseId` і
+    - `decodeAuditCursor` перевіряє id, декодований з курсора, тією ж функцією. Формат самого курсора лишається
+      окремим.
+    - У feat-263 на кожен бренд є свій конструктор: `parseUserId(raw): UserId | null`, `parseOAuthAccountId`,
+      `parsePushSubscriptionId` тощо. Публічного generic `parseId<B>` немає, бо він дозволяв би викликачеві самому
+      вибрати бренд, тобто це був би той самий cast. Спільна реалізація (`isValidEntityId` + `BigInt`) лишається
+      приватною всередині `app/domain/ids.ts`.
+    - Конструктори замінюють `parseEntityId`, `isCanonicalEntityId` і всі `BigInt(x)` над зовнішніми даними, зокрема
+      `requireUserId`.
+    - На дроті бренд лишається один — `EntityId` (рядок). Перетворення `EntityId ↔ UserId` роблять лише конструктори і
       `toEntityId` (у трансформерах).
 - **Р5. Секрети за станами.**
-    - Вводяться `RawToken` / `TokenHash`, `RawRecoveryCode` / `NormalizedRecoveryCode` / `RecoveryCodeHash`,
-      `OtpCode` / `OtpHash` і `MfaBindValue` / `MfaBinding` (cookie `mfa_bind` і її HMAC).
+    - Вводяться `RawToken` / `TokenHash`, `OtpCode` / `OtpHash` і `MfaBindValue` / `MfaBinding` (cookie `mfa_bind` і
+      її HMAC).
+    - Код відновлення має три стани:
+      `RawRecoveryCode → normalizeRecoveryCode → NormalizedRecoveryCode | null → hashRecoveryCode → RecoveryCodeHash`.
     - `SessionToken` — це поле `users.session_token` і `userToken` у сесії. Дефолт колонки викликає конструктор
       `newSessionToken()` замість голого `nanoid()`.
     - Рядкові id сесії та MFA: `SessionId`, `TicketId`, `CompletionId`, `ReservationId`, `AttemptId`.
-    - Хешувальні функції приймають лише сирий стан і повертають лише хеш, а репозиторії шукають лише за хешем.
+    - Хешувальна функція приймає лише свій вхідний стан (сирий токен, або `NormalizedRecoveryCode` для кодів
+      відновлення) і повертає лише хеш. Репозиторії шукають лише за хешем.
 - **Р6. `NormalizedEmail`.**
     - Його створює тільки `normalizeEmail`. `findByEmail`, `createUser` і пошук OAuth-зв'язку приймають
       `NormalizedEmail`, тому забути нормалізацію неможливо. `LOWER()` у SQL лишається як страховка для старих даних.
@@ -197,7 +228,9 @@
     - Арифметика над брендом дає звичайний `number`, і обгортання в `ms(a + b)` пропустило б `ms(secVal + msVal)`. Тому
       є мінімальний набір операцій: `nowUnixMs()`, `ms()`, `seconds()`, `addMs(at, delta)`, `diffMs(a, b)`, `toMs(s)`,
       `toSecondsFloor(ms)`, `toSecondsCeil(ms)`.
-    - **TTL у Redis і `Retry-After` округлюються вгору** (`toSecondsCeil`), щоб ключ не зник раніше за межу.
+    - **Тривалості (TTL у Redis, `Retry-After`) округлюються вгору** (`toSecondsCeil`), щоб ключ не зник раніше за
+      межу. **Моменти часу (`issuedAt`, крок TOTP) округлюються вниз** (`toSecondsFloor`), як зараз.
+    - Redis-тести перевіряють фактичний час життя ключа (`TTL` / `PTTL` після запису), а не лише код обгортки.
     - TTL у Redis передаються через типізовані обгортки: `EX` бере `Seconds`, `PX`/`PEXPIRE` бере `Milliseconds`.
     - Конфіг (`config/session.ts`, `throttle-policies.ts`) експортує брендовані значення. Імена `now`/`age` дістають
       суфікси.
@@ -205,6 +238,9 @@
 - **Р8. Shared і фронтенд — окрема, необов'язкова фіча.**
     - Бренди на id у відповідях коштують ~108 тестових літералів і типізованих фабрик. Тому спершу фронтенд отримує лише
       `SessionPublicId`, `IsoDateTime`, `Cursor` і `EntityId` у відповідях, а тести — helper `asEntityId()`.
+    - Межа цього кроку: спільний `EntityId` у відповіді гарантує формат, але на фронтенді id різних сутностей
+      лишаються взаємозамінними. Тому feat-268 лишається окремою, а бренди за сутностями на фронтенді — питанням для
+      неї.
     - Брендовані поля query поки не вводяться. Опція для feat-268: `QueryWireValue<T>` знімає бренд
       (`T extends Brand<infer Base, unknown> ? QueryWireValue<Base> : …`). Тоді фронтенд надсилає рядки, а контролер
       отримує `EntityId` прямо з `context.httpData.query`.
@@ -252,9 +288,40 @@
     - ADR 0007 і ESLint-правило вводить feat-263. Якщо feat-267 змерджиться раніше, вона додає своїх бренди часу в
       список правила, коли воно з'явиться, а feat-263 додає правило з уже наявними брендами часу.
 
+- **Р13. Сесія і Redis.**
+    - У JSON, що лежить у Redis, `userId` лишається рядком.
+    - `UserId` з'являється лише після `parseUserId` під час відновлення сесії (HTTP і WS, `ws-session-auth.ts:63`).
+      Тип збереженого запису (`StoredSessionData`, `userId: string`) відокремлено від типу відновленої сесії
+      (`userId: UserId`). `as SessionInfo` над JSON не створює брендів.
+    - Сесія з невалідним `userId` вважається без користувача (як зараз, коли `userId` немає) і пишеться в лог.
+
 ## Кроки
 
 ### feat-262: один валідатор id і `shared/brand` (баг-фікс, без брендів id)
+
+Відмова від `'0'` і `'007'` змінює контракт. Нижче для кожного входу записано відповідь після feat-262 (null-гілка
+контролера). Поточну відповідь на `'0'` / `'007'` перший тест фіксує до зміни коду. Очікування: `'0'` дає 404 або
+порожній результат, `'007'` читає рядок 7.
+
+| Вхід                            | Контролер                                  | Після feat-262 для `'0'`, `'007'`, `2^63`                                     |
+| ------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------- |
+| `?userId`, `?cursor`            | `admin-user-controller.ts:25,34`           | 400 (`userId` / `cursor must be a numeric string`)                            |
+| `:id` (2 методи)                | `admin-user-controller.ts:67,93`           | 400 `invalid_user_id`                                                         |
+| `?userId`, `?cursor`            | `admin-online-history-controller.ts:17,26` | 400                                                                           |
+| `:id`                           | `admin-online-user-controller.ts:23`       | 400 `Invalid user id`                                                         |
+| `?actorUserId`, `?targetUserId` | `admin-audit-events-controller.ts:19-23`   | 400 від схеми (`ENTITY_ID_PATTERN` уже відкидає `'0'`/`'007'`; нове — `2^63`) |
+| `?cursor` (декодований id)      | `decodeAuditCursor`                        | курсор невалідний, як зараз для чужого курсора                                |
+| `:id`                           | `admin-knowledge-base-controller.ts:28`    | 400 `Invalid ID`                                                              |
+| `:articleId`                    | `support-controller.ts:54`                 | 400 `Invalid articleId`                                                       |
+| `:subscriptionId`               | `push-subscription-controller.ts:41`       | 404 `Subscription not found`                                                  |
+| `:id`                           | `passkey-controller.ts:32`                 | 404 (`'0'` уже відкидає `id > 0n`; нове — `'007'`)                            |
+| `:id`                           | `notification-controller.ts:27`            | 404 (`'0'` уже відкидає `id > 0n`; нове — `'007'`)                            |
+| body `id`                       | `sign-in-methods-controller.ts:29`         | 400 від схеми (`'0'`/`'007'` уже відкидаються; `2^63` — замість 404)          |
+| `?userId`                       | `llm-usage-controller.ts:8-15`             | 400 (зараз 200 без фільтра). Без `userId` — 200 з усіма рядками, як зараз     |
+| `?before`                       | `query/support.ts:14`                      | 400 від схеми                                                                 |
+
+Після feat-262 перевірки `id > 0n` у `passkey-controller` і `notification-controller` стають зайвими і
+прибираються.
 
 - Новий subpath `shared/brand` без ArkType: `Brand<T, Id>`, `isValidEntityId`, тест двосторонньої рівності з
   `EntityIdSchema.infer` (Р2).
@@ -265,27 +332,40 @@
   жоден контролер не покладається на `'0'` (курсори, `before?`).
 - `frontend/src/utils/ws-payload-guards.ts:25` викликає `isValidEntityId`.
 - Локальні дублікати прибираються: `NOTIFICATION_ID_PATTERN`, `IdSchema` у `responses/notifications-controller.ts`,
-  `before?` у `query/support.ts`. `ProfileRevisionSchema` і `REVISION_PATTERN` лишаються.
+  `before?` у `query/support.ts`, `ID_TEXT` / `MAX_POSTGRES_BIGINT` у `decodeAuditCursor`. `ProfileRevisionSchema` і
+  `REVISION_PATTERN` лишаються з власним предикатом: `'0'` означає профіль без збереженого рядка налаштувань.
 - `isCanonicalEntityId` прибирається, викликачі переходять на `isValidEntityId`.
-- `sign-in-methods-controller.ts:29` переходить на `parseEntityId` (404, як для чужого id).
+- `sign-in-methods-controller.ts:29` переходить на `parseEntityId`. Завеликий id відкидає схема (400) ще до сервісу.
 - `llm-usage-controller.ts:8-15`: при `parsed === null` повертається `badRequest('userId must be a numeric string')`,
   за взірцем `admin-user-controller.ts:24-30`.
-- Тести: `9223372036854775808`, `0x10`, `-5`, `0`, `007`, `abc` дають 400 або 404, а не 500 чи 200 без фільтра (PG).
+- Тести парсера: `9223372036854775807` (максимум) приймається; `9223372036854775808` (максимум + 1), `0x10`, `-5`,
+  `0`, `007`, `abc`, `''`, `' 1'`, `'1 '` відкидаються.
+- Тести маршрутів (PG) за таблицею вище: кожен рядок дає вказану відповідь, а не 500 чи 200 без фільтра.
+- AI usage: окремий тест на запит без `userId` (200, усі рядки) і з невалідним `userId` (400).
 - Документація: `documentation/backend/` (обидві локалі), де описано формат id.
 
 ### feat-263: бренди id — інфраструктура + users/auth (залежить від feat-262)
 
-- Перший крок — перевірити `.$type<Brand<bigint, …>>()` у Drizzle `1.0.0-rc.5`: `eq`, `inArray`, `insert`, RQB v2
-  (`defineRelations` у `database/relations.ts`) у перехідному стані, коли `users.id` брендований, а FK `user_id`
-  таблиць feat-264 ще ні. Якщо `defineRelations` вимагає однакового типу на обох кінцях, `UserId` разом із усіма FK
-  `user_id` проводиться окремим першим комітом, а сигнатури `userId` у feat-264-доменах міняються в ньому ж.
+- **Перший крок — наскрізний сценарій unlink** (`DELETE` способу входу): `UserId` і `OAuthAccountId` від контролера
+  через сервіс до `oauth-account-repository`, разом із FK на `users.id`, яких він торкається.
+    - Критерії успіху: у Drizzle `1.0.0-rc.5` з `.$type<Brand<bigint, …>>()` працюють select, insert, `returning`,
+      `eq`, `inArray` і RQB v2 (`defineRelations` у `database/relations.ts`), у тому числі в перехідному стані, коли
+      `users.id` брендований, а FK `user_id` таблиць feat-264 ще ні.
+    - Тест типів: переставлені `UserId` і `OAuthAccountId` не компілюються.
+    - Якщо `defineRelations` вимагає однакового типу на обох кінцях, `UserId` разом з усіма FK `user_id` проводиться
+      окремим комітом, і сигнатури `userId` у доменах feat-264 міняються в ньому ж.
+    - Лише після цього сценарію бренди поширюються на решту таблиць auth.
 - ADR 0007 (Р10, Р11).
-- `database/ids.ts` (оголошення типів), `app/domain/ids.ts` (реекспорт, `parseId`, `toEntityId`).
+- `database/ids.ts` (оголошення типів), `app/domain/ids.ts` (реекспорт, конструктори `parseUserId`,
+  `parseOAuthAccountId`, …, `toEntityId`).
 - `$type` **лише на таблиці домену**: `users`, `user_preferences`, `user_online`, `oauth_*`, `email_*`,
   `password_reset_tokens` (і решта одноразових токенів через `OneTimeTokenRowId`), `totp_factors`, `mfa_recovery_codes`,
   `webauthn_credentials`, `sms_auth_challenges` (`SmsChallengeId`).
 - Сигнатури репозиторіїв і сервісів users, sessions, auth, oauth, mfa, passkeys, а також `requireUserId` (через
-  `parseId<UserId>`), `permission-guard`, `ws-coordinator`, `SessionData.userId`.
+  `parseUserId`), `permission-guard`, `ws-coordinator`.
+- Сесія за Р13: окремі типи збереженого запису і відновленої сесії, `parseUserId` під час відновлення (HTTP і WS).
+- Redis-тести: чинна сесія читається і дає `UserId`; сесія з невалідним `userId` (`'abc'`, `'0'`, `2^63`) вважається
+  без користувача.
 - Порядок аргументів за Р11: `webauthn-credential`, `oauth-account`, `totp-factor`.
 - ESLint-правило (Р10).
 - Оновити `documentation/en/backend/adding-a-feature.md` (+ uk) і скіл `backend-feature`: репозиторій і трансформер
@@ -304,7 +384,8 @@
   (`MfaBindValue` / `MfaBinding`), `mfa-sign-in.ts`, `oauth-service.ts` (`sessionBindingHash`).
 - `users.session_token`: `$type<SessionToken>()` і `$defaultFn(newSessionToken)`.
 - Тести типів (`@ts-expect-error`): сирий токен не приймається у `findByTokenHash`, хеш не приймається в `hashToken`,
-  сире значення `mfa_bind` не порівнюється з прив'язкою.
+  сирий код відновлення не приймається в `hashRecoveryCode`, сире значення `mfa_bind` не порівнюється з прив'язкою.
+- Redis-тести: сесія з `userToken` читається після зміни типів, як і до неї.
 
 ### feat-266: `NormalizedEmail` (залежить від feat-263)
 
@@ -318,6 +399,8 @@
   `config/session.ts`, `throttle-policies.ts`, `mfa-ticket.ts`, `sms-challenge.ts`, `redis-lease.ts`,
   `llm-budget-service.ts`, `generate-ws-token-service.ts` (літерал `60`), `Retry-After`.
 - `TimestampSchema` / `Timestamp` видаляються з `brands/primitives.ts`.
+- Redis-тести перевіряють фактичний `TTL` / `PTTL` ключів після запису через обгортки (сесія, MFA-тікет, lease,
+  бюджет LLM). Межі: `Retry-After` і TTL не менші за точне значення, `issuedAt` не більший за поточну секунду.
 - Документація scheduler / config за потреби.
 
 ### feat-268: shared і фронтенд (необов'язкова, залежить від feat-263, рішення Р8)
