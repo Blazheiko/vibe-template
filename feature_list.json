@@ -2591,8 +2591,8 @@
             "owner": "Blazheiko",
             "branch": "feat/mfa-keys-script",
             "dependencies": ["feat-245"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #829 (merge be1f8d6), registry #828 (in_progress), #830 (review). pnpm --filter backend mfa:keys (make mfa-keys, root pnpm mfa:keys): prints a new MFA_ENCRYPTION_KEYS value (k1, 32 random bytes); --write saves it to packages/backend/.env, never replacing a key already set and keeping the dev key derived from APP_KEY (k1,dev); --rotate puts a new key with the next free id (within 16 characters) first and keeps every current key; --check validates with parseMfaEncryptionKeys and prints only ids. The current value is the one the server reads (the shell, even empty, then .env through dotenv); --write rewrites only a single plain line (CRLF kept), replaces .env atomically (temp file, fsync, rename, mode kept, symlinks followed) under .env.lock and removes the temp file on any failure; every result is checked by the server's parser. Two review rounds fixed (a00417c2: dotenv reading, dev key, atomic locked write, id length, where to run; 0e695a1a: CRLF, temp cleanup on a failed write, dangling symlink, docs as points). Docs: documentation/backend/mfa.md section encryption keys, configuration.md, deployment checklist (uk + en), scripts README. CI on the branch head 0e695a1: ci.yml run 45601356492 (quality, e2e, e2e-live), build run 45601356387, pg-tests.yml run 45601356599, redis-tests.yml run 45601356358, all success. Local: make check green (backend 3742, 40 in src/scripts/mfa-keys*, frontend 1017, shared 149, landing 103, api-playground 115, documentation 26), docs:build + docs:verify; manual run of every mode against a scratch .env and of the compiled dist/scripts/mfa-keys.js; mutation checks: the old line-regex read fails 3 run tests, ignoring APP_KEY fails both dev-key tests, dropping the temp cleanup fails the ENOSPC test."
         }
     ]
 }
