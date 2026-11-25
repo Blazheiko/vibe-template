@@ -59,8 +59,10 @@ auth/sign-in-methods,notifications/notification}-controller.ts`, `controllers/ht
   ArkType into the frontend).
 - `pnpm docs:build && pnpm docs:verify`: exit 0, "verify-dist: all checks passed".
 - Contract table: `entity-id-inputs.spec.ts` 104 tests (controllers with mocked services + schemas + audit cursor).
-- `make test-pg` / `make test-redis`: CI jobs `test-pg` (`pg-tests.yml`) and `test-redis` (`redis-tests.yml`) of the
-  implementation PR (link added after the run).
+- `make test-pg`: CI job `test-pg` on `b418ac9`, run https://github.com/Blazheiko/vibe-template/actions/runs/45677454634:
+  72 files, 724 tests passed, 0 skipped.
+- `make test-redis`: CI job `test-redis` on `b418ac9`, run
+  https://github.com/Blazheiko/vibe-template/actions/runs/45677454582: 20 files, 205 tests passed, 0 skipped.
 - Manual golden path: not run against a live app (no local database of this project); the routes are covered by the
   controller tests above and the HTTP PG suites in CI.
 
