@@ -168,3 +168,16 @@ describe('access_changed with the MFA reason (feat-247)', () => {
         ).toBe(true)
     })
 })
+
+// feat-262: the id bound checked by the guard itself, not only through parity with the schema.
+describe('admin_user_online_remove id bound (feat-262)', () => {
+    it.each([
+        ['9223372036854775807', true],
+        ['9223372036854775808', false],
+        ['0', false],
+        ['007', false],
+        [' 1', false],
+    ])('id %j is accepted: %s', (id, accepted) => {
+        expect(broadcastGuards.admin_user_online_remove({ id })).toBe(accepted)
+    })
+})
