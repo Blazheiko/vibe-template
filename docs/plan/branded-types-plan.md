@@ -1,6 +1,6 @@
 # План: branded types і value objects
 
-**Статус: погоджено власником** (2026-11-25): Р1–Р13 (редакція 4). Р9 уточнено: `PositiveInt`, `NonNegativeInt`, `NonEmptyString`
+**Статус: погоджено власником** (2026-11-25): Р1–Р13 (редакція 5). Р9 уточнено: `PositiveInt`, `NonNegativeInt`, `NonEmptyString`
 лишаються. Р11: спершу власник, `(userId, id)`, на всіх шарах. Фічі: `feat-262`…`feat-268`.
 
 **Редакція 2** (2026-11-25, за рев'ю плану):
@@ -31,6 +31,16 @@
 - Ланцюжок recovery code: хеш приймає `NormalizedRecoveryCode` (Р5).
 - Округлення: тривалість округлюється вгору, момент часу вниз. Тест перевіряє фактичний `TTL`/`PTTL` у Redis (Р7).
 - У Р8 записано межу спільного `EntityId` на фронтенді.
+
+**Редакція 5** (2026-11-25, четверте рев'ю плану):
+
+- Таблиця контракту feat-262 має дві колонки, «зараз» і «після», і правило: `0` не є допустимим курсором чи `before`
+  ні на одному маршруті.
+- Р13 спрощено: vendor-типи `SessionData` / `SessionInfo` не змінюються (`userId: string`), а бренд з'являється лише на
+  межі app через `parseUserId`. Це закриває і HTTP-шлях (`redis-session-storage.ts`), і запис сесії.
+- Р10: замість `no-restricted-syntax` за іменами — локальне type-aware правило ESLint, яке дивиться на кінцевий тип
+  приведення (аліаси й перейменовані імпорти не обходять його).
+- feat-262 названо «спільний валідатор id»; у її DoD явно додано `check-bundle-graph` і frontend-тест `isValidEntityId`.
 
 **Редакція 4** (2026-11-25, третє рев'ю плану):
 
@@ -130,6 +140,8 @@
 - `users.session_token` (`schema.ts:89`) має `.$defaultFn(() => nanoid())`.
 - Сесія читається з Redis як `JSON.parse(sessionData) as SessionInfo` (`websocket/ws-session-auth.ts:63`), і
   `SessionData.userId` має тип `string`. Брендований `userId` у цьому типі з'явився б через `as`, без перевірки.
+  HTTP-шлях так само: `vendor/utils/session/redis-session-storage.ts` має сім `JSON.parse(...) as SessionInfo` /
+  `as SessionData` (`:143, 176, 235, 262, 296, 308, 328, 378`).
 
 **Email.**
 
@@ -273,10 +285,17 @@
 - **Р10. ADR 0007 «Branded types».**
     - ADR фіксує Р1–Р4, Р11, правило «зовнішній рядок стає брендом лише через схему або `parse…`» і заборону
       приведення до бренду поза модулями-конструкторами.
-    - ESLint `no-restricted-syntax` забороняє `TSAsExpression` і `TSTypeAssertion` до брендового типу, зокрема
-      `as unknown as UserId`. Винятки: модулі-конструктори й тести.
-    - Імена брендів беруться з одного списку, що лежить поруч із брендами. Новий бренд додається туди, тож не випадає з
-      перевірки.
+    - Заборону перевіряє **локальне type-aware правило ESLint** (`no-brand-cast`), а не `no-restricted-syntax`.
+      AST-правило бачить лише ім'я типу, і його обходять `import { UserId as U }` або `type X = UserId`.
+    - Як працює правило: для кожного `TSAsExpression` і `TSTypeAssertion` воно бере через type checker кінцевий тип
+      приведення і перевіряє, чи є серед його складових тип із властивістю `' brand'` (форма `Brand` з Р2). Тому
+      ловляться аліаси, перейменовані імпорти, `as unknown as UserId`, а також `as UserId | null`. Списку імен брендів
+      немає, і новий бренд не може випасти з перевірки.
+    - Typed linting уже ввімкнено: кореневий `eslint.config.ts:32-38` (`strictTypeChecked` + `projectService`),
+      `packages/frontend/eslint.config.ts:71`.
+    - Винятки за шляхом файлу: модулі-конструктори (`shared/src/brand/**`, `database/ids.ts`, `app/domain/**`) і тести.
+    - Правило має власні тести (RuleTester): аліас, перейменований імпорт, `as unknown as`, `<UserId>x` і об'єднання з
+      `null` дають помилку; `as const` і приведення до небрендових типів — ні.
     - Правило потрапляє в кореневий конфіг. У `packages/frontend/eslint.config.ts` його додає feat-268, коли бренди
       дійдуть до фронтенду.
 - **Р11. Порядок аргументів: спершу власник, `(userId, id)`, на всіх шарах** (погоджено 2026-11-25).
@@ -304,46 +323,61 @@
 - **Р12. Порядок фіч.**
     - `shared/brand` (`Brand`, `isValidEntityId`) з'являється у feat-262. Тому feat-267 залежить лише від feat-262 і може
       йти паралельно з feat-263.
-    - ADR 0007 і ESLint-правило вводить feat-263. Якщо feat-267 змерджиться раніше, вона додає своїх бренди часу в
-      список правила, коли воно з'явиться, а feat-263 додає правило з уже наявними брендами часу.
+    - ADR 0007 і ESLint-правило вводить feat-263. Правило розпізнає бренд за формою типу, а не за списком, тому бренди
+      часу з feat-267 потрапляють під нього самі, хоч би яка фіча змерджилася першою. Якщо feat-267 іде раніше,
+      приведення до брендів часу живуть лише в її модулях-конструкторах.
 
-- **Р13. Сесія і Redis.**
-    - У JSON, що лежить у Redis, `userId` лишається рядком.
-    - `UserId` з'являється лише після `parseUserId` під час відновлення сесії (HTTP і WS, `ws-session-auth.ts:63`).
-      Тип збереженого запису (`StoredSessionData`, `userId: string`) відокремлено від типу відновленої сесії
-      (`userId: UserId`). `as SessionInfo` над JSON не створює брендів.
-    - `ws-session-auth.ts:34-86` читає з Redis два JSON-записи: спершу одноразовий WS-токен `auth:ws:${token}`
-      (`{ sessionId, userId, userToken }`, `:34`), потім `SessionInfo` (`:63`). `checkSessionToken(userId, userToken)`
-      (`:86`) бере `userId` з першого. `parseUserId` застосовується до обох записів, і жоден не отримує бренд через
-      `as`.
+- **Р13. Сесія і Redis: бренд лише на межі app.**
+    - Vendor-типи `SessionData` / `SessionInfo` (`vendor/types/types.d.ts:300`) **не змінюються**: `userId: string`.
+      Vendor-ядро не знає про бренди app-шару, тож бренд не може потрапити ні в JSON у Redis, ні в `as SessionInfo` у
+      `redis-session-storage.ts` чи `ws-session-auth.ts`.
+    - `UserId` з'являється лише через `parseUserId` у місцях, де app читає id із сесії:
+        - `requireUserId` (HTTP, `controllers/shared/require-user-id.ts`);
+        - `permission-guard`;
+        - `ws-coordinator`;
+        - `ws-session-auth.ts:34-86`, на обох записах із Redis: WS-токен `auth:ws:${token}` (`{ sessionId, userId,
+userToken }`, `:34`) і `SessionInfo` (`:63`). `checkSessionToken(userId, userToken)` (`:86`) бере `userId` з
+          першого.
+    - **Запис сесії**: app передає у vendor рядок через `toEntityId(userId)`, ніколи не `UserId`. Компілятор це
+      гарантує, бо vendor-тип очікує `string`, а `UserId` (`bigint`) туди не присвоюється.
     - Сесія з невалідним `userId` вважається без користувача (як зараз, коли `userId` немає) і пишеться в лог.
 
 ## Кроки
 
-### feat-262: один валідатор id і `shared/brand` (баг-фікс, без брендів id)
+### feat-262: спільний валідатор id (shared + backend + frontend guard, без брендів id)
 
-Відмова від `'0'` і `'007'` змінює контракт. Нижче для кожного входу записано відповідь після feat-262 (null-гілка
-контролера). Поточну відповідь на `'0'` / `'007'` перший тест фіксує до зміни коду. Очікування: `'0'` дає 404 або
-порожній результат, `'007'` читає рядок 7.
+Відмова від `'0'` і `'007'` змінює контракт. Колонка «Зараз» — очікувана поточна відповідь; перший тест фіксує її
+до зміни коду, і якщо вона інша, таблиця виправляється. Колонка «Після» — єдина поведінка після feat-262, вона
+збігається з тестами парсера нижче.
 
-| Вхід                            | Контролер                                                           | Після feat-262 для `'0'`, `'007'`, `2^63`                                                                                  |
-| ------------------------------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `?userId`, `?cursor`            | `admin-user-controller.ts:25,34`                                    | 400 (`userId` / `cursor must be a numeric string`)                                                                         |
-| `:id` (2 методи)                | `admin-user-controller.ts:67,93`                                    | 400 `invalid_user_id`                                                                                                      |
-| `?userId`, `?cursor`            | `admin-online-history-controller.ts:17,26`                          | 400                                                                                                                        |
-| `:id`                           | `admin-online-user-controller.ts:23`                                | 400 `Invalid user id`                                                                                                      |
-| `?actorUserId`, `?targetUserId` | `admin-audit-events-controller.ts:19-23`                            | 422 від схеми (`'0'`/`'007'` уже 422; `2^63` — замість 400 `invalid_user_id`)                                              |
-| `?cursor` (декодований id)      | `decodeAuditCursor`                                                 | курсор невалідний, як зараз для чужого курсора                                                                             |
-| `:id`                           | `admin-knowledge-base-controller.ts:28`                             | 400 `Invalid ID`                                                                                                           |
-| `:articleId`                    | `support-controller.ts:54`                                          | 400 `Invalid articleId`                                                                                                    |
-| `?before`                       | `support-controller.ts:27-28` (`query/support.ts:14`)               | 422 від схеми (`2^63` і зараз відкидає 18-цифровий regex; сервіс не викликає `parseEntityId`, тому межу тримає лише схема) |
-| `:subscriptionId`               | `push-subscription-controller.ts:41`                                | 404 `Subscription not found`                                                                                               |
-| `:id`                           | `passkey-controller.ts:32`                                          | 404 (`'0'` уже відкидає `id > 0n`; нове — `'007'`)                                                                         |
-| `:id`                           | `notification-controller.ts:27`                                     | 404 (`'0'` уже відкидає `id > 0n`; нове — `'007'`)                                                                         |
-| `?before`                       | `notification-controller.ts:39-48` (`query/notifications.ts:14`)    | 422 від схеми (`2^63` — замість 400 `invalid_cursor`)                                                                      |
-| body `upTo`                     | `notification-controller.ts:79-82` (`notifications/requests.ts:10`) | 422 від схеми (`2^63` — замість 400 `invalid_up_to`)                                                                       |
-| body `id`                       | `sign-in-methods-controller.ts:29`                                  | 422 від схеми (`'0'`/`'007'` уже 422; `2^63` — замість 404)                                                                |
-| `?userId`                       | `llm-usage-controller.ts:8-15`                                      | 400 (зараз 200 без фільтра). `''` або відсутній — 200 з усіма рядками                                                      |
+Типи входів у колонці «Зараз»:
+
+- **(п)** — вхід іде через `parseEntityId`. `'0'` дає `0n` і доходить до запиту (порожньо або 404), `'007'` дає `7n`
+  і читає рядок 7, `2^63` уже відкидається.
+- **(с)** — вхід перевіряє схема з `ENTITY_ID_PATTERN` / локальним regex. `'0'` і `'007'` уже 422, `2^63` проходить.
+
+**`0` не є допустимим значенням ні для id, ні для курсора чи `before`.** Фронтенд надсилає лише курсори, які видав
+сервер (`frontend/src/utils/api.ts:267-280, 354-359`). Курсор будується з id рядка, а id ≥ 1. Першу сторінку
+запитують без параметра. Для кожного курсора і `before` є тест «значення `0` відкидається».
+
+| Вхід                            | Контролер                                                           | Зараз                                                | Після для `'0'`, `'007'`, `2^63`                                           |
+| ------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| `?userId`, `?cursor`            | `admin-user-controller.ts:25,34`                                    | (п)                                                  | 400 (`userId` / `cursor must be a numeric string`)                         |
+| `:id` (2 методи)                | `admin-user-controller.ts:67,93`                                    | (п)                                                  | 400 `invalid_user_id`                                                      |
+| `?userId`, `?cursor`            | `admin-online-history-controller.ts:17,26`                          | (п)                                                  | 400                                                                        |
+| `:id`                           | `admin-online-user-controller.ts:23`                                | (п)                                                  | 400 `Invalid user id`                                                      |
+| `?actorUserId`, `?targetUserId` | `admin-audit-events-controller.ts:19-23`                            | (с); `2^63` далі дає 400 `invalid_user_id`           | 422 від схеми                                                              |
+| `?cursor` (декодований id)      | `decodeAuditCursor`                                                 | власна перевірка: `'0'` і `'007'` відкидає `ID_TEXT` | курсор невалідний, як зараз для чужого курсора                             |
+| `:id`                           | `admin-knowledge-base-controller.ts:28`                             | (п)                                                  | 400 `Invalid ID`                                                           |
+| `:articleId`                    | `support-controller.ts:54`                                          | (п)                                                  | 400 `Invalid articleId`                                                    |
+| `?before`                       | `support-controller.ts:27-28` (`query/support.ts:14`)               | (с), 18 цифр: `2^63` теж 422                         | 422 від схеми (сервіс не викликає `parseEntityId`, межу тримає лише схема) |
+| `:subscriptionId`               | `push-subscription-controller.ts:41`                                | (п)                                                  | 404 `Subscription not found`                                               |
+| `:id`                           | `passkey-controller.ts:32`                                          | (п) + `id > 0n`: `'0'` уже 404                       | 404                                                                        |
+| `:id`                           | `notification-controller.ts:27`                                     | (п) + `id > 0n`: `'0'` уже 404                       | 404                                                                        |
+| `?before`                       | `notification-controller.ts:39-48` (`query/notifications.ts:14`)    | (с); `2^63` далі дає 400 `invalid_cursor`            | 422 від схеми                                                              |
+| body `upTo`                     | `notification-controller.ts:79-82` (`notifications/requests.ts:10`) | (с); `2^63` далі дає 400 `invalid_up_to`             | 422 від схеми                                                              |
+| body `id`                       | `sign-in-methods-controller.ts:29`                                  | (с); `2^63` далі дає 404                             | 422 від схеми                                                              |
+| `?userId`                       | `llm-usage-controller.ts:8-15`                                      | будь-яке невалідне значення — 200 без фільтра        | 400. `''` або відсутній — 200 з усіма рядками                              |
 
 Відмова схеми — це `ValidationError`, який `classify-error` мапить у 422 `validation_failed`
 (`vendor/utils/network/errors/classify-error.spec.ts:60-68`). 400 дає лише контролер (`badRequest`).
@@ -356,9 +390,11 @@
 - `ENTITY_ID_PATTERN` = `/^[1-9]\d{0,18}$/`. `EntityIdSchema` перевіряє `.narrow(isValidEntityId)`. Паритетний тест
   `contracts.test.js:169-174` переписується на `isValidEntityId` і отримує випадки `9223372036854775807` /
   `9223372036854775808`.
-- `parseEntityId` використовує `isValidEntityId`: `'0'` і `'007'` дають `null`. `parse-id.spec.ts` оновлюється. Перевірити, що
-  жоден контролер не покладається на `'0'` (курсори, `before?`).
-- `frontend/src/utils/ws-payload-guards.ts:25` викликає `isValidEntityId`.
+- `parseEntityId` використовує `isValidEntityId`: `'0'` і `'007'` дають `null`. `parse-id.spec.ts` оновлюється
+  (рядок `['0', 0n]` прибирається).
+- `frontend/src/utils/ws-payload-guards.ts:25` викликає `isValidEntityId`, імпортований зі `shared/brand` як значення.
+- Frontend vitest-тест (`utils/__tests__/ws-payload-guards.spec.ts`): payload з id `9223372036854775807` приймається;
+  `9223372036854775808`, `'0'`, `'007'`, `' 1'` відкидаються.
 - Локальні дублікати прибираються. `NOTIFICATION_ID_PATTERN` (`notifications/requests.ts`, `query/notifications.ts`),
   `IdSchema` у `responses/notifications-controller.ts`, `before?` у `query/support.ts` і `ENTITY_ID_PATTERN` у
   `query/admin-audit-events.ts` замінює `EntityIdStringSchema`. `ID_TEXT` / `MAX_POSTGRES_BIGINT` у
@@ -375,6 +411,9 @@
 - AI usage: окремі тести на запит без `userId` і з `userId=''` (200, усі рядки) та з невалідним `userId`, зокрема
   `' 1'` і `'  '` (400).
 - Support: `before=9223372036854775808` дає 422, а не 500 (PG).
+- Тести курсорів: `cursor=0` / `before=0` відкидаються на кожному маршруті з таблиці.
+- DoD цієї фічі окремо: `check-bundle-graph` (у складі `make check`) проходить, тобто імпорт `shared/brand` на фронтенді
+  не тягне ArkType; `pnpm --filter frontend test` з тестом вище; `make test-pg` для тестів маршрутів.
 - Документація: `documentation/backend/` (обидві локалі), де описано формат id.
 
 ### feat-263: бренди id — інфраструктура + users/auth (залежить від feat-262)
@@ -396,11 +435,12 @@
   `webauthn_credentials`, `sms_auth_challenges` (`SmsChallengeId`).
 - Сигнатури репозиторіїв і сервісів users, sessions, auth, oauth, mfa, passkeys, а також `requireUserId` (через
   `parseUserId`), `permission-guard`, `ws-coordinator`.
-- Сесія за Р13: окремі типи збереженого запису і відновленої сесії, `parseUserId` під час відновлення (HTTP і WS).
+- Сесія за Р13: vendor-типи сесії не змінюються; `parseUserId` у `requireUserId`, `permission-guard`, `ws-coordinator`,
+  `ws-session-auth` (обидва записи); запис сесії через `toEntityId`.
 - Redis-тести: чинна сесія читається і дає `UserId`; сесія з невалідним `userId` (`'abc'`, `'0'`, `2^63`) вважається
   без користувача.
 - Порядок аргументів за Р11: `webauthn-credential`, `oauth-account`, `totp-factor`.
-- ESLint-правило (Р10).
+- ESLint-правило `no-brand-cast` (Р10) з тестами RuleTester.
 - Оновити `documentation/en/backend/adding-a-feature.md` (+ uk) і скіл `backend-feature`: репозиторій і трансформер
   працюють із брендованими id, порядок аргументів за Р11. AGENTS.md цього вимагає.
 
@@ -466,7 +506,7 @@
 - **Drizzle rc.** `.$type<Brand<bigint,…>>()` у `1.0.0-rc.5` може не пройти через RQB v2 у перехідному стані. Це перший
   крок feat-263, а запасний варіант описано там же.
 - **arktype змінить форму `Brand`.** Від цього захищає тест двосторонньої рівності (Р2).
-- **Втеча через `as`.** Від неї захищає ESLint-правило (Р10).
+- **Втеча через `as`.** Від неї захищає type-aware ESLint-правило (Р10), зокрема через аліаси.
 - **ArkType у бандлі фронтенду.** Від нього захищають `shared/brand` без залежностей і `check-bundle-graph`.
 
 ## Поза планом
