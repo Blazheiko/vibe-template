@@ -1,7 +1,22 @@
-# Branded types і value objects — покроковий task list (v1)
+# Branded types і value objects — покроковий task list (v2)
 
 Джерело: [`branded-types-plan.md`](./branded-types-plan.md) (редакція 5, рішення Р1–Р13). Базовий шлях:
 `packages/backend/src/`, якщо не вказано інше. Коміт для посилань на рядки: `e298f08`.
+
+**v2 — після рев'ю task list:**
+
+- Усі конструктори брендів (id, секрети, email) живуть у `app/domain/`, тож виняток `no-brand-cast` за шляхом
+  покриває їх без `services/**` (T16, T28–T30, T34).
+- `parseEntityId` видаляється в T25.
+- У T19, T31, T42 додано пропущені пункти DoD (`docs:verify`, `db:generate`), у T41 — скіл `scheduled-job`.
+- Уточнено:
+    - імена брендів PK `user_online` і `mfa_recovery_codes`;
+    - `decodeAuditCursor` → `AuditEventId`;
+    - `$type` на всіх колонках хешів;
+    - тести типів для `mfa_bind` і OTP;
+    - колонки `target_email`;
+    - чистка `brands/index.ts`;
+    - helper-и для всіх брендів feat-268.
 
 Кожна фіча має окремий рядок у `feature_list.json`, гілку і PR (правила `AGENTS.md`). Задача T* — це один коміт або
 кілька дрібних, і вона закінчується зеленим вузьким тестом свого рівня.
@@ -187,10 +202,10 @@
 ### T13 · `$type` на решту таблиць auth
 
 - [ ] Бренди і `$type`:
-    - `user_preferences` (PK `userId`), `user_online`;
+    - `user_preferences` (PK `userId`, бренд `UserId`), `user_online` (`UserOnlineId`);
     - `email_verifications`, `email_link_verifications`, `password_reset_tokens`, `oauth_link_verifications` — один
       бренд `OneTimeTokenRowId`;
-    - `totp_factors` (`TotpFactorId`), `mfa_recovery_codes`, `webauthn_credentials` (`PasskeyId`),
+    - `totp_factors` (`TotpFactorId`), `mfa_recovery_codes` (`MfaRecoveryCodeId`), `webauthn_credentials` (`PasskeyId`),
       `sms_auth_challenges` (`SmsChallengeId = Brand<string, …>`).
 - [ ] Конструктори для кожного бренду в `app/domain/ids.ts`.
 
@@ -230,6 +245,9 @@
     - помилка, якщо серед них є тип із властивістю `' brand'`;
     - у поля об'єктів не спускатися.
 - [ ] Винятки за шляхом: `packages/shared/src/brand/**`, `database/ids.ts`, `app/domain/**`, тести.
+- [ ] Правило для всіх наступних фіч: **бренд створюється лише в `app/domain/`** (`ids.ts`, а згодом `secrets.ts`,
+      `email.ts`, `time.ts`) або в `shared/brand`. Сервіси імпортують конструктори звідти. `services/**` у винятки не
+      додається.
 - [ ] Тести RuleTester:
     - **помилки:** `x as UserId`, `x as U` (перейменований імпорт), `x as Alias` (`type Alias = UserId`),
       `x as unknown as UserId`, `<UserId>x`, `x as UserId | null`;
@@ -256,6 +274,7 @@
 ### T19 · Перевірка
 
 - [ ] `db:generate` без міграції; `make test-pg`; `make test-redis` (лічильники).
+- [ ] `pnpm docs:build && pnpm docs:verify` (T18 змінює `documentation/`).
 - [ ] Golden path: вхід, відв'язування способу входу, WS-підключення.
 
 ### T20 · Закриття
@@ -296,12 +315,15 @@
 
 - [ ] `SupportArticleId` (`support_knowledge_base`), `SupportMessageId` (`support_chat_history`), `LlmSystemPromptId`,
       `LlmTextUsageId`, `AuditEventId`; `$type` і сигнатури.
+- [ ] `decodeAuditCursor` повертає `{ occurredAt, id: AuditEventId }` через `parseAuditEventId`.
 - [ ] `audit_events.target_id` (`varchar`) і `request_id` (`uuid`) не брендуються.
 - [ ] Адмінські actor / target передаються об'єктом-параметром (Р11).
 
 ### T25 · Трансформери і перевірка
 
 - [ ] Трансформери цих доменів використовують `toEntityId`.
+- [ ] `controllers/shared/parse-id.ts` і `parse-id.spec.ts` видаляються: після T22–T24 жоден контролер не викликає
+      `parseEntityId`, усі перейшли на конструктори з `app/domain/ids.ts` (Р4). `grep parseEntityId` порожній.
 - [ ] `db:generate` без міграції, `make test-pg` (лічильники).
 - [ ] Golden path: push-підписка, сповіщення, чат підтримки, журнал аудиту.
 
@@ -319,13 +341,17 @@
 
 ### T28 · Одноразові токени
 
+- [ ] Бренди секретів і їхні конструктори лежать в `app/domain/secrets.ts`. `one-time-token.ts`, `recovery-codes.ts`,
+      `otp-verification-hash.ts`, `mfa-ticket.ts` імпортують їх звідти, тож `no-brand-cast` не потребує нових винятків
+      (T16).
 - [ ] `RawToken` / `TokenHash`:
     - `createToken(): RawToken`;
     - `hashToken(token: RawToken): TokenHash`;
     - `findUsableToken(repo, secret: RawToken)`;
     - `ITokenRepository.findByTokenHash(tokenHash: TokenHash)`;
     - `$type<TokenHash>()` на колонках `token_hash`.
-- [ ] `oauth-service.ts:545,902`: `sessionBindingHash` має свій бренд і не змішується з `TokenHash`.
+- [ ] `oauth-service.ts:545,902`: `sessionBindingHash` має свій бренд `SessionBindingHash` і не змішується з
+      `TokenHash`. `$type<SessionBindingHash>()` стоїть на `oauth_link_verifications.session_binding_hash`.
 - [ ] Тести типів: сирий токен не приймається у `findByTokenHash`, а хеш — у `hashToken`.
 
 ### T29 · Коди відновлення і OTP
@@ -334,7 +360,11 @@
     - `normalizeRecoveryCode(raw: RawRecoveryCode): NormalizedRecoveryCode | null`;
     - `hashRecoveryCode(code: NormalizedRecoveryCode): RecoveryCodeHash`.
 - [ ] `OtpCode` / `OtpHash` для `otp-verification-hash.ts` (`hashOtpVerificationCode`, `verifyOtpVerificationCode`).
-- [ ] Тести типів: сирий код не приймається в `hashRecoveryCode`.
+- [ ] `$type` у схемі: `mfa_recovery_codes.code_hash` → `RecoveryCodeHash`, `sms_auth_challenges.code_hash` →
+      `OtpHash`.
+- [ ] Тести типів:
+    - сирий код не приймається в `hashRecoveryCode`;
+    - `OtpCode` не приймається на місці `expectedHash` у `verifyOtpVerificationCode`, а `OtpHash` — на місці `code`.
 
 ### T30 · Сесійний токен і `mfa_bind`
 
@@ -346,12 +376,14 @@
       `mfa-sign-in.ts`, `ws-session-revocation.ts`, `generate-ws-token-service.ts`.
 - [ ] `MfaBindValue` / `MfaBinding`: `newBindValue(): MfaBindValue`, `mfaBinding(bindValue: MfaBindValue): MfaBinding`
       (`mfa-ticket.ts:75-81`).
+- [ ] Тест типів: `MfaBindValue` не порівнюється і не присвоюється з `MfaBinding` (і навпаки).
 - [ ] У vendor-типі сесії токени лишаються `string` (Р13). Бренд з'являється на межі app.
 
 ### T31 · Перевірка
 
 - [ ] `make test-redis` (лічильники): сесія з `userToken` читається як і раніше; MFA-тікет проходить reserve / reopen.
 - [ ] `make test-pg` (лічильники): скидання пароля, підтвердження email, коди відновлення.
+- [ ] `pnpm --filter backend db:generate` без нової міграції (T28–T30 змінюють `database/schema.ts`).
 - [ ] Golden path: скидання пароля, вхід з TOTP, вхід кодом відновлення.
 
 ### T32 · Закриття
@@ -368,13 +400,17 @@
 
 ### T34 · Бренд і споживачі
 
-- [ ] `normalizeEmail(raw: string): NormalizedEmail` (`services/auth/auth-normalize.ts:11`).
+- [ ] `normalizeEmail(raw: string): NormalizedEmail` переїжджає в `app/domain/email.ts`. `services/auth/auth-normalize.ts:11`
+      реекспортує його або його виклики переходять на новий модуль, і `no-brand-cast` не потребує винятку (T16).
 - [ ] `findByEmail`, створення користувача, пошук OAuth-зв'язку приймають `NormalizedEmail`. Решта 9 викликів
       `normalizeEmail` лишаються єдиним місцем створення бренду.
 - [ ] `oauth-service.ts:240` (нормалізація домену) і `account-claim-service.ts:38`.
 - [ ] `users.email` отримує `$type<NormalizedEmail>()`.
 - [ ] Для `oauth_accounts.provider_email` спершу перевірити всі шляхи запису (`oauth-service.ts:496, 590, 644`). Бренд
       ставиться лише тоді, коли кожен із них нормалізує email.
+- [ ] Те саме правило для трьох колонок `target_email` (`email_link_verifications`, `password_reset_tokens`,
+      `oauth_link_verifications`): перевірити шляхи запису і поставити `$type<NormalizedEmail>()`. Якщо котрийсь шлях
+      пише ненормалізоване значення, колонка лишається `string`, а причина записується в `progress.md`.
 
 ### T35 · Схеми shared
 
@@ -405,7 +441,8 @@
     - `toSecondsCeil(1)` = 1, `toSecondsCeil(1000)` = 1, `toSecondsCeil(1001)` = 2;
     - `toSecondsFloor(1999)` = 1;
     - `addMs` / `diffMs` зберігають бренд.
-- [ ] `TimestampSchema` / `Timestamp` видаляються з `brands/primitives.ts`.
+- [ ] `TimestampSchema` / `Timestamp` видаляються з `brands/primitives.ts` і реекспорту в `brands/index.ts`.
+- [ ] Бекенд-специфічні обгортки часу (якщо знадобляться) лежать в `app/domain/time.ts` (T16).
 
 ### T39 · Redis TTL
 
@@ -428,10 +465,14 @@
 ### T41 · Документація
 
 - [ ] Сторінки config / scheduler (обидві локалі), де змінено назви налаштувань або одиниці.
+- [ ] Якщо зміни в `redis-lease.ts` або `scheduler-state.ts` зачіпають контракт планувальника (`defineJob`,
+      `JobContext`, `withJobLease`, межа lease Р13), оновити `documentation/en/backend/scheduler.md` (+ uk) і
+      `.claude/skills/scheduled-job/SKILL.md` тим самим комітом (вимога `AGENTS.md`).
 
 ### T42 · Перевірка і закриття
 
 - [ ] `make test-redis` (лічильники), golden path: вхід, ліміт запитів з `Retry-After`.
+- [ ] `pnpm docs:build && pnpm docs:verify` (T41 змінює `documentation/`).
 - [ ] Крок «Закриття».
 
 ---
@@ -458,12 +499,14 @@
 
 ### T46 · Тести фронтенду
 
-- [ ] Helper `asEntityId()` (і `asIsoDateTime()`) для тестів. Типізовані фабрики (`ActiveSessions.spec.ts:30`,
-      `AdminUsersView.spec.ts:18`, `AdminAuditLogView.spec.ts:23`) і ~108 літералів `id: '…'` переходять на нього.
+- [ ] Тестові helper-и для всіх чотирьох брендів T44: `asEntityId()`, `asIsoDateTime()`, `asSessionPublicId()`,
+      `asCursor()`.
+- [ ] Типізовані фабрики (`ActiveSessions.spec.ts:30`, `AdminUsersView.spec.ts:18`, `AdminAuditLogView.spec.ts:23`) і
+      ~108 літералів `id: '…'` переходять на них.
 
 ### T47 · Примітиви — Р9
 
-- [ ] `PriceInCents` видаляється.
+- [ ] `PriceInCents` / `PriceInCentsSchema` видаляються з `brands/primitives.ts` і реекспорту в `brands/index.ts`.
 - [ ] `shared/test`: тести на приймання й відхилення для `PositiveInt`, `NonNegativeInt`, `NonEmptyString`.
 
 ### T48 · Перевірка і закриття

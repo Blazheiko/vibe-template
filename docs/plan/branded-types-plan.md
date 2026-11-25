@@ -302,6 +302,8 @@
     - Typed linting уже ввімкнено: кореневий `eslint.config.ts:32-38` (`strictTypeChecked` + `projectService`),
       `packages/frontend/eslint.config.ts:71`.
     - Винятки за шляхом файлу: модулі-конструктори (`shared/src/brand/**`, `database/ids.ts`, `app/domain/**`) і тести.
+      Тому всі конструктори брендів (id, секрети Р5, `normalizeEmail` Р6, обгортки часу Р7) лежать в `app/domain/` або
+      `shared/brand`, а не в `services/**`.
     - Правило має власні тести (RuleTester): аліас, перейменований імпорт, `as unknown as`, `<UserId>x` і об'єднання з
       `null` дають помилку; `as const` і приведення до небрендових типів — ні.
     - Правило потрапляє в кореневий конфіг. У `packages/frontend/eslint.config.ts` його додає feat-268, коли бренди
