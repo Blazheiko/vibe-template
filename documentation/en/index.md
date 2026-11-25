@@ -225,6 +225,8 @@ The test checks the avatar upload logic in milliseconds, without PostgreSQL, Red
 
 ## What is already implemented
 
+Account scenarios (profile, sessions, audit log, notifications, roles, MFA) and the admin pages are summarized on a separate page, [What is implemented: account and admin area](/en/reference/implemented-features), together with what is not built yet.
+
 Below is the functionality you can use right away. The API prefix by default is `/api` (`appConfig.pathPrefix`).
 
 ### Authentication and account

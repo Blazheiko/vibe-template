@@ -60,6 +60,7 @@ const ukSide = {
     scripts: 'Скрипти',
     glossary: 'Глосарій',
     roles: 'Ролі та можливості',
+    implemented: 'Що вже реалізовано',
     author: 'Про автора',
 }
 
@@ -185,6 +186,7 @@ function localeTheme(t: { p: string; nav: Nav; side: Side }): {
                         { text: 'Toolchain', link: `${p}/reference/toolchain` },
                         { text: side.glossary, link: `${p}/reference/glossary` },
                         { text: side.roles, link: `${p}/reference/roles-capabilities` },
+                        { text: side.implemented, link: `${p}/reference/implemented-features` },
                         { text: side.author, link: `${p}/reference/author` },
                     ],
                 },
@@ -248,6 +250,7 @@ const enSide: Side = {
     scripts: 'Scripts',
     glossary: 'Glossary',
     roles: 'Roles and capabilities',
+    implemented: 'What is implemented',
     author: 'About the author',
 }
 
