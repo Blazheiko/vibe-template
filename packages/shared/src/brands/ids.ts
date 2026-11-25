@@ -1,5 +1,5 @@
 import { type } from '@arktype/type'
-import { isValidEntityId } from '../brand/index.js'
+import { MAX_ENTITY_ID, isValidEntityId } from '../brand/index.js'
 import { ENTITY_ID_PATTERN } from '../patterns/index.js'
 
 /**
@@ -8,8 +8,10 @@ import { ENTITY_ID_PATTERN } from '../patterns/index.js'
  * frontend (`QueryInputOf` reads values from `infer`). `isValidEntityId` is the whole check; the
  * pattern only makes the JSON Schema of the route show the shape.
  */
-export const EntityIdStringSchema = type(ENTITY_ID_PATTERN).narrow((value) =>
-    isValidEntityId(value),
+export const EntityIdStringSchema = type(ENTITY_ID_PATTERN).narrow(
+    (value, ctx) =>
+        isValidEntityId(value) ||
+        ctx.reject({ expected: `an entity id of at most ${MAX_ENTITY_ID}` }),
 )
 
 // The same id as a branded type: a plain string has to pass the schema before it is an EntityId.
