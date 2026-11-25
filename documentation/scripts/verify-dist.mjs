@@ -80,6 +80,7 @@ const KEY_PAGES = [
     { page: 'reference/toolchain.md', h1: 'Toolchain' },
     { page: 'reference/glossary.md', h1: 'Глосарій' },
     { page: 'reference/roles-capabilities.md', h1: 'Ролі та можливості' },
+    { page: 'reference/implemented-features.md', h1: 'Що вже реалізовано: акаунт і адмінка' },
     { page: 'reference/author.md', h1: 'Про автора' },
     { page: 'shared/index.md', h1: 'Пакет shared' },
     { page: 'frontend/index.md', h1: 'Фронтенд' },
@@ -139,6 +140,10 @@ const EN_KEY_PAGES = [
     { page: 'en/reference/toolchain.md', h1: 'Toolchain' },
     { page: 'en/reference/glossary.md', h1: 'Glossary' },
     { page: 'en/reference/roles-capabilities.md', h1: 'Roles and capabilities' },
+    {
+        page: 'en/reference/implemented-features.md',
+        h1: 'What is implemented: account and admin area',
+    },
     { page: 'en/reference/author.md', h1: 'About the author' },
     { page: 'en/shared/index.md', h1: 'The shared package' },
     { page: 'en/frontend/index.md', h1: 'Frontend' },
