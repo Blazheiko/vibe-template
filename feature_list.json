@@ -2591,7 +2591,7 @@
             "owner": "Blazheiko",
             "branch": "feat/mfa-keys-script",
             "dependencies": ["feat-245"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
