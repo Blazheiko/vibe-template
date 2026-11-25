@@ -1,5 +1,5 @@
 import { userRepository } from '#app/repositories/index.js'
-import { asUserId } from '#app/domain/ids.js'
+import { parseUserId } from '#app/domain/ids.js'
 import logger from '#logger'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import type { SessionTokenStatus } from '#vendor/utils/session/session-token-check.js'
@@ -18,9 +18,11 @@ export const checkSessionToken = async (
     userId: string,
     userToken: string,
 ): Promise<SessionTokenStatus> => {
-    if (!/^[1-9]\d*$/.test(userId)) return 'mismatch'
+    // Text that is not a row id names no user (feat-263): a mismatch, never a lookup.
+    const id = parseUserId(userId)
+    if (id === null) return 'mismatch'
     try {
-        const current = await userRepository.findSessionToken(asUserId(userId))
+        const current = await userRepository.findSessionToken(id)
         if (current === undefined) return 'mismatch'
         return safeEqual(current, userToken) ? 'ok' : 'mismatch'
     } catch (err) {

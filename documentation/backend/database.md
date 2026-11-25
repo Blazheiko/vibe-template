@@ -159,6 +159,10 @@ SELECT extversion FROM pg_extension WHERE extname = 'vector';
 - Розмірність колонки `1536` (`EMBEDDING_COLUMN_DIMENSIONS`); `OPENAI_EMBEDDING_DIMENSIONS` має з нею збігатися, інакше старт зупиняється. Інша модель або розмірність потребує міграції колонки й переіндексації статей.
 - Векторного індексу (HNSW / IVFFlat) немає, тому пошук перебирає всі активні статті. Для бази знань підтримки на сотні статей цього достатньо; для більших обсягів варто додати індекс `USING hnsw (embedding vector_cosine_ops)` міграцією.
 
+## Брендовані id
+
+Id рядків — брендовані типи ([ADR 0007](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0007-branded-types.md), feat-263). Їх оголошено в [`database/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/ids.ts) (`UserId`, `OAuthAccountId`, `PasskeyId`, `TotpFactorId`, `OneTimeTokenRowId` для чотирьох таблиць одноразових токенів, `SmsChallengeId` — рядок-nanoid) і поставлено на колонки через `.$type<…>()`: `users.id` і кожна колонка з id користувача (`user_id`, `actor_user_id`, `target_user_id`) мають тип `UserId`. `$type` змінює лише тип TypeScript: SQL і міграції ті самі, `db:generate` не бачить змін. Схема імпортує бренди відносним `import type`, бо drizzle-kit завантажує її без `#`-аліасів. Таблиці інших доменів отримують свої бренди в наступних фічах.
+
 ## Міграції
 
 Міграції лежать у [`src/drizzle/migrations`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/drizzle/migrations) у форматі Drizzle 1.0 «тека на міграцію»: кожна тека `<timestamp>_<name>` містить `migration.sql` і `snapshot.json`. З `1.0.0-rc.5` snapshot інкрементальні (версія `9`): перша міграція зберігає повну схему (`ddl`), наступні — лише різницю (`deltas`). Snapshot старішого формату drizzle-kit не приймає і просить виконати `drizzle-kit up`; SQL міграцій ця конвертація не змінює:

@@ -31,7 +31,7 @@ describe('checkSessionToken (ADR 0002)', () => {
         await expect(checkSessionToken('7', 'old-token')).resolves.toBe('mismatch')
     })
 
-    it.each(['', '0', '-1', '1.5', 'abc', '01', '9'.repeat(40) + 'x'])(
+    it.each(['', '0', '-1', '1.5', 'abc', '01', '9'.repeat(40) + 'x', '9223372036854775808', ' 7'])(
         'mismatch without a query for the malformed user id %j',
         async (userId) => {
             await expect(checkSessionToken(userId, 'token')).resolves.toBe('mismatch')

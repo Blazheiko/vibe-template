@@ -109,12 +109,15 @@ pnpm --filter shared build
 
 Додайте таблицю в кінець [packages/backend/src/database/schema.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/schema.ts). Усі потрібні хелпери (`pgTable`, `bigserial`, `bigint`, `varchar`, `text`, `timestamp`, `index`) там уже імпортовано, а `users` оголошено вище у файлі.
 
+Id рядка — брендований тип ([ADR 0007](https://github.com/Blazheiko/vibe-template/blob/main/docs/adr/0007-branded-types.md)). Оголосіть його в [database/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/database/ids.ts) як `export type NoteId = Brand<bigint, 'NoteId'>`, додайте до `import type` у `schema.ts`, а якщо id приходить зі шляху чи query, додайте `parseNoteId` поруч із `parseUserId` в [app/domain/ids.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts). `.$type<…>()` змінює лише тип TypeScript: міграція та сама. Тоді id нотатки й id користувача не переплутати, а зовнішній рядок стає `NoteId` лише через `parseNoteId`. Приведення (`as NoteId`) поза `app/domain` — помилка ESLint (`local/no-brand-cast`).
+
 ```ts
 export const notes = pgTable(
     'notes',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<NoteId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
+            .$type<UserId>()
             .notNull()
             .references(() => users.id, { onDelete: 'cascade' }),
         title: varchar('title', { length: 200 }).notNull(),
@@ -154,7 +157,7 @@ ALTER TABLE "notes" ADD CONSTRAINT "notes_user_id_users_id_fkey" FOREIGN KEY ("u
 
 ## Крок 4. Repository
 
-Repository — єдине місце, де виконуються запити Drizzle. Патерн узято з [push-subscription-repository.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-subscription-repository.ts): типи рядків через `InferSelectModel` / `InferInsertModel`, інтерфейс `I...Repository` і об'єкт-реалізація.
+Repository — єдине місце, де виконуються запити Drizzle. Його методи приймають брендовані id, і власник іде першим: `findForUser(userId, id)`, `update(userId, id, data)` (ADR 0007, Р11). Патерн узято з [push-subscription-repository.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/repositories/notifications/push-subscription-repository.ts): типи рядків через `InferSelectModel` / `InferInsertModel`, інтерфейс `I...Repository` і об'єкт-реалізація.
 
 ```ts
 // packages/backend/src/app/repositories/note/note-repository.ts
@@ -162,13 +165,14 @@ import { db } from '#database/db.js'
 import { notes } from '#database/schema.js'
 import { desc, eq } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
+import type { UserId } from '#app/domain/ids.js'
 
 export type NoteRow = InferSelectModel<typeof notes>
 export type NoteInsert = InferInsertModel<typeof notes>
 
 export interface INoteRepository {
     create(data: NoteInsert): Promise<NoteRow>
-    findByUserId(userId: bigint): Promise<NoteRow[]>
+    findByUserId(userId: UserId): Promise<NoteRow[]>
 }
 
 export const noteRepository: INoteRepository = {
@@ -199,17 +203,18 @@ export type { NoteRow, NoteInsert } from './note/note-repository.js'
 
 ## Крок 5. Transformer
 
-Transformer перетворює рядок БД на публічний DTO: `bigint` → `string`, `Date` → ISO-рядок UTC через `toISOString()`, як у [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Внутрішні поля (`userId`) назовні не віддаються.
+Transformer перетворює рядок БД на публічний DTO: id → `string` через `toEntityId`, `Date` → ISO-рядок UTC через `toISOString()`, як у [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Внутрішні поля (`userId`) назовні не віддаються.
 
 ```ts
 // packages/backend/src/app/transformers/note-transformer.ts
 import type { Note } from 'shared'
+import { toEntityId } from '#app/domain/ids.js'
 import type { NoteRow } from '#app/repositories/index.js'
 
 export const noteTransformer = {
     serialize(note: NoteRow): Note {
         return {
-            id: String(note.id),
+            id: toEntityId(note.id),
             title: note.title,
             body: note.body,
             created_at: note.createdAt.toISOString(),
@@ -241,15 +246,16 @@ import type { Note } from 'shared'
 import { Result } from 'better-result'
 import { noteRepository } from '#app/repositories/index.js'
 import { noteTransformer } from '#app/transformers/index.js'
+import type { UserId } from '#app/domain/ids.js'
 import type { AppResult } from '#app/services/shared/errors.js'
 
 export const noteService = {
-    async getNotes(userId: bigint): Promise<AppResult<{ notes: Note[] }>> {
+    async getNotes(userId: UserId): Promise<AppResult<{ notes: Note[] }>> {
         const rows = await noteRepository.findByUserId(userId)
         return Result.ok({ notes: noteTransformer.serializeArray(rows) })
     },
 
-    async createNote(userId: bigint, payload: CreateNoteInput): Promise<AppResult<{ note: Note }>> {
+    async createNote(userId: UserId, payload: CreateNoteInput): Promise<AppResult<{ note: Note }>> {
         const created = await noteRepository.create({
             userId,
             title: payload.title,

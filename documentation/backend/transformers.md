@@ -26,7 +26,7 @@ flowchart LR
 
 Трансформери в [`app/transformers/`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/index.ts) — це об'єкти з методами `serialize` / `serializeArray` (у push-підписок ще `serializeWithLogs` / `serializeArrayWithLogs`, у логів push — `serializeSummary`). Є `userTransformer`, `pushSubscriptionTransformer`, `pushNotificationLogTransformer` і `promptTransformer`. Вони:
 
-- приводять `bigint` id до `string`;
+- приводять id до `string` через `toEntityId` з [`app/domain/ids.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/domain/ids.ts) (брендований id стає рядком на дроті, ADR 0007);
 - переводять `Date` у ISO-рядок UTC через `toISOString()` (формат `2026-10-25T10:00:00.000Z` не залежить від часового поясу процесу); `userTransformer` і `pushSubscriptionTransformer` ще перейменовують `createdAt`/`updatedAt` → `created_at`/`updated_at`;
 - прибирають чутливі поля: [user-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/user-transformer.ts) відкидає `password` і `sessionToken` (простір імен сесій у Redis, див. [Автентифікація](/backend/auth#що-таке-usertoken)) і додає похідне `emailVerified: boolean`.
 
