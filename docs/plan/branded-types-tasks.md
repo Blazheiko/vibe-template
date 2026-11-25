@@ -3,6 +3,9 @@
 Джерело: [`branded-types-plan.md`](./branded-types-plan.md) (редакція 5, рішення Р1–Р13). Базовий шлях:
 `packages/backend/src/`, якщо не вказано інше. Коміт для посилань на рядки: `e298f08`.
 
+**v2.1:** модулі, які імпортує `database/schema.ts` (зокрема `newSessionToken` для `$defaultFn`), не мають
+`#`-імпортів, бо drizzle-kit виконує схему без аліасів. HMAC `mfaBinding` лишається в `mfa-ticket.ts` (T16, T30, T31).
+
 **v2 — після рев'ю task list:**
 
 - Усі конструктори брендів (id, секрети, email) живуть у `app/domain/`, тож виняток `no-brand-cast` за шляхом
@@ -248,6 +251,10 @@
 - [ ] Правило для всіх наступних фіч: **бренд створюється лише в `app/domain/`** (`ids.ts`, а згодом `secrets.ts`,
       `email.ts`, `time.ts`) або в `shared/brand`. Сервіси імпортують конструктори звідти. `services/**` у винятки не
       додається.
+- [ ] Модулі `app/domain/**` **не мають `#`-імпортів** (`#config`, `#app`, `#vendor`), лише відносні імпорти,
+      `shared/*` і `node:*`. Тоді будь-який з них можна відносно імпортувати в `database/schema.ts`, і drizzle-kit
+      не падає. Конструктор, якому потрібен конфіг або інфраструктура, лишається у своєму сервісі й викликає чистий
+      конструктор із `app/domain/` (як `mfaBinding` у T30).
 - [ ] Тести RuleTester:
     - **помилки:** `x as UserId`, `x as U` (перейменований імпорт), `x as Alias` (`type Alias = UserId`),
       `x as unknown as UserId`, `<UserId>x`, `x as UserId | null`;
@@ -370,12 +377,17 @@
 
 - [ ] `SessionToken`:
     - `users.session_token` отримує `$type<SessionToken>()` і `$defaultFn(newSessionToken)`;
+    - `newSessionToken()` (nanoid + бренд) лежить в `app/domain/secrets.ts` без `#`-імпортів, а `schema.ts`
+      імпортує його відносним шляхом (`../app/domain/secrets.js`). Це перший runtime-імпорт у `schema.ts`, тому
+      одразу після нього запускається `db:generate`;
     - `checkSessionToken(userId, userToken: SessionToken)`;
     - `isSessionStored(sessionId: SessionId, userToken: SessionToken)`.
 - [ ] Рядкові id: `SessionId`, `TicketId`, `CompletionId`, `ReservationId`, `AttemptId` у `mfa-ticket.ts`,
       `mfa-sign-in.ts`, `ws-session-revocation.ts`, `generate-ws-token-service.ts`.
 - [ ] `MfaBindValue` / `MfaBinding`: `newBindValue(): MfaBindValue`, `mfaBinding(bindValue: MfaBindValue): MfaBinding`
       (`mfa-ticket.ts:75-81`).
+    - `mfaBinding` читає `appConfig.key` (`#config`), тому лишається в `mfa-ticket.ts`. Бренд результату він
+      отримує через чистий `asMfaBinding(hmac: string)` з `app/domain/secrets.ts`.
 - [ ] Тест типів: `MfaBindValue` не порівнюється і не присвоюється з `MfaBinding` (і навпаки).
 - [ ] У vendor-типі сесії токени лишаються `string` (Р13). Бренд з'являється на межі app.
 
@@ -383,7 +395,9 @@
 
 - [ ] `make test-redis` (лічильники): сесія з `userToken` читається як і раніше; MFA-тікет проходить reserve / reopen.
 - [ ] `make test-pg` (лічильники): скидання пароля, підтвердження email, коди відновлення.
-- [ ] `pnpm --filter backend db:generate` без нової міграції (T28–T30 змінюють `database/schema.ts`).
+- [ ] `pnpm --filter backend db:generate` без нової міграції (T28–T30 змінюють `database/schema.ts`). Окремо
+      перевіряється, що drizzle-kit завантажує схему разом із runtime-імпортом `newSessionToken`, тобто не падає на
+      нерозв'язаному `#`-аліасі.
 - [ ] Golden path: скидання пароля, вхід з TOTP, вхід кодом відновлення.
 
 ### T32 · Закриття

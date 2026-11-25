@@ -247,6 +247,9 @@
       `RawRecoveryCode → normalizeRecoveryCode → NormalizedRecoveryCode | null → hashRecoveryCode → RecoveryCodeHash`.
     - `SessionToken` — це поле `users.session_token` і `userToken` у сесії. Дефолт колонки викликає конструктор
       `newSessionToken()` замість голого `nanoid()`.
+      `newSessionToken` лежить у модулі без `#`-імпортів, і `schema.ts` імпортує його відносно, бо drizzle-kit
+      виконує схему без аліасів. Модулі `app/domain/**` загалом не мають `#`-імпортів, тому `mfaBinding`, якому
+      потрібен `#config`, лишається в `mfa-ticket.ts` і брендує результат чистим `asMfaBinding`.
     - Рядкові id сесії та MFA: `SessionId`, `TicketId`, `CompletionId`, `ReservationId`, `AttemptId`.
     - Хешувальна функція приймає лише свій вхідний стан (сирий токен, або `NormalizedRecoveryCode` для кодів
       відновлення) і повертає лише хеш. Репозиторії шукають лише за хешем.
