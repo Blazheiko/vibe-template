@@ -64,6 +64,15 @@ test('isValidEntityId takes canonical ids up to the bigint bound only', () => {
     for (const value of INVALID_IDS) assert.ok(!isValidEntityId(value), JSON.stringify(value))
 })
 
+test('an id past the bigint bound is refused with a readable message', () => {
+    for (const schema of [EntityIdSchema, EntityIdStringSchema]) {
+        const refused = schema('9223372036854775808')
+        assert.ok(refused instanceof type.errors)
+        assert.match(refused.summary, new RegExp(`at most ${MAX_ENTITY_ID}`))
+        assert.doesNotMatch(refused.summary, /anonymous predicate/)
+    }
+})
+
 test('EntityIdSchema and EntityIdStringSchema accept what isValidEntityId accepts', () => {
     assert.equal(EntityIdSchema('42'), '42')
     assert.equal(EntityIdStringSchema('42'), '42')
