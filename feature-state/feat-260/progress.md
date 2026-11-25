@@ -47,17 +47,22 @@ docs `documentation/backend/mfa.md` (new section «Ключі шифруванн
 backend mfa:keys`) or the built image (`node dist/scripts/mfa-keys.js`, printing and `--check`
    only), the value kept in the environment's secrets.
 
+Second review (non-blocking), fixed as well: CRLF line ends are kept on replace and append; a
+failed write (not only a failed rename) removes the temporary file (test with `writeSync`
+throwing ENOSPC); a dangling `.env` symlink is followed, its target created and the link kept;
+the docs section «Ключі шифрування» / "Encryption keys" is split into points.
+
 New modules: `mfa-keys-env.ts` (dotenv read, plain-line write, atomic locked update) and
 `mfa-keys-run.ts` (the whole run, testable against a temporary directory); `mfa-keys.ts` only
 prints its result.
 
 ## Evidence of Completion
 
-- `make check` green after the fixes: backend 3738 (36 in `src/scripts/mfa-keys*`), frontend
+- `make check` green after both reviews: backend 3742 (40 in `src/scripts/mfa-keys*`), frontend
   1017, shared 149, landing 103, api-playground 115, documentation 26.
 - Mutation checks (reverted): reading `.env` with the old line regex fails 3 run tests
   (`export`, spaces, the refused rewrite); ignoring `APP_KEY` on a first write fails both dev-key
-  tests. The one lint warning
+  tests; dropping the temporary-file cleanup fails the ENOSPC test. The one lint warning
   (`frontend/e2e/mock/notifications.spec.ts:225`, `no-wait-for-timeout`) is on `main` already.
 - `pnpm docs:build && pnpm docs:verify`: passed (links and anchors of the new section included).
 - No PG, Redis or UI code changed: `test:pg`, `test:redis`, `test:e2e` are not in scope.

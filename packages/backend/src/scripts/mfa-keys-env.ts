@@ -2,15 +2,18 @@ import {
     closeSync,
     existsSync,
     fsyncSync,
+    lstatSync,
     openSync,
     readFileSync,
+    readlinkSync,
     realpathSync,
     renameSync,
+    rmSync,
     statSync,
     unlinkSync,
     writeSync,
 } from 'node:fs'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 
 import { parse } from 'dotenv'
 
@@ -45,10 +48,12 @@ export function setEnvKey(
         definitionPattern(key).test(line) ? [index] : [],
     )
     const line = `${key}="${value}"`
+    // A file with CRLF line ends keeps them: the new line ends like the rest of the file.
+    const eol = content.includes('\r\n') ? '\r\n' : '\n'
     let result: string
     if (defined.length === 0) {
-        const separator = content === '' || content.endsWith('\n') ? '' : '\n'
-        result = `${content}${separator}${line}\n`
+        const separator = content === '' || content.endsWith('\n') ? '' : eol
+        result = `${content}${separator}${line}${eol}`
     } else {
         const [index] = defined
         if (
@@ -64,7 +69,7 @@ export function setEnvKey(
                     'line first',
             }
         }
-        lines[index] = line
+        lines[index] = (lines[index] ?? '').endsWith('\r') ? `${line}\r` : line
         result = lines.join('\n')
     }
     if (readEnvKey(result, key) !== value) {
@@ -74,16 +79,36 @@ export function setEnvKey(
 }
 
 /**
+ * The file a path names: a symlink is followed to its target, a dangling one included (its
+ * target is created, the link is not replaced by a regular file).
+ */
+function resolveTarget(path: string): string {
+    let current = path
+    for (let depth = 0; depth < 40; depth += 1) {
+        let stats
+        try {
+            stats = lstatSync(current)
+        } catch {
+            return current
+        }
+        if (!stats.isSymbolicLink()) return realpathSync(current)
+        current = resolve(dirname(current), readlinkSync(current))
+    }
+    throw new Error(`${path}: too many symbolic links`)
+}
+
+/**
  * Runs read → update → write of a file under a lock file, so two runs cannot interleave, and
  * replaces the file atomically (a temporary file in the same directory, fsync, rename) with the
  * mode of the old one. `update` returns the new content, or null to leave the file as it is.
- * A symlink is followed: its target is replaced.
+ * A symlink is followed, a dangling one too: its target is written, the link stays. A temporary
+ * file is removed on any failure, so no copy of the secret is left behind.
  */
 export function updateFileAtomically<T>(
     path: string,
     update: (content: string) => { content: string | null; result: T },
 ): T {
-    const target = existsSync(path) ? realpathSync(path) : path
+    const target = resolveTarget(path)
     const lock = `${target}.lock`
     let lockFd: number
     try {
@@ -110,15 +135,15 @@ export function updateFileAtomically<T>(
             )
             const fd = openSync(temporary, 'wx', mode)
             try {
-                writeSync(fd, next)
-                fsyncSync(fd)
-            } finally {
-                closeSync(fd)
-            }
-            try {
+                try {
+                    writeSync(fd, next)
+                    fsyncSync(fd)
+                } finally {
+                    closeSync(fd)
+                }
                 renameSync(temporary, target)
             } catch (err) {
-                unlinkSync(temporary)
+                rmSync(temporary, { force: true })
                 throw err
             }
         }

@@ -1,4 +1,5 @@
 import {
+    mkdirSync,
     mkdtempSync,
     readFileSync,
     rmSync,
@@ -36,6 +37,21 @@ describe('mfa:keys .env writing (feat-260)', () => {
         expect(setEnvKey(`${KEY}="k1:old"\n`, KEY, 'k2:y,k1:old')).toEqual({
             ok: true,
             content: `${KEY}="k2:y,k1:old"\n`,
+        })
+    })
+
+    it('keeps CRLF line ends', () => {
+        expect(setEnvKey(`A=1\r\n${KEY}=\r\nB=2\r\n`, KEY, 'k1:x')).toEqual({
+            ok: true,
+            content: `A=1\r\n${KEY}="k1:x"\r\nB=2\r\n`,
+        })
+        expect(setEnvKey('A=1\r\n', KEY, 'k1:x')).toEqual({
+            ok: true,
+            content: `A=1\r\n${KEY}="k1:x"\r\n`,
+        })
+        expect(setEnvKey('A=1\r\nB=2', KEY, 'k1:x')).toEqual({
+            ok: true,
+            content: `A=1\r\nB=2\r\n${KEY}="k1:x"\r\n`,
         })
     })
 
@@ -118,6 +134,31 @@ describe('mfa:keys atomic update (feat-260)', () => {
             return { content: 'B=2\n', result: null }
         })
         expect(readFileSync(path, 'utf8')).toBe('B=2\n')
+    })
+
+    it('a dangling symlink: its target is created and the link stays', () => {
+        const target = join(dir, 'real.env')
+        const link = join(dir, '.env')
+        symlinkSync('real.env', link)
+        updateFileAtomically(link, () => ({ content: 'A=1\n', result: null }))
+        expect(lstatSync(link).isSymbolicLink()).toBe(true)
+        expect(readFileSync(target, 'utf8')).toBe('A=1\n')
+    })
+
+    it('a failed write leaves no temporary file with the secret behind', () => {
+        const path = join(dir, '.env')
+        writeFileSync(path, 'A=1\n')
+        // After the read, a non-empty directory takes the file's place: the rename fails. The
+        // write and the rename share one cleanup, so a failed write is cleaned up the same way.
+        expect(() =>
+            updateFileAtomically(path, () => {
+                rmSync(path)
+                mkdirSync(path)
+                writeFileSync(join(path, 'x'), '')
+                return { content: 'SECRET=1\n', result: null }
+            }),
+        ).toThrow()
+        expect(readdirSync(dir)).toEqual(['.env'])
     })
 
     it('follows a symlink and replaces its target', () => {
