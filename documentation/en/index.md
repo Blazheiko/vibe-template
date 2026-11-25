@@ -242,6 +242,10 @@ Below is the functionality you can use right away. The API prefix by default is 
 | Linking a phone / email           | `link-phone/start`, `link-phone/confirm`, `link-email/start`                                 | [Authentication](/en/backend/auth)                         |
 | User avatar                       | `POST /avatar/upload` (S3/MinIO), `DELETE /avatar`                                           | [File storage](/en/backend/storage)                        |
 | Roles                             | A user and four staff roles with permissions, the `auth_guard` and `can:<permission>` guards | [Roles and capabilities](/en/reference/roles-capabilities) |
+| Profile editing                   | Name, language, time zone; theme and font size sync between devices                          | [Account](/en/backend/account)                             |
+| Active sessions                   | List of sign-ins, the current one marked, end one or all other sessions                      | [Account](/en/backend/account#active-sessions)             |
+| Role assignment                   | An admin changes a user's role under a delegation policy                                     | [Roles and capabilities](/en/reference/roles-capabilities) |
+| Two-step sign-in (MFA)            | TOTP, passkeys, recovery codes, step-up for sensitive actions                                | [MFA](/en/backend/mfa)                                     |
 
 ### Security
 
@@ -270,8 +274,9 @@ More details: [WebSocket](/en/backend/websocket).
 
 - **Transactional emails** via SMTP (nodemailer): email confirmation, password reset. There is a `send-test-email` script for checking the settings.
 - **Web Push** (VAPID): subscription, update, deactivation, test sending, a delivery log and statistics for each subscription (`/push-subscriptions/*`).
+- **Notification center:** in-app history, unread counter, opening the object on click, email and push settings per category.
 
-More details: [Mail](/en/backend/mail) and [Web Push notifications](/en/backend/web-push-notification).
+More details: [Mail](/en/backend/mail), [Web Push notifications](/en/backend/web-push-notification) and [Notification center](/en/backend/notifications).
 
 ### Files
 
@@ -294,9 +299,11 @@ More details: [AI integrations](/en/backend/ai).
 
 - A list of users.
 - Who is online now (updated in real time via WebSocket) and online history.
-- Management of the knowledge base and AI prompts, AI usage statistics.
+- Management of the knowledge base, AI usage statistics; AI prompts are edited through the API.
+- Audit log: who changed what and when in sign-in methods, sessions, the knowledge base and prompts ([Audit log](/en/backend/audit-log)).
+- Role assignment and resetting another account's MFA.
 
-Access only for the administrator role — [Roles and capabilities](/en/reference/roles-capabilities).
+Staff roles have access according to their permissions — [Roles and capabilities](/en/reference/roles-capabilities). The full list, including what is not built yet, is on the page [What is implemented](/en/reference/implemented-features).
 
 ### Frontend
 
