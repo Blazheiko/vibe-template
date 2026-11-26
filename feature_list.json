@@ -2671,7 +2671,7 @@
             "owner": "Blazheiko",
             "branch": "feat/shared-frontend-brands",
             "dependencies": ["feat-263"],
-            "status": "not-started",
+            "status": "in_progress",
             "evidence": ""
         }
     ]
