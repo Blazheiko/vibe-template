@@ -2,7 +2,7 @@
 
 ## Current state
 
-Implementation complete (T37–T42 of `docs/plan/branded-types-tasks.md`), waiting for CI and review.
+Implementation complete (T37–T42 of `docs/plan/branded-types-tasks.md`), CI green, in review.
 
 ## What changed
 
@@ -30,7 +30,8 @@ Implementation complete (T37–T42 of `docs/plan/branded-types-tasks.md`), waiti
 - `pnpm docs:build && pnpm docs:verify`: all checks passed.
 - Local Redis (throwaway `redis:7-alpine`): `mfa-ticket.redis.test.ts`, `redis-lease.redis.test.ts`,
   `scheduler/*` — 5 files, 41 passed, 0 skipped.
-- `test-pg` / `test-redis` CI jobs: to be recorded from the PR run.
+- CI on PR #859: `test-pg` 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45831328710); `test-redis` 20 files /
+  213 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45831328623).
 - Golden path: no runtime behaviour change; units are the same numbers as before (verified by the
   TTL/PTTL tests and the unchanged unit suites).
 
