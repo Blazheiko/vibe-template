@@ -257,6 +257,7 @@ import { noteTransformer } from '#app/transformers/index.js'
 import { notFound, type AppResult } from '#app/services/shared/errors.js'
 import { withCurrentSession } from '#app/services/auth/session-guard.js'
 import type { NoteId, UserId } from '#app/domain/ids.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 const noteNotFound = () => notFound('Note', 'Note not found')
 
@@ -277,7 +278,7 @@ export const noteService = {
     async createNote(
         userId: UserId,
         payload: CreateNoteInput,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
     ): Promise<AppResult<{ note: Note }>> {
         return await withCurrentSession(userId, presentedSessionToken, async (tx) => {
             const created = await noteRepository.create(
@@ -322,6 +323,7 @@ import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { parseNoteId } from '#app/domain/ids.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { noteService } from '#app/services/note/note-service.js'
 import { notFound, unauthorized } from '#app/services/shared/errors.js'
 import type { CreateNoteResponse, GetNoteResponse, GetNotesResponse } from 'shared'
@@ -358,7 +360,7 @@ export default {
         const result = await noteService.createNote(
             userId,
             payload,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
         )
         return respond(context, result, (value) => ({ status: 'success', note: value.note }))
     },
@@ -470,6 +472,8 @@ barrel `#app/repositories/index.js` with `vi.mock`, load the service via dynamic
 `vi.resetModules()` + `vi.clearAllMocks()` in `afterEach`, don't mock the transformer, assert with
 `Result.isOk` / `Result.isError`, and include a test that a repository failure **rejects** (not a
 Result). Copy the shape from the tutorial's Step 9 or `push-subscription-service.spec.ts`.
+Ids passed to the service are branded: build them with `uid(7)` / `eid(…)` from
+`src/test-support/ids.ts`, never a bare `7n` (it does not compile against `UserId`).
 Code using `withCurrentSession` also needs `userRepository.lockById` / `withTransaction` in the mock.
 
 ## Step 11: Verify (Definition of Done)
@@ -496,14 +500,15 @@ Same chain (ADR 0006, `docs/adr/0006-websocket-contracts.md`): contract → regi
    `export const noteWsSchemas = contractSchemas(noteWsContracts, { update: { body: …, response: … } })`,
    then add it to `mergeContractSchemas(...)`.
 3. **Controller** in `backend/src/app/controllers/ws/`. `WsContext` has no `session`/`auth`; the user
-   is `context.userData` (`null` when anonymous). Errors via `respondWs` / `mapWsControllerError`.
+   is `context.userData` (`null` when anonymous); its `userId` is text the app wrote itself, so
+   `asUserId` (`#app/domain/ids.js`) brands it. Errors via `respondWs` / `mapWsControllerError`.
 
     ```ts
     async update(context: WsContext<UpdateNoteWsInput>): Promise<UpdateNoteWsResponse> {
         const { userData } = context
         if (userData?.userId === undefined) return appErrorToPayload(unauthorized())
         const payload = getTypedPayload(context)
-        const result = await noteService.updateNote(BigInt(userData.userId), …)
+        const result = await noteService.updateNote(asUserId(userData.userId), …)
         return respondWs(context, result, (value) => ({ status: 'ok', note: value.note }))
     }
     ```

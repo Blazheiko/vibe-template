@@ -217,7 +217,7 @@ vi.mock('#app/repositories/index.js', () => ({
 }))
 
 userRepositoryMock.findById.mockResolvedValue({ id: 7n, name: 'Alice', avatar: null })
-const result = await avatarService.uploadAvatar(7n, file)
+const result = await avatarService.uploadAvatar(uid(7), file) // uid: test-support/ids.ts
 expect(Result.isOk(result)).toBe(true)
 ```
 

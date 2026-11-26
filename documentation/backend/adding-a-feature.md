@@ -18,27 +18,31 @@ Claude Code може пройти ці кроки сам: у репозитор�
 
 ## Що буде створено
 
-| Шар                  | Файл                                                                | Дія         |
-| -------------------- | ------------------------------------------------------------------- | ----------- |
-| Shared: вхід         | `packages/shared/src/schemas/note/create-note.ts`                   | новий       |
-| Shared: вхід         | `packages/shared/src/schemas/index.ts`                              | редагування |
-| Shared: відповіді    | `packages/shared/src/responses/note-controller.ts`                  | новий       |
-| Shared: відповіді    | `packages/shared/src/responses/index.ts`                            | редагування |
-| Таблиця              | `packages/backend/src/database/schema.ts`                           | редагування |
-| Міграція             | `packages/backend/src/drizzle/migrations/<timestamp>_add_notes/`    | генерується |
-| Repository           | `packages/backend/src/app/repositories/note/note-repository.ts`     | новий       |
-| Repository (barrel)  | `packages/backend/src/app/repositories/index.ts`                    | редагування |
-| Transformer          | `packages/backend/src/app/transformers/note-transformer.ts`         | новий       |
-| Transformer (barrel) | `packages/backend/src/app/transformers/index.ts`                    | редагування |
-| Service              | `packages/backend/src/app/services/note/note-service.ts`            | новий       |
-| Controller           | `packages/backend/src/app/controllers/http/note/note-controller.ts` | новий       |
-| Shared: контракт     | `packages/shared/src/contracts/notes.ts`                            | новий       |
-| Shared: контракт     | `packages/shared/src/contracts/index.ts`                            | редагування |
-| Реєстр схем          | `packages/backend/src/app/routes/contract-schemas/notes.ts`         | новий       |
-| Реєстр схем          | `packages/backend/src/app/routes/contract-schemas/index.ts`         | редагування |
-| Маршрути             | `packages/backend/src/app/routes/http-routes.ts`                    | редагування |
-| Виклик з фронтенду   | `packages/frontend/src/utils/api.ts`                                | редагування |
-| Тест                 | `packages/backend/src/app/services/note/note-service.spec.ts`       | новий       |
+| Шар                  | Файл                                                                | Дія             |
+| -------------------- | ------------------------------------------------------------------- | --------------- |
+| Shared: вхід         | `packages/shared/src/schemas/note/create-note.ts`                   | новий           |
+| Shared: вхід         | `packages/shared/src/schemas/index.ts`                              | редагування     |
+| Shared: відповіді    | `packages/shared/src/responses/note-controller.ts`                  | новий           |
+| Shared: відповіді    | `packages/shared/src/responses/index.ts`                            | редагування     |
+| Таблиця              | `packages/backend/src/database/schema.ts`                           | редагування     |
+| Бренд id             | `packages/backend/src/database/ids.ts`                              | редагування     |
+| Конструктор id       | `packages/backend/src/app/domain/ids.ts`                            | редагування (*) |
+| Міграція             | `packages/backend/src/drizzle/migrations/<timestamp>_add_notes/`    | генерується     |
+| Repository           | `packages/backend/src/app/repositories/note/note-repository.ts`     | новий           |
+| Repository (barrel)  | `packages/backend/src/app/repositories/index.ts`                    | редагування     |
+| Transformer          | `packages/backend/src/app/transformers/note-transformer.ts`         | новий           |
+| Transformer (barrel) | `packages/backend/src/app/transformers/index.ts`                    | редагування     |
+| Service              | `packages/backend/src/app/services/note/note-service.ts`            | новий           |
+| Controller           | `packages/backend/src/app/controllers/http/note/note-controller.ts` | новий           |
+| Shared: контракт     | `packages/shared/src/contracts/notes.ts`                            | новий           |
+| Shared: контракт     | `packages/shared/src/contracts/index.ts`                            | редагування     |
+| Реєстр схем          | `packages/backend/src/app/routes/contract-schemas/notes.ts`         | новий           |
+| Реєстр схем          | `packages/backend/src/app/routes/contract-schemas/index.ts`         | редагування     |
+| Маршрути             | `packages/backend/src/app/routes/http-routes.ts`                    | редагування     |
+| Виклик з фронтенду   | `packages/frontend/src/utils/api.ts`                                | редагування     |
+| Тест                 | `packages/backend/src/app/services/note/note-service.spec.ts`       | новий           |
+
+(*) Лише якщо id нотатки приходить зі шляху чи query (`parseNoteId`); маршрути списку й створення в туторіалі його не беруть.
 
 ## Крок 1. Схема вхідних даних у `shared`
 
@@ -432,6 +436,7 @@ export const noteApi = {
 // packages/backend/src/app/services/note/note-service.spec.ts
 import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 const noteRepositoryMock = {
     create: vi.fn(),
@@ -456,7 +461,7 @@ describe('noteService', () => {
         noteRepositoryMock.findByUserId.mockResolvedValue([
             {
                 id: 1n,
-                userId: 7n,
+                userId: uid(7),
                 title: 'Hello',
                 body: null,
                 createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -464,9 +469,9 @@ describe('noteService', () => {
         ])
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.getNotes(7n)
+        const result = await noteService.getNotes(uid(7))
 
-        expect(noteRepositoryMock.findByUserId).toHaveBeenCalledWith(7n)
+        expect(noteRepositoryMock.findByUserId).toHaveBeenCalledWith(uid(7))
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
             expect(result.value.notes).toHaveLength(1)
@@ -484,10 +489,10 @@ describe('noteService', () => {
         )
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.createNote(7n, { title: 'Todo' })
+        const result = await noteService.createNote(uid(7), { title: 'Todo' })
 
         expect(noteRepositoryMock.create).toHaveBeenCalledWith({
-            userId: 7n,
+            userId: uid(7),
             title: 'Todo',
             body: null,
         })
@@ -503,7 +508,7 @@ describe('noteService', () => {
 
         const { noteService } = await loadNoteService()
 
-        await expect(noteService.getNotes(7n)).rejects.toThrow('db down')
+        await expect(noteService.getNotes(uid(7))).rejects.toThrow('db down')
     })
 })
 ```

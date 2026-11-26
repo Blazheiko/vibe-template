@@ -29,7 +29,7 @@ flowchart LR
 
 - `http/` — обробники HTTP-маршрутів, згруповані за доменом;
 - `ws/` — обробники WebSocket-подій ([admin-ws-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/admin-ws-controller.ts), [support-controller.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/ws/support-controller.ts));
-- `shared/` — `respond` / `respondWs` і `mapControllerError` / `mapWsControllerError` ([controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts)) і `requireUserId` ([require-user-id.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/require-user-id.ts)): id користувача сесії як `bigint` або `null`, і тоді контролер відповідає `mapControllerError(context, unauthorized())`.
+- `shared/` — `respond` / `respondWs` і `mapControllerError` / `mapWsControllerError` ([controller-error.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/controller-error.ts)) і `requireUserId` ([require-user-id.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/require-user-id.ts)): id користувача сесії як `UserId` (брендований `bigint`, ADR 0007) або `null`, і тоді контролер відповідає `mapControllerError(context, unauthorized())`.
 
 Окремої теки `static/` у контролерах немає: роздача статики живе у vendor-шарі.
 
@@ -100,19 +100,19 @@ context.logger.error({ err: result.error }, 'Failed to load history')
 
 Усе, що прийшло від клієнта. Об'єкт тільки для читання.
 
-| Поле          | Тип                                                   | Опис                                                                                                                                                                             |
-| ------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `method`      | `Method`                                              | HTTP-метод маршруту (`'get'`, `'post'`, …).                                                                                                                                      |
-| `ip`          | `string \| null \| undefined`                         | IP клієнта (з урахуванням довірених проксі).                                                                                                                                     |
-| `params`      | `TParams` (за замовчуванням `Record<string, string>`) | Параметри шляху (`:id` → `params.id`) — третій параметр `HttpContext`: `ParamsOf<typeof contracts.get>` з контракту маршруту. Завжди рядки — числа й `bigint` перетворюйте самі. |
-| `payload`     | `TPayload \| null`                                    | Тіло запиту після валідатора маршруту. Читайте через `getTypedPayload(context)`, а не напряму.                                                                                   |
-| `query`       | `TQuery`                                              | Провалідований об'єкт query, **не** `URLSearchParams`. Без `queryValidator` — `null` (звертання до полів — помилка TS). Див. [Валідація](/backend/validation).                   |
-| `headers`     | `Map<string, string>`                                 | Заголовки запиту, імена в нижньому регістрі: `headers.get('user-agent')`.                                                                                                        |
-| `contentType` | `string \| undefined`                                 | `Content-Type` запиту.                                                                                                                                                           |
-| `cookies`     | `Map<string, string>`                                 | Cookies запиту: `cookies.get('name')`.                                                                                                                                           |
-| `isJson`      | `boolean`                                             | Чи тіло прийшло як JSON.                                                                                                                                                         |
-| `files`       | `Map<string, UploadedFile> \| null`                   | Файли з `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null`, якщо файлів немає.                                                                         |
-| `hasFile`     | `(name: string) => boolean`                           | Чи є файл з таким іменем поля.                                                                                                                                                   |
+| Поле          | Тип                                                   | Опис                                                                                                                                                                                                                 |
+| ------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`      | `Method`                                              | HTTP-метод маршруту (`'get'`, `'post'`, …).                                                                                                                                                                          |
+| `ip`          | `string \| null \| undefined`                         | IP клієнта (з урахуванням довірених проксі).                                                                                                                                                                         |
+| `params`      | `TParams` (за замовчуванням `Record<string, string>`) | Параметри шляху (`:id` → `params.id`) — третій параметр `HttpContext`: `ParamsOf<typeof contracts.get>` з контракту маршруту. Завжди рядки: id проходить через конструктор свого бренду (`parseNoteId`…, див. вище). |
+| `payload`     | `TPayload \| null`                                    | Тіло запиту після валідатора маршруту. Читайте через `getTypedPayload(context)`, а не напряму.                                                                                                                       |
+| `query`       | `TQuery`                                              | Провалідований об'єкт query, **не** `URLSearchParams`. Без `queryValidator` — `null` (звертання до полів — помилка TS). Див. [Валідація](/backend/validation).                                                       |
+| `headers`     | `Map<string, string>`                                 | Заголовки запиту, імена в нижньому регістрі: `headers.get('user-agent')`.                                                                                                                                            |
+| `contentType` | `string \| undefined`                                 | `Content-Type` запиту.                                                                                                                                                                                               |
+| `cookies`     | `Map<string, string>`                                 | Cookies запиту: `cookies.get('name')`.                                                                                                                                                                               |
+| `isJson`      | `boolean`                                             | Чи тіло прийшло як JSON.                                                                                                                                                                                             |
+| `files`       | `Map<string, UploadedFile> \| null`                   | Файли з `multipart/form-data`: `{ name, filename, type, data: ArrayBuffer }`. `null`, якщо файлів немає.                                                                                                             |
+| `hasFile`     | `(name: string) => boolean`                           | Чи є файл з таким іменем поля.                                                                                                                                                                                       |
 
 ```ts
 async getItem(context: HttpContext<unknown, ListQuery, ParamsOf<typeof itemContracts.get>>) {
@@ -171,7 +171,7 @@ await context.session.updateSessionData({ locale: 'uk' })
 
 | Метод                      | Опис                                                                                                                                                                                                                                                                                         |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `getUserId()`              | `userId` поточного користувача як **рядок** або `null`. Для репозиторіїв перетворюйте: `BigInt(userId)`.                                                                                                                                                                                     |
+| `getUserId()`              | `userId` поточного користувача як **рядок** або `null`. Контролер бере id як `UserId` через `requireUserId(context)`.                                                                                                                                                                        |
 | `check()`                  | `true`, якщо користувач залогінений.                                                                                                                                                                                                                                                         |
 | `login(userId, userToken)` | Знищує стару сесію, створює нову з `userId`/`userToken` і ставить нову cookie (захист від session fixation). Повертає `false`, якщо аргумент `undefined`.                                                                                                                                    |
 | `logout()`                 | Видаляє поточну сесію і видає нову анонімну. Повертає `true`.                                                                                                                                                                                                                                |
@@ -239,7 +239,7 @@ subscribeOnlineUsers(context: WsContext): AdminOnlineUsersWsResponse {
 
 | Поле                       | Опис                                                                                                                                                                       |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `userId`                   | `string \| undefined` — id користувача; для сервісів `BigInt(userId)`.                                                                                                     |
+| `userId`                   | `string \| undefined` — id користувача; для сервісів брендуйте його через `asUserId(userId)`.                                                                              |
 | `sessionId`, `userToken`   | Сесія, з якою відкрито з'єднання.                                                                                                                                          |
 | `uuid`                     | Унікальний id з'єднання (один користувач може мати кілька вкладок).                                                                                                        |
 | `role`                     | Роль із каталогу `shared/access` (`user`, `support_operator`, `kb_editor`, `user_admin`, `admin`); її оновлює [синхронізація ролі](/backend/websocket#синхронізація-ролі). |
@@ -258,7 +258,7 @@ if (userData?.userId === undefined) {
     return appErrorToPayload(unauthorized())
 }
 const payload = getTypedPayload(context)
-void supportService.chat(BigInt(userData.userId), payload.message, userData.uuid, context.signal)
+void supportService.chat(asUserId(userData.userId), payload.message, userData.uuid, context.signal)
 ```
 
 ## Повернення даних і статус

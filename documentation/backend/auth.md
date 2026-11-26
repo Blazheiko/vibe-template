@@ -41,7 +41,7 @@ uwebsocket:auth:ws:<token>                       одноразовий WebSocke
 | Метод                      | Повертає                         | Що робить                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | -------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `check()`                  | `boolean`                        | `true`, якщо в сесії є `userId`, тобто користувач залогінений. Те саме перевіряє `auth_guard`.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `getUserId()`              | `string \| null`                 | id користувача з сесії рядком або `null` для гостя. Для запиту до БД перетворіть на `BigInt(userId)`.                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `getUserId()`              | `string \| null`                 | id користувача з сесії рядком або `null` для гостя. Контролер бере його як `UserId` через `requireUserId(context)` ([require-user-id.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/controllers/shared/require-user-id.ts), ADR 0007), а не через `BigInt(userId)`.                                                                                                                                                                                                                                              |
 | `getPresentedUserToken()`  | `string \| undefined`            | `userToken` сесії, з якою **прийшов** запит, якщо `session_web` перевірив її як актуальну (ADR 0002); `undefined` для гостя чи відкликаної сесії. Значення фіксується при відновленні сесії і не змінюється до кінця запиту: `login`, `logout` чи оновлення сесії його не замінюють. Сервіси порівнюють його з `users.session_token` під час зміни облікових даних (див. [Зміни облікових даних із сесії](#зміни-облікових-даних-із-сесіі)).                                                                                                        |
 | `login(userId, userToken)` | `Promise<boolean>`               | **Логінить** користувача: видаляє поточну сесію (гостьову чи іншого користувача), створює нову з новим `sessionId` і CSRF-токеном, ставить cookie у відповідь. `userId` — `String(user.id)`, `userToken` — `user.sessionToken` з таблиці `users`. Якщо будь-який аргумент `undefined`, нічого не робить і повертає `false`. Помилку Redis кидає далі.                                                                                                                                                                                               |
 | `logout()`                 | `Promise<boolean>`               | **Розлогінює** на цьому пристрої: видаляє поточну сесію і видає нову гостьову з новим CSRF-токеном.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -97,15 +97,15 @@ async logout(context: HttpContext<EmptyFormInput>): Promise<LogoutResponse> {
 ### Перевірити, хто робить запит
 
 ```ts
-async getProfile(context: HttpContext): Promise<ProfileResponse> {
-    const userId = context.auth.getUserId()
+// account-controller.ts
+async getProfile(context: HttpContext): Promise<GetProfileResponse> {
+    const userId = requireUserId(context) // UserId | null
     if (userId === null) {
         // сюди не дійде, якщо маршрут закрито auth_guard
-        context.responseData.status = 401
-        return { status: 'error', message: 'Unauthorized' }
+        return mapControllerError(context, unauthorized())
     }
-    const user = await userRepository.findById(BigInt(userId))
-    // ...
+    const result = await accountService.getProfile(userId)
+    return respond(context, result, (profile) => ({ status: 'success', profile }))
 }
 ```
 
