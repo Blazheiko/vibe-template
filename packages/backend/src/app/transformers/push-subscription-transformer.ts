@@ -1,5 +1,5 @@
 import type { PushSubscriptionRow, PushSubscriptionWithLogs } from '#app/repositories/index.js'
-import { toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
+import { toIsoDateTime, toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 import {
     pushNotificationLogTransformer,
@@ -16,8 +16,8 @@ export type SerializedPushSubscription = Omit<
 > & {
     id: EntityId
     userId: EntityId
-    created_at: string | null
-    updated_at: string | null
+    created_at: IsoDateTime | null
+    updated_at: IsoDateTime | null
     lastUsedAt: IsoDateTime | null
 }
 
@@ -34,8 +34,8 @@ export type SerializedPushSubscriptionWithLogs = Omit<
     notificationLogs: SerializedPushLogSummary[]
     id: EntityId
     userId: EntityId
-    created_at: string | null
-    updated_at: string | null
+    created_at: IsoDateTime | null
+    updated_at: IsoDateTime | null
     lastUsedAt: IsoDateTime | null
 }
 
@@ -56,8 +56,8 @@ export const pushSubscriptionTransformer = {
             ...rest,
             id: toEntityId(id),
             userId: toEntityId(userId),
-            created_at: createdAt.toISOString(),
-            updated_at: updatedAt.toISOString(),
+            created_at: toIsoDateTime(createdAt),
+            updated_at: toIsoDateTime(updatedAt),
             lastUsedAt: toIsoDateTimeOrNull(lastUsedAt),
         }
     },
@@ -82,8 +82,8 @@ export const pushSubscriptionTransformer = {
             ),
             id: toEntityId(id),
             userId: toEntityId(userId),
-            created_at: createdAt.toISOString(),
-            updated_at: updatedAt.toISOString(),
+            created_at: toIsoDateTime(createdAt),
+            updated_at: toIsoDateTime(updatedAt),
             lastUsedAt: toIsoDateTimeOrNull(lastUsedAt),
         }
     },

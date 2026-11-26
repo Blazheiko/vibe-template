@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+    addMs,
+    diffMs,
     ms,
     nowUnixMs,
     seconds,
     toMs,
+    toSecondsCeil,
+    toSecondsFloor,
     unixMs,
     unixSecondsOf,
+    type Milliseconds,
     type Seconds,
+    type UnixMs,
     type UnixSeconds,
 } from 'shared/brand'
 
@@ -67,5 +73,52 @@ describe('UnixSeconds', () => {
         ]
         expect(typeof typeCases).toBe('function')
         expect(at).toBe(1)
+    })
+})
+
+// feat-271 (plan Р7, T38): the three units and the operations that keep them apart.
+describe('units of time and their operations', () => {
+    it('a bare number names no unit, and the units do not stand for each other', () => {
+        const typeCases = (): unknown[] => [
+            // @ts-expect-error a bare number is no duration
+            ((d: Milliseconds) => d)(1_000),
+            // @ts-expect-error seconds are not milliseconds
+            ((d: Milliseconds) => d)(seconds(1)),
+            // @ts-expect-error milliseconds are not seconds
+            ((d: Seconds) => d)(ms(1_000)),
+            // @ts-expect-error a duration is not an instant
+            ((at: UnixMs) => at)(ms(1_000)),
+            // @ts-expect-error an instant is not a duration
+            ((d: Milliseconds) => d)(nowUnixMs()),
+        ]
+        expect(typeof typeCases).toBe('function')
+    })
+
+    it('addMs / diffMs / toMs / toSeconds* take and give the right units', () => {
+        const at = unixMs(10_000)
+        const later: UnixMs = addMs(at, ms(1_500))
+        const gap: Milliseconds = diffMs(later, at)
+        const typeCases = (): unknown[] => [
+            // @ts-expect-error an instant plus seconds: the delta must be milliseconds
+            addMs(at, seconds(1)),
+            // @ts-expect-error two durations: addMs moves an instant
+            addMs(ms(1), ms(1)),
+            // @ts-expect-error diffMs compares two instants
+            diffMs(ms(2), ms(1)),
+            // @ts-expect-error toMs takes seconds
+            toMs(ms(1)),
+            // @ts-expect-error toSecondsCeil takes milliseconds
+            toSecondsCeil(seconds(1)),
+            // @ts-expect-error toSecondsFloor takes milliseconds
+            toSecondsFloor(seconds(1)),
+            // @ts-expect-error the sum of two brands is a bare number
+            ((d: Milliseconds) => d)(ms(1) + ms(1)),
+        ]
+        expect(typeof typeCases).toBe('function')
+        expect([later, gap]).toEqual([11_500, 1_500])
+        const up: Seconds = toSecondsCeil(gap)
+        const down: Seconds = toSecondsFloor(gap)
+        const back: Milliseconds = toMs(up)
+        expect([up, down, back]).toEqual([2, 1, 2_000])
     })
 })

@@ -414,11 +414,7 @@ describe.skipIf(!hasRedis)('MFA ticket store: user ids on load', () => {
 
     it('reads a ticket whose plan names no row id as gone', async () => {
         const id = newTicketId()
-        await mfaTicketStore.create(
-            id,
-            { ...ticket(), plan: { ...plan, userId: 'abc' } } as unknown as Ticket,
-            300,
-        )
+        await mfaTicketStore.create(id, { ...ticket(), plan: { ...plan, userId: 'abc' } }, 300)
         expect(await mfaTicketStore.read(id)).toBeNull()
     })
 })

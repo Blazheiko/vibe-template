@@ -8,7 +8,20 @@
 // columns is a cast of a row, not of an id. Constructor modules and tests are left out in the
 // config (eslint.config.ts).
 
+import ts from 'typescript'
+
 const BRAND_KEY = ' brand'
+
+/**
+ * A generic instance (`Promise<X>`, `X[]`, `[X]`): its type arguments are its elements. The flags
+ * come from the installed compiler: their numbers changed between TypeScript 5 and 6.
+ * @param {import('typescript').Type} type
+ * @returns {type is import('typescript').TypeReference}
+ */
+const isTypeReference = (type) =>
+    (type.flags & ts.TypeFlags.Object) !== 0 &&
+    /** @type {import('typescript').ObjectType} */ (type.objectFlags & ts.ObjectFlags.Reference) !==
+        0
 
 /** @type {import('eslint').Rule.RuleModule} */
 const rule = {
@@ -28,10 +41,32 @@ const rule = {
         if (services?.program === undefined || services.program === null) return {}
         const checker = services.program.getTypeChecker()
 
-        /** @param {import('typescript').Type} type */
-        const isBranded = (type) => {
-            if (type.isUnion()) return type.types.some(isBranded)
-            return checker.getPropertyOfType(type, BRAND_KEY) !== undefined
+        /**
+         * feat-271: also the element of a container that holds the brand (an array, a tuple, a
+         * Promise, a Set, a Map, a Record or another generic type argument, through its index
+         * signatures) and the constraint of a type parameter (`<T extends UserId | null>(v) => v
+         * as T`). Fields of an object type stay out (see the header).
+         * @param {import('typescript').Type} type
+         * @param {Set<import('typescript').Type>} seen
+         * @returns {boolean}
+         */
+        const isBranded = (type, seen = new Set()) => {
+            if (seen.has(type)) return false
+            seen.add(type)
+            if (type.isUnion() || type.isIntersection()) {
+                if (checker.getPropertyOfType(type, BRAND_KEY) !== undefined) return true
+                return type.types.some((member) => isBranded(member, seen))
+            }
+            if (type.isTypeParameter()) {
+                const constraint = checker.getBaseConstraintOfType(type)
+                return (
+                    constraint !== undefined && constraint !== type && isBranded(constraint, seen)
+                )
+            }
+            if (checker.getPropertyOfType(type, BRAND_KEY) !== undefined) return true
+            const args = isTypeReference(type) ? checker.getTypeArguments(type) : []
+            if (args.some((arg) => isBranded(arg, seen))) return true
+            return checker.getIndexInfosOfType(type).some((info) => isBranded(info.type, seen))
         }
 
         /** @param {any} node */

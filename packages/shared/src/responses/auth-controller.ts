@@ -15,8 +15,8 @@ const AuthUserSchema = type({
     'role?': RoleSchema,
     // The rest of userTransformer.serialize: the client keeps `avatar` from the login answer.
     'avatar?': 'string | null',
-    'created_at?': 'string | null',
-    'updated_at?': 'string | null',
+    'created_at?': IsoDateTimeSchema.or('null'),
+    'updated_at?': IsoDateTimeSchema.or('null'),
 })
 /** The account as a sign-in, a registration or a contact change answers it (feat-268: the user store). */
 export type AuthUser = typeof AuthUserSchema.infer

@@ -48,6 +48,10 @@ tester.run('no-brand-cast', rule, {
         valid('const d = row as Row'),
         valid('const e = row as unknown as Row'),
         valid('const f = row as { id: UserId }'),
+        valid('const g = row as Row[]'),
+        valid('const h = row as Promise<Row>'),
+        valid('const i = row as Record<string, string>'),
+        valid('function j<T extends string>(v: unknown): T {\n    return v as T\n}'),
     ],
     invalid: [
         invalid('const a = x as UserId'),
@@ -56,5 +60,13 @@ tester.run('no-brand-cast', rule, {
         invalid('const d = (x as unknown) as UserId'),
         invalid('const e = <UserId>x'),
         invalid('const f = x as UserId | null'),
+        // feat-271: containers of a brand and a type parameter constrained to one.
+        invalid('const g = row as UserId[]'),
+        invalid('const h = row as [UserId]'),
+        invalid('const i = row as Promise<UserId>'),
+        invalid('const j = row as Set<UserId>'),
+        invalid('const k = row as Record<string, UserId>'),
+        invalid('const l = row as Map<string, UserId | null>'),
+        invalid('function m<T extends UserId | null>(v: unknown): T {\n    return v as T\n}'),
     ],
 })

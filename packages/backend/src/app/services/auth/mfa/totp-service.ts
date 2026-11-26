@@ -1,6 +1,6 @@
 import { Result } from 'better-result'
 import { asIsoDateTime } from '#app/domain/wire.js'
-import { type IsoDateTime, nowUnixMs, type UnixMs, addMs, toMs } from 'shared/brand'
+import { type IsoDateTime, nowUnixMs, type UnixMs, addMs, toIsoDateTime, toMs } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import { PRODUCT } from 'shared/product'
@@ -99,7 +99,7 @@ export interface TotpRequest {
 }
 
 export interface MfaStatus {
-    totp: { enabled: boolean; createdAt: string | null }
+    totp: { enabled: boolean; createdAt: IsoDateTime | null }
     passkeys: number
     recoveryCodesRemaining: number
     recoveryContact: boolean
@@ -144,7 +144,7 @@ export const totpService = {
         return Result.ok({
             totp: {
                 enabled: totp !== undefined,
-                createdAt: totp?.confirmedAt.toISOString() ?? null,
+                createdAt: totp === undefined ? null : toIsoDateTime(totp.confirmedAt),
             },
             passkeys,
             recoveryCodesRemaining,

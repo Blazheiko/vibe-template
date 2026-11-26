@@ -32,7 +32,7 @@ export type AdminUserListResponse = WithCanonicalError<typeof AdminUserListRespo
 export const SetUserRoleResponseSchema = type.or(
     {
         status: "'success'",
-        user: { id: 'string', role: RoleSchema },
+        user: { id: EntityIdSchema, role: RoleSchema },
         changed: 'boolean',
     },
     CanonicalErrorResponseSchema,
@@ -43,7 +43,7 @@ export type SetUserRoleResponse = WithCanonicalError<typeof SetUserRoleResponseS
 export const ResetUserMfaResponseSchema = type.or(
     {
         status: "'success'",
-        user: { id: 'string' },
+        user: { id: EntityIdSchema },
         removed: { totp: 'boolean', passkeys: 'number', recoveryCodes: 'number' },
     },
     CanonicalErrorResponseSchema,

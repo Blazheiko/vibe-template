@@ -1,5 +1,5 @@
 import type { UserRow } from '#app/repositories/index.js'
-import { toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
+import { toIsoDateTime, toIsoDateTimeOrNull, type EntityId, type IsoDateTime } from 'shared/brand'
 import { toEntityId } from '#app/domain/ids.js'
 
 export type SerializedUser = Omit<
@@ -13,8 +13,8 @@ export type SerializedUser = Omit<
     | 'emailVerifiedAt'
 > & {
     id: EntityId
-    created_at: string | null
-    updated_at: string | null
+    created_at: IsoDateTime | null
+    updated_at: IsoDateTime | null
     emailVerified: boolean
     emailVerifiedAt: IsoDateTime | null
 }
@@ -37,8 +37,8 @@ export const userTransformer = {
         return {
             ...rest,
             id: toEntityId(id),
-            created_at: createdAt.toISOString(),
-            updated_at: updatedAt.toISOString(),
+            created_at: toIsoDateTime(createdAt),
+            updated_at: toIsoDateTime(updatedAt),
             emailVerified: emailVerifiedAt !== null,
             emailVerifiedAt: toIsoDateTimeOrNull(emailVerifiedAt),
         }
