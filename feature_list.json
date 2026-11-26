@@ -2691,8 +2691,8 @@
             "owner": "Blazheiko",
             "branch": "fix/branded-types-safety-gaps",
             "dependencies": ["feat-268"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #876 (merge 1310aed), status #874 (in_progress), #877 (review). MfaBinding in mfaTicketStore.reserve / deleteIfOpen, continueByRequest and MfaTicket.binding (type tests on the real store); typed Redis TTL helpers app/services/shared/redis-ttl.ts (EX Seconds, PX Milliseconds, secondsArg / msArg) at every app call site, ESLint no-restricted-syntax for raw setex / pexpire / set EX|PX in app/; UnixSeconds brand for unixSecondsOf; retryAfterSeconds and RateLimitDecision.retryAfterMs take Milliseconds, toMs / addMs instead of * 1000 (SMS TTL branded Seconds); OAuth email normalized before the empty check; support before parsed in the controller (400); WS token record checked with typeof + parseUserId before the session lookup. CI: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45869232237/job/140079987610); test-redis 22 files / 224 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45869232340/job/140079989187); quality, e2e, e2e-live green; local make check exit 0 (backend 3917 tests); docs:build + docs:verify passed."
         },
         {
             "id": "feat-271",
