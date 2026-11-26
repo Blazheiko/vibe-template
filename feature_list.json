@@ -2631,7 +2631,7 @@
             "owner": "Blazheiko",
             "branch": "feat/branded-ids-domains",
             "dependencies": ["feat-263"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         },
         {
