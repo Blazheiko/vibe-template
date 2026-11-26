@@ -2701,7 +2701,7 @@
             "owner": "Blazheiko",
             "branch": "chore/branded-types-coverage",
             "dependencies": ["feat-270"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         }
     ]
