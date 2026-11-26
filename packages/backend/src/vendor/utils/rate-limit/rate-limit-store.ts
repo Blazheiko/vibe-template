@@ -1,5 +1,5 @@
 import logger from '#vendor/utils/logger.js'
-import { ms, seconds, toSecondsCeil, type Seconds } from 'shared/brand'
+import { ms, seconds, toSecondsCeil, type Milliseconds, type Seconds } from 'shared/brand'
 import { rateLimitKeyForIp } from '../network/ip-address.js'
 
 // In-memory, per-process, synchronous rate-limit store.
@@ -22,7 +22,7 @@ export interface ConsumeOptions {
 
 export type RateLimitDecision =
     | { allowed: true; limit: number; remaining: number; resetAt: number }
-    | { allowed: false; limit: number; retryAfterMs: number; resetAt: number }
+    | { allowed: false; limit: number; retryAfterMs: Milliseconds; resetAt: number }
 
 type Bucket =
     | { kind: 'sliding-log'; windowMs: number; timestamps: number[] }
@@ -148,7 +148,7 @@ export function createRateLimitStore(options: RateLimitStoreOptions = {}): RateL
             return {
                 allowed: false,
                 limit: max,
-                retryAfterMs: resetAt - time,
+                retryAfterMs: ms(resetAt - time),
                 resetAt,
             }
         }
@@ -178,7 +178,7 @@ export function createRateLimitStore(options: RateLimitStoreOptions = {}): RateL
         return {
             allowed: false,
             limit: max,
-            retryAfterMs: resetAt - time,
+            retryAfterMs: ms(resetAt - time),
             resetAt,
         }
     }
@@ -211,8 +211,8 @@ export function createRateLimitStore(options: RateLimitStoreOptions = {}): RateL
 }
 
 /** Seconds for the Retry-After header: never 0, so clients do not retry at once. */
-export const retryAfterSeconds = (retryAfterMs: number): Seconds =>
-    seconds(Math.max(1, toSecondsCeil(ms(retryAfterMs))))
+export const retryAfterSeconds = (retryAfterMs: Milliseconds): Seconds =>
+    seconds(Math.max(1, toSecondsCeil(retryAfterMs)))
 
 /** The client's budget key: IPv6 grouped by /64, see rateLimitKeyForIp (feat-110). */
 export const clientKey = (ip: string | null | undefined): string => rateLimitKeyForIp(ip)

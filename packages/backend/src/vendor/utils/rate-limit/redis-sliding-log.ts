@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Redis } from 'ioredis'
+import { ms } from 'shared/brand'
 import type { RateLimitDecision } from './rate-limit-store.js'
 
 // Sliding log on a ZSET with the semantics of the in-memory store: rejected
@@ -49,5 +50,5 @@ export async function consumeRedisSlidingLog(
     const [allowed, value, resetAt] = reply
     return allowed === 1
         ? { allowed: true, limit: max, remaining: value, resetAt }
-        : { allowed: false, limit: max, retryAfterMs: value, resetAt }
+        : { allowed: false, limit: max, retryAfterMs: ms(value), resetAt }
 }

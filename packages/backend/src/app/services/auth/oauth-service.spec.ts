@@ -1354,6 +1354,22 @@ describe('oauthService.handleCallback', () => {
         expect(authMock.login).not.toHaveBeenCalled()
     })
 
+    // feat-270: the address is normalized before the empty check, so spaces alone are no address.
+    it('refuses a verified primary email of only spaces', async () => {
+        githubValidateAuthorizationCodeMock.mockResolvedValue(tokens('github-access-token'))
+        stubGitHubUserInfoFetch([{ email: '   ', primary: true, verified: true }])
+        oauthAccountRepositoryMock.findByProviderAndProviderId.mockResolvedValue(undefined)
+
+        const result = await callback('github')
+
+        expectError(result, {
+            _tag: 'BadRequest',
+            message: 'Could not retrieve email from provider',
+        })
+        expect(userRepositoryMock.create).not.toHaveBeenCalled()
+        expect(authMock.login).not.toHaveBeenCalled()
+    })
+
     it('refuses a state mismatch before talking to the provider', async () => {
         const { oauthService } = await loadOauthService()
         const result = await oauthService.handleCallback(

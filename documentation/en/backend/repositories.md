@@ -97,7 +97,9 @@ The result of `db.execute` is mapped to camelCase by hand and normalizes `id`/`d
 
 ## Redis
 
-There are no Redis repositories: in `app/repositories/` all modules work only with PostgreSQL. Redis is used directly from services and the WS layer — [auth-throttle-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-throttle-service.ts) (Lua `INCR`+`EXPIRE`, key `auth:throttle:*`), [generate-ws-token-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/generate-ws-token-service.ts) (`setex`), [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts) (`auth:ws:*`).
+There are no Redis repositories: in `app/repositories/` all modules work only with PostgreSQL. Redis is used directly from services and the WS layer — [auth-throttle-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/auth-throttle-service.ts) (Lua `INCR`+`PEXPIRE`, key `auth:throttle:*`), [generate-ws-token-service.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/auth/generate-ws-token-service.ts) (`SET … EX`), [ws-session-auth.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/websocket/ws-session-auth.ts) (`auth:ws:*`).
+
+An expiry is set only through the helpers of [redis-ttl.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/shared/redis-ttl.ts) (feat-270): `setWithTtlSeconds` (`EX`) takes `Seconds`, `setIfAbsentWithTtlMs` (`PX … NX`) takes `Milliseconds`, and `secondsArg` / `msArg` pass a TTL to a Lua script. ioredis types an expiry as a bare number, so without them a duration in the wrong unit would compile; ESLint refuses `setex`, `pexpire`, `expire` and `set(…, 'EX' | 'PX', …)` in `app/`.
 
 ## Summary table
 

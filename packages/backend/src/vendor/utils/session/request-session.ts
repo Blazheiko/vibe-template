@@ -10,7 +10,7 @@ import type {
     SessionDevice,
     SessionInfo,
 } from '#vendor/types/types.js'
-import { isValidEntityId, nowUnixMs, unixSecondsOf, type Seconds } from 'shared/brand'
+import { isValidEntityId, nowUnixMs, unixSecondsOf, type UnixSeconds } from 'shared/brand'
 import { USER_AGENT_MAX_LENGTH } from 'shared/utils'
 import sessionConfig from '#config/session.js'
 import {
@@ -63,7 +63,7 @@ const COOKIE_REFRESH_SECONDS = 60 * 60
 /** A cookie-held anonymous session is re-issued once it is older than this (sliding TTL). */
 const ANON_COOKIE_REFRESH_SECONDS = 15 * 60
 
-const nowSeconds = (): Seconds => unixSecondsOf(nowUnixMs())
+const nowSeconds = (): UnixSeconds => unixSecondsOf(nowUnixMs())
 
 const withCsrfToken = (data: SessionData): SessionData => ({
     ...data,

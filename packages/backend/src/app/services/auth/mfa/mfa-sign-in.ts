@@ -8,6 +8,7 @@ import {
     type MfaCompletionId,
     type MfaReservationId,
     type MfaAttemptId,
+    type MfaBinding,
     newMfaReservationId,
     newMfaCompletionId,
     mfaAttemptIdOf,
@@ -402,7 +403,7 @@ export async function completeSecondStep(
 async function continueByRequest(
     context: SignInContext,
     ticketId: MfaTicketId,
-    binding: string,
+    binding: MfaBinding,
     input: SecondStepInput,
     request: AuditRequest,
     deps: SecondStepDeps,

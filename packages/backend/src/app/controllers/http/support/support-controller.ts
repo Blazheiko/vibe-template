@@ -1,5 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
-import { parseSupportArticleId } from '#app/domain/ids.js'
+import { parseSupportArticleId, parseSupportMessageId } from '#app/domain/ids.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { supportContracts } from 'shared/contracts'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
@@ -24,7 +24,11 @@ export default {
             return mapControllerError(context, unauthorized())
         }
 
-        const { before, limit } = context.httpData.query
+        const { before: rawBefore, limit } = context.httpData.query
+        // feat-270: the cursor is read by its brand here, like every id of a request; the schema
+        // has already refused a value that is not a row id (422), so this is the last guard.
+        const before = rawBefore === undefined ? undefined : parseSupportMessageId(rawBefore)
+        if (before === null) return mapControllerError(context, badRequest('Invalid before'))
         const result = await supportService.getChatHistory(userId, { before, limit })
         return respond(context, result, (value) => ({
             status: 'ok',

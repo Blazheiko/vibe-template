@@ -1,3 +1,4 @@
+import { seconds } from 'shared/brand'
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
 
 const reader = createEnvReader()
@@ -8,8 +9,12 @@ export const authConfig = {
     strictRegistration: reader.bool('AUTH_STRICT_REGISTRATION', true),
     phoneAuthEnabled: reader.bool('AUTH_PHONE_ENABLED', false),
     otpHmacKey: process.env['AUTH_OTP_HMAC_KEY'],
-    smsChallengeTtlSeconds: reader.int('AUTH_SMS_CHALLENGE_TTL_SECONDS', 10 * 60, { min: 1 }),
-    smsResendCooldownSeconds: reader.int('AUTH_SMS_RESEND_COOLDOWN_SECONDS', 60, { min: 0 }),
+    smsChallengeTtlSeconds: seconds(
+        reader.int('AUTH_SMS_CHALLENGE_TTL_SECONDS', 10 * 60, { min: 1 }),
+    ),
+    smsResendCooldownSeconds: seconds(
+        reader.int('AUTH_SMS_RESEND_COOLDOWN_SECONDS', 60, { min: 0 }),
+    ),
     // feat-121 (M3): at least 1; with 0 no code, the right one included, could ever be accepted.
     smsMaxInvalidAttempts: reader.int('AUTH_SMS_MAX_INVALID_ATTEMPTS', 5, { min: 1 }),
     smsMaxConfirmAttemptsPerIpPerHour: reader.int(

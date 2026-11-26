@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ms, seconds } from 'shared/brand'
 
 vi.mock('#vendor/utils/logger.js', () => ({
     default: { debug: vi.fn(), error: vi.fn(), warn: vi.fn() },
@@ -143,8 +144,19 @@ describe('key bound', () => {
 
 describe('retryAfterSeconds', () => {
     it('rounds up and never returns 0', () => {
-        expect(retryAfterSeconds(1)).toBe(1)
-        expect(retryAfterSeconds(0)).toBe(1)
-        expect(retryAfterSeconds(1_001)).toBe(2)
+        expect(retryAfterSeconds(ms(1))).toBe(1)
+        expect(retryAfterSeconds(ms(0))).toBe(1)
+        expect(retryAfterSeconds(ms(1_001))).toBe(2)
+    })
+
+    // feat-270 (plan Р7): it divides by 1000, so a value already in seconds must not reach it.
+    it('takes milliseconds only', () => {
+        const typeCases = (): unknown[] => [
+            // @ts-expect-error seconds would be divided by 1000 a second time
+            retryAfterSeconds(seconds(30)),
+            // @ts-expect-error a bare number names no unit
+            retryAfterSeconds(30_000),
+        ]
+        expect(typeof typeCases).toBe('function')
     })
 })

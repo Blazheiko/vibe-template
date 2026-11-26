@@ -1,5 +1,6 @@
 import { generateKey } from 'metautil'
 import redis, { withRedis } from '#database/redis.js'
+import { setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
 import type { SessionInfo } from '#vendor/types/types.js'
 import configApp from '#config/app.js'
 import { isValidEntityId, seconds, type Seconds } from 'shared/brand'
@@ -27,7 +28,7 @@ export async function generateWsToken(sessionInfo: SessionInfo, userId: string):
         userId,
         userToken,
     })
-    await withRedis(() => redis.setex(`auth:ws:${wsToken}`, WS_TOKEN_TTL, tokenData))
+    await withRedis(() => setWithTtlSeconds(redis, `auth:ws:${wsToken}`, tokenData, WS_TOKEN_TTL))
 
     return wsToken
 }

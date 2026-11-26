@@ -5,6 +5,7 @@ import type { SessionInfo, SessionData } from '#vendor/types/types.js'
 import type { UpgradeTokenResult } from '#vendor/utils/network/ws-handlers.js'
 import { RedisUnavailableError } from '#vendor/utils/network/errors/redis-unavailable-error.js'
 import { checkSessionToken } from '#app/services/auth/session-token-check.js'
+import { parseUserId } from '#app/domain/ids.js'
 import { isPastMaxAge } from '#vendor/utils/session/session-age.js'
 
 const MISSING: UpgradeTokenResult = { kind: 'missing' }
@@ -32,19 +33,22 @@ const verifyUpgradeToken = async (token: string): Promise<UpgradeTokenResult> =>
         }
 
         const parsed = JSON.parse(tokenData) as {
-            sessionId: string | undefined
-            userId: string | undefined
-            userToken: string | undefined
+            sessionId: unknown
+            userId: unknown
+            userToken: unknown
         }
         const { sessionId, userId, userToken } = parsed
 
+        // feat-270 (plan Р13, T15): the user id is read by its brand constructor, so a record
+        // whose id is not a row id (a number, '0', '007', text) opens nothing and costs no
+        // session lookup.
         if (
-            sessionId === undefined ||
-            userId === undefined ||
-            userToken === undefined ||
-            userId === '' ||
+            typeof sessionId !== 'string' ||
+            typeof userId !== 'string' ||
+            typeof userToken !== 'string' ||
+            sessionId === '' ||
             userToken === '' ||
-            sessionId === ''
+            parseUserId(userId) === null
         ) {
             logger.warn({ sessionId, userId }, 'verifyUpgradeToken: invalid token data')
             return MISSING

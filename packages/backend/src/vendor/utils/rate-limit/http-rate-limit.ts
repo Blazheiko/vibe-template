@@ -1,6 +1,7 @@
 import type { RateLimit, ResponseData, RouteItem } from '#vendor/types/types.js'
 import rateLimitConfig from '#config/rate-limit.js'
 import logger from '#vendor/utils/logger.js'
+import { toMs, type Milliseconds } from 'shared/brand'
 import { createLogThrottle } from './log-throttle.js'
 import {
     clientKey,
@@ -37,7 +38,7 @@ const writeRateLimitHeaders = (responseData: ResponseData, decision: RateLimitDe
     responseData.setHeader('X-RateLimit-Reset', Math.ceil(decision.resetAt / 1000).toString())
 }
 
-const rejectRateLimited = (responseData: ResponseData, retryAfterMs: number): void => {
+const rejectRateLimited = (responseData: ResponseData, retryAfterMs: Milliseconds): void => {
     const retryAfter = retryAfterSeconds(retryAfterMs)
     responseData.status = 429
     responseData.payload = {
@@ -48,7 +49,7 @@ const rejectRateLimited = (responseData: ResponseData, retryAfterMs: number): vo
         retryAfter,
         details: {
             kind: 'rate_limited',
-            retryAfterMs: retryAfter * 1000,
+            retryAfterMs: toMs(retryAfter),
         },
     }
     responseData.setHeader('Retry-After', retryAfter.toString())

@@ -491,12 +491,12 @@ export const oauthService = {
             return Result.err(badRequest('Could not retrieve account id from provider'))
         }
 
-        if (userInfo.email === '') {
+        // feat-270: normalized first, so an address of only spaces counts as empty too.
+        const providerEmail = normalizeEmail(userInfo.email)
+        if (providerEmail === '') {
             logger.warn({ provider }, 'oauth provider returned empty email')
             return Result.err(badRequest('Could not retrieve email from provider'))
         }
-
-        const providerEmail = normalizeEmail(userInfo.email)
         userInfo.email = providerEmail
 
         const identity: OAuthIdentity = {

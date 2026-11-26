@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { seconds, type Milliseconds, type Seconds, type UnixMs } from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
+import { msArg, setWithTtlSeconds } from '#app/services/shared/redis-ttl.js'
 import appConfig from '#config/app.js'
 import {
     mfaAttemptIdOf,
@@ -56,7 +57,7 @@ export interface MfaTicket {
     state: 'open' | 'completing' | 'activated'
     userId: string
     userTokenAtStart: string
-    binding: string
+    binding: MfaBinding
     origin: Exclude<LoginOrigin, { inherit: unknown }>
     /** The first factor, as an `amr` of the session. */
     firstFactor: 'pwd' | 'oauth'
@@ -337,7 +338,9 @@ export type SettleOutcome = 'ok' | 'deleted' | 'settled' | 'gone' | 'stale'
 
 export const mfaTicketStore = {
     async create(ticketId: MfaTicketId, ticket: MfaTicket, ttlSeconds: Seconds): Promise<void> {
-        await withRedis(() => redis.set(key(ticketId), JSON.stringify(ticket), 'EX', ttlSeconds))
+        await withRedis(() =>
+            setWithTtlSeconds(redis, key(ticketId), JSON.stringify(ticket), ttlSeconds),
+        )
     },
 
     async read(ticketId: MfaTicketId): Promise<MfaTicket | null> {
@@ -353,7 +356,7 @@ export const mfaTicketStore = {
 
     async reserve(
         ticketId: MfaTicketId,
-        binding: string,
+        binding: MfaBinding,
         reservationId: MfaReservationId,
         now: UnixMs,
         reservationTtlMs: Milliseconds,
@@ -367,7 +370,7 @@ export const mfaTicketStore = {
                 key(ticketId),
                 binding,
                 String(now),
-                String(reservationTtlMs),
+                msArg(reservationTtlMs),
                 String(MFA_MAX_FAILURES),
                 reservationId,
                 attemptId,
@@ -422,7 +425,7 @@ export const mfaTicketStore = {
                 challenge?.key ?? key(ticketId),
                 reservationId,
                 String(now),
-                String(reservationTtlMs),
+                msArg(reservationTtlMs),
                 completion.completionId,
                 completion.xid,
                 JSON.stringify(completion.plan),
@@ -442,7 +445,7 @@ export const mfaTicketStore = {
     /** Deletes the ticket only while it is `open` and this browser's (DELETE_IF_OPEN_LUA). */
     async deleteIfOpen(
         ticketId: MfaTicketId,
-        binding: string,
+        binding: MfaBinding,
     ): Promise<'deleted' | 'absent' | 'completing' | 'activated'> {
         const outcome = await withRedis(() =>
             redis.eval(DELETE_IF_OPEN_LUA, 1, key(ticketId), binding),

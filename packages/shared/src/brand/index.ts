@@ -28,8 +28,8 @@ export function isValidEntityId(value: string): boolean {
     )
 }
 
-// Units of time (feat-267, plan Р7): a duration in milliseconds, a duration in seconds and an
-// instant in milliseconds since the epoch are three types, so a TTL in seconds cannot reach a PX
+// Units of time (feat-267, plan Р7): a duration in milliseconds, a duration in seconds, an
+// instant in milliseconds and one in whole seconds since the epoch (feat-270) are four types, so a TTL in seconds cannot reach a PX
 // call and a `Date.now()` cannot stand for a duration. Arithmetic on a brand gives a plain number,
 // so the operations below are the way to get a branded result: `ms(a + b)` would also take a sum
 // of seconds and milliseconds. Durations are rounded up when they become seconds (a TTL or a
@@ -39,6 +39,8 @@ export type Milliseconds = Brand<number, 'Milliseconds'>
 export type Seconds = Brand<number, 'Seconds'>
 /** An instant: milliseconds since the Unix epoch, as `Date.now()` returns it. */
 export type UnixMs = Brand<number, 'UnixMs'>
+/** An instant: whole seconds since the Unix epoch (a JWT-style `iat`), not a duration. */
+export type UnixSeconds = Brand<number, 'UnixSeconds'>
 
 /** A duration given in milliseconds. */
 export const ms = (value: number): Milliseconds => value as Milliseconds
@@ -64,7 +66,8 @@ export const toSecondsFloor = (duration: Milliseconds): Seconds =>
     Math.floor(duration / 1000) as Seconds
 
 /** An instant as whole seconds since the epoch, rounded down (a timestamp never in the future). */
-export const unixSecondsOf = (instant: UnixMs): Seconds => Math.floor(instant / 1000) as Seconds
+export const unixSecondsOf = (instant: UnixMs): UnixSeconds =>
+    Math.floor(instant / 1000) as UnixSeconds
 
 /** The instant `delta` after `at`. */
 export const addMs = (at: UnixMs, delta: Milliseconds): UnixMs => (at + delta) as UnixMs
