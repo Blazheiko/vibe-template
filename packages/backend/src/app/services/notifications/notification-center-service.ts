@@ -18,7 +18,7 @@ import {
 import { userEventBus } from '#app/services/communication/user-event-bus.js'
 import { badRequest, notFound, type AppError, type AppResult } from '#app/services/shared/errors.js'
 import { notificationTransformer } from '#app/transformers/index.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, NotificationId } from '#app/domain/ids.js'
 
 // feat-236 (Р4, Р6): what the notification center answers. Every call is bound to the user of the
 // session; a notification of somebody else is answered like a missing one.
@@ -44,7 +44,7 @@ export interface NotificationsPage {
 export const notificationCenterService = {
     async list(
         userId: UserId,
-        options: { unread: boolean; before: bigint | null; limit: number },
+        options: { unread: boolean; before: NotificationId | null; limit: number },
     ): Promise<AppResult<NotificationsPage>> {
         const page = await notificationRepository.page(userId, options)
         const unreadCount = await notificationRepository.countUnread(userId)
@@ -62,7 +62,7 @@ export const notificationCenterService = {
     /** Idempotent: a notification read already answers its link again (Р6). */
     async markRead(
         userId: UserId,
-        id: bigint,
+        id: NotificationId,
     ): Promise<AppResult<{ link: string | null; unreadCount: number }>> {
         const read = await notificationRepository.markRead(userId, id)
         if (read === null) return Result.err(notificationNotFound())
@@ -74,7 +74,10 @@ export const notificationCenterService = {
     },
 
     /** Every notification with `id <= upTo`, older pages included (Р6). */
-    async readAll(userId: UserId, upTo: bigint): Promise<AppResult<{ unreadCount: number }>> {
+    async readAll(
+        userId: UserId,
+        upTo: NotificationId,
+    ): Promise<AppResult<{ unreadCount: number }>> {
         await notificationRepository.markAllUpTo(userId, upTo)
         signal(userId, 'notifications_changed')
         return Result.ok({ unreadCount: await notificationRepository.countUnread(userId) })

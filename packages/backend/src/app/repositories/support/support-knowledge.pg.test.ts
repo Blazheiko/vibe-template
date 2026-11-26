@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { SupportArticleId } from '#app/domain/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -16,9 +17,9 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
 
     const unit = (index: number): number[] =>
         Array.from({ length: 1536 }, (_, i) => (i === index ? 1 : 0))
-    const created: bigint[] = []
+    const created: SupportArticleId[] = []
 
-    const insertArticle = async (title: string, isActive = true): Promise<bigint> => {
+    const insertArticle = async (title: string, isActive = true): Promise<SupportArticleId> => {
         const [row] = await db
             .insert(supportKnowledgeBase)
             .values({ title, content: `${title} content`, isActive, updatedAt: new Date(0) })
@@ -28,7 +29,7 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
         return row.id
     }
 
-    const embeddingOf = async (id: bigint) => {
+    const embeddingOf = async (id: SupportArticleId) => {
         const [row] = await db
             .select({
                 hasEmbedding: sql<boolean>`${supportKnowledgeBase.embedding} IS NOT NULL`,
@@ -39,9 +40,9 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
         return row
     }
 
-    let near = 0n
-    let far = 0n
-    let inactive = 0n
+    let near = 0n as SupportArticleId
+    let far = 0n as SupportArticleId
+    let inactive = 0n as SupportArticleId
 
     beforeAll(async () => {
         near = await insertArticle('near')
@@ -96,7 +97,7 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
     // two page requests moves: one article is shown twice and another never.
     describe('findAll pages in a stable order', () => {
         const category = `paging-${String(Date.now())}`
-        const ids: bigint[] = []
+        const ids: SupportArticleId[] = []
 
         beforeAll(async () => {
             for (const title of ['first', 'second', 'third']) {
@@ -120,7 +121,7 @@ describe.skipIf(!hasPg)('supportKnowledgeRepository embeddings on PostgreSQL', a
             await db
                 .update(supportKnowledgeBase)
                 .set({ title: 'first, edited' })
-                .where(eq(supportKnowledgeBase.id, ids[0] ?? 0n))
+                .where(eq(supportKnowledgeBase.id, ids[0] ?? (0n as SupportArticleId)))
             const secondPage = await supportKnowledgeRepository.findAll({
                 category,
                 limit: 2,

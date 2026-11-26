@@ -14,13 +14,13 @@ import type {
 import type { HttpContext } from '#vendor/types/types.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
+import { parseNotificationId, type NotificationId } from '#app/domain/ids.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
 import { notificationCenterService } from '#app/services/notifications/notification-center-service.js'
 import { badRequest, notFound, unauthorized } from '#app/services/shared/errors.js'
 
 // feat-236 (Р4, Р6): the notification center of the signed-in user. An id is parsed to a bigint
-// PostgreSQL can hold before any query (parseEntityId): a path id outside it is answered like a
+// PostgreSQL can hold before any query (parseNotificationId): a path id outside it is answered like a
 // missing notification, a cursor or bound outside it is a bad request.
 
 export default {
@@ -30,9 +30,9 @@ export default {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
         const { unread, before, limit } = context.httpData.query
-        let beforeId: bigint | null = null
+        let beforeId: NotificationId | null = null
         if (before !== undefined) {
-            beforeId = parseEntityId(before)
+            beforeId = parseNotificationId(before)
             if (beforeId === null) {
                 return mapControllerError(context, badRequest('Invalid cursor', 'invalid_cursor'))
             }
@@ -57,7 +57,7 @@ export default {
     ): Promise<MarkNotificationReadResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const id = parseEntityId(context.httpData.params.id)
+        const id = parseNotificationId(context.httpData.params.id)
         // Not an id of anything: the same answer as a notification of another user.
         if (id === null) {
             return mapControllerError(context, notFound('Notification', 'Notification not found'))
@@ -71,7 +71,7 @@ export default {
     ): Promise<ReadAllNotificationsResponse> {
         const userId = requireUserId(context)
         if (userId === null) return mapControllerError(context, unauthorized())
-        const upTo = parseEntityId(getTypedPayload(context).upTo)
+        const upTo = parseNotificationId(getTypedPayload(context).upTo)
         if (upTo === null) {
             return mapControllerError(context, badRequest('Invalid upTo', 'invalid_up_to'))
         }

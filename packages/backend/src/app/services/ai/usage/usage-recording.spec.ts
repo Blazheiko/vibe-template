@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { LlmSystemPromptId } from '#app/domain/ids.js'
 import { uid } from '../../../../test-support/ids.js'
 
 // feat-028 (code-issues item 53): every AI call produces a usage row; unknown
@@ -139,7 +140,11 @@ describe('llmUsageService.textUsageRecorder: the budget hook (feat-063, D2)', ()
 
 describe('llmUsageService.textUsageRecorder', () => {
     it('writes one row with the feature, user, prompt and the reported counts', () => {
-        const record = llmUsageService.textUsageRecorder('PROMPT_TEST', uid(5), 9n)
+        const record = llmUsageService.textUsageRecorder(
+            'PROMPT_TEST',
+            uid(5),
+            9n as LlmSystemPromptId,
+        )
         record({ promptTokens: 3, completionTokens: 4, totalTokens: 7 }, 'gpt-test', 'final')
         expect(insertText).toHaveBeenCalledWith(
             expect.objectContaining({

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { PushSubscriptionId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
 
 // feat-058 (phase A): update() and deactivate() answer from their own owner-scoped UPDATE.
@@ -28,7 +29,9 @@ describe('pushSubscriptionRepository.update', () => {
         returning.mockResolvedValue([])
 
         await expect(
-            pushSubscriptionRepository.update(1n, uid(2), { isActive: false }),
+            pushSubscriptionRepository.update(uid(2), 1n as PushSubscriptionId, {
+                isActive: false,
+            }),
         ).resolves.toBeUndefined()
 
         expect(update).toHaveBeenCalledTimes(1)
@@ -40,14 +43,18 @@ describe('pushSubscriptionRepository.update', () => {
         returning.mockResolvedValue([row])
 
         await expect(
-            pushSubscriptionRepository.update(1n, uid(2), { isActive: false }),
+            pushSubscriptionRepository.update(uid(2), 1n as PushSubscriptionId, {
+                isActive: false,
+            }),
         ).resolves.toBe(row)
     })
 
     it('stamps updatedAt and lastUsedAt together with the changed fields', async () => {
         returning.mockResolvedValue([])
 
-        await pushSubscriptionRepository.update(1n, uid(2), { timezone: 'Europe/Kyiv' })
+        await pushSubscriptionRepository.update(uid(2), 1n as PushSubscriptionId, {
+            timezone: 'Europe/Kyiv',
+        })
 
         const changes = (set.mock.calls[0] as unknown[])[0] as Record<string, unknown>
         expect(changes['timezone']).toBe('Europe/Kyiv')
@@ -60,7 +67,9 @@ describe('pushSubscriptionRepository.deactivate', () => {
     it('is undefined when the owner-scoped UPDATE matched no row, and reads nothing back', async () => {
         returning.mockResolvedValue([])
 
-        await expect(pushSubscriptionRepository.deactivate(1n, uid(2))).resolves.toBeUndefined()
+        await expect(
+            pushSubscriptionRepository.deactivate(uid(2), 1n as PushSubscriptionId),
+        ).resolves.toBeUndefined()
 
         expect(update).toHaveBeenCalledTimes(1)
     })
@@ -69,7 +78,9 @@ describe('pushSubscriptionRepository.deactivate', () => {
         const row = { id: 1n, userId: uid(2), isActive: false }
         returning.mockResolvedValue([row])
 
-        await expect(pushSubscriptionRepository.deactivate(1n, uid(2))).resolves.toBe(row)
+        await expect(
+            pushSubscriptionRepository.deactivate(uid(2), 1n as PushSubscriptionId),
+        ).resolves.toBe(row)
         expect((set.mock.calls[0] as unknown[])[0]).toMatchObject({ isActive: false })
     })
 })

@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 
 // The session token handler (loaded with the real route table) refuses to import
 // without a key of at least 32 characters; this one signs nothing here.
@@ -96,7 +96,13 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
     const { pushNotificationLogs, pushSubscriptions, users } = await import('#database/schema.js')
 
     const now = Date.now()
-    const ids = { owner: uid(0), other: uid(0), ownerSub: 0n, otherSub: 0n, missing: 0n }
+    const ids = {
+        owner: uid(0),
+        other: uid(0),
+        ownerSub: 0n as PushSubscriptionId,
+        otherSub: 0n as PushSubscriptionId,
+        missing: 0n as PushSubscriptionId,
+    }
     let stopServer: ((type?: string) => Promise<void>) | undefined
     const sessionTokens = new Map<string, string>()
 
@@ -110,7 +116,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
         return row.id
     }
 
-    const insertSubscription = async (userId: UserId, tag: string): Promise<bigint> => {
+    const insertSubscription = async (userId: UserId, tag: string): Promise<PushSubscriptionId> => {
         const [row] = await db
             .insert(pushSubscriptions)
             .values({
@@ -127,7 +133,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
         return row.id
     }
 
-    const rowOf = async (id: bigint) => {
+    const rowOf = async (id: PushSubscriptionId) => {
         const [row] = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, id))
         return row
     }
@@ -177,7 +183,7 @@ describe.skipIf(!hasPg)('push subscription ownership over HTTP on PostgreSQL', a
         ids.other = await insertUser('push-other')
         ids.ownerSub = await insertSubscription(ids.owner, 'owner')
         ids.otherSub = await insertSubscription(ids.other, 'other')
-        ids.missing = ids.otherSub + 1_000_000n
+        ids.missing = (ids.otherSub + 1_000_000n) as PushSubscriptionId
 
         const wsHandlers = await import('#vendor/utils/network/ws-handlers.js')
         wsHandlers.registerWsAppHooks({

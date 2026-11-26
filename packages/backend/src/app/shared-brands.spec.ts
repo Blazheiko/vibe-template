@@ -8,12 +8,18 @@ import {
     parseSmsChallengeId,
     parseUserId,
     toEntityId,
+    type NotificationId,
     type OAuthAccountId,
     type PasskeyId,
+    type PushSubscriptionId,
     type SmsChallengeId,
     type UserId,
 } from '#app/domain/ids.js'
-import { oauthAccountRepository, webauthnCredentialRepository } from '#app/repositories/index.js'
+import {
+    oauthAccountRepository,
+    pushSubscriptionRepository,
+    webauthnCredentialRepository,
+} from '#app/repositories/index.js'
 import { uid } from '../test-support/ids.js'
 
 // EntityId is branded (code-issues item 58): typecheck rejects a plain string,
@@ -41,6 +47,8 @@ describe('row id brands', () => {
         const userId = uid(5)
         const linkId = 31n as OAuthAccountId
         const passkeyId = 9n as PasskeyId
+        const subscriptionId = 4n as PushSubscriptionId
+        const notificationId = 4n as NotificationId
         const unlink = () => [
             oauthAccountRepository.deleteForUser(userId, linkId, {} as never),
             // @ts-expect-error a link id is not a user id (Р11: the owner comes first)
@@ -48,6 +56,11 @@ describe('row id brands', () => {
             webauthnCredentialRepository.rename(userId, passkeyId, 'Key'),
             // @ts-expect-error a passkey id is not a user id
             webauthnCredentialRepository.rename(passkeyId, userId, 'Key'),
+            pushSubscriptionRepository.delete(userId, subscriptionId),
+            // @ts-expect-error a subscription id is not a user id (feat-264, Р11)
+            pushSubscriptionRepository.delete(subscriptionId, userId),
+            // @ts-expect-error a notification id is not a subscription id
+            pushSubscriptionRepository.findById(notificationId),
         ]
         expect(typeof unlink).toBe('function')
     })

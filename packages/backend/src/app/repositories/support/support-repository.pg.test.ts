@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { SupportMessageId, UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -108,8 +108,8 @@ describe.skipIf(!hasPg)('supportRepository history reads on PostgreSQL', async (
         return row.id
     }
     // Messages m1 … mN in order; returns their ids.
-    const conversation = async (userId: UserId, count: number): Promise<bigint[]> => {
-        const ids: bigint[] = []
+    const conversation = async (userId: UserId, count: number): Promise<SupportMessageId[]> => {
+        const ids: SupportMessageId[] = []
         for (let i = 1; i <= count; i++) {
             const row = await supportRepository.addChatMessage(
                 userId,

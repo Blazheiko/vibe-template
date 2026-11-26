@@ -11,7 +11,7 @@ import { resolveNotificationPreferences, type NotificationCategory } from 'share
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { isAllowedPushEndpoint } from './push-endpoint-policy.js'
 import { sendPush } from './push-transport.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, PushSubscriptionId } from '#app/domain/ids.js'
 
 /** feat-138: the longest one push request may take before it is abandoned and logged as failed. */
 export const PUSH_SEND_TIMEOUT_MS = 10_000
@@ -139,8 +139,8 @@ export const pushNotificationSenderService = {
         let sent = 0
         let failed = 0
         const logs: PushNotificationLogInsert[] = []
-        const usedIds: bigint[] = []
-        const expiredIds: bigint[] = []
+        const usedIds: PushSubscriptionId[] = []
+        const expiredIds: PushSubscriptionId[] = []
 
         const pushPayload = JSON.stringify({
             notification: {
@@ -235,7 +235,7 @@ export const pushNotificationSenderService = {
         try {
             await pushNotificationLogRepository.insertMany(logs)
             if (usedIds.length > 0) {
-                await pushSubscriptionRepository.touchLastUsed(usedIds, userId)
+                await pushSubscriptionRepository.touchLastUsed(userId, usedIds)
             }
         } catch (error: unknown) {
             logger.error(
@@ -246,7 +246,7 @@ export const pushNotificationSenderService = {
         // Separate from the log write: a failed deactivation must not lose the logs.
         for (const id of expiredIds) {
             try {
-                await pushSubscriptionRepository.deactivate(id, userId)
+                await pushSubscriptionRepository.deactivate(userId, id)
             } catch (error: unknown) {
                 logger.error(
                     { err: error, subscriptionId: String(id) },

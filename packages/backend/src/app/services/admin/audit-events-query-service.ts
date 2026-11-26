@@ -1,5 +1,4 @@
 import { Result } from 'better-result'
-import { isValidEntityId } from 'shared/brand'
 import {
     AUDIT_ACTIONS,
     auditActionsOfGroup,
@@ -17,7 +16,7 @@ import {
 } from '#app/repositories/index.js'
 import { badRequest, forbidden, type AppResult } from '#app/services/shared/errors.js'
 import { auditEventTransformer } from '#app/transformers/index.js'
-import { type UserId } from '#app/domain/ids.js'
+import { type UserId, parseAuditEventId } from '#app/domain/ids.js'
 
 /** One page of the audit log (Р7). */
 export const AUDIT_EVENTS_PAGE_SIZE = 50
@@ -55,10 +54,11 @@ export function decodeAuditCursor(text: string): AuditEventCursor | null {
     const decoded = Buffer.from(text, 'base64url').toString('utf8')
     const [occurredAt, id, ...rest] = decoded.split('|')
     if (rest.length > 0 || occurredAt === undefined || id === undefined) return null
-    if (!OCCURRED_AT_TEXT.test(occurredAt) || !isValidEntityId(id)) return null
+    if (!OCCURRED_AT_TEXT.test(occurredAt)) return null
     // A real timestamp and an id PostgreSQL can hold: anything else would come back as a 500.
-    if (!isCalendarTimestamp(occurredAt)) return null
-    return { occurredAt, id: BigInt(id) }
+    const eventId = parseAuditEventId(id)
+    if (eventId === null || !isCalendarTimestamp(occurredAt)) return null
+    return { occurredAt, id: eventId }
 }
 
 export interface AuditEventsQuery {

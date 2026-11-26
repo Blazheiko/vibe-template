@@ -1,4 +1,5 @@
 import { eq, inArray, sql } from 'drizzle-orm'
+import type { SupportArticleId } from '#app/domain/ids.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { testAdminActor } from '../../../test-support/audit-actor.js'
 
@@ -68,7 +69,7 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
 
     const unit = (index: number): number[] =>
         Array.from({ length: 1536 }, (_, i) => (i === index ? 1 : 0))
-    const created: bigint[] = []
+    const created: SupportArticleId[] = []
 
     // Every indexing the service starts in the background, to wait for its end.
     const indexings: Promise<boolean>[] = []
@@ -88,7 +89,7 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
     }
 
     // Which unit vector the stored embedding is (distance 0), or null without one.
-    const storedVector = async (id: bigint): Promise<number | null> => {
+    const storedVector = async (id: SupportArticleId): Promise<number | null> => {
         const [row] = await db
             .select({
                 hasEmbedding: sql<boolean>`${supportKnowledgeBase.embedding} IS NOT NULL`,
@@ -105,7 +106,7 @@ describe.skipIf(!hasPg)('KB embedding consistency (feat-114)', async () => {
         return row?.hasEmbedding === true ? (row.index ?? -1) : null
     }
 
-    const versionOf = async (id: bigint) => {
+    const versionOf = async (id: SupportArticleId) => {
         const [row] = await db
             .select({
                 version: supportKnowledgeBase.contentVersion,

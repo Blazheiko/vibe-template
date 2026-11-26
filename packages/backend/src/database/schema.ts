@@ -23,11 +23,19 @@ import {
 
 import { EMBEDDING_COLUMN_DIMENSIONS } from './embedding-dimensions.js'
 import type {
+    AuditEventId,
+    LlmSystemPromptId,
+    LlmTextUsageId,
     MfaRecoveryCodeId,
+    NotificationId,
     OAuthAccountId,
     OneTimeTokenRowId,
     PasskeyId,
+    PushNotificationLogId,
+    PushSubscriptionId,
     SmsChallengeId,
+    SupportArticleId,
+    SupportMessageId,
     TotpFactorId,
     UserId,
     UserOnlineId,
@@ -195,7 +203,7 @@ export const userOnline = pgTable(
 export const pushSubscriptions = pgTable(
     'push_subscriptions',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<PushSubscriptionId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -225,16 +233,15 @@ export const pushSubscriptions = pgTable(
 export const pushNotificationLogs = pgTable(
     'push_notifications_log',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<PushNotificationLogId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .references(() => users.id, {
                 onDelete: 'set null',
             }),
-        subscriptionId: bigint('subscription_id', { mode: 'bigint' }).references(
-            () => pushSubscriptions.id,
-            { onDelete: 'set null' },
-        ),
+        subscriptionId: bigint('subscription_id', { mode: 'bigint' })
+            .$type<PushSubscriptionId>()
+            .references(() => pushSubscriptions.id, { onDelete: 'set null' }),
         messageTitle: varchar('message_title', { length: 255 }),
         messageBody: text('message_body'),
         messageData: jsonb('message_data'),
@@ -255,7 +262,7 @@ export const pushNotificationLogs = pgTable(
 export const notifications = pgTable(
     'notifications',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<NotificationId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -467,7 +474,7 @@ export const oauthLinkVerifications = pgTable(
 )
 
 export const llmSystemPrompts = pgTable('llm_system_prompts', {
-    id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+    id: bigserial('id', { mode: 'bigint' }).$type<LlmSystemPromptId>().primaryKey(),
     type: llmPromptTypeEnum('type').notNull().unique(),
     topic: varchar('topic', { length: 100 }),
     content: text('content').notNull(),
@@ -489,7 +496,7 @@ export const llmSystemPrompts = pgTable('llm_system_prompts', {
 export const llmTextUsage = pgTable(
     'llm_text_usage',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<LlmTextUsageId>().primaryKey(),
         // NULL for system calls without a user (knowledge-base indexing), and for the rows of a
         // deleted user: the usage log is an audit of tokens and cost, which outlives the account
         // (owner decision, feat-081). The row then has no link to a person; what is left of a
@@ -499,10 +506,9 @@ export const llmTextUsage = pgTable(
             .references(() => users.id, {
                 onDelete: 'set null',
             }),
-        llmSystemPromptId: bigint('llm_system_prompt_id', { mode: 'bigint' }).references(
-            () => llmSystemPrompts.id,
-            { onDelete: 'set null' },
-        ),
+        llmSystemPromptId: bigint('llm_system_prompt_id', { mode: 'bigint' })
+            .$type<LlmSystemPromptId>()
+            .references(() => llmSystemPrompts.id, { onDelete: 'set null' }),
         model: varchar('model', { length: 100 }).notNull(),
         feature: llmTextFeatureEnum('feature').notNull(),
         // The prompt text: empty unless AI_USAGE_STORE_PROMPTS=true (feat-065), and emptied
@@ -539,7 +545,7 @@ export const llmTextUsage = pgTable(
 export const supportKnowledgeBase = pgTable(
     'support_knowledge_base',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<SupportArticleId>().primaryKey(),
         title: varchar('title', { length: 255 }).notNull(),
         content: text('content').notNull(),
         category: varchar('category', { length: 100 }),
@@ -562,7 +568,7 @@ export const supportKnowledgeBase = pgTable(
 export const supportChatHistory = pgTable(
     'support_chat_history',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<SupportMessageId>().primaryKey(),
         userId: bigint('user_id', { mode: 'bigint' })
             .$type<UserId>()
             .notNull()
@@ -595,7 +601,7 @@ export const supportChatHistory = pgTable(
 export const auditEvents = pgTable(
     'audit_events',
     {
-        id: bigserial('id', { mode: 'bigint' }).primaryKey(),
+        id: bigserial('id', { mode: 'bigint' }).$type<AuditEventId>().primaryKey(),
         occurredAt: timestamp('occurred_at', { precision: 6 }).notNull(),
         actorKind: auditActorKindEnum('actor_kind').notNull(),
         actorUserId: bigint('actor_user_id', { mode: 'bigint' }).$type<UserId>(),

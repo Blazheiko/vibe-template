@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { LlmSystemPromptId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -76,7 +77,10 @@ describe('promptTestService.run (code-issues item 23)', () => {
     it('records the call as PROMPT_TEST for the admin and the prompt (item 53)', async () => {
         adapter.streamText.mockImplementation(streamOf('ok'))
 
-        await promptTestService.run('s', 'u', undefined, { userId: uid(1), llmSystemPromptId: 3n })
+        await promptTestService.run('s', 'u', undefined, {
+            userId: uid(1),
+            llmSystemPromptId: 3n as LlmSystemPromptId,
+        })
 
         expect(textUsageRecorder).toHaveBeenCalledWith('PROMPT_TEST', 1n, 3n)
         expect(adapter.streamText.mock.calls[0]?.[1]).toBe(recorder)

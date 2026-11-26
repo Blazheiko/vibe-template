@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
+import type { PushNotificationLogId, PushSubscriptionId } from '#app/domain/ids.js'
 import { uid } from '../../test-support/ids.js'
 
 import { pushNotificationLogTransformer } from './push-notification-log-transformer.js'
 
 const row = {
-    id: 11n,
+    id: 11n as PushNotificationLogId,
     userId: uid(7),
-    subscriptionId: 3n,
+    subscriptionId: 3n as PushSubscriptionId,
     messageTitle: 'Hi',
     messageBody: 'Body',
     messageData: { url: '/' },
@@ -80,7 +81,7 @@ describe('pushNotificationLogTransformer', () => {
     it('serializes a log summary', () => {
         expect(
             pushNotificationLogTransformer.serializeSummary({
-                id: 11n,
+                id: 11n as PushNotificationLogId,
                 messageTitle: null,
                 status: null,
                 sentAt: new Date('2026-10-25T10:00:00.000Z'),

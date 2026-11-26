@@ -5,11 +5,11 @@ import { llmUsageService } from '#app/services/ai/usage/llm-usage-service.js'
 import type { TokenUsage } from '#app/services/ai/types.js'
 import logger from '#logger'
 import supportConfig from '#config/support.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, SupportArticleId } from '#app/domain/ids.js'
 
 // The version read with the text goes with its vector: a newer text in the meantime wins.
 async function storeVector(
-    article: { id: bigint; contentVersion: number },
+    article: { id: SupportArticleId; contentVersion: number },
     vector: number[],
 ): Promise<boolean> {
     const stored = await supportKnowledgeRepository.setEmbedding(
@@ -35,7 +35,7 @@ export const supportEmbeddingService = {
      */
     async indexArticle(
         article: {
-            id: bigint
+            id: SupportArticleId
             title: string
             content: string
             contentVersion: number

@@ -11,7 +11,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 
 // feat-254 over HTTP: POST /auth/logout with `pushEndpoint` deletes this browser's push record of
 // the signed-in user together with the session, and only when the session really ended. A real
@@ -149,7 +149,7 @@ describe.skipIf(!hasPg || !hasRedis)('POST /auth/logout and the push record', as
         return row
     }
 
-    const recordExists = async (id: bigint): Promise<boolean> =>
+    const recordExists = async (id: PushSubscriptionId): Promise<boolean> =>
         (await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.id, id))).length > 0
 
     interface Reply {

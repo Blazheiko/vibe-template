@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
+import type { SupportArticleId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -37,11 +38,11 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
         await import('#app/services/support/support-embedding-service.js')
     const { knowledgeBaseService } = await import('#app/services/support/knowledge-base-service.js')
 
-    const articleIds: bigint[] = []
+    const articleIds: SupportArticleId[] = []
 
     const eventsOf = (requestId: string) =>
         db.select().from(auditEvents).where(eq(auditEvents.requestId, requestId))
-    const rowOf = async (id: bigint) => {
+    const rowOf = async (id: SupportArticleId) => {
         const [row] = await db
             .select({
                 title: supportKnowledgeBase.title,
@@ -56,7 +57,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
             .where(eq(supportKnowledgeBase.id, id))
         return row
     }
-    const newArticle = async (): Promise<bigint> => {
+    const newArticle = async (): Promise<SupportArticleId> => {
         const row = await supportKnowledgeRepository.create({
             title: 'Audit',
             content: 'body',
@@ -68,7 +69,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
         await supportKnowledgeRepository.setEmbedding(row.id, vector, row.contentVersion)
         return row.id
     }
-    const objectsUnder = (id: bigint): string[] =>
+    const objectsUnder = (id: SupportArticleId): string[] =>
         [...s3.objects.keys()].filter((key) => key.startsWith(`knowledge-base/${String(id)}/`))
 
     let indexArticle: ReturnType<typeof vi.spyOn>
@@ -105,7 +106,7 @@ describe.skipIf(!hasPg)('knowledge-base changes in the audit log', async () => {
             actor,
         )
         if (!created.isOk()) throw new Error('create failed')
-        const id = BigInt(created.value.item.id)
+        const id = BigInt(created.value.item.id) as SupportArticleId
         articleIds.push(id)
 
         const [createdEvent] = await eventsOf(actor.requestId)

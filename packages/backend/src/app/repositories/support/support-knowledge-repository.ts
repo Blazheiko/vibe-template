@@ -2,6 +2,7 @@ import { db } from '#database/db.js'
 import { supportKnowledgeBase } from '#database/schema.js'
 import { and, asc, count, eq, sql } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
+import { asSupportArticleId, type SupportArticleId } from '#app/domain/ids.js'
 import type { DbExecutor, DbTransaction } from '#app/repositories/transaction.js'
 
 export type KbRow = InferSelectModel<typeof supportKnowledgeBase>
@@ -10,7 +11,7 @@ export interface KbArticleRow extends Omit<KbRow, 'embedding'> {
 }
 
 export interface KbSearchResult {
-    id: bigint
+    id: SupportArticleId
     title: string
     content: string
     screenshotKey: string | null
@@ -68,7 +69,7 @@ export const supportKnowledgeRepository = {
         return { rows, total }
     },
 
-    async findById(id: bigint): Promise<KbArticleRow | undefined> {
+    async findById(id: SupportArticleId): Promise<KbArticleRow | undefined> {
         const rows = await db
             .select(kbArticleSelect)
             .from(supportKnowledgeBase)
@@ -120,7 +121,7 @@ export const supportKnowledgeRepository = {
     },
 
     /** The article, locked until the end of `tx` (feat-235): the "before" of an audited change. */
-    async lockById(id: bigint, tx: DbTransaction): Promise<KbArticleRow | undefined> {
+    async lockById(id: SupportArticleId, tx: DbTransaction): Promise<KbArticleRow | undefined> {
         const rows = await tx
             .select(kbArticleSelect)
             .from(supportKnowledgeBase)
@@ -134,7 +135,7 @@ export const supportKnowledgeRepository = {
      * the row (feat-235): a title or content in `data` is a new text.
      */
     async update(
-        id: bigint,
+        id: SupportArticleId,
         data: {
             title?: string
             content?: string
@@ -169,7 +170,7 @@ export const supportKnowledgeRepository = {
      * Undefined when there was no article.
      */
     async delete(
-        id: bigint,
+        id: SupportArticleId,
         executor: DbExecutor = db,
     ): Promise<Omit<KbRow, 'embedding'> | undefined> {
         const { embeddingIndexed: _embeddingIndexed, ...columns } = kbArticleSelect
@@ -190,7 +191,7 @@ export const supportKnowledgeRepository = {
      * commits or rolls back with it.
      */
     async replaceScreenshot<T = undefined>(
-        id: bigint,
+        id: SupportArticleId,
         screenshot: { key: string; mime: string } | null,
         inTransaction?: (
             tx: DbTransaction,
@@ -235,7 +236,11 @@ export const supportKnowledgeRepository = {
      *
      * @returns whether the vector was stored
      */
-    async setEmbedding(id: bigint, vector: number[], contentVersion: number): Promise<boolean> {
+    async setEmbedding(
+        id: SupportArticleId,
+        vector: number[],
+        contentVersion: number,
+    ): Promise<boolean> {
         const stored = await db
             .update(supportKnowledgeBase)
             .set({ embedding: toVectorLiteral(vector) })
@@ -250,7 +255,7 @@ export const supportKnowledgeRepository = {
     },
 
     // One statement, so the vector and updatedAt change together or not at all.
-    async clearEmbedding(id: bigint): Promise<void> {
+    async clearEmbedding(id: SupportArticleId): Promise<void> {
         await db
             .update(supportKnowledgeBase)
             .set({ embedding: null, updatedAt: new Date() })
@@ -286,7 +291,7 @@ export const supportKnowledgeRepository = {
         )
 
         return result.rows.map((row) => ({
-            id: typeof row.id === 'string' ? BigInt(row.id) : row.id,
+            id: asSupportArticleId(row.id),
             title: row.title,
             content: row.content,
             screenshotKey: row.screenshot_key,

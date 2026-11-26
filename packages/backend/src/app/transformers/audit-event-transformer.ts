@@ -26,7 +26,7 @@ export const auditEventTransformer = {
         const proof = metadata?.['proof']
         const source = metadata?.['source']
         return {
-            id: String(row.id),
+            id: toEntityId(row.id),
             occurredAt: occurredAtIso(row.occurredAt),
             action: row.action,
             group: AUDIT_ACTIONS[row.action].group,

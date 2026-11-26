@@ -2,7 +2,7 @@ import { db } from '#database/db.js'
 import { supportChatHistory } from '#database/schema.js'
 import { and, desc, eq, lt } from 'drizzle-orm'
 import type { InferSelectModel } from 'drizzle-orm'
-import type { UserId } from '#app/domain/ids.js'
+import type { SupportMessageId, UserId } from '#app/domain/ids.js'
 
 export type SupportChatRow = InferSelectModel<typeof supportChatHistory>
 
@@ -39,7 +39,7 @@ export const supportRepository = {
         userId: UserId,
         content: string,
         clientMessageId: string | undefined,
-    ): Promise<{ stored: boolean; id: bigint | null }> {
+    ): Promise<{ stored: boolean; id: SupportMessageId | null }> {
         const inserted = await db
             .insert(supportChatHistory)
             .values({ userId, role: 'user', content, clientMessageId: clientMessageId ?? null })
@@ -58,7 +58,7 @@ export const supportRepository = {
      */
     async findChatHistoryPage(
         userId: UserId,
-        options: { before?: bigint | undefined; limit: number },
+        options: { before?: SupportMessageId | undefined; limit: number },
     ): Promise<{ rows: SupportChatRow[]; hasMore: boolean }> {
         const where =
             options.before === undefined

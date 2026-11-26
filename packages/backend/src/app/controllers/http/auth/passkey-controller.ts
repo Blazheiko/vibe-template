@@ -25,7 +25,7 @@ const requestOf = (context: HttpContext, userId: UserId): PasskeyRequest => ({
     actor: auditActorFrom(context),
 })
 
-/** Also the answer to a path id that is not an id (parseEntityId): like a passkey of another user. */
+/** Also the answer to a path id that is not an id (parsePasskeyId): like a passkey of another user. */
 const passkeyNotFound = (): AppError => notFound('Passkey', 'Passkey not found')
 
 export default {

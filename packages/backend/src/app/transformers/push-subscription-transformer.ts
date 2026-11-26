@@ -53,7 +53,7 @@ export const pushSubscriptionTransformer = {
         } = subscription
         return {
             ...rest,
-            id: String(id),
+            id: toEntityId(id),
             userId: toEntityId(userId),
             created_at: createdAt.toISOString(),
             updated_at: updatedAt.toISOString(),
@@ -79,7 +79,7 @@ export const pushSubscriptionTransformer = {
             notificationLogs: notificationLogs.map((log) =>
                 pushNotificationLogTransformer.serializeSummary(log),
             ),
-            id: String(id),
+            id: toEntityId(id),
             userId: toEntityId(userId),
             created_at: createdAt.toISOString(),
             updated_at: updatedAt.toISOString(),

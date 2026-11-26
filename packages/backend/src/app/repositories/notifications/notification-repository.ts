@@ -4,7 +4,7 @@ import type { InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { notifications } from '#database/schema.js'
 import { NOTIFICATIONS_UNREAD_COUNT_CAP } from 'shared/notifications'
-import type { UserId } from '#app/domain/ids.js'
+import type { NotificationId, UserId } from '#app/domain/ids.js'
 
 export type NotificationRow = InferSelectModel<typeof notifications>
 
@@ -19,7 +19,7 @@ export interface NotificationInsert {
 export interface NotificationPage {
     rows: NotificationRow[]
     /** The id to pass as `before` for the next page, or null when this one was the last. */
-    next: bigint | null
+    next: NotificationId | null
 }
 
 const t = notifications
@@ -40,7 +40,7 @@ export function notificationsPurgeBatch(cutoff: Date, limit: number): SQL {
 // feat-236 (Р1, Р6): every read and write but the retention purge is bound to one user: a
 // notification of another user is never read, changed or counted.
 export const notificationRepository = {
-    async insert(entry: NotificationInsert): Promise<bigint> {
+    async insert(entry: NotificationInsert): Promise<NotificationId> {
         const [row] = await db.insert(t).values(entry).returning({ id: t.id })
         if (row === undefined) throw new Error('notification not inserted')
         return row.id
@@ -49,7 +49,7 @@ export const notificationRepository = {
     /** Newest first, `id < before`. Reads one row more than `limit` to know whether more follow. */
     async page(
         userId: UserId,
-        options: { unread: boolean; before: bigint | null; limit: number },
+        options: { unread: boolean; before: NotificationId | null; limit: number },
     ): Promise<NotificationPage> {
         const conditions: SQL[] = [eq(t.userId, userId)]
         if (options.unread) conditions.push(isNull(t.readAt))
@@ -87,7 +87,7 @@ export const notificationRepository = {
      * already keeps its `read_at` and answers the same link. Null: no such notification of this
      * user. Both statements are bound to the user.
      */
-    async markRead(userId: UserId, id: bigint): Promise<{ link: string | null } | null> {
+    async markRead(userId: UserId, id: NotificationId): Promise<{ link: string | null } | null> {
         await db
             .update(t)
             .set({ readAt: sql`now()` })
@@ -100,7 +100,7 @@ export const notificationRepository = {
     },
 
     /** Marks every unread notification of the user with `id <= upTo` read (Р6). */
-    async markAllUpTo(userId: UserId, upTo: bigint): Promise<number> {
+    async markAllUpTo(userId: UserId, upTo: NotificationId): Promise<number> {
         const rows = await db
             .update(t)
             .set({ readAt: sql`now()` })

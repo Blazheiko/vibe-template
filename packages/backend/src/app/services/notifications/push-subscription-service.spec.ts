@@ -1,7 +1,7 @@
 import { Result } from 'better-result'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { UserId } from '#app/domain/ids.js'
+import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 
 const pushSubscriptionRepositoryMock = {
     findByUserIdWithLogs: vi.fn(),
@@ -143,7 +143,7 @@ describe('pushSubscriptionService', () => {
         )
         const updated = await pushSubscriptionService.updateSubscription(
             uid(7),
-            1n,
+            1n as PushSubscriptionId,
             { isActive: true },
             'stale-token',
         )
@@ -201,8 +201,8 @@ describe('pushSubscriptionService', () => {
             )
 
             expect(pushSubscriptionRepositoryMock.updateByEndpoint).toHaveBeenCalledWith(
-                endpoint,
                 7n,
+                endpoint,
                 expect.objectContaining({ isActive }),
                 TX,
             )
@@ -227,7 +227,7 @@ describe('pushSubscriptionService', () => {
             expect(pushSubscriptionRepositoryMock.findByEndpoint).toHaveBeenCalledWith(
                 'https://fcm.googleapis.com/fcm/send/a%2Fb',
             )
-            expect(pushSubscriptionRepositoryMock.delete).toHaveBeenCalledWith(3n, 7n)
+            expect(pushSubscriptionRepositoryMock.delete).toHaveBeenCalledWith(7n, 3n)
         })
 
         it("never deletes another user's record with that endpoint", async () => {
@@ -284,8 +284,8 @@ describe('pushSubscriptionService', () => {
 
             expect(Result.isOk(result)).toBe(true)
             expect(pushSubscriptionRepositoryMock.updateByEndpoint).toHaveBeenCalledWith(
-                existing.endpoint,
                 7n,
+                existing.endpoint,
                 expect.objectContaining({ p256dhKey: 'key', authKey: 'auth' }),
                 TX,
             )
@@ -320,7 +320,10 @@ describe('pushSubscriptionService', () => {
         getPushSubscriptionStatisticsMock.mockResolvedValue(undefined)
 
         const { pushSubscriptionService } = await loadPushSubscriptionService()
-        const result = await pushSubscriptionService.getSubscriptionStatistics(uid(7), 1n)
+        const result = await pushSubscriptionService.getSubscriptionStatistics(
+            uid(7),
+            1n as PushSubscriptionId,
+        )
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {

@@ -4,7 +4,7 @@ import { and, count, desc, eq, gte, inArray, sql } from 'drizzle-orm'
 import type { InferInsertModel } from 'drizzle-orm'
 
 import type { PushSubscriptionLogSummary } from './push-subscription-repository.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 
 export type PushNotificationLogInsert = InferInsertModel<typeof pushNotificationLogs>
 
@@ -17,7 +17,7 @@ export interface PushNotificationLogCounts {
 }
 
 export type PushSubscriptionLogSummaryRow = PushSubscriptionLogSummary & {
-    subscriptionId: bigint | null
+    subscriptionId: PushSubscriptionId | null
 }
 
 export interface IPushNotificationLogRepository {
@@ -25,13 +25,13 @@ export interface IPushNotificationLogRepository {
     // Both reads take the owner too: a subscription keeps its id when it moves to another
     // account, and the log rows of the previous owner stay theirs.
     countsBySubscription(
-        subscriptionId: bigint,
         userId: UserId,
+        subscriptionId: PushSubscriptionId,
         since: Date,
     ): Promise<PushNotificationLogCounts>
     latestBySubscriptionIds(
-        subscriptionIds: bigint[],
         userId: UserId,
+        subscriptionIds: PushSubscriptionId[],
         limit: number,
     ): Promise<PushSubscriptionLogSummaryRow[]>
 }
@@ -42,7 +42,7 @@ export const pushNotificationLogRepository: IPushNotificationLogRepository = {
         await db.insert(pushNotificationLogs).values(rows)
     },
 
-    async countsBySubscription(subscriptionId, userId, since) {
+    async countsBySubscription(userId, subscriptionId, since) {
         const [row] = await db
             .select({
                 total: count(),
@@ -64,7 +64,7 @@ export const pushNotificationLogRepository: IPushNotificationLogRepository = {
     },
 
     // The newest `limit` logs of every subscription in one query.
-    async latestBySubscriptionIds(subscriptionIds, userId, limit) {
+    async latestBySubscriptionIds(userId, subscriptionIds, limit) {
         if (subscriptionIds.length === 0) return []
         const ranked = db
             .select({

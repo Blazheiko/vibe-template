@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { LlmTextUsageId } from '#app/domain/ids.js'
 
 import { eq, inArray, sql } from 'drizzle-orm'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -21,14 +22,14 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
 
     const DAY = 86_400_000
     const model = `retention-test-${String(Date.now())}`
-    const created: bigint[] = []
+    const created: LlmTextUsageId[] = []
     const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex')
 
     const insert = async (
         finalPrompt: string,
         ageDays: number,
         extra: { promptSha256?: string | null; promptChars?: number | null } = {},
-    ): Promise<bigint> => {
+    ): Promise<LlmTextUsageId> => {
         await llmUsageRepository.insertText({
             model,
             feature: 'SUPPORT_CHAT',
@@ -49,13 +50,13 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
         created.push(row.id)
         return row.id
     }
-    const rowOf = async (id: bigint) => {
+    const rowOf = async (id: LlmTextUsageId) => {
         const [row] = await db.select().from(llmTextUsage).where(eq(llmTextUsage.id, id))
         if (row === undefined) throw new Error('row missing')
         return row
     }
 
-    const insertAt = async (finalPrompt: string, createdAt: Date): Promise<bigint> => {
+    const insertAt = async (finalPrompt: string, createdAt: Date): Promise<LlmTextUsageId> => {
         const id = await insert(finalPrompt, 0)
         await db.update(llmTextUsage).set({ createdAt }).where(eq(llmTextUsage.id, id))
         return id
@@ -105,7 +106,7 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
     describe('purging the text', () => {
         // feat-125 (L10): in batches of short statements, every matching row reached.
         it('purges in batches until nothing matches, and counts every row', async () => {
-            const ids: bigint[] = []
+            const ids: LlmTextUsageId[] = []
             for (let i = 0; i < 7; i += 1) ids.push(await insert(`batched prompt ${String(i)}`, 40))
             const execute = vi.spyOn(db, 'execute')
 
@@ -274,7 +275,7 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
         })
 
         it('runs no statement after a checkpoint throws', async () => {
-            const ids: bigint[] = []
+            const ids: LlmTextUsageId[] = []
             for (let i = 0; i < 5; i += 1) ids.push(await insert(`stopped prompt ${String(i)}`, 40))
             const withText = await countWithText()
             let calls = 0
@@ -353,7 +354,7 @@ describe.skipIf(!hasPg)('llm_text_usage prompt retention on PostgreSQL', async (
         // The cursor keeps microseconds and breaks ties by id: a dry run in batches of 2 over rows
         // that share one created_at with microseconds counts each row once.
         it('counts every row once in batches, through equal timestamps with microseconds', async () => {
-            const ids: bigint[] = []
+            const ids: LlmTextUsageId[] = []
             for (let i = 0; i < 5; i += 1) ids.push(await insert(`tie ${String(i)}`, 40))
             await db.execute(
                 sql`update ${llmTextUsage} set ${sql.identifier('created_at')} = '2001-02-03 04:05:06.123456'::timestamp where ${inArray(llmTextUsage.id, ids)}`,

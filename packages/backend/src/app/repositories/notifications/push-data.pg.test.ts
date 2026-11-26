@@ -3,7 +3,7 @@ import { uid } from '../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -23,7 +23,15 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
     const DAY = 24 * 60 * 60 * 1000
     const now = Date.now()
-    const ids = { userA: uid(0), userB: uid(0), userEmpty: uid(0), s1: 0n, s2: 0n, s3: 0n, sB: 0n }
+    const ids = {
+        userA: uid(0),
+        userB: uid(0),
+        userEmpty: uid(0),
+        s1: 0n as PushSubscriptionId,
+        s2: 0n as PushSubscriptionId,
+        s3: 0n as PushSubscriptionId,
+        sB: 0n as PushSubscriptionId,
+    }
 
     const legacyFindByUserIdWithLogs = async (userId: UserId) => {
         const subscriptionsData = await db
@@ -49,11 +57,8 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
         )
     }
 
-    const legacyStatistics = async (subscriptionId: bigint, userId: UserId) => {
-        const subscription = await pushSubscriptionRepository.findByIdAndUserId(
-            subscriptionId,
-            userId,
-        )
+    const legacyStatistics = async (subscriptionId: PushSubscriptionId, userId: UserId) => {
+        const subscription = await pushSubscriptionRepository.findForUser(userId, subscriptionId)
         if (subscription === undefined) return undefined
         const logs = await db
             .select()
@@ -123,7 +128,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
     type Status = 'SENT' | 'FAILED' | 'PENDING' | null
     const insertLogs = async (
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
         logs: { status: Status; ageDays: number }[],
     ) => {
         await db.insert(pushNotificationLogs).values(
@@ -277,8 +282,8 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
             )
             expect(queries).toBe(1)
             const counts = await pushNotificationLogRepository.countsBySubscription(
-                ids.sB,
                 ids.userB,
+                ids.sB,
                 new Date(now - DAY),
             )
             expect(counts).toEqual({ total: 3, sent: 2, failed: 1, pending: 0, since: 3 })
@@ -286,7 +291,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
         it('latestBySubscriptionIds returns [] for no ids without a query', async () => {
             const { result, queries } = await countQueries(() =>
-                pushNotificationLogRepository.latestBySubscriptionIds([], ids.userA, 5),
+                pushNotificationLogRepository.latestBySubscriptionIds(ids.userA, [], 5),
             )
             expect(result).toEqual([])
             expect(queries).toBe(0)
@@ -294,7 +299,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
         it('touchLastUsed updates only the given subscriptions of that user', async () => {
             const before = await pushSubscriptionRepository.findById(ids.s2)
-            await pushSubscriptionRepository.touchLastUsed([ids.s1, ids.sB], ids.userA)
+            await pushSubscriptionRepository.touchLastUsed(ids.userA, [ids.s1, ids.sB])
             const s1 = await pushSubscriptionRepository.findById(ids.s1)
             const s2 = await pushSubscriptionRepository.findById(ids.s2)
             const sB = await pushSubscriptionRepository.findById(ids.sB)
@@ -309,7 +314,12 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
     // another account (same browser, account switch), so every read of its log has to
     // be scoped by the log's owner too.
     describe('log of a subscription that moved to another account', () => {
-        const moved = { userA: uid(0), userB: uid(0), subscription: 0n, endpoint: '' }
+        const moved = {
+            userA: uid(0),
+            userB: uid(0),
+            subscription: 0n as PushSubscriptionId,
+            endpoint: '',
+        }
 
         const insertLog = async (userId: UserId, title: string, status: 'SENT' | 'FAILED') => {
             await db.insert(pushNotificationLogs).values({
@@ -324,8 +334,8 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
         const moveTo = async (userId: UserId) => {
             const row = await pushSubscriptionRepository.updateByEndpoint(
-                moved.endpoint,
                 userId,
+                moved.endpoint,
                 {},
             )
             expect(row?.id).toBe(moved.subscription)
@@ -370,8 +380,8 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
 
         it('the log of the subscription has only the rows of the new owner', async () => {
             const logs = await pushSubscriptionRepository.getLogsBySubscriptionId(
-                moved.subscription,
                 moved.userB,
+                moved.subscription,
             )
             expect(logs.map((log) => log.messageTitle)).toEqual(['B: test push'])
         })
