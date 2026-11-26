@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { toMs, unixMs } from 'shared/brand'
 import { normalizeEmail } from '#app/domain/email.js'
 import {
     mfaBindValueOf,
@@ -345,7 +346,7 @@ export async function completeSecondStep(
     request: AuditRequest,
     deps: SecondStepDeps = {},
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const now = deps.now?.() ?? Date.now()
+    const now = unixMs(deps.now?.() ?? Date.now())
     const ticketId = mfaTicketCookieOf(context.auth.getMfaTicketCookie())
     const bindValue = context.auth.getMfaBindCookie()
     if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '') {
@@ -357,7 +358,7 @@ export async function completeSecondStep(
     }
     const reservationId = newMfaReservationId()
     const attemptId = mfaAttemptIdOf(input.attemptId ?? reservationId)
-    const reservationTtlMs = mfaConfig.reservationTtlSeconds * 1000
+    const reservationTtlMs = toMs(mfaConfig.reservationTtlSeconds)
 
     const reserved: ReserveOutcome = await mfaTicketStore.reserve(
         ticketId,
@@ -546,8 +547,8 @@ async function attempt(
             const capture = await mfaTicketStore.capture(
                 ticketId,
                 reservationId,
-                deps.now?.() ?? Date.now(),
-                mfaConfig.reservationTtlSeconds * 1000,
+                unixMs(deps.now?.() ?? Date.now()),
+                toMs(mfaConfig.reservationTtlSeconds),
                 { completionId, xid, plan },
                 passkey?.challenge ?? null,
             )

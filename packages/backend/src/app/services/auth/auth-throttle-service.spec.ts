@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ms } from 'shared/brand'
 
 import type { ThrottlePolicy } from '#config/throttle-policies.js'
 
@@ -17,7 +18,7 @@ const policy: ThrottlePolicy = {
     keyBy: 'ip',
     algorithm: 'fixed-window',
     limit: 20,
-    windowMs: 3_600_000,
+    windowMs: ms(3_600_000),
     onRedisError: 'reject',
 }
 

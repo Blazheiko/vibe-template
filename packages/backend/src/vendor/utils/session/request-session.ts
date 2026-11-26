@@ -10,7 +10,7 @@ import type {
     SessionDevice,
     SessionInfo,
 } from '#vendor/types/types.js'
-import { isValidEntityId } from 'shared/brand'
+import { isValidEntityId, nowUnixMs, unixSecondsOf, type Seconds } from 'shared/brand'
 import { USER_AGENT_MAX_LENGTH } from 'shared/utils'
 import sessionConfig from '#config/session.js'
 import {
@@ -63,7 +63,7 @@ const COOKIE_REFRESH_SECONDS = 60 * 60
 /** A cookie-held anonymous session is re-issued once it is older than this (sliding TTL). */
 const ANON_COOKIE_REFRESH_SECONDS = 15 * 60
 
-const nowSeconds = (): number => Math.floor(Date.now() / 1000)
+const nowSeconds = (): Seconds => unixSecondsOf(nowUnixMs())
 
 const withCsrfToken = (data: SessionData): SessionData => ({
     ...data,
@@ -509,7 +509,7 @@ export class RequestSession {
     private async storeAnonymous(data: SessionData): Promise<SessionInfo> {
         const stored: SessionInfo = { ...this.info, data, updatedAt: new Date().toISOString() }
         await saveSession(stored)
-        this.issueStoredCookie(stored.id, undefined, sessionConfig.anonAge)
+        this.issueStoredCookie(stored.id, undefined, sessionConfig.anonAgeSeconds)
         this.cookieHeld = false
         // saveSession stores a session without a user under the anonymous namespace; later
         // changes in this request must address the same record.
@@ -543,7 +543,7 @@ export class RequestSession {
             { userId, userToken, ...(authState !== undefined ? { auth: authState } : {}) },
             this.deviceFor(origin),
         )
-        this.issueStoredCookie(signedIn.id, userToken, sessionConfig.age)
+        this.issueStoredCookie(signedIn.id, userToken, sessionConfig.ageSeconds)
         this.setInfo(signedIn)
         this.storageToken = userToken
         this.cookieHeld = false
@@ -694,7 +694,7 @@ export class RequestSession {
      * `mfa_completion_pending`) finds it `already` and deletes again.
      */
     private issueActive(active: SessionInfo, userToken: string): void {
-        this.issueStoredCookie(active.id, userToken, sessionConfig.age)
+        this.issueStoredCookie(active.id, userToken, sessionConfig.ageSeconds)
         this.setInfo(active)
         this.storageToken = userToken
         this.cookieHeld = false
@@ -837,7 +837,7 @@ export class RequestSession {
             csrfToken,
             issuedAt: nowSeconds(),
         })
-        this.setCookie(token, sessionConfig.anonAge)
+        this.setCookie(token, sessionConfig.anonAgeSeconds)
     }
 
     // --- before the response goes out ---------------------------------------------------

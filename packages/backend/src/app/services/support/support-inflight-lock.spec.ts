@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ms } from 'shared/brand'
 import { uid } from '../../../test-support/ids.js'
 import type { SupportLease } from './support-inflight-lock.js'
 
@@ -13,7 +14,7 @@ vi.mock('#database/redis.js', () => ({
     withRedis: <T>(fn: () => Promise<T>): Promise<T> => fn(),
 }))
 
-const lease = { ttlMs: 4_000, renewEveryMs: 1_000, maxLifetimeMs: 60_000 }
+const lease = { ttlMs: ms(4_000), renewEveryMs: ms(1_000), maxLifetimeMs: 60_000 }
 
 async function acquire(with_: SupportLease = lease) {
     const { acquireSupportLock } = await import('./support-inflight-lock.js')
@@ -101,7 +102,11 @@ describe('support in-flight lease', () => {
     // had expired.
     it('is lost exactly one interval before the key can expire, between renewal ticks', async () => {
         redisMock.eval.mockRejectedValue(new Error('Command timed out'))
-        const lock = await acquire({ ttlMs: 3_500, renewEveryMs: 1_000, maxLifetimeMs: 60_000 })
+        const lock = await acquire({
+            ttlMs: ms(3_500),
+            renewEveryMs: ms(1_000),
+            maxLifetimeMs: 60_000,
+        })
 
         await vi.advanceTimersByTimeAsync(2_400)
         expect(lock?.lost.aborted).toBe(false)
@@ -168,7 +173,7 @@ describe('a released lease', () => {
 describe('a lease that must outlast the longest write', () => {
     it('is lost stopBeforeExpiryMs before the key can expire, not one renewal interval', async () => {
         redisMock.eval.mockRejectedValue(new Error('Command timed out'))
-        const lock = await acquire({ ...lease, stopBeforeExpiryMs: 2_500 })
+        const lock = await acquire({ ...lease, stopBeforeExpiryMs: ms(2_500) })
 
         await vi.advanceTimersByTimeAsync(1_400)
         expect(lock?.lost.aborted).toBe(false)
@@ -181,8 +186,8 @@ describe('a lease that must outlast the longest write', () => {
         const { leaseForDatabaseWrites, DATABASE_WRITE_BOUND_MS } =
             await import('#app/services/shared/redis-lease.js')
         const derived = leaseForDatabaseWrites({
-            ttlMs: 30_000,
-            renewEveryMs: 10_000,
+            ttlMs: ms(30_000),
+            renewEveryMs: ms(10_000),
             maxLifetimeMs: 60_000,
         })
 

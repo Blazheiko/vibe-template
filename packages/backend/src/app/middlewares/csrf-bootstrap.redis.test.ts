@@ -406,7 +406,7 @@ describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', ()
 
     it('an anonymous cookie older than SESSION_ANON_TTL is not accepted', async () => {
         const csrfToken = 'c'.repeat(43)
-        const expired = anonCookie(nowSec() - sessionConfig.anonAge - 1, csrfToken)
+        const expired = anonCookie(nowSec() - sessionConfig.anonAgeSeconds - 1, csrfToken)
 
         const response = await mutate(expired, csrfToken)
 
@@ -469,8 +469,8 @@ describe.skipIf(!hasRedis)('anonymous session in a signed cookie (feat-057)', ()
 
         const key = `session:anon_session:${id}`
         const ttl = await admin.ttl(key)
-        expect(ttl).toBeGreaterThan(sessionConfig.anonAge - 10)
-        expect(ttl).toBeLessThanOrEqual(sessionConfig.anonAge)
+        expect(ttl).toBeGreaterThan(sessionConfig.anonAgeSeconds - 10)
+        expect(ttl).toBeLessThanOrEqual(sessionConfig.anonAgeSeconds)
         const stored = response.context.responseData.cookies.get(sessionConfig.cookieName)?.value
         expect(stored).toEqual(expect.any(String))
 

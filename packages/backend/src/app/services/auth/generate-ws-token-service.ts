@@ -2,7 +2,10 @@ import { generateKey } from 'metautil'
 import redis, { withRedis } from '#database/redis.js'
 import type { SessionInfo } from '#vendor/types/types.js'
 import configApp from '#config/app.js'
-import { isValidEntityId } from 'shared/brand'
+import { isValidEntityId, seconds, type Seconds } from 'shared/brand'
+
+/** How long a WS token can be used to open the socket: once, within a minute. */
+const WS_TOKEN_TTL: Seconds = seconds(60)
 
 export async function generateWsToken(sessionInfo: SessionInfo, userId: string): Promise<string> {
     if (!isValidEntityId(userId)) {
@@ -24,7 +27,7 @@ export async function generateWsToken(sessionInfo: SessionInfo, userId: string):
         userId,
         userToken,
     })
-    await withRedis(() => redis.setex(`auth:ws:${wsToken}`, 60, tokenData))
+    await withRedis(() => redis.setex(`auth:ws:${wsToken}`, WS_TOKEN_TTL, tokenData))
 
     return wsToken
 }

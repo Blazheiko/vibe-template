@@ -5,6 +5,8 @@
 // and it never runs for an unknown event. This budget is checked first, from memory: the state
 // lives in the connection's user data, so it costs no I/O and ends with the socket.
 
+import { ms, seconds, toSecondsCeil, type Seconds } from 'shared/brand'
+
 const WINDOW_MS = 60_000
 
 /** Heartbeats a minute that still refresh the WS token. The client sends one every 10 s. */
@@ -104,5 +106,5 @@ export const releaseWsHandler = (state: WsMessageBudgetState): void => {
 }
 
 /** Seconds until the connection gets a new budget, for the reply to a refused message. */
-export const secondsToNextWindow = (state: WsMessageBudgetState, now: number): number =>
-    Math.max(1, Math.ceil((state.windowStart + WINDOW_MS - now) / 1000))
+export const secondsToNextWindow = (state: WsMessageBudgetState, now: number): Seconds =>
+    seconds(Math.max(1, toSecondsCeil(ms(state.windowStart + WINDOW_MS - now))))

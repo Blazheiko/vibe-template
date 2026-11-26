@@ -1,4 +1,5 @@
 import appConfig from '#config/app.js'
+import { ms } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import { rawTokenOf, type SessionToken } from '#app/domain/secrets.js'
 import logger from '#logger'
@@ -46,7 +47,7 @@ import { throttlePolicies } from '#config/throttle-policies.js'
 import { safeEqual } from '#vendor/utils/helpers/safe-equal.js'
 import type { UserId } from '#app/domain/ids.js'
 
-const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000
+const EMAIL_VERIFICATION_TTL_MS = ms(24 * 60 * 60 * 1000)
 function buildVerificationUrl(token: string): string {
     const baseUrl = appConfig.frontendUrl
     return `${baseUrl}/verify-email?token=${encodeURIComponent(token)}`

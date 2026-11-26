@@ -136,14 +136,14 @@ Cookie сесії читає [`session-handler.ts`](https://github.com/Blazheiko
 
 Ім'я та атрибути cookie задає [`config/session.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/session.ts):
 
-| Параметр                     | Значення                                                                                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Ім'я                         | `__Host-uapi`, якщо `SESSION_COOKIE_HOST_PREFIX` увімкнено (за замовчуванням вмикається, коли `appConfig.isProductionLike`), інакше `uapi` |
-| `path` / `httpOnly`          | `/` / `true`                                                                                                                               |
-| `secure`                     | `true` для будь-якого `APP_ENV`, крім `local`, і завжди `true`, коли `appConfig.isProductionLike`                                          |
-| `sameSite`                   | `Lax`                                                                                                                                      |
-| TTL (`age`, `maxAge`, Redis) | 24 години (`duration('24h')`) для сесії користувача                                                                                        |
-| TTL анонімної сесії          | `SESSION_ANON_TTL` (`anonAge`), за замовчуванням `2h`: і для cookie, і для анонімної сесії в Redis                                         |
+| Параметр                            | Значення                                                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Ім'я                                | `__Host-uapi`, якщо `SESSION_COOKIE_HOST_PREFIX` увімкнено (за замовчуванням вмикається, коли `appConfig.isProductionLike`), інакше `uapi` |
+| `path` / `httpOnly`                 | `/` / `true`                                                                                                                               |
+| `secure`                            | `true` для будь-якого `APP_ENV`, крім `local`, і завжди `true`, коли `appConfig.isProductionLike`                                          |
+| `sameSite`                          | `Lax`                                                                                                                                      |
+| TTL (`ageSeconds`, `maxAge`, Redis) | 24 години (`duration('24h')`) для сесії користувача                                                                                        |
+| TTL анонімної сесії                 | `SESSION_ANON_TTL` (`anonAgeSeconds`), за замовчуванням `2h`: і для cookie, і для анонімної сесії в Redis                                  |
 
 `session_web` читає cookie лише під активним ім'ям; cookie під іншим ім'ям (наприклад, `uapi`, коли ввімкнено `__Host-` префікс) ігнорується, і запит отримує нову анонімну сесію. Під час старту [`validate-runtime-config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/validate-runtime-config.ts) перевіряє, що при `__Host-` префіксі cookie має `Secure=true`, а `APP_URL` починається з `https://`. У production-like оточенні префікс обов'язковий: `SESSION_COOKIE_HOST_PREFIX=false` зупиняє старт, бо cookie `uapi` без префікса може перезаписати сусідній піддомен (`Domain=<батьківський домен>`).
 
@@ -219,7 +219,7 @@ Cookie сесії читає [`session-handler.ts`](https://github.com/Blazheiko
 Сесії зберігає [`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts):
 
 - Ключ має вигляд `session:<userToken|anon_session>:<sessionId>`. Перед кожною операцією `sanitizeRedisKey` перевіряє його: дозволено лише `[a-zA-Z0-9:_*-]`, довжина не більше 86 символів.
-- Запис робиться через `SETEX`, читання — через `GETEX ... EX`, з TTL `age` для сесії користувача і `anonAge` для `anon_session`. Тобто кожне читання продовжує життя сесії (ковзний TTL).
+- Запис робиться через `SETEX`, читання — через `GETEX ... EX`, з TTL `ageSeconds` для сесії користувача і `anonAgeSeconds` для `anon_session`. Тобто кожне читання продовжує життя сесії (ковзний TTL).
 - Якщо підпис валідний, але ключа в Redis немає, видається нова анонімна сесія (у cookie, без запису).
 - `destroyAllSessions` (виклик `logoutAll`) знаходить ключі через `SCAN MATCH session:<userToken>:*` порціями по 100, а не через `KEYS`.
 - **Межа `logoutAll`.** Обхід завжди починається з курсора `0`. Увесь цикл `SCAN`/`DEL` обмежений дедлайном `REDIS_LOGOUT_ALL_DEADLINE_MS` (2000 мс), що рахується від його початку. Перед кожним `await` обчислюється залишок бюджету, і команда очікується не довше `min(залишок, REDIS_COMMAND_TIMEOUT_MS)`. `destroyAllSessions` повертає `{ deleted, complete }` і при недоступному Redis чи вичерпаному дедлайні не кидає помилку, а повертає `complete: false` і пише попередження в лог; кидає лише неочікувану помилку (баг). `deleted` — кількість видалень, **підтверджених** відповідями Redis: команда, на яку перестали чекати після дедлайну, може ще виконатися, тож фактично видалених записів буває більше.

@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import { seconds } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { MfaBindValue } from '#app/domain/secrets.js'
 import type { UserId } from '#app/domain/ids.js'
@@ -540,7 +541,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
                 xid,
                 plan,
             },
-            300,
+            seconds(300),
         )
         let lastResponse: ReturnType<typeof createResponseData> | undefined
         return {

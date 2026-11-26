@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { seconds, type Milliseconds, type Seconds, type UnixMs } from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
 import appConfig from '#config/app.js'
@@ -335,7 +336,7 @@ export interface CheckedChallenge {
 export type SettleOutcome = 'ok' | 'deleted' | 'settled' | 'gone' | 'stale'
 
 export const mfaTicketStore = {
-    async create(ticketId: MfaTicketId, ticket: MfaTicket, ttlSeconds: number): Promise<void> {
+    async create(ticketId: MfaTicketId, ticket: MfaTicket, ttlSeconds: Seconds): Promise<void> {
         await withRedis(() => redis.set(key(ticketId), JSON.stringify(ticket), 'EX', ttlSeconds))
     },
 
@@ -345,17 +346,17 @@ export const mfaTicketStore = {
     },
 
     /** Remaining lifetime in seconds (0 when gone). */
-    async ttl(ticketId: MfaTicketId): Promise<number> {
-        const seconds = await withRedis(() => redis.ttl(key(ticketId)))
-        return seconds > 0 ? seconds : 0
+    async ttl(ticketId: MfaTicketId): Promise<Seconds> {
+        const left = await withRedis(() => redis.ttl(key(ticketId)))
+        return seconds(left > 0 ? left : 0)
     },
 
     async reserve(
         ticketId: MfaTicketId,
         binding: string,
         reservationId: MfaReservationId,
-        now: number,
-        reservationTtlMs: number,
+        now: UnixMs,
+        reservationTtlMs: Milliseconds,
         /** The logical attempt; a repeat of the same request carries the same one. */
         attemptId: MfaAttemptId = mfaAttemptIdOf(reservationId),
     ): Promise<ReserveOutcome> {
@@ -408,8 +409,8 @@ export const mfaTicketStore = {
     async capture(
         ticketId: MfaTicketId,
         reservationId: MfaReservationId,
-        now: number,
-        reservationTtlMs: number,
+        now: UnixMs,
+        reservationTtlMs: Milliseconds,
         completion: { completionId: MfaCompletionId; xid: string; plan: LoginPlan },
         challenge: CheckedChallenge | null = null,
     ): Promise<'ok' | 'used' | 'expired' | 'stale' | 'gone'> {

@@ -1,4 +1,5 @@
 import { hashPassword } from 'metautil'
+import { ms, nowUnixMs } from 'shared/brand'
 import appConfig from '#config/app.js'
 import logger from '#logger'
 import {
@@ -71,7 +72,7 @@ import { announcePasswordReset } from '#app/services/auth/password-reset-notice.
 import { PRODUCT } from 'shared/product'
 import type { UserId } from '#app/domain/ids.js'
 
-const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000
+const PASSWORD_RESET_TTL_MS = ms(60 * 60 * 1000)
 export const GENERIC_RESET_MESSAGE =
     'If an account with that email exists, a reset link will be sent shortly.'
 /** feat-204: live reset challenges one number may have at once, one per browser session. */
@@ -254,7 +255,7 @@ export const passwordResetService = {
                 RESET_PHONE_FLOW,
             ),
             requestMeta.sessionId,
-            Date.now(),
+            nowUnixMs(),
         )
         if (others.length + 1 > MAX_LIVE_RESET_CHALLENGES) {
             return Result.ok({ message: GENERIC_PHONE_RESET_MESSAGE })

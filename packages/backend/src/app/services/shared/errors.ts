@@ -1,4 +1,5 @@
 import type { ErrorCode } from 'shared/errors'
+import { type Seconds, seconds } from 'shared/brand'
 import type { Result as ResultType } from 'better-result'
 import type { ProofMethod } from 'shared/mfa'
 import type { ErrorDetails, ReauthRequiredErrorDetails } from 'shared/errors'
@@ -16,13 +17,13 @@ export type AppError =
       }
     | { _tag: 'NotFound'; resource: string; message: string }
     | { _tag: 'Conflict'; message: string; reason?: string }
-    | { _tag: 'RateLimited'; message: string; reason?: string; retryAfterSeconds?: number }
+    | { _tag: 'RateLimited'; message: string; reason?: string; retryAfterSeconds?: Seconds }
     | { _tag: 'Internal'; publicMessage: string; cause?: unknown }
     // A dependency (Redis) is temporarily down; answered with Retry-After.
     | {
           _tag: 'ServiceUnavailable'
           message: string
-          retryAfterSeconds: number
+          retryAfterSeconds: Seconds
           cause?: unknown
           /** feat-245: why, when the client should act on it (mfa_completion_pending). */
           reason?: string
@@ -134,7 +135,7 @@ export function conflict(message: string, reason?: string): AppError {
 
 export function rateLimited(
     message: string,
-    options?: { reason?: string; retryAfterSeconds?: number },
+    options?: { reason?: string; retryAfterSeconds?: Seconds },
 ): AppError {
     return {
         _tag: 'RateLimited',
@@ -159,7 +160,7 @@ export function completionPending(): AppError {
     return {
         _tag: 'ServiceUnavailable',
         message: 'Signing in is still finishing. Try again in a moment.',
-        retryAfterSeconds: 1,
+        retryAfterSeconds: seconds(1),
         reason: 'mfa_completion_pending',
     }
 }
@@ -172,7 +173,7 @@ export function logoutRetry(): AppError {
     return {
         _tag: 'ServiceUnavailable',
         message: 'Signing out is still finishing. Try again in a moment.',
-        retryAfterSeconds: 1,
+        retryAfterSeconds: seconds(1),
         reason: LOGOUT_RETRY_REASON,
     }
 }
@@ -181,7 +182,7 @@ export function serviceUnavailable(cause?: unknown): AppError {
     return {
         _tag: 'ServiceUnavailable',
         message: 'Service temporarily unavailable. Try again later.',
-        retryAfterSeconds: 1,
+        retryAfterSeconds: seconds(1),
         ...(cause !== undefined ? { cause } : {}),
     }
 }

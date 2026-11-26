@@ -1,4 +1,5 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { ms } from 'shared/brand'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -108,7 +109,7 @@ const { createKnowledgeBaseInitService, KB_INIT_LOCK_KEY } =
     await import('./knowledge-base-init-service.js')
 
 const admin = createTestRedis(PREFIX)
-const LONG = { ttlMs: 60_000, renewEveryMs: 20_000, maxLifetimeMs: 120_000 }
+const LONG = { ttlMs: ms(60_000), renewEveryMs: ms(20_000), maxLifetimeMs: 120_000 }
 let sourceDir = ''
 
 const until = async (condition: () => boolean | Promise<boolean>): Promise<void> => {
@@ -200,7 +201,7 @@ describe.skipIf(!hasRedis)('knowledge-base init runs once (feat-115)', () => {
 
     it('a lost lease: the late holder cannot renew or delete the new lock, and stops indexing', async () => {
         kb.hold = true
-        const late = instance({ ttlMs: 400, renewEveryMs: 100, maxLifetimeMs: 60_000 })
+        const late = instance({ ttlMs: ms(400), renewEveryMs: ms(100), maxLifetimeMs: 60_000 })
         expect((await late.start()).ok).toBe(true)
         await until(() => kb.held.length === 1)
         // feat-125: every article went in with one statement before the first provider call.
@@ -235,7 +236,7 @@ describe.skipIf(!hasRedis)('knowledge-base init runs once (feat-115)', () => {
     it('a lease lost before the insert creates nothing, and a later init runs', async () => {
         let readDir: () => void = () => undefined
         const late = createKnowledgeBaseInitService({
-            lease: { ttlMs: 400, renewEveryMs: 100, maxLifetimeMs: 60_000 },
+            lease: { ttlMs: ms(400), renewEveryMs: ms(100), maxLifetimeMs: 60_000 },
             resolveSourceDir: () =>
                 new Promise<string>((resolve) => {
                     readDir = () => {
@@ -262,7 +263,7 @@ describe.skipIf(!hasRedis)('knowledge-base init runs once (feat-115)', () => {
 
     it('a late release does not delete the lock of the new holder', async () => {
         kb.hold = true
-        const late = instance({ ttlMs: 400, renewEveryMs: 100, maxLifetimeMs: 60_000 })
+        const late = instance({ ttlMs: ms(400), renewEveryMs: ms(100), maxLifetimeMs: 60_000 })
         expect((await late.start()).ok).toBe(true)
         await until(() => kb.held.length === 1)
 

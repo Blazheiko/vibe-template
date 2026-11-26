@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import { seconds } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { MfaTicketId, NormalizedRecoveryCode, SessionToken } from '#app/domain/secrets.js'
 
@@ -1830,7 +1831,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 await mfaTicketStore.create(
                     ticketId as MfaTicketId,
                     { ...current, failures: 5 },
-                    300,
+                    seconds(300),
                 )
             }
             const reply = await browser.request('POST', '/auth/mfa/verify', {

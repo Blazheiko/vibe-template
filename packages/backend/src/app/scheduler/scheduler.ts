@@ -1,4 +1,5 @@
 import { setTimeout as sleepFor } from 'node:timers/promises'
+import { unixMs } from 'shared/brand'
 
 import { sentryService, type SentryContext } from '#app/services/observability/sentry-service.js'
 import type { HeldLease } from '#app/services/shared/redis-lease.js'
@@ -276,7 +277,7 @@ export function createScheduler(deps: SchedulerDeps): Scheduler {
                 const ran = await execute(job, scope, slot, false)
                 let outcome = ran.outcome
                 let stateWritten: boolean | undefined
-                const finishedAt = clock.now()
+                const finishedAt = unixMs(clock.now())
                 try {
                     if (outcome === 'ok') {
                         const write = await state.recordSuccess(scope.lease, job.name, {

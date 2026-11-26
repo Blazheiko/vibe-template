@@ -1,4 +1,5 @@
 import { createEnvReader } from '#vendor/utils/env/env-reader.js'
+import { type Milliseconds, ms, seconds, toMs } from 'shared/brand'
 import { authConfig } from '#config/auth.js'
 
 // Registry of shared (Redis) limits for sensitive actions. Per-process limits
@@ -14,7 +15,7 @@ export interface ThrottlePolicy {
     /** 0 disables the policy, allowed only when `disableable` is true. */
     readonly limit: number
     /** The only window unit in the registry. */
-    readonly windowMs: number
+    readonly windowMs: Milliseconds
     readonly disableable?: boolean
     /** reject: fail the request; skip: rely on the local level that already ran. */
     readonly onRedisError: 'reject' | 'skip'
@@ -22,7 +23,7 @@ export interface ThrottlePolicy {
     readonly resetOnSuccess?: boolean
 }
 
-const HOUR_MS = 3_600_000
+const HOUR_MS = ms(3_600_000)
 const reader = createEnvReader()
 const errors: string[] = []
 
@@ -33,7 +34,7 @@ const fixedWindow = (
     scope: string,
     keyBy: ThrottlePolicy['keyBy'],
     limit: number,
-    windowMs: number,
+    windowMs: Milliseconds,
 ): ThrottlePolicy => ({
     scope,
     keyBy,
@@ -86,7 +87,7 @@ export const throttlePolicies = {
         'reset_phone_code_attempts_phone',
         'phone',
         readInt('AUTH_RESET_PHONE_MAX_CODE_ATTEMPTS_PER_DAY', 10),
-        24 * HOUR_MS,
+        ms(24 * HOUR_MS),
     ),
     confirmResetPhoneIp: fixedWindow(
         'confirm_reset_phone_ip',
@@ -123,7 +124,7 @@ export const throttlePolicies = {
         'link_email_user_cooldown',
         'user',
         1,
-        authConfig.emailLinkCooldownSeconds * 1000,
+        toMs(seconds(authConfig.emailLinkCooldownSeconds)),
     ),
     /**
      * Login: every admitted attempt is consumed atomically before the user
@@ -134,7 +135,7 @@ export const throttlePolicies = {
         keyBy: 'ip',
         algorithm: 'fixed-window',
         limit: readInt('AUTH_LOGIN_MAX_ATTEMPTS_PER_IP', 20),
-        windowMs: readInt('AUTH_LOGIN_WINDOW_SECONDS', 900) * 1000,
+        windowMs: toMs(seconds(readInt('AUTH_LOGIN_WINDOW_SECONDS', 900))),
         onRedisError: 'reject',
     },
     /** Higher than loginIp, so one attacker cannot easily lock out an account. */
@@ -143,7 +144,7 @@ export const throttlePolicies = {
         keyBy: 'identifier',
         algorithm: 'fixed-window',
         limit: readInt('AUTH_LOGIN_MAX_ATTEMPTS_PER_IDENTIFIER', 40),
-        windowMs: readInt('AUTH_LOGIN_WINDOW_SECONDS', 900) * 1000,
+        windowMs: toMs(seconds(readInt('AUTH_LOGIN_WINDOW_SECONDS', 900))),
         onRedisError: 'reject',
         resetOnSuccess: true,
     },
@@ -153,7 +154,7 @@ export const throttlePolicies = {
         keyBy: 'user',
         algorithm: 'fixed-window',
         limit: readInt('AUTH_CHANGE_PASSWORD_MAX_ATTEMPTS_PER_USER', 10),
-        windowMs: readInt('AUTH_CHANGE_PASSWORD_WINDOW_SECONDS', 900) * 1000,
+        windowMs: toMs(seconds(readInt('AUTH_CHANGE_PASSWORD_WINDOW_SECONDS', 900))),
         onRedisError: 'reject',
         resetOnSuccess: true,
     },
@@ -185,7 +186,7 @@ export const throttlePolicies = {
         'verification_mail_user_daily',
         'user',
         readInt('AUTH_VERIFICATION_MAIL_MAX_PER_USER_PER_DAY', 5),
-        24 * HOUR_MS,
+        ms(24 * HOUR_MS),
     ),
     /**
      * The verification mail sent again when the owner of an unverified account signs in with
@@ -196,7 +197,7 @@ export const throttlePolicies = {
         'login_unverified_resend',
         'user',
         1,
-        readInt('AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS', 300_000),
+        ms(readInt('AUTH_LOGIN_UNVERIFIED_RESEND_INTERVAL_MS', 300_000)),
     ),
     /** Guessing reset tokens. */
     resetPasswordIp: fixedWindow(
@@ -222,7 +223,7 @@ export const throttlePolicies = {
         'mfa_verify_user',
         'user',
         readInt('AUTH_MFA_VERIFY_MAX_ATTEMPTS_PER_USER', 10),
-        readInt('AUTH_MFA_VERIFY_WINDOW_SECONDS', 900) * 1000,
+        toMs(seconds(readInt('AUTH_MFA_VERIFY_WINDOW_SECONDS', 900))),
     ),
     verifyEmailPasswordUser: fixedWindow(
         'verify_email_password_user',
@@ -239,7 +240,7 @@ export const throttlePolicies = {
         'account_profile_user',
         'user',
         readInt('AUTH_PROFILE_MAX_UPDATES_PER_USER_PER_10_MIN', 30),
-        10 * 60 * 1000,
+        ms(10 * 60 * 1000),
     ),
     /**
      * feat-233 (Р11): mails about a new sign-in, per user. Repeated sign-ins must not turn into a
@@ -256,14 +257,14 @@ export const throttlePolicies = {
         'support_chat_user',
         'user',
         readInt('SUPPORT_CHAT_USER_RATE_LIMIT_MAX', 20),
-        readInt('SUPPORT_CHAT_USER_RATE_LIMIT_WINDOW_MS', 60_000),
+        ms(readInt('SUPPORT_CHAT_USER_RATE_LIMIT_WINDOW_MS', 60_000)),
     ),
     /** Opening the support chat (the greeting is a language-model call). */
     supportOpenChatUser: fixedWindow(
         'support_open_chat_user',
         'user',
         readInt('SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_MAX', 5),
-        readInt('SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_WINDOW_MS', 60_000),
+        ms(readInt('SUPPORT_OPEN_CHAT_USER_RATE_LIMIT_WINDOW_MS', 60_000)),
     ),
     /** WS upgrade level 2: cluster-wide budget after the local level 1. */
     wsUpgradeShared: {
@@ -271,7 +272,7 @@ export const throttlePolicies = {
         keyBy: 'ip',
         algorithm: 'sliding-log',
         limit: readInt('WS_UPGRADE_SHARED_RATE_LIMIT_MAX', 60, 0),
-        windowMs: readInt('WS_UPGRADE_SHARED_RATE_LIMIT_WINDOW_MS', 60_000),
+        windowMs: ms(readInt('WS_UPGRADE_SHARED_RATE_LIMIT_WINDOW_MS', 60_000)),
         disableable: true,
         onRedisError: 'skip',
     },

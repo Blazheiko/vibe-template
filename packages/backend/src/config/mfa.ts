@@ -1,4 +1,5 @@
 import { hkdfSync } from 'node:crypto'
+import { seconds } from 'shared/brand'
 import { env } from 'node:process'
 
 import type { StaffFactorMode } from 'shared/mfa'
@@ -131,9 +132,11 @@ export default Object.freeze({
     /** Absolute lifetime of a recovery session (MFA_RECOVERY_WINDOW_SECONDS, default 900). */
     recoveryWindowSeconds: reader.int('MFA_RECOVERY_WINDOW_SECONDS', 900, { min: 60, max: 3600 }),
     /** Lifetime of a second-step ticket (MFA_TICKET_TTL_SECONDS, default 300). */
-    ticketTtlSeconds: reader.int('MFA_TICKET_TTL_SECONDS', 300, { min: 60, max: 1800 }),
+    ticketTtlSeconds: seconds(reader.int('MFA_TICKET_TTL_SECONDS', 300, { min: 60, max: 1800 })),
     /** An attempt holds its place in the ticket this long (MFA_RESERVATION_TTL_SECONDS, 30). */
-    reservationTtlSeconds: reader.int('MFA_RESERVATION_TTL_SECONDS', 30, { min: 5, max: 300 }),
+    reservationTtlSeconds: seconds(
+        reader.int('MFA_RESERVATION_TTL_SECONDS', 30, { min: 5, max: 300 }),
+    ),
     /** A TOTP setup stays confirmable this long, in seconds. */
     totpEnrollmentTtlSeconds: 600,
     /**

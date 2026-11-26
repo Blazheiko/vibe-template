@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { ms } from 'shared/brand'
 import type { RawToken, SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -68,7 +69,7 @@ describe('issueTokenLocked', () => {
 
         const result = await issueTokenLocked(repository, {
             userId: uid(7),
-            ttlMs: 60_000,
+            ttlMs: ms(60_000),
             extra: { targetEmail: 'new@example.com' },
         })
 
@@ -110,7 +111,7 @@ describe('issueTokenLocked', () => {
         const check = vi.fn().mockReturnValue(Result.ok(undefined))
         const { issueTokenLocked } = await load()
 
-        const result = await issueTokenLocked(repository, { userId: uid(7), ttlMs: 1, check })
+        const result = await issueTokenLocked(repository, { userId: uid(7), ttlMs: ms(1), check })
 
         expect(Result.isOk(result)).toBe(true)
         expect(check).toHaveBeenCalledWith(user)
@@ -129,7 +130,7 @@ describe('issueTokenLocked', () => {
 
         const result = await issueTokenLocked(repository, {
             userId: uid(7),
-            ttlMs: 1,
+            ttlMs: ms(1),
             check: () => Result.err(refusal),
         })
 
@@ -143,7 +144,7 @@ describe('issueTokenLocked', () => {
         const check = vi.fn()
         const { issueTokenLocked } = await load()
 
-        const result = await issueTokenLocked(repository, { userId: uid(7), ttlMs: 1, check })
+        const result = await issueTokenLocked(repository, { userId: uid(7), ttlMs: ms(1), check })
 
         expect(Result.isError(result) && result.error).toMatchObject({ _tag: 'NotFound' })
         expect(check).not.toHaveBeenCalled()
@@ -157,7 +158,7 @@ describe('issueTokenLocked', () => {
         lockById.mockResolvedValue(lockedUser())
         repository.invalidatePendingByUserId.mockRejectedValue(dbError)
         const { issueTokenLocked } = await load()
-        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: 1 })).rejects.toBe(
+        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: ms(1) })).rejects.toBe(
             dbError,
         )
         expect(repository.create).not.toHaveBeenCalled()
@@ -169,7 +170,7 @@ describe('issueTokenLocked', () => {
         repository.invalidatePendingByUserId.mockResolvedValue(0)
         repository.create.mockRejectedValue(dbError)
         const { issueTokenLocked } = await load()
-        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: 1 })).rejects.toBe(
+        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: ms(1) })).rejects.toBe(
             dbError,
         )
     })
@@ -178,7 +179,7 @@ describe('issueTokenLocked', () => {
         const dbError = new Error('lock')
         lockById.mockRejectedValue(dbError)
         const { issueTokenLocked } = await load()
-        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: 1 })).rejects.toBe(
+        await expect(issueTokenLocked(repository, { userId: uid(7), ttlMs: ms(1) })).rejects.toBe(
             dbError,
         )
         expect(repository.invalidatePendingByUserId).not.toHaveBeenCalled()

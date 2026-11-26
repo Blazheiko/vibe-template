@@ -6,6 +6,7 @@ import {
     generateCodeVerifier,
     generateState,
 } from 'arctic'
+import { ms } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import oauthConfig from '#config/oauth.js'
 import appConfig from '#config/app.js'
@@ -145,7 +146,7 @@ export const EMAIL_CHANGED = 'email_changed'
 // feat-098: a mail budget of the address or the account is spent.
 export const TOO_MANY_ATTEMPTS = 'too_many_attempts'
 
-const OAUTH_LINK_TTL_MS = 30 * 60 * 1000
+const OAUTH_LINK_TTL_MS = ms(30 * 60 * 1000)
 
 function buildOAuthLinkUrl(token: string): string {
     return `${appConfig.frontendUrl}/oauth/link/confirm?token=${encodeURIComponent(token)}`

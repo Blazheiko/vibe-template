@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import { ms } from 'shared/brand'
 import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -22,7 +23,7 @@ const policy = (overrides: Partial<ThrottlePolicy>): ThrottlePolicy => ({
     keyBy: 'ip',
     algorithm: 'fixed-window',
     limit: 1,
-    windowMs: 1000,
+    windowMs: ms(1000),
     onRedisError: 'reject',
     ...overrides,
 })
@@ -99,7 +100,7 @@ describe('throttlePolicies registry', () => {
 
     it('rejects non-positive windows', async () => {
         const { validateThrottlePolicies } = await load()
-        expect(validateThrottlePolicies({ a: policy({ windowMs: 0 }) })).toHaveLength(1)
+        expect(validateThrottlePolicies({ a: policy({ windowMs: ms(0) }) })).toHaveLength(1)
     })
 
     it('turns 0 from env for an auth policy into a startup config error', async () => {

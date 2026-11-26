@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { ms } from 'shared/brand'
 import type { NormalizedEmail } from '#app/domain/email.js'
 import type { TokenHash } from '#app/domain/secrets.js'
 import type { SessionToken } from '#app/domain/secrets.js'
@@ -463,8 +464,8 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             const user = await insertUser()
 
             const results = await Promise.all([
-                issueTokenLocked(passwordResetRepository, { userId: user.id, ttlMs: 60_000 }),
-                issueTokenLocked(passwordResetRepository, { userId: user.id, ttlMs: 60_000 }),
+                issueTokenLocked(passwordResetRepository, { userId: user.id, ttlMs: ms(60_000) }),
+                issueTokenLocked(passwordResetRepository, { userId: user.id, ttlMs: ms(60_000) }),
             ])
 
             expect(results.every((result) => Result.isOk(result))).toBe(true)
@@ -500,7 +501,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             // ... so a resend issued now waits, then sees the account verified.
             const issued = issueTokenLocked(emailVerificationRepository, {
                 userId: user.id,
-                ttlMs: 60_000,
+                ttlMs: ms(60_000),
                 check: (locked) =>
                     locked.emailVerifiedAt === null
                         ? Result.ok(undefined)

@@ -27,3 +27,48 @@ export function isValidEntityId(value: string): boolean {
         (value.length < MAX_ENTITY_ID.length || value <= MAX_ENTITY_ID)
     )
 }
+
+// Units of time (feat-267, plan Р7): a duration in milliseconds, a duration in seconds and an
+// instant in milliseconds since the epoch are three types, so a TTL in seconds cannot reach a PX
+// call and a `Date.now()` cannot stand for a duration. Arithmetic on a brand gives a plain number,
+// so the operations below are the way to get a branded result: `ms(a + b)` would also take a sum
+// of seconds and milliseconds. Durations are rounded up when they become seconds (a TTL or a
+// Retry-After must not end before the real one); instants are rounded down.
+
+export type Milliseconds = Brand<number, 'Milliseconds'>
+export type Seconds = Brand<number, 'Seconds'>
+/** An instant: milliseconds since the Unix epoch, as `Date.now()` returns it. */
+export type UnixMs = Brand<number, 'UnixMs'>
+
+/** A duration given in milliseconds. */
+export const ms = (value: number): Milliseconds => value as Milliseconds
+
+/** A duration given in seconds. */
+export const seconds = (value: number): Seconds => value as Seconds
+
+/** An instant given in milliseconds since the epoch. */
+export const unixMs = (value: number): UnixMs => value as UnixMs
+
+/** The current instant. */
+export const nowUnixMs = (): UnixMs => Date.now() as UnixMs
+
+/** A duration in seconds as milliseconds. */
+export const toMs = (duration: Seconds): Milliseconds => (duration * 1000) as Milliseconds
+
+/** A duration in milliseconds as whole seconds, rounded up: a TTL never ends early. */
+export const toSecondsCeil = (duration: Milliseconds): Seconds =>
+    Math.ceil(duration / 1000) as Seconds
+
+/** A duration in milliseconds as whole seconds, rounded down. */
+export const toSecondsFloor = (duration: Milliseconds): Seconds =>
+    Math.floor(duration / 1000) as Seconds
+
+/** An instant as whole seconds since the epoch, rounded down (a timestamp never in the future). */
+export const unixSecondsOf = (instant: UnixMs): Seconds => Math.floor(instant / 1000) as Seconds
+
+/** The instant `delta` after `at`. */
+export const addMs = (at: UnixMs, delta: Milliseconds): UnixMs => (at + delta) as UnixMs
+
+/** The duration from `earlier` to `later` (negative when `later` is before `earlier`). */
+export const diffMs = (later: UnixMs, earlier: UnixMs): Milliseconds =>
+    (later - earlier) as Milliseconds

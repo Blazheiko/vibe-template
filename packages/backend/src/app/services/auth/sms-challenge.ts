@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { type UnixMs, nowUnixMs } from 'shared/brand'
 import { otpCodeOf, type OtpHash } from '#app/domain/secrets.js'
 import { authConfig } from '#config/auth.js'
 import {
@@ -88,7 +89,7 @@ export async function openChallenge(options: {
             tx,
         )
 
-        const now = Date.now()
+        const now = nowUnixMs()
         const created = await smsAuthChallengeRepository.create(
             {
                 flow: options.flow,
@@ -148,7 +149,7 @@ export async function openSessionChallenge(options: {
             options.flow,
             tx,
         )
-        const now = Date.now()
+        const now = nowUnixMs()
         const newest = pending[0]
         if (newest !== undefined && newest.resendAvailableAt.getTime() > now) {
             return Result.err(buildResendCooldownError(newest.resendAvailableAt))
@@ -186,7 +187,7 @@ export async function openSessionChallenge(options: {
 export function splitSessionChallenges(
     pending: readonly SmsAuthChallengeRow[],
     sessionId: string | null,
-    now: number,
+    now: UnixMs,
 ): { own: SmsAuthChallengeRow[]; others: SmsAuthChallengeRow[]; expired: SmsAuthChallengeRow[] } {
     const own: SmsAuthChallengeRow[] = []
     const others: SmsAuthChallengeRow[] = []

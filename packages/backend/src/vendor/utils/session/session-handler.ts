@@ -40,7 +40,7 @@ const readIncomingSession = (
     if (anonClaims !== null) {
         const age = Math.floor(Date.now() / 1000) - anonClaims.issuedAt
         const fresh =
-            age >= 0 && age < sessionConfig.anonAge && isValidCsrfToken(anonClaims.csrfToken)
+            age >= 0 && age < sessionConfig.anonAgeSeconds && isValidCsrfToken(anonClaims.csrfToken)
         return fresh ? { kind: 'anonymous-cookie', ...anonClaims } : { kind: 'none' }
     }
 

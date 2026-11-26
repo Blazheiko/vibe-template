@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ms } from 'shared/brand'
 
 // feat-222: the lease methods the scheduler needs (abandon, checkpoint, evalAsOwner) on a mocked
 // Redis and fake timers. Real-Redis behaviour is in redis-lease.redis.test.ts.
@@ -12,7 +13,7 @@ vi.mock('#database/redis.js', () => ({
 
 class LostError extends Error {}
 
-const lease = { ttlMs: 4_000, renewEveryMs: 1_000, maxLifetimeMs: 60_000 }
+const lease = { ttlMs: ms(4_000), renewEveryMs: ms(1_000), maxLifetimeMs: 60_000 }
 
 async function acquire() {
     const { acquireLease } = await import('./redis-lease.js')
