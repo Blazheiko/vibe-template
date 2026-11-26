@@ -1,7 +1,7 @@
 # feat-264 progress: Branded Ids Remaining Domains
 
 Plan: `docs/plan/branded-types-plan.md` (rev. 5), tasks T21–T26 in `docs/plan/branded-types-tasks.md` (v2.1).
-Branch: `feat/branded-ids-domains` (stacked on `feat/branded-ids-auth` until feat-263 is merged).
+Branch: `feat/branded-ids-domains` (started stacked on feat-263; `main` merged after #843 and #845).
 
 ## State
 
@@ -23,6 +23,13 @@ Branch: `feat/branded-ids-domains` (stacked on `feat/branded-ids-auth` until fea
 
 ## Evidence of Completion
 
+- `make check`: exit 0 after merging `main` (backend 3892, frontend 1029, landing 103, eslint rules 12 tests passed;
+  `check-bundle-graph: 762 modules, no schema and no validator library`).
+- `pnpm --filter backend db:generate`: "No schema changes, nothing to migrate".
+- `make test-pg` / `make test-redis`: CI jobs of the implementation PR (links added after the run).
+- Manual golden path: not run against a live app (no local database of this project); push, notifications, support
+  and the audit log are covered by their HTTP PG suites in CI.
+
 ## Notes for Next Session
 
-Merge `main` after feat-263 (#843) lands, rerun `make check`, open the implementation PR.
+After the merge: "Mark feat-264 done". Next by the task list: feat-265 (T27, secrets by state).
