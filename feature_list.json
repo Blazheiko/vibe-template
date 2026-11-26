@@ -2673,6 +2673,36 @@
             "dependencies": ["feat-263"],
             "status": "done",
             "evidence": "PR #863 (merge 0897c62). CI: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45845603756); test-redis 20 files / 213 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45845603836); e2e and e2e-live green; make check clean (backend 3899, frontend 1029 tests); frontend test:e2e 134 passed; docs:build + docs:verify passed."
+        },
+        {
+            "id": "feat-269",
+            "name": "Branded Types Docs And Skill Fixes",
+            "description": "The examples that teach the branded types must compile. adding-a-feature.md (uk + en) Step 9: noteService.getNotes(7n) / createNote(7n, ...) take a UserId test helper instead of a bare bigint; the file table names database/ids.ts and app/domain/ids.ts. .claude/skills/backend-feature/SKILL.md: the WS controller uses asUserId(userData.userId) instead of BigInt(...), withCurrentSession examples use presentedSessionTokenOf (feat-265); evals/evals.json drops the removed parseEntityId. controllers.md (requireUserId returns UserId, not bigint; getUserId / userId rows and the support chat example lose BigInt(userId)), auth.md and architecture.md (both locales) follow the brand constructors of app/domain/ids.ts. Source: code review of feat-262…feat-268 (6b2c96c1..061274aa, 2026-11-26) against docs/plan/branded-types-plan.md and branded-types-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "docs/branded-types-examples",
+            "dependencies": ["feat-268"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-270",
+            "name": "Branded Types Safety Gaps",
+            "description": "Close the type-safety gaps the review found at real boundaries. (1) MfaBinding: mfaTicketStore.reserve / deleteIfOpen and mfa-sign-in continueByRequest take MfaBinding, not string; secrets.spec.ts @ts-expect-error tests call the real methods. (2) Typed Redis TTL helpers (Р7, T39): EX takes Seconds, PX / PEXPIRE take Milliseconds; used by mfa-ticket, passkey-login-challenges, redis-lease, llm-budget-service, auth-throttle-service, generate-ws-token-service; no direct 'EX'/'PX'/setex call left in app/; Redis tests check the real TTL/PTTL (incl. ws token, passkey challenges, a fractional second rounded up). (3) UnixSeconds brand: unixSecondsOf returns UnixSeconds, not the Seconds duration; request-session issuedAt uses it. (4) retryAfterSeconds(retryAfterMs: Milliseconds) instead of number; http-rate-limit and sms-challenge use toMs / addMs instead of * 1000. (5) oauth-service: normalizeEmail before the empty-email check, so '   ' is refused. (6) support before: parsed in the controller with parseSupportMessageId (400), not asSupportMessageId in the service (500). (7) ws-session-auth: the userId from auth:ws:* goes through parseUserId (typeof string) before the session lookup; a Redis test for an invalid userId (T15). Source: code review of feat-262…feat-268 (6b2c96c1..061274aa, 2026-11-26) against docs/plan/branded-types-plan.md and branded-types-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "fix/branded-types-safety-gaps",
+            "dependencies": ["feat-268"],
+            "status": "not-started",
+            "evidence": ""
+        },
+        {
+            "id": "feat-271",
+            "name": "Branded Types Coverage Cleanup",
+            "description": "Finish the coverage the plan asked for. Ids: the remaining bare bigint ids in app/ (email-verification-service owner.id, totp-service factorId, sign-in-methods removeOAuthLinkId, notification-service notificationOpenPath / NotificationDelivery.id, avatar-service serializeUser, push-subscription-repository Map key) take their brands; Р11 owner-first order in getPushSubscriptionStatistics and oauthAccountRepository.findLinkForUser; parseUserId instead of throwing asUserId on session / WS / MFA boundaries (permission-guard once, ws-coordinator, mfa-sign-in Redis JSON, session-list-service via this.userId()). Secrets / email: SessionToken kept in user-repository, user-role-service, mfa-sign-in, oauth-service, auth-service, session-list-service; normalizeRecoveryCode takes RawRecoveryCode; NormalizedEmail in account-claim addressMatches (T34) and enforceEmailLinkThrottles; missing @ts-expect-error tests (SessionBindingHash vs TokenHash, verifyOtpVerificationCode, isSessionStored, MFA id swaps, consumeStep). Time: TOTP step and session-handler on UnixMs / toSecondsFloor (T40), now: number signatures become nowMs: UnixMs. Shared / frontend (T44): totp.createdAt, push created_at / updated_at / lastUsed, auth-controller *At as IsoDateTime; admin-user user.id and support failed[] as EntityId; QueryWireValue unwraps brands in arrays, tested on a real ArkType schema; frontend refs typed EntityId | null; no-brand-cast covers .mts/.tsx. Static checks: no-brand-cast catches casts to branded containers (arrays, tuples, Promise, Set, Record) and to type parameters through getBaseConstraintOfType; compile-time @ts-expect-error tests for Milliseconds / Seconds / UnixMs / UnixSeconds and their operations. Source: code review of feat-262…feat-268 (6b2c96c1..061274aa, 2026-11-26) against docs/plan/branded-types-plan.md and branded-types-tasks.md.",
+            "owner": "Blazheiko",
+            "branch": "chore/branded-types-coverage",
+            "dependencies": ["feat-270"],
+            "status": "not-started",
+            "evidence": ""
         }
     ]
 }
