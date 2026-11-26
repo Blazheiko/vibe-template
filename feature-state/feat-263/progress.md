@@ -45,7 +45,12 @@ Status PR: #842 (`in_progress`, merged). Branch: `feat/branded-ids-auth`.
 - `pnpm --filter backend db:generate`: "No schema changes, nothing to migrate" (drizzle-kit loads the schema with
   the relative brand import).
 - `pnpm docs:build && pnpm docs:verify`: exit 0, "verify-dist: all checks passed".
-- `make test-pg` / `make test-redis`: CI jobs of the implementation PR (links added after the run).
+- `make test-pg`: CI on `da27b67`, https://github.com/Blazheiko/vibe-template/actions/runs/45766425320: 72 files,
+  724 tests passed, 0 skipped.
+- `make test-redis`: CI on `da27b67`, https://github.com/Blazheiko/vibe-template/actions/runs/45766425366: 20
+  files, 211 tests passed, 0 skipped (the new stored-session cases included).
+- CI fixes during review: the RuleTester suite of `no-brand-cast` declares the brand inline (a fixture import did not
+  resolve on the Linux runner and the checker threw while printing the error).
 - Manual golden path: not run against a live app (no local database of this project); sign-in, unlink and the WS
   handshake are covered by the HTTP PG and Redis suites in CI.
 
