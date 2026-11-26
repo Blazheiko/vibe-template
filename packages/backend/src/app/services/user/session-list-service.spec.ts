@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { testUserActor } from '../../../test-support/audit-actor.js'
@@ -71,7 +72,7 @@ const device = (publicId: string, over: Record<string, unknown> = {}) => ({
 const CURRENT_ID = 'c'.repeat(22)
 const current = {
     id: 'current-sid',
-    data: { userId: '7', userToken: 'tok', device: device(CURRENT_ID) },
+    data: { userId: '7', userToken: 'tok' as SessionToken, device: device(CURRENT_ID) },
     createdAt: '2026-11-19T10:00:00.000Z',
 }
 const stored = () => Promise.resolve(true)
@@ -190,7 +191,7 @@ describe('revokeOthers (Р9)', () => {
         sessionListService.revokeOthers({
             actor: testUserActor(),
             userId: uid(7),
-            presentedSessionToken: presented ?? undefined,
+            presentedSessionToken: (presented ?? undefined) as SessionToken | undefined,
             requestingSessionId: 'current-sid',
             sessionStored,
         })

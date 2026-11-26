@@ -1,4 +1,5 @@
 import type { CreateSubscriptionInput, UpdateSubscriptionInput } from 'shared/schemas'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { PUSH_ENDPOINT_MAX_LENGTH } from 'shared/limits'
 import { Result } from 'better-result'
 import { pushSubscriptionRepository } from '#app/repositories/index.js'
@@ -42,7 +43,7 @@ export const pushSubscriptionService = {
     async createSubscription(
         userId: UserId,
         payload: CreateSubscriptionInput,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
         /**
          * The address the request came from, as the server sees it (feat-156); never a value
          * from the request body. Without one (a call that is not an HTTP request) none is stored.
@@ -89,7 +90,7 @@ export const pushSubscriptionService = {
         userId: UserId,
         subscriptionId: PushSubscriptionId,
         payload: UpdateSubscriptionInput,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
     ): Promise<
         AppResult<{
             subscription: ReturnType<typeof pushSubscriptionTransformer.serialize>

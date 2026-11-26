@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { avatarService } from '#app/services/user/avatar-service.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { requireUserId } from '#app/controllers/shared/require-user-id.js'
@@ -17,7 +18,7 @@ export default {
         const result = await avatarService.uploadAvatar(
             userId,
             file,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
         )
         return respond(context, result, (value) => ({ status: 'ok', user: value.user }))
     },
@@ -30,7 +31,7 @@ export default {
 
         const result = await avatarService.deleteAvatar(
             userId,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
         )
         return respond(context, result, (value) => ({ status: 'ok', user: value.user }))
     },

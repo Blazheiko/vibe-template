@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { classifyError } from '#vendor/utils/network/errors/classify-error.js'
@@ -211,7 +212,7 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
             id: 7n,
             emailVerifiedAt: null,
             password: 'stored-hash',
-            sessionToken: 'session-7',
+            sessionToken: 'session-7' as SessionToken,
         })
     }
 
@@ -270,7 +271,7 @@ describe('emailVerificationService throttle: verifyEmail · password per user', 
             IP,
             {
                 userId: uid(7),
-                presentedSessionToken: 'session-7',
+                presentedSessionToken: 'session-7' as SessionToken,
             },
             testRequest(),
         )

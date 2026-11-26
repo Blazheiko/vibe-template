@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 
 import { Result } from 'better-result'
@@ -40,7 +41,7 @@ describe.skipIf(!hasPg)('accountService on PostgreSQL', async () => {
 
     const stored = () => Promise.resolve(true)
     let userId = uid(0)
-    let token = ''
+    let token = '' as SessionToken
 
     const nameOf = async (): Promise<string | undefined> =>
         (
@@ -183,7 +184,7 @@ describe.skipIf(!hasPg)('accountService on PostgreSQL', async () => {
         const result = await accountService.updateProfile(
             userId,
             { name: 'Revoked', theme: 'dark' },
-            'not-the-current-token',
+            'not-the-current-token' as SessionToken,
             stored,
         )
 

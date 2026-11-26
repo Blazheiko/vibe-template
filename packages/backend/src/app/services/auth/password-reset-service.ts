@@ -1,6 +1,4 @@
-import { randomBytes } from 'node:crypto'
 import { hashPassword } from 'metautil'
-import { nanoid } from 'nanoid'
 import appConfig from '#config/app.js'
 import logger from '#logger'
 import {
@@ -50,7 +48,13 @@ import {
 import { throttlePolicies } from '#config/throttle-policies.js'
 import { authConfig } from '#config/auth.js'
 import { extractChallengeUserId } from '#app/services/auth/sms-auth-challenge-metadata.js'
-import { hashOtpVerificationCode } from '#app/services/auth/otp-verification-hash.js'
+import { otpHashKey } from '#app/services/auth/otp-verification-hash.js'
+import {
+    newSessionToken,
+    rawTokenOf,
+    unguessableOtpHash,
+    type OtpHash,
+} from '#app/domain/secrets.js'
 import { Result } from 'better-result'
 import {
     appErrorMessage,
@@ -79,8 +83,8 @@ function buildResetUrl(token: string): string {
     return `${appConfig.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`
 }
 
-function createBlindVerificationCodeHash(): string {
-    return hashOtpVerificationCode(randomBytes(32).toString('hex'))
+function createBlindVerificationCodeHash(): OtpHash {
+    return unguessableOtpHash(otpHashKey())
 }
 
 function buildResetEmailContent(name: string, resetUrl: string): RenderedEmail {
@@ -370,7 +374,7 @@ export const passwordResetService = {
             return Result.err(badRequest('Passwords do not match', 'passwords_mismatch'))
         }
 
-        const found = await findUsableToken(passwordResetRepository, normalizedToken, {
+        const found = await findUsableToken(passwordResetRepository, rawTokenOf(normalizedToken), {
             used: badRequest('Password reset link has already been used', 'used_token'),
             expired: badRequest('Password reset link has expired', 'expired_token'),
         })
@@ -553,7 +557,7 @@ export const passwordResetService = {
 
             const updated = await userRepository.update(
                 user.id,
-                { password: newPasswordHash, sessionToken: nanoid() },
+                { password: newPasswordHash, sessionToken: newSessionToken() },
                 tx,
             )
             if (updated === undefined) {

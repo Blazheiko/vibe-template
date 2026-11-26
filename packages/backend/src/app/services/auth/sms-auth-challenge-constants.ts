@@ -1,1 +1,1 @@
-export const PENDING_SMS_CODE_HASH_PLACEHOLDER = '__pending_sms_verification_code__'
+export { PENDING_OTP_HASH as PENDING_SMS_CODE_HASH_PLACEHOLDER } from '#app/domain/secrets.js'

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { toEntityId } from '#app/domain/ids.js'
 import type { ListSessionsQuery } from 'shared/schemas'
 import type {
@@ -67,7 +68,7 @@ export default {
         if (sessionId === undefined) return mapControllerError(context, sessionRevoked())
         const result = await sessionListService.revokeOthers({
             userId,
-            presentedSessionToken: context.auth.getPresentedUserToken(),
+            presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             requestingSessionId: sessionId,
             sessionStored: () => context.session.isStored(),
             actor: auditActorFrom(context),

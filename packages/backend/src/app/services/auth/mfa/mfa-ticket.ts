@@ -1,7 +1,19 @@
-import { createHash, createHmac, randomBytes } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 import redis, { withRedis } from '#database/redis.js'
 import appConfig from '#config/app.js'
+import {
+    mfaAttemptIdOf,
+    mfaBindingOf,
+    newMfaBindValue,
+    newMfaTicketId,
+    type MfaAttemptId,
+    type MfaBinding,
+    type MfaBindValue,
+    type MfaCompletionId,
+    type MfaReservationId,
+    type MfaTicketId,
+} from '#app/domain/secrets.js'
 import type { LoginOrigin, LoginPlan } from '#vendor/types/types.js'
 import logger from '#vendor/utils/logger.js'
 import { sanitizeRedisKey } from '#vendor/utils/session/redis-session-storage.js'
@@ -63,22 +75,20 @@ export interface MfaTicket {
 }
 
 /** The Redis key of a ticket: the hash of its id, so a leaked key opens nothing. */
-export const mfaTicketKey = (ticketId: string): string =>
+export const mfaTicketKey = (ticketId: MfaTicketId): string =>
     `auth:mfa:${createHash('sha256').update(ticketId).digest('base64url')}`
 
-export const newTicketId = (): string => randomBytes(32).toString('base64url')
+export const newTicketId = (): MfaTicketId => newMfaTicketId()
 
 /**
  * The browser binding (Р4): a keyed hash of the value of the ticket's binding cookie (feat-257,
  * `mfa_bind`; before it, the session id, which a replaced session took away).
  */
-export const mfaBinding = (bindValue: string): string =>
-    createHmac('sha256', appConfig.key ?? '')
-        .update(`mfa-bind:${bindValue}`)
-        .digest('base64url')
+export const mfaBinding = (bindValue: MfaBindValue): MfaBinding =>
+    mfaBindingOf(appConfig.key ?? '', bindValue)
 
 /** feat-257: a new value of the binding cookie, one per ticket. */
-export const newBindValue = (): string => randomBytes(32).toString('base64url')
+export const newBindValue = (): MfaBindValue => newMfaBindValue()
 
 // Lua: cjson turns an empty array into an empty object; the TS side normalizes both.
 const LUA_COMMON = `
@@ -298,7 +308,7 @@ const parseTicket = (raw: string): MfaTicket | null => {
     }
 }
 
-const key = (ticketId: string): string => sanitizeRedisKey(mfaTicketKey(ticketId))
+const key = (ticketId: MfaTicketId): string => sanitizeRedisKey(mfaTicketKey(ticketId))
 
 export type ReserveOutcome =
     | { kind: 'ok'; ticket: MfaTicket }
@@ -325,29 +335,29 @@ export interface CheckedChallenge {
 export type SettleOutcome = 'ok' | 'deleted' | 'settled' | 'gone' | 'stale'
 
 export const mfaTicketStore = {
-    async create(ticketId: string, ticket: MfaTicket, ttlSeconds: number): Promise<void> {
+    async create(ticketId: MfaTicketId, ticket: MfaTicket, ttlSeconds: number): Promise<void> {
         await withRedis(() => redis.set(key(ticketId), JSON.stringify(ticket), 'EX', ttlSeconds))
     },
 
-    async read(ticketId: string): Promise<MfaTicket | null> {
+    async read(ticketId: MfaTicketId): Promise<MfaTicket | null> {
         const raw = await withRedis(() => redis.get(key(ticketId)))
         return raw === null ? null : parseTicket(raw)
     },
 
     /** Remaining lifetime in seconds (0 when gone). */
-    async ttl(ticketId: string): Promise<number> {
+    async ttl(ticketId: MfaTicketId): Promise<number> {
         const seconds = await withRedis(() => redis.ttl(key(ticketId)))
         return seconds > 0 ? seconds : 0
     },
 
     async reserve(
-        ticketId: string,
+        ticketId: MfaTicketId,
         binding: string,
-        reservationId: string,
+        reservationId: MfaReservationId,
         now: number,
         reservationTtlMs: number,
         /** The logical attempt; a repeat of the same request carries the same one. */
-        attemptId: string = reservationId,
+        attemptId: MfaAttemptId = mfaAttemptIdOf(reservationId),
     ): Promise<ReserveOutcome> {
         const [outcome, json] = (await withRedis(() =>
             redis.eval(
@@ -373,10 +383,10 @@ export const mfaTicketStore = {
     },
 
     async settle(
-        ticketId: string,
-        reservationId: string,
+        ticketId: MfaTicketId,
+        reservationId: MfaReservationId,
         outcome: 'failure' | 'release',
-        options: { attemptId?: string; challenge?: CheckedChallenge | null } = {},
+        options: { attemptId?: MfaAttemptId; challenge?: CheckedChallenge | null } = {},
     ): Promise<SettleOutcome> {
         const challenge = options.challenge ?? null
         return (await withRedis(() =>
@@ -396,11 +406,11 @@ export const mfaTicketStore = {
     },
 
     async capture(
-        ticketId: string,
-        reservationId: string,
+        ticketId: MfaTicketId,
+        reservationId: MfaReservationId,
         now: number,
         reservationTtlMs: number,
-        completion: { completionId: string; xid: string; plan: LoginPlan },
+        completion: { completionId: MfaCompletionId; xid: string; plan: LoginPlan },
         challenge: CheckedChallenge | null = null,
     ): Promise<'ok' | 'used' | 'expired' | 'stale' | 'gone'> {
         return (await withRedis(() =>
@@ -421,7 +431,7 @@ export const mfaTicketStore = {
         )) as 'ok' | 'used' | 'expired' | 'stale' | 'gone'
     },
 
-    async reopen(ticketId: string, completionId: string): Promise<ReopenOutcome> {
+    async reopen(ticketId: MfaTicketId, completionId: MfaCompletionId): Promise<ReopenOutcome> {
         const outcome = await withRedis(() =>
             redis.eval(REOPEN_LUA, 1, key(ticketId), completionId, String(MFA_MAX_FAILURES)),
         )
@@ -430,7 +440,7 @@ export const mfaTicketStore = {
 
     /** Deletes the ticket only while it is `open` and this browser's (DELETE_IF_OPEN_LUA). */
     async deleteIfOpen(
-        ticketId: string,
+        ticketId: MfaTicketId,
         binding: string,
     ): Promise<'deleted' | 'absent' | 'completing' | 'activated'> {
         const outcome = await withRedis(() =>
@@ -441,7 +451,7 @@ export const mfaTicketStore = {
             : 'absent'
     },
 
-    async retire(ticketId: string, completionId: string): Promise<RetireOutcome> {
+    async retire(ticketId: MfaTicketId, completionId: MfaCompletionId): Promise<RetireOutcome> {
         const outcome = await withRedis(() =>
             redis.eval(RETIRE_LUA, 1, key(ticketId), completionId),
         )
@@ -449,7 +459,7 @@ export const mfaTicketStore = {
         return 'absent'
     },
 
-    async delete(ticketId: string): Promise<void> {
+    async delete(ticketId: MfaTicketId): Promise<void> {
         await withRedis(() => redis.del(key(ticketId)))
     },
 

@@ -1,4 +1,5 @@
 import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -118,7 +119,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
             verified: { oauth: at },
         }
     }
-    const tokenOf = async (id: UserId): Promise<string | undefined> =>
+    const tokenOf = async (id: UserId): Promise<SessionToken | undefined> =>
         (await db.select({ token: users.sessionToken }).from(users).where(eq(users.id, id)))[0]
             ?.token
     /** As the HTTP layer calls it: a fresh proof and the session token of a user actor. */
@@ -582,7 +583,7 @@ describe.skipIf(!hasPg)('roleAssignmentService on PostgreSQL', async () => {
                 // Logout everywhere of the admin meanwhile.
                 await tx
                     .update(users)
-                    .set({ sessionToken: 'rotated-admin-token' })
+                    .set({ sessionToken: 'rotated-admin-token' as SessionToken })
                     .where(eq(users.id, admin))
             })
 

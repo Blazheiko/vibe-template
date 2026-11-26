@@ -1,4 +1,5 @@
 import type { SessionAuthState } from 'shared/mfa'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 import { adminWsChannelService } from '#app/services/admin/admin-ws-channel-service.js'
 import { broadcastService } from '#app/services/communication/broadcast-service.js'
@@ -22,7 +23,7 @@ export interface WsSessionAuthSyncDeps {
     /** The stored session, or null when it is gone. */
     readSession(
         sessionId: string,
-        userToken: string,
+        userToken: SessionToken,
     ): Promise<{ data: { auth?: SessionAuthState } } | null>
 }
 

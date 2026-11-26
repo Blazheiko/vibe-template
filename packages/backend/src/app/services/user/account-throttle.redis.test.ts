@@ -1,4 +1,5 @@
 import { Redis } from 'ioredis'
+import type { SessionToken } from '#app/domain/secrets.js'
 import type { UserId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
 import { Result } from 'better-result'
@@ -90,7 +91,7 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
             const result = await accountService.updateProfile(
                 userId,
                 { theme: 'dark' },
-                'token',
+                'token' as SessionToken,
                 stored,
             )
             expect(Result.isOk(result), `change ${String(i + 1)}`).toBe(true)
@@ -100,7 +101,7 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
         const limited = await accountService.updateProfile(
             userId,
             { theme: 'dark' },
-            'token',
+            'token' as SessionToken,
             stored,
         )
 
@@ -114,19 +115,24 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
         const userId = freshUser()
         for (let i = 0; i < 30; i += 1) {
             const token = i % 2 === 0 ? 'session-a' : 'session-b'
-            await accountService.updateProfile(userId, { fontSize: 18 }, token, stored)
+            await accountService.updateProfile(
+                userId,
+                { fontSize: 18 },
+                token as SessionToken | undefined,
+                stored,
+            )
         }
 
         const fromB = await accountService.updateProfile(
             userId,
             { fontSize: 18 },
-            'session-b',
+            'session-b' as SessionToken,
             stored,
         )
         const other = await accountService.updateProfile(
             freshUser(),
             { fontSize: 18 },
-            'session-c',
+            'session-c' as SessionToken,
             stored,
         )
 
@@ -144,7 +150,12 @@ describe.skipIf(!hasRedis)('profile change budget in Redis', () => {
         redis.client = dead
         try {
             await expect(
-                accountService.updateProfile(freshUser(), { theme: 'dark' }, 'token', stored),
+                accountService.updateProfile(
+                    freshUser(),
+                    { theme: 'dark' },
+                    'token' as SessionToken,
+                    stored,
+                ),
             ).rejects.toThrow()
             expect(withTransaction).not.toHaveBeenCalled()
         } finally {

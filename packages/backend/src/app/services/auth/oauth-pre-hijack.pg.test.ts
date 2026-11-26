@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { TokenHash } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 
 import { Result } from 'better-result'
@@ -81,7 +82,8 @@ vi.mock('arctic', () => {
     }
 })
 
-const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex')
+const sha256 = (value: string): TokenHash =>
+    createHash('sha256').update(value).digest('hex') as TokenHash
 
 describe.skipIf(!hasPg)('OAuth pre-hijacking on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')

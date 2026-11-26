@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { testRequest } from '../../../test-support/audit-actor.js'
@@ -75,8 +76,8 @@ vi.mock('metautil', () => ({ validatePassword: validatePasswordMock }))
 
 // feat-097: who opens the link. The registration link's owner signed in to that account; the
 // email link's requester is the session of the account that asked for it.
-const OWN_SESSION_7 = { userId: uid(7), presentedSessionToken: 'session-7' }
-const OWN_SESSION_8 = { userId: uid(8), presentedSessionToken: 'session-8' }
+const OWN_SESSION_7 = { userId: uid(7), presentedSessionToken: 'session-7' as SessionToken }
+const OWN_SESSION_8 = { userId: uid(8), presentedSessionToken: 'session-8' as SessionToken }
 const ANONYMOUS = { userId: null, presentedSessionToken: undefined }
 type Requester = Parameters<
     Awaited<
@@ -220,7 +221,7 @@ describe('emailVerificationService', () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 7n,
             emailVerifiedAt: null,
-            sessionToken: 'session-7',
+            sessionToken: 'session-7' as SessionToken,
         })
         userRepositoryMock.lockById.mockResolvedValue({
             id: 7n,
@@ -288,7 +289,7 @@ describe('emailVerificationService', () => {
             name: 'Jane',
             email: null,
             emailVerifiedAt: null,
-            sessionToken: 'session-8',
+            sessionToken: 'session-8' as SessionToken,
         })
         emailLinkVerificationRepositoryMock.invalidatePendingByUserId.mockResolvedValue(0)
         emailLinkVerificationRepositoryMock.create.mockResolvedValue({
@@ -308,7 +309,7 @@ describe('emailVerificationService', () => {
         const result = await emailVerificationService.sendLinkVerificationEmail(
             uid(8),
             'new@example.com',
-            'session-8',
+            'session-8' as SessionToken,
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -339,7 +340,7 @@ describe('emailVerificationService', () => {
         userRepositoryMock.findById.mockResolvedValue({
             id: 7n,
             emailVerifiedAt: null,
-            sessionToken: 'session-7',
+            sessionToken: 'session-7' as SessionToken,
         })
         userRepositoryMock.lockById.mockResolvedValue({ id: 7n, emailVerifiedAt: null })
         emailVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
@@ -376,7 +377,7 @@ describe('emailVerificationService', () => {
         userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
-            sessionToken: 'session-8',
+            sessionToken: 'session-8' as SessionToken,
         })
         userRepositoryMock.findByEmail.mockResolvedValue(undefined)
         emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue(undefined)
@@ -413,7 +414,7 @@ describe('emailVerificationService', () => {
         userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
-            sessionToken: 'session-8',
+            sessionToken: 'session-8' as SessionToken,
         })
         userRepositoryMock.findByEmail.mockResolvedValue(undefined)
         userRepositoryMock.update.mockResolvedValue({
@@ -468,7 +469,7 @@ describe('emailVerificationService', () => {
         userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: 'other@example.com',
-            sessionToken: 'session-8',
+            sessionToken: 'session-8' as SessionToken,
         })
         emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({
             id: 15n,
@@ -509,14 +510,14 @@ describe('sendLinkVerificationEmail session guard (feat-096)', () => {
                 name: 'Jane',
                 email: null,
                 emailVerifiedAt: null,
-                sessionToken: 'session-current',
+                sessionToken: 'session-current' as SessionToken,
             })
 
             const { emailVerificationService } = await loadEmailVerificationService()
             const result = await emailVerificationService.sendLinkVerificationEmail(
                 uid(8),
                 'new@example.com',
-                presented,
+                presented as SessionToken | undefined,
             )
 
             expect(Result.isError(result)).toBe(true)
@@ -542,14 +543,14 @@ describe('sendLinkVerificationEmail session guard (feat-096)', () => {
             name: 'Jane',
             email: 'jane@example.com',
             emailVerifiedAt: new Date(),
-            sessionToken: 'session-8',
+            sessionToken: 'session-8' as SessionToken,
         })
 
         const { emailVerificationService } = await loadEmailVerificationService()
         const result = await emailVerificationService.sendLinkVerificationEmail(
             uid(8),
             'new@example.com',
-            'session-8',
+            'session-8' as SessionToken,
         )
 
         expect(Result.isError(result)).toBe(true)
@@ -579,7 +580,7 @@ it('maps a unique email race during link verification to a conflict', async () =
     userRepositoryMock.lockById.mockResolvedValue({
         id: 8n,
         email: null,
-        sessionToken: 'session-8',
+        sessionToken: 'session-8' as SessionToken,
     })
     userRepositoryMock.findByEmail.mockResolvedValue(undefined)
     userRepositoryMock.update.mockRejectedValue({ code: '23505' })
@@ -673,7 +674,7 @@ describe('verifyEmail · the owner of a registration link', () => {
         email: 'jane@example.com',
         emailVerifiedAt: null,
         password: 'stored-hash',
-        sessionToken: 'session-7',
+        sessionToken: 'session-7' as SessionToken,
         ...over,
     })
 
@@ -718,10 +719,10 @@ describe('verifyEmail · the owner of a registration link', () => {
 
     it.each([
         ['nobody signed in', ANONYMOUS],
-        ['another account', { userId: uid(9), presentedSessionToken: 'session-7' }],
+        ['another account', { userId: uid(9), presentedSessionToken: 'session-7' as SessionToken }],
         [
             'a revoked session of the account',
-            { userId: uid(7), presentedSessionToken: 'old-session' },
+            { userId: uid(7), presentedSessionToken: 'old-session' as SessionToken },
         ],
         [
             'the account without a presented token',
@@ -859,7 +860,7 @@ describe('verifyEmail · the session of an email link', () => {
         userRepositoryMock.lockById.mockResolvedValue({
             id: 8n,
             email: null,
-            sessionToken: 'session-8',
+            sessionToken: 'session-8' as SessionToken,
         })
         emailLinkVerificationRepositoryMock.markUsed.mockResolvedValue({ id: 15n })
     }
@@ -876,7 +877,7 @@ describe('verifyEmail · the session of an email link', () => {
 
     it.each([
         ['nobody signed in', ANONYMOUS],
-        ['another account', { userId: uid(9), presentedSessionToken: 'session-9' }],
+        ['another account', { userId: uid(9), presentedSessionToken: 'session-9' as SessionToken }],
     ])('%s: 403 email_link_wrong_session, the link is not used', async (_n, who) => {
         arrange()
 
@@ -906,7 +907,10 @@ describe('verifyEmail · the session of an email link', () => {
     it('a revoked session of the account: 401 session_revoked, nothing linked', async () => {
         arrange()
 
-        const result = await verify({ userId: uid(8), presentedSessionToken: 'session-old' })
+        const result = await verify({
+            userId: uid(8),
+            presentedSessionToken: 'session-old' as SessionToken,
+        })
 
         expect(Result.isError(result) && result.error).toEqual({
             _tag: 'Unauthorized',

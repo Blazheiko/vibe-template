@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { RawToken, SessionToken } from '#app/domain/secrets.js'
 import type { Redis } from 'ioredis'
 import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
 import { eq } from 'drizzle-orm'
@@ -151,7 +152,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     }
 
     // What authService.login ends with: a signed-in session under the user's token.
-    const signIn = async (user: { id: UserId; sessionToken: string }) => {
+    const signIn = async (user: { id: UserId; sessionToken: SessionToken }) => {
         const { context, responseData } = newContext()
         await sessionHandler(context, undefined, undefined)
         await context.auth.login(String(user.id), user.sessionToken, { method: 'password' })
@@ -202,7 +203,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const changed = await authService.changePassword(
                 user.id,
                 { newPassword: 'new-secret-456' },
-                ctxA.auth.getPresentedUserToken(),
+                ctxA.auth.getPresentedUserToken() as SessionToken | undefined,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -374,7 +375,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const changed = await authService.changePassword(
                 user.id,
                 { newPassword: 'new-secret-456' },
-                context.auth.getPresentedUserToken(),
+                context.auth.getPresentedUserToken() as SessionToken | undefined,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -399,7 +400,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             expect(anonymous.auth.getPresentedUserToken()).toBeUndefined()
 
             await userRepository.update(user.id, {
-                sessionToken: `rotated${String(now)}`.slice(0, 24),
+                sessionToken: `rotated${String(now)}`.slice(0, 24) as SessionToken,
             })
 
             const { context } = await requestWith(a.cookie)
@@ -413,7 +414,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
     // the claim itself comes with feat-097.
     describe('a change of credentials let in before a revocation', () => {
         const revokeLikeAClaim = async (id: UserId): Promise<string> => {
-            const rotated = `claim${String(Date.now())}${String(id)}`.slice(0, 24)
+            const rotated = `claim${String(Date.now())}${String(id)}`.slice(0, 24) as SessionToken
             await userRepository.update(id, { password: null, sessionToken: rotated })
             return rotated
         }
@@ -432,7 +433,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const result = await authService.changePassword(
                 user.id,
                 { newPassword: 'attacker-secret-1' },
-                context.auth.getPresentedUserToken(),
+                context.auth.getPresentedUserToken() as SessionToken | undefined,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -463,7 +464,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const result = await authService.changePassword(
                 user.id,
                 { newPassword: 'attacker-secret-1' },
-                context.auth.getPresentedUserToken(),
+                context.auth.getPresentedUserToken() as SessionToken | undefined,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -547,7 +548,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
         const opened: { userId: string; uuid: string }[] = []
 
         // A connection opened from a signed-in session, as handleConnected registers it.
-        const openSocket = (userId: UserId, sessionId: string, userToken: string) => {
+        const openSocket = (userId: UserId, sessionId: string, userToken: SessionToken) => {
             socketCounter += 1
             const uuid = `rev-socket-${String(socketCounter)}`
             const closedWith: number[] = []
@@ -637,7 +638,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const changed = await authService.changePassword(
                 user.id,
                 { newPassword: 'new-secret-456' },
-                context.auth.getPresentedUserToken(),
+                context.auth.getPresentedUserToken() as SessionToken | undefined,
                 sessionStillStored,
                 undefined,
                 testUserActor(),
@@ -656,7 +657,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             const token = `reset-${crypto.randomUUID()}`
             await passwordResetRepository.create({
                 userId: user.id,
-                tokenHash: hashToken(token),
+                tokenHash: hashToken(token as RawToken),
                 targetEmail: user.email,
                 expiresAt: new Date(Date.now() + 600_000),
             })
@@ -688,7 +689,7 @@ describe.skipIf(!hasPg || !hasRedis)('session revocation on PostgreSQL and Redis
             // Another instance revoked the session: only the database knows.
             await db
                 .update(users)
-                .set({ sessionToken: 'rotated-elsewhere-0001' })
+                .set({ sessionToken: 'rotated-elsewhere-0001' as SessionToken })
                 .where(eq(users.id, user.id))
 
             const report = await wsSessionRevocation.recheckSessions()

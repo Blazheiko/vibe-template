@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { TokenHash } from '#app/domain/secrets.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -415,7 +416,7 @@ describe.skipIf(!hasPg || !hasRedis)('account sessions over HTTP (feat-233)', as
             .insert(passwordResetTokens)
             .values({
                 userId: user.id,
-                tokenHash: crypto.randomUUID().replaceAll('-', '').padEnd(64, '0'),
+                tokenHash: crypto.randomUUID().replaceAll('-', '').padEnd(64, '0') as TokenHash,
                 expiresAt: new Date(Date.now() + 3_600_000),
             })
             .returning()

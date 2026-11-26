@@ -43,7 +43,8 @@ const emailServiceMock = {
 
 const destroyAllSessionsMock = vi.fn(() => Promise.resolve({ deleted: 0, complete: true }))
 const hashPasswordMock = vi.fn()
-const nanoidMock = vi.fn(() => 'new-session-token')
+// Hoisted: the schema imports nanoid through app/domain/secrets.ts when the mocks load.
+const nanoidMock = vi.hoisted(() => vi.fn(() => 'new-session-token'))
 const consumeAuthThrottleMock = vi.fn()
 const resetAuthThrottleMock = vi.fn()
 const issueVerificationCodeMock = vi.fn()

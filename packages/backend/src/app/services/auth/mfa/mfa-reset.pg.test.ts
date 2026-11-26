@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -243,7 +244,7 @@ describe.skipIf(!hasPg)('MFA reset by an administrator and the CLI (feat-247 S2)
             // Logout everywhere (or a password change) of the admin, after its request was let in.
             await db
                 .update(users)
-                .set({ sessionToken: 'rotated-admin-token' })
+                .set({ sessionToken: 'rotated-admin-token' as SessionToken })
                 .where(eq(users.id, admin.id))
 
             const result = await mfaResetService.reset({

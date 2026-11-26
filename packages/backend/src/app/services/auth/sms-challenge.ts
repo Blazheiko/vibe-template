@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { otpCodeOf, type OtpHash } from '#app/domain/secrets.js'
 import { authConfig } from '#config/auth.js'
 import {
     smsAuthChallengeRepository,
@@ -58,7 +59,7 @@ export async function findPendingChallenge(
 export async function openChallenge(options: {
     phone: string
     flow: SmsVerificationFlow
-    codeHash?: string
+    codeHash?: OtpHash
     metadata: Metadata
     /**
      * feat-214: what a start that will really open a challenge pays (the hourly SMS budget of
@@ -128,7 +129,7 @@ export const SESSION_CHALLENGES_FULL = 'full' as const
 export async function openSessionChallenge(options: {
     phone: string
     flow: SmsVerificationFlow
-    codeHash?: string
+    codeHash?: OtpHash
     metadata: Metadata
     /** The session that starts; null owns nothing and can replace nothing. */
     sessionId: string | null
@@ -221,7 +222,7 @@ export async function deliverChallenge(
             flow: options.flow,
         })
         recorded = await smsAuthChallengeRepository.markIssued(challenge.id, {
-            codeHash: hashOtpVerificationCode(issued.code),
+            codeHash: hashOtpVerificationCode(otpCodeOf(issued.code)),
             providerRequestId: issued.providerRequestId,
             metadata: options.metadata,
         })
@@ -285,7 +286,7 @@ export async function verifySmsCode(
         return Result.err(badRequest(answers.noLongerValid))
     }
 
-    if (verifyOtpVerificationCode(code, spent.codeHash)) {
+    if (verifyOtpVerificationCode(otpCodeOf(code), spent.codeHash)) {
         return Result.ok(undefined)
     }
 

@@ -39,10 +39,10 @@ import { emailVerificationService } from '#app/services/auth/email-verification-
 import { enforceEmailLinkThrottles } from '#app/services/auth/enforce-throttle.js'
 import {
     findUsableToken,
-    hashToken,
     issueTokenLocked,
     runTokenTransaction,
 } from '#app/services/auth/one-time-token.js'
+import { rawTokenOf, sessionBindingHashOf, type SessionToken } from '#app/domain/secrets.js'
 import { emailService } from '#app/services/notifications/email-service.js'
 import {
     mailAddresseeName,
@@ -531,10 +531,14 @@ export const oauthService = {
     > {
         const used = badRequest('This link has already been used', 'used_token')
         const expired = badRequest('This link has expired', 'expired_token')
-        const found = await findUsableToken(oauthLinkVerificationRepository, token.trim(), {
-            used,
-            expired,
-        })
+        const found = await findUsableToken(
+            oauthLinkVerificationRepository,
+            rawTokenOf(token.trim()),
+            {
+                used,
+                expired,
+            },
+        )
         if (Result.isError(found)) return Result.err(found.error)
         const verification = found.value
         if (verification === undefined) {
@@ -543,7 +547,7 @@ export const oauthService = {
         // Not consumed on a wrong session: the owner can still open it in the right browser.
         if (
             sessionId === null ||
-            !safeEqual(hashToken(sessionId), verification.sessionBindingHash)
+            !safeEqual(sessionBindingHashOf(sessionId), verification.sessionBindingHash)
         ) {
             return Result.err(
                 forbidden(
@@ -672,7 +676,7 @@ export const oauthService = {
      */
     async resendFirstEmailLink(
         userId: UserId,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
         /** feat-123: checked right before the mail (a logout in another tab deletes the record). */
         sessionStored: () => Promise<boolean>,
     ): Promise<AppResult<{ message: string }>> {
@@ -711,7 +715,7 @@ interface OAuthIdentity {
 interface ClaimedLink {
     claimed: boolean
     sessionToken: string
-    previousSessionToken: string
+    previousSessionToken: SessionToken
     /** The account after the link, for the notice (feat-198). */
     account: { email: string | null; name: string }
 }
@@ -900,7 +904,7 @@ async function startMailedLink(
             providerName: identity.providerName,
             providerAvatar: identity.providerAvatar,
             targetEmail: user.email ?? identity.providerEmail,
-            sessionBindingHash: hashToken(sessionId),
+            sessionBindingHash: sessionBindingHashOf(sessionId),
         }),
     })
     if (Result.isError(issued)) return Result.err(issued.error)
@@ -1057,7 +1061,7 @@ async function signInWithIdentity(
 async function sendFirstEmailLinkQuietly(
     userId: UserId,
     email: string,
-    sessionToken: string,
+    sessionToken: SessionToken,
 ): Promise<void> {
     try {
         // feat-098: the mail budgets apply to the first mail too; a spent one only skips it.

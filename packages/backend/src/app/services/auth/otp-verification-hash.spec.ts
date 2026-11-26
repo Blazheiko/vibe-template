@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { OtpCode } from '#app/domain/secrets.js'
 import { createHash } from 'node:crypto'
 
 const ORIGINAL_ENV = { ...process.env }
@@ -24,12 +25,12 @@ describe('otp verification hashing', () => {
         const { hashOtpVerificationCode, verifyOtpVerificationCode } =
             await import('./otp-verification-hash.js')
 
-        const hash = hashOtpVerificationCode('123456')
+        const hash = hashOtpVerificationCode('123456' as OtpCode)
         const rawSha256 = createHash('sha256').update('123456').digest('hex')
 
         expect(hash).not.toBe(rawSha256)
-        expect(verifyOtpVerificationCode('123456', hash)).toBe(true)
-        expect(verifyOtpVerificationCode('654321', hash)).toBe(false)
+        expect(verifyOtpVerificationCode('123456' as OtpCode, hash)).toBe(true)
+        expect(verifyOtpVerificationCode('654321' as OtpCode, hash)).toBe(false)
     })
 
     it('throws when no OTP hashing secret is configured', async () => {
@@ -37,7 +38,7 @@ describe('otp verification hashing', () => {
         delete process.env['APP_KEY']
         const { hashOtpVerificationCode } = await import('./otp-verification-hash.js')
 
-        expect(() => hashOtpVerificationCode('123456')).toThrow(
+        expect(() => hashOtpVerificationCode('123456' as OtpCode)).toThrow(
             'OTP verification hashing secret is not configured',
         )
     })

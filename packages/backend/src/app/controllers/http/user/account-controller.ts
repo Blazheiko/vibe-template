@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { accountService } from '#app/services/user/account-service.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
@@ -41,7 +42,7 @@ export default {
         const result = await accountService.updateProfile(
             userId,
             getTypedPayload(context),
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             () => context.session.isStored(),
         )
         return respond(context, result, (profile) => ({ status: 'success', profile }))

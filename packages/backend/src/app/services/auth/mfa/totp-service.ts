@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { nanoid } from 'nanoid'
 import { PRODUCT } from 'shared/product'
 import {
@@ -90,7 +91,7 @@ const isEnrollment = (value: unknown): value is TotpEnrollment =>
 export interface TotpRequest {
     userId: UserId
     session: Session
-    presentedSessionToken: string | undefined
+    presentedSessionToken: SessionToken | undefined
     actor: UserAuditActor
     now?: number
 }

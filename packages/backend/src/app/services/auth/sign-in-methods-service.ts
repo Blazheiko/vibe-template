@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 import { oauthAccountRepository, userRepository, withTransaction } from '#app/repositories/index.js'
 import type { DbExecutor, OAuthAccountRow, UserRow } from '#app/repositories/index.js'
@@ -84,7 +85,7 @@ export async function signInCapability(
 export interface UnlinkRequest {
     linkId: OAuthAccountId
     /** `Auth.getPresentedUserToken()`: refused once the session was revoked meanwhile. */
-    presentedSessionToken: string | undefined
+    presentedSessionToken: SessionToken | undefined
     /** feat-245 (row 8 of Р3): how the session was authenticated. */
     sessionAuth: SessionAuthState | undefined
     /** Asked right before the link is removed: a logout in another tab ends the request. */

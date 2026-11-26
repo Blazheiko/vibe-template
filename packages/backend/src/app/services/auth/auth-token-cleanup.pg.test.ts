@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { OtpHash } from '#app/domain/secrets.js'
 
 import { sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -80,7 +81,7 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
         await db.insert(schema.smsAuthChallenges).values({
             flow: 'register_phone',
             phone: '+10000000000',
-            codeHash: 'x',
+            codeHash: 'x' as OtpHash,
             resendAvailableAt: expiresAt,
             expiresAt,
         })

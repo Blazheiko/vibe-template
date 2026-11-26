@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import type { OAuthAccountId } from '#app/domain/ids.js'
 import { eq } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
@@ -73,7 +74,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
     })
 
     const request = (
-        user: { sessionToken: string },
+        user: { sessionToken: SessionToken },
         linkId: OAuthAccountId,
         over: Record<string, unknown> = {},
     ) => ({

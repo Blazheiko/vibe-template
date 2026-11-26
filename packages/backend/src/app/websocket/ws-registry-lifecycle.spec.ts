@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 
@@ -415,8 +416,17 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         const conn = connection('9115')
 
         const connected = websocketCoordinator.handleConnected(conn.ws, conn.userData)
-        expect(wsConnectionRegistry.revokeConnecting('9115', undefined, undefined, 'other')).toBe(0)
-        wsSessionRevocation.closeUserConnections('9115', { userToken: 'rotated-token' })
+        expect(
+            wsConnectionRegistry.revokeConnecting(
+                '9115',
+                undefined,
+                undefined,
+                'other' as SessionToken,
+            ),
+        ).toBe(0)
+        wsSessionRevocation.closeUserConnections('9115', {
+            userToken: 'rotated-token' as SessionToken,
+        })
         resolveAccess({ role: 'user', sessionToken: 'u1' })
         await connected
 
@@ -424,7 +434,9 @@ describe('a logout while the connection is being opened (feat-210)', () => {
         expect(wsConnectionRegistry.isUserOnline('9115')).toBe(true)
 
         // Registered now: a close by its own token reaches it.
-        expect(wsSessionRevocation.closeUserConnections('9115', { userToken: 'u1' })).toBe(1)
+        expect(
+            wsSessionRevocation.closeUserConnections('9115', { userToken: 'u1' as SessionToken }),
+        ).toBe(1)
         expect(conn.endedWith).toEqual([4001])
         await conn.close()
     })

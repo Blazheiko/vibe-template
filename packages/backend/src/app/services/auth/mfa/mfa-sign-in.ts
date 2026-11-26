@@ -1,5 +1,18 @@
 import { Result } from 'better-result'
-import { nanoid } from 'nanoid'
+import {
+    mfaBindValueOf,
+    newSessionToken,
+    type MfaTicketId,
+    type MfaCompletionId,
+    type MfaReservationId,
+    type MfaAttemptId,
+    newMfaReservationId,
+    newMfaCompletionId,
+    mfaAttemptIdOf,
+    mfaTicketIdOf,
+    mfaCompletionIdOf,
+    sessionTokenOf,
+} from '#app/domain/secrets.js'
 import { MFA_REASONS, type SessionAuthState } from 'shared/mfa'
 import type { AuthenticationResponse } from 'shared/schemas'
 
@@ -160,6 +173,10 @@ const methodsOf = (account: { totp: unknown; passkeys: number }): SecondStepMeth
  * Р4: after the first factor. Answers null when the account has no second factor (the caller
  * signs in as before), or the second step it opened: a ticket and its cookie.
  */
+/** The ticket id of the mfa_ticket cookie, if the browser sent one (an empty one is none). */
+const mfaTicketCookieOf = (text: string | undefined): MfaTicketId | undefined =>
+    text === undefined || text === '' ? undefined : mfaTicketIdOf(text)
+
 export async function startSecondStepIfRequired(
     auth: Auth,
     user: { id: UserId; sessionToken: string },
@@ -209,12 +226,12 @@ export type SecondStepState =
  */
 export async function secondStepState(context: SignInContext): Promise<AppResult<SecondStepState>> {
     const none = Result.ok<SecondStepState>({ status: 'none' })
-    const ticketId = context.auth.getMfaTicketCookie()
+    const ticketId = mfaTicketCookieOf(context.auth.getMfaTicketCookie())
     const bindValue = context.auth.getMfaBindCookie()
     if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '')
         return none
     const ticket = await mfaTicketStore.read(ticketId)
-    if (ticket?.binding !== mfaBinding(bindValue)) return none
+    if (ticket?.binding !== mfaBinding(mfaBindValueOf(bindValue))) return none
     const account = await loadMfaFactors(asUserId(ticket.userId))
     if (account.totp === undefined && account.passkeys === 0) return none
     return Result.ok({
@@ -259,14 +276,14 @@ function plannedAuth(ticket: MfaTicket, method: SecondStepMethod, now: number): 
 export async function secondStepPasskeyOptions(
     context: SignInContext,
 ): Promise<AppResult<{ options: object }>> {
-    const ticketId = context.auth.getMfaTicketCookie()
+    const ticketId = mfaTicketCookieOf(context.auth.getMfaTicketCookie())
     const bindValue = context.auth.getMfaBindCookie()
     if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '') {
         return Result.err(ticketInvalid())
     }
     const ticket = await mfaTicketStore.read(ticketId)
     const ttl = await mfaTicketStore.ttl(ticketId)
-    if (ticket?.binding !== mfaBinding(bindValue)) {
+    if (ticket?.binding !== mfaBinding(mfaBindValueOf(bindValue))) {
         return Result.err(ticketInvalid())
     }
     // Р4: an attempt of this ticket was confirmed and is finishing. A new challenge would not
@@ -328,17 +345,17 @@ export async function completeSecondStep(
     deps: SecondStepDeps = {},
 ): Promise<AppResult<AuthSuccessPayload>> {
     const now = deps.now?.() ?? Date.now()
-    const ticketId = context.auth.getMfaTicketCookie()
+    const ticketId = mfaTicketCookieOf(context.auth.getMfaTicketCookie())
     const bindValue = context.auth.getMfaBindCookie()
     if (ticketId === undefined || ticketId === '' || bindValue === undefined || bindValue === '') {
         return Result.err(ticketInvalid())
     }
-    const binding = mfaBinding(bindValue)
+    const binding = mfaBinding(mfaBindValueOf(bindValue))
     if (input.method === 'continue') {
         return continueByRequest(context, ticketId, binding, input, request, deps)
     }
-    const reservationId = nanoid()
-    const attemptId = input.attemptId ?? reservationId
+    const reservationId = newMfaReservationId()
+    const attemptId = mfaAttemptIdOf(input.attemptId ?? reservationId)
     const reservationTtlMs = mfaConfig.reservationTtlSeconds * 1000
 
     const reserved: ReserveOutcome = await mfaTicketStore.reserve(
@@ -382,7 +399,7 @@ export async function completeSecondStep(
  */
 async function continueByRequest(
     context: SignInContext,
-    ticketId: string,
+    ticketId: MfaTicketId,
     binding: string,
     input: SecondStepInput,
     request: AuditRequest,
@@ -399,9 +416,9 @@ async function continueByRequest(
 
 async function attempt(
     context: SignInContext,
-    ticketId: string,
+    ticketId: MfaTicketId,
     ticket: MfaTicket,
-    ids: { reservationId: string; attemptId: string },
+    ids: { reservationId: MfaReservationId; attemptId: MfaAttemptId },
     input: ProofInput,
     request: AuditRequest,
     deps: SecondStepDeps,
@@ -427,7 +444,7 @@ async function attempt(
         return Result.err(throttle.error)
     }
 
-    const completionId = nanoid()
+    const completionId = newMfaCompletionId()
     // Written inside the transaction callback, read after it: an object, so the reads after the
     // callback are not narrowed to the initial values.
     const progress: {
@@ -515,7 +532,7 @@ async function attempt(
             }
             const xid = await currentTransactionId(tx)
             progress.xid = xid
-            const expectedUserToken = recovery ? nanoid() : locked.sessionToken
+            const expectedUserToken = recovery ? newSessionToken() : locked.sessionToken
             const plan = context.auth.planLogin(
                 ticket.userId,
                 ticket.origin,
@@ -682,8 +699,8 @@ async function createPendingLink(
  * request reads the transaction's status (aborted) and reopens it.
  */
 function reopenQuietly(
-    ticketId: string,
-    completionId: string,
+    ticketId: MfaTicketId,
+    completionId: MfaCompletionId,
     userId: string,
 ): Promise<ReopenOutcome> {
     return bestEffort(
@@ -705,10 +722,10 @@ async function discardPending(plan: LoginPlan | undefined): Promise<void> {
 
 async function reconcile(
     context: SignInContext,
-    ticketId: string,
+    ticketId: MfaTicketId,
     ticket: MfaTicket,
     plan: LoginPlan,
-    completionId: string,
+    completionId: MfaCompletionId,
     xid: string,
 ): Promise<AppResult<AuthSuccessPayload>> {
     const status = await readTransactionStatus(xid)
@@ -728,13 +745,15 @@ async function reconcile(
 /** Р4: a repeat of the request after the ticket left `open`. */
 async function continueCompletion(
     context: SignInContext,
-    ticketId: string,
+    ticketId: MfaTicketId,
     ticket: MfaTicket,
     input: SecondStepInput,
     request: AuditRequest,
     deps: SecondStepDeps,
 ): Promise<AppResult<AuthSuccessPayload>> {
-    const { plan, completionId, xid } = ticket
+    const { plan, xid } = ticket
+    const completionId =
+        ticket.completionId === undefined ? undefined : mfaCompletionIdOf(ticket.completionId)
     if (plan === undefined || completionId === undefined) return Result.err(ticketInvalid())
     if (ticket.state === 'activated') {
         return activate(context, ticketId, ticket, plan, completionId)
@@ -769,10 +788,10 @@ async function continueCompletion(
  */
 async function activate(
     context: SignInContext,
-    ticketId: string,
+    ticketId: MfaTicketId,
     ticket: MfaTicket,
     plan: LoginPlan,
-    completionId: string,
+    completionId: MfaCompletionId,
 ): Promise<AppResult<AuthSuccessPayload>> {
     const userId = asUserId(plan.userId)
     let current: string | undefined
@@ -874,7 +893,7 @@ async function endOtherSessions(
 ): Promise<void> {
     wsSessionRevocation.closeUserConnections(plan.userId, {
         exceptSessionId: plan.sessionId,
-        userToken: ticket.userTokenAtStart,
+        userToken: sessionTokenOf(ticket.userTokenAtStart),
     })
     const cleanup = await destroyAllSessions(ticket.userTokenAtStart, {
         keepSessionId: currentSessionId,
@@ -891,8 +910,11 @@ async function endOtherSessions(
  * is a newer second step of this browser (a request of the older session while it runs), so it
  * and its cookie stay. A Redis failure throws (the hook logs it) and keeps the cookie too.
  */
-export async function retireCompletedTicket(auth: Auth, completionId: string): Promise<void> {
-    const ticketId = auth.getMfaTicketCookie()
+export async function retireCompletedTicket(
+    auth: Auth,
+    completionId: MfaCompletionId,
+): Promise<void> {
+    const ticketId = mfaTicketCookieOf(auth.getMfaTicketCookie())
     if (ticketId === undefined || ticketId === '') return
     const outcome = await mfaTicketStore.retire(ticketId, completionId)
     if (outcome === 'foreign') return
@@ -905,7 +927,7 @@ export async function retireCompletedTicket(auth: Auth, completionId: string): P
  * challenge left: never asked, spent by an earlier attempt, or lapsed) does not.
  */
 async function checkSecondStepPasskey(
-    ticketId: string,
+    ticketId: MfaTicketId,
     ticket: MfaTicket,
     response: AuthenticationResponse,
     request: AuditRequest,

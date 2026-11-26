@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import type { TokenHash } from '#app/domain/secrets.js'
+import type { SessionToken } from '#app/domain/secrets.js'
 
 import { Result } from 'better-result'
 import { eq } from 'drizzle-orm'
@@ -38,7 +40,8 @@ vi.mock('#vendor/utils/session/redis-session-storage.js', () => ({
     destroyAllSessions: () => Promise.resolve({ deleted: 0, complete: true }),
 }))
 
-const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex')
+const sha256 = (value: string): TokenHash =>
+    createHash('sha256').update(value).digest('hex') as TokenHash
 
 describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
     const { db, pool } = await import('#database/db.js')
@@ -306,7 +309,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
     describe('email link token', () => {
         // feat-097: an email link works only from a current session of the account that asked.
-        const link = (token: string, user: { id: UserId; sessionToken: string }) =>
+        const link = (token: string, user: { id: UserId; sessionToken: SessionToken }) =>
             emailVerificationService.verifyEmail(
                 token,
                 META,

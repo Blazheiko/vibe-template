@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { OtpHash } from '#app/domain/secrets.js'
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -141,7 +142,7 @@ describe('openChallenge', () => {
         await openChallenge({
             phone: PHONE,
             flow: 'reset_phone',
-            codeHash: 'blind',
+            codeHash: 'blind' as OtpHash,
             metadata: {},
         })
         expect(repo.create).toHaveBeenCalledWith(

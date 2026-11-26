@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,7 +17,7 @@ const userRepositoryMock = {
     replaceAvatarIfSessionToken: vi.fn(),
 }
 
-const SESSION_TOKEN = 'presented-token'
+const SESSION_TOKEN = 'presented-token' as SessionToken
 
 const uploadToS3Mock = vi.fn()
 const deleteFromS3Mock = vi.fn()
@@ -256,7 +257,11 @@ describe('avatarService', () => {
             userRepositoryMock.findById.mockResolvedValue(owner)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.uploadAvatar(uid(7), webp, presented)
+            const result = await avatarService.uploadAvatar(
+                uid(7),
+                webp,
+                presented as SessionToken | undefined,
+            )
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)
@@ -329,7 +334,7 @@ describe('avatarService', () => {
             userRepositoryMock.replaceAvatarIfSessionToken.mockResolvedValue(undefined)
 
             const { avatarService } = await loadAvatarService()
-            const result = await avatarService.deleteAvatar(uid(7), 'stale-token')
+            const result = await avatarService.deleteAvatar(uid(7), 'stale-token' as SessionToken)
 
             expect(Result.isError(result)).toBe(true)
             if (Result.isError(result)) expect(result.error).toEqual(revoked)

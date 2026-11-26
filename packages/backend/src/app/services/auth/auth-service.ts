@@ -1,6 +1,6 @@
 import { hashPassword, validatePassword } from 'metautil'
+import { presentedSessionTokenOf, type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { Result } from 'better-result'
-import { nanoid } from 'nanoid'
 import type { Auth, LoginOrigin, Session } from '#vendor/types/types.js'
 import { notifyNewSignIn } from '#app/services/auth/new-sign-in-notice.js'
 import {
@@ -181,7 +181,7 @@ async function requireSessionStored(sessionStored: SessionStillStored): Promise<
  */
 async function requireStepUp(
     userId: UserId,
-    presentedSessionToken: string | undefined,
+    presentedSessionToken: SessionToken | undefined,
     sessionAuth: SessionAuthState | undefined,
     action: 'password.change' | 'contact.link',
 ): Promise<AppResult<{ user: UserRow; proof: AcceptedProof }>> {
@@ -651,7 +651,7 @@ export const authService = {
         requestMeta: {
             ipAddress: string
             sessionId: string | null
-            presentedSessionToken: string | undefined
+            presentedSessionToken: SessionToken | undefined
             /** feat-123: checked right before the irreversible step. */
             sessionStored: SessionStillStored
             /** feat-245 (row 7 of Р3): how the session was authenticated. */
@@ -763,7 +763,7 @@ export const authService = {
         requestMeta: {
             ipAddress: string
             sessionId: string | null
-            presentedSessionToken: string | undefined
+            presentedSessionToken: SessionToken | undefined
             /** feat-123: checked right before the irreversible step. */
             sessionStored: SessionStillStored
         },
@@ -920,7 +920,7 @@ export const authService = {
     async startEmailLink(
         userId: UserId,
         payload: LinkEmailStartInput,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
         sessionStored: SessionStillStored,
         /** feat-245 (row 7 of Р3): how the session was authenticated. */
         sessionAuth: SessionAuthState | undefined,
@@ -1167,7 +1167,7 @@ export const authService = {
         // feat-096: only while the session that asked is still current; a request let in
         // before a revocation must not rotate the owner's new token away.
         if (userId !== null) {
-            const presented = auth.getPresentedUserToken()
+            const presented = presentedSessionTokenOf(auth.getPresentedUserToken())
             // feat-109: the pending password-reset links are retired with the rotation, in one
             // transaction: "log out everywhere" also ends a reset somebody else asked for.
             const rotated =
@@ -1177,7 +1177,7 @@ export const authService = {
                           const done = await userRepository.updateIfSessionToken(
                               asUserId(userId),
                               presented,
-                              { sessionToken: nanoid() },
+                              { sessionToken: newSessionToken() },
                               tx,
                           )
                           if (done === undefined) return undefined
@@ -1246,7 +1246,7 @@ export const authService = {
     async changePassword(
         userId: UserId,
         payload: ChangePasswordInput,
-        presentedSessionToken: string | undefined,
+        presentedSessionToken: SessionToken | undefined,
         /**
          * feat-134 (L1): checked right before the password is written. A logout in another tab
          * deletes this session's record without rotating users.session_token; the change would
@@ -1292,7 +1292,7 @@ export const authService = {
         // same current password only one finds it still in place; and a change let in
         // before a revocation finds the presented sessionToken gone (feat-096).
         const previousSessionToken = user.sessionToken
-        const rotatedSessionToken = nanoid()
+        const rotatedSessionToken = newSessionToken()
         // feat-109: the pending password-reset links go in the same transaction: a link asked
         // for before the change cannot reset the password after it, and a failure retiring
         // them rolls the change back.

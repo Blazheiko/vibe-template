@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { MfaTicketId, NormalizedRecoveryCode, SessionToken } from '#app/domain/secrets.js'
 
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -374,7 +375,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
 
         /** The ticket this browser holds, as stored. */
         ticket() {
-            return mfaTicketStore.read(this.cookies.get(MFA_COOKIE) ?? '')
+            return mfaTicketStore.read((this.cookies.get(MFA_COOKIE) ?? '') as MfaTicketId)
         }
 
         sessionId(): string {
@@ -549,7 +550,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         await browser.firstFactor(user.email)
         await db
             .update(users)
-            .set({ sessionToken: crypto.randomUUID().slice(0, 24) })
+            .set({ sessionToken: crypto.randomUUID().slice(0, 24) as SessionToken })
             .where(eq(users.id, user.row.id))
         vi.spyOn(mfaTicketStore, 'deleteIfOpen').mockRejectedValueOnce(
             new RedisUnavailableError('Redis down (delete)'),
@@ -686,7 +687,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         await browser.firstFactor(user.email)
         await db
             .update(users)
-            .set({ sessionToken: crypto.randomUUID().slice(0, 24) })
+            .set({ sessionToken: crypto.randomUUID().slice(0, 24) as SessionToken })
             .where(eq(users.id, user.row.id))
         const reply = await browser.request('POST', '/auth/mfa/verify', {
             method: 'totp',
@@ -710,7 +711,11 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             const { normalizeRecoveryCode, hashRecoveryCode } = await import('./recovery-codes.js')
             await recoveryCodeRepository.replaceBatch(
                 user.row.id,
-                [hashRecoveryCode(normalizeRecoveryCode(lastCode) ?? '')],
+                [
+                    hashRecoveryCode(
+                        normalizeRecoveryCode(lastCode) ?? ('' as NormalizedRecoveryCode),
+                    ),
+                ],
                 'last',
                 tx,
             )
@@ -838,7 +843,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             // logout-all from another device lands between the commit and the activation.
             await db
                 .update(users)
-                .set({ sessionToken: crypto.randomUUID().slice(0, 24) })
+                .set({ sessionToken: crypto.randomUUID().slice(0, 24) as SessionToken })
                 .where(eq(users.id, user.row.id))
             plannedSession = 'set'
         }
@@ -1004,7 +1009,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         await withTransaction((tx) =>
             recoveryCodeRepository.replaceBatch(
                 user.row.id,
-                [hashRecoveryCode(normalizeRecoveryCode(last) ?? '')],
+                [hashRecoveryCode(normalizeRecoveryCode(last) ?? ('' as NormalizedRecoveryCode))],
                 'only',
                 tx,
             ),
@@ -1120,7 +1125,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             // A ticket that is gone (here: retired by the sign-in) is none.
             const gone = new Browser()
             await gone.firstFactor(user.email)
-            await mfaTicketStore.delete(gone.cookies.get(MFA_COOKIE) ?? '')
+            await mfaTicketStore.delete((gone.cookies.get(MFA_COOKIE) ?? '') as MfaTicketId)
             expect((await gone.request('POST', '/auth/mfa/state', {})).body).toEqual({
                 status: 'none',
             })
@@ -1256,7 +1261,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
         }
 
         /** A fake socket of `userId` registered on this instance; `ended` tells its close. */
-        const fakeSocket = (userId: UserId, sessionId: string, userToken: string) => {
+        const fakeSocket = (userId: UserId, sessionId: string, userToken: SessionToken) => {
             const ended: number[] = []
             const ws = {
                 cork: (fn: () => void): void => {
@@ -1334,8 +1339,8 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
 
             // Between the attempts: a socket of the lost device's token and one of a session
             // signed in with the new token (another tab of the recovery, say).
-            const stale = fakeSocket(user.row.id, lostSession, oldToken)
-            const fresh = fakeSocket(user.row.id, crypto.randomUUID(), newToken)
+            const stale = fakeSocket(user.row.id, lostSession, oldToken as SessionToken)
+            const fresh = fakeSocket(user.row.id, crypto.randomUUID(), newToken as SessionToken)
             try {
                 const done = await verify(browser, CONTINUE)
                 expect(done.status).toBe(200)
@@ -1819,9 +1824,13 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             const ticketId = browser.cookies.get(MFA_COOKIE) ?? ''
             // While this attempt holds the ticket, late results of lapsed attempts reach the limit.
             inject.prepare = async () => {
-                const current = await mfaTicketStore.read(ticketId)
+                const current = await mfaTicketStore.read(ticketId as MfaTicketId)
                 if (current === null) throw new Error('no ticket')
-                await mfaTicketStore.create(ticketId, { ...current, failures: 5 }, 300)
+                await mfaTicketStore.create(
+                    ticketId as MfaTicketId,
+                    { ...current, failures: 5 },
+                    300,
+                )
             }
             const reply = await browser.request('POST', '/auth/mfa/verify', {
                 method: 'totp',
@@ -1831,7 +1840,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             expect(reply.body).toMatchObject({ reason: 'mfa_ticket_invalid' })
             // The clearing cookie reaches the browser: an answer, not a thrown error.
             expect(reply.cookies.get(MFA_COOKIE)).toBe('')
-            expect(await mfaTicketStore.read(ticketId)).toBeNull()
+            expect(await mfaTicketStore.read(ticketId as MfaTicketId)).toBeNull()
             expect(newSignIn).not.toHaveBeenCalled()
         })
     })

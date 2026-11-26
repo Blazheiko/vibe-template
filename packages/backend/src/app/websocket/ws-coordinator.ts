@@ -1,5 +1,6 @@
 import type { MyWebSocket, UserConnection } from '#vendor/types/types.js'
 import { asUserId } from '#app/domain/ids.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { announceSessionListChanged } from '#app/services/communication/session-list-announcer.js'
 import { touchSessionFromWs } from '#vendor/utils/session/ws-session-touch.js'
@@ -61,12 +62,9 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
     // feat-210: until the reads below answer, the connection is in no list a revocation closes.
     // It is noted as "being opened" first, so a logout or a rotation that runs meanwhile marks
     // it; one that ran before this line is seen by the reads themselves.
-    const settle = wsConnectionRegistry.beginConnecting(
-        userId,
-        userData.uuid,
-        sessionId,
-        userData.userToken,
-    )
+    // The vendor connection keeps the token as text; the app reads it as a SessionToken (Р13).
+    const userToken = presentedSessionTokenOf(userData.userToken)
+    const settle = wsConnectionRegistry.beginConnecting(userId, userData.uuid, sessionId, userToken)
     let access: Awaited<ReturnType<typeof userRoleService.findAccess>>
     let sessionStored: boolean
     let revokedMeanwhile: boolean
@@ -74,9 +72,9 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         ;[access, sessionStored] = await Promise.all([
             userRoleService.findAccess(asUserId(userId)),
             // A logout of one session deletes its stored record and rotates nothing.
-            userData.userToken === undefined
+            userToken === undefined
                 ? Promise.resolve(false)
-                : wsSessionRevocation.isSessionStored(sessionId, userData.userToken),
+                : wsSessionRevocation.isSessionStored(sessionId, userToken),
         ])
         // feat-243 (review 2026-11-21): a role change signalled while the role was read is not
         // seen by wsRoleSync (this connection is not registered yet); it marked the connection,
@@ -125,7 +123,7 @@ const handleConnected = async (ws: MyWebSocket, userData: UserConnection): Promi
         userAgent: userData.userAgent,
         appType: userData.appType,
         sessionId,
-        userToken: userData.userToken,
+        userToken,
     })
     // feat-232: registered, so events to this user reach the socket from now on; the client reads
     // the state those events keep (the profile) after this signal (review 2026-11-19).

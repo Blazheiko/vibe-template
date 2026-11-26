@@ -1,6 +1,7 @@
 // This file automatically imports all initialization files
 // Add new initialization files here to execute them on startup
 
+import { mfaCompletionIdOf } from '#app/domain/secrets.js'
 import {
     registerWsAppHooks,
     registerWsMessageValidator,
@@ -29,7 +30,7 @@ registerWsAppHooks({
 registerSessionTokenChecker(checkSessionToken)
 // feat-245 (Р4): the browser came back with the session its second step created.
 registerSignInCompletionHook((context, completionId) =>
-    retireCompletedTicket(context.auth, completionId),
+    retireCompletedTicket(context.auth, mfaCompletionIdOf(completionId)),
 )
 // Р13: a logout, and a sign-in replacing a signed-in session, delete its record under the user's
 // row lock, as ending a session from the session list does: a privileged write that checked the

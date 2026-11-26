@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { PRODUCT } from 'shared/product'
 import { UTC_TIME_ZONE, describeDevice, isAllowedTimeZone, parseUserAgent } from 'shared/utils'
 
@@ -108,7 +109,7 @@ export function renderNewSignInEmail(notice: NewSignInMail): ReturnType<typeof r
  * device further down). An unknown browser or system is never familiar.
  */
 export const isFamiliarDevice = async (
-    userToken: string,
+    userToken: SessionToken,
     device: SessionDevice,
 ): Promise<boolean> => {
     const parsed = parseUserAgent(device.userAgent)

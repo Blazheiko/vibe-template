@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -71,7 +72,7 @@ const FUTURE = new Date(Date.now() + 600_000)
 const PAST = new Date(Date.now() - 1000)
 const IP = { ipAddress: '203.0.113.9' }
 /** The session token the request presented, the user's current one unless a row says not. */
-const SESSION = 'session-7'
+const SESSION = 'session-7' as SessionToken
 
 beforeEach(() => {
     process.env['FRONTEND_URL'] = 'https://app.example.com'

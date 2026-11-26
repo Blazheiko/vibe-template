@@ -1,4 +1,5 @@
 import { stepUpService } from '#app/services/auth/mfa/step-up.js'
+import { presentedSessionTokenOf } from '#app/domain/secrets.js'
 import { toEntityId, asUserId } from '#app/domain/ids.js'
 import {
     completeSecondStep,
@@ -232,7 +233,7 @@ export default {
         const result = await authService.changePassword(
             userId,
             payload,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             () => context.session.isStored(),
             sessionId,
             auditActorFrom(context),
@@ -338,7 +339,9 @@ export default {
             { ipAddress: context.httpData.ip ?? '' },
             {
                 userId: userId === null ? null : asUserId(userId),
-                presentedSessionToken: context.auth.getPresentedUserToken(),
+                presentedSessionToken: presentedSessionTokenOf(
+                    context.auth.getPresentedUserToken(),
+                ),
                 ...(payload.password !== undefined ? { password: payload.password } : {}),
             },
             { requestId: context.requestId, logger: context.logger },
@@ -372,7 +375,7 @@ export default {
         const result = await authService.startPhoneLink(userId, payload, {
             ipAddress: context.httpData.ip ?? '',
             sessionId: getSessionIdForPhoneBoundFlow(context, 'startPhoneLink'),
-            presentedSessionToken: context.auth.getPresentedUserToken(),
+            presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             sessionStored: () => context.session.isStored(),
             sessionAuth: context.session.sessionInfo?.data.auth,
         })
@@ -394,7 +397,9 @@ export default {
             {
                 ipAddress: context.httpData.ip ?? '',
                 sessionId: getSessionIdForPhoneBoundFlow(context, 'confirmPhoneLink'),
-                presentedSessionToken: context.auth.getPresentedUserToken(),
+                presentedSessionToken: presentedSessionTokenOf(
+                    context.auth.getPresentedUserToken(),
+                ),
                 sessionStored: () => context.session.isStored(),
             },
             auditActorFrom(context),
@@ -414,7 +419,7 @@ export default {
         const result = await authService.startEmailLink(
             userId,
             payload,
-            context.auth.getPresentedUserToken(),
+            presentedSessionTokenOf(context.auth.getPresentedUserToken()),
             () => context.session.isStored(),
             context.session.sessionInfo?.data.auth,
         )
@@ -428,7 +433,7 @@ export default {
         const result = await stepUpService.options({
             userId,
             session: context.session,
-            presentedSessionToken: context.auth.getPresentedUserToken(),
+            presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
         })
         return respond(context, result, (value) => ({ status: 'success' as const, ...value }))
     },
@@ -442,7 +447,9 @@ export default {
             {
                 userId,
                 session: context.session,
-                presentedSessionToken: context.auth.getPresentedUserToken(),
+                presentedSessionToken: presentedSessionTokenOf(
+                    context.auth.getPresentedUserToken(),
+                ),
                 request: { requestId: context.requestId, logger: context.logger },
             },
             {
@@ -478,7 +485,7 @@ export default {
         const result = await stepUpService.passkeyOptions({
             userId,
             session: context.session,
-            presentedSessionToken: context.auth.getPresentedUserToken(),
+            presentedSessionToken: presentedSessionTokenOf(context.auth.getPresentedUserToken()),
         })
         return respond(context, result, (value) => ({
             status: 'success' as const,

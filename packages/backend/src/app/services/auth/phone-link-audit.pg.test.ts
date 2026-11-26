@@ -1,4 +1,5 @@
 import { asc, eq } from 'drizzle-orm'
+import type { OtpCode, SessionToken } from '#app/domain/secrets.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -30,7 +31,7 @@ vi.mock('#app/services/auth/auth-throttle-service.js', () => ({
     resetAuthThrottle: () => Promise.resolve(undefined),
 }))
 
-const CODE = '123456'
+const CODE = '123456' as OtpCode
 const sessionStillStored = (): Promise<boolean> => Promise.resolve(true)
 
 describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async () => {
@@ -112,7 +113,7 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
         return { user, phone, challenge }
     }
     const confirm = (
-        user: { id: UserId; sessionToken: string },
+        user: { id: UserId; sessionToken: SessionToken },
         challengeId: string,
         actor = testAdminActor(user.id),
     ) =>
@@ -217,7 +218,7 @@ describe.skipIf(!hasPg)('phone link and its audit event on PostgreSQL', async ()
                 // Logout everywhere from another tab, between the checks and the transaction.
                 await db
                     .update(users)
-                    .set({ sessionToken: `rotated-${String(counter)}` })
+                    .set({ sessionToken: `rotated-${String(counter)}` as SessionToken })
                     .where(eq(users.id, user.id))
                 return answer
             },

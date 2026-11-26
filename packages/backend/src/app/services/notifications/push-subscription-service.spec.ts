@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
@@ -92,7 +93,7 @@ describe('pushSubscriptionService', () => {
                 p256dhKey: 'key',
                 authKey: 'auth',
             },
-            'token-7',
+            'token-7' as SessionToken,
         )
 
         expect(Result.isOk(result)).toBe(true)
@@ -113,7 +114,7 @@ describe('pushSubscriptionService', () => {
         await pushSubscriptionService.createSubscription(
             uid(7),
             { endpoint: 'https://fcm.googleapis.com/fcm/send/new', p256dhKey: 'k', authKey: 'a' },
-            'token-7',
+            'token-7' as SessionToken,
         )
 
         expect(withCurrentSessionMock).toHaveBeenCalledWith(7n, 'token-7', expect.any(Function))
@@ -136,7 +137,7 @@ describe('pushSubscriptionService', () => {
         const created = await pushSubscriptionService.createSubscription(
             uid(7),
             { endpoint: 'https://fcm.googleapis.com/fcm/send/new', p256dhKey: 'k', authKey: 'a' },
-            'stale-token',
+            'stale-token' as SessionToken,
         )
         withCurrentSessionMock.mockResolvedValueOnce(
             Result.err({ _tag: 'Unauthorized', reason: 'session_revoked' }),
@@ -145,7 +146,7 @@ describe('pushSubscriptionService', () => {
             uid(7),
             1n as PushSubscriptionId,
             { isActive: true },
-            'stale-token',
+            'stale-token' as SessionToken,
         )
 
         expect(Result.isError(created)).toBe(true)
@@ -171,7 +172,7 @@ describe('pushSubscriptionService', () => {
             await pushSubscriptionService.createSubscription(
                 uid(7),
                 { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
-                'token-7',
+                'token-7' as SessionToken,
             )
 
             expect(pushSubscriptionRepositoryMock.create).toHaveBeenCalledWith(
@@ -197,7 +198,7 @@ describe('pushSubscriptionService', () => {
             await pushSubscriptionService.createSubscription(
                 uid(7),
                 { endpoint, p256dhKey: 'k', authKey: 'a', ...extra },
-                'token-7',
+                'token-7' as SessionToken,
             )
 
             expect(pushSubscriptionRepositoryMock.updateByEndpoint).toHaveBeenCalledWith(
@@ -279,7 +280,7 @@ describe('pushSubscriptionService', () => {
                     p256dhKey: 'key',
                     authKey: 'auth',
                 },
-                'token-7',
+                'token-7' as SessionToken,
             )
 
             expect(Result.isOk(result)).toBe(true)
@@ -304,7 +305,7 @@ describe('pushSubscriptionService', () => {
                     endpoint: existing.endpoint,
                     ...keys,
                 },
-                'token-7',
+                'token-7' as SessionToken,
             )
 
             expect(Result.isError(result)).toBe(true)
@@ -349,7 +350,7 @@ describe('pushSubscriptionService', () => {
             const result = await pushSubscriptionService.createSubscription(
                 uid(7),
                 payload(endpoint),
-                'token',
+                'token' as SessionToken,
             )
 
             expect(Result.isError(result) && result.error).toEqual({
@@ -370,7 +371,7 @@ describe('pushSubscriptionService', () => {
             const result = await pushSubscriptionService.createSubscription(
                 uid(7),
                 payload(endpoint),
-                'token',
+                'token' as SessionToken,
             )
 
             expect(Result.isError(result) && result.error).toEqual({
@@ -390,7 +391,7 @@ describe('pushSubscriptionService', () => {
             const result = await pushSubscriptionService.createSubscription(
                 uid(7),
                 payload('https://fcm.googleapis.com/fcm/send/new'),
-                'token',
+                'token' as SessionToken,
             )
 
             expect(Result.isError(result) && result.error).toEqual({
@@ -417,14 +418,14 @@ describe('pushSubscriptionService', () => {
             const own = await pushSubscriptionService.createSubscription(
                 uid(7),
                 payload('https://fcm.googleapis.com/fcm/send/ep'),
-                'token',
+                'token' as SessionToken,
             )
             expect(Result.isOk(own)).toBe(true)
 
             const moved = await pushSubscriptionService.createSubscription(
                 uid(8),
                 payload('https://fcm.googleapis.com/fcm/send/ep'),
-                'token',
+                'token' as SessionToken,
             )
             expect(Result.isError(moved) && moved.error._tag).toBe('Conflict')
             pushSubscriptionRepositoryMock.countByUserId.mockResolvedValue(0)

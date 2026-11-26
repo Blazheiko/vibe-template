@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../test-support/ids.js'
 
 import { userTransformer } from './user-transformer.js'
@@ -11,7 +12,7 @@ const row = {
     email: 'jane@example.test',
     phone: null,
     password: 'hashed-password',
-    sessionToken: 'abcdefghijklmnopqrstuvwx',
+    sessionToken: 'abcdefghijklmnopqrstuvwx' as SessionToken,
     avatar: null,
     role: 'user' as const,
     emailVerifiedAt: null,

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { userRepository, withTransaction } from '#app/repositories/index.js'
 import type { DbTransaction, UserRow } from '#app/repositories/index.js'
 import { sessionRevoked, type AppResult } from '#app/services/shared/errors.js'
@@ -15,7 +16,7 @@ import type { UserId } from '#app/domain/ids.js'
  */
 export async function withCurrentSession<T>(
     userId: UserId,
-    presentedSessionToken: string | undefined,
+    presentedSessionToken: SessionToken | undefined,
     work: (tx: DbTransaction, user: UserRow) => Promise<AppResult<T>>,
 ): Promise<AppResult<T>> {
     if (presentedSessionToken === undefined) return Result.err(sessionRevoked())

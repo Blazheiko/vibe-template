@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import type { MfaBindValue } from '#app/domain/secrets.js'
 import type { UserId } from '#app/domain/ids.js'
 import type * as SessionIndex from '#vendor/utils/session/session-index.js'
 import type * as SessionStorage from '#vendor/utils/session/redis-session-storage.js'
@@ -153,7 +154,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
     const { currentTransactionId, withTransaction } = await import('#app/repositories/index.js')
     const { mfaBindCookieName, mfaTicketCookieName } =
         await import('#vendor/utils/session/request-session.js')
-    const BIND_VALUE = 'bind-value-of-this-browser'
+    const BIND_VALUE = 'bind-value-of-this-browser' as MfaBindValue
     const { testRequest } = await import('../../../../test-support/audit-actor.js')
 
     registerSessionTokenChecker(() => Promise.resolve('ok'))

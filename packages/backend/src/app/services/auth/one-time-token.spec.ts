@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { RawToken, SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UserRow } from '#app/repositories/index.js'
@@ -31,7 +32,7 @@ const lockedUser = (over: Record<string, unknown> = {}) =>
         id: 7n,
         name: 'Ada',
         email: 'ada@example.com',
-        sessionToken: 'session-1',
+        sessionToken: 'session-1' as SessionToken,
         ...over,
     }) as unknown as UserRow
 
@@ -44,7 +45,7 @@ const load = () => import('./one-time-token.js')
 describe('hashToken and createToken', () => {
     it('hash with SHA-256 in hex, the same for the same secret', async () => {
         const { hashToken } = await load()
-        expect(hashToken('abc')).toBe(
+        expect(hashToken('abc' as RawToken)).toBe(
             'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
         )
     })
@@ -89,7 +90,7 @@ describe('issueTokenLocked', () => {
         expect(stored).toMatchObject({
             userId: uid(7),
             targetEmail: 'new@example.com',
-            tokenHash: hashToken(secret),
+            tokenHash: hashToken(secret as RawToken),
         })
         expect(Object.values(stored).map(String).join(' ')).not.toContain(secret)
         expect(stored.expiresAt.getTime() - Date.now()).toBeGreaterThan(59_000)
@@ -201,22 +202,22 @@ describe('findUsableToken', () => {
     it('looks the token up by the hash of the secret', async () => {
         repository.findByTokenHash.mockResolvedValue(row())
         const { findUsableToken, hashToken } = await load()
-        const result = await findUsableToken(repository, 'secret', answers)
+        const result = await findUsableToken(repository, 'secret' as RawToken, answers)
         expect(Result.isOk(result) && result.value).toMatchObject({ id: 11n })
-        expect(repository.findByTokenHash).toHaveBeenCalledWith(hashToken('secret'))
+        expect(repository.findByTokenHash).toHaveBeenCalledWith(hashToken('secret' as RawToken))
     })
 
     it('says "no such token" with undefined, not with an error', async () => {
         repository.findByTokenHash.mockResolvedValue(undefined)
         const { findUsableToken } = await load()
-        const result = await findUsableToken(repository, 'secret', answers)
+        const result = await findUsableToken(repository, 'secret' as RawToken, answers)
         expect(Result.isOk(result) && result.value).toBeUndefined()
     })
 
     it('answers `used` for a used token and burns nothing', async () => {
         repository.findByTokenHash.mockResolvedValue(row({ usedAt: new Date() }))
         const { findUsableToken } = await load()
-        const result = await findUsableToken(repository, 'secret', answers)
+        const result = await findUsableToken(repository, 'secret' as RawToken, answers)
         expect(Result.isError(result) && result.error).toEqual(badRequest('used'))
         expect(repository.burn).not.toHaveBeenCalled()
         expect(repository.markUsed).not.toHaveBeenCalled()
@@ -226,7 +227,7 @@ describe('findUsableToken', () => {
         repository.findByTokenHash.mockResolvedValue(row({ expiresAt: new Date(Date.now() - 1) }))
         repository.burn.mockResolvedValue(undefined)
         const { findUsableToken } = await load()
-        const result = await findUsableToken(repository, 'secret', answers)
+        const result = await findUsableToken(repository, 'secret' as RawToken, answers)
         expect(Result.isError(result) && result.error).toEqual(badRequest('expired'))
         expect(repository.burn).toHaveBeenCalledWith(11n)
         // Burning is not the consuming claim: that one refuses an expired token.
@@ -237,12 +238,16 @@ describe('findUsableToken', () => {
         const { findUsableToken } = await load()
         const lookupError = new Error('db lookup')
         repository.findByTokenHash.mockRejectedValue(lookupError)
-        await expect(findUsableToken(repository, 'secret', answers)).rejects.toBe(lookupError)
+        await expect(findUsableToken(repository, 'secret' as RawToken, answers)).rejects.toBe(
+            lookupError,
+        )
 
         const burnError = new Error('db burn')
         repository.findByTokenHash.mockResolvedValue(row({ expiresAt: new Date(Date.now() - 1) }))
         repository.burn.mockRejectedValue(burnError)
-        await expect(findUsableToken(repository, 'secret', answers)).rejects.toBe(burnError)
+        await expect(findUsableToken(repository, 'secret' as RawToken, answers)).rejects.toBe(
+            burnError,
+        )
     })
 })
 

@@ -1,4 +1,5 @@
 import { and, eq } from 'drizzle-orm'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../../test-support/pg-test-db.js'
@@ -56,7 +57,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
     const NOW = Date.now()
     const iso = (offsetSeconds = 0): string => new Date(NOW + offsetSeconds * 1000).toISOString()
 
-    const newUser = async (): Promise<{ id: UserId; sessionToken: string }> => {
+    const newUser = async (): Promise<{ id: UserId; sessionToken: SessionToken }> => {
         const [user] = await db
             .insert(users)
             .values({
@@ -131,7 +132,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         verified: { pwd: iso(-10) },
     }
 
-    const request = (user: { id: UserId; sessionToken: string }, session: Session) => ({
+    const request = (user: { id: UserId; sessionToken: SessionToken }, session: Session) => ({
         userId: user.id,
         session,
         presentedSessionToken: user.sessionToken,
@@ -143,7 +144,7 @@ describe.skipIf(!hasPg)('TOTP service on PostgreSQL (feat-245 M5)', async () => 
         db.select().from(totpFactors).where(eq(totpFactors.userId, userId))
 
     const setupAndCode = async (
-        user: { id: UserId; sessionToken: string },
+        user: { id: UserId; sessionToken: SessionToken },
         session: Session,
         stepOffset = 0n,
     ) => {

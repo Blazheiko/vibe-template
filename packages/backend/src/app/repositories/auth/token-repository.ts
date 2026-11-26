@@ -1,5 +1,6 @@
 import { db } from '#database/db.js'
 import type { OneTimeTokenRowId } from '#app/domain/ids.js'
+import type { TokenHash } from '#app/domain/secrets.js'
 import type { DbExecutor } from '../transaction.js'
 import { expiredRowsRepository, type ExpiredRowsRepository } from './expired-rows.js'
 import type {
@@ -31,7 +32,7 @@ const statementTime = sql`(clock_timestamp() AT TIME ZONE 'UTC')`
 
 export interface ITokenRepository<TRow, TInsert> {
     create(data: TInsert, executor?: DbExecutor): Promise<TRow>
-    findByTokenHash(tokenHash: string): Promise<TRow | undefined>
+    findByTokenHash(tokenHash: TokenHash): Promise<TRow | undefined>
     /**
      * Retires every pending token of the user in this table. No exception by id: ids of
      * different tables are unrelated, and a consumed token is no longer pending anyway.

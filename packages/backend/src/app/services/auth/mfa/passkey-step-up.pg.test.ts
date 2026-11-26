@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import type { SessionToken } from '#app/domain/secrets.js'
 import type { UserId } from '#app/domain/ids.js'
 
 import { eq } from 'drizzle-orm'
@@ -143,13 +144,16 @@ describe.skipIf(!hasPg)('passkey step-up on PostgreSQL (feat-246 P4)', async () 
         },
     })
 
-    const request = (row: { id: UserId; sessionToken: string }, session: Session) => ({
+    const request = (row: { id: UserId; sessionToken: SessionToken }, session: Session) => ({
         userId: row.id,
         session,
         presentedSessionToken: row.sessionToken,
     })
 
-    const optionsFor = async (row: { id: UserId; sessionToken: string }, session: Session) => {
+    const optionsFor = async (
+        row: { id: UserId; sessionToken: SessionToken },
+        session: Session,
+    ) => {
         const options = await stepUpService.passkeyOptions(request(row, session))
         if (options.status !== 'ok') throw new Error('no options')
         return (options.value.options as { challenge: string }).challenge

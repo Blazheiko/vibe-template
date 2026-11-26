@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import type { OAuthAccountId } from '#app/domain/ids.js'
 import type { UserId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
@@ -82,7 +83,7 @@ const link = (id: UserId, over: Record<string, unknown> = {}) => ({
 
 const request = (over: Record<string, unknown> = {}) => ({
     linkId: 31n as OAuthAccountId,
-    presentedSessionToken: TOKEN as string | undefined,
+    presentedSessionToken: TOKEN as SessionToken | undefined,
     sessionAuth: freshPassword as SessionAuthState | undefined,
     sessionStored: vi.fn(() => Promise.resolve(true)),
     actor: testUserActor(),

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SessionToken } from '#app/domain/secrets.js'
 import { canAssignRole, isStaffRole, type Role } from 'shared/access'
 import { MFA_REASONS } from 'shared/mfa'
 import type { SessionAuthState } from 'shared/mfa'
@@ -66,7 +67,7 @@ export const roleAssignmentService = {
          */
         sessionAuth?: SessionAuthState | undefined
         /** The session token the request of a user actor presented; checked under the lock. */
-        presentedSessionToken?: string | undefined
+        presentedSessionToken?: SessionToken | undefined
         /**
          * Whether the record of the request's session still exists (`context.session.isStored()`),
          * read under the actor's row lock. Required for a user actor: without it the change is

@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import type { MfaTicketId } from '#app/domain/secrets.js'
 
 import redis, { withRedis } from '#database/redis.js'
 import webauthnConfig from '#config/webauthn.js'
@@ -14,7 +15,7 @@ const MFA = 'auth:webauthn:mfa:'
 const ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
 
 /** `mfa:<hash>` of Р5: the binding of a second-step challenge to its ticket. */
-export const ticketHash = (ticketId: string): string =>
+export const ticketHash = (ticketId: MfaTicketId): string =>
     createHash('sha256').update(ticketId).digest('base64url')
 
 const ttlOf = (seconds?: number): number =>
@@ -39,13 +40,13 @@ export const passkeyLoginChallenges = {
 
 export const passkeyTicketChallenges = {
     /** A new challenge for the ticket replaces an earlier one; it never outlives the ticket. */
-    async issue(ticketId: string, challenge: string, ticketTtlSeconds: number): Promise<void> {
+    async issue(ticketId: MfaTicketId, challenge: string, ticketTtlSeconds: number): Promise<void> {
         await withRedis(() =>
             redis.set(`${MFA}${ticketHash(ticketId)}`, challenge, 'EX', ttlOf(ticketTtlSeconds)),
         )
     },
 
-    async take(ticketId: string): Promise<string | null> {
+    async take(ticketId: MfaTicketId): Promise<string | null> {
         return withRedis(() => redis.getdel(`${MFA}${ticketHash(ticketId)}`))
     },
 
@@ -55,12 +56,12 @@ export const passkeyTicketChallenges = {
      * spends it atomically, and only while it is still this value (mfa-ticket.ts): of two answers
      * to one challenge one is counted or wins, and a count lost with its answer is not repeated.
      */
-    async peek(ticketId: string): Promise<string | null> {
+    async peek(ticketId: MfaTicketId): Promise<string | null> {
         return withRedis(() => redis.get(`${MFA}${ticketHash(ticketId)}`))
     },
 
     /** The Redis key of the ticket's challenge (the client's key prefix is added by Redis). */
-    keyOf(ticketId: string): string {
+    keyOf(ticketId: MfaTicketId): string {
         return `${MFA}${ticketHash(ticketId)}`
     },
 }
