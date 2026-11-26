@@ -2,7 +2,7 @@
 
 ## Current state
 
-Steps 2–6 of `docs/plan/prod-compose-dokploy-plan.md` are done; waiting for CI and review. Step 7
+Steps 2–6 of `docs/plan/prod-compose-dokploy-plan.md` are done; CI green, in review. Step 7
 (a deploy by the owner on Hetzner + Dokploy) has not been run: the guide carries
 `::: warning Не перевірено` / `Not verified`.
 
@@ -47,6 +47,7 @@ Steps 2–6 of `docs/plan/prod-compose-dokploy-plan.md` are done; waiting for CI
 - `make check`: exit 0 — `verify-compose` passes the production file; backend 3899, frontend
   1029, landing 103, api-playground 115; scripts tests 20 passed.
 - `pnpm docs:build && pnpm docs:verify`: all checks passed.
+- CI on PR #867: quality, build, e2e, e2e-live green (https://github.com/Blazheiko/vibe-template/actions/runs/45855471471); the PG and Redis workflows do not run (no backend change).
 - Step 7 (real server): not done — to be run by the owner with the guide.
 
 ## Notes for Next Session
