@@ -4,9 +4,16 @@
 // of the file next to a generated .env, so the result does not depend on the local .env.
 // Without the docker CLI it says so and passes: the CI quality job has it.
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import {
+    envFileNames,
+    interpolatedNames,
+    prodComposeProblems,
+    requiredNames,
+    withPlaceholders,
+} from './verify-compose-prod.mjs'
 
 const hasCompose = () => {
     try {
@@ -116,9 +123,72 @@ try {
             console.error(`verify-compose: ${c.name}: want ${c.want}, got ${JSON.stringify(got)}`)
         }
     }
+    failed += checkProdCompose()
 } finally {
     rmSync(dir, { recursive: true, force: true })
 }
 
 if (failed > 0) process.exit(1)
-console.log(`verify-compose: ${String(cases.length)} prefix cases and the landing service passed`)
+console.log(
+    `verify-compose: ${String(cases.length)} prefix cases, the landing service and docker-compose-prod.yml passed`,
+)
+
+/**
+ * docker-compose-prod.yml (feat-218) with .env.prod.example: every variable it interpolates is in
+ * the example; with the secrets filled in it resolves and follows the plan
+ * (verify-compose-prod.mjs); without a required variable it stops with that variable's name.
+ */
+function checkProdCompose() {
+    const report = (problem) => {
+        console.error(`verify-compose: docker-compose-prod.yml: ${problem}`)
+        return 1
+    }
+    const text = readFileSync('docker-compose-prod.yml', 'utf8')
+    const example = readFileSync('.env.prod.example', 'utf8')
+    const listed = envFileNames(example)
+    let problems = 0
+    for (const name of interpolatedNames(text)) {
+        if (!listed.has(name)) problems += report(`${name} is not in .env.prod.example`)
+    }
+    const required = requiredNames(text)
+    const envFile = join(dir, 'prod.env')
+    const config = (envText) => {
+        writeFileSync(envFile, envText)
+        // The shell's values would win over the env file: only the file counts here.
+        const own = new Set(interpolatedNames(text))
+        const env = Object.fromEntries(
+            Object.entries(process.env).filter(([name]) => !own.has(name)),
+        )
+        return execFileSync(
+            'docker',
+            [
+                'compose',
+                '-f',
+                'docker-compose-prod.yml',
+                '--env-file',
+                envFile,
+                'config',
+                '--format',
+                'json',
+            ],
+            { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+        )
+    }
+    const filled = withPlaceholders(example, required)
+    for (const problem of prodComposeProblems(JSON.parse(config(filled))))
+        problems += report(problem)
+    // A deploy without a required value stops at once and names it.
+    const missing = 'APP_DOMAIN'
+    if (!required.includes(missing)) problems += report(`${missing} is not required`)
+    try {
+        config(filled.replace(/^APP_DOMAIN=.*$/m, 'APP_DOMAIN='))
+        problems += report(`resolves with an empty ${missing}`)
+    } catch (error) {
+        if (!String(error.stderr).includes(missing)) {
+            problems += report(
+                `an empty ${missing} fails without naming it: ${String(error.stderr)}`,
+            )
+        }
+    }
+    return problems
+}

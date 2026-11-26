@@ -440,6 +440,8 @@ docker run -d -p 3000:3000 --env-file production.env vibe-template
 
 `db:create:prod` runs the compiled `dist/db/create-database.js`, because the image has only production dependencies (no `tsx`). `.dockerignore` keeps local `.env` files out of the build. Details: [Deployment](https://blazheiko.github.io/vibe-template/backend/deployment).
 
+To deploy the app and the landing to a Hetzner server with Dokploy, use `docker-compose-prod.yml` with the variables of `.env.prod.example`: [Deploying to Hetzner with Dokploy](https://blazheiko.github.io/vibe-template/en/guide/deployment-dokploy). `make prod-smoke` runs that file locally in production mode behind a TLS proxy.
+
 ### Production / security checklist
 
 Before deploying, make sure you have:

@@ -1,0 +1,127 @@
+# Local check of docker-compose-prod.yml (feat-218): `make prod-smoke` (scripts/prod-smoke.sh).
+# Never deployed. It stands in for what Dokploy gives the production file on a server:
+#   - Caddy with an internal TLS certificate for Traefik: https://app.localhost:<port> and
+#     https://landing.localhost:<port> (curl and browsers resolve *.localhost to 127.0.0.1);
+#   - postgres (pgvector) and redis for the Database services of Dokploy;
+#   - SeaweedFS (S3) and Mailpit for the external S3 and SMTP;
+#   - a local network named dokploy-network, with a fixed subnet for TRUSTED_PROXY_CIDRS.
+# The app runs in production mode (APP_IS_PRODUCTION=true, Secure __Host- cookies), not local.
+# The variables come from the env file the script writes (--env-file).
+
+services:
+    app:
+        environment:
+            # APP_DOMAIN carries the port here; the RP ID of passkeys is the host alone.
+            WEBAUTHN_RP_ID: app.localhost
+            # Mailpit: plain SMTP inside the network (on a server the provider's settings go to .env).
+            SMTP_PORT: '1025'
+            SMTP_SECURE: 'false'
+            SMTP_REQUIRE_TLS: 'false'
+            SMTP_IGNORE_TLS: 'true'
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+            s3:
+                condition: service_healthy
+
+    migrate:
+        environment:
+            WEBAUTHN_RP_ID: app.localhost
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    landing:
+        # On a server Dokploy attaches a service with a domain to its network; Caddy needs the same.
+        networks: [default, dokploy-network]
+
+    proxy:
+        image: caddy:2.11.9-alpine
+        restart: 'no'
+        ports:
+            - '127.0.0.1:${SMOKE_HTTPS_PORT:-8443}:${SMOKE_HTTPS_PORT:-8443}'
+        configs:
+            - source: caddyfile
+              target: /etc/caddy/Caddyfile
+        networks: [dokploy-network]
+        depends_on:
+            app:
+                condition: service_healthy
+            landing:
+                condition: service_healthy
+
+    postgres:
+        image: pgvector/pgvector:pg16
+        environment:
+            POSTGRES_USER: ${PGSQL_USER}
+            POSTGRES_PASSWORD: ${PGSQL_PASSWORD}
+        networks: [dokploy-network]
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}"']
+            interval: 2s
+            timeout: 3s
+            retries: 30
+
+    redis:
+        image: redis:7-alpine
+        command: ['sh', '-c', 'exec redis-server --requirepass "$$REDIS_PASSWORD"']
+        environment:
+            REDIS_PASSWORD: ${REDIS_PASSWORD}
+            REDISCLI_AUTH: ${REDIS_PASSWORD}
+        networks: [dokploy-network]
+        healthcheck:
+            test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']
+            interval: 2s
+            timeout: 3s
+            retries: 30
+
+    s3:
+        image: chrislusf/seaweedfs:4.50
+        environment:
+            S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+            S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+            S3_BUCKET: ${S3_BUCKET}
+        entrypoint:
+            - sh
+            - -c
+            - |
+                set -e
+                printf '{"identities":[{"name":"admin","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","List","Write","Tagging"]}]}' \
+                    "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY" > /tmp/s3.json
+                exec weed mini -dir=/data -s3.config=/tmp/s3.json -bucket="$$S3_BUCKET"
+        networks: [dokploy-network]
+        healthcheck:
+            test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://127.0.0.1:8333/healthz']
+            interval: 2s
+            timeout: 3s
+            retries: 30
+
+    mailpit:
+        image: axllent/mailpit:v1.31.1
+        networks: [dokploy-network]
+
+configs:
+    caddyfile:
+        content: |
+            {
+                admin off
+                local_certs
+            }
+            https://app.localhost:${SMOKE_HTTPS_PORT:-8443} {
+                tls internal
+                reverse_proxy app:3000
+            }
+            https://landing.localhost:${SMOKE_HTTPS_PORT:-8443} {
+                tls internal
+                reverse_proxy landing:8080
+            }
+
+networks:
+    dokploy-network:
+        external: false
+        name: vibe-template-prod-smoke-dokploy
+        ipam:
+            config:
+                - subnet: 172.30.218.0/24

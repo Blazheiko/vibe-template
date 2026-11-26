@@ -18,8 +18,8 @@
 # variables the backend reads), so both sides always agree. Without a value the defaults below
 # match packages/backend/.env.example. Host ports: PGSQL_PORT, REDIS_PORT, S3_HOST_PORT (8333),
 # SMTP_PORT (1025), MAILPIT_UI_PORT (8025), APP_PORT (3000), LANDING_PORT (8080). Every port is bound to 127.0.0.1:
-# these are dev credentials, not for a shared network. Not for production; see
-# documentation/backend/deployment.md.
+# these are dev credentials, not for a shared network. Not for production: the production file is
+# docker-compose-prod.yml (documentation/guide/deployment-dokploy.md).
 
 name: vibe-template
 
