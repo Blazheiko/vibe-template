@@ -19,7 +19,7 @@ ARGS ?=
 ENV_FILE := packages/backend/.env
 
 .PHONY: help setup init doctor install env build-shared \
-	dev dev-backend dev-frontend dev-landing dev-playground prod-local start \
+	dev dev-backend dev-frontend dev-landing dev-playground prod-local prod-smoke start \
 	check verify-makefile verify-compose check-bundle-graph typecheck lint lint-fix format format-check \
 	test test-e2e test-e2e-landing test-pg test-redis coverage \
 	services-up services-down \
@@ -77,6 +77,9 @@ dev-playground: ## Backend and API Playground
 
 prod-local: ## Production-like local run: backend serves the built SPA, plus the landing
 	$(PNPM) prod:local $(ARGS)
+
+prod-smoke: ## Production compose on this machine behind Caddy (TLS): landing, ready, sign-up, sign-in
+	$(PNPM) prod:smoke
 
 start: ## Start the built backend
 	$(PNPM) start

@@ -119,9 +119,7 @@ scripts/verify-landing-deploy.sh --allow-local http://localhost:8080 http://loca
 
 Без `--allow-local` кожна опублікована адреса (`canonical`, `hreflang`, `og:url`, `og:image`, кнопки) має бути публічною `https`, хоч би на який origin вона вказувала. `--resolve HOST:PORT:ADDR` (як у curl) перевіряє новий сервер ще до перемикання DNS, наприклад `--resolve example.com:443:203.0.113.10`.
 
-::: warning План
-Деплой усього застосунку разом із лендінгом на Hetzner через Dokploy (`docker-compose-prod.yml`, Traefik, домени, змінні) — фіча `feat-218`. Поки її не зроблено, образ лендінгу розгортається за будь-яким reverse proxy з TLS.
-:::
+Деплой усього застосунку разом із лендінгом на Hetzner через Dokploy (`docker-compose-prod.yml`, Traefik, домени, змінні) описано в розділі [«Деплой на Hetzner через Dokploy»](/guide/deployment-dokploy). Без Dokploy образ лендінгу розгортається за будь-яким reverse proxy з TLS.
 
 ### Інший хостинг
 

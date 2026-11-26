@@ -86,6 +86,7 @@ const KEY_PAGES = [
     { page: 'frontend/index.md', h1: 'Фронтенд' },
     { page: 'playground/index.md', h1: 'API Playground' },
     { page: 'landing/index.md', h1: 'Лендінг' },
+    { page: 'guide/deployment-dokploy.md', h1: 'Деплой на Hetzner через Dokploy' },
 ]
 
 /**
@@ -149,6 +150,7 @@ const EN_KEY_PAGES = [
     { page: 'en/frontend/index.md', h1: 'Frontend' },
     { page: 'en/playground/index.md', h1: 'API Playground' },
     { page: 'en/landing/index.md', h1: 'Landing page' },
+    { page: 'en/guide/deployment-dokploy.md', h1: 'Deploying to Hetzner with Dokploy' },
 ]
 
 /** Home page (layout: home) checks (T2.3a), one per locale. */

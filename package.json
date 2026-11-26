@@ -33,13 +33,14 @@
         "app:logs": "docker compose --env-file packages/backend/.env --profile app logs -f app landing",
         "start": "pnpm --filter backend start",
         "prod:local": "PROD_LOCAL_LANDING=true ./scripts/prod-local.sh",
+        "prod:smoke": "./scripts/prod-smoke.sh",
         "lint": "eslint . && pnpm -r --if-present lint:check",
         "lint:fix": "eslint . --fix",
         "format": "prettier --write \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,vue,json,md,css}\"",
         "typecheck": "pnpm -r typecheck",
         "check:bundle-graph": "pnpm --filter frontend check:bundle-graph",
-        "test": "pnpm -r test && node --test 'scripts/eslint-rules/*.test.mjs'",
+        "test": "pnpm -r test && node --test 'scripts/eslint-rules/*.test.mjs' 'scripts/*.test.mjs'",
         "clean": "pnpm -r clean && rm -rf node_modules"
     },
     "devDependencies": {

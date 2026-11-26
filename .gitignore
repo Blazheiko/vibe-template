@@ -9,6 +9,8 @@ coverage/
 .env
 .env.*
 !.env.example
+# The template of the production Environment (feat-218): placeholders only.
+!.env.prod.example
 .omx/
 .idea/
 .vscode/

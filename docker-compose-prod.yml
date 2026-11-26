@@ -1,0 +1,151 @@
+# Production: the application as one Docker Compose service of Dokploy on a server (feat-218,
+# docs/plan/prod-compose-dokploy-plan.md). Guide: documentation/guide/deployment-dokploy.md.
+#
+#   migrate  one-shot: db:create:prod (the database and the `vector` extension) and db:migrate
+#   app      the root Dockerfile: the backend serving the built SPA, port 3000
+#   landing  packages/landing/Dockerfile: the static landing on nginx, port 8080
+#
+# Not in this file, by design:
+# - PostgreSQL (image pgvector/pgvector:pg16) and Redis: Database services created by hand in the
+#   Dokploy panel, without an External Port. app and migrate reach them on the external network
+#   `dokploy-network`; their Internal Credentials go to Environment (PGSQL_*, REDIS_*).
+# - S3 and SMTP: external (Hetzner Object Storage, any SMTP provider).
+# - Domains and TLS: the Domains tab of Dokploy (Traefik adds its labels and network on deploy).
+#   No `ports` here, only `expose`, so nothing is published on the host.
+#
+# Variables: Dokploy writes the Environment tab into `.env` next to this file. Compose reads it for
+# the ${...} below, and env_file passes the rest (OAuth, VAPID, AI keys, Sentry, limits) into the
+# containers. The template of every variable is .env.prod.example. A required one is written as
+# ${VAR:?...}: a deploy without it stops with the variable's name. The values under
+# x-app-environment are fixed here and win over .env.
+#
+# Check without a server: `make verify-compose` (static) and `make prod-smoke` (production mode
+# on this machine, behind Caddy with an internal TLS certificate).
+
+name: vibe-template-prod
+
+x-app-environment: &app-environment
+    APP_ENV: production
+    APP_IS_PRODUCTION: 'true'
+    NODE_ENV: production
+    HOST: 0.0.0.0
+    PORT: '3000'
+    APP_UNIX_PATH: ''
+    SERVE_STATIC: 'true'
+    DOC_PAGE: 'false'
+    # The app and the landing each have their own domain; every address is derived from the two.
+    APP_URL: https://${APP_DOMAIN:?set APP_DOMAIN, the host of the app (app.example.com)}
+    FRONTEND_URL: https://${APP_DOMAIN}
+    DOMAIN: ${APP_DOMAIN}
+    LANDING_URL: https://${LANDING_DOMAIN:?set LANDING_DOMAIN, the host of the landing (example.com)}
+    CSRF_ALLOWED_ORIGINS: https://${APP_DOMAIN}
+    # The passkeys are bound to this host for good: changing APP_DOMAIN later makes them unusable.
+    WEBAUTHN_RP_ID: ${APP_DOMAIN}
+    # The SPA in the image was built for this prefix (build arg below): the two cannot differ.
+    API_PATH_PREFIX: ${API_PATH_PREFIX:-api}
+    # Empty: derived from APP_URL, the page and the API share one origin.
+    CSP_API_ORIGIN: ''
+    CSP_WS_ORIGIN: ''
+    # The __Host- cookie prefix and Secure cookies: required in production (validate-runtime-config).
+    SESSION_COOKIE_HOST_PREFIX: 'true'
+    # Behind Traefik: the client IP comes from X-Forwarded-For, trusted only from its subnet.
+    TRUST_PROXY: 'true'
+    TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:?set TRUSTED_PROXY_CIDRS, the subnet of dokploy-network (docker network inspect dokploy-network)}
+    APP_KEY: ${APP_KEY:?set APP_KEY (openssl rand -base64 48)}
+    MFA_ENCRYPTION_KEYS: ${MFA_ENCRYPTION_KEYS:?set MFA_ENCRYPTION_KEYS (pnpm --filter backend mfa:keys)}
+    # The Database services of Dokploy: Internal Credentials (the host is the service's App Name).
+    PGSQL_HOST: ${PGSQL_HOST:?set PGSQL_HOST, the Internal Host of the PostgreSQL service}
+    PGSQL_PORT: ${PGSQL_PORT:-5432}
+    PGSQL_USER: ${PGSQL_USER:?set PGSQL_USER}
+    PGSQL_PASSWORD: ${PGSQL_PASSWORD:?set PGSQL_PASSWORD}
+    PGSQL_DB_NAME: ${PGSQL_DB_NAME:?set PGSQL_DB_NAME}
+    # Inside dokploy-network, not over the internet.
+    PGSQL_SSL: ${PGSQL_SSL:-false}
+    REDIS_HOST: ${REDIS_HOST:?set REDIS_HOST, the Internal Host of the Redis service}
+    REDIS_PORT: ${REDIS_PORT:-6379}
+    REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+    S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT (https://<location>.your-objectstorage.com)}
+    S3_REGION: ${S3_REGION:?set S3_REGION}
+    S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+    S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+    S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+    CDN_URL: ${CDN_URL:?set CDN_URL, the public address of the bucket}
+    SMTP_ENABLED: 'true'
+    SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+    SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:?set SMTP_FROM_EMAIL}
+
+x-app-build: &app-build
+    context: .
+    dockerfile: Dockerfile
+    args:
+        API_PATH_PREFIX: ${API_PATH_PREFIX:-api}
+        VITE_SENTRY_ENABLED: ${VITE_SENTRY_ENABLED:-false}
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-production}
+        VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-}
+
+services:
+    # One-shot, before the app starts (the image does not migrate on start). The databases live
+    # outside this file, so there is no depends_on on them: a missing or still starting database
+    # fails this step, and the app does not start; deploy again once it is up.
+    migrate:
+        build: *app-build
+        image: vibe-template-app:prod
+        env_file:
+            - path: .env
+              required: false
+        environment: *app-environment
+        command: ['sh', '-c', 'pnpm db:create:prod && pnpm db:migrate']
+        restart: 'no'
+        networks: [default, dokploy-network]
+
+    app:
+        build: *app-build
+        image: vibe-template-app:prod
+        restart: unless-stopped
+        env_file:
+            - path: .env
+              required: false
+        environment: *app-environment
+        expose: ['3000']
+        networks: [default, dokploy-network]
+        depends_on:
+            migrate:
+                condition: service_completed_successfully
+        # Ready when PostgreSQL and Redis answer, under the prefix the server uses (the image's own
+        # check knows only `api`).
+        healthcheck:
+            test:
+                - CMD-SHELL
+                - curl -fsS "http://127.0.0.1:3000/${API_PATH_PREFIX:-api}/ready" | grep -q '"status":"ok"' || exit 1
+            interval: 30s
+            timeout: 5s
+            start_period: 30s
+            retries: 3
+
+    # The buttons of the landing lead to the app: both addresses are compiled into its HTML, so a
+    # new domain needs a new build (a redeploy does it). The build is strict: https only, no
+    # placeholder domains (packages/landing/build/urls.ts).
+    landing:
+        build:
+            context: .
+            dockerfile: packages/landing/Dockerfile
+            args:
+                LANDING_APP_URL: https://${APP_DOMAIN}
+                LANDING_SITE_URL: https://${LANDING_DOMAIN}
+                LANDING_STRICT: ${LANDING_STRICT:-true}
+        image: vibe-template-landing:prod
+        restart: unless-stopped
+        expose: ['8080']
+        healthcheck:
+            test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/healthz']
+            interval: 30s
+            timeout: 5s
+            start_period: 5s
+            retries: 3
+
+networks:
+    # The network of Dokploy, where its Database services and Traefik live.
+    dokploy-network:
+        external: true

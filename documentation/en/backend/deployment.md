@@ -2,6 +2,8 @@
 
 This page describes how to build the application for production, what the [`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) contains and what conditions are required at startup. Environment variables are described in detail on the [Configuration](/en/backend/configuration) page, and security on the [Security](/en/backend/security) page. Here they are only mentioned.
 
+A step-by-step deploy to a Hetzner server with Dokploy (`docker-compose-prod.yml`, the databases as Database services, domains and TLS in Traefik) is in [Deploying to Hetzner with Dokploy](/en/guide/deployment-dokploy).
+
 ## Build
 
 The root script `pnpm build` runs `pnpm -r build` ([`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). pnpm orders packages by workspace dependencies, so `shared` is built first. The `Dockerfile` sets the order explicitly: `shared` → `frontend` → `backend`.

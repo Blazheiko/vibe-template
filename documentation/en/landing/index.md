@@ -119,9 +119,7 @@ The script checks:
 
 Without `--allow-local`, every published address (`canonical`, `hreflang`, `og:url`, `og:image`, the buttons) must be a public `https` one, whatever origin it points to. `--resolve HOST:PORT:ADDR` (as in curl) checks a new server before DNS points at it, for example `--resolve example.com:443:203.0.113.10`.
 
-::: warning Planned
-Deploying the whole application with the landing to Hetzner through Dokploy (`docker-compose-prod.yml`, Traefik, domains, variables) is feature `feat-218`. Until it lands, deploy the landing image behind any reverse proxy with TLS.
-:::
+Deploying the whole application with the landing to Hetzner through Dokploy (`docker-compose-prod.yml`, Traefik, domains, variables) is described in [Deploying to Hetzner with Dokploy](/en/guide/deployment-dokploy). Without Dokploy, deploy the landing image behind any reverse proxy with TLS.
 
 ### Other hosting
 

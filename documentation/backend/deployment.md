@@ -2,6 +2,8 @@
 
 Ця сторінка описує, як зібрати застосунок для production, що міститься в [`Dockerfile`](https://github.com/Blazheiko/vibe-template/blob/main/Dockerfile) і які умови потрібні під час запуску. Змінні оточення детально описано на сторінці [Конфігурація](/backend/configuration), а безпеку — на сторінці [Безпека](/backend/security). Тут вони лише згадуються.
 
+Покроковий деплой на сервер Hetzner через Dokploy (`docker-compose-prod.yml`, бази як сервіси Database, домени й TLS у Traefik) — [«Деплой на Hetzner через Dokploy»](/guide/deployment-dokploy).
+
 ## Збірка
 
 Кореневий скрипт `pnpm build` виконує `pnpm -r build` ([`package.json`](https://github.com/Blazheiko/vibe-template/blob/main/package.json)). pnpm упорядковує пакети за залежностями workspace, тож `shared` збирається першим. `Dockerfile` задає порядок явно: `shared` → `frontend` → `backend`.
