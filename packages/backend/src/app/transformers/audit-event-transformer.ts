@@ -1,5 +1,5 @@
 import { AUDIT_ACTIONS, isAuditAction, type AuditProof, type AuditSystemSource } from 'shared/audit'
-import { entityIdOfText, isoDateTimeOfPgText } from '#app/domain/wire.js'
+import { isoDateTimeOfPgText } from '#app/domain/wire.js'
 import { toEntityId } from '#app/domain/ids.js'
 import type { AuditEvent } from 'shared/responses'
 
@@ -42,7 +42,7 @@ export const auditEventTransformer = {
             },
             target: {
                 type: AUDIT_ACTIONS[row.action].targetType,
-                id: entityIdOfText(row.targetId),
+                id: row.targetId,
             },
             targetUser:
                 targetUserId === null

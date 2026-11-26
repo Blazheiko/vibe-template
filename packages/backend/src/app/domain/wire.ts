@@ -3,13 +3,7 @@
 // session store, a cursor the server encoded). The shapes are checked by the schemas in
 // `shared/brands`; nothing here parses client input.
 
-import {
-    isValidEntityId,
-    type Cursor,
-    type EntityId,
-    type IsoDateTime,
-    type SessionPublicId,
-} from 'shared/brand'
+import type { Cursor, IsoDateTime, SessionPublicId } from 'shared/brand'
 
 /** ISO 8601 text the server wrote itself (`toISOString`, stored in a session). */
 export const asIsoDateTime = (text: string): IsoDateTime => text as IsoDateTime
@@ -23,12 +17,3 @@ export const asCursor = (text: string): Cursor => text as Cursor
 
 /** The public id of a session as the session store keeps it. */
 export const asSessionPublicId = (text: string): SessionPublicId => text as SessionPublicId
-
-/**
- * An id the database keeps as text (`audit_events.target_id`). Only canonical ids are written, so
- * anything else is a bug and throws instead of reaching a client.
- */
-export function entityIdOfText(text: string): EntityId {
-    if (!isValidEntityId(text)) throw new Error(`not an entity id: ${JSON.stringify(text)}`)
-    return text as EntityId
-}

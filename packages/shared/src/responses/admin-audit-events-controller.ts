@@ -92,7 +92,8 @@ export const AuditEventSchema = type({
     action: type.enumerated(...AUDIT_ACTION_NAMES),
     group: type.enumerated(...AUDIT_GROUPS),
     actor: AuditEventActorSchema,
-    target: { type: type.enumerated(...AUDIT_TARGET_TYPES), id: EntityIdSchema },
+    // Not always a row id: a prompt is named by its type (`SUPPORT_FIRST_CHAT`).
+    target: { type: type.enumerated(...AUDIT_TARGET_TYPES), id: 'string' },
     targetUser: AuditEventTargetUserSchema.or('null'),
     requestId: 'string | null',
     changes: AuditChangesSchema.or('null'),

@@ -35,7 +35,7 @@ const event = (id: string, over: Partial<AuditEvent> = {}): AuditEvent => ({
         proof: null,
         source: null,
     },
-    target: { type: 'kb_article', id: asEntityId('9') },
+    target: { type: 'kb_article', id: '9' },
     targetUser: null,
     requestId: '0f8fad5b-d9cb-469f-a165-70867728950e',
     changes: {
@@ -147,7 +147,7 @@ describe('AdminAuditLogView', () => {
                         proof: 'email_link',
                         source: null,
                     },
-                    target: { type: 'user', id: asEntityId('7') },
+                    target: { type: 'user', id: '7' },
                     targetUser: { id: asEntityId('7'), name: 'Bob', deleted: false },
                     changes: null,
                     metadata: { proof: 'email_link', claimed: false },
