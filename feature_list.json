@@ -2171,8 +2171,8 @@
             "owner": "Blazheiko",
             "branch": "feat/prod-compose-dokploy",
             "dependencies": ["feat-217"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #867 (merge b7dc428). make prod-smoke: 8 checks ok (production mode behind Caddy TLS: landing, ready, __Host- Secure cookie, registration, verification mail, email confirmed, sign-in, signed-in main/init); make check clean with verify-compose on docker-compose-prod.yml; docs:build + docs:verify passed; CI quality, build, e2e, e2e-live green. Not yet done: plan step 7, a real deploy on Hetzner + Dokploy by the owner; the guide is marked 'Не перевірено' until then."
         },
         {
             "id": "feat-219",
