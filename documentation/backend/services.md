@@ -56,6 +56,8 @@ DI-контейнера немає. Сервіс — модульний синг
 Тести `*.spec.ts` лежать поруч із сервісом. Патерн: замокати `#app/repositories/index.js` і `#app/transformers/index.js` через `vi.mock`, імпортувати сервіс динамічно після моків, перевіряти `Result.isOk` / `Result.isError` для очікуваних результатів і `rejects` для збою репозиторію. Фрагмент з [push-subscription-service.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.spec.ts):
 
 ```ts
+import { uid } from '../../../test-support/ids.js' // a UserId for a test (ADR 0007)
+
 vi.mock('#app/repositories/index.js', () => ({
     pushSubscriptionRepository: pushSubscriptionRepositoryMock,
 }))
@@ -69,7 +71,7 @@ it('returns serialized subscriptions', async () => {
     pushSubscriptionRepositoryMock.findByUserIdWithLogs.mockResolvedValue([{ id: 1n }])
 
     const { pushSubscriptionService } = await import('./push-subscription-service.js')
-    const result = await pushSubscriptionService.getSubscriptions(7n)
+    const result = await pushSubscriptionService.getSubscriptions(uid(7))
 
     expect(Result.isOk(result)).toBe(true)
 })

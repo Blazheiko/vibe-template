@@ -25,6 +25,8 @@ All the code below was actually added to a clean copy of the repository, after w
 | Shared: responses    | `packages/shared/src/responses/note-controller.ts`                  | new       |
 | Shared: responses    | `packages/shared/src/responses/index.ts`                            | edit      |
 | Table                | `packages/backend/src/database/schema.ts`                           | edit      |
+| Id brand             | `packages/backend/src/database/ids.ts`                              | edit      |
+| Id constructor       | `packages/backend/src/app/domain/ids.ts`                            | edit (*)  |
 | Migration            | `packages/backend/src/drizzle/migrations/<timestamp>_add_notes/`    | generated |
 | Repository           | `packages/backend/src/app/repositories/note/note-repository.ts`     | new       |
 | Repository (barrel)  | `packages/backend/src/app/repositories/index.ts`                    | edit      |
@@ -39,6 +41,8 @@ All the code below was actually added to a clean copy of the repository, after w
 | Routes               | `packages/backend/src/app/routes/http-routes.ts`                    | edit      |
 | Frontend call        | `packages/frontend/src/utils/api.ts`                                | edit      |
 | Test                 | `packages/backend/src/app/services/note/note-service.spec.ts`       | new       |
+
+(*) Only when a note id comes from a path or the query (`parseNoteId`); the tutorial's list and create routes take none.
 
 ## Step 1. Input schema in `shared`
 
@@ -432,6 +436,7 @@ Service tests live next to the code and mock the `#app/repositories/index.js` ba
 // packages/backend/src/app/services/note/note-service.spec.ts
 import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { uid } from '../../../test-support/ids.js'
 
 const noteRepositoryMock = {
     create: vi.fn(),
@@ -456,7 +461,7 @@ describe('noteService', () => {
         noteRepositoryMock.findByUserId.mockResolvedValue([
             {
                 id: 1n,
-                userId: 7n,
+                userId: uid(7),
                 title: 'Hello',
                 body: null,
                 createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -464,9 +469,9 @@ describe('noteService', () => {
         ])
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.getNotes(7n)
+        const result = await noteService.getNotes(uid(7))
 
-        expect(noteRepositoryMock.findByUserId).toHaveBeenCalledWith(7n)
+        expect(noteRepositoryMock.findByUserId).toHaveBeenCalledWith(uid(7))
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
             expect(result.value.notes).toHaveLength(1)
@@ -484,10 +489,10 @@ describe('noteService', () => {
         )
 
         const { noteService } = await loadNoteService()
-        const result = await noteService.createNote(7n, { title: 'Todo' })
+        const result = await noteService.createNote(uid(7), { title: 'Todo' })
 
         expect(noteRepositoryMock.create).toHaveBeenCalledWith({
-            userId: 7n,
+            userId: uid(7),
             title: 'Todo',
             body: null,
         })
@@ -503,7 +508,7 @@ describe('noteService', () => {
 
         const { noteService } = await loadNoteService()
 
-        await expect(noteService.getNotes(7n)).rejects.toThrow('db down')
+        await expect(noteService.getNotes(uid(7))).rejects.toThrow('db down')
     })
 })
 ```

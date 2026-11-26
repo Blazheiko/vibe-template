@@ -56,6 +56,8 @@ Business rules (resource owner checks, throttle, token generation, messages) liv
 `*.spec.ts` tests live next to the service. The pattern: mock `#app/repositories/index.js` and `#app/transformers/index.js` with `vi.mock`, import the service dynamically after the mocks, check `Result.isOk` / `Result.isError` for expected outcomes and `rejects` for a repository failure. A snippet from [push-subscription-service.spec.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/services/notifications/push-subscription-service.spec.ts):
 
 ```ts
+import { uid } from '../../../test-support/ids.js' // a UserId for a test (ADR 0007)
+
 vi.mock('#app/repositories/index.js', () => ({
     pushSubscriptionRepository: pushSubscriptionRepositoryMock,
 }))
@@ -69,7 +71,7 @@ it('returns serialized subscriptions', async () => {
     pushSubscriptionRepositoryMock.findByUserIdWithLogs.mockResolvedValue([{ id: 1n }])
 
     const { pushSubscriptionService } = await import('./push-subscription-service.js')
-    const result = await pushSubscriptionService.getSubscriptions(7n)
+    const result = await pushSubscriptionService.getSubscriptions(uid(7))
 
     expect(Result.isOk(result)).toBe(true)
 })
