@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { MfaBindValue } from '#app/domain/secrets.js'
 import type { UserId } from '#app/domain/ids.js'
 import type * as SessionIndex from '#vendor/utils/session/session-index.js'
@@ -202,7 +203,7 @@ describe.skipIf(!hasPg || !hasRedis)('a session deletion whose lock wait is cut'
             .insert(users)
             .values({
                 name: 'lock-timeout',
-                email: `lock-timeout-${crypto.randomUUID()}@example.test`,
+                email: `lock-timeout-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
                 password: 'hash',
                 role,

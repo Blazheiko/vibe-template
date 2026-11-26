@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { OtpCode, OtpHash } from '#app/domain/secrets.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -276,7 +277,11 @@ describe.skipIf(!hasPg)('SMS attempt budget on PostgreSQL', async () => {
         it('phone link confirm', async () => {
             const [user] = await db
                 .insert(users)
-                .values({ name: 'sms-race', email: `sms-race-${run}@example.test`, password: 'x' })
+                .values({
+                    name: 'sms-race',
+                    email: `sms-race-${run}@example.test` as NormalizedEmail,
+                    password: 'x',
+                })
                 .returning()
             if (user === undefined) throw new Error('user not inserted')
             userIds.push(user.id)

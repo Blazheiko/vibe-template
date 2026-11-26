@@ -1,4 +1,5 @@
 import appConfig from '#config/app.js'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { rawTokenOf, type SessionToken } from '#app/domain/secrets.js'
 import logger from '#logger'
 import {
@@ -455,7 +456,7 @@ export const emailVerificationService = {
      */
     async sendLinkVerificationEmail(
         userId: UserId,
-        targetEmail: string,
+        targetEmail: NormalizedEmail,
         presentedSessionToken: SessionToken | undefined,
     ): Promise<AppResult<{ message: string }>> {
         const issued = await issueTokenLocked(emailLinkVerificationRepository, {

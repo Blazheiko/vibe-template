@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -213,7 +214,7 @@ describe.skipIf(!hasPg || !hasRedis)(
                 .insert(users)
                 .values({
                     name: 'passkey-only',
-                    email: `passkey-only-${crypto.randomUUID()}@example.test`,
+                    email: `passkey-only-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                     emailVerifiedAt: new Date(),
                 })
                 .returning()
@@ -255,7 +256,7 @@ describe.skipIf(!hasPg || !hasRedis)(
                 ),
                 codes: await recoveryCodes.issue(row.id, tx),
             }))
-            return { row, email: row.email ?? '', key, codes }
+            return { row, email: row.email ?? ('' as NormalizedEmail), key, codes }
         }
 
         const unusedCodes = async (userId: UserId) =>

@@ -22,6 +22,7 @@ export {
     LinkPhoneConfirmInputSchema,
     type LinkPhoneConfirmInput,
 } from './auth/link-phone-confirm.js'
+export { EmailInputSchema } from './auth/email.js'
 export { LinkEmailStartInputSchema, type LinkEmailStartInput } from './auth/link-email-start.js'
 export { ResetPhoneStartInputSchema, type ResetPhoneStartInput } from './auth/reset-phone-start.js'
 export {

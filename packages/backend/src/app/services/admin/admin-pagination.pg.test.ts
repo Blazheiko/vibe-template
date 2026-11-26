@@ -1,4 +1,5 @@
 import { inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -30,7 +31,7 @@ describe.skipIf(!hasPg)('admin list pagination on PostgreSQL', async () => {
             .values(
                 Array.from({ length: count }, (_, n) => ({
                     name: `${tag} ${String(n)}`,
-                    email: `${tag}-${String(n)}-${stamp}@example.test`,
+                    email: `${tag}-${String(n)}-${stamp}@example.test` as NormalizedEmail,
                 })),
             )
             .returning({ id: users.id })

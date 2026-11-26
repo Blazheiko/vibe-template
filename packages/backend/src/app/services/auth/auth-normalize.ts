@@ -7,10 +7,8 @@ export const REGISTER_PHONE_FLOW: SmsVerificationFlow = 'register_phone'
 export const LINK_PHONE_FLOW: SmsVerificationFlow = 'link_phone'
 export const RESET_PHONE_FLOW: SmsVerificationFlow = 'reset_phone'
 
-/** The one form of an e-mail address the accounts are looked up and stored by. */
-export function normalizeEmail(email: string): string {
-    return email.trim().toLowerCase()
-}
+/** The one form of an e-mail address the accounts are looked up and stored by (feat-266). */
+export { normalizeEmail, type NormalizedEmail } from '#app/domain/email.js'
 
 /** E.164 form of a phone number, or a 400 with the reason the number is refused. */
 export function normalizePhone(input: string, defaultCountry?: string): AppResult<string> {

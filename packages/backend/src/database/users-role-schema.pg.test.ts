@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { UserId } from '#app/domain/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -33,7 +34,7 @@ describe.skipIf(!hasPg)('schema: users.role and users_staff_role_verified_email'
             .insert(users)
             .values({
                 name: `role-schema-${String(counter)}`,
-                email: `role-schema-${String(counter)}-${stamp}@example.test`,
+                email: `role-schema-${String(counter)}-${stamp}@example.test` as NormalizedEmail,
                 emailVerifiedAt: verified ? new Date() : null,
                 role,
             })

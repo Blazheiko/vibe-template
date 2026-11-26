@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { normalizeEmail } from '#app/domain/email.js'
 
 import { sql } from 'drizzle-orm'
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres'
@@ -38,7 +39,7 @@ export function createDrizzleSeedStore(db: SeedDb): SeedStore {
                 .insert(users)
                 .values({
                     name: user.name,
-                    email: user.email,
+                    email: normalizeEmail(user.email),
                     password: user.passwordHash,
                     role: user.role,
                     emailVerifiedAt: new Date(),

@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { TokenHash } from '#app/domain/secrets.js'
 import type { OtpCode, SessionToken } from '#app/domain/secrets.js'
 import type { OAuthAccountId, OneTimeTokenRowId } from '#app/domain/ids.js'
@@ -126,9 +127,9 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     let counter = 0
     let passwordHash = ''
 
-    const address = (label: string, domain = 'gmail.com'): string => {
+    const address = (label: string, domain = 'gmail.com'): NormalizedEmail => {
         counter += 1
-        return `audit-${label}-${String(counter)}-${String(now)}@${domain}`
+        return `audit-${label}-${String(counter)}-${String(now)}@${domain}` as NormalizedEmail
     }
     const nextPhone = (): string => {
         counter += 1
@@ -136,7 +137,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     }
 
     const insertUser = async (options: {
-        email?: string | null
+        email?: NormalizedEmail | null
         verified?: boolean
         phone?: string | null
         password?: boolean
@@ -172,7 +173,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     const failAudit = () =>
         vi.spyOn(auditService, 'record').mockRejectedValueOnce(new Error('audit insert failed'))
 
-    const insertResetLink = async (userId: UserId, targetEmail: string | null) => {
+    const insertResetLink = async (userId: UserId, targetEmail: NormalizedEmail | null) => {
         const raw = `reset-${randomUUID()}`
         const [row] = await db
             .insert(passwordResetTokens)
@@ -196,13 +197,22 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
 
     const request = () => ({ requestId: randomUUID(), logger: { info: vi.fn() } })
 
-    const provider = (profile: { id: string; email: string }): void => {
+    const provider = (profile: { id: string; email: NormalizedEmail }): void => {
         vi.stubGlobal(
             'fetch',
             vi.fn((url: string) => {
                 const body = url.startsWith('https://www.googleapis.com/')
-                    ? { id: profile.id, email: profile.email, name: 'G', verified_email: true }
-                    : { id: profile.id, email: profile.email, name: 'Facebook Person' }
+                    ? {
+                          id: profile.id,
+                          email: profile.email,
+                          name: 'G',
+                          verified_email: true,
+                      }
+                    : {
+                          id: profile.id,
+                          email: profile.email,
+                          name: 'Facebook Person',
+                      }
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
             }),
         )
@@ -290,7 +300,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
 
     describe('logout everywhere', () => {
         it('writes one auth.sessions.revoked_all by the user', async () => {
-            const user = await insertUser({ email: address('logout-all'), verified: true })
+            const user = await insertUser({
+                email: address('logout-all'),
+                verified: true,
+            })
             const actor = testAdminActor(user.id)
 
             expect((await logoutAll(user, actor)).isOk()).toBe(true)
@@ -328,7 +341,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         })
 
         it('a revoked session writes nothing', async () => {
-            const user = await insertUser({ email: address('logout-all-stale'), verified: true })
+            const user = await insertUser({
+                email: address('logout-all-stale'),
+                verified: true,
+            })
 
             const result = await logoutAll({ ...user, sessionToken: 'stale' as SessionToken })
 
@@ -351,7 +367,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             })
 
         it('writes one auth.sessions.revoked_others by the user', async () => {
-            const user = await insertUser({ email: address('others'), verified: true })
+            const user = await insertUser({
+                email: address('others'),
+                verified: true,
+            })
             const actor = testAdminActor(user.id)
 
             expect((await revokeOthers(user, actor)).isOk()).toBe(true)
@@ -363,7 +382,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         })
 
         it('a failed insert keeps the previous token', async () => {
-            const user = await insertUser({ email: address('others-fail'), verified: true })
+            const user = await insertUser({
+                email: address('others-fail'),
+                verified: true,
+            })
             failAudit()
 
             await expect(revokeOthers(user)).rejects.toThrow('audit insert failed')
@@ -389,7 +411,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
             )
 
         it('writes one auth.password.changed', async () => {
-            const user = await insertUser({ email: address('change'), verified: true })
+            const user = await insertUser({
+                email: address('change'),
+                verified: true,
+            })
             const actor = testAdminActor(user.id)
 
             expect((await change(user, actor)).isOk()).toBe(true)
@@ -407,7 +432,10 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
         })
 
         it('a failed insert keeps the old password and token', async () => {
-            const user = await insertUser({ email: address('change-fail'), verified: true })
+            const user = await insertUser({
+                email: address('change-fail'),
+                verified: true,
+            })
             failAudit()
 
             await expect(change(user)).rejects.toThrow('audit insert failed')
@@ -650,7 +678,7 @@ describe.skipIf(!hasPg)('sign-in methods and sessions in the audit log', async (
     })
 
     describe('an OAuth link confirmed by mail (confirmLink)', () => {
-        const startLink = async (email: string) => {
+        const startLink = async (email: NormalizedEmail) => {
             provider({ id: `fb-${String(now)}-${String(counter)}`, email })
             const started = await oauthService.handleCallback(
                 'facebook',

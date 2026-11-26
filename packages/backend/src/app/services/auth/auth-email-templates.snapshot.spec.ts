@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -171,7 +172,7 @@ describe.each(USERS)('auth mails for a user named $slug', ({ slug, name }) => {
         const { emailVerificationService } = await import('./email-verification-service.js')
         const result = await emailVerificationService.sendLinkVerificationEmail(
             uid(7),
-            'new@example.com',
+            'new@example.com' as NormalizedEmail,
             SESSION,
         )
         expect(Result.isOk(result)).toBe(true)
@@ -209,7 +210,11 @@ describe('a name is not mailed to an address that is not confirmed', () => {
         configure()
         const { emailVerificationService } = await import('./email-verification-service.js')
 
-        await emailVerificationService.sendLinkVerificationEmail(uid(7), 'new@example.com', SESSION)
+        await emailVerificationService.sendLinkVerificationEmail(
+            uid(7),
+            'new@example.com' as NormalizedEmail,
+            SESSION,
+        )
 
         expectNoName()
     })
@@ -252,7 +257,7 @@ describe('auth mails with another product name', () => {
             const { emailVerificationService } = await import('./email-verification-service.js')
             return emailVerificationService.sendLinkVerificationEmail(
                 uid(7),
-                'new@example.com',
+                'new@example.com' as NormalizedEmail,
                 SESSION,
             )
         },

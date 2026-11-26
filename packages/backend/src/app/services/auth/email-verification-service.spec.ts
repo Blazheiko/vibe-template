@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -308,7 +309,7 @@ describe('emailVerificationService', () => {
         const { emailVerificationService } = await loadEmailVerificationService()
         const result = await emailVerificationService.sendLinkVerificationEmail(
             uid(8),
-            'new@example.com',
+            'new@example.com' as NormalizedEmail,
             'session-8' as SessionToken,
         )
 
@@ -516,7 +517,7 @@ describe('sendLinkVerificationEmail session guard (feat-096)', () => {
             const { emailVerificationService } = await loadEmailVerificationService()
             const result = await emailVerificationService.sendLinkVerificationEmail(
                 uid(8),
-                'new@example.com',
+                'new@example.com' as NormalizedEmail,
                 presented as SessionToken | undefined,
             )
 
@@ -549,7 +550,7 @@ describe('sendLinkVerificationEmail session guard (feat-096)', () => {
         const { emailVerificationService } = await loadEmailVerificationService()
         const result = await emailVerificationService.sendLinkVerificationEmail(
             uid(8),
-            'new@example.com',
+            'new@example.com' as NormalizedEmail,
             'session-8' as SessionToken,
         )
 

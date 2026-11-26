@@ -1,4 +1,5 @@
 import { desc, eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -103,7 +104,7 @@ describe.skipIf(!hasPg)('push data access on PostgreSQL', async () => {
     const insertUser = async (name: string): Promise<UserId> => {
         const [row] = await db
             .insert(users)
-            .values({ name, email: `${name}-${String(now)}@example.test` })
+            .values({ name, email: `${name}-${String(now)}@example.test` as NormalizedEmail })
             .returning({ id: users.id })
         if (row === undefined) throw new Error('user not inserted')
         return row.id

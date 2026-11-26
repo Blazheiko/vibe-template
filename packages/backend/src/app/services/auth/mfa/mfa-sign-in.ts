@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { normalizeEmail } from '#app/domain/email.js'
 import {
     mfaBindValueOf,
     newSessionToken,
@@ -676,7 +677,18 @@ async function createPendingLink(
     const { proof, ...identity } = link
     try {
         await tx.transaction(async (savepoint) => {
-            await oauthAccountRepository.create({ userId, ...identity }, savepoint)
+            await oauthAccountRepository.create(
+                {
+                    userId,
+                    ...identity,
+                    // The ticket keeps the address as text (JSON in Redis).
+                    providerEmail:
+                        identity.providerEmail === null
+                            ? null
+                            : normalizeEmail(identity.providerEmail),
+                },
+                savepoint,
+            )
         })
     } catch (err) {
         if (!isUniqueViolation(err)) throw err

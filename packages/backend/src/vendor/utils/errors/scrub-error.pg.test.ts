@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -34,7 +35,7 @@ describe.skipIf(!hasPg)('error scrubbing on PostgreSQL', async () => {
     const { default: logger, __loggerTestHooks } = await import('#vendor/utils/logger.js')
 
     const run = `${String(Date.now())}-${String(process.pid)}`
-    const email = `scrub-${run}@example.test`
+    const email = `scrub-${run}@example.test` as NormalizedEmail
     const passwordHash = `hash-${run}-secret`
 
     afterAll(async () => {

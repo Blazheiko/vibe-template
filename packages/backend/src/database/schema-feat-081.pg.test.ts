@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../test-support/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
@@ -23,7 +24,10 @@ describe.skipIf(!hasPg)('schema: llm_text_usage and support_chat_history', async
     it('keeps the usage rows of a deleted user, without the link to them', async () => {
         const [user] = await db
             .insert(users)
-            .values({ name: 'gone', email: `gone-${String(Date.now())}@example.test` })
+            .values({
+                name: 'gone',
+                email: `gone-${String(Date.now())}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         const userId = user?.id ?? uid(0)
         await db.insert(llmTextUsage).values({
@@ -46,7 +50,10 @@ describe.skipIf(!hasPg)('schema: llm_text_usage and support_chat_history', async
     it('still deletes the chat history of a deleted user (that one is personal content)', async () => {
         const [user] = await db
             .insert(users)
-            .values({ name: 'gone2', email: `gone2-${String(Date.now())}@example.test` })
+            .values({
+                name: 'gone2',
+                email: `gone2-${String(Date.now())}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         const userId = user?.id ?? uid(0)
         await db.insert(supportChatHistory).values({ userId, role: 'user', content: 'hello' })

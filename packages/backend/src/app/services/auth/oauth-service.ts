@@ -6,6 +6,7 @@ import {
     generateCodeVerifier,
     generateState,
 } from 'arctic'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import oauthConfig from '#config/oauth.js'
 import appConfig from '#config/app.js'
 import {
@@ -494,12 +495,13 @@ export const oauthService = {
             return Result.err(badRequest('Could not retrieve email from provider'))
         }
 
-        userInfo.email = normalizeEmail(userInfo.email)
+        const providerEmail = normalizeEmail(userInfo.email)
+        userInfo.email = providerEmail
 
         const identity: OAuthIdentity = {
             provider,
             providerUserId: userInfo.id,
-            providerEmail: userInfo.email,
+            providerEmail,
             // feat-200 (L-9): cut to the columns here, once, for every path that stores them.
             providerName: userInfo.name.slice(0, PROVIDER_NAME_MAX_LENGTH),
             providerAvatar: providerAvatarUrl(userInfo.avatar),
@@ -683,7 +685,7 @@ export const oauthService = {
         const accounts = await oauthAccountRepository.findByUserId(userId)
         const providerEmail = accounts
             .map((account) => account.providerEmail)
-            .find((email): email is string => email !== null && email !== '')
+            .find((email): email is NormalizedEmail => email !== null && email !== '')
         if (providerEmail === undefined) {
             return Result.err(badRequest('There is no address to confirm', 'no_pending_email'))
         }
@@ -707,7 +709,7 @@ export const oauthService = {
 interface OAuthIdentity {
     provider: OAuthProvider
     providerUserId: string
-    providerEmail: string
+    providerEmail: NormalizedEmail
     providerName: string
     providerAvatar: string | null
 }
@@ -1060,7 +1062,7 @@ async function signInWithIdentity(
 /** The first address of a new account goes out after sign-in; a failure only logs. */
 async function sendFirstEmailLinkQuietly(
     userId: UserId,
-    email: string,
+    email: NormalizedEmail,
     sessionToken: SessionToken,
 ): Promise<void> {
     try {

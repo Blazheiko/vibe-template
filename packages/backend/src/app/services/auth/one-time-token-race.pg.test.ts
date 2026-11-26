@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { TokenHash } from '#app/domain/secrets.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 
@@ -78,7 +79,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
             .values({
                 name: `token-race-${String(counter)}`,
                 email: withEmail
-                    ? `token-race-${String(counter)}-${String(now)}@example.test`
+                    ? (`token-race-${String(counter)}-${String(now)}@example.test` as NormalizedEmail)
                     : null,
                 password: await hashPassword(OLD_PASSWORD),
                 emailVerifiedAt: verified ? new Date() : null,
@@ -115,7 +116,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         })
         return { raw, id: row.id }
     }
-    const newLinkToken = async (userId: UserId, targetEmail: string) => {
+    const newLinkToken = async (userId: UserId, targetEmail: NormalizedEmail) => {
         const raw = `link-${crypto.randomUUID()}`
         const row = await emailLinkVerificationRepository.create({
             userId,
@@ -322,7 +323,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
         it('lets exactly one of two concurrent links win', async () => {
             const user = await insertUser(true, false)
-            const target = `linked-race-${String(now)}@example.test`
+            const target = `linked-race-${String(now)}@example.test` as NormalizedEmail
             const token = await newLinkToken(user.id, target)
             bothReadBeforeEitherWrites(emailLinkVerificationRepository, 'findByTokenHash')
 
@@ -340,7 +341,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
         it('answers 409 when the unique index rejects the address, and keeps the link', async () => {
             const user = await insertUser(true, false)
             const other = await insertUser(true)
-            const token = await newLinkToken(user.id, other.email ?? '')
+            const token = await newLinkToken(user.id, other.email ?? ('' as NormalizedEmail))
             vi.spyOn(userRepository, 'findByEmail').mockResolvedValueOnce(undefined)
 
             const result = await link(token.raw, user)
@@ -355,7 +356,7 @@ describe.skipIf(!hasPg)('one-time tokens on PostgreSQL', async () => {
 
         it('rolls the new email and the token back when the request fails after the write', async () => {
             const user = await insertUser(true, false)
-            const target = `linked-rollback-${String(now)}@example.test`
+            const target = `linked-rollback-${String(now)}@example.test` as NormalizedEmail
             const token = await newLinkToken(user.id, target)
             failAfterWrite(userRepository, 'update')
 

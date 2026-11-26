@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { OtpCode, OtpHash } from '#app/domain/secrets.js'
 import { eq, inArray, sql } from 'drizzle-orm'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -290,7 +291,11 @@ describe.skipIf(!hasPg)('registration races on PostgreSQL', async () => {
                 [1, 2].map(async (n) => {
                     const [row] = await db
                         .insert(users)
-                        .values({ name: `link-racer-${String(n)}`, email: nextEmail(), password })
+                        .values({
+                            name: `link-racer-${String(n)}`,
+                            email: nextEmail() as NormalizedEmail,
+                            password,
+                        })
                         .returning()
                     if (row === undefined) throw new Error('user not inserted')
                     createdUserIds.push(row.id)

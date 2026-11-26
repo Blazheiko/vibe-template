@@ -1,4 +1,5 @@
 import { eq, inArray, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -24,7 +25,10 @@ describe.skipIf(!hasPg)('notifications-retention on PostgreSQL', async () => {
     const CUTOFF = new Date('2001-06-01T12:00:00.000Z')
     const [owner] = await db
         .insert(users)
-        .values({ name: 'retention-test', email: `${crypto.randomUUID()}@example.test` })
+        .values({
+            name: 'retention-test',
+            email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
+        })
         .returning({ id: users.id })
     if (owner === undefined) throw new Error('user not inserted')
     const userId = owner.id

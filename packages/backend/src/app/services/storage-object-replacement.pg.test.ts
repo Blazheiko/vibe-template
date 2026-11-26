@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { testAdminActor } from '../../test-support/audit-actor.js'
 
@@ -269,7 +270,10 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
         counter += 1
         const [row] = await db
             .insert(users)
-            .values({ name: 'avatar', email: `avatar-${run}-${String(counter)}@example.test` })
+            .values({
+                name: 'avatar',
+                email: `avatar-${run}-${String(counter)}@example.test` as NormalizedEmail,
+            })
             .returning()
         if (row === undefined) throw new Error('user not inserted')
         userIds.push(row.id)

@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
 import type { Redis } from 'ioredis'
@@ -188,7 +189,7 @@ describe.skipIf(!hasPg || !hasRedis)('passwordless sign-in over HTTP (feat-246 P
             .insert(users)
             .values({
                 name,
-                email: `${name}-${crypto.randomUUID()}@example.test`,
+                email: `${name}-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: new Date(),
             })
             .returning()

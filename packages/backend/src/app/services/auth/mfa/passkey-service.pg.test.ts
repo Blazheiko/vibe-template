@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -71,7 +72,7 @@ describe.skipIf(!hasPg)('passkey service on PostgreSQL (feat-246 P2)', async () 
             .insert(users)
             .values({
                 name: 'passkey',
-                email: `${crypto.randomUUID()}@example.test`,
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 emailVerifiedAt: fields.verified === false ? null : new Date(),
                 password: fields.password === undefined ? 'hash' : fields.password,
             })

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import type { UserId } from '#app/domain/ids.js'
 
@@ -48,7 +49,10 @@ describe.skipIf(!hasPg)('passkey step-up on PostgreSQL (feat-246 P4)', async () 
     const userWithPasskey = async (name: string) => {
         const [row] = await db
             .insert(users)
-            .values({ name, email: `${name}-${crypto.randomUUID()}@example.test` })
+            .values({
+                name,
+                email: `${name}-${crypto.randomUUID()}@example.test` as NormalizedEmail,
+            })
             .returning()
         if (row === undefined) throw new Error('user not inserted')
         created.push(row.id)

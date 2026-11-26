@@ -4,6 +4,7 @@ import type { DbExecutor, DbTransaction } from '../transaction.js'
 import { users } from '#database/schema.js'
 import type { UserId } from '#app/domain/ids.js'
 import type { SessionToken } from '#app/domain/secrets.js'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { and, count, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from 'drizzle-orm'
 import type { InferInsertModel, InferSelectModel, SQL } from 'drizzle-orm'
 import { MAX_PAGE_LIMIT } from 'shared/schemas'
@@ -57,14 +58,14 @@ export interface AdminUserDetailRow {
 export interface IUserRepository {
     create(data: UserInsert, executor?: DbExecutor): Promise<UserRow>
     findById(id: UserId): Promise<UserRow | undefined>
-    findByEmail(email: string): Promise<UserRow | undefined>
+    findByEmail(email: NormalizedEmail): Promise<UserRow | undefined>
     findByPhone(phone: string): Promise<UserRow | undefined>
     listAdminUsers(
         filters?: AdminUserListFilters,
     ): Promise<{ items: AdminUserListRow[]; total: number }>
     findAdminOnlineUsersByIds(ids: UserId[]): Promise<AdminOnlineUserRow[]>
     findAdminUserDetailById(id: UserId): Promise<AdminUserDetailRow | undefined>
-    emailExistsForOtherUser(email: string, excludeId: UserId): Promise<boolean>
+    emailExistsForOtherUser(email: NormalizedEmail, excludeId: UserId): Promise<boolean>
     phoneExistsForOtherUser(phone: string, excludeId: UserId): Promise<boolean>
     /** Pass the transaction when the update belongs to one (see `withTransaction`). */
     update(id: UserId, data: UserUpdate, executor?: DbExecutor): Promise<UserRow | undefined>

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { Redis } from 'ioredis'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type MockInstance } from 'vitest'
 
@@ -200,7 +201,7 @@ describe.skipIf(!hasPg || !hasRedis)('support chat admission over WebSocket', as
             .insert(users)
             .values({
                 name: `support-adm-${String(counter)}`,
-                email: `support-adm-${String(counter)}-${String(now)}@example.test`,
+                email: `support-adm-${String(counter)}-${String(now)}@example.test` as NormalizedEmail,
             })
             .returning()
         if (row === undefined) throw new Error('user not inserted')

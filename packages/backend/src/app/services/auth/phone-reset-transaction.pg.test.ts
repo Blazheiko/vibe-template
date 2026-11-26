@@ -1,4 +1,5 @@
 import { eq, inArray } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { OtpCode, TokenHash } from '#app/domain/secrets.js'
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -157,7 +158,7 @@ describe.skipIf(!hasPg)('phone password reset transaction on PostgreSQL', async 
 
     it('waits for a concurrent email link and then refuses, before confirming', async () => {
         const { user, challenge } = await arrange()
-        const email = `reset-link-${run}-${String(counter)}@example.test`
+        const email = `reset-link-${run}-${String(counter)}@example.test` as NormalizedEmail
 
         // Another flow holds the user's row and links an email; the reset waits for the lock.
         let commitLink: () => void = () => undefined

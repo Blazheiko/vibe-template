@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import type { OAuthAccountId } from '#app/domain/ids.js'
 import { eq } from 'drizzle-orm'
@@ -45,7 +46,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
             .insert(users)
             .values({
                 name: 'sign-in-methods',
-                email: `${crypto.randomUUID()}@example.test`,
+                email: `${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 password: withPassword ? await hashPassword(PASSWORD) : null,
             })
             .returning()
@@ -59,7 +60,7 @@ describe.skipIf(!hasPg)('sign-in methods on PostgreSQL', async () => {
             userId,
             provider,
             providerUserId: `${provider}-${crypto.randomUUID()}`,
-            providerEmail: 'someone@example.test',
+            providerEmail: 'someone@example.test' as NormalizedEmail,
             providerName: 'Jane',
             providerAvatar: null,
         })

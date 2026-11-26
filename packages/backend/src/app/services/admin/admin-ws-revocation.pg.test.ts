@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
 import pg from 'pg'
@@ -127,7 +128,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
             .insert(users)
             .values({
                 name: `ws-admin-${String(counter)}`,
-                email: `ws-admin-${String(counter)}-${String(now)}@example.test`,
+                email: `ws-admin-${String(counter)}-${String(now)}@example.test` as NormalizedEmail,
                 // feat-240: a staff role needs a verified email (users_staff_role_verified_email).
                 emailVerifiedAt: new Date(),
                 role,

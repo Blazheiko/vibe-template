@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 
@@ -54,7 +55,10 @@ describe.skipIf(!hasPg)('accountService on PostgreSQL', async () => {
     beforeAll(async () => {
         const [user] = await db
             .insert(schema.users)
-            .values({ name: 'Original', email: `account-${randomUUID()}@x.test` })
+            .values({
+                name: 'Original',
+                email: `account-${randomUUID()}@x.test` as NormalizedEmail,
+            })
             .returning({ id: schema.users.id, sessionToken: schema.users.sessionToken })
         userId = user!.id
         token = user!.sessionToken

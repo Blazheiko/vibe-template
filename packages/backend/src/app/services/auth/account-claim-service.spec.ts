@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../../test-support/ids.js'
 
@@ -67,7 +68,7 @@ const user = (over: Partial<UserRow> = {}): UserRow =>
     ({
         id: 5n,
         name: 'Jane',
-        email: 'jane@example.com',
+        email: 'jane@example.com' as NormalizedEmail,
         emailVerifiedAt: null,
         password: 'attacker-hash',
         phone: PHONE,
@@ -108,7 +109,10 @@ describe('addressMatches', () => {
         ['another address', 'jane@example.com', 'john@example.com', false],
         ['no address on the account', null, 'jane@example.com', false],
     ])('%s → %s', (_n, email, proven, expected) => {
-        expect(addressMatches(user({ email }), proven)).toBe(expected)
+        // A stored address the old code may have written unnormalized: addressMatches normalizes both.
+        expect(addressMatches(user({ email: email as NormalizedEmail | null }), proven)).toBe(
+            expected,
+        )
     })
 })
 

@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { uid } from '../../../../test-support/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -20,7 +21,10 @@ describe.skipIf(!hasPg)('llm_text_usage on PostgreSQL', async () => {
     beforeAll(async () => {
         const [user] = await db
             .insert(users)
-            .values({ name: 'usage', email: `usage-${String(Date.now())}@example.test` })
+            .values({
+                name: 'usage',
+                email: `usage-${String(Date.now())}@example.test` as NormalizedEmail,
+            })
             .returning({ id: users.id })
         userId = user?.id ?? uid(0)
         const base = { model, finalPrompt: 'p', createdAt: new Date() }

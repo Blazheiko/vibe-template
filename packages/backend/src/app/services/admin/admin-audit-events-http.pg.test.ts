@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import { randomUUID } from 'node:crypto'
 
 import { eq, inArray } from 'drizzle-orm'
@@ -143,7 +144,7 @@ describe.skipIf(!hasPg || !hasRedis)('GET /admin/audit-events (feat-235)', async
             .insert(users)
             .values({
                 name,
-                email: `audit-${String(now)}-${String(inserted)}@example.test`,
+                email: `audit-${String(now)}-${String(inserted)}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
                 role,

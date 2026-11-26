@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { MfaTicketId, NormalizedRecoveryCode, SessionToken } from '#app/domain/secrets.js'
 
 import { and, eq, isNull } from 'drizzle-orm'
@@ -390,7 +391,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             .insert(users)
             .values({
                 name,
-                email: `${name}-${crypto.randomUUID()}@example.test`,
+                email: `${name}-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
             })
@@ -416,7 +417,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             return recoveryCodes.issue(row.id, tx)
         })
         const code = (offset = 0n) => hotp(secret, totpStepAt(Date.now()) + offset)
-        return { row, email: row.email ?? '', code, codes }
+        return { row, email: row.email ?? ('' as NormalizedEmail), code, codes }
     }
 
     const unusedCodes = async (userId: UserId) =>
@@ -1237,7 +1238,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 .insert(users)
                 .values({
                     name: 'mfa-tail-plain',
-                    email: `mfa-tail-plain-${crypto.randomUUID()}@example.test`,
+                    email: `mfa-tail-plain-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                     password: await hashPassword(PASSWORD),
                     emailVerifiedAt: new Date(),
                 })
@@ -1541,7 +1542,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
             .insert(users)
             .values({
                 name: 'no-mfa',
-                email: `no-mfa-${crypto.randomUUID()}@example.test`,
+                email: `no-mfa-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                 password: await hashPassword(PASSWORD),
                 emailVerifiedAt: new Date(),
             })
@@ -1571,7 +1572,7 @@ describe.skipIf(!hasPg || !hasRedis)('second sign-in step over HTTP (feat-245 M8
                 .insert(users)
                 .values({
                     name,
-                    email: `${name}-${crypto.randomUUID()}@example.test`,
+                    email: `${name}-${crypto.randomUUID()}@example.test` as NormalizedEmail,
                     password: await hashPassword(PASSWORD),
                     emailVerifiedAt: new Date(),
                 })

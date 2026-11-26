@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { uid } from '../../test-support/ids.js'
 
@@ -9,7 +10,7 @@ import { userTransformer } from './user-transformer.js'
 const row = {
     id: uid(7),
     name: 'Jane',
-    email: 'jane@example.test',
+    email: 'jane@example.test' as NormalizedEmail,
     phone: null,
     password: 'hashed-password',
     sessionToken: 'abcdefghijklmnopqrstuvwx' as SessionToken,

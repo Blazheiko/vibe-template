@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { NormalizedEmail } from '#app/domain/email.js'
 import type { OtpHash } from '#app/domain/secrets.js'
 
 import { sql } from 'drizzle-orm'
@@ -64,12 +65,12 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
                 ? {
                       provider: 'github',
                       providerUserId: '1',
-                      providerEmail: 'cleanup@example.test',
-                      targetEmail: 'cleanup@example.test',
+                      providerEmail: 'cleanup@example.test' as NormalizedEmail,
+                      targetEmail: 'cleanup@example.test' as NormalizedEmail,
                       sessionBindingHash: 'x'.repeat(64),
                   }
                 : table === schema.emailLinkVerifications
-                  ? { targetEmail: 'cleanup@example.test' }
+                  ? { targetEmail: 'cleanup@example.test' as NormalizedEmail }
                   : {}
         await db.insert(table as typeof schema.oauthLinkVerifications).values({
             ...extra,
@@ -118,7 +119,10 @@ describe.skipIf(!hasPg)('auth token cleanup on PostgreSQL', async () => {
     beforeAll(async () => {
         const [user] = await db
             .insert(schema.users)
-            .values({ name: 'token-cleanup', email: `token-cleanup-${randomUUID()}@x.test` })
+            .values({
+                name: 'token-cleanup',
+                email: `token-cleanup-${randomUUID()}@x.test` as NormalizedEmail,
+            })
             .returning({ id: schema.users.id })
         userId = user!.id
     })
