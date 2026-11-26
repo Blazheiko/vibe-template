@@ -1,4 +1,6 @@
 import { Result } from 'better-result'
+import type { Cursor } from 'shared/brand'
+import { asCursor } from '#app/domain/wire.js'
 import {
     AUDIT_ACTIONS,
     auditActionsOfGroup,
@@ -24,8 +26,10 @@ export const AUDIT_EVENTS_PAGE_SIZE = 50
 const OCCURRED_AT_TEXT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?$/
 
 /** The cursor of the next page: base64url of `occurred_at` as PostgreSQL printed it, and the id. */
-export function encodeAuditCursor(cursor: AuditEventCursor): string {
-    return Buffer.from(`${cursor.occurredAt}|${String(cursor.id)}`, 'utf8').toString('base64url')
+export function encodeAuditCursor(cursor: AuditEventCursor): Cursor {
+    return asCursor(
+        Buffer.from(`${cursor.occurredAt}|${String(cursor.id)}`, 'utf8').toString('base64url'),
+    )
 }
 
 /** Whether `text` (`YYYY-MM-DD HH:MM:SS[.ffffff]`) names a real instant, not one Date would roll over. */
@@ -109,7 +113,7 @@ export const auditEventsQueryService = {
     async list(
         query: AuditEventsQuery,
         scope: AuditReadScope = 'all',
-    ): Promise<AppResult<{ items: AuditEvent[]; nextCursor: string | null }>> {
+    ): Promise<AppResult<{ items: AuditEvent[]; nextCursor: Cursor | null }>> {
         if (scope === 'account' && !accountScopeAllows(query)) {
             return Result.err(forbidden('Access denied'))
         }

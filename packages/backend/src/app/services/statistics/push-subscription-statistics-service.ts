@@ -2,6 +2,7 @@ import {
     pushNotificationLogRepository,
     pushSubscriptionRepository,
 } from '#app/repositories/index.js'
+import { toIsoDateTime, type IsoDateTime } from 'shared/brand'
 import { pushSubscriptionTransformer } from '#app/transformers/index.js'
 import type { SerializedPushSubscription } from '#app/transformers/push-subscription-transformer.js'
 import type { UserId, PushSubscriptionId } from '#app/domain/ids.js'
@@ -16,7 +17,7 @@ export interface PushSubscriptionStatistics {
     /** ISO strings: the wire shape (feat-047). */
     lastUsed: string | null
     isActive: boolean
-    createdAt: string
+    createdAt: IsoDateTime
 }
 
 export interface PushSubscriptionStatisticsResult {
@@ -58,7 +59,7 @@ export async function getPushSubscriptionStatistics(
             last7DaysCount,
             lastUsed: subscription.lastUsedAt?.toISOString() ?? null,
             isActive: subscription.isActive,
-            createdAt: subscription.createdAt.toISOString(),
+            createdAt: toIsoDateTime(subscription.createdAt),
         },
     }
 }

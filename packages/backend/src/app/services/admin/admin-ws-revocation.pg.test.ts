@@ -1,4 +1,5 @@
 import { createServer } from 'node:net'
+import { eid } from '../../../test-support/ids.js'
 import type { NormalizedEmail } from '#app/domain/email.js'
 
 import { eq } from 'drizzle-orm'
@@ -189,7 +190,7 @@ describe.skipIf(!hasPg || !hasRedis)('admin WebSocket access revocation', async 
     const CHANNEL_READY = 'broadcast:admin_channel_ready'
     const publish = (): boolean =>
         broadcastService.broadcastMessageToChannel('admin', 'admin_user_online_remove', {
-            id: '1',
+            id: eid(1),
         })
 
     /** Publishes until the frame count settles, so a missed delivery cannot hide in a delay. */

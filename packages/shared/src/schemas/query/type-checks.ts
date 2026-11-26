@@ -13,7 +13,8 @@ import type {
 } from './simple.js'
 import type { SupportChatHistoryQuery, SupportChatHistoryQueryInput } from './support.js'
 import type { LlmTextUsageQuery, LlmTextUsageQueryInput } from './usage.js'
-import type { AssertEqual, Expect } from './types.js'
+import type { AssertEqual, Expect, QueryInputOf } from './types.js'
+import type { EntityId, EntityIdSchema } from '../../brands/ids.js'
 import type { Role } from '../../access/index.js'
 
 // What each query schema infers is what the callers of the API are told, so it is written out here
@@ -108,4 +109,16 @@ export type QueryInputChecks = [
     // `type({})` infers `object`: the route takes no query.
     Expect<AssertEqual<OAuthRedirectQueryInput, object>>,
     Expect<AssertEqual<OAuthCallbackQueryInput, { code?: string; state?: string }>>,
+]
+
+// feat-268 (plan Р8): a branded field of a query. The handler gets the brand from the parsed
+// query, and the client sends plain text: the URL builder never asks the frontend for a brand.
+interface BrandedIdQuery {
+    readonly infer: { userId: EntityId; page?: number }
+    readonly inferIn: { userId: string; page?: string }
+}
+
+export type BrandedQueryChecks = [
+    Expect<AssertEqual<QueryInputOf<BrandedIdQuery>, { userId: string; page?: number | string }>>,
+    Expect<AssertEqual<(typeof EntityIdSchema)['infer'], EntityId>>,
 ]

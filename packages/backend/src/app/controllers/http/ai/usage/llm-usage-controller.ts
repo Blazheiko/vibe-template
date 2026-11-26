@@ -1,7 +1,8 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { toIsoDateTime } from 'shared/brand'
 import { llmUsageService, type TextFilter } from '#app/services/ai/usage/llm-usage-service.js'
 import { mapControllerError } from '#app/controllers/shared/controller-error.js'
-import { parseUserId } from '#app/domain/ids.js'
+import { parseUserId, toEntityId } from '#app/domain/ids.js'
 import { badRequest } from '#app/services/shared/errors.js'
 import type { LlmTextUsageQuery } from 'shared/schemas'
 import type { GetTextUsageResponse, GetUsageStatsResponse } from 'shared'
@@ -44,8 +45,8 @@ export default {
         const { rows, total } = await llmUsageService.getTextUsage({ limit, offset, filter })
 
         const serialized = rows.map((r) => ({
-            id: String(r.id),
-            userId: r.userId === null ? null : String(r.userId),
+            id: toEntityId(r.id),
+            userId: r.userId === null ? null : toEntityId(r.userId),
             model: r.model,
             feature: r.feature,
             // '' means the text is not kept (feat-065): answered as "no text", not as an
@@ -58,7 +59,7 @@ export default {
             totalTokens: r.totalTokens,
             status: r.status,
             tokensEstimated: r.tokensEstimated,
-            createdAt: r.createdAt.toISOString(),
+            createdAt: toIsoDateTime(r.createdAt),
         }))
 
         return { status: 'success', data: { rows: serialized, total, page, limit } }

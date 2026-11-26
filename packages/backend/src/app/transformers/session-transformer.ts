@@ -1,4 +1,6 @@
 import { parseUserAgent } from 'shared/utils'
+import { asIsoDateTime, asSessionPublicId } from '#app/domain/wire.js'
+import { toIsoDateTime } from 'shared/brand'
 import type { SessionView } from 'shared'
 import type { SessionDevice } from '#vendor/types/types.js'
 
@@ -14,7 +16,7 @@ export const sessionTransformer = {
     serialize({ device, lastSeenAtMs, current, online }: SessionViewSource): SessionView {
         const { browser, os, deviceType } = parseUserAgent(device.userAgent)
         return {
-            id: device.publicId,
+            id: asSessionPublicId(device.publicId),
             current,
             browser,
             os,
@@ -23,10 +25,10 @@ export const sessionTransformer = {
             ip: device.ip,
             method: device.method,
             provider: device.provider ?? null,
-            signedInAt: device.signedInAt,
+            signedInAt: asIsoDateTime(device.signedInAt),
             lastSeenAt:
                 lastSeenAtMs !== null && Number.isFinite(lastSeenAtMs)
-                    ? new Date(lastSeenAtMs).toISOString()
+                    ? toIsoDateTime(new Date(lastSeenAtMs))
                     : null,
             online,
         }

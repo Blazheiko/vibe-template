@@ -51,8 +51,10 @@ export const BroadcastEventSchemas = {
 
 export type BroadcastEventName = keyof typeof BroadcastEventSchemas
 
+// The output of the schema (feat-268): an id is an EntityId on both sides. The backend sends
+// values it branded, and the frontend's guard checks what the schema would.
 export type BroadcastPayload<E extends BroadcastEventName> =
-    (typeof BroadcastEventSchemas)[E]['inferIn']
+    (typeof BroadcastEventSchemas)[E]['infer']
 
 // One event with its payload, as a union of pairs: a union of names cannot be passed
 // with a union of payloads, so the pair stays linked even for a non-literal event.

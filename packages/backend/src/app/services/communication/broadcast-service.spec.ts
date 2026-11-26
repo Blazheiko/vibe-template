@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eid } from '../../../test-support/ids.js'
 
 import type { BroadcastEventName, BroadcastMessage, BroadcastPayload } from 'shared/schemas'
 import type * as ValidateResponse from '#vendor/utils/validation/validate-response.js'
@@ -57,7 +58,7 @@ const { __resetResponseValidationLog } =
     await import('#vendor/utils/validation/validate-response.js')
 
 const upsert = {
-    id: '42',
+    id: eid(42),
     name: 'Ada',
     email: 'ada@example.test',
     appType: 'web' as const,
@@ -142,7 +143,8 @@ describe.each(['strict', 'log'] as const)('broadcastService in %s mode', (mode) 
     })
 
     it('does not publish a channel event that breaks the schema', () => {
-        const payload = { id: 'abc' }
+        // Not an id: the branded type is forced so that the schema, not the compiler, refuses it.
+        const payload = { id: eid('abc') }
         expect(
             service.broadcastMessageToChannel('admin', 'admin_user_online_remove', payload),
         ).toBe(false)

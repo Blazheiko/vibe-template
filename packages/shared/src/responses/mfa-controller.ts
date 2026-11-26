@@ -1,4 +1,5 @@
 import { type } from '@arktype/type'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 // feat-245 (docs/plan/passkeys-mfa-plan.md, Р7, Р8, Р15): the sign-in security section.
@@ -16,7 +17,7 @@ export const MfaStatusResponseSchema = type.or(
         /** The proofs POST /auth/reauth accepts from this account. */
         stepUpProofs: ProofMethodSchema.array(),
         /** Set in a recovery session (Р8). */
-        recovery: type({ expiresAt: 'string', replaced: 'boolean' }).or('null'),
+        recovery: type({ expiresAt: IsoDateTimeSchema, replaced: 'boolean' }).or('null'),
         /**
          * feat-248 (Р10, Д11): the factor this staff account needs (MFA_STAFF_FACTOR); null for an
          * account without a staff role or while MFA_REQUIRED_FOR_STAFF is off.

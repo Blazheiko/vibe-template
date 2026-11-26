@@ -1,4 +1,6 @@
 import { Result } from 'better-result'
+import type { Cursor } from 'shared/brand'
+import { asCursor } from '#app/domain/wire.js'
 import { type SessionToken, newSessionToken } from '#app/domain/secrets.js'
 import { CURRENT_SESSION_REASON } from 'shared/errors'
 import type { SessionView } from 'shared'
@@ -53,7 +55,7 @@ export async function underUserRowLock<T>(userId: string, work: () => Promise<T>
 export interface SessionListPage {
     current: SessionView | null
     others: SessionView[]
-    nextCursor: string | null
+    nextCursor: Cursor | null
 }
 
 /** Whether the session that asks still has its record (feat-134): checked before a change. */
@@ -115,7 +117,7 @@ export const sessionListService = {
         return Result.ok({
             current: currentView,
             others,
-            nextCursor: page.next === null ? null : encodeSessionCursor(page.next),
+            nextCursor: page.next === null ? null : asCursor(encodeSessionCursor(page.next)),
         })
     },
 

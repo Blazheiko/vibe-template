@@ -1,5 +1,12 @@
 import { leaseForDatabaseWrites } from '#app/services/shared/redis-lease.js'
-import { ms, seconds, toSecondsCeil } from 'shared/brand'
+import {
+    ms,
+    seconds,
+    toSecondsCeil,
+    toIsoDateTime,
+    type EntityId,
+    type IsoDateTime,
+} from 'shared/brand'
 import { supportRepository } from '#app/repositories/index.js'
 import { supportEmbeddingService } from '#app/services/support/support-embedding-service.js'
 import { supportLlmService } from '#app/services/support/support-llm-service.js'
@@ -33,14 +40,14 @@ import {
     acquireSupportLock,
     type SupportLease,
 } from '#app/services/support/support-inflight-lock.js'
-import { asSupportMessageId, type UserId } from '#app/domain/ids.js'
+import { asSupportMessageId, type UserId, toEntityId } from '#app/domain/ids.js'
 
 export interface SupportChatHistoryItem {
-    id: string
+    id: EntityId
     role: 'user' | 'assistant'
     content: string
     screenshots: string[] | null
-    createdAt: string
+    createdAt: IsoDateTime
 }
 
 // The UI locale the client sent, mapped to an app locale; otherwise the configured
@@ -281,11 +288,11 @@ export const supportService = {
         return Result.ok({
             hasMore,
             data: rows.map((m) => ({
-                id: String(m.id),
+                id: toEntityId(m.id),
                 role: m.role,
                 content: m.content,
                 screenshots: (m.screenshots as string[] | null) ?? null,
-                createdAt: m.createdAt.toISOString(),
+                createdAt: toIsoDateTime(m.createdAt),
             })),
         })
     },

@@ -9,6 +9,7 @@ import pluginPlaywright from 'eslint-plugin-playwright'
 import skipFormatting from '@vue/eslint-config-prettier/skip-formatting'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import noBrandCast from '../../scripts/eslint-rules/no-brand-cast.mjs'
 
 // To allow more languages other than `ts` in `.vue` files, uncomment the following lines:
 // import { configureVueProject } from '@vue/eslint-config-typescript'
@@ -209,6 +210,14 @@ export default defineConfigWithVueTs(
                 },
             ],
         },
+    },
+    {
+        // ADR 0007 (feat-268): a branded value (EntityId, IsoDateTime…) comes from a guard, a
+        // schema or a constructor of shared/brand, never from a cast; the tests may cast.
+        files: ['src/**/*.{ts,vue}'],
+        ignores: ['src/**/__tests__/**'],
+        plugins: { local: { rules: { 'no-brand-cast': noBrandCast } } },
+        rules: { 'local/no-brand-cast': 'error' },
     },
     {
         files: ['src/types/i18n.d.ts'],

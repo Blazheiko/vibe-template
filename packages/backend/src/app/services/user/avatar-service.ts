@@ -1,4 +1,5 @@
 import { isServerRejection } from '#app/repositories/db-errors.js'
+import type { EntityId } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
@@ -27,7 +28,7 @@ const ALLOWED_TYPES: ReadonlySet<DetectedImageType> = new Set([
 ])
 
 interface AvatarUserPayload {
-    id: string
+    id: EntityId
     name: string
     email: string
     avatar: string | null

@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { EntityId } from 'shared/brand'
 import {
     NOTIFICATION_CHANNEL_LOCKED_REASON,
     NOTIFICATION_CHANNEL_UNAVAILABLE_REASON,
@@ -18,7 +19,7 @@ import {
 import { userEventBus } from '#app/services/communication/user-event-bus.js'
 import { badRequest, notFound, type AppError, type AppResult } from '#app/services/shared/errors.js'
 import { notificationTransformer } from '#app/transformers/index.js'
-import type { UserId, NotificationId } from '#app/domain/ids.js'
+import { type UserId, type NotificationId, toEntityId } from '#app/domain/ids.js'
 
 // feat-236 (Р4, Р6): what the notification center answers. Every call is bound to the user of the
 // session; a notification of somebody else is answered like a missing one.
@@ -37,7 +38,7 @@ const signal = (
 
 export interface NotificationsPage {
     items: NotificationItem[]
-    next: string | null
+    next: EntityId | null
     unreadCount: number
 }
 
@@ -50,7 +51,7 @@ export const notificationCenterService = {
         const unreadCount = await notificationRepository.countUnread(userId)
         return Result.ok({
             items: page.rows.map((row) => notificationTransformer.serialize(row)),
-            next: page.next === null ? null : String(page.next),
+            next: page.next === null ? null : toEntityId(page.next),
             unreadCount,
         })
     },

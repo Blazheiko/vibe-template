@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminUserListItem } from 'shared/responses'
 
 import { useUserStore } from '@/stores/user'
+import { asEntityId, asIsoDateTime, testUser } from '../../../__tests__/brands'
 
 // feat-242 (review 2026-11-21): the users list keeps the answer of the current filters only, and a
 // role change refreshes the selection of the role filter.
@@ -16,10 +17,10 @@ vi.mock('@/stores/state', () => ({ useStateStore: () => ({ timeZone: 'UTC' }) })
 const { default: AdminUsersView } = await import('../AdminUsersView.vue')
 
 const user = (id: string, over: Partial<AdminUserListItem> = {}): AdminUserListItem => ({
-    id,
+    id: asEntityId(id),
     name: `User ${id}`,
     email: `u${id}@example.test`,
-    registeredAt: '2026-11-20T10:00:00.000Z',
+    registeredAt: asIsoDateTime('2026-11-20T10:00:00.000Z'),
     role: 'user',
     emailVerified: true,
     ...over,
@@ -64,7 +65,7 @@ const ids = (wrapper: Awaited<ReturnType<typeof mountView>>) =>
 describe('AdminUsersView', () => {
     beforeEach(() => {
         setActivePinia(createPinia())
-        useUserStore().setUser({ id: '1', role: 'admin' })
+        useUserStore().setUser(testUser({ id: asEntityId('1'), role: 'admin' }))
         api.list.mockReset()
     })
 

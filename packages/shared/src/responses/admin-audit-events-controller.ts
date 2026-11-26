@@ -1,4 +1,6 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { CursorSchema, IsoDateTimeSchema } from '../brands/wire.js'
 import {
     AUDIT_ACTION_NAMES,
     AUDIT_ACTOR_KINDS,
@@ -17,7 +19,7 @@ import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-r
  */
 export const AuditEventActorSchema = type({
     kind: type.enumerated(...AUDIT_ACTOR_KINDS),
-    userId: 'string | null',
+    userId: EntityIdSchema.or('null'),
     name: 'string | null',
     deleted: 'boolean',
     role: RoleSchema.or('null'),
@@ -27,7 +29,7 @@ export const AuditEventActorSchema = type({
 export type AuditEventActor = typeof AuditEventActorSchema.infer
 
 export const AuditEventTargetUserSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     name: 'string | null',
     deleted: 'boolean',
 })
@@ -85,12 +87,12 @@ export const AuditMetadataSchema = type({
  * No e-mail, phone or IP is ever part of it.
  */
 export const AuditEventSchema = type({
-    id: 'string',
-    occurredAt: 'string',
+    id: EntityIdSchema,
+    occurredAt: IsoDateTimeSchema,
     action: type.enumerated(...AUDIT_ACTION_NAMES),
     group: type.enumerated(...AUDIT_GROUPS),
     actor: AuditEventActorSchema,
-    target: { type: type.enumerated(...AUDIT_TARGET_TYPES), id: 'string' },
+    target: { type: type.enumerated(...AUDIT_TARGET_TYPES), id: EntityIdSchema },
     targetUser: AuditEventTargetUserSchema.or('null'),
     requestId: 'string | null',
     changes: AuditChangesSchema.or('null'),
@@ -103,7 +105,7 @@ export const AdminAuditEventsResponseSchema = type.or(
     {
         status: "'success'",
         items: AuditEventSchema.array(),
-        nextCursor: 'string | null',
+        nextCursor: CursorSchema.or('null'),
     },
     CanonicalErrorResponseSchema,
 )

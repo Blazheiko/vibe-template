@@ -1,14 +1,16 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { CursorSchema, IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 export const AdminOnlineHistoryListItemSchema = type({
-    id: 'string',
-    userId: 'string',
+    id: EntityIdSchema,
+    userId: EntityIdSchema,
     name: 'string',
     email: 'string',
     appType: "'web' | 'pwa' | null",
-    connectedAt: 'string',
-    disconnectedAt: 'string | null',
+    connectedAt: IsoDateTimeSchema,
+    disconnectedAt: IsoDateTimeSchema.or('null'),
     connectionDurationMs: 'number | null',
     closeCode: 'number | null',
     isFirstConnection: 'boolean',
@@ -24,7 +26,7 @@ export const AdminOnlineHistoryListResponseSchema = type.or(
         items: AdminOnlineHistoryListItemSchema.array(),
         total: 'number',
         limit: 'number',
-        nextCursor: 'string | null',
+        nextCursor: CursorSchema.or('null'),
         hasMore: 'boolean',
     },
     CanonicalErrorResponseSchema,

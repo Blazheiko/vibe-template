@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import type { Role } from 'shared/access'
 
 import { useUserStore } from '@/stores/user'
+import { asEntityId, testUser } from '../../../__tests__/brands'
 
 // feat-162 (review 2026-11-10): a failed list request came back as an empty list, so the view
 // said "No articles yet" and offered to initialise a knowledge base that was already there;
@@ -48,7 +49,7 @@ const button = (wrapper: Awaited<ReturnType<typeof mountView>>, label: string) =
 
 const signIn = (role: Role) => {
     setActivePinia(createPinia())
-    useUserStore().setUser({ id: '1', role })
+    useUserStore().setUser(testUser({ id: asEntityId('1'), role }))
 }
 
 describe('AdminKnowledgeBaseView', () => {

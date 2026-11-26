@@ -1,5 +1,6 @@
 import { type } from '@arktype/type'
 import { UA_DEVICE_TYPES } from '../utils/user-agent.js'
+import { CursorSchema, IsoDateTimeSchema, SessionPublicIdSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-response.js'
 
 /**
@@ -9,12 +10,6 @@ import { CanonicalErrorResponseSchema, type WithCanonicalError } from './error-r
  */
 export const SIGN_IN_METHODS = ['password', 'oauth', 'register', 'passkey'] as const
 export type SignInMethod = (typeof SIGN_IN_METHODS)[number]
-
-/**
- * The public id of a session: 22 base64url characters of an HMAC of the session id (Р5). The
- * session id itself is never sent.
- */
-export const SessionPublicIdSchema = type(/^[\w-]{22}$/)
 
 /**
  * One active session of the user (Р7). `browser` / `os` come from the User-Agent (`unknown` when
@@ -31,8 +26,8 @@ export const SessionViewSchema = type({
     ip: 'string',
     method: type.enumerated(...SIGN_IN_METHODS),
     provider: 'string | null',
-    signedInAt: 'string',
-    lastSeenAt: 'string | null',
+    signedInAt: IsoDateTimeSchema,
+    lastSeenAt: IsoDateTimeSchema.or('null'),
     online: 'boolean',
 })
 export type SessionView = typeof SessionViewSchema.infer
@@ -47,7 +42,7 @@ export const ListSessionsResponseSchema = type.or(
         status: "'success'",
         current: SessionViewSchema.or('null'),
         others: SessionViewSchema.array(),
-        nextCursor: 'string | null',
+        nextCursor: CursorSchema.or('null'),
     },
     CanonicalErrorResponseSchema,
 )

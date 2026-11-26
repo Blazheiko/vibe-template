@@ -1,17 +1,19 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 // prompt-transformer.ts SerializedPrompt: a llm_system_prompts row as the client gets it.
 export const PromptRowSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     type: "'SUPPORT_SYSTEM' | 'SUPPORT_FIRST_CHAT' | 'SUPPORT_QUERY_TRANSLATION'",
     topic: 'string | null',
     content: 'string',
     model: 'string | null',
     temperature: 'number | null',
     maxTokens: 'number | null',
-    createdAt: 'string',
-    updatedAt: 'string',
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
 })
 export type PromptRowResponse = typeof PromptRowSchema.infer
 

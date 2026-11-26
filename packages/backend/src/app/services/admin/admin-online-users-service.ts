@@ -1,10 +1,11 @@
 import type { Role } from 'shared/access'
+import { toIsoDateTime, type EntityId, type IsoDateTime } from 'shared/brand'
 import { userRepository } from '#app/repositories/index.js'
 import { wsConnectionRegistry } from '#app/websocket/ws-connection-registry.js'
 import { toEntityId, asUserId, type UserId } from '#app/domain/ids.js'
 
 export interface AdminOnlineUserItem {
-    id: string
+    id: EntityId
     name: string
     email: string
     appType: 'web' | 'pwa'
@@ -13,12 +14,12 @@ export interface AdminOnlineUserItem {
 }
 
 export interface AdminOnlineUserDetail {
-    id: string
+    id: EntityId
     name: string
     email: string
     phone: string | null
     role: Role
-    createdAt: string
+    createdAt: IsoDateTime
     isOnline: boolean
     appType: 'web' | 'pwa' | null
     userAgent: string | null
@@ -68,7 +69,7 @@ export const adminOnlineUsersService = {
             email: user.email ?? '',
             phone: user.phone,
             role: user.role,
-            createdAt: user.createdAt.toISOString(),
+            createdAt: toIsoDateTime(user.createdAt),
             isOnline: meta !== undefined,
             appType: meta?.appType ?? null,
             userAgent: meta?.userAgent ?? null,

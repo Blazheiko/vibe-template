@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionView } from 'shared'
 
 import en from '@/locales/en'
+import { asIsoDateTime, asSessionPublicId } from '../../../__tests__/brands'
 
 // feat-233 (Р7–Р12): the session list of the account page, with the API and the socket replaced.
 
@@ -28,7 +29,7 @@ const i18n = createI18n({ legacy: false, locale: 'en', messages: { en } })
 const eventBus = useEventBus()
 
 const view = (id: string, over: Partial<SessionView> = {}): SessionView => ({
-    id: id.padEnd(22, 'x'),
+    id: asSessionPublicId(id.padEnd(22, 'x')),
     current: false,
     browser: 'Firefox',
     os: 'Linux',
@@ -37,8 +38,8 @@ const view = (id: string, over: Partial<SessionView> = {}): SessionView => ({
     ip: '203.0.113.7',
     method: 'password',
     provider: null,
-    signedInAt: '2026-11-19T10:00:00.000Z',
-    lastSeenAt: new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
+    signedInAt: asIsoDateTime('2026-11-19T10:00:00.000Z'),
+    lastSeenAt: asIsoDateTime(new Date(Date.now() - 3 * 60 * 60_000).toISOString()),
     online: false,
     ...over,
 })
@@ -238,8 +239,8 @@ describe('ActiveSessions', () => {
         const minutes = (n: number) => new Date(Date.now() - n * 60_000).toISOString()
         api.listSessions.mockResolvedValue(
             page([
-                view('a', { lastSeenAt: minutes(10) }),
-                view('b', { lastSeenAt: minutes(26 * 60) }),
+                view('a', { lastSeenAt: asIsoDateTime(minutes(10)) }),
+                view('b', { lastSeenAt: asIsoDateTime(minutes(26 * 60)) }),
                 view('c', { lastSeenAt: null }),
             ]),
         )

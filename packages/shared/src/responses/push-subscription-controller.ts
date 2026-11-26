@@ -1,12 +1,14 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 // Wire shapes of push-subscription-transformer.ts and push-notification-log-transformer.ts:
 // the response schemas are an allow-list (feat-046), so every field the client gets
 // is listed here.
 export const SerializedPushSubscriptionSchema = type({
-    id: 'string',
-    userId: 'string',
+    id: EntityIdSchema,
+    userId: EntityIdSchema,
     endpoint: 'string',
     // feat-208: no p256dhKey, authKey or ipAddress. The browser has its own keys, and
     // nothing on the client reads them back; the server keeps them to encrypt a push.
@@ -20,29 +22,29 @@ export const SerializedPushSubscriptionSchema = type({
     timezone: 'string | null',
     created_at: 'string | null',
     updated_at: 'string | null',
-    lastUsedAt: 'string | null',
+    lastUsedAt: IsoDateTimeSchema.or('null'),
 })
 export type SerializedPushSubscription = typeof SerializedPushSubscriptionSchema.infer
 
 const PushLogStatusSchema = type("'SENT' | 'FAILED' | 'PENDING' | null")
 
 export const PushLogSummaryRowSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     messageTitle: 'string | null',
     status: PushLogStatusSchema,
-    sentAt: 'string',
+    sentAt: IsoDateTimeSchema,
 })
 
 export const PushLogRowSchema = type({
-    id: 'string',
-    userId: 'string | null',
-    subscriptionId: 'string | null',
+    id: EntityIdSchema,
+    userId: EntityIdSchema.or('null'),
+    subscriptionId: EntityIdSchema.or('null'),
     messageTitle: 'string | null',
     messageBody: 'string | null',
     // `data` of the notification this user's device already received; no fixed shape
     // (an allow-list exception, plan §4.5).
     messageData: 'unknown',
-    sentAt: 'string',
+    sentAt: IsoDateTimeSchema,
     status: PushLogStatusSchema,
     // feat-104: the HTTP status the push service answered, and why a send failed; the transport
     // error text is never sent to the client.
@@ -121,7 +123,7 @@ export const GetSubscriptionStatisticsResponseSchema = type.or(
                 last7DaysCount: 'number',
                 lastUsed: 'string | null',
                 isActive: 'boolean',
-                createdAt: 'string',
+                createdAt: IsoDateTimeSchema,
             },
         },
     },

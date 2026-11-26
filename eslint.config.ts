@@ -28,6 +28,8 @@ export default tseslint.config(
             'packages/backend/drizzle.config.ts',
             // typed fixtures of the tests of the local rules (their own tsconfig)
             'scripts/eslint-rules/fixtures/**',
+            // the type declaration of a local rule for the frontend's eslint.config.ts
+            'scripts/eslint-rules/*.d.mts',
         ],
     },
 

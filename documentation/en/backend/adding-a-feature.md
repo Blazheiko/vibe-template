@@ -70,10 +70,11 @@ Controller responses live in `packages/shared/src/responses/` and are built as `
 ```ts
 // packages/shared/src/responses/note-controller.ts
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 export const NoteSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     title: 'string',
     body: 'string | null',
     created_at: 'string | null',
@@ -203,7 +204,7 @@ export type { NoteRow, NoteInsert } from './note/note-repository.js'
 
 ## Step 5. Transformer
 
-The transformer turns a DB row into a public DTO: an id → `string` with `toEntityId`, `Date` → a UTC ISO string via `toISOString()`, as in [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Internal fields (`userId`) are not exposed.
+The transformer turns a DB row into a public DTO: an id → `EntityId` with `toEntityId` (a string on the wire; the response schema declares `EntityIdSchema`), `Date` → a UTC ISO string via `toISOString()` (a field the schema declares `IsoDateTimeSchema` gets `toIsoDateTime(date)` from `shared/brand`), as in [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Internal fields (`userId`) are not exposed.
 
 ```ts
 // packages/backend/src/app/transformers/note-transformer.ts

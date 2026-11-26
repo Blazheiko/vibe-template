@@ -1,4 +1,6 @@
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
+import { IsoDateTimeSchema } from '../brands/wire.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 export const SupportChatResponseSchema = type.or(
@@ -15,11 +17,11 @@ export type SupportOpenChatResponse = typeof SupportOpenChatResponseSchema.infer
 
 // support-service.ts SupportChatHistoryItem.
 export const SupportChatHistoryItemSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     role: "'user' | 'assistant'",
     content: 'string',
     screenshots: 'string[] | null',
-    createdAt: 'string',
+    createdAt: IsoDateTimeSchema,
 })
 export type SupportChatHistoryItem = typeof SupportChatHistoryItemSchema.infer
 
@@ -43,7 +45,7 @@ export type SupportDeleteChatHistoryResponse = typeof SupportDeleteChatHistoryRe
 
 // knowledge-base-service.ts KbItemData.
 export const SupportKnowledgeBaseItemSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     title: 'string',
     content: 'string',
     category: 'string | null',
@@ -51,8 +53,8 @@ export const SupportKnowledgeBaseItemSchema = type({
     hasScreenshot: 'boolean',
     screenshotKey: 'string | null',
     embeddingIndexed: 'boolean',
-    createdAt: 'string',
-    updatedAt: 'string',
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema,
 })
 export type SupportKnowledgeBaseItem = typeof SupportKnowledgeBaseItemSchema.infer
 
@@ -109,8 +111,8 @@ export const SupportKnowledgeBaseInitJobSchema = type({
     failedFiles: 'number',
     progressPercent: 'number',
     currentFile: 'string | null',
-    startedAt: 'string | null',
-    completedAt: 'string | null',
+    startedAt: IsoDateTimeSchema.or('null'),
+    completedAt: IsoDateTimeSchema.or('null'),
     message: 'string | null',
 })
 export type SupportKnowledgeBaseInitJob = typeof SupportKnowledgeBaseInitJobSchema.infer

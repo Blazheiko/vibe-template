@@ -70,10 +70,11 @@ export { CreateNoteInputSchema, type CreateNoteInput } from './note/create-note.
 ```ts
 // packages/shared/src/responses/note-controller.ts
 import { type } from '@arktype/type'
+import { EntityIdSchema } from '../brands/ids.js'
 import { CanonicalErrorResponseSchema } from './error-response.js'
 
 export const NoteSchema = type({
-    id: 'string',
+    id: EntityIdSchema,
     title: 'string',
     body: 'string | null',
     created_at: 'string | null',
@@ -203,7 +204,7 @@ export type { NoteRow, NoteInsert } from './note/note-repository.js'
 
 ## Крок 5. Transformer
 
-Transformer перетворює рядок БД на публічний DTO: id → `string` через `toEntityId`, `Date` → ISO-рядок UTC через `toISOString()`, як у [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Внутрішні поля (`userId`) назовні не віддаються.
+Transformer перетворює рядок БД на публічний DTO: id → `EntityId` через `toEntityId` (на дроті це рядок; схема відповіді оголошує `EntityIdSchema`), `Date` → ISO-рядок UTC через `toISOString()` (поле, яке схема оголошує `IsoDateTimeSchema`, отримує `toIsoDateTime(date)` з `shared/brand`), як у [push-subscription-transformer.ts](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/transformers/push-subscription-transformer.ts). Внутрішні поля (`userId`) назовні не віддаються.
 
 ```ts
 // packages/backend/src/app/transformers/note-transformer.ts

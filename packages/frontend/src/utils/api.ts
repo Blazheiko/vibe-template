@@ -331,7 +331,11 @@ export const avatarApi = {
     delete: (): Promise<ApiResponse<DeleteAvatarResponse>> => callApi(avatarContracts.remove),
 }
 
-export type SupportChatMessage = SupportChatHistoryItem
+/**
+ * A message of the chat as the store keeps it: a stored message has its row id, and one shown
+ * before the server stored it has a local id (`local-1`), so `id` is plain text here.
+ */
+export type SupportChatMessage = Omit<SupportChatHistoryItem, 'id'> & { id: string }
 
 export type KnowledgeBaseArticle = SupportKnowledgeBaseItem
 

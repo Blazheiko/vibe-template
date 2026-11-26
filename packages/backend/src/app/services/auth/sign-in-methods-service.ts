@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { toIsoDateTime, type EntityId, type IsoDateTime } from 'shared/brand'
 import type { SessionToken } from '#app/domain/secrets.js'
 
 import { oauthAccountRepository, userRepository, withTransaction } from '#app/repositories/index.js'
@@ -19,7 +20,7 @@ import { staffPolicy } from '#app/services/auth/mfa/staff-policy.js'
 import logger from '#vendor/utils/logger.js'
 import type { UserAuditActor } from '#app/services/audit/audit-actor.js'
 import { auditService, type RecordedAuditEvent } from '#app/services/audit/audit-service.js'
-import type { OAuthAccountId, UserId } from '#app/domain/ids.js'
+import { type OAuthAccountId, type UserId, toEntityId } from '#app/domain/ids.js'
 
 // feat-199 (security review 2026-11-12, M-2): an identity of an OAuth provider linked to an
 // account signs in to it whatever happens to the password, and the owner could neither see the
@@ -33,21 +34,21 @@ import type { OAuthAccountId, UserId } from '#app/domain/ids.js'
 export const LAST_SIGN_IN_METHOD = 'last_sign_in_method'
 
 export interface SignInMethod {
-    id: string
+    id: EntityId
     provider: string
     name: string | null
-    linkedAt: string
+    linkedAt: IsoDateTime
 }
 
 const hasPassword = (user: { password: string | null }): boolean =>
     user.password !== null && user.password !== ''
 
 const serialize = (link: OAuthAccountRow): SignInMethod => ({
-    id: String(link.id),
+    id: toEntityId(link.id),
     provider: link.provider,
     // Outside data: shown only when it cannot pass for a link or an address.
     name: link.providerName === null ? null : mailSafeDisplayName(link.providerName),
-    linkedAt: link.createdAt.toISOString(),
+    linkedAt: toIsoDateTime(link.createdAt),
 })
 
 /**

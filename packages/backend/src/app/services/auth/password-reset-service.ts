@@ -1,5 +1,5 @@
 import { hashPassword } from 'metautil'
-import { ms, nowUnixMs } from 'shared/brand'
+import { ms, nowUnixMs, toIsoDateTime, type IsoDateTime } from 'shared/brand'
 import appConfig from '#config/app.js'
 import logger from '#logger'
 import {
@@ -210,8 +210,8 @@ export const passwordResetService = {
         AppResult<{
             message: string
             challengeId?: string
-            expiresAt?: string
-            resendAvailableAt?: string
+            expiresAt?: IsoDateTime
+            resendAvailableAt?: IsoDateTime
         }>
     > {
         if (!authConfig.phoneAuthEnabled) {
@@ -344,8 +344,8 @@ export const passwordResetService = {
         return Result.ok({
             message: GENERIC_PHONE_RESET_MESSAGE,
             challengeId: created.id,
-            expiresAt: created.expiresAt.toISOString(),
-            resendAvailableAt: created.resendAvailableAt.toISOString(),
+            expiresAt: toIsoDateTime(created.expiresAt),
+            resendAvailableAt: toIsoDateTime(created.resendAvailableAt),
         })
     },
 
