@@ -2651,8 +2651,8 @@
             "owner": "Blazheiko",
             "branch": "feat/normalized-email",
             "dependencies": ["feat-263"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #855 (merge de83e812), status #854 (in_progress), #856 (review). app/domain/email.ts NormalizedEmail with normalizeEmail as the only constructor; $type<NormalizedEmail> on users.email, both provider_email and the three target_email columns (every write path normalized: the OAuth identity once where the provider profile is read and again from the MFA ticket JSON, the seed); findByEmail / emailExistsForOtherUser take a NormalizedEmail; shared EmailInputSchema replaces the three 'string.email & string <= 255' copies; the unnormalized Email / EmailSchema brand is removed; type test app/domain/email.spec.ts, contracts test for EmailInputSchema, docs shared/index.md (uk + en). Local: make check exit 0 (backend 3899, frontend 1029, shared 152), db:generate no changes, docs:build + docs:verify. CI on 7f41b10: test-pg https://github.com/Blazheiko/vibe-template/actions/runs/45809643515 (72 files, 724 passed, 0 skipped), test-redis https://github.com/Blazheiko/vibe-template/actions/runs/45809643612 (20 files, 211 passed, 0 skipped); all checks green again on ef00748. Manual golden path not run against a live app (no local database of this project)."
         },
         {
             "id": "feat-267",
