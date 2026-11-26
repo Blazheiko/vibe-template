@@ -2,7 +2,7 @@
 
 ## Current state
 
-Implementation complete (T43–T48 of `docs/plan/branded-types-tasks.md`); waiting for CI and review.
+Implementation complete (T43–T48 of `docs/plan/branded-types-tasks.md`); CI green, in review.
 
 ## What changed
 
@@ -43,8 +43,8 @@ Implementation complete (T43–T48 of `docs/plan/branded-types-tasks.md`); waiti
   shared and eslint-rule tests pass.
 - `pnpm --filter frontend test:e2e`: 134 passed.
 - `pnpm docs:build && pnpm docs:verify`: all checks passed.
-- CI `test-pg` / `test-redis` / `e2e-live`: to be recorded from the PR run (the response check now
-  validates ISO dates, so `test-pg` covers the real responses).
+- CI on PR #863 (second run): `test-pg` 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45845603756);
+  `test-redis` 20 files / 213 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45845603836); `e2e`, `e2e-live`, `quality`, `build` green.
 - Golden path: sessions, notifications and admin pages are covered by the e2e suite above and by
   `e2e-live` in CI; no manual browser session was run.
 
