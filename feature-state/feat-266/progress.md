@@ -24,7 +24,10 @@ Status PR: #854 (`in_progress`). Branch: `feat/normalized-email`.
   without ArkType).
 - `pnpm --filter backend db:generate`: "No schema changes, nothing to migrate".
 - `pnpm docs:build && pnpm docs:verify`: exit 0.
-- `make test-pg` / `make test-redis`: CI jobs of the implementation PR (links added after the run).
+- `make test-pg`: CI on `7f41b10`, https://github.com/Blazheiko/vibe-template/actions/runs/45809643515: 72 files,
+  724 tests passed, 0 skipped.
+- `make test-redis`: CI on `7f41b10`, https://github.com/Blazheiko/vibe-template/actions/runs/45809643612: 20
+  files, 211 tests passed, 0 skipped.
 - Manual golden path: not run against a live app (no local database of this project); registration, login by
   e-mail and the OAuth link are covered by the HTTP PG suites in CI.
 
