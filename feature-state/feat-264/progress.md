@@ -26,7 +26,11 @@ Branch: `feat/branded-ids-domains` (started stacked on feat-263; `main` merged a
 - `make check`: exit 0 after merging `main` (backend 3892, frontend 1029, landing 103, eslint rules 12 tests passed;
   `check-bundle-graph: 762 modules, no schema and no validator library`).
 - `pnpm --filter backend db:generate`: "No schema changes, nothing to migrate".
-- `make test-pg` / `make test-redis`: CI jobs of the implementation PR (links added after the run).
+- `make test-pg`: CI on `3f594c7`, https://github.com/Blazheiko/vibe-template/actions/runs/45769639711: 72 files,
+  724 tests passed, 0 skipped.
+- `make test-redis`: CI on `3f594c7`, https://github.com/Blazheiko/vibe-template/actions/runs/45769639735: 20
+  files, 211 tests passed, 0 skipped.
+- `pnpm docs:build && pnpm docs:verify`: exit 0, "verify-dist: all checks passed".
 - Manual golden path: not run against a live app (no local database of this project); push, notifications, support
   and the audit log are covered by their HTTP PG suites in CI.
 
