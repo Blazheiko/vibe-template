@@ -2621,8 +2621,8 @@
             "owner": "Blazheiko",
             "branch": "feat/branded-ids-auth",
             "dependencies": ["feat-262"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #843 (merge 7f4c7c44), status #842 (in_progress), #844 (review). ADR 0007; database/ids.ts brands (UserId on users.id and every user id column, OAuthAccountId, UserOnlineId, OneTimeTokenRowId, TotpFactorId, MfaRecoveryCodeId, PasskeyId, SmsChallengeId) via $type; app/domain/ids.ts per-brand constructors, asUserId for trusted text, toEntityId; every user id parameter is a UserId; Р11 order for webauthn rename/deleteOne, totp consumeStep, oauth deleteForUser; vendor session types unchanged, a stored user id that is not a row id is no user, checkSessionToken answers mismatch (was 503) for one; type-aware ESLint rule local/no-brand-cast with RuleTester tests in pnpm test; tutorial adding-a-feature (uk + en), skill backend-feature, docs database/repositories/transformers. Local: make check exit 0 (backend 3856, frontend 1029), db:generate no changes, docs:build + docs:verify. CI on da27b67: test-pg https://github.com/Blazheiko/vibe-template/actions/runs/45766425320 (72 files, 724 passed, 0 skipped), test-redis https://github.com/Blazheiko/vibe-template/actions/runs/45766425366 (20 files, 211 passed, 0 skipped); all checks green on d655c14. Deviation: every user_id FK of all domains is branded here (not in feat-264). Manual golden path not run against a live app (no local database of this project)."
         },
         {
             "id": "feat-264",
