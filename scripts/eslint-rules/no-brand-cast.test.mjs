@@ -34,6 +34,13 @@ const header = [
     'type Row = { id: UserId; name: string }',
     'declare const x: bigint',
     'declare const row: unknown',
+    // feat-271: containers declared here, not taken from the lib: the checker of the CI runner
+    // does not load the default lib for this fixture (Array, Promise, Set, Map, Record resolve to
+    // nothing there). A generic interface is the same type reference as Promise<X> or X[], an
+    // index signature the same as Record<string, X>.
+    'interface Box<T> { value: T }',
+    'interface Pair<A, B> { a: A; b: B }',
+    'type Dict<T> = { [key: string]: T }',
     'export {}',
     '',
 ].join('\n')
@@ -48,9 +55,9 @@ tester.run('no-brand-cast', rule, {
         valid('const d = row as Row'),
         valid('const e = row as unknown as Row'),
         valid('const f = row as { id: UserId }'),
-        valid('const g = row as Row[]'),
-        valid('const h = row as Promise<Row>'),
-        valid('const i = row as Record<string, string>'),
+        valid('const g = row as [Row]'),
+        valid('const h = row as Box<Row>'),
+        valid('const i = row as Dict<string>'),
         valid('function j<T extends string>(v: unknown): T {\n    return v as T\n}'),
     ],
     invalid: [
@@ -61,12 +68,11 @@ tester.run('no-brand-cast', rule, {
         invalid('const e = <UserId>x'),
         invalid('const f = x as UserId | null'),
         // feat-271: containers of a brand and a type parameter constrained to one.
-        invalid('const g = row as UserId[]'),
-        invalid('const h = row as [UserId]'),
-        invalid('const i = row as Promise<UserId>'),
-        invalid('const j = row as Set<UserId>'),
-        invalid('const k = row as Record<string, UserId>'),
-        invalid('const l = row as Map<string, UserId | null>'),
+        invalid('const g = row as [UserId]'),
+        invalid('const h = row as Box<UserId>'),
+        invalid('const i = row as Pair<string, UserId | null>'),
+        invalid('const j = row as Dict<UserId>'),
+        invalid('const k = row as Box<Dict<UserId>>'),
         invalid('function m<T extends UserId | null>(v: unknown): T {\n    return v as T\n}'),
     ],
 })

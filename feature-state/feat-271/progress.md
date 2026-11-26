@@ -12,7 +12,7 @@ Branch: `chore/branded-types-coverage`. Status: implementation done, PR open.
 
 **Shared / frontend (T44).** `IsoDateTime` for `totp.createdAt`, push `created_at` / `updated_at` / `statistics.lastUsed`, auth user `created_at?` / `updated_at?`; `EntityId` for admin `user.id` (role, MFA reset) and support reindex `failed`. `QueryWireValue` unwraps brands inside lists, checked on a real ArkType schema (optional, nullable, list, parsed number). Frontend `pushSubscriptionId` / notifications `next` refs are `EntityId | null`; `no-brand-cast` covers `.mts` / `.tsx`; a `<template>` takes no `as` cast (`vue/no-restricted-syntax`, no template had one).
 
-**Static checks.** `no-brand-cast` catches casts to containers of a brand (array, tuple, Promise, Set, Map, Record) and to a type parameter constrained to one (`getBaseConstraintOfType`); TypeFlags come from the installed compiler (their numbers changed in TS 6). 7 new invalid and 4 valid RuleTester cases.
+**Static checks.** `no-brand-cast` catches casts to containers of a brand (array, tuple, Promise, Set, Map, Record) and to a type parameter constrained to one (`getBaseConstraintOfType`); TypeFlags come from the installed compiler (their numbers changed in TS 6). 6 new invalid and 3 valid RuleTester cases on containers declared in the test (a tuple, generic interfaces, an index signature): the CI runner's checker loads no default lib for the fixture, so `X[]` / `Promise<X>` / `Record` cases passed locally and failed in CI (first run of #880). A probe in `packages/backend/src/app` (`as UserId[]`, `as Promise<UserId>`, `as Record<string, UserId>`, `as Map<string, UserId>`) gave 4 `no-brand-cast` errors with the real lib.
 
 Docs: `shared/index.md`, `backend/adding-a-feature.md` (both locales).
 
@@ -20,7 +20,7 @@ Not done (left as is, with reason): `ws-message-budget` / rate-limit `now: numbe
 
 ## Evidence of Completion
 
-- `make check`: exit 0 (backend 3925, frontend 1029, landing 103, api-playground 115, rule tests 31; one pre-existing frontend lint warning).
+- `make check`: exit 0 (backend 3925, frontend 1029, landing 103, api-playground 115, rule tests 30; one pre-existing frontend lint warning).
 - `pnpm docs:build && pnpm docs:verify`: all checks passed.
 - `QueryWireValue` list check fails (1 TS error) without the fix.
 - Probes: a `.mts` cast and a `<script>` cast are reported by `no-brand-cast`, a template cast by `vue/no-restricted-syntax`.
