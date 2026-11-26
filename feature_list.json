@@ -2651,7 +2651,7 @@
             "owner": "Blazheiko",
             "branch": "feat/normalized-email",
             "dependencies": ["feat-263"],
-            "status": "in_progress",
+            "status": "review",
             "evidence": ""
         },
         {
