@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import type { LlmSystemPromptId } from '#app/domain/ids.js'
 
 import { promptTransformer } from './prompt-transformer.js'
 
 const row = {
-    id: 5n,
+    id: 5n as LlmSystemPromptId,
     type: 'SUPPORT_SYSTEM' as const,
     topic: null,
     content: 'You are support',

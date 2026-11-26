@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { parseSupportArticleId } from '#app/domain/ids.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { supportContracts } from 'shared/contracts'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
@@ -13,7 +14,6 @@ import type {
 } from 'shared/responses'
 import { Result } from 'better-result'
 import type { SupportChatHistoryQuery } from 'shared/schemas'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 export default {
     async getChatHistory(
@@ -51,7 +51,7 @@ export default {
 
         // The router fills every segment of the contract's path; an empty or non-numeric one is
         // refused here.
-        const articleId = parseEntityId(context.httpData.params.articleId)
+        const articleId = parseSupportArticleId(context.httpData.params.articleId)
         if (articleId === null) {
             return mapControllerError(context, badRequest('Invalid articleId'))
         }

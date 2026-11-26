@@ -47,9 +47,9 @@ export const pushNotificationLogTransformer = {
             typeof responseData?.statusCode === 'number' ? responseData.statusCode : null
         return {
             ...rest,
-            id: String(id),
+            id: toEntityId(id),
             userId: userId === null ? null : toEntityId(userId),
-            subscriptionId: subscriptionId === null ? null : String(subscriptionId),
+            subscriptionId: subscriptionId === null ? null : toEntityId(subscriptionId),
             sentAt: sentAt.toISOString(),
             statusCode,
             reason: deliveryReason(rest.status, statusCode),
@@ -62,6 +62,6 @@ export const pushNotificationLogTransformer = {
 
     serializeSummary(log: PushSubscriptionLogSummary): SerializedPushLogSummary {
         const { id, sentAt, ...rest } = log
-        return { ...rest, id: String(id), sentAt: sentAt.toISOString() }
+        return { ...rest, id: toEntityId(id), sentAt: sentAt.toISOString() }
     },
 }

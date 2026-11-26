@@ -4,7 +4,7 @@ import { testAdminActor } from '../../test-support/audit-actor.js'
 
 import { hasPg } from '../../test-support/pg-test-db.js'
 import { PNG_BYTES } from '../../test-support/image-fixtures.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { SupportArticleId, UserId } from '#app/domain/ids.js'
 
 // feat-116 (R11d) on real PostgreSQL with an in-memory S3: a KB screenshot and an avatar are
 // replaced in one order - upload the new object, swap the key in the locked row (which returns
@@ -75,7 +75,7 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
     const { avatarService } = await import('#app/services/user/avatar-service.js')
 
     const run = `${String(Date.now())}-${String(process.pid)}`
-    const articleIds: bigint[] = []
+    const articleIds: SupportArticleId[] = []
     const userIds: UserId[] = []
     let counter = 0
 
@@ -99,19 +99,19 @@ describe.skipIf(!hasPg)('storage object replacement (feat-116)', async () => {
 
     // ---- KB screenshot -------------------------------------------------------------------
 
-    const newArticle = async (): Promise<bigint> => {
+    const newArticle = async (): Promise<SupportArticleId> => {
         const row = await supportKnowledgeRepository.create({ title: 'storage', content: 'c' })
         articleIds.push(row.id)
         return row.id
     }
-    const screenshotKey = async (id: bigint): Promise<string | null | undefined> => {
+    const screenshotKey = async (id: SupportArticleId): Promise<string | null | undefined> => {
         const [row] = await db
             .select({ key: supportKnowledgeBase.screenshotKey })
             .from(supportKnowledgeBase)
             .where(eq(supportKnowledgeBase.id, id))
         return row === undefined ? undefined : row.key
     }
-    const expectKbConsistent = async (id: bigint): Promise<void> => {
+    const expectKbConsistent = async (id: SupportArticleId): Promise<void> => {
         const key = await screenshotKey(id)
         expect(objectsUnder(`knowledge-base/${String(id)}/`)).toEqual(
             key === null || key === undefined ? [] : [key],

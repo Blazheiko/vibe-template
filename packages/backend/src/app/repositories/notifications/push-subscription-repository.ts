@@ -5,7 +5,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import type { DbExecutor } from '../transaction.js'
 
 import { pushNotificationLogRepository } from './push-notification-log-repository.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { PushSubscriptionId, UserId } from '#app/domain/ids.js'
 
 const LOGS_PER_SUBSCRIPTION = 5
 
@@ -41,8 +41,8 @@ export type PushSubscriptionWithLogs = PushSubscriptionRow & {
 
 export interface IPushSubscriptionRepository {
     create(data: PushSubscriptionInsert, executor?: DbExecutor): Promise<PushSubscriptionRow>
-    findById(id: bigint): Promise<PushSubscriptionRow | undefined>
-    findByIdAndUserId(id: bigint, userId: UserId): Promise<PushSubscriptionRow | undefined>
+    findById(id: PushSubscriptionId): Promise<PushSubscriptionRow | undefined>
+    findForUser(userId: UserId, id: PushSubscriptionId): Promise<PushSubscriptionRow | undefined>
     findByEndpoint(
         endpoint: string,
         executor?: DbExecutor,
@@ -52,25 +52,25 @@ export interface IPushSubscriptionRepository {
     countByUserId(userId: UserId, executor?: DbExecutor): Promise<number>
     findByUserIdWithLogs(userId: UserId): Promise<PushSubscriptionWithLogs[]>
     update(
-        id: bigint,
         userId: UserId,
+        id: PushSubscriptionId,
         data: PushSubscriptionUpdate,
         executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
     updateByEndpoint(
-        endpoint: string,
         userId: UserId,
+        endpoint: string,
         data: PushSubscriptionUpdate,
         executor?: DbExecutor,
     ): Promise<PushSubscriptionRow | undefined>
-    deactivate(id: bigint, userId: UserId): Promise<PushSubscriptionRow | undefined>
-    touchLastUsed(ids: bigint[], userId: UserId): Promise<void>
-    delete(id: bigint, userId: UserId): Promise<boolean>
+    deactivate(userId: UserId, id: PushSubscriptionId): Promise<PushSubscriptionRow | undefined>
+    touchLastUsed(userId: UserId, ids: PushSubscriptionId[]): Promise<void>
+    delete(userId: UserId, id: PushSubscriptionId): Promise<boolean>
     /** Removes every subscription of the user: the devices of a claimed account (feat-097). */
     deleteByUserId(userId: UserId, executor: DbExecutor): Promise<number>
     getLogsBySubscriptionId(
-        subscriptionId: bigint,
         userId: UserId,
+        subscriptionId: PushSubscriptionId,
         limit?: number,
     ): Promise<PushNotificationLogRow[]>
 }
@@ -101,7 +101,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
             .then((rows) => rows.at(0))
     },
 
-    async findByIdAndUserId(id, userId) {
+    async findForUser(userId, id) {
         return await db
             .select()
             .from(pushSubscriptions)
@@ -140,8 +140,8 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
         if (subscriptionsData.length === 0) return []
 
         const logs = await pushNotificationLogRepository.latestBySubscriptionIds(
-            subscriptionsData.map((sub) => sub.id),
             userId,
+            subscriptionsData.map((sub) => sub.id),
             LOGS_PER_SUBSCRIPTION,
         )
         const logsBySubscription = new Map<bigint, PushSubscriptionLogSummary[]>()
@@ -159,7 +159,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
 
     // The row comes from the owner-scoped UPDATE itself: re-reading it by id alone
     // would hand back another user's subscription when the WHERE matched nothing.
-    async update(id, userId, data, executor = db) {
+    async update(userId, id, data, executor = db) {
         const [row] = await executor
             .update(pushSubscriptions)
             .set({ ...data, updatedAt: new Date(), lastUsedAt: new Date() })
@@ -171,7 +171,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
     // No owner filter on purpose: the endpoint is unique across users, and moving it to
     // another account (same device, account switch) is allowed after the service has
     // checked the browser's keys.
-    async updateByEndpoint(endpoint, userId, data, executor = db) {
+    async updateByEndpoint(userId, endpoint, data, executor = db) {
         const [row] = await executor
             .update(pushSubscriptions)
             .set({ ...data, userId, updatedAt: new Date(), lastUsedAt: new Date() })
@@ -180,7 +180,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
         return row
     },
 
-    async touchLastUsed(ids, userId) {
+    async touchLastUsed(userId, ids) {
         if (ids.length === 0) return
         const now = new Date()
         await db
@@ -189,7 +189,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
             .where(and(inArray(pushSubscriptions.id, ids), eq(pushSubscriptions.userId, userId)))
     },
 
-    async deactivate(id, userId) {
+    async deactivate(userId, id) {
         const [row] = await db
             .update(pushSubscriptions)
             .set({ isActive: false, updatedAt: new Date() })
@@ -198,7 +198,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
         return row
     },
 
-    async delete(id, userId) {
+    async delete(userId, id) {
         const deleted = await db
             .delete(pushSubscriptions)
             .where(and(eq(pushSubscriptions.id, id), eq(pushSubscriptions.userId, userId)))
@@ -214,7 +214,7 @@ export const pushSubscriptionRepository: IPushSubscriptionRepository = {
         return deleted.length
     },
 
-    async getLogsBySubscriptionId(subscriptionId, userId, limit = 50) {
+    async getLogsBySubscriptionId(userId, subscriptionId, limit = 50) {
         return await db
             .select()
             .from(pushNotificationLogs)

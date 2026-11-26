@@ -16,14 +16,14 @@ import type {
     TextUsageCompleteHandler,
     TokenUsage,
 } from '#app/services/ai/types.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, LlmSystemPromptId } from '#app/domain/ids.js'
 
 export type { TextFilter }
 
 export interface TextUsageRecord {
     /** NULL for system calls without a user (knowledge-base indexing). */
     userId: UserId | null
-    llmSystemPromptId: bigint | null
+    llmSystemPromptId: LlmSystemPromptId | null
     model: string
     feature: TextFeature
     finalPrompt: string
@@ -96,7 +96,7 @@ export const llmUsageService = {
     textUsageRecorder(
         feature: TextFeature,
         userId: UserId | null,
-        llmSystemPromptId: bigint | null = null,
+        llmSystemPromptId: LlmSystemPromptId | null = null,
         onUsage?: (usage: TokenUsage) => void,
     ): TextUsageCompleteHandler {
         let recorded = false

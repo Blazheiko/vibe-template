@@ -9,8 +9,14 @@
 import { isValidEntityId } from 'shared/brand'
 
 import type {
+    AuditEventId,
+    LlmSystemPromptId,
+    NotificationId,
     OAuthAccountId,
     PasskeyId,
+    PushSubscriptionId,
+    SupportArticleId,
+    SupportMessageId,
     SmsChallengeId,
     TotpFactorId,
     UserId,
@@ -18,11 +24,19 @@ import type {
 } from '../../database/ids.js'
 
 export type {
+    AuditEventId,
+    LlmSystemPromptId,
+    LlmTextUsageId,
     MfaRecoveryCodeId,
+    NotificationId,
     OAuthAccountId,
     OneTimeTokenRowId,
     PasskeyId,
+    PushNotificationLogId,
+    PushSubscriptionId,
     SmsChallengeId,
+    SupportArticleId,
+    SupportMessageId,
     TotpFactorId,
     UserId,
     UserOnlineId,
@@ -61,6 +75,51 @@ export const parseTotpFactorId = (raw: string | null | undefined): TotpFactorId 
 /** The id of a row of the online history (a cursor), or null. */
 export const parseUserOnlineId = (raw: string | null | undefined): UserOnlineId | null =>
     parse(raw) as UserOnlineId | null
+
+/** The id of a push subscription from its decimal text (a path parameter), or null. */
+export const parsePushSubscriptionId = (
+    raw: string | null | undefined,
+): PushSubscriptionId | null => parse(raw) as PushSubscriptionId | null
+
+/** The id of a notification from its decimal text (a path, a cursor, `upTo`), or null. */
+export const parseNotificationId = (raw: string | null | undefined): NotificationId | null =>
+    parse(raw) as NotificationId | null
+
+/** The id of a knowledge-base article from its decimal text, or null. */
+export const parseSupportArticleId = (raw: string | null | undefined): SupportArticleId | null =>
+    parse(raw) as SupportArticleId | null
+
+/** The id of a support chat message from its decimal text (the `before` cursor), or null. */
+export const parseSupportMessageId = (raw: string | null | undefined): SupportMessageId | null =>
+    parse(raw) as SupportMessageId | null
+
+/**
+ * The id of a support chat message from text a schema has already checked (the `before` cursor of
+ * SupportChatHistoryQuerySchema); throws on anything else.
+ */
+export const asSupportMessageId = (raw: string): SupportMessageId => {
+    const id = parseSupportMessageId(raw)
+    if (id === null) throw new Error('asSupportMessageId: not a row id')
+    return id
+}
+
+/**
+ * The id of an article as a raw SQL result gives it (pg returns a bigint column as text): read from
+ * the database, so anything that is not a row id throws.
+ */
+export const asSupportArticleId = (raw: bigint | string): SupportArticleId => {
+    const id = parseSupportArticleId(String(raw))
+    if (id === null) throw new Error('asSupportArticleId: not a row id')
+    return id
+}
+
+/** The id of a system prompt from its decimal text, or null. */
+export const parseLlmSystemPromptId = (raw: string | null | undefined): LlmSystemPromptId | null =>
+    parse(raw) as LlmSystemPromptId | null
+
+/** The id of an audit event read from a cursor, or null. */
+export const parseAuditEventId = (raw: string | null | undefined): AuditEventId | null =>
+    parse(raw) as AuditEventId | null
 
 /**
  * The id of an SMS challenge as a client sends it back, or null. The ids are nanoids of up to 24

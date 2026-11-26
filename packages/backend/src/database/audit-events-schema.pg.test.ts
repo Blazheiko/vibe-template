@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { AuditEventId } from '#app/domain/ids.js'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../test-support/pg-test-db.js'
@@ -21,7 +22,7 @@ describe.skipIf(!hasPg)('audit_events schema on PostgreSQL', async () => {
         await pool.end()
     })
 
-    const insertRow = async (): Promise<bigint> => {
+    const insertRow = async (): Promise<AuditEventId> => {
         const [row] = await db
             .insert(auditEvents)
             .values({

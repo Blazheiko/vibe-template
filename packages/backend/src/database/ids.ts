@@ -20,3 +20,11 @@ export type MfaRecoveryCodeId = Brand<bigint, 'MfaRecoveryCodeId'>
 export type PasskeyId = Brand<bigint, 'PasskeyId'>
 /** sms_auth_challenges.id is a nanoid of 24 characters, not a bigserial. */
 export type SmsChallengeId = Brand<string, 'SmsChallengeId'>
+export type PushSubscriptionId = Brand<bigint, 'PushSubscriptionId'>
+export type PushNotificationLogId = Brand<bigint, 'PushNotificationLogId'>
+export type NotificationId = Brand<bigint, 'NotificationId'>
+export type SupportArticleId = Brand<bigint, 'SupportArticleId'>
+export type SupportMessageId = Brand<bigint, 'SupportMessageId'>
+export type LlmSystemPromptId = Brand<bigint, 'LlmSystemPromptId'>
+export type LlmTextUsageId = Brand<bigint, 'LlmTextUsageId'>
+export type AuditEventId = Brand<bigint, 'AuditEventId'>

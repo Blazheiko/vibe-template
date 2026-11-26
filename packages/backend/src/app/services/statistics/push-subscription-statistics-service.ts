@@ -4,7 +4,7 @@ import {
 } from '#app/repositories/index.js'
 import { pushSubscriptionTransformer } from '#app/transformers/index.js'
 import type { SerializedPushSubscription } from '#app/transformers/push-subscription-transformer.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, PushSubscriptionId } from '#app/domain/ids.js'
 
 export interface PushSubscriptionStatistics {
     totalNotifications: number
@@ -25,10 +25,10 @@ export interface PushSubscriptionStatisticsResult {
 }
 
 export async function getPushSubscriptionStatistics(
-    subscriptionId: bigint,
+    subscriptionId: PushSubscriptionId,
     userId: UserId,
 ): Promise<PushSubscriptionStatisticsResult | undefined> {
-    const subscription = await pushSubscriptionRepository.findByIdAndUserId(subscriptionId, userId)
+    const subscription = await pushSubscriptionRepository.findForUser(userId, subscriptionId)
     if (subscription === undefined) {
         return undefined
     }
@@ -36,8 +36,8 @@ export async function getPushSubscriptionStatistics(
     // The 7-day boundary comes from the app clock, as before, not from now() in SQL.
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     const counts = await pushNotificationLogRepository.countsBySubscription(
-        subscriptionId,
         userId,
+        subscriptionId,
         sevenDaysAgo,
     )
     const totalNotifications = counts.total

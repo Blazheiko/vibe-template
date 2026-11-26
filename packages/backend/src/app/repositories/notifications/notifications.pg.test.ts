@@ -2,7 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { NotificationId, UserId } from '#app/domain/ids.js'
 
 vi.mock('#logger', () => ({
     default: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -33,12 +33,12 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
             params: {},
             link,
         })
-    const addMany = async (userId: UserId, count: number): Promise<bigint[]> => {
-        const ids: bigint[] = []
+    const addMany = async (userId: UserId, count: number): Promise<NotificationId[]> => {
+        const ids: NotificationId[] = []
         for (let i = 0; i < count; i++) ids.push(await add(userId))
         return ids
     }
-    const readAtOf = async (id: bigint): Promise<Date | null | undefined> => {
+    const readAtOf = async (id: NotificationId): Promise<Date | null | undefined> => {
         const [row] = await db
             .select({ readAt: notifications.readAt })
             .from(notifications)
@@ -55,8 +55,8 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
         const user = await newUser()
         const ids = await addMany(user, 25)
 
-        const seen: bigint[] = []
-        let before: bigint | null = null
+        const seen: NotificationId[] = []
+        let before: NotificationId | null = null
         let pages = 0
         for (;;) {
             const page = await notificationRepository.page(user, {
@@ -125,7 +125,9 @@ describe.skipIf(!hasPg)('notification repositories on PostgreSQL', async () => {
         })
         expect(await readAtOf(id)).toEqual(first)
 
-        expect(await notificationRepository.markRead(user, 9_000_000_000_000n)).toBeNull()
+        expect(
+            await notificationRepository.markRead(user, 9_000_000_000_000n as NotificationId),
+        ).toBeNull()
         const withoutLink = await add(user, null)
         expect(await notificationRepository.markRead(user, withoutLink)).toEqual({ link: null })
     })

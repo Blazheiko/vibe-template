@@ -32,7 +32,7 @@ import {
     acquireSupportLock,
     type SupportLease,
 } from '#app/services/support/support-inflight-lock.js'
-import type { UserId } from '#app/domain/ids.js'
+import { asSupportMessageId, type UserId } from '#app/domain/ids.js'
 
 export interface SupportChatHistoryItem {
     id: string
@@ -272,7 +272,8 @@ export const supportService = {
         page: { before?: string | undefined; limit: number },
     ): Promise<AppResult<{ data: SupportChatHistoryItem[]; hasMore: boolean }>> {
         const { rows, hasMore } = await supportRepository.findChatHistoryPage(userId, {
-            before: page.before === undefined ? undefined : BigInt(page.before),
+            // The schema has checked `before` (EntityIdStringSchema): it is a row id.
+            before: page.before === undefined ? undefined : asSupportMessageId(page.before),
             limit: page.limit,
         })
 

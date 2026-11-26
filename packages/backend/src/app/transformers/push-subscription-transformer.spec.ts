@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import type { PushNotificationLogId, PushSubscriptionId } from '#app/domain/ids.js'
 import { uid } from '../../test-support/ids.js'
 
 import { pushSubscriptionTransformer } from './push-subscription-transformer.js'
 
 const row = {
-    id: 3n,
+    id: 3n as PushSubscriptionId,
     userId: uid(7),
     endpoint: 'https://push.example/1',
     p256dhKey: 'p256dh',
@@ -64,7 +65,7 @@ describe('pushSubscriptionTransformer (feat-047 §4.2)', () => {
             ...row,
             notificationLogs: [
                 {
-                    id: 11n,
+                    id: 11n as PushNotificationLogId,
                     messageTitle: 'Hi',
                     status: 'SENT',
                     sentAt: new Date('2026-10-25T10:03:00.000Z'),

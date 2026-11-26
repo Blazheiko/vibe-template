@@ -262,7 +262,7 @@ describe('feat-262 contract table: controller inputs', () => {
                 }),
             got: () => firstArg(mocks.getSubscription, (a) => a[1]),
         },
-    ])('$name: parseEntityId', ({ status, run, got }) => {
+    ])('$name: id constructor', ({ status, run, got }) => {
         it.each(['0', '007', TOO_BIG, ' 1'])(
             'answers %j with %s before the service',
             async (raw) => {
@@ -295,7 +295,7 @@ describe('feat-262 contract table: controller inputs', () => {
                 call((c) => NotificationController.markRead(c), { params: { id: raw } }),
             got: () => firstArg(mocks.markRead, (a) => a[1]),
         },
-    ])('$name: parseEntityId', ({ run, got }) => {
+    ])('$name: id constructor', ({ run, got }) => {
         it.each(['0', '007', TOO_BIG])('answers %j with 404 before the service', async (raw) => {
             arrangeServices()
             expect(await run(raw)).toBe(404)

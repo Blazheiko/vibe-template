@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm'
+import type { AuditEventId } from '#app/domain/ids.js'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { hasPg } from '../../../test-support/pg-test-db.js'
@@ -33,7 +34,7 @@ describe.skipIf(!hasPg)('audit events repository on PostgreSQL', async () => {
 
     const allPages = async (pageSize: number, filters = {}) => {
         const seen: { id: bigint; occurredAt: string }[] = []
-        let cursor: { occurredAt: string; id: bigint } | null = null
+        let cursor: { occurredAt: string; id: AuditEventId } | null = null
         for (let page = 0; page < 100; page++) {
             const rows = await auditEventsRepository.list(
                 { targetId, ...filters },

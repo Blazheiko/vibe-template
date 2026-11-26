@@ -4,7 +4,7 @@ import type { InferInsertModel, InferSelectModel } from 'drizzle-orm'
 import { db } from '#database/db.js'
 import { auditEvents } from '#database/schema.js'
 import type { DbExecutor } from '#app/repositories/transaction.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, AuditEventId } from '#app/domain/ids.js'
 
 export type AuditEventRow = InferSelectModel<typeof auditEvents>
 export type AuditEventInsert = Omit<InferInsertModel<typeof auditEvents>, 'id' | 'occurredAt'> & {
@@ -33,7 +33,7 @@ export interface AuditEventFilters {
 /** The position after the last row of a page: its `occurred_at` (as text) and id. */
 export interface AuditEventCursor {
     occurredAt: string
-    id: bigint
+    id: AuditEventId
 }
 
 const t = auditEvents

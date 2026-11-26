@@ -1,4 +1,5 @@
 import { isServerRejection } from '#app/repositories/db-errors.js'
+import type { SupportArticleId } from '#app/domain/ids.js'
 import { randomUUID } from 'node:crypto'
 import type { UploadedFile } from '#vendor/types/types.js'
 import appConfig from '#config/app.js'
@@ -38,7 +39,7 @@ function verifiedScreenshotType(file: UploadedFile): DetectedImageType | undefin
 type ArticleRow = NonNullable<Awaited<ReturnType<typeof supportKnowledgeRepository.findById>>>
 
 // The article, or "not found": every operation on one article starts here.
-async function requireArticle(id: bigint): Promise<AppResult<ArticleRow>> {
+async function requireArticle(id: SupportArticleId): Promise<AppResult<ArticleRow>> {
     const article = await supportKnowledgeRepository.findById(id)
     if (article === undefined) {
         return Result.err(notFound('Article', 'Article not found'))
@@ -144,7 +145,7 @@ export const knowledgeBaseService = {
         })
     },
 
-    async getById(id: bigint): Promise<AppResult<{ item: KbItemData }>> {
+    async getById(id: SupportArticleId): Promise<AppResult<{ item: KbItemData }>> {
         const result = await requireArticle(id)
         if (Result.isError(result)) {
             return Result.err(result.error)
@@ -194,7 +195,7 @@ export const knowledgeBaseService = {
      * changed: no UPDATE, no event, no new content version.
      */
     async update(
-        id: bigint,
+        id: SupportArticleId,
         data: ArticleChange,
         actor: AuditActor,
     ): Promise<AppResult<{ item: KbItemData }>> {
@@ -256,7 +257,7 @@ export const knowledgeBaseService = {
         return Result.ok({ item: outcome.item })
     },
 
-    async delete(id: bigint, actor: AuditActor): Promise<AppResult<void>> {
+    async delete(id: SupportArticleId, actor: AuditActor): Promise<AppResult<void>> {
         const outcome = await withTransaction(async (tx) => {
             const locked = await supportKnowledgeRepository.lockById(id, tx)
             if (locked === undefined) return undefined
@@ -288,7 +289,7 @@ export const knowledgeBaseService = {
     },
 
     async uploadScreenshot(
-        id: bigint,
+        id: SupportArticleId,
         file: UploadedFile | undefined,
         actor: AuditActor,
     ): Promise<AppResult<{ item: KbItemData }>> {
@@ -380,7 +381,7 @@ export const knowledgeBaseService = {
     },
 
     async deleteScreenshot(
-        id: bigint,
+        id: SupportArticleId,
         actor: AuditActor,
     ): Promise<AppResult<{ item: KbItemData }>> {
         const existingResult = await requireArticle(id)
@@ -430,7 +431,7 @@ export const knowledgeBaseService = {
     },
 
     async getScreenshotKey(
-        articleId: bigint,
+        articleId: SupportArticleId,
         options: { activeOnly?: boolean } = {},
     ): Promise<AppResult<string | null>> {
         const article = await supportKnowledgeRepository.findById(articleId)
@@ -443,7 +444,9 @@ export const knowledgeBaseService = {
      * The screenshot a user may see. A deactivated article is out of the support chat, and so
      * is its screenshot (feat-160, decision Д3): it used to be served to anyone who asked by id.
      */
-    async getScreenshotUrl(articleId: bigint): Promise<AppResult<{ url: string | null }>> {
+    async getScreenshotUrl(
+        articleId: SupportArticleId,
+    ): Promise<AppResult<{ url: string | null }>> {
         const screenshotKeyResult = await knowledgeBaseService.getScreenshotKey(articleId, {
             activeOnly: true,
         })
@@ -468,7 +471,7 @@ export const knowledgeBaseService = {
         return Result.ok({ url: `${cdnUrl}/${buildObjectKey(screenshotKey)}` })
     },
 
-    async reindexArticle(id: bigint): Promise<AppResult<{ indexed: number }>> {
+    async reindexArticle(id: SupportArticleId): Promise<AppResult<{ indexed: number }>> {
         const row = await supportKnowledgeRepository.findById(id)
         if (row === undefined) {
             return Result.err(notFound('Article', 'Article not found'))

@@ -1,4 +1,5 @@
 import type { NotificationItem } from 'shared/responses'
+import { toEntityId } from '#app/domain/ids.js'
 
 import type { NotificationRow } from '#app/repositories/index.js'
 
@@ -8,7 +9,7 @@ import type { NotificationRow } from '#app/repositories/index.js'
 export const notificationTransformer = {
     serialize(row: NotificationRow): NotificationItem {
         return {
-            id: String(row.id),
+            id: toEntityId(row.id),
             kind: row.kind,
             category: row.category,
             params: row.params,

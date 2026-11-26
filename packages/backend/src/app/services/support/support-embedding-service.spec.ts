@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { SupportArticleId } from '#app/domain/ids.js'
 
 const embedBatch = vi.fn((texts: string[]) => Promise.resolve(texts.map(() => [0.1])))
 const embed = vi.fn(() => Promise.resolve([0.2]))
@@ -50,7 +51,7 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
     })
 
     it('stores the vector with the version of the text it was made from (feat-114)', async () => {
-        const article = { id: 7n, title: 'T', content: 'C', contentVersion: 3 }
+        const article = { id: 7n as SupportArticleId, title: 'T', content: 'C', contentVersion: 3 }
 
         expect(await supportEmbeddingService.indexArticle(article)).toBe(true)
         expect(embed).toHaveBeenCalledWith('T\n\nC', expect.anything())
@@ -62,7 +63,7 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
 
         expect(
             await supportEmbeddingService.indexArticle({
-                id: 7n,
+                id: 7n as SupportArticleId,
                 title: 'T',
                 content: 'C',
                 contentVersion: 3,
@@ -80,7 +81,7 @@ describe('supportEmbeddingService (code-issues item 54)', () => {
 
         await expect(
             supportEmbeddingService.indexArticle(
-                { id: 7n, title: 'T', content: 'C', contentVersion: 1 },
+                { id: 7n as SupportArticleId, title: 'T', content: 'C', contentVersion: 1 },
                 { signal: controller.signal },
             ),
         ).rejects.toThrow('lock lost')

@@ -20,7 +20,7 @@ import { canonicalPushEndpoint } from './push-endpoint-policy.js'
 import type { DbTransaction } from '#app/repositories/index.js'
 import { getPushSubscriptionStatistics } from '#app/services/statistics/push-subscription-statistics-service.js'
 import { withCurrentSession } from '#app/services/auth/session-guard.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { UserId, PushSubscriptionId } from '#app/domain/ids.js'
 
 export const pushSubscriptionService = {
     async getSubscriptions(userId: UserId): Promise<
@@ -61,15 +61,15 @@ export const pushSubscriptionService = {
 
     async getSubscription(
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
     ): Promise<
         AppResult<{
             data: SerializedPushSubscription & { notificationLogs: SerializedPushNotificationLog[] }
         }>
     > {
         const [subscription, logs] = await Promise.all([
-            pushSubscriptionRepository.findByIdAndUserId(subscriptionId, userId),
-            pushSubscriptionRepository.getLogsBySubscriptionId(subscriptionId, userId, 10),
+            pushSubscriptionRepository.findForUser(userId, subscriptionId),
+            pushSubscriptionRepository.getLogsBySubscriptionId(userId, subscriptionId, 10),
         ])
 
         if (subscription === undefined) {
@@ -87,7 +87,7 @@ export const pushSubscriptionService = {
     /** feat-098: like `createSubscription`, only while the request's session is current. */
     async updateSubscription(
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
         payload: UpdateSubscriptionInput,
         presentedSessionToken: string | undefined,
     ): Promise<
@@ -109,8 +109,8 @@ export const pushSubscriptionService = {
 
         return await withCurrentSession(userId, presentedSessionToken, async (tx) => {
             const updated = await pushSubscriptionRepository.update(
-                subscriptionId,
                 userId,
+                subscriptionId,
                 updateData,
                 tx,
             )
@@ -123,9 +123,9 @@ export const pushSubscriptionService = {
 
     async deleteSubscription(
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
     ): Promise<AppResult<{ message: string }>> {
-        const deleted = await pushSubscriptionRepository.delete(subscriptionId, userId)
+        const deleted = await pushSubscriptionRepository.delete(userId, subscriptionId)
         if (!deleted) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }
@@ -145,20 +145,20 @@ export const pushSubscriptionService = {
         const record = await pushSubscriptionRepository.findByEndpoint(canonical)
         if (record?.userId !== userId) return false
         // Owner-scoped again: a record that moved to another account meanwhile is not deleted.
-        return await pushSubscriptionRepository.delete(record.id, userId)
+        return await pushSubscriptionRepository.delete(userId, record.id)
     },
 
     async getSubscriptionLogs(
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
     ): Promise<
         AppResult<{
             data: SerializedPushNotificationLog[]
         }>
     > {
         const logs = await pushSubscriptionRepository.getLogsBySubscriptionId(
-            subscriptionId,
             userId,
+            subscriptionId,
             50,
         )
 
@@ -167,7 +167,7 @@ export const pushSubscriptionService = {
 
     async getSubscriptionStatistics(
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
     ): Promise<
         AppResult<{
             data: NonNullable<Awaited<ReturnType<typeof getPushSubscriptionStatistics>>>
@@ -183,13 +183,13 @@ export const pushSubscriptionService = {
 
     async deactivateSubscription(
         userId: UserId,
-        subscriptionId: bigint,
+        subscriptionId: PushSubscriptionId,
     ): Promise<
         AppResult<{
             data: ReturnType<typeof pushSubscriptionTransformer.serialize>
         }>
     > {
-        const deactivated = await pushSubscriptionRepository.deactivate(subscriptionId, userId)
+        const deactivated = await pushSubscriptionRepository.deactivate(userId, subscriptionId)
         if (deactivated === undefined) {
             return Result.err(notFound('Subscription', 'Subscription not found'))
         }
@@ -244,8 +244,8 @@ async function upsertSubscription(
         }
 
         const updated = await pushSubscriptionRepository.updateByEndpoint(
-            endpoint,
             userId,
+            endpoint,
             {
                 p256dhKey: payload.p256dhKey,
                 authKey: payload.authKey,

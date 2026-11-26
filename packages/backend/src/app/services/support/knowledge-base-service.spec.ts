@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { SupportArticleId } from '#app/domain/ids.js'
 import { uid } from '../../../test-support/ids.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -134,7 +135,7 @@ describe('knowledgeBaseService', () => {
         supportKnowledgeRepositoryMock.findById.mockResolvedValue(undefined)
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.getById(11n)
+        const result = await knowledgeBaseService.getById(11n as SupportArticleId)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -210,7 +211,7 @@ describe('knowledgeBaseService', () => {
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
         const result = await knowledgeBaseService.uploadScreenshot(
-            11n,
+            11n as SupportArticleId,
             {
                 name: 'screenshot.png',
                 filename: 'screenshot.png',
@@ -248,7 +249,7 @@ describe('knowledgeBaseService', () => {
     it('rejects a screenshot whose bytes do not match the declared type (item 46)', async () => {
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
         const result = await knowledgeBaseService.uploadScreenshot(
-            11n,
+            11n as SupportArticleId,
             {
                 name: 'screenshot.png',
                 filename: 'screenshot.png',
@@ -269,7 +270,7 @@ describe('knowledgeBaseService', () => {
         supportKnowledgeRepositoryMock.findById.mockResolvedValue(undefined)
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.deleteScreenshot(11n, actor)
+        const result = await knowledgeBaseService.deleteScreenshot(11n as SupportArticleId, actor)
 
         expect(Result.isError(result)).toBe(true)
         if (Result.isError(result)) {
@@ -295,7 +296,7 @@ describe('knowledgeBaseService', () => {
         })
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.getScreenshotUrl(11n)
+        const result = await knowledgeBaseService.getScreenshotUrl(11n as SupportArticleId)
 
         expect(Result.isOk(result)).toBe(true)
         if (Result.isOk(result)) {
@@ -321,7 +322,7 @@ describe('knowledgeBaseService', () => {
         })
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.getScreenshotUrl(11n)
+        const result = await knowledgeBaseService.getScreenshotUrl(11n as SupportArticleId)
 
         expect(result).toEqual(Result.ok({ url: null }))
     })
@@ -335,7 +336,7 @@ describe('knowledgeBaseService', () => {
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
 
-        expect(await knowledgeBaseService.getScreenshotKey(11n)).toEqual(
+        expect(await knowledgeBaseService.getScreenshotKey(11n as SupportArticleId)).toEqual(
             Result.ok('kb/11/screenshot.png'),
         )
     })
@@ -355,7 +356,7 @@ describe('knowledgeBaseService', () => {
         })
 
         const { knowledgeBaseService } = await loadKnowledgeBaseService()
-        const result = await knowledgeBaseService.getScreenshotUrl(11n)
+        const result = await knowledgeBaseService.getScreenshotUrl(11n as SupportArticleId)
 
         expect(result).toEqual(Result.ok({ url: null }))
         expect(loggerMock.warn).toHaveBeenCalled()

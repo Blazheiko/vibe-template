@@ -10,7 +10,7 @@ import {
     createTestRedis,
     hasRedis,
 } from '../../../test-support/redis-test-client.js'
-import type { UserId } from '#app/domain/ids.js'
+import type { NotificationId, UserId } from '#app/domain/ids.js'
 
 // feat-236 T5 (Р4, Р6): the notification center over HTTP — a real uWebSockets.js server with the
 // real route table and the real session_web, csrf_guard and auth_guard, against a real PostgreSQL
@@ -226,7 +226,10 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
         await pool.end()
     })
 
-    const add = async (userId: UserId, link: string | null = '/account'): Promise<bigint> => {
+    const add = async (
+        userId: UserId,
+        link: string | null = '/account',
+    ): Promise<NotificationId> => {
         const [row] = await db
             .insert(notifications)
             .values({ userId, category: 'security', kind: 'security.logout_all', params: {}, link })
@@ -234,7 +237,7 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
         if (row === undefined) throw new Error('notification not inserted')
         return row.id
     }
-    const readAtOf = async (id: bigint) =>
+    const readAtOf = async (id: NotificationId) =>
         (
             await db
                 .select({ readAt: notifications.readAt })
@@ -266,7 +269,7 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
     it('pages newest first with a cursor; 20 by default; the unread filter', async () => {
         const user = await insertUser(`notif-page-${String(now)}`)
         const browser = await signedIn(user.email ?? '')
-        const ids: bigint[] = []
+        const ids: NotificationId[] = []
         for (let i = 0; i < 25; i++) ids.push(await add(user.id))
 
         const first = await browser.request('GET', '/notifications')
@@ -344,7 +347,7 @@ describe.skipIf(!hasPg || !hasRedis)('notification center over HTTP', async () =
     it('read-all marks every id <= upTo and none above', async () => {
         const user = await insertUser(`notif-all-${String(now)}`)
         const browser = await signedIn(user.email ?? '')
-        const ids: bigint[] = []
+        const ids: NotificationId[] = []
         for (let i = 0; i < 4; i++) ids.push(await add(user.id))
 
         const reply = await browser.request('POST', '/notifications/read-all', {

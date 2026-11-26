@@ -122,11 +122,11 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
         const failedRow = rows.find((row) => row.status === 'FAILED')
         expect(failedRow).toMatchObject({ errorMessage: 'gone', responseData: { statusCode: 410 } })
         expect(rows.every((row) => row.sentAt instanceof Date)).toBe(true)
-        expect(pushSubscriptionRepository.deactivate).toHaveBeenCalledWith(2n, 7n)
+        expect(pushSubscriptionRepository.deactivate).toHaveBeenCalledWith(7n, 2n)
         expect(pushSubscriptionRepository.touchLastUsed).toHaveBeenCalledOnce()
-        const touched = pushSubscriptionRepository.touchLastUsed.mock.calls[0] as [bigint[], bigint]
-        expect([...touched[0]].sort()).toEqual([1n, 3n])
-        expect(touched[1]).toBe(7n)
+        const touched = pushSubscriptionRepository.touchLastUsed.mock.calls[0] as [bigint, bigint[]]
+        expect(touched[0]).toBe(7n)
+        expect([...touched[1]].sort()).toEqual([1n, 3n])
     })
 
     it('keeps the result when writing the logs fails', async () => {
@@ -158,7 +158,7 @@ describe('pushNotificationSenderService.sendToUser (code-issues item 49)', () =>
         })
         expect(pushNotificationLogRepository.insertMany).toHaveBeenCalledOnce()
         expect(pushSubscriptionRepository.touchLastUsed).toHaveBeenCalledOnce()
-        expect(pushSubscriptionRepository.deactivate).toHaveBeenCalledWith(2n, 7n)
+        expect(pushSubscriptionRepository.deactivate).toHaveBeenCalledWith(7n, 2n)
     })
 
     it('does not write logs when nothing was sent', async () => {

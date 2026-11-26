@@ -1,4 +1,5 @@
 import type { HttpContext } from '#vendor/types/types.js'
+import { parsePushSubscriptionId, type PushSubscriptionId } from '#app/domain/ids.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { pushSubscriptionContracts } from 'shared/contracts'
 import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
@@ -31,14 +32,15 @@ import type {
     PushSubscriptionTestInput,
     UpdateSubscriptionInput,
 } from 'shared/schemas'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 
 // Non-numeric ids (e.g. GET /test-push, which now only exists as POST) are the
 // same "not found" as someone else's subscription, instead of a BigInt 500.
 // Each method below reads the parameters of its own contract (feat-186): a `:subscriptionId`
 // renamed in one of them stops the build here.
-function resolveSubscriptionId(params: { readonly subscriptionId: string }): bigint | null {
-    return parseEntityId(params.subscriptionId)
+function resolveSubscriptionId(params: {
+    readonly subscriptionId: string
+}): PushSubscriptionId | null {
+    return parsePushSubscriptionId(params.subscriptionId)
 }
 
 type Pc = typeof pushSubscriptionContracts

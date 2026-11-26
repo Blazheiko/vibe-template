@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import { parseSupportArticleId, type SupportArticleId } from '#app/domain/ids.js'
 import type { HttpContext } from '#vendor/types/types.js'
 import type { ParamsOf } from '#app/routing/contract-registry.js'
 import type { knowledgeBaseContracts } from 'shared/contracts'
@@ -20,12 +21,12 @@ import { getTypedPayload } from '#vendor/utils/validation/get-typed-payload.js'
 import { mapControllerError, respond } from '#app/controllers/shared/controller-error.js'
 import { badRequest, conflict } from '#app/services/shared/errors.js'
 import { knowledgeBaseInitService } from '#app/services/support/knowledge-base-init-service.js'
-import { parseEntityId } from '#app/controllers/shared/parse-id.js'
 import { auditActorFrom } from '#app/controllers/shared/audit-actor.js'
 
 // Each method reads the `:id` of its own contract (feat-186): renamed in one, it stops the build.
-const parseId = (context: { httpData: { params: { readonly id: string } } }): bigint | null =>
-    parseEntityId(context.httpData.params.id)
+const parseId = (context: {
+    httpData: { params: { readonly id: string } }
+}): SupportArticleId | null => parseSupportArticleId(context.httpData.params.id)
 
 type Kb = typeof knowledgeBaseContracts
 
