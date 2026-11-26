@@ -6,6 +6,9 @@ import tseslint from 'typescript-eslint'
 
 import rule from './no-brand-cast.mjs'
 
+// A failure inside the TypeScript checker has a deep stack; keep all of it in the report.
+Error.stackTraceLimit = Infinity
+
 const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url))
 const filename = `${fixtures}file.ts`
 
