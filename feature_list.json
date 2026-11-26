@@ -2631,8 +2631,8 @@
             "owner": "Blazheiko",
             "branch": "feat/branded-ids-domains",
             "dependencies": ["feat-263"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #847 (merge a01cd6c5), status #846 (in_progress), #848 (review). PK brands PushSubscriptionId, PushNotificationLogId, NotificationId, SupportArticleId, SupportMessageId, LlmSystemPromptId, LlmTextUsageId, AuditEventId (plus subscription_id and llm_system_prompt_id FKs) with per-brand constructors; push repositories take the owner first (findForUser, update, updateByEndpoint, deactivate, touchLastUsed, delete, getLogsBySubscriptionId, countsBySubscription, latestBySubscriptionIds); decodeAuditCursor returns AuditEventId; transformers use toEntityId; controllers/shared/parse-id.ts removed (cases moved to app/domain/ids.spec.ts). Local: make check exit 0 (backend 3892, frontend 1029), db:generate no changes, docs:build + docs:verify. CI on 3f594c7: test-pg https://github.com/Blazheiko/vibe-template/actions/runs/45769639711 (72 files, 724 passed, 0 skipped), test-redis https://github.com/Blazheiko/vibe-template/actions/runs/45769639735 (20 files, 211 passed, 0 skipped); all checks green again on 85762f7. Manual golden path not run against a live app (no local database of this project)."
         },
         {
             "id": "feat-265",
