@@ -2681,8 +2681,8 @@
             "owner": "Blazheiko",
             "branch": "docs/branded-types-examples",
             "dependencies": ["feat-268"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #872 (merge c6db558), status #871 (in_progress), #873 (review). Tutorial adding-a-feature Step 9 uses uid(7) and lists database/ids.ts / app/domain/ids.ts; backend-feature skill uses SessionToken + presentedSessionTokenOf, asUserId in the WS controller, uid()/eid() in tests, evals without parseEntityId; controllers/auth/architecture pages (both locales) drop BigInt(userId); 7n also fixed in index.md and services.md. Tutorial spec typechecked against a stub service (the same check with 7n fails with TS2345). CI quality https://github.com/Blazheiko/vibe-template/actions/runs/45866641914/job/140071051269 and e2e green; local make check exit 0 (backend 3899, frontend 1029 tests); pnpm docs:build + docs:verify passed. PG/Redis not applicable (docs only)."
         },
         {
             "id": "feat-270",
