@@ -2671,8 +2671,8 @@
             "owner": "Blazheiko",
             "branch": "feat/shared-frontend-brands",
             "dependencies": ["feat-263"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #863 (merge 0897c62). CI: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45845603756); test-redis 20 files / 213 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45845603836); e2e and e2e-live green; make check clean (backend 3899, frontend 1029 tests); frontend test:e2e 134 passed; docs:build + docs:verify passed."
         }
     ]
 }
