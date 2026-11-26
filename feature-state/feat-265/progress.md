@@ -42,7 +42,10 @@ RecoveryCodeHash` (`mfa_recovery_codes.code_hash`); OTP `hashOtpVerificationCode
 - `make check`: exit 0 (backend 3897, frontend 1029, landing 103, eslint rules 12; bundle graph without ArkType).
 - `pnpm --filter backend db:generate`: "No schema changes, nothing to migrate" (with the runtime import of
   `newSessionToken`).
-- `make test-pg` / `make test-redis`: CI jobs of the implementation PR (links added after the run).
+- `make test-pg`: CI on `a50dae0`, https://github.com/Blazheiko/vibe-template/actions/runs/45799135115: 72 files,
+  724 tests passed, 0 skipped.
+- `make test-redis`: CI on `a50dae0`, https://github.com/Blazheiko/vibe-template/actions/runs/45799135104: 20
+  files, 211 tests passed, 0 skipped.
 - Manual golden path: not run against a live app (no local database of this project); password reset, e-mail
   verification, TOTP and recovery-code sign-in are covered by the HTTP PG and Redis suites in CI.
 
