@@ -2701,8 +2701,8 @@
             "owner": "Blazheiko",
             "branch": "chore/branded-types-coverage",
             "dependencies": ["feat-270"],
-            "status": "review",
-            "evidence": ""
+            "status": "done",
+            "evidence": "PR #880 (merge 0e98b32), status #879 (in_progress), #881 (review). Remaining bare bigint ids branded (TotpFactorId, OAuthAccountId, NotificationId, PushSubscriptionId, UserId); owner first in getPushSubscriptionStatistics and findLinkForUser; parseUserId at permission-guard, ws-coordinator, MFA ticket load (corrupt user id = gone ticket) and the session deletion lock (sessionDeletionLock); SessionToken / RawRecoveryCode / NormalizedEmail kept at call sites with new compile-time tests (secret-brands.spec.ts); TOTP, session age and the auth/MFA clocks on UnixMs, now -> nowMs, addMs / toMs with Seconds-branded config; IsoDateTime / EntityId in the remaining response schemas; QueryWireValue unwraps brands in lists (checked on a real ArkType schema); frontend refs typed EntityId, no-brand-cast on .mts/.tsx, no casts in templates; no-brand-cast catches containers of a brand and constrained type parameters (TS enums for TypeFlags), compile-time tests for the time units (time-brands.spec.ts). CI: test-pg 72 files / 724 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45885571759/job/140135310755); test-redis 22 files / 229 passed, 0 skipped (https://github.com/Blazheiko/vibe-template/actions/runs/45885571732/job/140135310520); quality, e2e, e2e-live green; local make check exit 0 (backend 3925, frontend 1029 tests); docs:build + docs:verify passed. Left out: vendor ws-message-budget / rate-limit now: number, config/session.ts toSecondsFloor (whole-second config), the review's Low items."
         }
     ]
 }
