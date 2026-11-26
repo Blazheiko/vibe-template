@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { type Milliseconds, ms } from 'shared/brand'
 
 import redis, { withRedis } from '#database/redis.js'
 import databasePoolConfig, { statementBoundMs } from '#config/database-pool.js'
@@ -32,9 +33,9 @@ return 0
 
 export interface Lease {
     /** How long the key lives without a renewal. */
-    ttlMs: number
+    ttlMs: Milliseconds
     /** How often the holder renews; well under `ttlMs`, so one failed renewal is survivable. */
-    renewEveryMs: number
+    renewEveryMs: Milliseconds
     /** After this the lease is abandoned (told lost, no more renewals): a stuck run must not hold the lock for ever. */
     maxLifetimeMs: number
     /**
@@ -43,7 +44,7 @@ export interface Lease {
      * needs the longest write here (see `leaseForDatabaseWrites`), or that write can land after
      * another holder has taken the lock.
      */
-    stopBeforeExpiryMs?: number
+    stopBeforeExpiryMs?: Milliseconds
 }
 
 /** feat-135: the longest one write on the main pool can take (connect wait + query timeout). */
@@ -56,14 +57,13 @@ const WRITE_MARGIN_SLACK_MS = 1000
  * renewals still fit before that moment.
  */
 export function leaseForDatabaseWrites(lease: Lease): Lease {
-    const stopBeforeExpiryMs = Math.max(
-        lease.renewEveryMs,
-        DATABASE_WRITE_BOUND_MS + WRITE_MARGIN_SLACK_MS,
+    const stopBeforeExpiryMs = ms(
+        Math.max(lease.renewEveryMs, DATABASE_WRITE_BOUND_MS + WRITE_MARGIN_SLACK_MS),
     )
     return {
         ...lease,
         stopBeforeExpiryMs,
-        ttlMs: Math.max(lease.ttlMs, stopBeforeExpiryMs + 2 * lease.renewEveryMs),
+        ttlMs: ms(Math.max(lease.ttlMs, stopBeforeExpiryMs + 2 * lease.renewEveryMs)),
     }
 }
 

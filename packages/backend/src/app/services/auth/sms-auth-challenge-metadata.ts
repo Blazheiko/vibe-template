@@ -1,4 +1,5 @@
 import { rateLimited, type AppError } from '#app/services/shared/errors.js'
+import { diffMs, nowUnixMs, seconds, toSecondsCeil, unixMs } from 'shared/brand'
 import { parseUserId, type UserId } from '#app/domain/ids.js'
 
 export function extractChallengeUserId(metadata: unknown): UserId | null {
@@ -29,9 +30,8 @@ export function extractChallengeSessionId(metadata: unknown): string | null {
 }
 
 export function buildResendCooldownError(resendAvailableAt: Date): AppError {
-    const retryAfterSeconds = Math.max(
-        1,
-        Math.ceil((resendAvailableAt.getTime() - Date.now()) / 1000),
+    const retryAfterSeconds = seconds(
+        Math.max(1, toSecondsCeil(diffMs(unixMs(resendAvailableAt.getTime()), nowUnixMs()))),
     )
 
     return rateLimited(

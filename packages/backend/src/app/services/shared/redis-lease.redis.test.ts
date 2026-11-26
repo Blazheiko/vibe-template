@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import { ms } from 'shared/brand'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -41,8 +42,8 @@ const { acquireLease, NOT_OWNER } = await import('./redis-lease.js')
 const admin = createTestRedis(PREFIX)
 const lost = (reason: string): Error => new Error(reason)
 const renewed = (ttlMs: number) => ({
-    ttlMs,
-    renewEveryMs: Math.floor(ttlMs / 3),
+    ttlMs: ms(ttlMs),
+    renewEveryMs: ms(Math.floor(ttlMs / 3)),
     maxLifetimeMs: 60_000,
 })
 let n = 0
@@ -148,5 +149,19 @@ describe.skipIf(!hasRedis)('lease evalAsOwner()', () => {
         expect(await admin.get(`${key}:state`)).toBe('newer')
         await newer?.release()
         held?.abandon()
+    })
+})
+
+// feat-267 (plan Р7): the lease TTL in milliseconds reaches Redis as PX.
+describe.skipIf(!hasRedis)('lease TTL', () => {
+    it('sets the key for the milliseconds of the lease', async () => {
+        const key = freshKey()
+        const held = await acquireLease(key, renewed(5_000), lost)
+        expect(held).not.toBeNull()
+
+        const pttl = await admin.pttl(key)
+        expect(pttl).toBeGreaterThan(4_000)
+        expect(pttl).toBeLessThanOrEqual(5_000)
+        await held?.release()
     })
 })

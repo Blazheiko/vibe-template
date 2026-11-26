@@ -11,6 +11,3 @@ export type PriceInCents = typeof PriceInCentsSchema.infer
 
 export const NonEmptyStringSchema = type('string >= 1').brand('NonEmptyString')
 export type NonEmptyString = typeof NonEmptyStringSchema.infer
-
-export const TimestampSchema = type('number.integer >= 0').brand('Timestamp')
-export type Timestamp = typeof TimestampSchema.infer

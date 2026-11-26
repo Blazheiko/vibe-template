@@ -9,4 +9,4 @@ export const ANON_SESSION_NAMESPACE = 'anon_session'
  * signed-in sessions keep the full age.
  */
 export const storedSessionTtl = (userToken: string): number =>
-    userToken === ANON_SESSION_NAMESPACE ? sessionConfig.anonAge : sessionConfig.age
+    userToken === ANON_SESSION_NAMESPACE ? sessionConfig.anonAgeSeconds : sessionConfig.ageSeconds

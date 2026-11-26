@@ -136,14 +136,14 @@ The `attach` method hands them to handlers as `context.session` and `context.aut
 
 The cookie name and attributes are set by [`config/session.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/config/session.ts):
 
-| Parameter                    | Value                                                                                                                             |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Name                         | `__Host-uapi` if `SESSION_COOKIE_HOST_PREFIX` is enabled (enabled by default when `appConfig.isProductionLike`), otherwise `uapi` |
-| `path` / `httpOnly`          | `/` / `true`                                                                                                                      |
-| `secure`                     | `true` for any `APP_ENV` except `local`, and always `true` when `appConfig.isProductionLike`                                      |
-| `sameSite`                   | `Lax`                                                                                                                             |
-| TTL (`age`, `maxAge`, Redis) | 24 hours (`duration('24h')`) for a user session                                                                                   |
-| Anonymous session TTL        | `SESSION_ANON_TTL` (`anonAge`), `2h` by default: for both the cookie and the anonymous session in Redis                           |
+| Parameter                           | Value                                                                                                                             |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Name                                | `__Host-uapi` if `SESSION_COOKIE_HOST_PREFIX` is enabled (enabled by default when `appConfig.isProductionLike`), otherwise `uapi` |
+| `path` / `httpOnly`                 | `/` / `true`                                                                                                                      |
+| `secure`                            | `true` for any `APP_ENV` except `local`, and always `true` when `appConfig.isProductionLike`                                      |
+| `sameSite`                          | `Lax`                                                                                                                             |
+| TTL (`ageSeconds`, `maxAge`, Redis) | 24 hours (`duration('24h')`) for a user session                                                                                   |
+| Anonymous session TTL               | `SESSION_ANON_TTL` (`anonAgeSeconds`), `2h` by default: for both the cookie and the anonymous session in Redis                    |
 
 `session_web` reads the cookie only under the active name; a cookie under another name (for example `uapi` when the `__Host-` prefix is enabled) is ignored, and the request gets a new anonymous session. At startup, [`validate-runtime-config.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/app/start/validate-runtime-config.ts) checks that with the `__Host-` prefix the cookie has `Secure=true` and `APP_URL` starts with `https://`. In a production-like environment the prefix is mandatory: `SESSION_COOKIE_HOST_PREFIX=false` stops the start, because a `uapi` cookie without the prefix can be overwritten by a sibling subdomain (`Domain=<parent domain>`).
 
@@ -219,7 +219,7 @@ The client does not need `userToken`: responses with a user (`user-transformer.t
 Sessions are stored by [`redis-session-storage.ts`](https://github.com/Blazheiko/vibe-template/blob/main/packages/backend/src/vendor/utils/session/redis-session-storage.ts):
 
 - The key looks like `session:<userToken|anon_session>:<sessionId>`. Before every operation `sanitizeRedisKey` checks it: only `[a-zA-Z0-9:_*-]` is allowed, with a length of at most 86 characters.
-- A write is done with `SETEX`, a read with `GETEX ... EX`, with the TTL `age` for a user session and `anonAge` for `anon_session`. That is, every read extends the session's life (a sliding TTL).
+- A write is done with `SETEX`, a read with `GETEX ... EX`, with the TTL `ageSeconds` for a user session and `anonAgeSeconds` for `anon_session`. That is, every read extends the session's life (a sliding TTL).
 - If the signature is valid but the key is missing in Redis, a new anonymous session is issued (in the cookie, without a write).
 - `destroyAllSessions` (the `logoutAll` call) finds keys via `SCAN MATCH session:<userToken>:*` in batches of 100, not via `KEYS`.
 - **The `logoutAll` bound.** The traversal always starts from cursor `0`. The whole `SCAN`/`DEL` loop is bounded by the `REDIS_LOGOUT_ALL_DEADLINE_MS` deadline (2000 ms), counted from its start. Before every `await` the remaining budget is computed, and the command is awaited for no longer than `min(remaining, REDIS_COMMAND_TIMEOUT_MS)`. `destroyAllSessions` returns `{ deleted, complete }` and, when Redis is unavailable or the deadline is exhausted, does not throw but returns `complete: false` and writes a warning to the log; it throws only on an unexpected error (a bug). `deleted` is the number of deletions **confirmed** by Redis responses: a command that was no longer awaited after the deadline may still execute, so more records may actually be deleted.

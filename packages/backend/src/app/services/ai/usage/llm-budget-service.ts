@@ -1,4 +1,5 @@
 import redis from '#database/redis-rate-limit.js'
+import { diffMs, ms, seconds, toSecondsCeil, unixMs, type Seconds } from 'shared/brand'
 import logger from '#logger'
 import type { UserId } from '#app/domain/ids.js'
 
@@ -13,7 +14,7 @@ import type { UserId } from '#app/domain/ids.js'
 //   - a started call costs what the provider reported;
 //   - a started call without a report (cut off, timed out, failed) costs its estimate.
 
-const DAY_KEY_TTL_MS = 48 * 3_600_000
+const DAY_KEY_TTL_MS = ms(48 * 3_600_000)
 
 // KEYS[1] counter; ARGV: reserve, limit, ttl. -1: it does not fit and nothing was added.
 const RESERVE_LUA = `
@@ -57,13 +58,14 @@ export interface TokenReservation {
 }
 
 export type ReserveResult =
-    { allowed: true; reservation: TokenReservation } | { allowed: false; retryAfterSeconds: number }
+    | { allowed: true; reservation: TokenReservation }
+    | { allowed: false; retryAfterSeconds: Seconds }
 
 const dayOf = (now: Date): string => now.toISOString().slice(0, 10)
 
-const secondsToUtcMidnight = (now: Date): number => {
-    const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
-    return Math.max(1, Math.ceil((next - now.getTime()) / 1000))
+const secondsToUtcMidnight = (now: Date): Seconds => {
+    const next = unixMs(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1))
+    return seconds(Math.max(1, toSecondsCeil(diffMs(next, unixMs(now.getTime())))))
 }
 
 const counterKey = (userId: UserId, day: string): string => `llm:budget:${String(userId)}:${day}`

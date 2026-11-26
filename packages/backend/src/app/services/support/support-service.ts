@@ -1,4 +1,5 @@
 import { leaseForDatabaseWrites } from '#app/services/shared/redis-lease.js'
+import { ms, seconds, toSecondsCeil } from 'shared/brand'
 import { supportRepository } from '#app/repositories/index.js'
 import { supportEmbeddingService } from '#app/services/support/support-embedding-service.js'
 import { supportLlmService } from '#app/services/support/support-llm-service.js'
@@ -106,11 +107,11 @@ function formatKnowledgeContext(
 // feat-135: told lost the longest database write before the key can expire, so the reply saved
 // just before the loss (addChatMessage) cannot land next to the answer of the next holder.
 const SUPPORT_LEASE: SupportLease = leaseForDatabaseWrites({
-    ttlMs: 30_000,
-    renewEveryMs: 5_000,
+    ttlMs: ms(30_000),
+    renewEveryMs: ms(5_000),
     maxLifetimeMs: aiConfig.requestTimeoutMs * 3 + 60_000,
 })
-const BUSY_RETRY_AFTER_SECONDS = 5
+const BUSY_RETRY_AFTER_SECONDS = seconds(5)
 
 // How much of the conversation the model is shown. The UI reads the history in pages; this
 // is a separate, fixed slice, so a long conversation does not grow the prompt (and its cost).
@@ -147,7 +148,7 @@ async function admit(
         return Result.err(
             rateLimited('Too many messages. Please try again later.', {
                 reason: 'support_rate_limited',
-                retryAfterSeconds: Math.ceil(policy.windowMs / 1000),
+                retryAfterSeconds: toSecondsCeil(policy.windowMs),
             }),
         )
     }

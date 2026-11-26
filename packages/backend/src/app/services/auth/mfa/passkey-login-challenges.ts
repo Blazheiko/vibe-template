@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
+import { seconds, type Seconds } from 'shared/brand'
 import type { MfaTicketId } from '#app/domain/secrets.js'
 
 import redis, { withRedis } from '#database/redis.js'
@@ -18,10 +19,12 @@ const ID_PATTERN = /^[A-Za-z0-9_-]{22}$/
 export const ticketHash = (ticketId: MfaTicketId): string =>
     createHash('sha256').update(ticketId).digest('base64url')
 
-const ttlOf = (seconds?: number): number =>
-    Math.max(
-        1,
-        Math.min(seconds ?? webauthnConfig.challengeTtlSeconds, webauthnConfig.challengeTtlSeconds),
+const ttlOf = (ttl?: Seconds): Seconds =>
+    seconds(
+        Math.max(
+            1,
+            Math.min(ttl ?? webauthnConfig.challengeTtlSeconds, webauthnConfig.challengeTtlSeconds),
+        ),
     )
 
 export const passkeyLoginChallenges = {
@@ -40,7 +43,11 @@ export const passkeyLoginChallenges = {
 
 export const passkeyTicketChallenges = {
     /** A new challenge for the ticket replaces an earlier one; it never outlives the ticket. */
-    async issue(ticketId: MfaTicketId, challenge: string, ticketTtlSeconds: number): Promise<void> {
+    async issue(
+        ticketId: MfaTicketId,
+        challenge: string,
+        ticketTtlSeconds: Seconds,
+    ): Promise<void> {
         await withRedis(() =>
             redis.set(`${MFA}${ticketHash(ticketId)}`, challenge, 'EX', ttlOf(ticketTtlSeconds)),
         )

@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import { ms } from 'shared/brand'
 import { uid } from '../../../test-support/ids.js'
 import type { UserId } from '#app/domain/ids.js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -47,13 +48,13 @@ const admin = createTestRedis(PREFIX)
 const TTL = 60_000
 // A lease that is never renewed in a test's lifetime: stands for a process that died.
 const unrenewed = (ttlMs: number): SupportLease => ({
-    ttlMs,
-    renewEveryMs: 2 ** 30,
+    ttlMs: ms(ttlMs),
+    renewEveryMs: ms(2 ** 30),
     maxLifetimeMs: 2 ** 30,
 })
 const held = (ttlMs: number): SupportLease => ({
-    ttlMs,
-    renewEveryMs: Math.floor(ttlMs / 3),
+    ttlMs: ms(ttlMs),
+    renewEveryMs: ms(Math.floor(ttlMs / 3)),
     maxLifetimeMs: 60_000,
 })
 let nextUser = 1000n
@@ -192,8 +193,8 @@ describe.skipIf(!hasRedis)('support in-flight lock', () => {
         it('is abandoned at its maximum lifetime: the holder is told, the renewals stop, the key expires', async () => {
             const user = freshUser()
             const lock = await acquireSupportLock(user, {
-                ttlMs: 300,
-                renewEveryMs: 100,
+                ttlMs: ms(300),
+                renewEveryMs: ms(100),
                 maxLifetimeMs: 450,
             })
 

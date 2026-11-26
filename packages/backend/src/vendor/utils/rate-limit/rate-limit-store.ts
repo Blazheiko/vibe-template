@@ -1,4 +1,5 @@
 import logger from '#vendor/utils/logger.js'
+import { ms, seconds, toSecondsCeil, type Seconds } from 'shared/brand'
 import { rateLimitKeyForIp } from '../network/ip-address.js'
 
 // In-memory, per-process, synchronous rate-limit store.
@@ -210,8 +211,8 @@ export function createRateLimitStore(options: RateLimitStoreOptions = {}): RateL
 }
 
 /** Seconds for the Retry-After header: never 0, so clients do not retry at once. */
-export const retryAfterSeconds = (retryAfterMs: number): number =>
-    Math.max(1, Math.ceil(retryAfterMs / 1000))
+export const retryAfterSeconds = (retryAfterMs: number): Seconds =>
+    seconds(Math.max(1, toSecondsCeil(ms(retryAfterMs))))
 
 /** The client's budget key: IPv6 grouped by /64, see rateLimitKeyForIp (feat-110). */
 export const clientKey = (ip: string | null | undefined): string => rateLimitKeyForIp(ip)

@@ -1,4 +1,5 @@
 import { isServerRejection } from '#app/repositories/db-errors.js'
+import { ms } from 'shared/brand'
 import { access, readdir, readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,8 +24,8 @@ export const KB_INIT_LOCK_KEY = 'support:kb-init'
 // feat-135: told lost the longest database write before the key can expire, so an article insert
 // or a vector write started just before the loss cannot land under the next holder.
 const KB_INIT_LEASE: Lease = leaseForDatabaseWrites({
-    ttlMs: 30_000,
-    renewEveryMs: 10_000,
+    ttlMs: ms(30_000),
+    renewEveryMs: ms(10_000),
     maxLifetimeMs: 60 * 60_000,
 })
 

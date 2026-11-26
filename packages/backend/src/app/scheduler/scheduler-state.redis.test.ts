@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import { unixMs, ms } from 'shared/brand'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -43,7 +44,7 @@ const admin = createTestRedis(PREFIX)
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const NOW = Date.parse('2026-11-18T03:05:00Z')
-const lease = { ttlMs: 10_000, renewEveryMs: 3_000, maxLifetimeMs: 60_000 }
+const lease = { ttlMs: ms(10_000), renewEveryMs: ms(3_000), maxLifetimeMs: 60_000 }
 const lost = (reason: string): Error => new Error(reason)
 
 let n = 0
@@ -80,7 +81,11 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
         const held = await take(job)
 
         expect(
-            await state.recordSuccess(held, job, { slot: NOW, durationMs: 12.4, now: NOW + 5 }),
+            await state.recordSuccess(held, job, {
+                slot: NOW,
+                durationMs: 12.4,
+                now: unixMs(NOW + 5),
+            }),
         ).toEqual({
             status: 'written',
         })
@@ -99,8 +104,8 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
         const job = freshJob()
         const held = await take(job)
 
-        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: NOW })
-        await state.recordSuccess(held, job, { slot: NOW - HOUR, durationMs: 1, now: NOW })
+        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
+        await state.recordSuccess(held, job, { slot: NOW - HOUR, durationMs: 1, now: unixMs(NOW) })
 
         expect((await state.read(job)).lastSuccessSlot).toBe(NOW)
         await held.release()
@@ -115,7 +120,7 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
             const write = await state.recordFailure(held, job, {
                 outcome: 'failed',
                 durationMs: 3,
-                now: NOW,
+                now: unixMs(NOW),
                 maxBackoffMs: HOUR,
             })
             expect(write.status).toBe('written')
@@ -130,7 +135,7 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
             lastRunAt: NOW,
         })
 
-        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: NOW })
+        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
         const after = await state.read(job)
         expect(after.consecutiveFailures).toBe(0)
         expect(after.nextRetryAt).toBeUndefined()
@@ -140,12 +145,12 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
     it('keeps lastSuccessSlot on a failure and records a timeout as such', async () => {
         const job = freshJob()
         const held = await take(job)
-        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: NOW })
+        await state.recordSuccess(held, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
 
         await state.recordFailure(held, job, {
             outcome: 'timeout',
             durationMs: 9,
-            now: NOW + MINUTE,
+            now: unixMs(NOW + MINUTE),
             maxBackoffMs: HOUR,
         })
 
@@ -164,19 +169,23 @@ describe.skipIf(!hasRedis)('scheduler state', () => {
         const a = await take(job)
         await admin.del(jobLeaseKey(job))
         const b = await take(job)
-        await state.recordSuccess(b, job, { slot: NOW, durationMs: 1, now: NOW })
+        await state.recordSuccess(b, job, { slot: NOW, durationMs: 1, now: unixMs(NOW) })
         const before = await admin.hgetall(stateKey(job))
 
         expect(
             await state.recordFailure(a, job, {
                 outcome: 'failed',
                 durationMs: 1,
-                now: NOW,
+                now: unixMs(NOW),
                 maxBackoffMs: HOUR,
             }),
         ).toEqual({ status: 'not-owner' })
         expect(
-            await state.recordSuccess(a, job, { slot: NOW + HOUR, durationMs: 1, now: NOW }),
+            await state.recordSuccess(a, job, {
+                slot: NOW + HOUR,
+                durationMs: 1,
+                now: unixMs(NOW),
+            }),
         ).toEqual({ status: 'not-owner' })
 
         expect(await admin.hgetall(stateKey(job))).toEqual(before)

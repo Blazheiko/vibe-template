@@ -1,4 +1,5 @@
 import type { Checkpoint } from '#app/services/shared/checkpoint.js'
+import { ms } from 'shared/brand'
 import {
     acquireLease,
     DATABASE_WRITE_BOUND_MS,
@@ -12,8 +13,8 @@ import logger from '#logger'
 // `job:run` and the old purge CLI all go through withJobLease, so they exclude each other and get
 // the same checkpoint.
 
-export const JOB_LEASE_TTL_MS = 15_000
-export const JOB_LEASE_RENEW_EVERY_MS = 5_000
+export const JOB_LEASE_TTL_MS = ms(15_000)
+export const JOB_LEASE_RENEW_EVERY_MS = ms(5_000)
 /** Time after the job's timeout for the write in flight, the end of run(), the state write and the release. */
 export const JOB_FINALIZE_MARGIN_MS = 10_000
 

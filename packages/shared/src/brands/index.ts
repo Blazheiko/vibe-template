@@ -9,6 +9,4 @@ export {
     type PriceInCents,
     NonEmptyStringSchema,
     type NonEmptyString,
-    TimestampSchema,
-    type Timestamp,
 } from './primitives.js'

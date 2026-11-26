@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import { seconds } from 'shared/brand'
 import type { MfaTicketId } from '#app/domain/secrets.js'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -51,17 +52,20 @@ const {
     mfaTicketStore: brandedTicketStore,
     MFA_MAX_FAILURES,
     newTicketId,
+    mfaTicketKey,
 } = await import('./mfa-ticket.js')
 
 // feat-265: the store takes branded ids (MfaTicketId, MfaReservationId…); this suite names them
 // with short literals, so it sees the store with its string parameters widened to string.
 type Widen<T> = T extends string
     ? string
-    : T extends (infer E)[]
-      ? Widen<E>[]
-      : T extends object
-        ? { [K in keyof T]: Widen<T[K]> }
-        : T
+    : T extends number
+      ? number
+      : T extends (infer E)[]
+        ? Widen<E>[]
+        : T extends object
+          ? { [K in keyof T]: Widen<T[K]> }
+          : T
 type Loose<F> = F extends (...args: infer A) => infer R
     ? (...args: { [K in keyof A]: Widen<A[K]> }) => R
     : F
@@ -340,10 +344,10 @@ describe.skipIf(!hasRedis)('MFA ticket store (feat-245 M8)', () => {
     it('a passkey failure spends the checked challenge only while it is current; a replaced one is stale', async () => {
         const id = await open()
         const challenge = (value: string) => ({ key: passkeyTicketChallenges.keyOf(id), value })
-        await passkeyTicketChallenges.issue(id, 'challenge-1', 300)
+        await passkeyTicketChallenges.issue(id, 'challenge-1', seconds(300))
         await mfaTicketStore.reserve(id, 'browser-a', 'r1', NOW, TTL_MS, 'a1')
         // New options replaced the challenge between the check and the count: nothing counted.
-        await passkeyTicketChallenges.issue(id, 'challenge-2', 300)
+        await passkeyTicketChallenges.issue(id, 'challenge-2', seconds(300))
         expect(
             await mfaTicketStore.settle(id, 'r1', 'failure', {
                 attemptId: 'a1',
@@ -367,7 +371,7 @@ describe.skipIf(!hasRedis)('MFA ticket store (feat-245 M8)', () => {
     it('a passkey capture needs the checked challenge and spends it', async () => {
         const id = await open()
         const challenge = (value: string) => ({ key: passkeyTicketChallenges.keyOf(id), value })
-        await passkeyTicketChallenges.issue(id, 'c-1', 300)
+        await passkeyTicketChallenges.issue(id, 'c-1', seconds(300))
         await mfaTicketStore.reserve(id, 'browser-a', 'a', NOW, TTL_MS)
         await mfaTicketStore.reserve(id, 'browser-a', 'b', NOW, TTL_MS)
         const completion = { completionId: 'cb', xid: '1', plan }
@@ -379,5 +383,20 @@ describe.skipIf(!hasRedis)('MFA ticket store (feat-245 M8)', () => {
             await mfaTicketStore.capture(id, 'b', NOW, TTL_MS, completion, challenge('c-1')),
         ).toBe('ok')
         expect(await passkeyTicketChallenges.peek(id)).toBeNull()
+    })
+})
+
+// feat-267 (plan Р7): the TTL in seconds reaches Redis as EX, not as milliseconds.
+describe.skipIf(!hasRedis)('MFA ticket TTL', () => {
+    it('stores a ticket for the seconds it is given, and ttl() reads them back', async () => {
+        const id = newTicketId()
+        await brandedTicketStore.create(id, ticket(), seconds(120))
+
+        const ttl = await admin.ttl(mfaTicketKey(id))
+        expect(ttl).toBeGreaterThan(118)
+        expect(ttl).toBeLessThanOrEqual(120)
+        const read = await brandedTicketStore.ttl(id)
+        expect(read).toBeGreaterThan(118)
+        expect(read).toBeLessThanOrEqual(120)
     })
 })

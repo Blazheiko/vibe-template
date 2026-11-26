@@ -1,4 +1,5 @@
 import { NOT_OWNER, type HeldLease } from '#app/services/shared/redis-lease.js'
+import type { UnixMs } from 'shared/brand'
 import redis, { withRedis } from '#database/redis.js'
 
 import { periodOf, type Schedule } from './schedule.js'
@@ -27,13 +28,13 @@ export type FailureWrite = { status: 'written'; nextRetryAt: number } | { status
 export interface SuccessRecord {
     slot: number
     durationMs: number
-    now: number
+    now: UnixMs
 }
 
 export interface FailureRecord {
     outcome: 'failed' | 'timeout'
     durationMs: number
-    now: number
+    now: UnixMs
     maxBackoffMs: number
 }
 

@@ -1,4 +1,5 @@
 import type { Redis } from 'ioredis'
+import { ms } from 'shared/brand'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -43,7 +44,7 @@ const { default: logger } = await import('#logger')
 
 const admin = createTestRedis(PREFIX)
 const MINUTE = 60_000
-const otherLease = { ttlMs: 60_000, renewEveryMs: 2 ** 30, maxLifetimeMs: 2 ** 30 }
+const otherLease = { ttlMs: ms(60_000), renewEveryMs: ms(2 ** 30), maxLifetimeMs: 2 ** 30 }
 const lost = (reason: string): Error => new Error(reason)
 
 let n = 0

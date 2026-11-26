@@ -1,4 +1,5 @@
 import { Result } from 'better-result'
+import type { Milliseconds } from 'shared/brand'
 import { userRepository, withTransaction, type ITokenRepository } from '#app/repositories/index.js'
 import type { DbTransaction } from '#app/repositories/transaction.js'
 import type { UserRow } from '#app/repositories/index.js'
@@ -39,7 +40,7 @@ export async function issueTokenLocked<TRow, TInsert extends { userId: UserId }>
     repository: ITokenRepository<TRow, TInsert>,
     options: {
         userId: UserId
-        ttlMs: number
+        ttlMs: Milliseconds
         /** Extra columns; a function gets the locked row (e.g. the address the mail goes to). */
         extra?:
             | Omit<TInsert, 'userId' | 'tokenHash' | 'expiresAt'>

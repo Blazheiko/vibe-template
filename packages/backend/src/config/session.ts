@@ -1,4 +1,5 @@
 import { duration } from 'metautil'
+import { ms, toSecondsFloor, type Seconds } from 'shared/brand'
 import { env } from 'node:process'
 
 import appConfig from '#config/app.js'
@@ -17,17 +18,17 @@ const cookieName = useHostPrefix ? HOST_PREFIXED_COOKIE_NAME : PLAIN_COOKIE_NAME
 // Anonymous sessions (feat-057) live in a signed cookie and reach Redis only when they
 // store data; either way they expire after this, sliding with use.
 const ANON_AGE_DEFAULT = '2h'
-const readAnonAge = (): number => {
+const readAnonAge = (): Seconds => {
     const raw = env['SESSION_ANON_TTL']
-    const seconds = Math.floor(
-        duration(raw === undefined || raw === '' ? ANON_AGE_DEFAULT : raw) / 1000,
+    const anonSeconds = toSecondsFloor(
+        ms(duration(raw === undefined || raw === '' ? ANON_AGE_DEFAULT : raw)),
     )
-    if (!Number.isFinite(seconds) || seconds <= 0) {
+    if (!Number.isFinite(anonSeconds) || anonSeconds <= 0) {
         throw new Error(
             `SESSION_ANON_TTL must be a positive duration (e.g. 2h, 30m), got "${String(raw)}"`,
         )
     }
-    return seconds
+    return anonSeconds
 }
 
 // ADR 0002: every authenticated request waits for one users.session_token read. A
@@ -53,9 +54,10 @@ export default Object.freeze({
     storage: 'redis',
     cookieName,
     useHostPrefix,
-    age: Math.floor(duration('24h') / 1000), // d - days, h - hours, m - minutes, s - seconds
-    /** Lifetime of an anonymous session, in seconds (SESSION_ANON_TTL, default 2h). */
-    anonAge: readAnonAge(),
+    /** Lifetime of a stored session, sliding with every request (24 h). */
+    ageSeconds: toSecondsFloor(ms(duration('24h'))),
+    /** Lifetime of an anonymous session (SESSION_ANON_TTL, default 2h). */
+    anonAgeSeconds: readAnonAge(),
     /** Deadline of the users.session_token lookup, in ms (SESSION_TOKEN_CHECK_TIMEOUT_MS, default 2000). */
     tokenCheckTimeoutMs: readTokenCheckTimeoutMs(),
     /**

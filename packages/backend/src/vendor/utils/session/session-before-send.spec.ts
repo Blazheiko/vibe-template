@@ -368,17 +368,17 @@ describe('the lifetime of a re-sent stored session cookie', () => {
     })
 
     it('a stored anonymous session gets the anonymous lifetime', async () => {
-        expect(sessionConfig.anonAge).not.toBe(sessionConfig.age)
+        expect(sessionConfig.anonAgeSeconds).not.toBe(sessionConfig.ageSeconds)
 
         const cookie = await restoreWith('anon_session', {})
 
-        expect(cookie?.maxAge).toBe(sessionConfig.anonAge)
+        expect(cookie?.maxAge).toBe(sessionConfig.anonAgeSeconds)
     })
 
     it('a signed-in session gets the full lifetime', async () => {
         const cookie = await restoreWith(USER_TOKEN, { userId: '7', userToken: USER_TOKEN })
 
-        expect(cookie?.maxAge).toBe(sessionConfig.age)
+        expect(cookie?.maxAge).toBe(sessionConfig.ageSeconds)
     })
 })
 
